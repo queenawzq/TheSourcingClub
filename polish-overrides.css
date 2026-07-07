@@ -1,0 +1,13 @@
+/* Final browser annotation polish. */
+.comparison-section table thead th:nth-child(2) {
+  font-weight: 900 !important;
+}
+
+#factories .black-strip {
+  margin-top: 0 !important;
+}
+
+#pricing .price-card h3,
+#pricing .price-card strong {
+  font-weight: 900 !important;
+}
