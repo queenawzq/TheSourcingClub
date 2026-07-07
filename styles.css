@@ -131,13 +131,13 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 42px;
-  padding: 0 28px;
+  min-height: 44px;
+  padding: 0 30px;
   border: 2px solid var(--blue);
   border-radius: 999px;
   background: #fff;
   color: var(--blue);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 900;
   font-style: italic;
   cursor: pointer;
@@ -145,8 +145,8 @@ a {
 }
 
 .button-small {
-  min-height: 36px;
-  padding-inline: 26px;
+  min-height: 40px;
+  padding-inline: 30px;
 }
 
 .button.white {
@@ -282,13 +282,13 @@ h3 {
 }
 
 .hero-intro .button {
-  min-height: 36px;
-  padding-inline: 26px;
-  font-size: 13px;
+  min-height: 40px;
+  padding-inline: 30px;
+  font-size: 14px;
 }
 
 .tiny {
-  margin-top: 14px;
+  margin-top: 20px;
   color: #151515;
   font-size: 13px;
 }
@@ -406,7 +406,7 @@ h3 {
   padding: 28px 72px 24px 26px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--paper);
+  background: #fbfaf7;
 }
 
 .issue-card strong {
@@ -473,7 +473,7 @@ h3 {
   display: block;
   position: absolute;
   top: 96px;
-  left: 500px;
+  left: 360px;
   width: 68px;
   height: auto;
 }
@@ -537,7 +537,7 @@ h3 {
   padding: 38px 22px 30px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: var(--paper);
+  background: #fbfaf7;
   text-align: center;
 }
 
@@ -611,7 +611,7 @@ h3 {
 
 .black-strip {
   grid-column: 1 / -1;
-  margin: -18px 0 0;
+  margin: 0;
   padding: 19px 26px;
   border-radius: 8px;
   background: #000;
@@ -670,7 +670,7 @@ td {
 }
 
 .comparison th:nth-child(2) {
-  font-weight: 950;
+  font-weight: 900;
 }
 
 th:first-child,
@@ -721,7 +721,7 @@ td:nth-child(2) {
   position: absolute;
   left: 0;
   bottom: 136px;
-  width: 84px;
+  width: 76px;
 }
 
 .pricing-tag {
@@ -748,11 +748,12 @@ td:nth-child(2) {
 }
 
 .price-card:nth-child(2) {
-  background: #f3f3f3;
+  background: var(--paper);
 }
 
 .price-card h3 {
   font-size: 32px;
+  font-weight: 900;
 }
 
 .price-card strong {
@@ -761,7 +762,7 @@ td:nth-child(2) {
   color: var(--blue);
   font-size: 34px;
   line-height: 0.95;
-  font-weight: 950;
+  font-weight: 900;
 }
 
 .price-card span:not(.badge) {
@@ -792,6 +793,7 @@ td:nth-child(2) {
 .faq {
   grid-template-columns: 0.72fr 1.28fr;
   gap: 78px;
+  align-items: stretch;
 }
 
 .faq-copy {
@@ -823,7 +825,7 @@ td:nth-child(2) {
 
 .faq-person {
   position: absolute;
-  left: 15px;
+  left: -18px;
   bottom: 0;
   width: 430px;
   mix-blend-mode: normal;
@@ -838,7 +840,7 @@ td:nth-child(2) {
 .faq-grid article {
   position: relative;
   min-height: 172px;
-  padding: 24px 54px 24px 24px;
+  padding: 24px 34px 24px 32px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--header-bg);
@@ -856,7 +858,8 @@ td:nth-child(2) {
 }
 
 .faq-grid h3 {
-  max-width: 290px;
+  max-width: none;
+  padding-right: 36px;
   margin-bottom: 16px;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--line);
@@ -891,6 +894,7 @@ td:nth-child(2) {
   margin-bottom: 35px;
   color: #fff;
   font-size: 58px;
+  font-weight: 900;
 }
 
 .final-cta p {
@@ -900,17 +904,21 @@ td:nth-child(2) {
   line-height: 1.55;
 }
 
+.final-copy p:not(.tiny) {
+  margin-bottom: 28px;
+}
+
 .final-cta .tiny {
   margin-top: 22px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .closing-people {
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 650px;
-  max-width: 55%;
+  width: 644px;
+  max-width: 51.15%;
 }
 
 .modal {
@@ -1165,6 +1173,11 @@ body.modal-open {
     padding-right: 28px;
   }
 
+  .section {
+    padding-top: 76px;
+    padding-bottom: 76px;
+  }
+
   .hero,
   .two-col,
   .standard,
@@ -1174,19 +1187,19 @@ body.modal-open {
   }
 
   h1 {
-    font-size: clamp(50px, 12vw, 82px);
+    font-size: clamp(38px, 11vw, 52px);
   }
 
   .problem h2 {
-    font-size: clamp(50px, 12vw, 82px);
+    font-size: clamp(38px, 11vw, 52px);
   }
 
   .how h2 {
-    font-size: clamp(50px, 12vw, 82px);
+    font-size: clamp(36px, 10vw, 48px);
   }
 
   .standard-copy h2 {
-    font-size: clamp(50px, 12vw, 82px);
+    font-size: clamp(36px, 10vw, 48px);
   }
 
   h1 .indent {
@@ -1194,9 +1207,11 @@ body.modal-open {
   }
 
   h2,
+  .comparison-section h2,
+  .pricing h2,
   .faq-copy h2,
   .final-cta h2 {
-    font-size: clamp(38px, 9vw, 58px);
+    font-size: clamp(34px, 9vw, 46px);
   }
 
   .factory-icon,
@@ -1228,8 +1243,19 @@ body.modal-open {
     display: none;
   }
 
+  .hero-stickers {
+    width: 78%;
+    max-width: 420px;
+    margin: 0 auto 24px;
+  }
+
   .hero-intro {
     margin-top: 30px;
+  }
+
+  .hero {
+    min-height: auto;
+    padding-bottom: 28px;
   }
 
   .stats,
@@ -1243,8 +1269,7 @@ body.modal-open {
   .calculator,
   .pricing-icon,
   .pricing-tag,
-  .faq-person,
-  .closing-people {
+  .faq-person {
     display: block;
     max-width: 260px;
     margin: 28px auto 0;
@@ -1276,6 +1301,69 @@ body.modal-open {
     grid-column: auto;
   }
 
+  .problem,
+  .how,
+  .standard {
+    min-height: auto;
+  }
+
+  .problem {
+    padding-top: 76px;
+    padding-bottom: 72px;
+  }
+
+  .problem-title {
+    margin-top: -28px;
+    margin-left: 0;
+  }
+
+  .problem-line-1,
+  .problem-line-2,
+  .problem-line-3 {
+    margin-left: 0;
+  }
+
+  .problem-grid {
+    margin-top: 18px;
+  }
+
+  .how {
+    padding-top: 58px;
+    padding-bottom: 56px;
+  }
+
+  .steps {
+    margin-top: -60px;
+    padding-top: 28px;
+  }
+
+  .pricing {
+    padding-top: 58px;
+    padding-bottom: 56px;
+    min-height: auto;
+  }
+
+  .price-cards {
+    margin-top: -90px;
+  }
+
+  .standard {
+    padding-top: 76px;
+    padding-bottom: 21px;
+  }
+
+  .level-grid {
+    gap: 18px;
+  }
+
+  .standard-copy {
+    margin-top: 26px;
+  }
+
+  .black-strip {
+    margin-top: 26px;
+  }
+
   .how-copy,
   .pricing-copy,
   .faq-copy {
@@ -1284,12 +1372,130 @@ body.modal-open {
 
   .how-copy .button {
     position: relative;
-    margin-top: 34px;
+    margin-top: -20px;
   }
 
   .closing-people {
-    max-width: 560px;
-    width: 100%;
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: min(100%, 512px);
+    max-width: none;
+    margin: 0;
+    mix-blend-mode: normal;
+  }
+
+  .final-cta {
+    min-height: 820px;
+    padding-top: 70px;
+    padding-bottom: 430px;
+  }
+
+  .problem-title {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: start;
+    align-items: center;
+    column-gap: 30px;
+  }
+
+  .problem-title h2 {
+    grid-column: 1 / -1;
+  }
+
+  .problem-search {
+    width: 76px;
+    margin: 24px 0 0;
+  }
+
+  .calculator {
+    width: 188px;
+    max-width: 188px;
+    margin: -100px 0 0 366px;
+  }
+
+  .how-copy,
+  .pricing-copy {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: start;
+    align-items: center;
+    column-gap: 24px;
+    row-gap: 0;
+  }
+
+  .how-copy .eyebrow,
+  .how-copy h2,
+  .pricing-copy .eyebrow,
+  .pricing-copy h2 {
+    grid-column: 1 / -1;
+  }
+
+  .how-copy .eyebrow,
+  .pricing-copy .eyebrow {
+    order: 1;
+  }
+
+  .how-copy h2,
+  .pricing-copy h2 {
+    order: 2;
+  }
+
+  .how-chat-icon,
+  .pricing-icon {
+    order: 3;
+  }
+
+  .how-note,
+  .pricing-tag {
+    order: 4;
+  }
+
+  .how-copy .button {
+    grid-column: 1 / -1;
+    order: 5;
+  }
+
+  .how-chat-icon,
+  .how-note,
+  .pricing-icon,
+  .pricing-tag {
+    margin: 16px 0 0;
+  }
+
+  .how-chat-icon {
+    margin-top: -100px;
+  }
+
+  .pricing-icon {
+    width: 66.98px;
+    margin-top: -60px;
+  }
+
+  .how-note {
+    max-width: 156px;
+    margin-left: 88px;
+    margin-top: -6px;
+  }
+
+  .pricing-tag {
+    max-width: 128px;
+    margin-left: 126px;
+  }
+
+  .faq-person {
+    max-width: min(100%, 330px);
+    width: 330px;
+    margin-top: -48px;
+    mix-blend-mode: normal;
+  }
+
+  .faq-grid article:first-child {
+    margin-top: -46px;
+  }
+
+  .final-cta .tiny {
+    font-size: 13px;
   }
 }
 
@@ -1324,9 +1530,12 @@ body.modal-open {
     text-align: left;
   }
 
-  .issue-card,
-  .faq-grid article {
+  .issue-card {
     padding-right: 56px;
+  }
+
+  .faq-grid article {
+    padding-right: 34px;
   }
 
   .steps article {

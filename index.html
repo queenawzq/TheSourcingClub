@@ -8,8 +8,23 @@
       name="description"
       content="The Sourcing Club connects fashion brands with vetted manufacturers worldwide, making sourcing simple, transparent, and reliable."
     />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
+    <link rel="stylesheet" href="./styles.css?v=20260706" />
+  <style>
+    /* Final browser annotation overrides. */
+    .comparison-section table thead th:nth-child(2) {
+      font-weight: 900 !important;
+    }
+
+    #factories .black-strip {
+      margin-top: 0 !important;
+    }
+
+    #pricing .price-card h3,
+    #pricing .price-card strong {
+      font-weight: 900 !important;
+    }
+  </style>
+</head>
   <body>
     <header class="site-header">
       <a class="wordmark" href="#top" aria-label="The Sourcing Club home">
@@ -272,10 +287,10 @@
             Join the waitlist and be first in line when we open matching. We personally handle factory matching,
             coordinate sampling, and stay by your side through your first production run.
           </p>
-          <button class="button white js-open-modal" type="button">Join waitlist</button>
+          <button class="button button-small white js-open-modal" type="button">Join waitlist</button>
           <p class="tiny">Free to join. The first 10 brands get White Glove at the Club rate.</p>
         </div>
-        <img class="closing-people" src="./assets/final-closing-people.jpg" alt="Designers joining a sourcing queue" />
+        <img class="closing-people" src="./assets/lining-up.png" alt="Designers lining up for factory matching support" />
       </section>
     </main>
 
