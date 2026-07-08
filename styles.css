@@ -1662,6 +1662,7 @@ td:nth-child(2) {
 .translation-benefits h3 {
   margin: 0 0 12px;
   font-size: 18px;
+  font-weight: 900;
   line-height: 1.15;
 }
 
@@ -2669,8 +2670,29 @@ body.modal-open {
     padding-top: 0;
   }
 
+  .factory-partner {
+    padding-top: 54px;
+    padding-bottom: 42px;
+    gap: 36px;
+  }
+
+  .factory-partner .factory-section-copy {
+    margin-bottom: 0;
+  }
+
+  .factory-chat-icon {
+    width: 46px;
+    margin-top: 16px;
+  }
+
   .rfq-panel {
     margin: 0;
+  }
+
+  .factory-rfq {
+    gap: 34px;
+    padding-top: 52px;
+    padding-bottom: 52px;
   }
 
   .factory-translation {
@@ -2730,39 +2752,152 @@ body.modal-open {
     grid-template-columns: 1fr;
   }
 
+  .factory-verification {
+    padding-top: 54px;
+    padding-bottom: 44px;
+  }
+
+  .factory-verification .level-grid {
+    gap: 16px;
+  }
+
+  .factory-verification .standard-copy {
+    margin-top: 10px;
+  }
+
+  .factory-verification .standard-note,
+  .factory-verification .black-strip {
+    margin-top: 18px;
+  }
+
   .factory-fit {
+    gap: 28px;
+    padding-top: 50px;
+    padding-bottom: 30px;
+  }
+
+  .factory-fit .fit-grid {
+    gap: 12px;
+  }
+
+  .factory-fit .fit-grid article {
+    min-height: 0;
+    padding-top: 20px;
+    padding-bottom: 18px;
+  }
+
+  .factory-join {
     gap: 34px;
+    padding-top: 58px;
+    padding-bottom: 48px;
+  }
+
+  .factory-join .button {
+    margin-top: 0;
+    margin-bottom: 18px;
+  }
+
+  .factory-steps {
+    margin-top: 0;
+  }
+
+  .factory-meaning {
+    margin-top: 12px;
+    padding-top: 22px;
+    padding-bottom: 22px;
   }
 
   .factory-final-cta {
     align-items: start;
-    min-height: 620px;
-    padding-top: 70px;
-    padding-bottom: 48px;
+    min-height: 448px;
+    padding-top: 36px;
+    padding-bottom: 16px;
+  }
+
+  .factory-final-cta h2 {
+    margin-bottom: 22px;
+  }
+
+  .factory-final-cta .tiny {
+    margin-top: 14px;
   }
 
   .factory-cta-visual {
     display: flex;
     min-height: 0;
-    margin-top: 24px;
+    margin-top: 6px;
     align-items: flex-end;
     justify-content: flex-end;
   }
 
   .factory-cta-visual img {
     position: static;
-    margin-top: 18px;
-    margin-right: 20px;
-    width: min(94vw, 396px);
+    margin-top: 0;
+    margin-right: 12px;
+    width: min(77vw, 330px);
   }
 }
 
 @media (max-width: 720px) {
   .site-header {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: auto 1fr auto;
+    column-gap: 8px;
+    row-gap: 0;
   }
 
   .site-header nav {
+    display: flex;
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    gap: 0;
+    padding: 0;
+    font-size: 10px;
+    font-weight: 900;
+  }
+
+  .site-header nav a {
+    display: none;
+  }
+
+  .site-header nav a:last-child {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    border: 2px solid var(--blue);
+    border-radius: 999px;
+    color: var(--blue);
+    background: #fff;
+    font-style: italic;
+    white-space: nowrap;
+  }
+
+  .site-header > .button-small {
+    display: none;
+  }
+
+  .factory-page .site-header {
+    grid-template-columns: auto 1fr auto;
+    align-items: start;
+  }
+
+  .factory-page .site-header nav {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: start;
+    gap: 0;
+    padding: 0;
+  }
+
+  .factory-page .header-actions {
+    flex-direction: row;
+    align-items: flex-end;
+    gap: 0;
+  }
+
+  .factory-page .header-actions .button-small {
     display: none;
   }
 
@@ -2890,7 +3025,9 @@ body.modal-open {
   }
 
   .modal-left h2 {
-    max-width: 250px;
+    max-width: 235px;
+    font-size: 29px;
+    line-height: 1.08;
   }
 
   .factory-page .modal-left h2 {
@@ -2903,10 +3040,27 @@ body.modal-open {
   }
 
   .modal-register-image {
-    right: 70px;
+    right: 24px;
     bottom: 0;
-    width: min(54%, 216px);
-    max-height: 221px;
+    width: min(44%, 176px);
+    max-height: 214px;
+  }
+
+  .close {
+    right: 14px;
+  }
+
+  .choice-options {
+    gap: 8px;
+  }
+
+  .choice-pill span {
+    min-height: 34px;
+    padding: 0 8px;
+    font-size: 11px;
+    line-height: 1.1;
+    text-align: center;
+    white-space: normal;
   }
 
   .modal-factory-label {
