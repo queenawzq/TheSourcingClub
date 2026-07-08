@@ -930,7 +930,7 @@ td:nth-child(2) {
 .faq-person {
   position: absolute;
   left: -24px;
-  bottom: -92px;
+  top: 340px;
   width: 410px;
   mix-blend-mode: normal;
 }
