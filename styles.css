@@ -869,6 +869,11 @@ td:nth-child(2) {
   margin-top: 48px;
 }
 
+.price-card:nth-child(2) strong {
+  -webkit-text-stroke: 0.49px currentColor;
+  paint-order: stroke fill;
+}
+
 .price-card span:not(.badge) {
   color: #777;
   font-size: 14px;
@@ -2194,8 +2199,8 @@ body.modal-open {
   .hero,
   .section,
   .final-cta {
-    padding-left: 28px;
-    padding-right: 28px;
+    padding-left: 18px;
+    padding-right: 18px;
   }
 
   .section {
@@ -2214,7 +2219,7 @@ body.modal-open {
   }
 
   h1 {
-    font-size: clamp(38px, 11vw, 52px);
+    font-size: clamp(32px, 9.4vw, 42px);
   }
 
   .problem h2 {
@@ -2255,13 +2260,13 @@ body.modal-open {
   }
 
   .factory-icon {
-    width: 68px;
+    width: 46px;
     margin-top: 0;
-    margin-bottom: 5px;
+    margin-bottom: 3px;
   }
 
   .factory-title-line {
-    gap: 14px;
+    gap: 3px;
   }
 
   .problem-search {
@@ -2275,13 +2280,21 @@ body.modal-open {
   }
 
   .hero-stickers {
-    width: 78%;
-    max-width: 420px;
-    margin: 0 auto 24px;
+    width: min(88%, 340px);
+    max-width: 340px;
+    margin: 0 auto 20px;
   }
 
   .hero-intro {
     margin-top: 30px;
+    padding-left: 0;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .hero-intro p:not(.tiny) {
+    max-width: none;
+    font-size: 15px;
   }
 
   .hero {
@@ -2359,7 +2372,7 @@ body.modal-open {
   }
 
   .problem-grid {
-    margin-top: 18px;
+    margin-top: -36px;
   }
 
   .how {
@@ -2368,8 +2381,13 @@ body.modal-open {
   }
 
   .steps {
-    margin-top: -60px;
-    padding-top: 28px;
+    margin-top: -76px;
+    padding-top: 18px;
+    width: calc(100vw - 36px);
+    max-width: calc(100vw - 36px);
+    min-width: 0;
+    overflow: hidden;
+    justify-self: start;
   }
 
   .pricing {
@@ -2379,7 +2397,8 @@ body.modal-open {
   }
 
   .price-cards {
-    margin-top: -90px;
+    width: min(90%, 270px);
+    margin: -90px auto 0;
   }
 
   .standard {
@@ -2389,6 +2408,9 @@ body.modal-open {
 
   .level-grid {
     gap: 18px;
+    width: min(100%, 270px);
+    margin-left: auto;
+    margin-right: auto;
   }
 
   .standard-copy {
@@ -2421,9 +2443,9 @@ body.modal-open {
   }
 
   .final-cta {
-    min-height: 680px;
+    min-height: 540px;
     padding-top: 62px;
-    padding-bottom: 320px;
+    padding-bottom: 180px;
   }
 
   .problem-title {
@@ -2439,8 +2461,8 @@ body.modal-open {
   }
 
   .problem-search {
-    width: 76px;
-    margin: 24px 0 0;
+    width: 50px;
+    margin: 18px 0 0;
   }
 
   .calculator {
@@ -2499,25 +2521,26 @@ body.modal-open {
   }
 
   .how-chat-icon {
-    margin-left: 16px;
-    margin-top: -100px;
+    width: 46px;
+    margin-left: 24px;
+    margin-top: -76px;
   }
 
   .pricing-icon {
-    width: 66.98px;
+    width: 48px;
     margin-left: 20px;
-    margin-top: -60px;
+    margin-top: -48px;
   }
 
   .how-note {
-    max-width: 156px;
-    margin-left: 88px;
+    max-width: 94px;
+    margin-left: 82px;
     margin-top: -6px;
   }
 
   .pricing-tag {
-    max-width: 128px;
-    margin-left: 126px;
+    max-width: 82px;
+    margin-left: 90px;
   }
 
   .faq-person {
@@ -2531,11 +2554,72 @@ body.modal-open {
     font-size: 13px;
   }
 
+  .comparison {
+    width: 100%;
+  }
+
+  .comparison table {
+    min-width: 560px;
+    table-layout: fixed;
+    font-size: 12px;
+  }
+
+  .comparison th,
+  .comparison td {
+    padding: 16px 10px;
+  }
+
+  .comparison th:first-child,
+  .comparison td:first-child {
+    width: 116px;
+  }
+
+  .comparison th:nth-child(2),
+  .comparison td:nth-child(2) {
+    width: 124px;
+  }
+
+  .price-card {
+    min-height: auto;
+    padding: 31px 20px;
+  }
+
+  .price-card h3 {
+    font-size: 25px;
+  }
+
+  .price-card strong {
+    font-size: 29px;
+  }
+
+  .price-card p,
+  .price-card span:not(.badge),
+  .price-card ul {
+    font-size: 13px;
+  }
+
+  .faq-question {
+    grid-template-columns: minmax(0, 1fr) 34px;
+    padding: 28px 16px 28px 28px;
+  }
+
+  .faq-marker {
+    justify-self: end;
+  }
+
+  .faq-item p {
+    margin: 0 28px 28px;
+  }
+
+  .closing-people {
+    width: min(74%, 320px);
+  }
+
   .factory-hero,
   .factory-translation,
   .factory-final-cta {
-    padding-left: 28px;
-    padding-right: 28px;
+    padding-left: 18px;
+    padding-right: 18px;
   }
 
   .factory-hero {
@@ -2706,11 +2790,11 @@ body.modal-open {
 
   .stats {
     gap: 32px;
-    padding: 44px 28px;
+    padding: 44px 18px;
   }
 
   .stats strong {
-    font-size: 46px;
+    font-size: 32px;
   }
 
   .problem h2 {
@@ -2722,12 +2806,47 @@ body.modal-open {
     padding-right: 56px;
   }
 
-  .faq-grid article {
-    padding-right: 34px;
+  .issue-card h3 {
+    font-size: 19px;
+    line-height: 1.12;
   }
 
   .steps article {
-    grid-template-columns: 52px 1fr;
+    grid-template-columns: 46px minmax(0, 1fr);
+    gap: 16px;
+    padding-bottom: 24px;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .steps article + article {
+    padding-top: 24px;
+  }
+
+  .steps article > div {
+    min-width: 0;
+    max-width: 214px;
+  }
+
+  .steps h3 {
+    font-size: 19px;
+    line-height: 1.12;
+    overflow-wrap: break-word;
+  }
+
+  .steps p {
+    max-width: 214px;
+    overflow-wrap: break-word;
+  }
+
+  .faq-grid article {
+    padding-right: 0;
+  }
+
+  .steps article {
+    grid-template-columns: 46px minmax(0, 1fr);
   }
 
   .modal-panel,
