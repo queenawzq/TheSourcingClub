@@ -4,7 +4,7 @@ const closeButtons = document.querySelectorAll('.js-close-modal');
 const langToggle = document.querySelector('[data-lang-toggle]');
 const googleSheetsUrl = 'https://script.google.com/macros/s/AKfycbx9IDJRjpskLHrM2ry7nEiPxeXXyDUmlCswojA1p7nEheM5cXNtFwJIth1-N7DC2lRU/exec';
 const motionTargets = document.querySelectorAll(
-  '.stats div, .problem-title, .calculator, .issue-card, .how-copy, .steps article, .level-card, .standard-copy, .comparison-section h2, .comparison, .pricing-copy, .price-card, .faq-copy, .faq-grid article, .final-copy, .closing-people, .factory-hero-copy, .factory-hero-intro, .factory-section-copy, .factory-info-card, .rfq-panel, .fit-grid article, .factory-meaning, .factory-cta-visual'
+  '.stats div, .problem-title, .calculator, .issue-card, .how-copy, .steps article, .level-card, .standard-copy, .comparison-section h2, .comparison, .pricing-copy, .price-card, .faq-copy, .faq-grid article, .final-copy, .closing-people, .factory-hero-copy, .factory-hero-intro, .factory-section-copy, .factory-info-card, .rfq-panel, .translation-copy, .translation-panel, .translation-benefits article, .fit-grid article, .factory-meaning, .factory-cta-visual'
 );
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -16,6 +16,7 @@ const staggerGroups = [
   '.price-card',
   '.faq-grid article',
   '.factory-info-card',
+  '.translation-benefits article',
   '.fit-grid article'
 ];
 const factoryTranslations = {
@@ -60,6 +61,21 @@ const factoryTranslations = {
     'rfq.item4': 'Tech pack: partial, references attached',
     'rfq.item5': 'Decision owner: founder',
     'rfq.ready': 'ready',
+    'translation.eyebrow': 'Built-in translation',
+    'translation.title': 'Speak with brands in your own language.',
+    'translation.body': 'Factories can write profiles, quote notes, and chat in the language your team already uses. The platform translates messages for brands, so clarity does not depend on perfect English.',
+    'translation.pill': 'Native-language factory workflow + translated brand chat',
+    'translation.panelTitle': 'Chat/translate',
+    'translation.factoryLabel': 'Factory message',
+    'translation.nativeMessage': '我们可以支持 300 件起订，并在 21 天内完成样衣。',
+    'translation.brandLabel': 'Automatically translated for the brand',
+    'translation.translatedMessage': 'We can support a 300-unit MOQ and complete the sample within 21 days.',
+    'translation.card1.title': 'Use your native language',
+    'translation.card1.body': 'Factories do not need perfect English to present capability clearly.',
+    'translation.card2.title': 'Chat without translation gaps',
+    'translation.card2.body': 'Messages are translated in-platform while both sides keep context.',
+    'translation.card3.title': 'Quote with less confusion',
+    'translation.card3.body': 'MOQ, timeline, sample notes, and risk questions stay understandable.',
     'verification.level1': 'Level 1',
     'verification.basic': 'Basic',
     'verification.basicBody': 'Business license confirmed against the official government registry.',
@@ -167,6 +183,21 @@ const factoryTranslations = {
     'rfq.item4': '技术包：部分完成，参考资料已附',
     'rfq.item5': '决策人：创始人',
     'rfq.ready': '就绪',
+    'translation.eyebrow': '内置翻译',
+    'translation.title': '用你的母语与品牌沟通。',
+    'translation.body': '工厂可以用团队已经习惯的语言填写资料、备注报价并与品牌聊天。平台会为品牌翻译信息，让清晰沟通不依赖完美英文。',
+    'translation.pill': '母语工厂流程 + 已翻译的品牌聊天',
+    'translation.panelTitle': '聊天 / 翻译',
+    'translation.factoryLabel': '工厂消息',
+    'translation.nativeMessage': '我们可以支持 300 件起订，并在 21 天内完成样衣。',
+    'translation.brandLabel': '自动翻译给品牌',
+    'translation.translatedMessage': 'We can support a 300-unit MOQ and complete the sample within 21 days.',
+    'translation.card1.title': '使用你的母语',
+    'translation.card1.body': '工厂不需要完美英文，也能清楚展示自己的生产能力。',
+    'translation.card2.title': '聊天减少翻译断层',
+    'translation.card2.body': '消息在平台内翻译，双方都能保留上下文。',
+    'translation.card3.title': '报价沟通更少误解',
+    'translation.card3.body': 'MOQ、时间线、样衣备注和风险问题都更容易理解。',
     'verification.level1': '等级 1',
     'verification.basic': '基础',
     'verification.basicBody': '营业执照已与官方政府登记信息核验。',
@@ -326,6 +357,17 @@ closeButtons.forEach((button) => button.addEventListener('click', closeModal));
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') closeModal();
+});
+
+document.querySelectorAll('.faq-question').forEach((button) => {
+  button.addEventListener('click', () => {
+    const item = button.closest('.faq-item');
+    const isOpen = item?.classList.toggle('is-open');
+    const marker = button.querySelector('.faq-marker');
+
+    button.setAttribute('aria-expanded', String(Boolean(isOpen)));
+    if (marker) marker.textContent = isOpen ? '-' : '+';
+  });
 });
 
 document.querySelectorAll('[data-signup-form]').forEach((form) => {
