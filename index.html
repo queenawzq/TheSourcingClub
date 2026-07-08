@@ -34,7 +34,7 @@
         <a href="#how">How it works</a>
         <a href="#pricing">Pricing</a>
         <a href="#faq">FAQ</a>
-        <a href="#factories">For Factories</a>
+        <a href="./factories.html">For Factories</a>
       </nav>
       <button class="button button-small js-open-modal" type="button">Join waitlist</button>
     </header>
@@ -45,11 +45,10 @@
           <p class="eyebrow">Fashion sourcing without<br />the fog</p>
           <h1>
             <span>Vetted</span>
-            <span>factories.</span>
+            <span class="factory-title-line">factories. <img class="factory-icon" src="./assets/factory.svg" alt="" /></span>
             <span class="indent">No guesswork.</span>
             <span>No surprises.</span>
           </h1>
-          <img class="factory-icon" src="./assets/factory.svg" alt="" />
           <img class="hangtag" src="./assets/sourcing-club-label.png" alt="" />
         </div>
         <div class="hero-intro">
@@ -309,18 +308,18 @@
             Leave your email now. When the platform opens, you will use our guided brand flow
             to create a project, add production details, and request factory quotes.
           </p>
-          <form>
+          <form data-signup-form data-source="designer">
             <label>
               <span>Name</span>
-              <input type="text" placeholder="Your name" />
+              <input type="text" name="name" placeholder="Your name" required />
             </label>
             <label>
               <span>Email</span>
-              <input type="email" placeholder="you@brand.com" />
+              <input type="email" name="email" placeholder="you@brand.com" required />
             </label>
             <label class="wide">
               <span>Brand</span>
-              <input type="text" placeholder="Brand name (optional)" />
+              <input type="text" name="brand" placeholder="Brand name (optional)" />
             </label>
             <fieldset class="help-choice">
               <legend>What kind of help do you want?</legend>
