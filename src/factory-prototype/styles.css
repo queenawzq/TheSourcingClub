@@ -443,26 +443,34 @@
   text-align: center;
 }
 
+.verification-upload-list {
+  display: grid;
+  gap: 8px;
+}
+
 .verification-upload {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px 16px;
+  gap: 16px;
   align-items: center;
-  padding: 14px;
+  min-height: 48px;
+  padding: 8px 10px 8px 14px;
   border: 1px solid #d7e0ea;
-  border-radius: 10px;
+  border-radius: 8px;
   background: #fff;
 }
 
 .verification-upload .secondary-btn {
-  height: 36px;
-  min-width: 160px;
+  height: 32px;
+  min-width: 124px;
   padding: 0 16px;
   font-size: 13px;
 }
 
 .verification-upload small {
-  grid-column: 1 / -1;
+  display: block;
+  margin-top: 2px;
+  line-height: 18px;
 }
 
 .onboarding-reference-row {
