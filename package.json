@@ -1,7 +1,7 @@
 {
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build && cp -R assets/* dist/assets/"
+    "build": "vite build && cp script.js dist/script.js && cp -R assets/* dist/assets/"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
