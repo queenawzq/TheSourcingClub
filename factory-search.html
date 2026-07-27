@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Sourcing Club | Factory Search</title>
+    <meta
+      name="description"
+      content="Search vetted fashion factories by product category, MOQ, certifications, location, lead time, rating, and Club Standard level."
+    />
+    <link rel="stylesheet" href="./styles.css?v=20260715-search" />
+  </head>
+  <body class="factory-search-page">
+    <header class="site-header search-header">
+      <a class="wordmark" href="./index.html" aria-label="The Sourcing Club home">
+        <img src="./assets/logo.svg" alt="The Sourcing Club" />
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="./index.html#how">How it works</a>
+        <a href="./index.html#factories">Club Standard</a>
+        <a href="./factory-search.html" aria-current="page">Factory Search</a>
+        <a href="./factories.html">For Factories</a>
+      </nav>
+      <button class="button button-small" type="button">Post RFQ</button>
+    </header>
+
+    <main id="top" class="factory-search-shell">
+      <section class="search-hero" aria-labelledby="searchTitle">
+        <div>
+          <p class="eyebrow">Factory directory</p>
+          <h1 id="searchTitle">Find the right factory before you send the brief.</h1>
+        </div>
+        <div class="search-hero-panel" aria-label="Directory snapshot">
+          <div>
+            <strong>428</strong>
+            <span>vetted factory profiles</span>
+          </div>
+          <div>
+            <strong>72%</strong>
+            <span>support runs under 500</span>
+          </div>
+          <div>
+            <strong>24h</strong>
+            <span>typical response window</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="search-workspace" aria-label="Factory search results">
+        <div class="search-toolbar">
+          <label class="search-input">
+            <span class="sr-only">Search</span>
+            <svg class="search-icon" viewBox="0 0 20 20" aria-hidden="true">
+              <circle cx="8.75" cy="8.75" r="5.25" fill="none" stroke="currentColor" stroke-width="2.4" />
+              <path d="M12.6 12.6L16.25 16.25" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" />
+            </svg>
+            <input type="search" placeholder="Knitwear, denim, activewear, Portugal..." data-directory-search />
+          </label>
+          <div class="search-toolbar-actions">
+            <label>
+              <span>Sort</span>
+              <select data-directory-sort>
+                <option>Best match</option>
+                <option>Highest rating</option>
+                <option>Lowest MOQ</option>
+                <option>Fastest lead time</option>
+              </select>
+            </label>
+            <button class="button button-small" type="button">Save search</button>
+          </div>
+        </div>
+
+        <div class="active-filter-row" aria-label="Applied filters">
+          <button type="button" class="filter-chip is-active" data-filter-chip>Cut &amp; sew</button>
+          <button type="button" class="filter-chip is-active" data-filter-chip>MOQ under 300</button>
+          <button type="button" class="filter-chip is-active" data-filter-chip>Trusted</button>
+          <button type="button" class="filter-chip" data-filter-chip>Portugal</button>
+          <button type="button" class="filter-chip" data-filter-chip>GOTS</button>
+          <button type="button" class="filter-chip" data-filter-chip>Lead time &lt; 30 days</button>
+        </div>
+
+        <aside class="filter-panel" aria-label="Factory filters">
+          <div class="filter-panel-header">
+            <strong>Filters</strong>
+            <button type="button" data-clear-filters>Reset</button>
+          </div>
+
+          <details open>
+            <summary>Product category</summary>
+            <label><input type="checkbox" checked data-directory-filter /> Cut &amp; sew apparel</label>
+            <label><input type="checkbox" data-directory-filter /> Knitwear</label>
+            <label><input type="checkbox" data-directory-filter /> Denim</label>
+            <label><input type="checkbox" data-directory-filter /> Outerwear</label>
+            <label><input type="checkbox" data-directory-filter /> Swim &amp; activewear</label>
+          </details>
+
+          <details open>
+            <summary>Specialty</summary>
+            <label><input type="checkbox" checked data-directory-filter /> Small-batch production</label>
+            <label><input type="checkbox" data-directory-filter /> Technical fabrics</label>
+            <label><input type="checkbox" data-directory-filter /> Embroidery</label>
+            <label><input type="checkbox" data-directory-filter /> Pattern support</label>
+          </details>
+
+          <details open>
+            <summary>MOQ</summary>
+            <div class="range-row">
+              <span>50</span>
+              <input type="range" min="50" max="1000" value="300" data-directory-filter />
+              <span>1000+</span>
+            </div>
+            <p class="filter-value">Up to 300 units per style</p>
+          </details>
+
+          <details open>
+            <summary>Location</summary>
+            <label><input type="checkbox" checked data-directory-filter /> Europe</label>
+            <label><input type="checkbox" data-directory-filter /> China</label>
+            <label><input type="checkbox" data-directory-filter /> India</label>
+            <label><input type="checkbox" data-directory-filter /> Turkey</label>
+            <label><input type="checkbox" data-directory-filter /> USA</label>
+          </details>
+
+          <details open>
+            <summary>Certifications</summary>
+            <label><input type="checkbox" data-directory-filter /> GOTS</label>
+            <label><input type="checkbox" data-directory-filter /> OEKO-TEX</label>
+            <label><input type="checkbox" data-directory-filter /> WRAP</label>
+            <label><input type="checkbox" data-directory-filter /> BSCI</label>
+          </details>
+        </aside>
+
+        <section class="results-panel" aria-live="polite">
+          <div class="results-header">
+            <div>
+              <strong data-result-count>36 factories</strong>
+              <span data-filter-summary>matching cut &amp; sew, low MOQ, Trusted level</span>
+            </div>
+            <button type="button">Compare selected</button>
+          </div>
+
+          <article class="factory-result-card featured">
+            <div class="factory-result-main">
+              <div class="factory-avatar">AM</div>
+              <div>
+                <div class="result-title-row">
+                  <h2>Atelier Minho</h2>
+                  <span class="standard-pill trusted">Trusted</span>
+                </div>
+                <p>Women’s woven, shirting, lightweight outerwear, sampling support</p>
+                <div class="result-tags">
+                  <span>Portugal</span>
+                  <span>MOQ 150</span>
+                  <span>22-28 day lead</span>
+                  <span>GOTS</span>
+                </div>
+              </div>
+            </div>
+            <div class="factory-score">
+              <strong>4.9</strong>
+              <span>12 Club orders</span>
+            </div>
+            <div class="result-actions">
+              <button type="button">Shortlist</button>
+              <button type="button" class="primary-action">Request quote</button>
+            </div>
+          </article>
+
+          <article class="factory-result-card">
+            <div class="factory-result-main">
+              <div class="factory-avatar">SK</div>
+              <div>
+                <div class="result-title-row">
+                  <h2>Seoul Knit Works</h2>
+                  <span class="standard-pill verified">Verified</span>
+                </div>
+                <p>Fine-gauge knitwear, merino blends, small capsule runs</p>
+                <div class="result-tags">
+                  <span>South Korea</span>
+                  <span>MOQ 200</span>
+                  <span>35 day lead</span>
+                  <span>OEKO-TEX</span>
+                </div>
+              </div>
+            </div>
+            <div class="factory-score">
+              <strong>4.7</strong>
+              <span>8 Club orders</span>
+            </div>
+            <div class="result-actions">
+              <button type="button">Shortlist</button>
+              <button type="button" class="primary-action">Request quote</button>
+            </div>
+          </article>
+
+          <article class="factory-result-card">
+            <div class="factory-result-main">
+              <div class="factory-avatar">TN</div>
+              <div>
+                <div class="result-title-row">
+                  <h2>Tirupur Natural Studio</h2>
+                  <span class="standard-pill trusted">Trusted</span>
+                </div>
+                <p>Organic jersey, loungewear sets, low-impact dye partners</p>
+                <div class="result-tags">
+                  <span>India</span>
+                  <span>MOQ 250</span>
+                  <span>30 day lead</span>
+                  <span>GOTS</span>
+                </div>
+              </div>
+            </div>
+            <div class="factory-score">
+              <strong>4.8</strong>
+              <span>15 Club orders</span>
+            </div>
+            <div class="result-actions">
+              <button type="button">Shortlist</button>
+              <button type="button" class="primary-action">Request quote</button>
+            </div>
+          </article>
+
+          <article class="factory-result-card">
+            <div class="factory-result-main">
+              <div class="factory-avatar">HD</div>
+              <div>
+                <div class="result-title-row">
+                  <h2>Hangzhou Denim Lab</h2>
+                  <span class="standard-pill basic">Basic</span>
+                </div>
+                <p>Denim jackets, trousers, wash development, trims sourcing</p>
+                <div class="result-tags">
+                  <span>China</span>
+                  <span>MOQ 300</span>
+                  <span>28 day lead</span>
+                  <span>BSCI</span>
+                </div>
+              </div>
+            </div>
+            <div class="factory-score">
+              <strong>4.5</strong>
+              <span>3 Club orders</span>
+            </div>
+            <div class="result-actions">
+              <button type="button">Shortlist</button>
+              <button type="button" class="primary-action">Request quote</button>
+            </div>
+          </article>
+        </section>
+      </section>
+    </main>
+
+    <script src="./script.js"></script>
+  </body>
+</html>
