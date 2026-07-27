@@ -4,7 +4,7 @@ const closeButtons = document.querySelectorAll('.js-close-modal');
 const langToggle = document.querySelector('[data-lang-toggle]');
 const googleSheetsUrl = 'https://script.google.com/macros/s/AKfycbx9IDJRjpskLHrM2ry7nEiPxeXXyDUmlCswojA1p7nEheM5cXNtFwJIth1-N7DC2lRU/exec';
 const motionTargets = document.querySelectorAll(
-  '.stats div, .problem-title, .calculator, .issue-card, .how-copy, .steps article, .level-card, .standard-copy, .comparison-section h2, .comparison, .pricing-copy, .price-card, .faq-copy, .faq-grid article, .final-copy, .closing-people, .factory-hero-copy, .factory-hero-intro, .factory-section-copy, .factory-info-card, .rfq-panel, .translation-copy, .translation-panel, .translation-benefits article, .fit-grid article, .factory-meaning, .factory-cta-visual'
+  '.stats div, .problem-title, .calculator, .issue-card, .how-copy, .steps article, .level-card, .standard-copy, .comparison-section h2, .comparison, .pricing-copy, .price-card, .faq-copy, .faq-grid article, .final-copy, .closing-people, .factory-hero-copy, .factory-hero-intro, .factory-section-copy, .factory-info-card, .rfq-panel, .translation-copy, .translation-panel, .translation-benefits article, .fit-grid article, .factory-meaning, .factory-cta-visual, .search-hero, .factory-result-card'
 );
 
 const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -17,7 +17,8 @@ const staggerGroups = [
   '.faq-grid article',
   '.factory-info-card',
   '.translation-benefits article',
-  '.fit-grid article'
+  '.fit-grid article',
+  '.factory-result-card'
 ];
 const factoryTranslations = {
   en: {
@@ -367,6 +368,60 @@ document.querySelectorAll('.faq-question').forEach((button) => {
 
     button.setAttribute('aria-expanded', String(Boolean(isOpen)));
     if (marker) marker.textContent = isOpen ? '-' : '+';
+  });
+});
+
+const directorySearch = document.querySelector('[data-directory-search]');
+const directoryFilters = document.querySelectorAll('[data-directory-filter]');
+const filterChips = document.querySelectorAll('[data-filter-chip]');
+const resultCount = document.querySelector('[data-result-count]');
+const filterSummary = document.querySelector('[data-filter-summary]');
+const clearFilters = document.querySelector('[data-clear-filters]');
+
+function updateDirectorySummary() {
+  if (!resultCount || !filterSummary) return;
+
+  const activeChips = Array.from(filterChips)
+    .filter((chip) => chip.classList.contains('is-active'))
+    .map((chip) => chip.textContent.trim());
+  const checkedFilters = Array.from(directoryFilters).filter((input) => input.checked).length;
+  const query = directorySearch?.value.trim();
+  const totalSignals = activeChips.length + checkedFilters + (query ? 1 : 0);
+  const count = Math.max(8, 42 - totalSignals * 2);
+
+  resultCount.textContent = `${count} factories`;
+  filterSummary.textContent = activeChips.length
+    ? `matching ${activeChips.slice(0, 3).join(', ')}`
+    : 'matching your current sourcing criteria';
+}
+
+filterChips.forEach((chip) => {
+  chip.addEventListener('click', () => {
+    chip.classList.toggle('is-active');
+    updateDirectorySummary();
+  });
+});
+
+directoryFilters.forEach((input) => {
+  input.addEventListener('change', updateDirectorySummary);
+  input.addEventListener('input', updateDirectorySummary);
+});
+
+directorySearch?.addEventListener('input', updateDirectorySummary);
+
+clearFilters?.addEventListener('click', () => {
+  filterChips.forEach((chip) => chip.classList.remove('is-active'));
+  directoryFilters.forEach((input) => {
+    if (input.type === 'checkbox') input.checked = false;
+  });
+  if (directorySearch) directorySearch.value = '';
+  updateDirectorySummary();
+});
+
+document.querySelectorAll('.result-actions button:first-child').forEach((button) => {
+  button.addEventListener('click', () => {
+    const selected = button.classList.toggle('primary-action');
+    button.textContent = selected ? 'Shortlisted' : 'Shortlist';
   });
 });
 
