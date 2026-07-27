@@ -196,6 +196,214 @@ const factoryProjects = [
 
 const projectSteps = ["1st step funded", "Fit sample", "Fit / lab dip", "Production", "Shipped"];
 
+const onboardingCopy = {
+  en: {
+    steps: [
+      {
+        title: "Welcome to The Sourcing Club",
+        intro: "Let's set up your factory profile so brands can find you. It takes about 5 minutes, and you can edit everything later.",
+        meta: "11 steps · 5 minutes",
+        languageLabel: "Language",
+        languageHelp: "You can change this anytime.",
+        cta: "Get started"
+      },
+      {
+        title: "Tell us about your factory",
+        fields: [
+          ["Factory Name", "e.g. Golden Thread Manufacturing"],
+          ["Year Founded", "YYYY"],
+          ["Website URL", "www.example.com"],
+          ["Factory Location", "City, Country"],
+          ["Nearest Port", "e.g. Port of Shanghai"]
+        ],
+        helper: "The seaport or airport you ship from most often."
+      },
+      {
+        title: "A little about your company",
+        fields: [
+          ["Company Registration Date", "MM/YYYY"],
+          ["Registered capital (optional)", "Amount"],
+          ["Total Employees", "e.g. 120"]
+        ],
+        helper: "Use your business registration details where applicable."
+      },
+      {
+        title: "What type of production does your factory specialize in?",
+        intro: "Start with the production method, then choose the garment categories you can reliably make.",
+        groups: [
+          ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods", "Other"], ["Cut & sew knits", "Wovens"]],
+          ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories", "Other"], ["Tops", "Bottoms"]],
+          ["Market level", ["Luxury / high-end", "Premium / contemporary", "Mid range", "Mass market"], ["Premium / contemporary"]]
+        ],
+      },
+      {
+        title: "Specialty, services, and tools",
+        intro: "Add the capabilities brands use to understand your sampling support and production setup.",
+        groups: [
+          ["Design Services", ["Pattern making", "Grading", "Sample development", "Tech pack support", "Full package (FPP)", "CMT only"], ["Full package (FPP)"]],
+          ["3D & digital tools (optional)", ["CLO 3D", "Browzwear", "Lectra", "Gerber", "None"], []]
+        ],
+        specialtyLabel: "Specialty & Machines",
+        specialtyPlaceholder: "Search or type a specialty"
+      },
+      {
+        title: "Your capacity and terms",
+        intro: "Share your monthly line-hours and booking level. We translate this into capacity estimates brands can understand.",
+        fields: [
+          ["Minimum Order Quantity", "e.g. 100 units / style"],
+          ["Typical Lead Time", "e.g. 30-45 days"]
+        ],
+        category: "Wovens — based on your selected production type",
+        lineHoursLabel: "Line-hours available per month",
+        referenceTitle: "Basic woven shirt",
+        referenceMeta: "~18 min/pc reference style",
+        referenceCopy: "This gives brands a comparable estimate before they share a tech pack.",
+        monthTitle: "Booking level, month by month",
+        brandPreview: "Brands will see: Wovens · Aug start · roughly 4,800-8,000 pieces that month"
+      },
+      {
+        title: "Certifications and your facility",
+        intro: "Select certifications you hold, then upload evidence beside each one. You can finish setup now and add files later.",
+        search: "Search or select a certification",
+        certifications: [["GOTS", "Upload certificate"], ["OEKO-TEX Standard 100", "Uploaded"], ["BSCI", "Upload certificate"]],
+        add: "+ Add another certification",
+        photos: "Upload photos of your production floor, machines, and finished samples.",
+        helper: "Factories with real facility photos get significantly more brand interest."
+      },
+      {
+        title: "Get verified, get found",
+        intro: "We review these in the background. Required documents help us verify your factory, while optional references and reports make your profile stronger.",
+        uploads: [
+          ["Business registration certificate", "Required for verification."],
+          ["Current production photo or short video", "A 30-second walkthrough or recent floor photo works best."],
+          ["Audit reports (optional)", "SGS, Bureau Veritas, Intertek, or similar."]
+        ],
+        reference: "Client references"
+      },
+      {
+        title: "Review your profile",
+        intro: "Confirm the main details brands will use to understand and match with your factory.",
+        sections: [
+          ["Factory details", [["Factory Name", "Golden Thread Manufacturing"], ["Year Founded", "2016"], ["Location", "Dongguan, China"], ["Nearest Port", "Shenzhen"]]],
+          ["Production fit", [["Production Type", "Cut & sew knits, Wovens"], ["Product Categories", "Tops, Bottoms, Activewear"], ["Market Level", "Premium / contemporary"], ["Services", "Full package (FPP), Pattern making"]]],
+          ["Capacity & verification", [["MOQ", "100 units / style"], ["Lead Time", "30-45 days"], ["Line-hours", "2,400 hours / month"], ["Estimated units", "Aug roughly 4,800-8,000 pcs"], ["Booking level", "Aug mostly open; Sep partly booked"], ["Verification", "Registration uploaded; certificates pending"]]]
+        ],
+        cta: "Confirm"
+      },
+      {
+        title: "Terms & Conditions",
+        intro: "Please read and sign our terms before continuing.",
+        terms: ["Platform Usage", "Data Privacy & Confidentiality", "Factory Responsibilities"],
+        agreement: "I have read and agree to the Terms and Conditions",
+        signature: "Type your full name to sign electronically",
+        cta: "Sign & Continue"
+      },
+      {
+        title: "You're all set",
+        intro: "Your factory profile has been submitted. We'll review verification documents and make your factory discoverable when your profile is ready.",
+        cta: "Go to Dashboard"
+      }
+    ],
+    back: "Previous",
+    next: "Next"
+  },
+  zh: {
+    steps: [
+      {
+        title: "欢迎来到 The Sourcing Club",
+        intro: "我们将帮你建立工厂资料，让品牌更容易找到你。大约需要 5 分钟，之后可以随时修改。",
+        meta: "11 步 · 约 5 分钟",
+        languageLabel: "语言",
+        languageHelp: "你可以随时更改。",
+        cta: "开始设置"
+      },
+      {
+        title: "告诉我们你的工厂信息",
+        fields: [["工厂名称", "例如：金线服装制造"], ["成立年份", "YYYY"], ["官网", "www.example.com"], ["工厂所在地", "城市，国家/地区"], ["最近港口", "例如：深圳港"]],
+        helper: "你最常使用的海港或机场。"
+      },
+      {
+        title: "公司基本信息",
+        fields: [["公司注册日期", "MM/YYYY"], ["注册资本（选填）", "金额"], ["员工总数", "例如：120"]],
+        helper: "如适用，请按营业执照或注册资料填写。"
+      },
+      {
+        title: "你的工厂擅长哪类生产？",
+        intro: "先选择生产工艺，再选择可稳定生产的品类。",
+        groups: [
+          ["生产类型", ["针织裁剪缝制", "梭织", "毛衫 / 针织成衣", "牛仔", "无缝 / 圆机针织", "内衣 / 精细工艺", "皮革 / 麂皮", "包袋 / 软配件", "其他"], ["针织裁剪缝制", "梭织"]],
+          ["产品品类", ["上装", "下装", "连衣裙 / 连体衣", "外套", "运动服", "内衣", "泳装", "睡衣 / 家居服", "童装 / 婴童", "制服 / 工装", "配饰", "其他"], ["上装", "下装"]],
+          ["市场层级", ["奢侈 / 高端", "高级成衣 / 当代品牌", "中端市场", "大众市场"], ["高级成衣 / 当代品牌"]]
+        ],
+      },
+      {
+        title: "专长、服务与工具",
+        intro: "补充品牌会用于判断打样支持和生产配置的能力信息。",
+        groups: [
+          ["设计服务", ["制版", "放码", "样衣开发", "Tech pack 支持", "全包生产 FPP", "仅 CMT"], ["全包生产 FPP"]],
+          ["3D 和数字工具（选填）", ["CLO 3D", "Browzwear", "Lectra", "Gerber", "无"], []]
+        ],
+        specialtyLabel: "专长与机器",
+        specialtyPlaceholder: "搜索或输入专长"
+      },
+      {
+        title: "产能与合作条件",
+        intro: "填写每月可用工时和接单状态。我们会转化成品牌更容易理解的产能估算。",
+        fields: [["最低起订量 MOQ", "例如：100 件 / 款"], ["常规交期", "例如：30-45 天"]],
+        category: "梭织 — 基于你选择的生产类型",
+        lineHoursLabel: "每月可用产线工时",
+        referenceTitle: "基础梭织衬衫",
+        referenceMeta: "约 18 分钟 / 件参考款",
+        referenceCopy: "在品牌提供 tech pack 前，用这个参考款给出可比较的估算。",
+        monthTitle: "每月接单状态",
+        brandPreview: "品牌将看到：梭织 · 8 月可开始 · 当月约 4,800-8,000 件"
+      },
+      {
+        title: "认证与工厂照片",
+        intro: "选择你持有的认证，并在对应行上传证明文件。也可以先完成设置，之后再补充文件。",
+        search: "搜索或选择认证",
+        certifications: [["GOTS", "上传证书"], ["OEKO-TEX Standard 100", "已上传"], ["BSCI", "上传证书"]],
+        add: "+ 添加另一个认证",
+        photos: "上传生产车间、机器设备和成品样品照片。",
+        helper: "真实工厂照片会显著提升品牌兴趣。"
+      },
+      {
+        title: "完成验证，获得更多曝光",
+        intro: "我们会在后台审核这些资料。必填文件用于验证工厂身份，选填资料可以提升资料可信度。",
+        uploads: [["营业执照 / 公司注册文件", "验证必填。"], ["近期生产照片或短视频", "30 秒车间视频或近期照片即可。"], ["验厂报告（选填）", "SGS、Bureau Veritas、Intertek 等。"]],
+        reference: "客户参考"
+      },
+      {
+        title: "确认你的工厂资料",
+        intro: "请确认品牌将看到并用于匹配的主要信息。",
+        sections: [
+          ["工厂信息", [["工厂名称", "金线服装制造"], ["成立年份", "2016"], ["所在地", "中国东莞"], ["最近港口", "深圳"]]],
+          ["生产匹配", [["生产类型", "针织裁剪缝制，梭织"], ["产品品类", "上装，下装，运动服"], ["市场层级", "高级成衣 / 当代品牌"], ["服务", "全包生产 FPP，制版"]]],
+          ["产能与验证", [["MOQ", "100 件 / 款"], ["交期", "30-45 天"], ["产线工时", "2,400 小时 / 月"], ["估算件数", "8 月约 4,800-8,000 件"], ["接单状态", "8 月较空；9 月部分已订"], ["验证状态", "注册文件已上传；认证待补充"]]]
+        ],
+        cta: "确认"
+      },
+      {
+        title: "条款与条件",
+        intro: "继续前请阅读并签署平台条款。",
+        terms: ["平台使用", "数据隐私与保密", "工厂责任"],
+        agreement: "我已阅读并同意条款与条件",
+        signature: "输入你的全名作为电子签名",
+        cta: "签署并继续"
+      },
+      {
+        title: "全部完成",
+        intro: "你的工厂资料已提交。我们会审核验证资料，并在资料准备好后让品牌找到你。",
+        cta: "进入控制台"
+      }
+    ],
+    back: "上一步",
+    next: "下一步"
+  }
+};
+
+const factoryOnboardingSteps = onboardingCopy.en.steps;
+
 const factoryProjectMilestones = [
   {
     title: "Fit sample",
@@ -239,13 +447,17 @@ const factoryProjectMilestones = [
 ];
 
 function getCapacityUnitRange(lineHours, minPercent = 60, maxPercent = 100) {
-  const availableMinutes = Math.max(0, Number.parseInt(lineHours || "0", 10) || 0);
+  const availableHours = Math.max(0, Number.parseInt(lineHours || "0", 10) || 0);
+  const availableMinutes = availableHours * 60;
   const minUnits = Math.round((availableMinutes * (minPercent / 100)) / 18);
   const maxUnits = Math.round((availableMinutes * (maxPercent / 100)) / 18);
   return minUnits === maxUnits ? `${maxUnits}` : `${minUnits}-${maxUnits}`;
 }
 
 function App() {
+  const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [onboardingLanguage, setOnboardingLanguage] = useState("en");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [screen, setScreen] = useState("dashboard");
   const [detailBackTarget, setDetailBackTarget] = useState("browse");
@@ -253,6 +465,25 @@ function App() {
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
   const selectedProject = brandProjects[0];
   const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Projects" : "Explore requests";
+
+  if (!onboardingComplete) {
+    return (
+      <FactoryOnboarding
+        language={onboardingLanguage}
+        step={onboardingStep}
+        onLanguageChange={setOnboardingLanguage}
+        onBack={() => setOnboardingStep((value) => Math.max(0, value - 1))}
+        onNext={() => {
+          if (onboardingStep >= factoryOnboardingSteps.length - 1) {
+            setOnboardingComplete(true);
+            setScreen("dashboard");
+          } else {
+            setOnboardingStep((value) => value + 1);
+          }
+        }}
+      />
+    );
+  }
 
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed factory-flow" : "app-shell factory-flow"}>
@@ -887,10 +1118,11 @@ function FactoryCapacityDrawer({ initialCapacity, onClose, onSaveCapacity }) {
     full: { label: "Mostly full", min: 0, max: 25 }
   };
   const activeRange = levelRanges[selectedLevel];
-  const availableMinutes = Math.max(0, Number.parseInt(lineHours || "0", 10) || 0);
+  const availableHours = Math.max(0, Number.parseInt(lineHours || "0", 10) || 0);
+  const availableMinutes = availableHours * 60;
   const minPieces = Math.round((availableMinutes * (activeRange.min / 100)) / 18);
   const maxPieces = Math.round((availableMinutes * (activeRange.max / 100)) / 18);
-  const pieceSummary = minPieces === maxPieces ? `${maxPieces}` : `${minPieces}-${maxPieces}`;
+  const pieceSummary = minPieces === maxPieces ? maxPieces.toLocaleString() : `${minPieces.toLocaleString()}-${maxPieces.toLocaleString()}`;
 
   const updateMonthSelection = (month, selected) => {
     setMonthSelections((current) => ({ ...current, [month]: selected }));
@@ -971,7 +1203,7 @@ function FactoryCapacityDrawer({ initialCapacity, onClose, onSaveCapacity }) {
           <div className="capacity-brand-preview">
             <span>BRANDS WILL SEE</span>
             <strong>Wovens · {currentMonth} start · roughly {pieceSummary} pieces that month</strong>
-            <p>{availableMinutes.toLocaleString()} available minutes × {activeRange.min}%-{activeRange.max}% free ÷ 18 min/pc reference style</p>
+            <p>{availableHours.toLocaleString()} hours × 60 min × {activeRange.min}%-{activeRange.max}% free ÷ 18 min/pc reference style</p>
           </div>
           <button className="primary-btn" type="button" onClick={() => onSaveCapacity(lineHours)}>Save changes</button>
         </footer>
@@ -1004,6 +1236,318 @@ function CapacityMonthRow({ month, selected, onSelect }) {
         ))}
       </div>
     </div>
+  );
+}
+
+function FactoryOnboarding({ language, step, onLanguageChange, onBack, onNext }) {
+  const copy = onboardingCopy[language];
+  const current = copy.steps[step];
+  const isFirst = step === 0;
+  const isLast = step === copy.steps.length - 1;
+
+  return (
+    <main className="factory-onboarding-page">
+      <header className="factory-onboarding-topbar">
+        <img src="/assets/logo.svg" alt="The Sourcing Club" />
+        <span>{language === "zh" ? `第 ${step + 1} 步 / 共 ${copy.steps.length} 步` : `Step ${step + 1} of ${copy.steps.length}`}</span>
+      </header>
+
+      <section className={`factory-onboarding-card step-${step + 1}`} aria-label={current.title}>
+        <div className="factory-onboarding-card-header">
+          {isFirst && <img className="factory-onboarding-label" src="/assets/onboarding-sourcing-club-label-clean.png" alt="" />}
+          <h1>{current.title}</h1>
+          {current.intro && <p>{current.intro}</p>}
+        </div>
+
+        <FactoryOnboardingStep step={step} content={current} language={language} onLanguageChange={onLanguageChange} />
+
+        <footer className="factory-onboarding-actions">
+          {!isFirst && (
+            <button className="secondary-btn" type="button" onClick={onBack}>
+              {copy.back}
+            </button>
+          )}
+          <button className="primary-btn" type="button" onClick={onNext}>
+            {current.cta || (isLast ? copy.steps[copy.steps.length - 1].cta : copy.next)}
+          </button>
+        </footer>
+      </section>
+
+      <div className="factory-onboarding-progress" aria-label="Onboarding progress">
+        {copy.steps.map((item, index) => (
+          <span className={index === step ? "current" : index < step ? "complete" : ""} key={item.title} />
+        ))}
+      </div>
+    </main>
+  );
+}
+
+function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
+  if (step === 0) {
+    return (
+      <div className="factory-onboarding-section welcome-section">
+        <p className="onboarding-time">{content.meta}</p>
+        <label className="factory-onboarding-field">
+          <span>{content.languageLabel}</span>
+          <select value={language} onChange={(event) => onLanguageChange(event.target.value)}>
+            <option value="en">English</option>
+            <option value="zh">中文</option>
+          </select>
+          <small>{content.languageHelp}</small>
+        </label>
+      </div>
+    );
+  }
+
+  if ([1, 2].includes(step)) {
+    return (
+      <div className="factory-onboarding-form-grid">
+        {content.fields.map(([label, placeholder]) => (
+          <OnboardingField label={label} placeholder={placeholder} key={label} />
+        ))}
+        {content.add && <button className="onboarding-text-action" type="button">{content.add}</button>}
+        {content.helper && <p className="onboarding-helper">{content.helper}</p>}
+      </div>
+    );
+  }
+
+  if (step === 5) {
+    return <OnboardingCapacitySetup content={content} language={language} />;
+  }
+
+  if (step === 3) {
+    return (
+      <div className="factory-onboarding-section production-fit-section">
+        {content.groups.map(([label, options, selected]) => (
+          <OnboardingChipGroup label={label} options={options} selected={selected} balanced key={label} />
+        ))}
+      </div>
+    );
+  }
+
+  if (step === 4) {
+    return (
+      <div className="factory-onboarding-section production-fit-section">
+        <OnboardingField label={content.specialtyLabel} placeholder={content.specialtyPlaceholder} />
+        {content.groups.map(([label, options, selected]) => (
+          <OnboardingChipGroup label={label} options={options} selected={selected} key={label} />
+        ))}
+      </div>
+    );
+  }
+
+  if (step === 6) {
+    return (
+      <div className="factory-onboarding-section">
+        <OnboardingField label={language === "zh" ? "持有的认证" : "Certifications you hold"} placeholder={content.search} />
+        <div className="certification-upload-list">
+          {content.certifications.map(([name, status]) => (
+            <div className="certification-upload-row" key={name}>
+              <strong>{name}</strong>
+              <button className={status === "Uploaded" || status === "已上传" ? "uploaded-pill" : "secondary-btn"} type="button">
+                {status}
+              </button>
+            </div>
+          ))}
+        </div>
+        <button className="onboarding-text-action" type="button">{content.add}</button>
+        <div className="onboarding-upload-box">{content.photos}</div>
+        <p className="onboarding-helper">{content.helper}</p>
+      </div>
+    );
+  }
+
+  if (step === 7) {
+    return (
+      <div className="factory-onboarding-section">
+        <div className="verification-upload-list">
+          {content.uploads.map(([label, helper], index) => (
+            <div className="verification-upload" key={label}>
+              <div>
+                <strong>{label}</strong>
+                <small>{helper}</small>
+              </div>
+              <button className={index === 0 ? "uploaded-pill" : "secondary-btn"} type="button">
+                {index === 0
+                  ? (language === "zh" ? "已上传" : "Uploaded")
+                  : (language === "zh" ? "上传文件" : "Upload file")}
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="onboarding-reference-row">
+          <strong>{content.reference}</strong>
+          <div>
+            <input placeholder={language === "zh" ? "公司名称" : "Company name"} />
+            <input placeholder={language === "zh" ? "联系人或公开链接" : "Contact or public link"} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (step === 8) {
+    return (
+      <div className="factory-review-grid">
+        {content.sections.map(([title, rows]) => (
+          <section className="factory-review-section" key={title}>
+            <h2>{title}</h2>
+            {rows.map(([label, value]) => (
+              <DetailPair label={label} value={value} key={label} />
+            ))}
+          </section>
+        ))}
+      </div>
+    );
+  }
+
+  if (step === 9) {
+    return (
+      <div className="factory-onboarding-section terms-section">
+        {content.terms.map((term, index) => (
+          <article key={term}>
+            <h2>{index + 1}. {term}</h2>
+            <p>{language === "zh" ? "请确认你理解并同意本平台的资料真实性、保密和合作责任要求。" : "Please confirm you understand the platform expectations, confidentiality requirements, and factory responsibilities."}</p>
+          </article>
+        ))}
+        <label className="directory-check terms-check">
+          <input type="checkbox" defaultChecked />
+          <span>{content.agreement}</span>
+        </label>
+        <OnboardingField label={language === "zh" ? "签名" : "Signature"} placeholder={content.signature} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="factory-onboarding-complete">
+      <span>✓</span>
+      <p>{content.intro}</p>
+    </div>
+  );
+}
+
+function OnboardingField({ label, placeholder }) {
+  return (
+    <label className="factory-onboarding-field">
+      <span>{label}</span>
+      <input placeholder={placeholder} />
+    </label>
+  );
+}
+
+function OnboardingCapacitySetup({ content, language }) {
+  const [lineHours, setLineHours] = useState("2400");
+  const [monthSelections, setMonthSelections] = useState({
+    Aug: "open",
+    Sep: "partial",
+    Oct: "full"
+  });
+  const months = ["Aug", "Sep", "Oct"];
+  const options = language === "zh"
+    ? [
+        { key: "open", label: "较空", note: "60-100% 可接单" },
+        { key: "partial", label: "部分已订", note: "25-60% 可接单" },
+        { key: "full", label: "较满", note: "0-25% 可接单" }
+      ]
+    : [
+        { key: "open", label: "Mostly open", note: "60-100% open" },
+        { key: "partial", label: "Partly booked", note: "25-60% open" },
+        { key: "full", label: "Mostly full", note: "0-25% open" }
+      ];
+  const levelRanges = {
+    open: { min: 60, max: 100 },
+    partial: { min: 25, max: 60 },
+    full: { min: 0, max: 25 }
+  };
+  const activeRange = levelRanges[monthSelections.Aug] || levelRanges.open;
+  const availableHours = Math.max(0, Number.parseInt(lineHours || "0", 10) || 0);
+  const availableMinutes = availableHours * 60;
+  const minPieces = Math.round((availableMinutes * (activeRange.min / 100)) / 18);
+  const maxPieces = Math.round((availableMinutes * (activeRange.max / 100)) / 18);
+  const pieceSummary = minPieces === maxPieces ? maxPieces.toLocaleString() : `${minPieces.toLocaleString()}-${maxPieces.toLocaleString()}`;
+  const brandPreview = language === "zh"
+    ? `品牌将看到：梭织 · 8 月可开始 · 当月约 ${pieceSummary} 件`
+    : `Brands will see: Wovens · Aug start · roughly ${pieceSummary} pieces that month`;
+
+  return (
+    <div className="onboarding-capacity-setup">
+      <div className="factory-onboarding-form-grid">
+        {content.fields.map(([label, placeholder]) => (
+          <OnboardingField label={label} placeholder={placeholder} key={label} />
+        ))}
+      </div>
+
+      <section className="onboarding-capacity-panel">
+        <div className="onboarding-capacity-topline">
+          <span>{language === "zh" ? "品类" : "Category"}</span>
+          <strong>{content.category}</strong>
+        </div>
+
+        <label className="line-hours-control onboarding-line-hours">
+          <input
+            inputMode="numeric"
+            value={lineHours}
+            onChange={(event) => setLineHours(event.target.value.replace(/\D/g, ""))}
+            aria-label={content.lineHoursLabel}
+          />
+          <span>{language === "zh" ? "小时 / 月" : "hours / month"}</span>
+        </label>
+        <p className="capacity-helper">{content.lineHoursLabel}</p>
+
+        <div className="reference-style-card onboarding-reference-style">
+          <div>
+            <strong>{content.referenceTitle}</strong>
+            <span>{content.referenceMeta}</span>
+          </div>
+          <p>{content.referenceCopy}</p>
+        </div>
+
+        <div className="onboarding-month-section">
+          <h2>{content.monthTitle}</h2>
+          <div className="onboarding-month-list">
+            {months.map((month) => (
+              <div className="onboarding-month-row" key={month}>
+                <span>{month}</span>
+                <div>
+                  {options.map((option) => (
+                    <button
+                      className={monthSelections[month] === option.key ? "selected" : ""}
+                      type="button"
+                      onClick={() => setMonthSelections((current) => ({ ...current, [month]: option.key }))}
+                      key={option.key}
+                    >
+                      <strong>{option.label}</strong>
+                      <small>{option.note}</small>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="capacity-brand-preview onboarding-capacity-preview">
+          <span>{language === "zh" ? "品牌将看到" : "BRANDS WILL SEE"}</span>
+          <strong>{brandPreview}</strong>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function OnboardingChipGroup({ label, options, selected = [], balanced = false }) {
+  return (
+    <section className={balanced ? "onboarding-chip-group balanced" : "onboarding-chip-group"}>
+      <h2>{label}</h2>
+      <div className="tag-row compact-tags">
+        {options.map((option) => (
+          <button className={selected.includes(option) ? "tag selected" : "tag"} type="button" key={option}>
+            {option}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
