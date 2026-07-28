@@ -11,7 +11,9 @@ export default defineConfig({
         factories: "factories.html",
         factorySearch: "factory-search.html",
         prototype: "prototype.html",
-        factoryPrototype: "factory-prototype.html"
+        factoryPrototype: "factory-prototype.html",
+        factorySurvey: "factory-survey.html",
+        factorySurveyThankYou: "factory-survey-thank-you.html"
       }
     }
   }

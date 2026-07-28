@@ -1355,13 +1355,17 @@
   width: 24px;
   height: 24px;
   padding: 0;
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fff;
-  color: #576e99;
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.factory-capacity-drawer-header > button img,
+.factory-update-close img,
+.factory-submit-sample-row button img {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .capacity-drawer-section {
@@ -1565,36 +1569,41 @@
 }
 
 .capacity-month-nav {
-  position: absolute;
-  top: 64px;
-  right: 44px;
+  position: static;
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
+  margin: -10px 0 -4px;
 }
 
 .capacity-month-nav button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  background: #fff;
-  color: #576e99;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 16px;
+  border-radius: 999px;
+  background: #fff url("/assets/prototype-icons/dropdown.svg") center / 14px 14px no-repeat;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
 }
 
 .capacity-month-nav button span {
   display: block;
-  width: 12px;
-  height: 16px;
-  line-height: 15px;
-  text-align: center;
-  transform: translateY(2px);
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.capacity-month-nav button:first-child {
+  transform: rotate(90deg);
+}
+
+.capacity-month-nav button:last-child {
+  transform: rotate(-90deg);
 }
 
 .factory-rfqs-page .rfqs-shell {
@@ -2582,14 +2591,10 @@
   place-items: center;
   width: 24px;
   height: 24px;
-  padding: 0 0 2px;
-  border: 1px solid #e2e8f0;
+  padding: 0;
+  border: 0;
   border-radius: 50%;
-  background: #fff;
-  color: #576e99;
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1;
+  background: transparent;
 }
 
 .factory-update-modal header {
@@ -2956,13 +2961,9 @@
   width: 24px;
   height: 24px;
   padding: 0;
-  border: 1px solid #d3e0f0;
+  border: 0;
   border-radius: 50%;
-  background: #fff;
-  color: #5c749c;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 1;
+  background: transparent;
 }
 
 .factory-add-stage {
@@ -3191,6 +3192,11 @@
 .factory-rfq-read-page .factory-quote-textarea {
   margin-top: 2px;
   line-height: 20px;
+}
+
+.factory-rfq-read-page .factory-submit-section:nth-of-type(3) {
+  min-height: auto;
+  padding-bottom: 48px;
 }
 
 .factory-review-layout {

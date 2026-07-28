@@ -117,22 +117,9 @@ const factoryMainZhText = {
   "View all": "查看全部",
   "Brand messages": "品牌消息",
   "Organic shirts - due today": "有机棉衬衫 - 今天截止",
-  "Organic cotton woven shirt production": "有机棉梭织衬衫生产",
-  "Premium knit capsule for resort drop": "度假系列高级针织小单",
-  "Denim jacket wash development and small bulk": "牛仔夹克洗水开发与小批量生产",
-  "Low-MOQ swim capsule with recycled nylon": "再生尼龙低 MOQ 泳装系列",
-  "Women's woven shirts in organic cotton poplin: 3 colors, 100 units per color. Brand needs fit sample and PP sample before bulk approval.": "女装有机棉府绸梭织衬衫：3 个颜色，每色 100 件。品牌需要试身样和 PP 样，之后再审批大货。",
-  "300 women’s woven shirts in organic cotton poplin. Fit + PP sample before bulk approval.": "300 件女装有机棉府绸梭织衬衫。大货审批前需要试身样和 PP 样。",
-  "300 women's woven shirts in organic cotton poplin. Fit + PP sample before bulk approval.": "300 件女装有机棉府绸梭织衬衫。大货审批前需要试身样和 PP 样。",
-  "Fine-gauge merino blend tops and cardigans for a small resort capsule. Looking for visible sample-room support and yarn sourcing.": "小型度假系列的细针距美利奴混纺上衣和开衫。希望工厂能提供清晰的样品间支持和纱线采购能力。",
-  "Rigid denim jacket with two washes. Brand needs wash-down samples, trim confirmation, and split delivery for first retail test.": "硬挺牛仔夹克，两种洗水。品牌需要洗水样、辅料确认，并为首次零售测试分批交付。",
-  "Small recycled nylon swim run with size set sample and packaging guidance.": "小批量再生尼龙泳装订单，需要齐码样和包装建议。",
-  "Denim jacket wash development with revised 500-unit production run.": "牛仔夹克洗水开发，更新后大货数量为 500 件。",
-  "Low-MOQ swim set capsule using recycled nylon and contrast binding.": "使用再生尼龙和撞色包边的低 MOQ 泳装套装系列。",
+  "Quote for": "报价：",
   "Stretch jersey capsule - 2 questions": "弹力针织系列 - 2 个问题",
   "Recycled fleece overshirt - new brief": "再生摇粒绒外套 - 新需求",
-  "Can you split fit and PP sample cost?": "可以把试身样和 PP 样费用分开报价吗？",
-  "Uploaded updated colorway sheet.": "已上传更新后的配色表。",
   "Verification renewal due this month.": "本月需要更新验证资料。",
   "Production step": "生产阶段",
   "Next due": "下个截止日",
@@ -147,7 +134,9 @@ const factoryMainZhText = {
   "August capacity works": "8 月产能可支持",
   "Strong fit · August capacity works": "高度匹配 · 8 月产能可支持",
   "Premium knit experience": "有高级针织经验",
+  "Good fit · Premium knit experience": "匹配 · 有高级针织经验",
   "Check wash capacity": "需确认水洗产能",
+  "Potential fit · Check wash capacity": "可能匹配 · 需确认水洗产能",
   "Maison Rue · 300 units": "Maison Rue · 300 件",
   "Luna Resort · Lab dips": "Luna Resort · 色样",
   "Northline · Deposit funded": "Northline · 定金已付款",
@@ -209,12 +198,41 @@ const factoryMainZhText = {
   "Filters": "筛选",
   "Reset": "重置",
   "Product category": "产品品类",
+  "Production type": "生产类型",
+  "Product categories": "产品品类",
+  "Cut & sew knits": "针织裁剪缝制",
   "Cut & sew apparel": "裁剪缝制成衣",
+  "Sweaters / knitwear": "毛衫 / 针织成衣",
+  "Seamless / circular knit": "无缝 / 圆机针织",
+  "Intimates / delicate garments": "内衣 / 精细服装",
+  "Leather / suede": "皮革 / 麂皮",
+  "Bags / soft goods": "包袋 / 软配件",
+  "Tops": "上装",
+  "Bottoms": "下装",
+  "Dresses & jumpsuits": "连衣裙 / 连体衣",
   "Knitwear": "针织成衣",
   "Denim": "牛仔",
   "Outerwear": "外套",
+  "Activewear": "运动服",
+  "Intimates / underwear": "内衣",
+  "Swimwear": "泳装",
+  "Sleepwear / loungewear": "睡衣 / 家居服",
+  "Childrenswear / baby": "童装 / 婴童",
+  "Uniforms / workwear": "制服 / 工装",
+  "Accessories": "配饰",
+  "Other": "其他",
   "Swim & activewear": "泳装和运动服",
   "Price point": "价格层级",
+  "Mass $8-$18": "大众 $8-$18",
+  "Middle $18-$40": "中端 $18-$40",
+  "Premium $40-$90": "高级 $40-$90",
+  "Luxury $90+": "奢侈 $90+",
+  "Aug": "8 月",
+  "Sep": "9 月",
+  "Oct": "10 月",
+  "Nov": "11 月",
+  "Dec": "12 月",
+  "Jan": "1 月",
   "Quantity": "数量",
   "Under 300": "300 件以下",
   "Preferred region": "偏好地区",
@@ -237,12 +255,11 @@ const factoryMainZhText = {
   "Save": "保存",
   "View details": "查看详情",
   "Project brief": "项目简介",
-  "Maison Rue is looking for a vetted cut-and-sew factory for women's organic cotton woven shirts. The brand has a tech pack and wants factories to quote the first sample path and a small production run clearly.": "Maison Rue 正在寻找经过审核的裁剪缝制工厂，生产女装有机棉梭织衬衫。品牌已有 tech pack，希望工厂清楚报价第一轮样品路径和小批量生产。",
-  "The request is intentionally lean: confirm unit price, sample costs, timeline, fabric GSM questions, and whether the requested color split is workable before moving to contract terms.": "这个需求刻意保持精简：在进入合同条款前，请确认单价、样品费用、时间线、面料 GSM 问题，以及所需颜色拆分是否可行。",
   "‹ Back to explore": "‹ 返回浏览",
   "Quote-ready details": "报价所需信息",
   "Target unit price": "目标单价",
   "Color split": "颜色拆分",
+  "3 colors · 100 each": "3 个颜色 · 每色 100 件",
   "Sample plan": "样品计划",
   "Bulk timeline": "大货时间",
   "Late September": "9 月下旬",
@@ -257,9 +274,6 @@ const factoryMainZhText = {
   "Measurement chart": "尺寸表",
   "Reference photos": "参考图片",
   "Questions to answer in your quote": "报价中需要回答的问题",
-  "Can you quote fit sample and PP sample separately?": "可以把试身样和 PP 样分开报价吗？",
-  "Can you support 3 colors at 100 units each?": "可以支持 3 个颜色、每色 100 件吗？",
-  "What fabric GSM or trim details do you need before final sample cost?": "确认最终样品费用前，你需要哪些面料克重或辅料信息？",
   "Required capabilities": "所需能力",
   "Pattern support": "制版支持",
   "Sample-room support": "样品间支持",
@@ -323,13 +337,10 @@ const factoryMainZhText = {
   "Includes": "包含",
   "+ Add sample stage": "+ 添加样品阶段",
   "Brand questions and factory notes": "品牌问题和工厂备注",
-  "Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM or trim details do you need before final sample cost?": "品牌问题：可以把试身样和 PP 样分开报价吗？可以支持 3 个颜色、每色 100 件吗？确认最终样品费用前，你需要哪些面料 GSM 或辅料信息？",
   "Factory response": "工厂回复",
   "Additional details and questions": "补充信息和问题",
   "Add supporting files or questions regarding the quote.": "添加与报价相关的支持文件或问题。",
   "Review quote total": "确认报价总计",
-  "Quote for Organic cotton woven shirt production": "有机棉梭织衬衫生产报价",
-  "Quote for 有机棉梭织衬衫生产": "有机棉梭织衬衫生产报价",
   "‹ Back to edit quote": "‹ 返回编辑报价",
   "Totals are calculated after saving the quote. Review the breakdown before sending it to Maison Rue.": "保存报价后会计算总计。发送给 Maison Rue 前请确认明细。",
   "Production subtotal": "生产小计",
@@ -351,6 +362,32 @@ const factoryMainZhText = {
   "Keep the quote current": "保持报价更新",
   "If price, capacity, or sample timing changes before the brand chooses, edit the quote from the submitted quote page.": "如果品牌选择前价格、产能或样品时间有变化，请在已提交报价页修改。",
   "Project activity": "项目动态",
+  "‹ Back to projects": "‹ 返回项目",
+  "project total": "项目总额",
+  "project funds": "项目资金",
+  "remaining": "剩余金额",
+  "next payment": "下一笔付款",
+  "Overview": "概览",
+  "Messages (2)": "消息 (2)",
+  "Files": "文件",
+  "Contract details": "合同详情",
+  "Funded · due Aug 16": "已付款 · 8 月 16 日截止",
+  "Factory prepares first sample and uploads sample photos for approval.": "工厂准备第一件样品，并上传样品照片供审批。",
+  "Lab dip / color": "色样 / 颜色",
+  "Awaiting brand approval": "等待品牌审批",
+  "Brand reviews fabric color standard before bulk materials are ordered.": "品牌在订购大货物料前审核面料颜色标准。",
+  "Strike-off / print": "印花打样 / 印刷",
+  "Factory update due Aug 18": "工厂更新截止 8 月 18 日",
+  "Factory confirms print, embroidery, or construction details before bulk.": "工厂在大货前确认印花、刺绣或结构细节。",
+  "Size set / fit notes": "齐码样 / 试身备注",
+  "Brand reviews graded sizes or fit notes when needed for the style.": "如款式需要，品牌会审核齐码尺寸或试身备注。",
+  "Bulk deposit": "大货定金",
+  "QC photos": "QC 照片",
+  "Before final payment": "尾款前",
+  "Brand approves QC photos before final balance can release.": "品牌审批 QC 照片后才可释放尾款。",
+  "Final payment": "尾款",
+  "Before shipment / QC photos": "出货前 / QC 照片",
+  "Final balance releases after QC photos and shipment details are confirmed.": "QC 照片和出货信息确认后释放尾款。",
   "Factory last viewed project 2h ago": "工厂 2 小时前查看项目",
   "Last message yesterday": "最后消息：昨天",
   "Sample photos expected Aug 16": "预计 8 月 16 日上传样品照片",
@@ -487,7 +524,7 @@ const factoryRfqs = [
     title: "Organic cotton woven shirt production",
     meta: "Maison Rue · New York, USA · Payment verified · $25k+ spent",
     description: "300 women’s woven shirts in organic cotton poplin. Fit + PP sample before bulk approval.",
-    tags: ["Cut & sew", "Fit + size set · $340 total", "Sep capacity", "420 units", "GOTS"],
+    tags: ["Cut & sew", "Fit + size set · $340 total", "420 units", "GOTS"],
     status: "Quote submitted",
     statusTone: "ready",
     metrics: [
@@ -776,8 +813,8 @@ const onboardingCopy = {
         referenceHelper: "你曾合作过的品牌或零售商。"
       },
       {
-        title: "添加工厂视频 walkthrough",
-        intro: "录制或上传一段连续的 2-4 分钟工厂 walkthrough 视频。无需剪辑。",
+        title: "添加工厂介绍视频",
+        intro: "录制或上传一段连续的 2-4 分钟工厂介绍视频。无需剪辑。",
         laterNote: "你可以之后在资料页完成此步骤。",
         instructionTitle: "录制内容",
         instructionCopy: "从入口或前台开始，说出工厂名称、城市和当天日期。然后慢慢拍摄主要生产车间、物料或组件区域、关键机器或工位、质检区域，以及包装或仓库区域。",
@@ -785,7 +822,7 @@ const onboardingCopy = {
         checklistTitle: "视频应包括：",
         checklist: ["入口或前台", "主要生产车间", "物料 / 组件区域", "关键机器 / 工位", "质检区域", "包装或仓库"],
         optionTitle: "选择添加视频的方式（选填）",
-        options: [["直接录制", "打开录制器，现在拍摄 walkthrough。"], ["上传视频", "上传已拍好的 walkthrough 视频文件。"]]
+        options: [["直接录制", "打开录制器，现在拍摄工厂介绍视频。"], ["上传视频", "上传已拍好的工厂介绍视频文件。"]]
       },
       {
         title: "确认你的工厂资料",
@@ -987,12 +1024,14 @@ function App() {
       )}
       {screen === "projectDetail" && (
         <FactoryProjectProgressDetail
+          language={onboardingLanguage}
           onBack={() => setScreen("projects")}
           onPostUpdate={() => setScreen("projectPostedUpdate")}
         />
       )}
       {screen === "projectPostedUpdate" && (
         <FactoryProjectProgressDetail
+          language={onboardingLanguage}
           onBack={() => setScreen("projects")}
           onPostUpdate={() => setScreen("projectPostedUpdate")}
           showPostedUpdate
@@ -1022,6 +1061,7 @@ function App() {
       )}
       {capacityDrawerOpen && (
         <FactoryCapacityDrawer
+          language={onboardingLanguage}
           initialCapacity={dashboardCapacity}
           onClose={() => setCapacityDrawerOpen(false)}
           onSaveCapacity={(value) => {
@@ -1080,8 +1120,8 @@ function FactoryDashboardPage({ capacityValue, onUpdateCapacity, onViewRfqs, onV
             action="View all"
             onAction={() => {}}
           >
-            <FactoryMessageRow unread brand="Maison Rue" message="Can you split fit and PP sample cost?" time="12 min" />
-            <FactoryMessageRow brand="Elara Studio" message="Uploaded updated colorway sheet." time="1 hr" />
+            <FactoryMessageRow unread brand="Maison Rue" message="Can you split fit and PP sample cost?" time="12 min" brandAuthored />
+            <FactoryMessageRow brand="Elara Studio" message="Uploaded updated colorway sheet." time="1 hr" brandAuthored />
             <FactoryMessageRow brand="TSC ops" message="Verification renewal due this month." time="Today" />
           </FactoryDashboardPanel>
 
@@ -1142,13 +1182,13 @@ function FactoryDashboardRfqRow({ brand, brief, budget, quantity, fit, tone }) {
   );
 }
 
-function FactoryMessageRow({ brand, message, time, unread = false }) {
+function FactoryMessageRow({ brand, message, time, unread = false, brandAuthored = false }) {
   return (
     <article className="factory-message-row">
       <span className={unread ? "message-dot unread" : "message-dot"} />
       <div>
         <strong>{brand}</strong>
-        <p>{message}</p>
+        <p data-no-translate={brandAuthored || undefined}>{message}</p>
       </div>
       <time>{time}</time>
     </article>
@@ -1160,8 +1200,8 @@ function FactoryProjectDashboardRow({ title, meta, step, due, status, tone }) {
     <article className="factory-dashboard-row factory-project-dashboard-row">
       <span className="factory-dashboard-thumb" />
       <div className="factory-dashboard-row-main">
-        <strong>{title}</strong>
-        <p>{meta}</p>
+        <strong data-no-translate>{title}</strong>
+        <p data-no-translate>{meta}</p>
       </div>
       <div className="factory-project-mini-metric">
         <span>Production step</span>
@@ -1232,9 +1272,9 @@ function FactoryRfqCard({ rfq, onViewRequest, onEditQuote }) {
     <article className={rfq.featured ? "rfq-card featured factory-rfq-card" : "rfq-card factory-rfq-card"}>
       <div className="rfq-thumbnail" aria-hidden="true" />
       <div className="rfq-main">
-        <h2>{rfq.title}</h2>
-        <p className="rfq-date">{rfq.meta}</p>
-        <p className="rfq-description">{rfq.description}</p>
+        <h2 data-no-translate>{rfq.title}</h2>
+        <p className="rfq-date" data-no-translate>{rfq.meta}</p>
+        <p className="rfq-description" data-no-translate>{rfq.description}</p>
       </div>
       <div className="tag-row compact-tags rfq-tags">
         {rfq.tags.map((tag) => (
@@ -1367,9 +1407,9 @@ function FactoryProjectListCard({ project, onViewProject }) {
     <article className={project.featured ? "brand-project-card featured factory-active-project-card" : "brand-project-card factory-active-project-card"}>
       <div className="project-thumbnail" aria-hidden="true" />
       <div className="project-main">
-        <h2>{project.title}</h2>
-        <p className="project-meta">{project.brand} · {project.location} · {project.started}</p>
-        <p className="project-description">{project.description}</p>
+        <h2 data-no-translate>{project.title}</h2>
+        <p className="project-meta" data-no-translate>{project.brand} · {project.location} · {project.started}</p>
+        <p className="project-description" data-no-translate>{project.description}</p>
         <div className="project-status-row">
           <span className={`project-status ${project.statusTone}`}>{project.status}</span>
           <span>{project.statusDetail}</span>
@@ -1424,12 +1464,28 @@ function FactoryBrowsePage({ onViewDetails }) {
             <strong>Filters</strong>
             <button type="button">Reset</button>
           </div>
-          <FilterGroup title="Product category">
-            <FilterCheck checked label="Cut & sew apparel" />
-            <FilterCheck label="Knitwear" />
+          <FilterGroup title="Production type">
+            <FilterCheck label="Cut & sew knits" />
+            <FilterCheck checked label="Wovens" />
+            <FilterCheck label="Sweaters / knitwear" />
             <FilterCheck label="Denim" />
+            <FilterCheck label="Seamless / circular knit" />
+            <FilterCheck label="Intimates / delicate garments" />
+            <FilterCheck label="Leather / suede" />
+            <FilterCheck label="Bags / soft goods" />
+          </FilterGroup>
+          <FilterGroup title="Product categories">
+            <FilterCheck checked label="Tops" />
+            <FilterCheck label="Bottoms" />
+            <FilterCheck label="Dresses & jumpsuits" />
             <FilterCheck label="Outerwear" />
-            <FilterCheck label="Swim & activewear" />
+            <FilterCheck label="Activewear" />
+            <FilterCheck label="Intimates / underwear" />
+            <FilterCheck label="Swimwear" />
+            <FilterCheck label="Sleepwear / loungewear" />
+            <FilterCheck label="Childrenswear / baby" />
+            <FilterCheck label="Uniforms / workwear" />
+            <FilterCheck label="Accessories" />
           </FilterGroup>
           <FilterGroup title="Price point">
             <div className="directory-chip-grid">
@@ -1515,7 +1571,8 @@ function FactoryBrowsePage({ onViewDetails }) {
   );
 }
 
-function FactoryCapacityDrawer({ initialCapacity, onClose, onSaveCapacity }) {
+function FactoryCapacityDrawer({ language, initialCapacity, onClose, onSaveCapacity }) {
+  const isZh = language === "zh";
   const [lineHours, setLineHours] = useState(initialCapacity || "2400");
   const [monthOffset, setMonthOffset] = useState(0);
   const [monthSelections, setMonthSelections] = useState({
@@ -1542,6 +1599,13 @@ function FactoryCapacityDrawer({ initialCapacity, onClose, onSaveCapacity }) {
   const minPieces = Math.round((availableMinutes * (activeRange.min / 100)) / 18);
   const maxPieces = Math.round((availableMinutes * (activeRange.max / 100)) / 18);
   const pieceSummary = minPieces === maxPieces ? maxPieces.toLocaleString() : `${minPieces.toLocaleString()}-${maxPieces.toLocaleString()}`;
+  const monthLabel = isZh ? translateFactoryMainText(currentMonth) : currentMonth;
+  const previewTitle = isZh
+    ? `梭织 · ${monthLabel} 可开始 · 当月约 ${pieceSummary} 件`
+    : `Wovens · ${currentMonth} start · roughly ${pieceSummary} pieces that month`;
+  const previewFormula = isZh
+    ? `${availableHours.toLocaleString()} 小时 × 60 分钟 × ${activeRange.min}%-${activeRange.max}% 可用 ÷ 18 分钟 / 件参考款`
+    : `${availableHours.toLocaleString()} hours × 60 min × ${activeRange.min}%-${activeRange.max}% free ÷ 18 min/pc reference style`;
 
   const updateMonthSelection = (month, selected) => {
     setMonthSelections((current) => ({ ...current, [month]: selected }));
@@ -1553,13 +1617,14 @@ function FactoryCapacityDrawer({ initialCapacity, onClose, onSaveCapacity }) {
       <aside className="factory-capacity-drawer" aria-label="Update capacity">
         <header className="factory-capacity-drawer-header">
           <div>
-            <h2>Add fit sample update</h2>
+            <h2>{isZh ? "添加试身样更新" : "Add fit sample update"}</h2>
             <p>
-              Enter your monthly line-hours. We'll translate them into booking level,
-              open percentage, and estimated units brands can understand.
+              {isZh
+                ? "输入每月产线工时。我们会将它转换成品牌容易理解的接单状态、可用比例和估算件数。"
+                : "Enter your monthly line-hours. We'll translate them into booking level, open percentage, and estimated units brands can understand."}
             </p>
           </div>
-          <button type="button" aria-label="Close update capacity" onClick={onClose}>×</button>
+          <CloseIconButton label={isZh ? "关闭更新产能" : "Close update capacity"} onClick={onClose} />
         </header>
 
         <section className="capacity-drawer-section">
@@ -1609,6 +1674,7 @@ function FactoryCapacityDrawer({ initialCapacity, onClose, onSaveCapacity }) {
           <div className="capacity-month-list">
             {visibleMonths.map((month) => (
               <CapacityMonthRow
+                language={language}
                 month={month}
                 selected={monthSelections[month]}
                 onSelect={(selected) => updateMonthSelection(month, selected)}
@@ -1620,9 +1686,9 @@ function FactoryCapacityDrawer({ initialCapacity, onClose, onSaveCapacity }) {
 
         <footer className="capacity-drawer-footer">
           <div className="capacity-brand-preview">
-            <span>BRANDS WILL SEE</span>
-            <strong>Wovens · {currentMonth} start · roughly {pieceSummary} pieces that month</strong>
-            <p>{availableHours.toLocaleString()} hours × 60 min × {activeRange.min}%-{activeRange.max}% free ÷ 18 min/pc reference style</p>
+            <span>{isZh ? "品牌将看到" : "BRANDS WILL SEE"}</span>
+            <strong>{previewTitle}</strong>
+            <p>{previewFormula}</p>
           </div>
           <button className="primary-btn" type="button" onClick={() => onSaveCapacity(lineHours)}>Save changes</button>
         </footer>
@@ -1631,7 +1697,8 @@ function FactoryCapacityDrawer({ initialCapacity, onClose, onSaveCapacity }) {
   );
 }
 
-function CapacityMonthRow({ month, selected, onSelect }) {
+function CapacityMonthRow({ language, month, selected, onSelect }) {
+  const isZh = language === "zh";
   const options = [
     { key: "open", label: "Mostly open", note: "60-100% open" },
     { key: "partial", label: "Partly booked", note: "25-60% open" },
@@ -1640,7 +1707,7 @@ function CapacityMonthRow({ month, selected, onSelect }) {
 
   return (
     <div className="capacity-month-row">
-      <span>{month}</span>
+      <span>{isZh ? translateFactoryMainText(month) : month}</span>
       <div>
         {options.map((option) => (
           <button
@@ -1649,8 +1716,8 @@ function CapacityMonthRow({ month, selected, onSelect }) {
             onClick={() => onSelect(option.key)}
             key={option.key}
           >
-            <strong>{option.label}</strong>
-            <small>{option.note}</small>
+            <strong>{isZh ? translateFactoryMainText(option.label) : option.label}</strong>
+            <small>{isZh ? translateFactoryMainText(option.note) : option.note}</small>
           </button>
         ))}
       </div>
@@ -2021,6 +2088,14 @@ function SearchIcon() {
   );
 }
 
+function CloseIconButton({ className = "", label, onClick }) {
+  return (
+    <button className={className} type="button" aria-label={label} onClick={onClick}>
+      <img src="/assets/prototype-icons/close.svg" alt="" />
+    </button>
+  );
+}
+
 function Metric({ label, value, className = "" }) {
   return (
     <div className={className ? `metric ${className}` : "metric"}>
@@ -2037,10 +2112,10 @@ function BrandProjectCard({ project, onViewDetails }) {
       <div className="directory-factory-intro">
         <div>
           <div className="factory-name-row">
-            <h2>{project.title}</h2>
+            <h2 data-no-translate>{project.title}</h2>
           </div>
-          <p>{project.brand} · {project.location} · {project.posted}</p>
-          <strong>{project.specialty}</strong>
+          <p data-no-translate>{project.brand} · {project.location} · {project.posted}</p>
+          <strong data-no-translate>{project.specialty}</strong>
         </div>
       </div>
       <div className="directory-factory-metrics">
@@ -2075,19 +2150,19 @@ function FactoryProjectDetail({ project, onBack, onSendQuote }) {
     <main className="factory-detail-page">
       <header className="factory-detail-header">
         <button className="text-link" type="button" onClick={onBack}>‹ Back to explore</button>
-        <h1>{project.title}</h1>
-        <p>{project.brand} · {project.location} · {project.posted}</p>
+        <h1 data-no-translate>{project.title}</h1>
+        <p data-no-translate>{project.brand} · {project.location} · {project.posted}</p>
       </header>
 
       <div className="factory-detail-layout">
         <section className="factory-detail-main">
           <DetailCard title="Project brief">
-            <p>
+            <p data-no-translate>
               Maison Rue is looking for a vetted cut-and-sew factory for women's organic cotton woven shirts.
               The brand has a tech pack and wants factories to quote the first sample path and a small
               production run clearly.
             </p>
-            <p>
+            <p data-no-translate>
               The request is intentionally lean: confirm unit price, sample costs, timeline, fabric GSM
               questions, and whether the requested color split is workable before moving to contract terms.
             </p>
@@ -2126,7 +2201,7 @@ function FactoryProjectDetail({ project, onBack, onSendQuote }) {
           </DetailCard>
 
           <DetailCard title="Questions to answer in your quote">
-            <ol className="factory-detail-list">
+            <ol className="factory-detail-list" data-no-translate>
               <li>Can you quote fit sample and PP sample separately?</li>
               <li>Can you support 3 colors at 100 units each?</li>
               <li>What fabric GSM or trim details do you need before final sample cost?</li>
@@ -2184,15 +2259,15 @@ function FactoryProjectDetail({ project, onBack, onSendQuote }) {
   );
 }
 
-function FactoryProjectProgressDetail({ onBack, onPostUpdate, showPostedUpdate = false }) {
+function FactoryProjectProgressDetail({ language, onBack, onPostUpdate, showPostedUpdate = false }) {
   const [updateMilestone, setUpdateMilestone] = useState(null);
 
   return (
     <main className="factory-detail-page factory-project-detail-page">
       <header className="factory-detail-header factory-project-detail-header">
         <button className="text-link" type="button" onClick={onBack}>‹ Back to projects</button>
-        <h1>Organic cotton woven shirt production</h1>
-        <p>Atelier Minho · Porto, Portugal · Started Jul 19</p>
+        <h1 data-no-translate>Organic cotton woven shirt production</h1>
+        <p data-no-translate>Atelier Minho · Porto, Portugal · Started Jul 19</p>
       </header>
 
       <div className="factory-project-detail-grid">
@@ -2253,6 +2328,7 @@ function FactoryProjectProgressDetail({ onBack, onPostUpdate, showPostedUpdate =
       </div>
       {updateMilestone && (
         <AddUpdateModal
+          language={language}
           milestone={updateMilestone}
           onClose={() => setUpdateMilestone(null)}
           onPost={() => {
@@ -2308,29 +2384,32 @@ function FactoryPostedUpdateCard() {
   );
 }
 
-function AddUpdateModal({ milestone, onClose, onPost }) {
+function AddUpdateModal({ language, milestone, onClose, onPost }) {
+  const isZh = language === "zh";
+  const milestoneTitle = isZh ? translateFactoryMainText(milestone.title) : milestone.title.toLowerCase();
+
   return (
     <div className="factory-update-modal-layer" role="presentation">
       <div className="factory-update-modal" role="dialog" aria-modal="true" aria-labelledby="factory-update-title">
-        <button className="factory-update-close" type="button" aria-label="Close add update" onClick={onClose}>×</button>
+        <CloseIconButton className="factory-update-close" label={isZh ? "关闭添加更新" : "Close add update"} onClick={onClose} />
         <header>
-          <h2 id="factory-update-title">Add {milestone.title.toLowerCase()} update</h2>
-          <p>Share progress photos and a short note for Maison Rue to review before this milestone is approved.</p>
+          <h2 id="factory-update-title">{isZh ? `添加${milestoneTitle}更新` : `Add ${milestoneTitle} update`}</h2>
+          <p>{isZh ? "分享进度照片和简短说明，供 Maison Rue 在审批此里程碑前查看。" : "Share progress photos and a short note for Maison Rue to review before this milestone is approved."}</p>
         </header>
 
         <label className="factory-update-note">
-          <span>Upload note</span>
-          <textarea defaultValue="Optional: packaging, QC expectations, shipping notes, or anything factories should know before quoting." />
+          <span>{isZh ? "更新说明" : "Upload note"}</span>
+          <textarea defaultValue={isZh ? "选填：包装、QC 要求、运输备注，或品牌审批前需要了解的其他信息。" : "Optional: packaging, QC expectations, shipping notes, or anything factories should know before quoting."} />
         </label>
 
         <button className="factory-update-upload" type="button">
-          <strong>+ Upload photos</strong>
-          <span>JPG or PNG, up to 10 files</span>
+          <strong>{isZh ? "+ 上传照片" : "+ Upload photos"}</strong>
+          <span>{isZh ? "JPG 或 PNG，最多 10 个文件" : "JPG or PNG, up to 10 files"}</span>
         </button>
 
         <footer>
-          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="primary-btn" type="button" onClick={onPost}>Post update</button>
+          <button className="secondary-btn" type="button" onClick={onClose}>{isZh ? "取消" : "Cancel"}</button>
+          <button className="primary-btn" type="button" onClick={onPost}>{isZh ? "发布更新" : "Post update"}</button>
         </footer>
       </div>
     </div>
@@ -2389,8 +2468,8 @@ function FactoryReviewTotal({ project, onBack, onEdit, onSendQuote }) {
         <div className="factory-review-layout">
           <section className="factory-submit-card factory-review-card">
             <header className="factory-review-card-header">
-              <h2>Quote for {project.title}</h2>
-              <p>{project.brand} · {project.location} · {project.posted}</p>
+              <h2><span>Quote for</span> <span data-no-translate>{project.title}</span></h2>
+              <p data-no-translate>{project.brand} · {project.location} · {project.posted}</p>
             </header>
 
             <div className="factory-review-rows">
@@ -2435,9 +2514,9 @@ function FactoryQuoteRequestCard({ project }) {
   return (
     <article className="factory-submit-card factory-submit-project-card">
       <div className="factory-submit-project-copy">
-        <h2>{project.title}</h2>
-        <p>{project.brand} · {project.location} · {project.posted}</p>
-        <strong>{project.specialty}</strong>
+        <h2 data-no-translate>{project.title}</h2>
+        <p data-no-translate>{project.brand} · {project.location} · {project.posted}</p>
+        <strong data-no-translate>{project.specialty}</strong>
         <div className="tag-row compact-tags factory-submit-tags">
           {project.tags.map((tag) => (
             <span className="tag" key={tag}>{tag}</span>
@@ -2481,7 +2560,7 @@ function FactoryQuoteSections({ readOnly = false }) {
         {!readOnly && <button className="factory-add-stage" type="button">+ Add sample stage</button>}
       </SubmitSection>
 
-      <SubmitSection title="Brand questions and factory notes" description="Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM or trim details do you need before final sample cost?">
+      <SubmitSection title="Brand questions and factory notes" description="Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM or trim details do you need before final sample cost?" descriptionNoTranslate>
         <QuoteTextarea value="Yes. We can quote fit and PP samples separately, support 3 colors at 100 units each, and need confirmed GSM, button trim, and final size spec before final sample cost." label="Factory response" />
       </SubmitSection>
 
@@ -2571,11 +2650,11 @@ function FactoryQuoteSent({ project, onBack, onDashboard }) {
   );
 }
 
-function SubmitSection({ title, description, children }) {
+function SubmitSection({ title, description, children, descriptionNoTranslate = false }) {
   return (
     <article className="factory-submit-card factory-submit-section">
       <h2>{title}</h2>
-      <p>{description}</p>
+      <p data-no-translate={descriptionNoTranslate || undefined}>{description}</p>
       {children}
     </article>
   );
@@ -2607,7 +2686,7 @@ function SamplePlanRow({ stage, cost, timing, includes, readOnly = false }) {
       <QuoteField label="Cost" value={cost} />
       <QuoteField label="Timing" value={timing} />
       <QuoteField label="Includes" value={includes} />
-      {!readOnly && <button type="button" aria-label={`Remove ${stage}`}>×</button>}
+      {!readOnly && <CloseIconButton label={`Remove ${stage}`} />}
     </div>
   );
 }

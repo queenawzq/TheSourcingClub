@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Sourcing Club | 工厂原型问卷</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/survey.css" />
+  </head>
+  <body class="survey-page">
+    <main class="survey-shell">
+      <section class="survey-hero" aria-labelledby="survey-title">
+        <a class="survey-logo" href="/">
+          <img src="/assets/logo.svg" alt="The Sourcing Club" />
+        </a>
+        <div class="survey-hero-content">
+          <p class="survey-kicker">Factory prototype feedback</p>
+          <h1 id="survey-title">工厂端原型体验问卷</h1>
+          <p>
+            请先打开原型完成下面几个小任务，再填写问卷。你的反馈会帮助我们判断工厂端流程是否清楚、可信、好用。
+          </p>
+          <a class="survey-prototype-link" href="/factory-prototype.html" target="_blank" rel="noreferrer">
+            打开工厂原型
+          </a>
+        </div>
+      </section>
+
+      <section class="survey-task-list" aria-labelledby="task-title">
+        <h2 id="task-title">填写前请先尝试</h2>
+        <ol>
+          <li>入门注册</li>
+          <li>点击“浏览需求” → 提交一个报价</li>
+          <li>点击“控制台” → 更新产能</li>
+          <li>点击“询价”，查看已有的询价单</li>
+          <li>点击“项目” → 添加一条项目更新</li>
+        </ol>
+      </section>
+
+      <form
+        class="survey-form"
+        name="factory-prototype-survey"
+        method="POST"
+        action="/factory-survey-thank-you"
+        data-netlify="true"
+        netlify-honeypot="bot-field"
+      >
+        <input type="hidden" name="form-name" value="factory-prototype-survey" />
+        <p class="survey-hidden">
+          <label>Leave this blank: <input name="bot-field" /></label>
+        </p>
+
+        <section class="survey-card" aria-labelledby="participant-title">
+          <h2 id="participant-title">基本信息</h2>
+          <div class="survey-grid">
+            <label>
+              <span>姓名</span>
+              <input type="text" name="participant_name" autocomplete="name" />
+            </label>
+            <label>
+              <span>工厂 / 公司名称</span>
+              <input type="text" name="factory_name" autocomplete="organization" />
+            </label>
+            <label>
+              <span>你的角色</span>
+              <input type="text" name="participant_role" placeholder="例如：老板、业务、生产负责人" />
+            </label>
+            <label>
+              <span>联系方式</span>
+              <input type="text" name="contact" placeholder="微信、电话或邮箱，可选" />
+            </label>
+          </div>
+        </section>
+
+        <section class="survey-card" aria-labelledby="onboarding-title">
+          <h2 id="onboarding-title">入门注册</h2>
+          <label>
+            <span>填写工厂资料时，有没有哪里让你觉得困惑或者信息不够用？</span>
+            <textarea name="onboarding_confusing_or_missing_info" rows="4"></textarea>
+          </label>
+          <label>
+            <span>关于产能、品类和认证等级的问题，填写起来清楚吗？有没有不知道怎么回答的？</span>
+            <textarea name="onboarding_capacity_category_certification_clarity" rows="4"></textarea>
+          </label>
+        </section>
+
+        <section class="survey-card" aria-labelledby="quote-title">
+          <h2 id="quote-title">浏览需求和提交报价</h2>
+          <label>
+            <span>看询价单的时候，能看清楚品牌方的具体需求吗？哪里不清楚？</span>
+            <textarea name="rfq_requirement_clarity" rows="4"></textarea>
+          </label>
+          <label>
+            <span>你平时报价前通常会向品牌方确认哪些信息，但询价单里没有提到？</span>
+            <textarea name="missing_pre_quote_questions" rows="4"></textarea>
+          </label>
+          <label>
+            <span>提交报价时，有没有哪些内容，比如起订量、交货期、价格结构，不好填写或说明？</span>
+            <textarea name="quote_fields_hard_to_answer" rows="4"></textarea>
+          </label>
+          <fieldset>
+            <legend>你会放心直接在平台上给一个真实项目报价吗，还是想先电话或微信沟通？</legend>
+            <label class="survey-choice">
+              <input type="radio" name="quote_comfort_level" value="comfortable_on_platform" />
+              <span>会放心直接在平台报价</span>
+            </label>
+            <label class="survey-choice">
+              <input type="radio" name="quote_comfort_level" value="prefer_call_or_wechat_first" />
+              <span>想先电话或微信沟通</span>
+            </label>
+            <label class="survey-choice">
+              <input type="radio" name="quote_comfort_level" value="depends_on_project" />
+              <span>看项目情况</span>
+            </label>
+            <textarea name="quote_comfort_reason" rows="3" placeholder="可以补充原因"></textarea>
+          </fieldset>
+        </section>
+
+        <section class="survey-card" aria-labelledby="projects-title">
+          <h2 id="projects-title">项目页面和更新</h2>
+          <label>
+            <span>你能看清楚一个项目目前处于哪个阶段、接下来该做什么吗？</span>
+            <textarea name="project_stage_next_step_clarity" rows="4"></textarea>
+          </label>
+          <label>
+            <span>你希望在这里更新什么内容，比如照片、生产进度、延期情况？</span>
+            <textarea name="desired_project_updates" rows="4"></textarea>
+          </label>
+        </section>
+
+        <section class="survey-card" aria-labelledby="capacity-title">
+          <h2 id="capacity-title">产能设置</h2>
+          <label>
+            <span>用“每月产线工时”来表示产能，这个方式你能理解吗？符合你平时的表达习惯吗？</span>
+            <textarea name="capacity_hours_understanding" rows="4"></textarea>
+          </label>
+          <label>
+            <span>你会每个月主动更新这个数据吗？有什么原因可能会让你忘记更新？</span>
+            <textarea name="capacity_update_habit_and_barriers" rows="4"></textarea>
+          </label>
+        </section>
+
+        <section class="survey-card" aria-labelledby="trust-title">
+          <h2 id="trust-title">信任和整体反馈</h2>
+          <label>
+            <span>什么样的平台会让你愿意信任并接单或报价？</span>
+            <textarea name="platform_trust_requirements" rows="4"></textarea>
+          </label>
+          <label>
+            <span>体验完原型后，还有什么建议或想法吗？</span>
+            <textarea name="overall_feedback" rows="5"></textarea>
+          </label>
+        </section>
+
+        <div class="survey-actions">
+          <button type="submit">提交问卷</button>
+          <p>提交后会进入感谢页，回复会保存到 Netlify Forms。</p>
+        </div>
+      </form>
+    </main>
+  </body>
+</html>

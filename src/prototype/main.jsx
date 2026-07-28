@@ -576,6 +576,14 @@ function SearchIcon() {
   );
 }
 
+function CloseIconButton({ label }) {
+  return (
+    <button type="button" aria-label={label}>
+      <img src="/assets/prototype-icons/close.svg" alt="" />
+    </button>
+  );
+}
+
 function JourneyRail({ current }) {
   return (
     <aside className="journey-rail">
@@ -933,12 +941,28 @@ function FactorySearchScreen({ goTo }) {
           <strong>Filters</strong>
           <button type="button">Reset</button>
         </div>
-        <FilterGroup title="Product category">
-          <FilterCheck checked label="Cut & sew apparel" />
-          <FilterCheck label="Knitwear" />
+        <FilterGroup title="Production type">
+          <FilterCheck label="Cut & sew knits" />
+          <FilterCheck checked label="Wovens" />
+          <FilterCheck label="Sweaters / knitwear" />
           <FilterCheck label="Denim" />
+          <FilterCheck label="Seamless / circular knit" />
+          <FilterCheck label="Intimates / delicate garments" />
+          <FilterCheck label="Leather / suede" />
+          <FilterCheck label="Bags / soft goods" />
+        </FilterGroup>
+        <FilterGroup title="Product categories">
+          <FilterCheck checked label="Tops" />
+          <FilterCheck label="Bottoms" />
+          <FilterCheck label="Dresses & jumpsuits" />
           <FilterCheck label="Outerwear" />
-          <FilterCheck label="Swim & activewear" />
+          <FilterCheck label="Activewear" />
+          <FilterCheck label="Intimates / underwear" />
+          <FilterCheck label="Swimwear" />
+          <FilterCheck label="Sleepwear / loungewear" />
+          <FilterCheck label="Childrenswear / baby" />
+          <FilterCheck label="Uniforms / workwear" />
+          <FilterCheck label="Accessories" />
         </FilterGroup>
         <FilterGroup title="Price point">
           <div className="directory-chip-grid">
@@ -1790,7 +1814,7 @@ function ContractScreen({ selectedQuote }) {
             {["Tech pack v3.pdf", "Measurement chart", "Reference photo", "Color breakdown"].map((file) => (
               <span className="attachment-chip" key={file}>
                 {file}
-                <button type="button" aria-label={`Remove ${file}`}>×</button>
+                <CloseIconButton label={`Remove ${file}`} />
               </span>
             ))}
           </div>
