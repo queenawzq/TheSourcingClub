@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "../prototype/styles.css";
 import "./styles.css";
@@ -87,6 +87,400 @@ const nav = [
   { label: "Settings", icon: "settings" },
   { label: "Notifications", icon: "notification" }
 ];
+
+const factoryMainZhText = {
+  "Dashboard": "控制台",
+  "Projects": "项目",
+  "Explore requests": "浏览需求",
+  "Connections": "联系人",
+  "Messages": "消息",
+  "Bookmarks": "收藏",
+  "Settings": "设置",
+  "Notifications": "通知",
+  "Factory account": "工厂账号",
+  "Expand sidebar": "展开侧边栏",
+  "Collapse sidebar": "收起侧边栏",
+  "Factory dashboard": "工厂控制台",
+  "Quotes, funded work, approvals, and brand messages in one operational view.": "报价、已付款项目、审批和品牌消息都集中在这里。",
+  "Open RFQs": "待处理询价",
+  "+3 invited this week": "本周新增 3 个邀请",
+  "Quotes sent": "已发送报价",
+  "4 awaiting brand review": "4 个等待品牌审核",
+  "Active projects": "进行中项目",
+  "2 need sample updates": "2 个需要样品更新",
+  "August capacity": "8 月产能",
+  "Mostly open": "较空",
+  "Open August": "8 月可接单",
+  "Update capacity": "更新产能",
+  "RFQ invites": "询价邀请",
+  "Prioritized requests that match your capacity and capabilities.": "优先显示与你的产能和能力匹配的需求。",
+  "View all": "查看全部",
+  "Brand messages": "品牌消息",
+  "Organic shirts - due today": "有机棉衬衫 - 今天截止",
+  "Organic cotton woven shirt production": "有机棉梭织衬衫生产",
+  "Premium knit capsule for resort drop": "度假系列高级针织小单",
+  "Denim jacket wash development and small bulk": "牛仔夹克洗水开发与小批量生产",
+  "Low-MOQ swim capsule with recycled nylon": "再生尼龙低 MOQ 泳装系列",
+  "Women's woven shirts in organic cotton poplin: 3 colors, 100 units per color. Brand needs fit sample and PP sample before bulk approval.": "女装有机棉府绸梭织衬衫：3 个颜色，每色 100 件。品牌需要试身样和 PP 样，之后再审批大货。",
+  "300 women’s woven shirts in organic cotton poplin. Fit + PP sample before bulk approval.": "300 件女装有机棉府绸梭织衬衫。大货审批前需要试身样和 PP 样。",
+  "300 women's woven shirts in organic cotton poplin. Fit + PP sample before bulk approval.": "300 件女装有机棉府绸梭织衬衫。大货审批前需要试身样和 PP 样。",
+  "Fine-gauge merino blend tops and cardigans for a small resort capsule. Looking for visible sample-room support and yarn sourcing.": "小型度假系列的细针距美利奴混纺上衣和开衫。希望工厂能提供清晰的样品间支持和纱线采购能力。",
+  "Rigid denim jacket with two washes. Brand needs wash-down samples, trim confirmation, and split delivery for first retail test.": "硬挺牛仔夹克，两种洗水。品牌需要洗水样、辅料确认，并为首次零售测试分批交付。",
+  "Small recycled nylon swim run with size set sample and packaging guidance.": "小批量再生尼龙泳装订单，需要齐码样和包装建议。",
+  "Denim jacket wash development with revised 500-unit production run.": "牛仔夹克洗水开发，更新后大货数量为 500 件。",
+  "Low-MOQ swim set capsule using recycled nylon and contrast binding.": "使用再生尼龙和撞色包边的低 MOQ 泳装套装系列。",
+  "Stretch jersey capsule - 2 questions": "弹力针织系列 - 2 个问题",
+  "Recycled fleece overshirt - new brief": "再生摇粒绒外套 - 新需求",
+  "Can you split fit and PP sample cost?": "可以把试身样和 PP 样费用分开报价吗？",
+  "Uploaded updated colorway sheet.": "已上传更新后的配色表。",
+  "Verification renewal due this month.": "本月需要更新验证资料。",
+  "Production step": "生产阶段",
+  "Next due": "下个截止日",
+  "PRODUCTION STEP": "生产阶段",
+  "NEXT DUE": "下个截止日",
+  "unit target": "单价目标",
+  "quantity": "数量",
+  "samples": "样品",
+  "Strong fit": "高度匹配",
+  "Good fit": "匹配",
+  "Potential fit": "可能匹配",
+  "August capacity works": "8 月产能可支持",
+  "Strong fit · August capacity works": "高度匹配 · 8 月产能可支持",
+  "Premium knit experience": "有高级针织经验",
+  "Check wash capacity": "需确认水洗产能",
+  "Maison Rue · 300 units": "Maison Rue · 300 件",
+  "Luna Resort · Lab dips": "Luna Resort · 色样",
+  "Northline · Deposit funded": "Northline · 定金已付款",
+  "RFQs": "询价",
+  "Track active requests you were invited to, quotes you already sent, and brand questions that need an answer.": "管理你收到邀请的需求、已发送报价，以及需要回复的品牌问题。",
+  "Search Projects": "搜索项目",
+  "Project name, ID, or factory...": "项目名称、编号或工厂...",
+  "Sort By": "排序",
+  "Newest First": "最新优先",
+  "Quote Due Soon": "报价即将截止",
+  "Best Match": "最佳匹配",
+  "Active RFQs (4)": "进行中询价 (4)",
+  "Drafts (2)": "草稿 (2)",
+  "Invited (2)": "已邀请 (2)",
+  "Closed (6)": "已关闭 (6)",
+  "Quote submitted": "报价已提交",
+  "Brand question": "品牌有问题",
+  "Due today": "今天截止",
+  "your quote": "你的报价",
+  "quote sent": "报价已发送",
+  "quote due": "报价截止",
+  "View RFQ": "查看询价",
+  "‹ Back to RFQs": "‹ 返回询价",
+  "Requested quantity": "需求数量",
+  "300 units · 3 colors": "300 件 · 3 个颜色",
+  "Review the brand request and the quote you submitted.": "查看品牌需求和你已提交的报价。",
+  "RFQ status": "询价状态",
+  "Your quote was submitted and is visible to Maison Rue.": "你的报价已提交，Maison Rue 可以查看。",
+  "Your quote": "你的报价",
+  "Quote sent": "报价已发送",
+  "Status": "状态",
+  "Helpful reminder": "提示",
+  "Factories should quote exact units and exact lead time here. MOQ only belongs on profile/search, not on a response to a known order quantity.": "这里应填写准确件数和准确交期。MOQ 更适合放在工厂资料或搜索页，不适合用于已知订单数量的报价回复。",
+  "Track funded factory work, sample approvals, milestones, messages, and shared files.": "跟踪已付款项目、样品审批、里程碑、消息和共享文件。",
+  "Factory": "工厂",
+  "All factories": "所有工厂",
+  "Date Range": "日期范围",
+  "Any Time": "任意时间",
+  "Last 30 days": "过去 30 天",
+  "Last 90 days": "过去 90 天",
+  "Next Due": "最近截止",
+  "Brand": "品牌",
+  "Active projects (4)": "进行中项目 (4)",
+  "Message": "发消息",
+  "View project": "查看项目",
+  "Waiting for sample approval": "等待样品审批",
+  "Waiting on brand approval to unlock fund": "等待品牌审批以解锁款项",
+  "Submit lab dip": "提交色样",
+  "Waiting on brand review after lab dip upload": "色样上传后等待品牌审核",
+  "Awaiting funding": "等待付款",
+  "First milestone not funded": "第一个里程碑尚未付款",
+  "Not started": "未开始",
+  "Need funding": "需要付款",
+  "1st step funded": "第一步已付款",
+  "Fit sample": "试身样",
+  "Fit / lab dip": "试身 / 色样",
+  "Production": "生产",
+  "Shipped": "已发货",
+  "Filters": "筛选",
+  "Reset": "重置",
+  "Product category": "产品品类",
+  "Cut & sew apparel": "裁剪缝制成衣",
+  "Knitwear": "针织成衣",
+  "Denim": "牛仔",
+  "Outerwear": "外套",
+  "Swim & activewear": "泳装和运动服",
+  "Price point": "价格层级",
+  "Quantity": "数量",
+  "Under 300": "300 件以下",
+  "Preferred region": "偏好地区",
+  "Open to my region": "开放给我的地区",
+  "Worldwide": "全球",
+  "Client trust": "客户可信度",
+  "Payment verified": "付款已验证",
+  "Timeline": "时间线",
+  "Sample in 30 days": "30 天内打样",
+  "Bulk in 60 days": "60 天内大货",
+  "Flexible": "灵活",
+  "Certifications": "认证",
+  "Projects shown are matched to your capacity, certifications, region fit, client spend, and payment status.": "显示的项目会根据你的产能、认证、地区匹配度、客户消费记录和付款状态进行匹配。",
+  "PROJECT MARKETPLACE": "项目市场",
+  "BROWSE BRAND REQUESTS": "浏览品牌需求",
+  "Search organic cotton, denim, sample-ready...": "搜索有机棉、牛仔、可打样...",
+  "24 open requests": "24 个开放需求",
+  "matching wovens, low MOQ, GOTS, and available August capacity": "匹配梭织、低 MOQ、GOTS 和 8 月可用产能",
+  "Sort: Best fit": "排序：最匹配",
+  "Save": "保存",
+  "View details": "查看详情",
+  "Project brief": "项目简介",
+  "Maison Rue is looking for a vetted cut-and-sew factory for women's organic cotton woven shirts. The brand has a tech pack and wants factories to quote the first sample path and a small production run clearly.": "Maison Rue 正在寻找经过审核的裁剪缝制工厂，生产女装有机棉梭织衬衫。品牌已有 tech pack，希望工厂清楚报价第一轮样品路径和小批量生产。",
+  "The request is intentionally lean: confirm unit price, sample costs, timeline, fabric GSM questions, and whether the requested color split is workable before moving to contract terms.": "这个需求刻意保持精简：在进入合同条款前，请确认单价、样品费用、时间线、面料 GSM 问题，以及所需颜色拆分是否可行。",
+  "‹ Back to explore": "‹ 返回浏览",
+  "Quote-ready details": "报价所需信息",
+  "Target unit price": "目标单价",
+  "Color split": "颜色拆分",
+  "Sample plan": "样品计划",
+  "Bulk timeline": "大货时间",
+  "Late September": "9 月下旬",
+  "Materials and requirements": "材料和要求",
+  "Organic cotton poplin, mid-weight": "中等克重有机棉府绸",
+  "GOTS preferred, but brand can confirm certification path": "优先 GOTS，品牌可确认认证路径",
+  "Brand attachments": "品牌附件",
+  "Review these before quoting. Files open in the brand request workspace.": "报价前请查看这些文件。文件会在品牌需求工作区打开。",
+  "Download files": "下载文件",
+  "Tech pack v3.pdf": "Tech pack v3.pdf",
+  "Tech pack v3.pdf · Measurement chart · Reference photos": "Tech pack v3.pdf · 尺寸表 · 参考图片",
+  "Measurement chart": "尺寸表",
+  "Reference photos": "参考图片",
+  "Questions to answer in your quote": "报价中需要回答的问题",
+  "Can you quote fit sample and PP sample separately?": "可以把试身样和 PP 样分开报价吗？",
+  "Can you support 3 colors at 100 units each?": "可以支持 3 个颜色、每色 100 件吗？",
+  "What fabric GSM or trim details do you need before final sample cost?": "确认最终样品费用前，你需要哪些面料克重或辅料信息？",
+  "Required capabilities": "所需能力",
+  "Pattern support": "制版支持",
+  "Sample-room support": "样品间支持",
+  "Your August capacity and low-MOQ woven experience match the brand request.": "你的 8 月产能和低 MOQ 梭织经验符合品牌需求。",
+  "Send quote": "发送报价",
+  "Save project": "保存项目",
+  "Verified brand": "已验证品牌",
+  "Yes": "是",
+  "Club orders": "平台订单",
+  "Avg. response": "平均回复",
+  "1 day": "1 天",
+  "Payment status": "付款状态",
+  "Verified": "已验证",
+  "New York, USA": "纽约，美国",
+  "Los Angeles, USA": "洛杉矶，美国",
+  "Toronto, Canada": "多伦多，加拿大",
+  "Miami, USA": "迈阿密，美国",
+  "Porto, Portugal": "波尔图，葡萄牙",
+  "Activity on this request": "该需求动态",
+  "3 quotes received": "已收到 3 个报价",
+  "Last viewed by brand: 12 min ago": "品牌最后查看：12 分钟前",
+  "Shortlist starts after Jul 24": "7 月 24 日后开始筛选",
+  "Add fit sample update": "添加试身样更新",
+  "Line-hours available per month": "每月可用产线工时",
+  "Category": "品类",
+  "Wovens — your registered specialization": "梭织 — 你注册的专长",
+  "hours / month": "小时 / 月",
+  "Total across all your lines. This is the number that stays true no matter what style a brand orders.": "所有产线的总工时。无论品牌下单什么款式，这个数字都是基础。",
+  "Estimate uses a standard reference style": "估算使用标准参考款",
+  "Basic woven shirt": "基础梭织衬衫",
+  "~18 min/pc": "约 18 分钟 / 件",
+  "We use a standard woven shirt reference so brands can compare capacity across factories. Once a brand shares a tech pack, the estimate can be adjusted to the actual style.": "我们使用标准梭织衬衫作为参考，方便品牌比较不同工厂的产能。品牌提供 tech pack 后，可按实际款式调整估算。",
+  "Booking level, month by month": "每月接单状态",
+  "Percentage of your hours still free that month. We multiply this against your reference-style estimate to get units.": "当月仍可用工时比例。我们会用它乘以参考款估算，得到件数。",
+  "Partly booked": "部分已订",
+  "Mostly full": "较满",
+  "60-100% open": "60-100% 可接单",
+  "25-60% open": "25-60% 可接单",
+  "0-25% open": "0-25% 可接单",
+  "BRANDS WILL SEE": "品牌将看到",
+  "Save changes": "保存更改",
+  "Submit quote": "提交报价",
+  "Quote the exact unit price, sample path, lead time, and any questions before the brand chooses a factory.": "在品牌选择工厂前，填写准确单价、样品路径、交期和需要确认的问题。",
+  "‹ Back to view project": "‹ 返回项目详情",
+  "Back": "返回",
+  "Save draft": "保存草稿",
+  "Review total": "查看总计",
+  "Quote terms": "报价条款",
+  "Enter exact commercial terms for this request.": "填写该需求的准确商务条款。",
+  "Unit price": "单价",
+  "Exact production quantity *": "准确生产数量 *",
+  "Bulk lead time *": "大货交期 *",
+  "Open capacity window *": "可接单时间窗口 *",
+  "Payment terms": "付款条款",
+  "Shipping / incoterms": "运输 / 贸易条款",
+  "Quote valid until": "报价有效期至",
+  "Break out sample stages so the brand can compare quotes clearly.": "拆分样品阶段，方便品牌清楚比较报价。",
+  "Stage": "阶段",
+  "Cost": "费用",
+  "Timing": "时间",
+  "Includes": "包含",
+  "+ Add sample stage": "+ 添加样品阶段",
+  "Brand questions and factory notes": "品牌问题和工厂备注",
+  "Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM or trim details do you need before final sample cost?": "品牌问题：可以把试身样和 PP 样分开报价吗？可以支持 3 个颜色、每色 100 件吗？确认最终样品费用前，你需要哪些面料 GSM 或辅料信息？",
+  "Factory response": "工厂回复",
+  "Additional details and questions": "补充信息和问题",
+  "Add supporting files or questions regarding the quote.": "添加与报价相关的支持文件或问题。",
+  "Review quote total": "确认报价总计",
+  "Quote for Organic cotton woven shirt production": "有机棉梭织衬衫生产报价",
+  "Quote for 有机棉梭织衬衫生产": "有机棉梭织衬衫生产报价",
+  "‹ Back to edit quote": "‹ 返回编辑报价",
+  "Totals are calculated after saving the quote. Review the breakdown before sending it to Maison Rue.": "保存报价后会计算总计。发送给 Maison Rue 前请确认明细。",
+  "Production subtotal": "生产小计",
+  "Sample shipping": "样品运费",
+  "Quote total shown to brand": "品牌将看到的报价总计",
+  "Ready to send?": "准备发送？",
+  "Confirm the quote is complete before it appears in the brand comparison page.": "发送前请确认报价完整，它会出现在品牌的报价比较页。",
+  "Save progress": "保存进度",
+  "Quote sent successfully": "报价发送成功",
+  "Your quote is now visible to the brand. They can compare it with other factory quotes, message you, or choose your quote for contract terms.": "品牌现在可以看到你的报价。他们可以与其他工厂报价比较、给你发消息，或选择你的报价进入合同条款。",
+  "quote submitted": "报价已提交",
+  "The brand will see your unit price, sample plan, production timing, open capacity, and factory notes in their quote comparison view.": "品牌会在报价比较页看到你的单价、样品计划、生产时间、可用产能和工厂备注。",
+  "quote total": "报价总计",
+  "Go to dashboard": "返回控制台",
+  "Browse more requests": "浏览更多需求",
+  "Quote status": "报价状态",
+  "Maison Rue has been notified. Your quote appears on their comparison page with your factory notes and assumptions.": "Maison Rue 已收到通知。你的报价会和工厂备注及假设一起显示在他们的比较页。",
+  "Shown total": "显示总计",
+  "Keep the quote current": "保持报价更新",
+  "If price, capacity, or sample timing changes before the brand chooses, edit the quote from the submitted quote page.": "如果品牌选择前价格、产能或样品时间有变化，请在已提交报价页修改。",
+  "Project activity": "项目动态",
+  "Factory last viewed project 2h ago": "工厂 2 小时前查看项目",
+  "Last message yesterday": "最后消息：昨天",
+  "Sample photos expected Aug 16": "预计 8 月 16 日上传样品照片",
+  "Bulk deposit locked until approval": "大货定金需审批后解锁",
+  "Production timeline": "生产时间线",
+  "Manage milestones": "管理里程碑",
+  "Add update": "添加更新",
+  "View all updates (7)": "查看全部更新 (7)",
+  "Fit sample is ready for review. Uploaded front, side, and detail photos for approval.": "试身样已准备好审核。已上传正面、侧面和细节照片供审批。",
+  "Front photo": "正面照片",
+  "Detail photo": "细节照片",
+  "Back photo": "背面照片",
+  "+3 files": "+3 个文件",
+  "Upload note": "更新说明",
+  "Optional: packaging, QC expectations, shipping notes, or anything factories should know before quoting.": "选填：包装、质检要求、运输备注，或工厂报价前需要了解的信息。",
+  "+ Upload photos": "+ 上传照片",
+  "JPG or PNG, up to 10 files": "JPG 或 PNG，最多 10 个文件",
+  "Cancel": "取消",
+  "Post update": "发布更新"
+};
+
+const factoryMainZhReplacements = [
+  [/Capacity ([\d,.-]+) units/g, "产能 $1 件"],
+  [/(\d+) units/g, "$1 件"],
+  [/(\d+) colors/g, "$1 个颜色"],
+  [/per color/g, "每色"],
+  [/(\d+) days/g, "$1 天"],
+  [/(\d+) files/g, "$1 个文件"],
+  [/China \/ Portugal \/ Korea/g, "中国 / 葡萄牙 / 韩国"],
+  [/New York, USA/g, "纽约，美国"],
+  [/Los Angeles, USA/g, "洛杉矶，美国"],
+  [/Toronto, Canada/g, "多伦多，加拿大"],
+  [/Miami, USA/g, "迈阿密，美国"],
+  [/Porto, Portugal/g, "波尔图，葡萄牙"],
+  [/Posted 18 minutes ago/g, "18 分钟前发布"],
+  [/Posted yesterday/g, "昨天发布"],
+  [/Posted 2 days ago/g, "2 天前发布"],
+  [/Started Jul 19/g, "7 月 19 日开始"],
+  [/Started Jul 12/g, "7 月 12 日开始"],
+  [/Started Jul 10/g, "7 月 10 日开始"],
+  [/Started Jul 8/g, "7 月 8 日开始"],
+  [/Payment verified/g, "付款已验证"],
+  [/\$(\d+)k\+ spent/g, "已消费 $1k+ 美元"],
+  [/Cut & sew/g, "裁剪缝制"],
+  [/Knitwear/g, "针织成衣"],
+  [/Wovens/g, "梭织"],
+  [/Denim/g, "牛仔"],
+  [/Swim/g, "泳装"],
+  [/GOTS preferred/g, "优先 GOTS"],
+  [/Yarn sourcing/g, "纱线采购"],
+  [/Wash development/g, "洗水开发"],
+  [/Fit \+ size set/g, "试身样 + 齐码样"],
+  [/Wash sample/g, "洗水样"],
+  [/Fit sample/g, "试身样"],
+  [/fit sample/g, "试身样"],
+  [/PP sample/g, "PP 样"],
+  [/after PP approval/g, "PP 样确认后"],
+  [/before shipment/g, "出货前"],
+  [/deposit/g, "定金"],
+  [/\/ unit/g, "/ 件"],
+  [/Jul 24/g, "7 月 24 日"],
+  [/July 26/g, "7 月 26 日"],
+  [/July 29/g, "7 月 29 日"],
+  [/Today/g, "今天"],
+  [/Yesterday/g, "昨天"],
+  [/Aug 1, 2026/g, "2026 年 8 月 1 日"],
+  [/Aug 08/g, "8 月 8 日"],
+  [/Aug 12-30/g, "8 月 12-30 日"],
+  [/Aug 16/g, "8 月 16 日"],
+  [/Jul 28/g, "7 月 28 日"],
+  [/Jul 30/g, "7 月 30 日"],
+  [/Wovens · ([A-Z][a-z]{2}) start · roughly ([\d,.-]+) pieces that month/g, "梭织 · $1 可开始 · 当月约 $2 件"],
+  [/([A-Z][a-z]{2}) mostly open; ([A-Z][a-z]{2}) partly booked/g, "$1 较空；$2 部分已订"]
+];
+
+function translateFactoryMainText(value) {
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  const leading = value.match(/^\s*/)?.[0] || "";
+  const trailing = value.match(/\s*$/)?.[0] || "";
+  let translated = factoryMainZhText[trimmed] || trimmed;
+  factoryMainZhReplacements.forEach(([pattern, replacement]) => {
+    translated = translated.replace(pattern, replacement);
+  });
+  return `${leading}${translated}${trailing}`;
+}
+
+function translateFactoryMainDom(root) {
+  if (!root) return;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentElement;
+      if (!parent || ["SCRIPT", "STYLE", "TEXTAREA"].includes(parent.tagName)) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      if (parent.closest("[data-no-translate]")) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return node.nodeValue.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+    }
+  });
+  const textNodes = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode);
+  textNodes.forEach((node) => {
+    node.nodeValue = translateFactoryMainText(node.nodeValue);
+  });
+
+  root.querySelectorAll("input[placeholder]").forEach((input) => {
+    input.placeholder = translateFactoryMainText(input.placeholder);
+  });
+  root.querySelectorAll("[aria-label]").forEach((element) => {
+    element.setAttribute("aria-label", translateFactoryMainText(element.getAttribute("aria-label") || ""));
+  });
+  root.querySelectorAll("[title]").forEach((element) => {
+    element.setAttribute("title", translateFactoryMainText(element.getAttribute("title") || ""));
+  });
+}
+
+function FactoryMainLanguageLayer({ language }) {
+  useEffect(() => {
+    document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+    if (language !== "zh") return;
+    const frame = window.requestAnimationFrame(() => {
+      translateFactoryMainDom(document.querySelector(".factory-flow"));
+    });
+    return () => window.cancelAnimationFrame(frame);
+  });
+
+  return null;
+}
 
 const factoryRfqs = [
   {
@@ -262,23 +656,29 @@ const onboardingCopy = {
         brandPreview: "Brands will see: Wovens · Aug start · roughly 4,800-8,000 pieces that month"
       },
       {
-        title: "Certifications and your facility",
-        intro: "Select certifications you hold, then upload evidence beside each one. You can finish setup now and add files later.",
+        title: "Get verified, get found",
+        intro: "We review these in the background. Required documents help us verify your factory, while optional references and reports make your profile stronger.",
+        businessLabel: "Business registration certificate *",
+        businessUpload: "Click or drag files to upload",
+        businessHelper: "Required for verification.",
         search: "Search or select a certification",
         certifications: [["GOTS", "Upload certificate"], ["OEKO-TEX Standard 100", "Uploaded"], ["BSCI", "Upload certificate"]],
         add: "+ Add another certification",
-        photos: "Upload photos of your production floor, machines, and finished samples.",
-        helper: "Factories with real facility photos get significantly more brand interest."
+        reference: "Client references",
+        addReference: "+ Add another reference",
+        referenceHelper: "Brands or retailers you have produced for."
       },
       {
-        title: "Get verified, get found",
-        intro: "We review these in the background. Required documents help us verify your factory, while optional references and reports make your profile stronger.",
-        uploads: [
-          ["Business registration certificate", "Required for verification."],
-          ["Current production photo or short video", "A 30-second walkthrough or recent floor photo works best."],
-          ["Audit reports (optional)", "SGS, Bureau Veritas, Intertek, or similar."]
-        ],
-        reference: "Client references"
+        title: "Add your factory walkthrough",
+        intro: "Record or upload one continuous 2-4 minute walkthrough of your facility. No editing needed.",
+        laterNote: "You can complete this step later from your profile.",
+        instructionTitle: "What to record",
+        instructionCopy: "Start at the entrance or reception and say your factory name, city, and today's date. Then walk slowly through the main production floor, materials or components area, key machines or workstations, quality control area, and packing or warehouse area.",
+        instructionMeta: "Target length: 2-4 minutes. Maximum: 5 minutes.",
+        checklistTitle: "Your video should include:",
+        checklist: ["Entrance or reception", "Main production floor", "Materials/components", "Key machines/workstations", "Quality control area", "Packing or warehouse"],
+        optionTitle: "Choose how to add your video (optional)",
+        options: [["Record directly", "Open the recorder and capture the walkthrough now."], ["Upload video", "Add a completed walkthrough video file."]]
       },
       {
         title: "Review your profile",
@@ -293,14 +693,18 @@ const onboardingCopy = {
       {
         title: "Terms & Conditions",
         intro: "Please read and sign our terms before continuing.",
-        terms: ["Platform Usage", "Data Privacy & Confidentiality", "Factory Responsibilities"],
+        terms: [
+          ["Platform Usage", "Use The Sourcing Club to share accurate factory information, respond to brand enquiries professionally, and keep communication related to sourcing opportunities."],
+          ["Data Privacy & Confidentiality", "Only upload documents and media you are allowed to share. Brand enquiries, tech packs, pricing, and project details should be kept confidential unless both sides agree otherwise."],
+          ["Factory Responsibilities", "Keep your profile, capacity, certifications, and contact details up to date. Quotes, lead times, and production commitments should reflect what your factory can realistically deliver."]
+        ],
         agreement: "I have read and agree to the Terms and Conditions",
         signature: "Type your full name to sign electronically",
         cta: "Sign & Continue"
       },
       {
         title: "You're all set",
-        intro: "Your factory profile has been submitted. We'll review verification documents and make your factory discoverable when your profile is ready.",
+        intro: "Your factory profile has been submitted. We'll review your verification documents and let you know when your profile is ready for brands to discover.",
         cta: "Go to Dashboard"
       }
     ],
@@ -359,19 +763,29 @@ const onboardingCopy = {
         brandPreview: "品牌将看到：梭织 · 8 月可开始 · 当月约 4,800-8,000 件"
       },
       {
-        title: "认证与工厂照片",
-        intro: "选择你持有的认证，并在对应行上传证明文件。也可以先完成设置，之后再补充文件。",
+        title: "完成验证，获得更多曝光",
+        intro: "我们会在后台审核这些资料。必填文件用于验证工厂身份，选填资料可以提升资料可信度。",
+        businessLabel: "营业执照 / 公司注册文件 *",
+        businessUpload: "点击或拖拽文件上传",
+        businessHelper: "验证必填。",
         search: "搜索或选择认证",
         certifications: [["GOTS", "上传证书"], ["OEKO-TEX Standard 100", "已上传"], ["BSCI", "上传证书"]],
         add: "+ 添加另一个认证",
-        photos: "上传生产车间、机器设备和成品样品照片。",
-        helper: "真实工厂照片会显著提升品牌兴趣。"
+        reference: "客户参考",
+        addReference: "+ 添加另一个客户参考",
+        referenceHelper: "你曾合作过的品牌或零售商。"
       },
       {
-        title: "完成验证，获得更多曝光",
-        intro: "我们会在后台审核这些资料。必填文件用于验证工厂身份，选填资料可以提升资料可信度。",
-        uploads: [["营业执照 / 公司注册文件", "验证必填。"], ["近期生产照片或短视频", "30 秒车间视频或近期照片即可。"], ["验厂报告（选填）", "SGS、Bureau Veritas、Intertek 等。"]],
-        reference: "客户参考"
+        title: "添加工厂视频 walkthrough",
+        intro: "录制或上传一段连续的 2-4 分钟工厂 walkthrough 视频。无需剪辑。",
+        laterNote: "你可以之后在资料页完成此步骤。",
+        instructionTitle: "录制内容",
+        instructionCopy: "从入口或前台开始，说出工厂名称、城市和当天日期。然后慢慢拍摄主要生产车间、物料或组件区域、关键机器或工位、质检区域，以及包装或仓库区域。",
+        instructionMeta: "建议长度：2-4 分钟。最长：5 分钟。",
+        checklistTitle: "视频应包括：",
+        checklist: ["入口或前台", "主要生产车间", "物料 / 组件区域", "关键机器 / 工位", "质检区域", "包装或仓库"],
+        optionTitle: "选择添加视频的方式（选填）",
+        options: [["直接录制", "打开录制器，现在拍摄 walkthrough。"], ["上传视频", "上传已拍好的 walkthrough 视频文件。"]]
       },
       {
         title: "确认你的工厂资料",
@@ -386,14 +800,18 @@ const onboardingCopy = {
       {
         title: "条款与条件",
         intro: "继续前请阅读并签署平台条款。",
-        terms: ["平台使用", "数据隐私与保密", "工厂责任"],
+        terms: [
+          ["平台使用", "请在 The Sourcing Club 上提供真实准确的工厂信息，专业回复品牌询盘，并将沟通内容用于相关采购合作机会。"],
+          ["数据隐私与保密", "只上传你有权分享的文件和媒体。品牌询盘、技术包、报价和项目细节应予以保密，除非双方另有约定。"],
+          ["工厂责任", "请及时更新工厂资料、产能、认证和联系方式。报价、交期和生产承诺应符合工厂实际可交付能力。"]
+        ],
         agreement: "我已阅读并同意条款与条件",
         signature: "输入你的全名作为电子签名",
         cta: "签署并继续"
       },
       {
         title: "全部完成",
-        intro: "你的工厂资料已提交。我们会审核验证资料，并在资料准备好后让品牌找到你。",
+        intro: "你的工厂资料已提交。我们会审核你的验证文件，并在资料准备好后通知你，让品牌可以找到你的工厂。",
         cta: "进入控制台"
       }
     ],
@@ -487,6 +905,7 @@ function App() {
 
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed factory-flow" : "app-shell factory-flow"}>
+      <FactoryMainLanguageLayer language={onboardingLanguage} />
       <aside className={sidebarCollapsed ? "side-nav collapsed" : "side-nav"}>
         <button
           className="collapse-toggle"
@@ -1253,16 +1672,18 @@ function FactoryOnboarding({ language, step, onLanguageChange, onBack, onNext })
       </header>
 
       <section className={`factory-onboarding-card step-${step + 1}`} aria-label={current.title}>
-        <div className="factory-onboarding-card-header">
-          {isFirst && <img className="factory-onboarding-label" src="/assets/onboarding-sourcing-club-label-clean.png" alt="" />}
-          <h1>{current.title}</h1>
-          {current.intro && <p>{current.intro}</p>}
-        </div>
+        {!isLast && (
+          <div className="factory-onboarding-card-header">
+            {isFirst && <img className="factory-onboarding-label" src="/assets/onboarding-sourcing-club-label-clean.png" alt="" />}
+            <h1>{current.title}</h1>
+            {current.intro && <p>{current.intro}</p>}
+          </div>
+        )}
 
         <FactoryOnboardingStep step={step} content={current} language={language} onLanguageChange={onLanguageChange} />
 
         <footer className="factory-onboarding-actions">
-          {!isFirst && (
+          {!isFirst && !isLast && (
             <button className="secondary-btn" type="button" onClick={onBack}>
               {copy.back}
             </button>
@@ -1338,7 +1759,12 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
 
   if (step === 6) {
     return (
-      <div className="factory-onboarding-section">
+      <div className="factory-onboarding-section verification-step">
+        <div className="verification-upload-block">
+          <strong>{content.businessLabel}</strong>
+          <button className="onboarding-file-upload" type="button">{content.businessUpload}</button>
+          <small>{content.businessHelper}</small>
+        </div>
         <OnboardingField label={language === "zh" ? "持有的认证" : "Certifications you hold"} placeholder={content.search} />
         <div className="certification-upload-list">
           {content.certifications.map(([name, status]) => (
@@ -1351,37 +1777,51 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
           ))}
         </div>
         <button className="onboarding-text-action" type="button">{content.add}</button>
-        <div className="onboarding-upload-box">{content.photos}</div>
-        <p className="onboarding-helper">{content.helper}</p>
-      </div>
-    );
-  }
-
-  if (step === 7) {
-    return (
-      <div className="factory-onboarding-section">
-        <div className="verification-upload-list">
-          {content.uploads.map(([label, helper], index) => (
-            <div className="verification-upload" key={label}>
-              <div>
-                <strong>{label}</strong>
-                <small>{helper}</small>
-              </div>
-              <button className={index === 0 ? "uploaded-pill" : "secondary-btn"} type="button">
-                {index === 0
-                  ? (language === "zh" ? "已上传" : "Uploaded")
-                  : (language === "zh" ? "上传文件" : "Upload file")}
-              </button>
-            </div>
-          ))}
-        </div>
-        <div className="onboarding-reference-row">
+        <div className="onboarding-reference-row compact">
           <strong>{content.reference}</strong>
           <div>
             <input placeholder={language === "zh" ? "公司名称" : "Company name"} />
             <input placeholder={language === "zh" ? "联系人或公开链接" : "Contact or public link"} />
           </div>
+          <button className="onboarding-text-action muted" type="button">{content.addReference}</button>
+          <small>{content.referenceHelper}</small>
         </div>
+      </div>
+    );
+  }
+
+  if (step === 7) {
+    const [primaryChecklist, secondaryChecklist] = [content.checklist.slice(0, 3), content.checklist.slice(3)];
+
+    return (
+      <div className="factory-onboarding-section walkthrough-section">
+        <p className="onboarding-later-note">{content.laterNote}</p>
+        <section className="walkthrough-panel">
+          <strong>{content.instructionTitle}</strong>
+          <p>{content.instructionCopy}</p>
+          <span>{content.instructionMeta}</span>
+        </section>
+        <section className="walkthrough-panel walkthrough-checklist">
+          <strong>{content.checklistTitle}</strong>
+          <div>
+            {[primaryChecklist, secondaryChecklist].map((items, index) => (
+              <ul key={index}>
+                {items.map((item) => <li key={item}>{item}</li>)}
+              </ul>
+            ))}
+          </div>
+        </section>
+        <section className="walkthrough-options">
+          <strong>{content.optionTitle}</strong>
+          <div>
+            {content.options.map(([title, helper]) => (
+              <button className="walkthrough-option" type="button" key={title}>
+                <strong>{title}</strong>
+                <small>{helper}</small>
+              </button>
+            ))}
+          </div>
+        </section>
       </div>
     );
   }
@@ -1392,9 +1832,11 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
         {content.sections.map(([title, rows]) => (
           <section className="factory-review-section" key={title}>
             <h2>{title}</h2>
-            {rows.map(([label, value]) => (
-              <DetailPair label={label} value={value} key={label} />
-            ))}
+            <div className="factory-onboarding-review-rows">
+              {rows.map(([label, value]) => (
+                <DetailPair label={label} value={value} key={label} />
+              ))}
+            </div>
           </section>
         ))}
       </div>
@@ -1404,10 +1846,10 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
   if (step === 9) {
     return (
       <div className="factory-onboarding-section terms-section">
-        {content.terms.map((term, index) => (
+        {content.terms.map(([term, description], index) => (
           <article key={term}>
             <h2>{index + 1}. {term}</h2>
-            <p>{language === "zh" ? "请确认你理解并同意本平台的资料真实性、保密和合作责任要求。" : "Please confirm you understand the platform expectations, confidentiality requirements, and factory responsibilities."}</p>
+            <p>{description}</p>
           </article>
         ))}
         <label className="directory-check terms-check">
@@ -1421,8 +1863,10 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
 
   return (
     <div className="factory-onboarding-complete">
-      <span>✓</span>
+      <img className="factory-onboarding-success-icon" src="/assets/prototype-icons/success.svg" alt="" />
+      <h1>{content.title}</h1>
       <p>{content.intro}</p>
+      <img className="factory-onboarding-success-preview" src="/assets/prototype-icons/container-margin.svg" alt="" />
     </div>
   );
 }
@@ -1953,14 +2397,14 @@ function FactoryReviewTotal({ project, onBack, onEdit, onSendQuote }) {
               {rows.map(([label, value]) => (
                 <React.Fragment key={label}>
                   <span>{label}</span>
-                  <strong>{value}</strong>
+                  <strong data-no-translate>{value}</strong>
                 </React.Fragment>
               ))}
             </div>
 
             <div className="factory-review-total">
               <span>Quote total shown to brand</span>
-              <strong>$5,780</strong>
+              <strong data-no-translate>$5,780</strong>
             </div>
           </section>
 
@@ -2141,7 +2585,7 @@ function QuoteField({ label, value, helper }) {
   return (
     <label className="factory-quote-field">
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong data-no-translate>{value}</strong>
       <small>{helper}</small>
     </label>
   );
@@ -2151,7 +2595,7 @@ function QuoteTextarea({ value, label }) {
   return (
     <div className="factory-quote-textarea">
       {label && <span>{label}</span>}
-      {value}
+      <span data-no-translate>{value}</span>
     </div>
   );
 }
