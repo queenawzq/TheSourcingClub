@@ -267,8 +267,9 @@
 .survey-thanks {
   display: grid;
   gap: 36px;
-  min-height: 100vh;
-  align-content: center;
+  min-height: auto;
+  padding-top: 64px;
+  align-content: start;
 }
 
 .survey-thanks .survey-card {
@@ -328,5 +329,9 @@
   .survey-actions {
     display: grid;
     justify-items: start;
+  }
+
+  .survey-thanks {
+    padding-top: 40px;
   }
 }
