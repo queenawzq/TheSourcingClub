@@ -71,83 +71,142 @@
           </div>
         </section>
 
-        <section class="survey-card" aria-labelledby="onboarding-title">
-          <h2 id="onboarding-title">入门注册</h2>
+        <section class="survey-card" aria-labelledby="explore-title">
+          <h2 id="explore-title">浏览需求</h2>
+          <fieldset class="survey-rating">
+            <legend>浏览品牌需求时，你能清楚判断哪些项目值得报价吗？</legend>
+            <div class="survey-rating-scale" aria-label="1 表示不清楚，5 表示很清楚">
+              <span>不清楚</span>
+              <label><b>1</b><input type="radio" name="project_quote_worth_clarity" value="1" /></label>
+              <label><b>2</b><input type="radio" name="project_quote_worth_clarity" value="2" /></label>
+              <label><b>3</b><input type="radio" name="project_quote_worth_clarity" value="3" /></label>
+              <label><b>4</b><input type="radio" name="project_quote_worth_clarity" value="4" /></label>
+              <label><b>5</b><input type="radio" name="project_quote_worth_clarity" value="5" /></label>
+              <span>很清楚</span>
+            </div>
+          </fieldset>
           <label>
-            <span>填写工厂资料时，有没有哪里让你觉得困惑或者信息不够用？</span>
-            <textarea name="onboarding_confusing_or_missing_info" rows="4"></textarea>
-          </label>
-          <label>
-            <span>关于产能、品类和认证等级的问题，填写起来清楚吗？有没有不知道怎么回答的？</span>
-            <textarea name="onboarding_capacity_category_certification_clarity" rows="4"></textarea>
+            <span>决定是否报价之前，你还需要知道哪些信息？</span>
+            <textarea name="info_needed_before_quote" rows="3" placeholder="例如：面料、工艺、尺码、付款方式、交期、验货要求"></textarea>
           </label>
         </section>
 
         <section class="survey-card" aria-labelledby="quote-title">
-          <h2 id="quote-title">浏览需求和提交报价</h2>
+          <h2 id="quote-title">提交报价</h2>
+          <fieldset>
+            <legend>报价表有没有问到正确的信息？</legend>
+            <label class="survey-choice">
+              <input type="radio" name="quote_form_asks_right_info" value="yes_mostly" />
+              <span>有，大部分信息都合适</span>
+            </label>
+            <label class="survey-choice">
+              <input type="radio" name="quote_form_asks_right_info" value="somewhat" />
+              <span>有一点，但有些地方想改</span>
+            </label>
+            <label class="survey-choice">
+              <input type="radio" name="quote_form_asks_right_info" value="missing_important_info" />
+              <span>没有，缺了重要信息</span>
+            </label>
+          </fieldset>
           <label>
-            <span>看询价单的时候，能看清楚品牌方的具体需求吗？哪里不清楚？</span>
-            <textarea name="rfq_requirement_clarity" rows="4"></textarea>
-          </label>
-          <label>
-            <span>你平时报价前通常会向品牌方确认哪些信息，但询价单里没有提到？</span>
-            <textarea name="missing_pre_quote_questions" rows="4"></textarea>
-          </label>
-          <label>
-            <span>提交报价时，有没有哪些内容，比如起订量、交货期、价格结构，不好填写或说明？</span>
-            <textarea name="quote_fields_hard_to_answer" rows="4"></textarea>
+            <span>如果要改，你会增加或修改什么？</span>
+            <textarea name="quote_form_add_or_change" rows="3"></textarea>
           </label>
           <fieldset>
-            <legend>你会放心直接在平台上给一个真实项目报价吗，还是想先电话或微信沟通？</legend>
+            <legend>如果是真实项目，你会怎么报价？</legend>
             <label class="survey-choice">
-              <input type="radio" name="quote_comfort_level" value="comfortable_on_platform" />
-              <span>会放心直接在平台报价</span>
+              <input type="radio" name="real_quote_behavior" value="quote_directly_on_platform" />
+              <span>可以直接在平台报价</span>
             </label>
             <label class="survey-choice">
-              <input type="radio" name="quote_comfort_level" value="prefer_call_or_wechat_first" />
-              <span>想先电话或微信沟通</span>
+              <input type="radio" name="real_quote_behavior" value="chat_first_then_quote" />
+              <span>想先电话或微信沟通，再报价</span>
             </label>
             <label class="survey-choice">
-              <input type="radio" name="quote_comfort_level" value="depends_on_project" />
-              <span>看项目情况</span>
+              <input type="radio" name="real_quote_behavior" value="depends_on_project" />
+              <span>看项目大小和清楚程度</span>
             </label>
-            <textarea name="quote_comfort_reason" rows="3" placeholder="可以补充原因"></textarea>
           </fieldset>
         </section>
 
-        <section class="survey-card" aria-labelledby="projects-title">
-          <h2 id="projects-title">项目页面和更新</h2>
-          <label>
-            <span>你能看清楚一个项目目前处于哪个阶段、接下来该做什么吗？</span>
-            <textarea name="project_stage_next_step_clarity" rows="4"></textarea>
-          </label>
-          <label>
-            <span>你希望在这里更新什么内容，比如照片、生产进度、延期情况？</span>
-            <textarea name="desired_project_updates" rows="4"></textarea>
-          </label>
+        <section class="survey-card" aria-labelledby="rfq-title">
+          <h2 id="rfq-title">询价和项目页面</h2>
+          <fieldset class="survey-rating">
+            <legend>询价页面有没有清楚告诉你哪些请求需要处理？</legend>
+            <div class="survey-rating-scale" aria-label="1 表示不清楚，5 表示很清楚">
+              <span>不清楚</span>
+              <label><b>1</b><input type="radio" name="rfq_action_clarity" value="1" /></label>
+              <label><b>2</b><input type="radio" name="rfq_action_clarity" value="2" /></label>
+              <label><b>3</b><input type="radio" name="rfq_action_clarity" value="3" /></label>
+              <label><b>4</b><input type="radio" name="rfq_action_clarity" value="4" /></label>
+              <label><b>5</b><input type="radio" name="rfq_action_clarity" value="5" /></label>
+              <span>很清楚</span>
+            </div>
+          </fieldset>
+          <fieldset class="survey-rating">
+            <legend>项目页面能不能让你看清楚当前阶段和下一步？</legend>
+            <div class="survey-rating-scale" aria-label="1 表示不清楚，5 表示很清楚">
+              <span>不清楚</span>
+              <label><b>1</b><input type="radio" name="project_next_step_clarity" value="1" /></label>
+              <label><b>2</b><input type="radio" name="project_next_step_clarity" value="2" /></label>
+              <label><b>3</b><input type="radio" name="project_next_step_clarity" value="3" /></label>
+              <label><b>4</b><input type="radio" name="project_next_step_clarity" value="4" /></label>
+              <label><b>5</b><input type="radio" name="project_next_step_clarity" value="5" /></label>
+              <span>很清楚</span>
+            </div>
+          </fieldset>
         </section>
 
         <section class="survey-card" aria-labelledby="capacity-title">
           <h2 id="capacity-title">产能设置</h2>
+          <fieldset>
+            <legend>用“每月产线工时”来更新产能，符合你平时的理解方式吗？</legend>
+            <label class="survey-choice">
+              <input type="radio" name="capacity_hours_match" value="yes_makes_sense" />
+              <span>符合，这样可以理解</span>
+            </label>
+            <label class="survey-choice">
+              <input type="radio" name="capacity_hours_match" value="somewhat_change_parts" />
+              <span>有点理解，但想改一些地方</span>
+            </label>
+            <label class="survey-choice">
+              <input type="radio" name="capacity_hours_match" value="not_how_we_calculate" />
+              <span>不符合，我们不是这样算产能</span>
+            </label>
+          </fieldset>
           <label>
-            <span>用“每月产线工时”来表示产能，这个方式你能理解吗？符合你平时的表达习惯吗？</span>
-            <textarea name="capacity_hours_understanding" rows="4"></textarea>
+            <span>如果不符合，什么方式会更容易填写？</span>
+            <textarea name="capacity_easier_input_method" rows="3" placeholder="例如：按机器数量、工人数、每月件数、当前空档期"></textarea>
           </label>
-          <label>
-            <span>你会每个月主动更新这个数据吗？有什么原因可能会让你忘记更新？</span>
-            <textarea name="capacity_update_habit_and_barriers" rows="4"></textarea>
-          </label>
+          <fieldset>
+            <legend>你会每个月主动更新产能吗？</legend>
+            <label class="survey-choice"><input type="radio" name="monthly_capacity_update_likelihood" value="yes" /><span>会</span></label>
+            <label class="survey-choice"><input type="radio" name="monthly_capacity_update_likelihood" value="maybe_with_reminder" /><span>如果有提醒，可能会</span></label>
+            <label class="survey-choice"><input type="radio" name="monthly_capacity_update_likelihood" value="unlikely" /><span>不太会</span></label>
+          </fieldset>
         </section>
 
         <section class="survey-card" aria-labelledby="trust-title">
           <h2 id="trust-title">信任和整体反馈</h2>
+          <fieldset>
+            <legend>什么会让你更放心报价或接单？可多选</legend>
+            <div class="survey-check-grid">
+              <label class="survey-choice"><input type="checkbox" name="trust_factors" value="verified_brand" /><span>品牌方已验证</span></label>
+              <label class="survey-choice"><input type="checkbox" name="trust_factors" value="payment_verified" /><span>付款方式 / 定金明确</span></label>
+              <label class="survey-choice"><input type="checkbox" name="trust_factors" value="clear_brief" /><span>需求资料完整</span></label>
+              <label class="survey-choice"><input type="checkbox" name="trust_factors" value="chat_before_quote" /><span>报价前可以沟通</span></label>
+              <label class="survey-choice"><input type="checkbox" name="trust_factors" value="contract_protection" /><span>合同或平台保障</span></label>
+              <label class="survey-choice"><input type="checkbox" name="trust_factors" value="dispute_process" /><span>纠纷处理规则清楚</span></label>
+            </div>
+            <textarea name="trust_factors_other" rows="2" placeholder="其他让你信任的条件"></textarea>
+          </fieldset>
           <label>
-            <span>什么样的平台会让你愿意信任并接单或报价？</span>
-            <textarea name="platform_trust_requirements" rows="4"></textarea>
+            <span>如果我们只能先改一个地方，你觉得最应该改什么？</span>
+            <textarea name="one_thing_to_improve" rows="3"></textarea>
           </label>
           <label>
-            <span>体验完原型后，还有什么建议或想法吗？</span>
-            <textarea name="overall_feedback" rows="5"></textarea>
+            <span>体验完原型后，还有其他建议或想法吗？</span>
+            <textarea name="overall_feedback" rows="4"></textarea>
           </label>
         </section>
 
