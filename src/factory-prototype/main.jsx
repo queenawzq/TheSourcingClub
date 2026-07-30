@@ -83,7 +83,7 @@ const nav = [
   { label: "Explore requests", icon: "explore" },
   { label: "Connections", icon: "connections" },
   { label: "Messages", icon: "messages" },
-  { label: "Bookmarks", icon: "bookmarks" },
+  { label: "Saved", icon: "bookmarks" },
   { label: "Settings", icon: "settings" },
   { label: "Notifications", icon: "notification" }
 ];
@@ -94,7 +94,7 @@ const factoryMainZhText = {
   "Explore requests": "浏览需求",
   "Connections": "联系人",
   "Messages": "消息",
-  "Bookmarks": "收藏",
+  "Saved": "收藏",
   "Settings": "设置",
   "Notifications": "通知",
   "Factory account": "工厂账号",
@@ -193,7 +193,7 @@ const factoryMainZhText = {
   "First milestone payment not received": "第一笔里程碑付款尚未收到",
   "Not started": "未开始",
   "Need payment": "需要付款",
-  "1st step funded": "第一阶段资金已托管",
+  "1st step funded": "首阶段资金托管",
   "Fit sample": "试身样",
   "Fit / lab dip": "试身 / 色样",
   "Production": "生产",
