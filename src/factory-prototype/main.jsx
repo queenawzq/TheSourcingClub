@@ -152,6 +152,7 @@ const factoryMainZhText = {
   "Drafts (3)": "草稿 (3)",
   "Invited (2)": "已邀请 (2)",
   "Closed (6)": "已关闭 (6)",
+  "Draft": "草稿",
   "Quote submitted": "报价已提交",
   "Due soon": "即将截止",
   "Due today": "今天截止",
@@ -192,7 +193,7 @@ const factoryMainZhText = {
   "First milestone payment not received": "第一笔里程碑付款尚未收到",
   "Not started": "未开始",
   "Need payment": "需要付款",
-  "1st payment received": "第一笔付款已收到",
+  "1st step funded": "第一阶段资金已托管",
   "Fit sample": "试身样",
   "Fit / lab dip": "试身 / 色样",
   "Production": "生产",
@@ -322,7 +323,8 @@ const factoryMainZhText = {
   "‹ Back to view project": "‹ 返回项目详情",
   "Back": "返回",
   "Save draft": "保存草稿",
-  "Review total": "查看总计",
+  "Review quote": "审核报价",
+  "Review total": "审核报价",
   "Quote terms": "报价条款",
   "Enter exact commercial terms for this request.": "填写该需求的准确商务条款。",
   "You can fill this in Chinese. We'll create an English version for you to review before sending.": "可用中文填写，提交前会生成英文版本供你确认。",
@@ -368,14 +370,14 @@ const factoryMainZhText = {
   "Order activity": "订单动态",
   "‹ Back to production orders": "‹ 返回生产订单",
   "order total": "订单总额",
-  "order funds": "订单资金",
+  "funded": "资金已托管",
   "remaining": "剩余金额",
   "next payment": "下一笔付款",
   "Overview": "概览",
   "Messages (2)": "消息 (2)",
   "Files": "文件",
   "Contract details": "合同详情",
-  "Funded · due Aug 16": "已付款 · 8 月 16 日截止",
+  "Funded · due Aug 16": "资金已托管 · 8 月 16 日截止",
   "Factory prepares first sample and uploads sample photos for approval.": "工厂准备第一件样品，并上传样品照片供审批。",
   "Lab dip / color": "色样 / 颜色",
   "Awaiting brand approval": "等待品牌审批",
@@ -629,7 +631,7 @@ const factoryProjects = [
   }
 ];
 
-const projectSteps = ["1st payment received", "Fit sample", "Fit / lab dip", "Production", "Shipped"];
+const projectSteps = ["1st step funded", "Fit sample", "Fit / lab dip", "Production", "Shipped"];
 
 const onboardingCopy = {
   en: {
@@ -990,6 +992,7 @@ function App() {
 
       {screen === "dashboard" && (
         <FactoryDashboardPage
+          language={onboardingLanguage}
           capacityValue={dashboardCapacity}
           onUpdateCapacity={() => setCapacityDrawerOpen(true)}
           onViewRfqs={() => setScreen("rfqs")}
@@ -1006,10 +1009,14 @@ function App() {
         />
       )}
       {screen === "projects" && (
-        <FactoryProjectsPage onViewProject={() => setScreen("projectDetail")} />
+        <FactoryProjectsPage
+          language={onboardingLanguage}
+          onViewProject={() => setScreen("projectDetail")}
+        />
       )}
       {screen === "rfqs" && (
         <FactoryRfqsPage
+          language={onboardingLanguage}
           onViewRequest={() => setScreen("rfqReadOnly")}
           onEditQuote={() => setScreen("quote")}
         />
@@ -1083,8 +1090,9 @@ function App() {
   );
 }
 
-function FactoryDashboardPage({ capacityValue, onUpdateCapacity, onViewRfqs, onViewProjects }) {
+function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onViewRfqs, onViewProjects }) {
   const capacityUnits = getCapacityUnitRange(capacityValue);
+  const isZh = language === "zh";
 
   return (
     <main className="factory-dashboard-page">
@@ -1140,8 +1148,8 @@ function FactoryDashboardPage({ capacityValue, onUpdateCapacity, onViewRfqs, onV
             action="View all"
             onAction={onViewProjects}
           >
-            <FactoryProjectDashboardRow title="Organic cotton woven shirt production" meta="Maison Rue · New York, USA · Started Jul 19" step="Fit sample" due="Aug 16" status="Waiting for sample approval" tone="strong" progressStep={2} />
-            <FactoryProjectDashboardRow title="Premium knit capsule for resort drop" meta="Hansu Studio · Seoul, Korea · Started Jul 12" step="Fit / lab dip" due="Aug 16" status="Submit lab dip" tone="warn" progressStep={3} />
+            <FactoryProjectDashboardRow language={language} title="Organic cotton woven shirt production" meta="Maison Rue · New York, USA · Started Jul 19" step="Fit sample" due={isZh ? "8 月 16 日" : "Aug 16"} status="Waiting for sample approval" tone="strong" progressStep={2} />
+            <FactoryProjectDashboardRow language={language} title="Premium knit capsule for resort drop" meta="Hansu Studio · Seoul, Korea · Started Jul 12" step="Fit / lab dip" due={isZh ? "8 月 16 日" : "Aug 16"} status="Submit lab dip" tone="warn" progressStep={3} />
           </FactoryDashboardPanel>
         </section>
       </div>
@@ -1202,15 +1210,16 @@ function FactoryMessageRow({ brand, message, time, unread = false, brandAuthored
   );
 }
 
-function FactoryProjectDashboardRow({ title, meta, step, due, status, tone, progressStep }) {
-  const steps = ["1st payment received", "Fit sample", "Fit / lab dip", "Production", "Shipped"];
+function FactoryProjectDashboardRow({ language, title, meta, step, due, status, tone, progressStep }) {
+  const steps = ["1st step funded", "Fit sample", "Fit / lab dip", "Production", "Shipped"];
+  const isZh = language === "zh";
 
   return (
     <article className="factory-dashboard-row factory-project-dashboard-row">
       <span className="factory-dashboard-thumb" />
       <div className="factory-dashboard-row-main">
-        <strong data-no-translate>{title}</strong>
-        <p data-no-translate>{meta}</p>
+        <strong data-no-translate>{isZh ? getTranslatedProjectTitle(title) : title}</strong>
+        <p data-no-translate>{isZh ? getTranslatedListMeta(meta) : meta}</p>
         <div className="factory-project-progress" aria-label={`${title} progress`}>
           <div className="factory-project-progress-line">
             <span style={{ width: `${Math.max(0, progressStep - 1) * 25}%` }} />
@@ -1243,7 +1252,7 @@ function FactoryProjectDashboardRow({ title, meta, step, due, status, tone, prog
   );
 }
 
-function FactoryRfqsPage({ onViewRequest, onEditQuote }) {
+function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
   return (
     <main className="rfqs-page factory-rfqs-page">
       <div className="rfqs-shell">
@@ -1283,6 +1292,7 @@ function FactoryRfqsPage({ onViewRequest, onEditQuote }) {
           {factoryRfqs.map((rfq) => (
             <FactoryRfqCard
               rfq={rfq}
+              language={language}
               key={rfq.title}
               onViewRequest={onViewRequest}
               onEditQuote={onEditQuote}
@@ -1294,14 +1304,17 @@ function FactoryRfqsPage({ onViewRequest, onEditQuote }) {
   );
 }
 
-function FactoryRfqCard({ rfq, onViewRequest, onEditQuote }) {
+function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
+  const isZh = language === "zh";
+
   return (
     <article className={rfq.featured ? "rfq-card featured factory-rfq-card" : "rfq-card factory-rfq-card"}>
       <div className="rfq-thumbnail" aria-hidden="true" />
       <div className="rfq-main">
-        <h2 data-no-translate>{rfq.title}</h2>
-        <p className="rfq-date" data-no-translate>{rfq.meta}</p>
-        <p className="rfq-description" data-no-translate>{rfq.description}</p>
+        <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(rfq.title) : rfq.title}</h2>
+        <p className="rfq-date" data-no-translate>{isZh ? getTranslatedListMeta(rfq.meta) : rfq.meta}</p>
+        <p className="rfq-description" data-no-translate>{isZh ? getTranslatedListDescription(rfq) : rfq.description}</p>
+        {isZh && <ListTranslationMeta />}
       </div>
       <div className="tag-row compact-tags rfq-tags">
         {rfq.tags.map((tag) => (
@@ -1369,7 +1382,7 @@ function FactoryReadOnlyRfqPage({ project, language, onBack }) {
   );
 }
 
-function FactoryProjectsPage({ onViewProject }) {
+function FactoryProjectsPage({ language, onViewProject }) {
   return (
     <main className="rfqs-page factory-projects-page">
       <div className="rfqs-shell projects-shell">
@@ -1421,7 +1434,12 @@ function FactoryProjectsPage({ onViewProject }) {
 
         <section className="projects-list" aria-label="Active factory production orders">
           {factoryProjects.map((project) => (
-            <FactoryProjectListCard project={project} onViewProject={onViewProject} key={project.title} />
+            <FactoryProjectListCard
+              project={project}
+              language={language}
+              onViewProject={onViewProject}
+              key={project.title}
+            />
           ))}
         </section>
       </div>
@@ -1429,14 +1447,19 @@ function FactoryProjectsPage({ onViewProject }) {
   );
 }
 
-function FactoryProjectListCard({ project, onViewProject }) {
+function FactoryProjectListCard({ project, language, onViewProject }) {
+  const isZh = language === "zh";
+
   return (
     <article className={project.featured ? "brand-project-card featured factory-active-project-card" : "brand-project-card factory-active-project-card"}>
       <div className="project-thumbnail" aria-hidden="true" />
       <div className="project-main">
-        <h2 data-no-translate>{project.title}</h2>
-        <p className="project-meta" data-no-translate>{project.brand} · {project.location} · {project.started}</p>
-        <p className="project-description" data-no-translate>{project.description}</p>
+        <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</h2>
+        <p className="project-meta" data-no-translate>
+          {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : `${project.brand} · ${project.location} · ${project.started}`}
+        </p>
+        <p className="project-description" data-no-translate>{isZh ? getTranslatedListDescription(project) : project.description}</p>
+        {isZh && <ListTranslationMeta />}
         <div className="project-status-row">
           <span className={`project-status ${project.statusTone}`}>{project.status}</span>
           <span>{project.statusDetail}</span>
@@ -2318,7 +2341,9 @@ function BrandProjectCard({ project, language, onViewDetails }) {
           <div className="factory-name-row">
             <h2 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h2>
           </div>
-          <p data-no-translate>{project.brand} · {project.location} · {project.posted}</p>
+          <p data-no-translate>
+            {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : `${project.brand} · ${project.location} · ${project.posted}`}
+          </p>
           {isZh ? (
             <TranslatedProjectSummary project={project} />
           ) : (
@@ -2357,10 +2382,68 @@ function getTranslatedProjectTitle(title) {
   const translatedTitles = {
     "Organic cotton woven shirt production": "有机棉梭织衬衫生产订单",
     "Premium knit capsule for resort drop": "高级针织度假系列生产订单",
-    "Denim jacket wash development and small bulk": "牛仔夹克洗水开发与小批量生产"
+    "Denim jacket wash development and small bulk": "牛仔夹克洗水开发与小批量生产",
+    "Low-MOQ swim capsule with recycled nylon": "再生尼龙低起订量泳装系列"
   };
 
   return translatedTitles[title] || title;
+}
+
+function ListTranslationMeta() {
+  return (
+    <div className="brand-brief-translation-meta list-card-translation-meta">
+      <span>由英文自动翻译</span>
+      <button type="button">查看英文原文</button>
+    </div>
+  );
+}
+
+function getTranslatedListMeta(meta) {
+  const replacements = {
+    "New York, USA": "纽约，美国",
+    "Los Angeles, USA": "洛杉矶，美国",
+    "Toronto, Canada": "多伦多，加拿大",
+    "Miami, USA": "迈阿密，美国",
+    "Austin, USA": "奥斯汀，美国",
+    "Seoul, Korea": "首尔，韩国",
+    "Porto, Portugal": "波尔图，葡萄牙",
+    "Payment verified": "付款已验证",
+    "$25k+ spent": "已消费 $25k+",
+    "$5k+ spent": "已消费 $5k+",
+    "Posted 18 minutes ago": "18 分钟前发布",
+    "Posted yesterday": "昨天发布",
+    "Posted 2 days ago": "2 天前发布",
+    "Started Jul 19": "7 月 19 日开始",
+    "Started Jul 12": "7 月 12 日开始",
+    "Started Jul 10": "7 月 10 日开始",
+    "Started Jul 8": "7 月 8 日开始"
+  };
+
+  return meta.split(" · ").map((part, index) => {
+    if (index === 0) return part;
+    return replacements[part] || part;
+  }).join(" · ");
+}
+
+function getTranslatedListDescription(item) {
+  const translatedDescriptions = {
+    "300 women’s woven shirts in organic cotton poplin. Fit + PP sample before bulk approval.":
+      "300 件女装有机棉府绸梭织衬衫。大货审批前需要试身样和 PP 样。",
+    "Fine-gauge merino blend tops and cardigans. Brand wants visible sample-room support.":
+      "精纺美利奴混纺上衣和开衫。品牌希望看到清晰的样品间支持。",
+    "Rigid denim jacket with two washes. Needs wash-down samples, trims confirmation, and split delivery.":
+      "硬挺牛仔夹克，包含两种洗水。需要洗水样、辅料确认和分批交付安排。",
+    "Small recycled nylon swim run with size set sample and packaging guidance.":
+      "小批量再生尼龙泳装生产，需要齐码样和包装建议。",
+    "Small capsule of lightweight knit tops with PP sample before bulk approval.":
+      "轻薄针织上衣小系列，大货审批前需要 PP 样。",
+    "Denim jacket wash development with revised 500-unit production run.":
+      "牛仔夹克洗水开发，并调整为 500 件生产安排。",
+    "Low-MOQ swim set capsule using recycled nylon and contrast binding.":
+      "低起订量再生尼龙泳装套装系列，包含撞色包边。"
+  };
+
+  return translatedDescriptions[item.description] || getTranslatedProjectSummary(item);
 }
 
 function TranslatedProjectSummary({ project }) {
@@ -2393,7 +2476,9 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
       <header className="factory-detail-header">
         <button className="text-link" type="button" onClick={onBack}>‹ Back to explore</button>
         <h1 data-no-translate={!isZh || undefined}>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</h1>
-        <p data-no-translate>{project.brand} · {project.location} · {isZh ? "18 分钟前发布" : project.posted}</p>
+        <p data-no-translate>
+          {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : `${project.brand} · ${project.location} · ${project.posted}`}
+        </p>
         {isZh && (
           <div className="brand-brief-translation-meta factory-detail-translation-meta">
             <span>由英文自动翻译</span>
@@ -2543,20 +2628,21 @@ function BrandBrief({ language }) {
 
 function FactoryProjectProgressDetail({ language, onBack, onPostUpdate, showPostedUpdate = false }) {
   const [updateMilestone, setUpdateMilestone] = useState(null);
+  const isZh = language === "zh";
 
   return (
     <main className="factory-detail-page factory-project-detail-page">
       <header className="factory-detail-header factory-project-detail-header">
         <button className="text-link" type="button" onClick={onBack}>‹ Back to production orders</button>
-        <h1 data-no-translate>Organic cotton woven shirt production</h1>
-        <p data-no-translate>Atelier Minho · Porto, Portugal · Started Jul 19</p>
+        <h1 data-no-translate>{isZh ? getTranslatedProjectTitle("Organic cotton woven shirt production") : "Organic cotton woven shirt production"}</h1>
+        <p data-no-translate>{isZh ? getTranslatedListMeta("Atelier Minho · Porto, Portugal · Started Jul 19") : "Atelier Minho · Porto, Portugal · Started Jul 19"}</p>
       </header>
 
       <div className="factory-project-detail-grid">
         <section className="factory-project-detail-main">
           <section className="factory-project-summary-card" aria-label="Production order summary">
             <Metric label="order total" value="$5,780" />
-            <Metric label="order funds" value="$120" />
+            <Metric label="funded" value="$120" />
             <Metric label="remaining" value="$5,660" />
             <Metric label="next payment" value="$1,656" className="highlight" />
           </section>
@@ -2699,6 +2785,8 @@ function AddUpdateModal({ language, milestone, onClose, onPost }) {
 }
 
 function FactorySubmitQuote({ project, language, onBack, onReviewTotal }) {
+  const isZh = language === "zh";
+
   return (
     <main className="factory-detail-page factory-submit-page">
       <div className="factory-submit-content">
@@ -2706,7 +2794,7 @@ function FactorySubmitQuote({ project, language, onBack, onReviewTotal }) {
           <button className="text-link" type="button" onClick={onBack}>‹ Back to view project</button>
           <h1>Submit quote</h1>
           <p>Quote the exact unit price, sample path, lead time, and any questions before the brand chooses a factory.</p>
-          <small className="submit-page-language-hint">You can fill this page in Chinese. We'll create an English version for you to review before sending.</small>
+          {isZh && <small className="submit-page-language-hint">You can fill this page in Chinese. We'll create an English version for you to review before sending.</small>}
         </header>
 
         <div className="factory-submit-layout">
@@ -2722,7 +2810,7 @@ function FactorySubmitQuote({ project, language, onBack, onReviewTotal }) {
         <button className="secondary-btn" type="button" onClick={onBack}>Back</button>
         <div className="factory-submit-bottom-actions">
           <button className="secondary-btn" type="button">Save draft</button>
-          <button className="primary-btn" type="button" onClick={onReviewTotal}>Review total</button>
+          <button className="primary-btn" type="button" onClick={onReviewTotal}>Review quote</button>
         </div>
       </footer>
     </main>
@@ -2730,7 +2818,6 @@ function FactorySubmitQuote({ project, language, onBack, onReviewTotal }) {
 }
 
 function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) {
-  const isZh = language === "zh";
   const rows = [
     ["Unit price", "$18.40"],
     ["Quantity", "300 units"],
@@ -2750,38 +2837,43 @@ function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) 
         </header>
 
         <div className="factory-review-layout">
-          <section className="factory-submit-card factory-review-card">
-            <header className="factory-review-card-header">
-              <h2><span>Quote for</span> <span data-no-translate>{project.title}</span></h2>
-              <p data-no-translate>{project.brand} · {project.location} · {project.posted}</p>
-            </header>
-
-            <div className="factory-review-rows">
-              {rows.map(([label, value]) => (
-                <React.Fragment key={label}>
-                  <span>{label}</span>
-                  <strong data-no-translate>{value}</strong>
-                </React.Fragment>
-              ))}
-            </div>
-
-            <div className="factory-review-total">
-              <span>Quote total shown to brand</span>
-              <strong data-no-translate>$5,780</strong>
-            </div>
+          <section className="factory-review-main">
+            <FactoryQuoteRequestCard project={project} language={language} />
+            <FactoryQuoteSections readOnly />
           </section>
 
-          {isZh && <QuoteTranslationReview />}
+          <aside className="factory-review-side">
+            <section className="factory-submit-card factory-review-card">
+              <header className="factory-review-card-header">
+                <h2>Price total</h2>
+                <p data-no-translate>{project.brand} · {project.location}</p>
+              </header>
 
-          <aside className="factory-submit-card factory-ready-card">
-            <div>
-              <h2>Ready to send?</h2>
-              <p>Confirm the quote is complete before it appears in the brand comparison page.</p>
-            </div>
-            <div className="factory-ready-actions">
-              <button className="primary-btn" type="button" onClick={onSendQuote}>Send quote</button>
-              <button className="secondary-btn" type="button">Save progress</button>
-            </div>
+              <div className="factory-review-rows">
+                {rows.map(([label, value]) => (
+                  <React.Fragment key={label}>
+                    <span>{label}</span>
+                    <strong data-no-translate>{value}</strong>
+                  </React.Fragment>
+                ))}
+              </div>
+
+              <div className="factory-review-total">
+                <span>Brand sees</span>
+                <strong data-no-translate>$5,780</strong>
+              </div>
+            </section>
+
+            <section className="factory-submit-card factory-ready-card">
+              <div>
+                <h2>Ready to send?</h2>
+                <p>Confirm the quote is complete before it appears in the brand comparison page.</p>
+              </div>
+              <div className="factory-ready-actions">
+                <button className="primary-btn" type="button" onClick={onSendQuote}>Send quote</button>
+                <button className="secondary-btn" type="button">Save progress</button>
+              </div>
+            </section>
           </aside>
         </div>
       </div>
