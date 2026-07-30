@@ -1128,8 +1128,9 @@
 }
 
 .factory-active-projects-panel {
-  grid-column: 1;
+  grid-column: 1 / -1;
   grid-row: 3;
+  min-width: 0;
 }
 
 .factory-dashboard-row {
@@ -1149,12 +1150,13 @@
 
 .factory-project-dashboard-row {
   align-items: center;
-  grid-template-columns: 58px 362px 96px 68px 128px 112px;
+  grid-template-columns: 58px minmax(0, 1fr) 112px 76px minmax(138px, 168px) 134px;
   grid-template-rows: auto auto;
-  gap: 12px;
+  gap: 14px;
   width: 100%;
+  max-width: none;
   min-height: 128px;
-  padding: 18px 20px 18px 22px;
+  padding: 18px 24px 18px 22px;
   border-color: #e2e8f0;
   border-radius: 14px;
   box-shadow: 0 8px 16px rgba(15, 23, 43, 0.02);
@@ -1178,6 +1180,7 @@
 .factory-project-dashboard-row .factory-dashboard-row-main {
   align-self: start;
   grid-row: 1 / 3;
+  min-width: 0;
 }
 
 .factory-project-dashboard-row .factory-project-mini-metric {
@@ -1327,12 +1330,12 @@
 .factory-project-progress {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(5, 56px);
-  gap: 10px;
+  grid-template-columns: repeat(5, 58px);
+  gap: 18px;
   width: max-content;
   max-width: none;
   margin-top: 8px;
-  margin-left: -26px;
+  margin-left: -22px;
 }
 
 .factory-project-progress-line {
@@ -1397,7 +1400,8 @@
   grid-column: 6;
   grid-row: 1 / 3;
   justify-self: end;
-  width: 112px;
+  width: 134px;
+  padding: 0 18px;
   height: 42px;
   border-radius: 42px;
   font-size: 14px;
