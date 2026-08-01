@@ -3903,6 +3903,13 @@ select {
   font-weight: 500;
 }
 
+.directory-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .directory-card-list {
   display: grid;
   gap: 22px;
@@ -4023,6 +4030,372 @@ select {
   line-height: 18px;
 }
 
+.marketplace-shell {
+  display: grid;
+  grid-template-columns: 280px minmax(860px, 1fr);
+  gap: 18px;
+  align-items: start;
+  max-width: 1360px;
+  margin: 0;
+}
+
+.marketplace-filter-panel,
+.marketplace-summary,
+.marketplace-factory-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: white;
+}
+
+.marketplace-filter-panel {
+  position: sticky;
+  top: 28px;
+  display: grid;
+  gap: 24px;
+  padding: 28px 24px;
+}
+
+.marketplace-results {
+  min-width: 0;
+}
+
+.marketplace-header {
+  display: grid;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 1.2fr);
+  gap: 28px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.marketplace-header h1 {
+  max-width: 620px;
+  margin: 0;
+  color: #0b1223;
+  font-size: 36px;
+  line-height: 1.08;
+  font-weight: 950;
+}
+
+.marketplace-search {
+  align-self: center;
+}
+
+.marketplace-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  min-height: 74px;
+  padding: 18px 22px;
+  margin-bottom: 14px;
+}
+
+.marketplace-summary strong,
+.marketplace-summary span {
+  display: block;
+}
+
+.marketplace-summary strong {
+  color: #0f172b;
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.marketplace-summary span {
+  max-width: 600px;
+  color: #5c7298;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.marketplace-card-list {
+  display: grid;
+  gap: 14px;
+}
+
+.marketplace-factory-card {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.marketplace-factory-card:hover {
+  border-color: #9eb8fa;
+  background: #f9fbff;
+}
+
+.marketplace-factory-top {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 260px 290px;
+  gap: 14px;
+  align-items: start;
+}
+
+.marketplace-factory-title {
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+}
+
+.marketplace-factory-title h2 {
+  margin: 0;
+  color: #0b1223;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.marketplace-factory-title p {
+  margin: 1px 0 0;
+  color: #5c7298;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.marketplace-factory-metrics {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+.marketplace-factory-metrics > span {
+  margin-top: 4px;
+  color: #5c7298;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.marketplace-factory-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
+.marketplace-factory-actions .primary-btn,
+.marketplace-factory-actions .secondary-btn {
+  min-height: 38px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.marketplace-factory-body {
+  display: grid;
+  grid-template-columns: 400px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.marketplace-spec-panel {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.marketplace-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.marketplace-stat-grid div {
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.marketplace-stat-grid span,
+.marketplace-stat-grid strong {
+  display: block;
+}
+
+.marketplace-stat-grid span {
+  color: #60769b;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.marketplace-stat-grid strong {
+  color: #0b1223;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.marketplace-note-list {
+  display: grid;
+  gap: 6px;
+}
+
+.marketplace-note-list p {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--primary);
+  color: #465f84;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.marketplace-samples-shell {
+  position: relative;
+  min-width: 0;
+}
+
+.marketplace-samples-shell::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 4px;
+  width: 64px;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), #fff 72%);
+}
+
+.marketplace-samples-shell::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 4px;
+  left: 0;
+  z-index: 1;
+  width: 54px;
+  pointer-events: none;
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0), #fff 72%);
+  opacity: 0;
+}
+
+.marketplace-samples {
+  display: flex;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 0 44px 4px 0;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+
+.marketplace-samples::-webkit-scrollbar {
+  display: none;
+}
+
+.marketplace-samples-prev,
+.marketplace-samples-next {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid #d7e0ea;
+  border-radius: 999px;
+  background: #fff;
+  transform: translateY(-58%);
+}
+
+.marketplace-samples-prev {
+  left: 8px;
+  z-index: 2;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.marketplace-samples-prev.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.marketplace-samples-next {
+  right: 8px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.marketplace-samples-next.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.marketplace-samples-prev img,
+.marketplace-samples-next img {
+  display: block;
+  width: 15px;
+  height: 15px;
+  transform: rotate(-90deg);
+}
+
+.marketplace-samples-prev img {
+  transform: rotate(90deg);
+}
+
+.marketplace-sample {
+  flex: 0 0 220px;
+  scroll-snap-align: start;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.marketplace-sample img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 0.62;
+  object-fit: cover;
+  object-position: center;
+  background: #f4f6f8;
+}
+
+.marketplace-sample.factory-media img {
+  object-fit: contain;
+  padding: 8px;
+}
+
+.marketplace-sample figcaption {
+  display: block;
+  min-height: 24px;
+  padding: 4px 10px 5px;
+}
+
+.marketplace-sample figcaption strong {
+  color: #0b1223;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.marketplace-tag-section {
+  display: grid;
+  gap: 8px;
+}
+
+.marketplace-tag-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #5c7298;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.compact-tags .tag.garment-tag {
+  border-color: var(--border);
+  background: var(--tag-fill);
+  color: var(--text);
+}
+
 @media (max-width: 1180px) {
   .side-nav {
     width: 88px;
@@ -4123,6 +4496,23 @@ select {
 
   .directory-shell {
     grid-template-columns: 1fr;
+  }
+
+  .marketplace-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .marketplace-filter-panel {
+    position: static;
+  }
+
+  .marketplace-factory-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .marketplace-factory-metrics,
+  .marketplace-factory-actions {
+    justify-content: flex-start;
   }
 
   .directory-filter-panel {
@@ -4303,6 +4693,10 @@ select {
     padding: 18px;
   }
 
+  .directory-summary-actions {
+    justify-content: flex-start;
+  }
+
   .directory-summary .sort-button {
     justify-self: start;
   }
@@ -4338,5 +4732,67 @@ select {
   .compact-tags.directory-tags,
   .compact-tags.directory-capacity-tags {
     flex-wrap: wrap;
+  }
+
+  .marketplace-header {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .marketplace-results {
+    order: -1;
+  }
+
+  .marketplace-header h1 {
+    font-size: 30px;
+    line-height: 1.08;
+  }
+
+  .marketplace-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .marketplace-factory-card {
+    padding: 16px;
+  }
+
+  .marketplace-factory-title {
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .marketplace-factory-body {
+    grid-template-columns: 1fr;
+  }
+
+  .marketplace-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .marketplace-samples {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow-x: visible;
+    padding-right: 0;
+  }
+
+  .marketplace-samples-shell::after,
+  .marketplace-samples-next {
+    display: none;
+  }
+
+  .marketplace-sample {
+    flex-basis: auto;
+  }
+
+  .marketplace-factory-actions {
+    flex-wrap: wrap;
+  }
+
+  .marketplace-factory-actions .primary-btn,
+  .marketplace-factory-actions .secondary-btn {
+    flex: 1;
   }
 }

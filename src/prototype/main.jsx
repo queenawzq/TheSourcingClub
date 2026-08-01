@@ -188,6 +188,121 @@ const directoryFactories = [
   }
 ];
 
+const marketplaceFactories = [
+  {
+    initials: "AM",
+    name: "Atelier Minho",
+    location: "Porto, Portugal",
+    trust: "trusted",
+    match: "96%",
+    rating: "4.9",
+    response: "< 6h",
+    orders: "12 Club orders",
+    specialty: "Premium woven tops, shirting, dresses, and lightweight outerwear",
+    categories: [
+      "Button-down shirts",
+      "Poplin blouses",
+      "Woven dresses",
+      "Linen co-ords",
+      "Lightweight jackets",
+      "Pleated skirts"
+    ],
+    capabilities: ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton"],
+    stats: [
+      ["MOQ", "150/style"],
+      ["Price point", "$18-$40"],
+      ["Bulk lead", "22-28 days"],
+      ["Capacity", "420 units"]
+    ],
+    products: [
+      { name: "Organic poplin shirt", image: "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Linen resort set", image: "https://images.pexels.com/photos/6461392/pexels-photo-6461392.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Light trench shell", image: "https://images.pexels.com/photos/7760024/pexels-photo-7760024.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Factory floor", image: "https://images.pexels.com/photos/31031119/pexels-photo-31031119.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    notes: ["Best for elevated woven capsules that need visible fit support, trim sourcing, grading, and QC photo updates before final balance.", "Can quote trim sourcing, grading, and QC photos before final balance."],
+    featured: true
+  },
+  {
+    initials: "SK",
+    name: "Seoul Knit Works",
+    location: "Seoul, South Korea",
+    trust: "verified",
+    match: "91%",
+    rating: "4.8",
+    response: "< 12h",
+    orders: "8 Club orders",
+    specialty: "Fine-gauge knitwear, sweater sets, rib basics, and merino blends",
+    categories: ["Merino cardigans", "Rib tanks", "Fine-gauge polos", "Sweater dresses", "Knit co-ords", "Jacquard panels"],
+    capabilities: ["Yarn sourcing", "Linking + washing", "Lab dip review", "OEKO-TEX yarns"],
+    stats: [
+      ["MOQ", "200/style"],
+      ["Price point", "$40-$90"],
+      ["Bulk lead", "32-40 days"],
+      ["Capacity", "300 units"]
+    ],
+    products: [
+      { name: "Fine-gauge cardigan", image: "https://images.pexels.com/photos/9603624/pexels-photo-9603624.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Ribbed knit tank", image: "https://images.pexels.com/photos/8433475/pexels-photo-8433475.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Merino polo", image: "https://cdn.shopify.com/s/files/1/0207/9406/files/02_Merino_LS_Polo_Quaker_Front.jpg?v=1725536429&width=900" },
+      { name: "Knitting room", image: "https://images.pexels.com/photos/31031119/pexels-photo-31031119.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    notes: ["Strong for small sweater capsules where yarn hand-feel, color standards, linking quality, and shrinkage testing need close review.", "Good communication on color standards and shrinkage testing."]
+  },
+  {
+    initials: "TN",
+    name: "Tirupur Natural Studio",
+    location: "Tirupur, India",
+    trust: "trusted",
+    match: "89%",
+    rating: "4.8",
+    response: "< 8h",
+    orders: "15 Club orders",
+    specialty: "Organic jersey, fleece sets, loungewear, babywear, and low-impact dye",
+    categories: ["Jersey tees", "Sweatshirt sets", "Leggings", "Baby rompers", "Lounge shorts", "Rib dresses"],
+    capabilities: ["GOTS jersey", "Low-impact dye", "Screen print", "Garment wash"],
+    stats: [
+      ["MOQ", "250/style"],
+      ["Price point", "$8-$18"],
+      ["Bulk lead", "24-32 days"],
+      ["Capacity", "650 units"]
+    ],
+    products: [
+      { name: "Organic tee", image: "https://images.pexels.com/photos/37704838/pexels-photo-37704838.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Fleece lounge set", image: "https://images.pexels.com/photos/3894389/pexels-photo-3894389.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Rib baby romper", image: "https://images.pexels.com/photos/16681603/pexels-photo-16681603.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Dye partner", image: "https://images.pexels.com/photos/31031119/pexels-photo-31031119.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    notes: ["Best for loungewear capsules that need flexible organic jersey capacity, low-impact dye coordination, and colorway splits after lab dip approval.", "Can split colorways after lab dip approval."]
+  },
+  {
+    initials: "HD",
+    name: "Hangzhou Denim Lab",
+    location: "Hangzhou, China",
+    trust: "basic",
+    match: "84%",
+    rating: "4.6",
+    response: "< 24h",
+    orders: "3 Club orders",
+    specialty: "Denim jackets, jeans, workwear shirts, wash development, and trims sourcing",
+    categories: ["Rigid denim jackets", "Straight-leg jeans", "Washed trousers", "Workwear overshirts", "Cargo skirts", "Denim vests"],
+    capabilities: ["Wash development", "Trim sourcing", "Laser whiskers", "BSCI"],
+    stats: [
+      ["MOQ", "300/style"],
+      ["Price point", "$18-$40"],
+      ["Bulk lead", "28-36 days"],
+      ["Capacity", "500 units"]
+    ],
+    products: [
+      { name: "Washed denim jacket", image: "https://images.pexels.com/photos/28174872/pexels-photo-28174872.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Straight-leg jean", image: "https://images.pexels.com/photos/17720437/pexels-photo-17720437.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Workwear overshirt", image: "https://images.pexels.com/photos/3998647/pexels-photo-3998647.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Wash line", image: "https://images.pexels.com/photos/31031120/pexels-photo-31031120.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    notes: ["Useful when denim wash testing, trims sourcing, and production assumptions need to be confirmed before final price lock.", "Quoted capacity is stronger for 500-unit production runs."]
+  }
+];
+
 const activeRfqs = [
   {
     title: "Organic cotton woven shirt production",
@@ -394,7 +509,8 @@ const milestones = [
 ];
 
 function App() {
-  const [screen, setScreen] = useState("projects");
+  const initialScreen = new URLSearchParams(window.location.search).get("view") === "marketplace" ? "factoryMarketplace" : "projects";
+  const [screen, setScreen] = useState(initialScreen);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [selectedFactories, setSelectedFactories] = useState(["Atelier Minho", "Hanshu Studio"]);
   const [selectedQuote, setSelectedQuote] = useState("Atelier Minho");
@@ -406,7 +522,7 @@ function App() {
 
   const index = screenOrder.indexOf(screen);
   const meta = screenMeta[screen];
-  const isStandalone = screen === "home" || screen === "profile" || screen === "factorySearch" || screen === "rfqs" || screen === "projects" || screen === "projectDetail";
+  const isStandalone = screen === "home" || screen === "profile" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "rfqs" || screen === "projects" || screen === "projectDetail";
   const isWideFlow = screen === "invite" || screen === "quotes" || screen === "quoteDetail";
 
   const goTo = (next) => {
@@ -442,6 +558,8 @@ function App() {
         return <BrandProfileScreen />;
       case "factorySearch":
         return <FactorySearchScreen goTo={goTo} />;
+      case "factoryMarketplace":
+        return <FactoryMarketplaceScreen goTo={goTo} />;
       case "rfqs":
         return <RfqsScreen goTo={goTo} />;
       case "projects":
@@ -476,18 +594,18 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <SideNav
-        active={screen === "home" ? "Dashboard" : screen === "factorySearch" ? "Explore" : screen === "profile" ? "" : screen === "projects" ? "Projects" : screen === "rfqs" ? "RFQs" : "RFQs"}
+        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Explore" : screen === "profile" ? "" : screen === "projects" ? "Projects" : screen === "rfqs" ? "RFQs" : "RFQs"}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onNav={(label) => {
           if (label === "Dashboard") goTo("home");
           if (label === "RFQs") goTo("rfqs");
           if (label === "Projects") goTo("projects");
-          if (label === "Explore") goTo("factorySearch");
+          if (label === "Explore") goTo("factoryMarketplace");
         }}
         onProfile={() => goTo("profile")}
       />
-      <main className={screen === "factorySearch" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : "flow-page"}>
+      <main className={screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : "flow-page"}>
         {!isStandalone && <JourneyRail current={meta.step} />}
         <section className="flow-content">
           {!isStandalone && screen !== "quoteDetail" && (
@@ -1054,7 +1172,10 @@ function FactorySearchScreen({ goTo }) {
             <strong>36 factories</strong>
             <span>matching cut & sew, low MOQ, Trusted or Verified standard</span>
           </div>
-          <button className="filter-button sort-button" type="button">Sort: Best fit</button>
+          <div className="directory-summary-actions">
+            <button className="filter-button sort-button" type="button">Sort: Best fit</button>
+            <button className="filter-button sort-button" type="button" onClick={() => goTo("factoryMarketplace")}>Marketplace cards</button>
+          </div>
         </div>
         <div className="directory-card-list">
           {directoryFactories.map((factory) => (
@@ -1123,6 +1244,264 @@ function DirectoryFactoryCard({ factory, onQuote }) {
         {factory.insight.map((line) => (
           <p key={line}>• {line}</p>
         ))}
+      </div>
+    </article>
+  );
+}
+
+function FactoryMarketplaceScreen({ goTo }) {
+  return (
+    <div className="marketplace-shell">
+      <aside className="marketplace-filter-panel" aria-label="Marketplace filters">
+        <div className="directory-filter-header">
+          <strong>Filters</strong>
+          <button type="button">Reset</button>
+        </div>
+        <FilterGroup title="Production type">
+          <FilterCheck label="Cut & sew knits" />
+          <FilterCheck checked label="Wovens" />
+          <FilterCheck label="Sweaters / knitwear" />
+          <FilterCheck label="Denim" />
+          <FilterCheck label="Seamless / circular knit" />
+          <FilterCheck label="Intimates / delicate garments" />
+          <FilterCheck label="Leather / suede" />
+          <FilterCheck label="Bags / soft goods" />
+        </FilterGroup>
+        <FilterGroup title="Product categories">
+          <FilterCheck checked label="Tops" />
+          <FilterCheck label="Bottoms" />
+          <FilterCheck label="Dresses & jumpsuits" />
+          <FilterCheck label="Outerwear" />
+          <FilterCheck label="Activewear" />
+          <FilterCheck label="Intimates / underwear" />
+          <FilterCheck label="Swimwear" />
+          <FilterCheck label="Sleepwear / loungewear" />
+          <FilterCheck label="Childrenswear / baby" />
+          <FilterCheck label="Uniforms / workwear" />
+          <FilterCheck label="Accessories" />
+        </FilterGroup>
+        <FilterGroup title="Specializes in">
+          <FilterCheck checked label="Small-batch production" />
+          <FilterCheck label="Fit sample support" />
+          <FilterCheck label="Wash development" />
+          <FilterCheck label="Yarn sourcing" />
+          <FilterCheck label="Embroidery / print" />
+        </FilterGroup>
+        <FilterGroup title="Price point">
+          <div className="directory-chip-grid">
+            {["Mass $8-$18", "Middle $18-$40", "Premium $40-$90", "Luxury $90+"].map((label) => (
+              <button className={label.startsWith("Middle") ? "directory-chip selected" : "directory-chip"} type="button" key={label}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </FilterGroup>
+        <FilterGroup title="MOQ range">
+          <div className="moq-chart" aria-hidden="true">
+            {[18, 34, 47, 28, 58, 44, 36, 24, 31].map((height, index) => (
+              <span style={{ height }} key={index} />
+            ))}
+            <i className="moq-track" />
+            <b className="moq-handle min" />
+            <b className="moq-handle max" />
+          </div>
+          <div className="moq-values">
+            <span>150</span>
+            <span>500+</span>
+          </div>
+        </FilterGroup>
+        <FilterGroup title="Location">
+          <div className="directory-chip-grid">
+            {["China", "Portugal", "Korea", "Europe", "India", "Turkey", "USA"].map((label) => (
+              <button className="directory-chip" type="button" key={label}>{label}</button>
+            ))}
+          </div>
+        </FilterGroup>
+        <FilterGroup title="Certifications">
+          <div className="directory-chip-grid">
+            {["GOTS", "OEKO-TEX", "BSCI", "WRAP", "Fair Trade"].map((label) => (
+              <button className={label === "GOTS" ? "directory-chip selected" : "directory-chip"} type="button" key={label}>{label}</button>
+            ))}
+          </div>
+        </FilterGroup>
+        <FilterGroup title="Lead time">
+          <div className="directory-chip-grid">
+            {["Under 30 days", "30-45 days", "45+ days"].map((label) => (
+              <button className={label === "Under 30 days" ? "directory-chip selected" : "directory-chip"} type="button" key={label}>{label}</button>
+            ))}
+          </div>
+        </FilterGroup>
+        <FilterGroup title="Club Standard">
+          <FilterCheck checked label="Trusted" icon="trusted" />
+          <FilterCheck label="Verified" icon="verified" />
+          <FilterCheck label="Basic" icon="basic" />
+        </FilterGroup>
+        <FilterGroup title="Open capacity">
+          <label className="directory-select">
+            <span>Start window</span>
+            <select defaultValue="">
+              <option value="" disabled>Select start window</option>
+              <option>Next 30 days</option>
+              <option>August</option>
+            </select>
+          </label>
+          <label className="directory-select">
+            <span>Available quantity</span>
+            <select defaultValue="">
+              <option value="" disabled>Select quantity</option>
+              <option>300-500 units</option>
+              <option>500+ units</option>
+            </select>
+          </label>
+          <div className="directory-capacity-presets">
+            <button className="directory-chip" type="button">Next 30 days</button>
+            <button className="directory-chip" type="button">300-500 units</button>
+          </div>
+          <p>Use quick presets, or open the dropdowns for exact windows and quantities.</p>
+        </FilterGroup>
+      </aside>
+
+      <section className="marketplace-results" aria-label="Factory marketplace results">
+        <header className="marketplace-header">
+          <div>
+            <p className="eyebrow">FACTORY DIRECTORY</p>
+            <h1>BROWSE FACTORIES BY WHAT THEY MAKE</h1>
+          </div>
+          <label className="directory-search marketplace-search">
+            <SearchIcon />
+            <input placeholder="Search shirts, cardigans, denim wash, baby rompers..." />
+          </label>
+        </header>
+        <div className="marketplace-summary">
+          <div>
+            <strong>36 factories</strong>
+            <span>showing larger samples, exact garment tags, specialties, and verified capability notes</span>
+          </div>
+          <div className="directory-summary-actions">
+            <button className="filter-button sort-button" type="button">Sort: Best fit</button>
+          </div>
+        </div>
+        <div className="marketplace-card-list">
+          {marketplaceFactories.map((factory) => (
+            <MarketplaceFactoryCard factory={factory} key={factory.name} onQuote={() => goTo("describe")} />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function MarketplaceFactoryCard({ factory, onQuote }) {
+  const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
+  const updateSampleScroll = (element) => {
+    if (!element) return;
+    const remaining = element.scrollWidth - element.clientWidth - element.scrollLeft;
+    setSampleScroll({
+      left: element.scrollLeft > 4,
+      right: remaining > 4
+    });
+  };
+
+  return (
+    <article className={factory.featured ? "marketplace-factory-card featured" : "marketplace-factory-card"}>
+      <div className="marketplace-factory-top">
+        <div className="marketplace-factory-title">
+          <div className="factory-avatar">{factory.initials}</div>
+          <div>
+            <div className="factory-name-row">
+              <h2>{factory.name}</h2>
+              <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+            </div>
+            <p>{factory.location}</p>
+          </div>
+        </div>
+        <div className="marketplace-factory-metrics">
+          <Metric label="match" value={factory.match} className={matchTierClass(factory.match)} />
+          <Metric label="rating" value={factory.rating} />
+          <Metric label="response" value={factory.response} />
+          <span>{factory.orders}</span>
+        </div>
+        <div className="marketplace-factory-actions">
+          <button className="secondary-btn" type="button">Save</button>
+          <button className="secondary-btn" type="button">Contact</button>
+          <button className="primary-btn" type="button" onClick={onQuote}>Request quote</button>
+        </div>
+      </div>
+
+      <div className="marketplace-factory-body">
+        <div className="marketplace-spec-panel">
+          <div className="marketplace-stat-grid">
+            {factory.stats.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="marketplace-note-list">
+            <p>{factory.notes[0]}</p>
+          </div>
+        </div>
+
+        <div className="marketplace-samples-shell">
+          <button
+            className={sampleScroll.left ? "marketplace-samples-prev visible" : "marketplace-samples-prev"}
+            type="button"
+            aria-label="Scroll sample images back"
+            onClick={(event) => {
+              const scroller = event.currentTarget.nextElementSibling;
+              scroller?.scrollBy({ left: -240, behavior: "smooth" });
+              window.setTimeout(() => updateSampleScroll(scroller), 260);
+            }}
+          >
+            <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+          </button>
+          <div
+            className="marketplace-samples"
+            aria-label={`${factory.name} sample products`}
+            onScroll={(event) => updateSampleScroll(event.currentTarget)}
+          >
+            {factory.products.map((product) => (
+              <figure className={product.factory ? "marketplace-sample factory-media" : "marketplace-sample"} key={product.name}>
+                <img src={product.image} alt={`${factory.name} ${product.name}`} />
+                <figcaption>
+                  <strong>{product.name}</strong>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          <button
+            className={sampleScroll.right ? "marketplace-samples-next visible" : "marketplace-samples-next"}
+            type="button"
+            aria-label="Scroll sample images"
+            onClick={(event) => {
+              const scroller = event.currentTarget.previousElementSibling;
+              scroller?.scrollBy({ left: 240, behavior: "smooth" });
+              window.setTimeout(() => updateSampleScroll(scroller), 260);
+            }}
+          >
+            <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+          </button>
+        </div>
+      </div>
+
+      <div className="marketplace-tag-section">
+        <div>
+          <span className="marketplace-tag-label">Makes</span>
+          <div className="tag-row compact-tags">
+            {factory.categories.map((tag) => (
+              <span className="tag garment-tag" key={tag}>{tag}</span>
+            ))}
+          </div>
+        </div>
+        <div>
+          <span className="marketplace-tag-label">Specializes in</span>
+          <div className="tag-row compact-tags">
+            {factory.capabilities.map((tag) => (
+              <span className="tag blue-tag" key={tag}>{tag}</span>
+            ))}
+          </div>
+        </div>
       </div>
     </article>
   );

@@ -2216,6 +2216,324 @@
   font-weight: 700;
 }
 
+.factory-browse-marketplace-page .directory-shell {
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 22px;
+  max-width: 1480px;
+}
+
+.factory-browse-marketplace-page .directory-filter-panel {
+  top: 28px;
+  gap: 24px;
+  padding: 28px 24px;
+}
+
+.factory-browse-marketplace-page .directory-results {
+  min-width: 0;
+}
+
+.factory-browse-marketplace-page .directory-hero {
+  grid-template-columns: minmax(280px, 0.8fr) minmax(420px, 1.2fr);
+  gap: 28px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.factory-browse-marketplace-page .directory-hero h1 {
+  max-width: 620px;
+  font-size: 36px;
+  line-height: 1.08;
+}
+
+.factory-browse-marketplace-page .directory-search {
+  align-self: center;
+  height: 42px;
+  padding: 0 20px;
+}
+
+.factory-browse-marketplace-page .directory-summary {
+  gap: 22px;
+  min-height: 74px;
+  padding: 18px 22px;
+  margin-bottom: 14px;
+}
+
+.factory-browse-marketplace-page .directory-summary strong {
+  font-size: 18px;
+  line-height: 26px;
+}
+
+.factory-browse-marketplace-page .directory-summary span {
+  max-width: 600px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.factory-browse-marketplace-page .directory-summary .sort-button {
+  min-height: 38px;
+  padding: 0 18px;
+}
+
+.factory-browse-marketplace-page .directory-card-list {
+  gap: 14px;
+}
+
+.factory-request-card {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.factory-request-card:hover {
+  border-color: #9eb8fa;
+  background: #f9fbff;
+}
+
+.factory-request-card-top {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+}
+
+.factory-request-title {
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+}
+
+.factory-request-title h2 {
+  margin: 0;
+  color: #0b1223;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.factory-request-title p {
+  margin: 1px 0 0;
+  color: #5c7298;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.factory-request-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.factory-request-card-actions .secondary-btn,
+.factory-request-card-actions .primary-btn {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.factory-request-card-body {
+  display: grid;
+  grid-template-columns: minmax(520px, 0.58fr) minmax(420px, 0.42fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.factory-request-brief {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.factory-request-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+
+.factory-request-facts div {
+  min-height: 50px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.factory-request-facts span,
+.factory-request-facts strong {
+  display: block;
+}
+
+.factory-request-facts span {
+  color: #60769b;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.factory-request-facts strong {
+  color: #0b1223;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.factory-request-brief > p {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--primary);
+  color: #465f84;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.factory-request-trust {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: max-content;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #dbe3ed;
+  border-radius: 6px;
+  background: #fff;
+  color: #0b1220;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.factory-request-trust img {
+  width: 15px;
+  height: 15px;
+}
+
+.factory-request-trust span {
+  color: #5c7298;
+}
+
+.factory-request-visuals {
+  align-self: start;
+  min-width: 0;
+  max-width: 560px;
+}
+
+.factory-request-visuals.has-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+  width: 100%;
+  max-width: 560px;
+}
+
+.factory-request-visual-main {
+  width: 100%;
+}
+
+.factory-request-visual-placeholder {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.factory-request-visual-placeholder strong {
+  color: #0b1223;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.factory-request-visual-placeholder span {
+  color: #5c7298;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+.factory-request-visuals figure {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.factory-request-visuals img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 0.46;
+  object-fit: cover;
+  object-position: center;
+  background: #f4f6f8;
+}
+
+.factory-request-visual-main img {
+  aspect-ratio: 1 / 0.46;
+}
+
+.factory-request-visuals:not(.has-gallery) .factory-request-visual-main img {
+  height: 210px;
+  aspect-ratio: auto;
+}
+
+.factory-request-visuals.has-gallery figure:not(.factory-request-visual-main) {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.factory-request-visuals.has-gallery .factory-request-visual-main {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.factory-request-visuals.has-gallery .factory-request-visual-main img {
+  height: 140px;
+  aspect-ratio: auto;
+}
+
+.factory-request-visuals.has-gallery figure:not(.factory-request-visual-main) img {
+  height: 76px;
+  aspect-ratio: auto;
+}
+
+.factory-request-visuals figcaption {
+  min-height: 22px;
+  padding: 4px 10px;
+  color: #0b1223;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 14px;
+}
+
+.factory-request-tags {
+  display: grid;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.factory-request-tags .marketplace-tag-label {
+  margin-bottom: 0;
+}
+
+.factory-request-tags .tag-row.compact-tags {
+  margin-top: 0;
+}
+
+.factory-request-tags .tag {
+  border-color: #d7e0ea;
+  background: #ecf1f6;
+  color: #0b1220;
+}
+
 .factory-detail-page {
   min-height: 100vh;
   margin-left: 78px;

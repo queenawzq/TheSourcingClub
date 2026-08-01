@@ -17,6 +17,7 @@ const brandProjects = [
     location: "New York, USA",
     posted: "Posted 18 minutes ago",
     match: "94%",
+    quoteDue: "Jul 24",
     budget: "$18-$24",
     quantity: "300 units",
     samples: "Fit + PP",
@@ -24,6 +25,11 @@ const brandProjects = [
       "Women's woven shirts in organic cotton poplin: 3 colors, 100 units per color. Brand needs fit sample and PP sample before bulk approval.",
     tags: ["Cut & sew", "GOTS preferred", "3 colors", "China / Portugal / Korea"],
     capacity: ["Strong fit", "August capacity works"],
+    images: [
+      { label: "Poplin shirt reference", src: "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Material direction", src: "https://images.pexels.com/photos/6461392/pexels-photo-6461392.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Fit detail", src: "https://images.pexels.com/photos/7760024/pexels-photo-7760024.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     fitTone: "strong",
     trust: "$5k+ spent",
     insight: [
@@ -39,6 +45,7 @@ const brandProjects = [
     location: "Los Angeles, USA",
     posted: "Posted yesterday",
     match: "87%",
+    quoteDue: "Jul 26",
     budget: "$40-$55",
     quantity: "180 units",
     samples: "Fit + size set",
@@ -46,6 +53,9 @@ const brandProjects = [
       "Fine-gauge merino blend tops and cardigans for a small resort capsule. Looking for visible sample-room support and yarn sourcing.",
     tags: ["Knitwear", "OEKO-TEX", "Yarn sourcing", "China / Portugal / Korea"],
     capacity: ["Good fit", "Premium knit experience"],
+    images: [
+      { label: "Cardigan reference", src: "https://images.pexels.com/photos/9603624/pexels-photo-9603624.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     fitTone: "good",
     trust: "$25k+ spent",
     insight: [
@@ -60,6 +70,7 @@ const brandProjects = [
     location: "Toronto, Canada",
     posted: "Posted 2 days ago",
     match: "76%",
+    quoteDue: "Jul 29",
     budget: "$28-$36",
     quantity: "500 units",
     samples: "Wash sample",
@@ -67,6 +78,9 @@ const brandProjects = [
       "Rigid denim jacket with two washes. Brand needs wash-down samples, trim confirmation, and split delivery for first retail test.",
     tags: ["Denim", "Middle $18-$40", "Yarn sourcing", "Wash development"],
     capacity: ["Potential fit", "Check wash capacity"],
+    images: [
+      { label: "Denim jacket reference", src: "https://images.pexels.com/photos/28174872/pexels-photo-28174872.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     fitTone: "warn",
     trust: "$5k+ spent",
     insight: [
@@ -916,11 +930,13 @@ function getCapacityUnitRange(lineHours, minPercent = 60, maxPercent = 100) {
 }
 
 function App() {
-  const [onboardingComplete, setOnboardingComplete] = useState(false);
+  const requestedScreen = new URLSearchParams(window.location.search).get("screen");
+  const shouldOpenPrototypeScreen = ["dashboard", "browse", "rfqs", "projects"].includes(requestedScreen);
+  const [onboardingComplete, setOnboardingComplete] = useState(shouldOpenPrototypeScreen);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingLanguage, setOnboardingLanguage] = useState("en");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [screen, setScreen] = useState("dashboard");
+  const [screen, setScreen] = useState(shouldOpenPrototypeScreen ? requestedScreen : "dashboard");
   const [detailBackTarget, setDetailBackTarget] = useState("browse");
   const [capacityDrawerOpen, setCapacityDrawerOpen] = useState(false);
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
@@ -1276,7 +1292,7 @@ function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
             <select defaultValue="newest">
               <option value="newest">Newest First</option>
               <option value="due">Quote Due Soon</option>
-              <option value="match">Best Match</option>
+              <option value="fit">Best Fit</option>
             </select>
           </label>
         </section>
@@ -1507,7 +1523,7 @@ function ProjectProgress({ progress }) {
 
 function FactoryBrowsePage({ language, onViewDetails }) {
   return (
-    <main className="directory-page">
+    <main className="directory-page factory-browse-marketplace-page">
       <div className="directory-shell">
         <section className="directory-filter-panel" aria-label="Project filters">
           <div className="directory-filter-header">
@@ -2332,47 +2348,84 @@ function Metric({ label, value, className = "" }) {
 function BrandProjectCard({ project, language, onViewDetails }) {
   const isZh = language === "zh";
   const translatedTitle = getTranslatedProjectTitle(project.title);
+  const requestImages = project.images || [];
+  const [primaryImage, ...supportImages] = requestImages;
+  const hasGallery = requestImages.length >= 3;
+  const requestFacts = [
+    ["Unit target", project.budget],
+    ["Quantity", project.quantity],
+    ["Samples", project.samples],
+    ["Quote due", project.quoteDue]
+  ];
 
   return (
-    <article className={project.featured ? "directory-factory-card featured factory-project-card" : "directory-factory-card factory-project-card"}>
-      <div className="factory-project-thumb" />
-      <div className="directory-factory-intro">
-        <div>
-          <div className="factory-name-row">
+    <article className={project.featured ? "factory-request-card featured" : "factory-request-card"}>
+      <header className="factory-request-card-top">
+        <div className="factory-request-title">
+          <div className="factory-avatar">{project.initials}</div>
+          <div>
             <h2 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h2>
+            <p data-no-translate>
+              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : `${project.brand} · ${project.location} · ${project.posted}`}
+            </p>
           </div>
-          <p data-no-translate>
-            {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : `${project.brand} · ${project.location} · ${project.posted}`}
-          </p>
+        </div>
+        <div className="factory-request-card-actions">
+          <span className={`factory-project-fit ${project.fitTone}`}>{project.capacity.join(" · ")}</span>
+          <button className="secondary-btn" type="button">Save</button>
+          <button className="primary-btn" type="button" onClick={onViewDetails}>View details</button>
+        </div>
+      </header>
+
+      <div className="factory-request-card-body">
+        <aside className="factory-request-brief">
+          <div className="factory-request-facts">
+            {requestFacts.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
           {isZh ? (
             <TranslatedProjectSummary project={project} />
           ) : (
-            <strong data-no-translate>{project.specialty}</strong>
+            <p data-no-translate>{project.specialty}</p>
           )}
+          <div className="factory-request-trust">
+            <img src="/assets/prototype-icons/payment-protection.svg" alt="" />
+            <strong>Payment verified</strong>
+            <span>{project.trust}</span>
+          </div>
+          <div className="factory-request-tags">
+            <span className="marketplace-tag-label">Request tags</span>
+            <div className="tag-row compact-tags">
+              {project.tags.map((tag) => (
+                <span className="tag garment-tag" key={tag}>{tag}</span>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${project.brand} request references`}>
+          {primaryImage ? (
+            <figure className="factory-request-visual-main">
+              <img src={primaryImage.src} alt={`${project.title} ${primaryImage.label}`} />
+              <figcaption>{primaryImage.label}</figcaption>
+            </figure>
+          ) : (
+            <div className="factory-request-visual-placeholder">
+              <strong>No reference image uploaded</strong>
+              <span>Review the written brief, request tags, and attached tech pack in details.</span>
+            </div>
+          )}
+          {hasGallery && supportImages.slice(0, 2).map((image) => (
+            <figure key={image.label}>
+              <img src={image.src} alt={`${project.title} ${image.label}`} />
+              <figcaption>{image.label}</figcaption>
+            </figure>
+          ))}
         </div>
-      </div>
-      <div className="directory-factory-metrics">
-        <Metric label="unit target" value={project.budget} />
-        <Metric label="quantity" value={project.quantity} />
-        <Metric label="samples" value={project.samples} />
-      </div>
-      <div className="directory-factory-actions">
-        <button className="secondary-btn" type="button">Save</button>
-        <button className="primary-btn" type="button" onClick={onViewDetails}>View details</button>
-      </div>
-      <div className="tag-row compact-tags directory-tags">
-        {project.tags.map((tag) => (
-          <span className="tag" key={tag}>{tag}</span>
-        ))}
-      </div>
-      <div className="factory-project-fit-row">
-        <span className={`factory-project-fit ${project.fitTone}`}>{project.capacity.join(" · ")}</span>
-      </div>
-      <div className="factory-project-trust">
-        <img src="/assets/prototype-icons/payment-protection.svg" alt="" />
-        <strong>Payment verified</strong>
-        <span>|</span>
-        <strong>{project.trust}</strong>
       </div>
     </article>
   );
