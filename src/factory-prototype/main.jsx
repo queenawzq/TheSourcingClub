@@ -94,7 +94,7 @@ const nav = [
   { label: "Dashboard", icon: "home" },
   { label: "RFQs", icon: "rfq" },
   { label: "Production orders", icon: "projects" },
-  { label: "Explore requests", icon: "explore" },
+  { label: "Browse RFQs", icon: "explore" },
   { label: "Connections", icon: "connections" },
   { label: "Messages", icon: "messages" },
   { label: "Saved", icon: "bookmarks" },
@@ -105,7 +105,7 @@ const nav = [
 const factoryMainZhText = {
   "Dashboard": "控制台",
   "Production orders": "生产订单",
-  "Explore requests": "浏览需求",
+  "Browse RFQs": "浏览询价",
   "Connections": "联系人",
   "Messages": "消息",
   "Saved": "收藏",
@@ -541,10 +541,24 @@ function FactoryMainLanguageLayer({ language }) {
 
 const factoryRfqs = [
   {
+    initials: "MR",
     title: "Organic cotton woven shirt production",
-    meta: "Maison Rue · New York, USA · Payment verified · $25k+ spent",
+    brand: "Maison Rue",
+    location: "New York, USA",
+    trust: "$25k+ spent",
     description: "300 women’s woven shirts in organic cotton poplin. Fit + PP sample before bulk approval.",
     tags: ["Cut & sew", "Fit + size set · $340 total", "420 units", "GOTS"],
+    facts: [
+      ["Unit target", "$18-$24"],
+      ["Quantity", "300 units"],
+      ["Samples", "Fit + size set"],
+      ["Quote due", "Jul 24"]
+    ],
+    images: [
+      { label: "Poplin shirt reference", src: "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Material direction", src: "https://images.pexels.com/photos/6461392/pexels-photo-6461392.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Fit detail", src: "https://images.pexels.com/photos/7760024/pexels-photo-7760024.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     status: "Quote submitted",
     statusTone: "ready",
     metrics: [
@@ -554,10 +568,22 @@ const factoryRfqs = [
     featured: true
   },
   {
+    initials: "ES",
     title: "Premium knit capsule for resort drop",
-    meta: "Elara Studio · Los Angeles, USA · Payment verified · $5k+ spent",
+    brand: "Elara Studio",
+    location: "Los Angeles, USA",
+    trust: "$5k+ spent",
     description: "Fine-gauge merino blend tops and cardigans. Brand wants visible sample-room support.",
     tags: ["Knitwear", "Premium $40-$90", "180 units", "Fit + size set", "GOTS"],
+    facts: [
+      ["Unit target", "$40-$55"],
+      ["Quantity", "180 units"],
+      ["Samples", "Fit + size set"],
+      ["Quote due", "Jul 26"]
+    ],
+    images: [
+      { label: "Cardigan reference", src: "https://images.pexels.com/photos/9603624/pexels-photo-9603624.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     status: "Due soon",
     statusTone: "warning",
     metrics: [
@@ -566,20 +592,45 @@ const factoryRfqs = [
     ]
   },
   {
+    initials: "NL",
     title: "Denim jacket wash development and small bulk",
-    meta: "Northline · Toronto, Canada · Payment verified · $25k+ spent",
+    brand: "Northline",
+    location: "Toronto, Canada",
+    trust: "$25k+ spent",
     description: "Rigid denim jacket with two washes. Needs wash-down samples, trims confirmation, and split delivery.",
     tags: ["Denim", "Middle $18-$40", "180 units", "Wash sample", "GOTS"],
+    facts: [
+      ["Unit target", "$28-$36"],
+      ["Quantity", "500 units"],
+      ["Samples", "Wash sample"],
+      ["Quote due", "Jul 29"]
+    ],
+    images: [
+      { label: "Denim jacket reference", src: "https://images.pexels.com/photos/28174872/pexels-photo-28174872.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     metrics: [
       ["Draft", "your quote"],
       ["July 29", "quote due"]
     ]
   },
   {
+    initials: "AS",
     title: "Low-MOQ swim capsule with recycled nylon",
-    meta: "Aster Swim · Miami, USA · Payment verified · $5k+ spent",
+    brand: "Aster Swim",
+    location: "Miami, USA",
+    trust: "$5k+ spent",
     description: "Small recycled nylon swim run with size set sample and packaging guidance.",
     tags: ["Swim", "Mass $8-$18", "220 units", "Fit + size set"],
+    facts: [
+      ["Unit target", "$14-$18"],
+      ["Quantity", "220 units"],
+      ["Samples", "Fit + size set"],
+      ["Quote due", "Today"]
+    ],
+    images: [
+      { label: "Swim capsule reference", src: "https://images.pexels.com/photos/3998649/pexels-photo-3998649.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Recycled nylon direction", src: "https://images.pexels.com/photos/5405652/pexels-photo-5405652.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     status: "Due today",
     statusTone: "danger",
     metrics: [
@@ -591,6 +642,7 @@ const factoryRfqs = [
 
 const factoryProjects = [
   {
+    initials: "MR",
     title: "Organic cotton woven shirt production",
     brand: "Maison Rue",
     location: "New York, USA",
@@ -602,9 +654,13 @@ const factoryProjects = [
     currentStep: "Fit sample",
     nextDue: "Aug 16",
     progress: 2,
+    images: [
+      { label: "Poplin shirt reference", src: "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     featured: true
   },
   {
+    initials: "LR",
     title: "Premium knit capsule for resort drop",
     brand: "Luna Resort",
     location: "Los Angeles, USA",
@@ -615,9 +671,13 @@ const factoryProjects = [
     statusDetail: "Waiting on brand review after lab dip upload",
     currentStep: "Fit / lab dip",
     nextDue: "Aug 08",
-    progress: 3
+    progress: 3,
+    images: [
+      { label: "Knit capsule reference", src: "https://images.pexels.com/photos/9603624/pexels-photo-9603624.jpeg?auto=compress&dpr=1&w=900" }
+    ]
   },
   {
+    initials: "NS",
     title: "Denim jacket wash development and small bulk",
     brand: "Northline Supply",
     location: "Austin, USA",
@@ -628,9 +688,13 @@ const factoryProjects = [
     statusDetail: "First milestone payment not received",
     currentStep: "Not started",
     nextDue: "Jul 30",
-    progress: 1
+    progress: 1,
+    images: [
+      { label: "Denim jacket reference", src: "https://images.pexels.com/photos/28174872/pexels-photo-28174872.jpeg?auto=compress&dpr=1&w=900" }
+    ]
   },
   {
+    initials: "MS",
     title: "Low-MOQ swim capsule with recycled nylon",
     brand: "Marea Swim",
     location: "Miami, USA",
@@ -641,7 +705,10 @@ const factoryProjects = [
     statusDetail: "First milestone payment not received",
     currentStep: "Not started",
     nextDue: "Jul 28",
-    progress: 1
+    progress: 1,
+    images: [
+      { label: "Swim capsule reference", src: "https://images.pexels.com/photos/3998649/pexels-photo-3998649.jpeg?auto=compress&dpr=1&w=900" }
+    ]
   }
 ];
 
@@ -941,7 +1008,7 @@ function App() {
   const [capacityDrawerOpen, setCapacityDrawerOpen] = useState(false);
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
   const selectedProject = brandProjects[0];
-  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : "Explore requests";
+  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : "Browse RFQs";
 
   if (!onboardingComplete) {
     return (
@@ -993,7 +1060,7 @@ function App() {
                   if (item.label === "Dashboard") setScreen("dashboard");
                   if (item.label === "RFQs") setScreen("rfqs");
                   if (item.label === "Production orders") setScreen("projects");
-                  if (item.label === "Explore requests") setScreen("browse");
+                  if (item.label === "Browse RFQs") setScreen("browse");
                 }}
                 aria-label={item.label}
                 title={sidebarCollapsed ? item.label : undefined}
@@ -1322,36 +1389,86 @@ function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
 
 function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   const isZh = language === "zh";
+  const meta = `${rfq.brand} · ${rfq.location} · Payment verified · ${rfq.trust}`;
+  const visibleTags = rfq.tags.slice(0, 4);
+  const [primaryImage, ...supportImages] = rfq.images || [];
+  const hasGallery = (rfq.images || []).length > 1;
+  const rfqFacts = [
+    ["Your quote", rfq.metrics[0]?.[0] || "Draft"],
+    [rfq.metrics[1]?.[1] || "Quote due", rfq.metrics[1]?.[0] || ""],
+    rfq.facts.find(([label]) => label === "Quantity"),
+    rfq.facts.find(([label]) => label === "Samples")
+  ].filter(Boolean);
 
   return (
-    <article className={rfq.featured ? "rfq-card featured factory-rfq-card" : "rfq-card factory-rfq-card"}>
-      <div className="rfq-thumbnail" aria-hidden="true" />
-      <div className="rfq-main">
-        <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(rfq.title) : rfq.title}</h2>
-        <p className="rfq-date" data-no-translate>{isZh ? getTranslatedListMeta(rfq.meta) : rfq.meta}</p>
-        <p className="rfq-description" data-no-translate>{isZh ? getTranslatedListDescription(rfq) : rfq.description}</p>
-        {isZh && <ListTranslationMeta />}
-      </div>
-      <div className="tag-row compact-tags rfq-tags">
-        {rfq.tags.map((tag) => (
-          <span className="tag" key={tag}>{tag}</span>
-        ))}
-        {rfq.status && <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>}
-      </div>
-      <div className="rfq-metrics">
-        {rfq.metrics.map(([value, label]) => (
-          <Metric label={label} value={value} key={label} />
-        ))}
-      </div>
-      <button className="rfq-more" type="button" aria-label={`More options for ${rfq.title}`}>...</button>
-      <div className="rfq-actions">
-        <button
-          className="primary-btn"
-          type="button"
-          onClick={rfq.status === "Quote submitted" ? onViewRequest : onEditQuote}
-        >
-          View RFQ
-        </button>
+    <article className={rfq.featured ? "factory-request-card featured factory-rfq-card" : "factory-request-card factory-rfq-card"}>
+      <header className="factory-request-card-top">
+        <div className="factory-request-title">
+          <div className="factory-avatar">{rfq.initials}</div>
+          <div className="rfq-main">
+            <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(rfq.title) : rfq.title}</h2>
+            <p className="rfq-date" data-no-translate>{isZh ? getTranslatedListMeta(meta) : meta}</p>
+          </div>
+        </div>
+        <div className="factory-request-card-actions factory-rfq-card-actions">
+          {rfq.status && <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>}
+          <button
+            className="primary-btn"
+            type="button"
+            onClick={rfq.status === "Quote submitted" ? onViewRequest : onEditQuote}
+          >
+            View RFQ
+          </button>
+          <button className="rfq-more" type="button" aria-label={`More options for ${rfq.title}`}>...</button>
+        </div>
+      </header>
+
+      <div className="factory-request-card-body">
+        <aside className="factory-request-brief">
+          <div className="factory-request-facts">
+            {rfqFacts.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+          <p className="rfq-description" data-no-translate>{isZh ? getTranslatedListDescription(rfq) : rfq.description}</p>
+          {isZh && <ListTranslationMeta />}
+          <div className="factory-request-trust">
+            <img src="/assets/prototype-icons/payment-protection.svg" alt="" />
+            <strong>Payment verified</strong>
+            <span>{rfq.trust}</span>
+          </div>
+          <div className="factory-request-tags">
+            <span className="marketplace-tag-label">Request tags</span>
+            <div className="tag-row compact-tags rfq-tags">
+              {visibleTags.map((tag) => (
+                <span className="tag" key={tag}>{tag}</span>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${rfq.brand} request references`}>
+          {primaryImage ? (
+            <figure className="factory-request-visual-main">
+              <img src={primaryImage.src} alt={`${rfq.title} ${primaryImage.label}`} />
+              <figcaption>{primaryImage.label}</figcaption>
+            </figure>
+          ) : (
+            <div className="factory-request-visual-placeholder">
+              <strong>No reference image uploaded</strong>
+              <span>Review the written brief, request tags, and attached tech pack in details.</span>
+            </div>
+          )}
+          {hasGallery && supportImages.slice(0, 2).map((image) => (
+            <figure key={image.label}>
+              <img src={image.src} alt={`${rfq.title} ${image.label}`} />
+              <figcaption>{image.label}</figcaption>
+            </figure>
+          ))}
+        </div>
       </div>
     </article>
   );
@@ -1465,36 +1582,57 @@ function FactoryProjectsPage({ language, onViewProject }) {
 
 function FactoryProjectListCard({ project, language, onViewProject }) {
   const isZh = language === "zh";
+  const [primaryImage] = project.images || [];
+  const productionFacts = [
+    ["Production step", project.currentStep],
+    ["Next due", project.nextDue]
+  ];
 
   return (
-    <article className={project.featured ? "brand-project-card featured factory-active-project-card" : "brand-project-card factory-active-project-card"}>
-      <div className="project-thumbnail" aria-hidden="true" />
-      <div className="project-main">
-        <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</h2>
-        <p className="project-meta" data-no-translate>
-          {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : `${project.brand} · ${project.location} · ${project.started}`}
-        </p>
-        <p className="project-description" data-no-translate>{isZh ? getTranslatedListDescription(project) : project.description}</p>
-        {isZh && <ListTranslationMeta />}
-        <div className="project-status-row">
+    <article className={project.featured ? "factory-request-card featured factory-active-project-card" : "factory-request-card factory-active-project-card"}>
+      <header className="factory-request-card-top">
+        <div className="factory-request-title">
+          <div className="factory-avatar">{project.initials}</div>
+          <div>
+            <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</h2>
+            <p className="project-meta" data-no-translate>
+              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : `${project.brand} · ${project.location} · ${project.started}`}
+            </p>
+          </div>
+        </div>
+        <div className="factory-request-card-actions factory-project-card-actions">
           <span className={`project-status ${project.statusTone}`}>{project.status}</span>
-          <span>{project.statusDetail}</span>
+          <button className="secondary-btn" type="button">Message</button>
+          <button className="primary-btn" type="button" onClick={onViewProject}>View order</button>
         </div>
-        <ProjectProgress progress={project.progress} />
-      </div>
-      <div className="project-facts">
-        <div>
-          <span>PRODUCTION STEP</span>
-          <strong>{project.currentStep}</strong>
+      </header>
+
+      <div className="factory-request-card-body">
+        <aside className="factory-request-brief factory-order-brief">
+          <div className="factory-request-facts">
+            {productionFacts.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+          <p className="project-description" data-no-translate>{isZh ? getTranslatedListDescription(project) : project.description}</p>
+          {isZh && <ListTranslationMeta />}
+          <div className="project-status-row">
+            <span>{project.statusDetail}</span>
+          </div>
+          <ProjectProgress progress={project.progress} />
+        </aside>
+
+        <div className="factory-request-visuals factory-order-visuals" aria-label={`${project.title} production reference`}>
+          {primaryImage && (
+            <figure className="factory-request-visual-main">
+              <img src={primaryImage.src} alt={`${project.title} ${primaryImage.label}`} />
+              <figcaption>{primaryImage.label}</figcaption>
+            </figure>
+          )}
         </div>
-        <div>
-          <span>NEXT DUE</span>
-          <strong>{project.nextDue}</strong>
-        </div>
-      </div>
-      <div className="project-actions">
-        <button className="secondary-btn" type="button">Message</button>
-        <button className="primary-btn" type="button" onClick={onViewProject}>View order</button>
       </div>
     </article>
   );

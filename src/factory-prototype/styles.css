@@ -1836,7 +1836,7 @@
 
 .factory-rfqs-page .rfqs-shell {
   gap: 26px;
-  max-width: 1048px;
+  max-width: 1030px;
 }
 
 .factory-rfqs-page .rfqs-header h1 {
@@ -1866,23 +1866,10 @@
   margin-top: -4px;
 }
 
-.factory-rfq-card {
-  grid-template-columns: 58px minmax(460px, 0.92fr) 276px 42px;
-  grid-template-rows: auto auto;
-  gap: 0 14px;
-  min-height: 224px;
-  padding: 23px 24px;
-  border-radius: 12px;
-}
-
-.factory-rfq-card,
-.factory-active-project-card,
 .factory-project-card {
   position: relative;
 }
 
-.factory-rfq-card .rfq-actions,
-.factory-active-project-card .project-actions,
 .factory-project-card .directory-factory-actions {
   position: absolute;
   right: 24px;
@@ -1893,103 +1880,9 @@
   margin: 0;
 }
 
-.factory-rfq-card.featured {
-  border-color: #d6e0ec;
-  background: #fff;
-}
-
-.factory-rfq-card:hover,
-.factory-rfq-card.featured:hover {
-  border-color: #9eb8fa;
-  background: #f9fbff;
-}
-
-.factory-rfq-card:nth-child(n + 3) {
-  min-height: 214px;
-}
-
-.factory-rfq-card .rfq-main h2 {
-  font-size: 20px;
-  line-height: 30px;
-}
-
-.factory-rfq-card .rfq-thumbnail {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.factory-rfq-card .rfq-main {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.factory-rfq-card .rfq-date {
-  margin: 0 0 4px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.factory-rfq-card .rfq-description {
-  max-width: 490px;
-  margin-top: 4px;
-  line-height: 20px;
-}
-
-.factory-rfq-card .rfq-tags {
-  grid-column: 2;
-  grid-row: 2;
-  align-self: start;
-  margin: 12px 0 0;
-  padding-top: 0;
-  gap: 7px;
-}
-
-.factory-rfq-card .rfq-tags .rfq-status {
-  margin-right: 100%;
-  width: max-content;
-}
-
-.factory-rfq-card .rfq-tags .tag {
-  min-height: 28px;
-  padding: 0 18px;
-  border-radius: 5px;
-  font-size: 11px;
-}
-
-.factory-rfq-card .rfq-status.danger {
-  border-color: #ff9c8f;
-  background: #fff0ee;
-  color: #c62818;
-}
-
-.factory-rfq-card .rfq-metrics {
-  grid-column: 3;
-  grid-row: 1;
-  gap: 10px;
-  justify-content: flex-end;
-  padding-top: 0;
-}
-
-.factory-rfq-card .rfq-metrics .metric {
-  min-width: 76px;
-}
-
-.factory-rfq-card .rfq-metrics .metric strong {
-  font-size: 17px;
-  line-height: normal;
-}
-
-.factory-rfq-card .rfq-metrics .metric span {
-  font-size: 11px;
-  line-height: 14px;
-}
-
 .factory-rfq-card .rfq-more {
-  position: absolute;
-  top: 23px;
-  right: 24px;
-  grid-column: auto;
-  grid-row: auto;
+  position: static;
+  flex: 0 0 auto;
   align-items: center;
   justify-content: center;
   padding: 0;
@@ -2003,20 +1896,41 @@
   content: none;
 }
 
-.factory-rfq-card .rfq-actions {
-  grid-column: auto;
-  grid-row: auto;
+.factory-rfq-card .rfq-status {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 18px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
-.factory-rfq-card .rfq-actions .primary-btn {
-  min-width: 118px;
+.factory-rfq-card .rfq-status.danger {
+  border-color: #ff9c8f;
+  background: #fff0ee;
+  color: #c62818;
+}
+
+.factory-rfq-card .primary-btn {
+  flex: 0 0 auto;
+  min-width: 128px;
   height: 42px;
-  padding: 0 20px;
+  padding: 0 22px;
+  border-radius: 999px;
   font-size: 15px;
 }
 
+.factory-rfq-card .factory-request-card-body {
+  grid-template-columns: minmax(560px, 1fr) 420px;
+}
+
+.factory-rfq-card .factory-request-visuals {
+  justify-self: end;
+  width: 420px;
+}
+
 .factory-projects-page .rfqs-shell {
-  max-width: 1048px;
+  max-width: 1030px;
 }
 
 .factory-projects-page .projects-controls {
@@ -2024,7 +1938,7 @@
 }
 
 .factory-active-project-card {
-  min-height: 224px;
+  min-height: 0;
 }
 
 .factory-active-project-card.featured {
@@ -2042,10 +1956,50 @@
   font-size: 12px;
 }
 
-.factory-active-project-card .project-actions {
-  grid-column: auto;
-  grid-row: auto;
-  align-self: auto;
+.factory-project-card-actions .secondary-btn,
+.factory-project-card-actions .primary-btn {
+  min-height: 38px;
+  padding: 0 14px;
+}
+
+.factory-project-card-actions .primary-btn {
+  min-width: 104px;
+}
+
+.factory-order-brief .project-description {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--primary);
+  color: #465f84;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.factory-order-brief .project-status-row {
+  margin-top: 0;
+}
+
+.factory-order-brief .project-status-row > span {
+  color: #5a6b87;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.factory-order-brief .project-progress {
+  width: min(100%, 520px);
+  margin-top: 2px;
+  margin-left: -12px;
+}
+
+.factory-active-project-card .factory-request-card-body {
+  grid-template-columns: minmax(560px, 1fr) 420px;
+}
+
+.factory-order-visuals {
+  justify-self: end;
+  width: 420px;
 }
 
 .factory-project-card {
@@ -2217,15 +2171,52 @@
 }
 
 .factory-browse-marketplace-page .directory-shell {
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 22px;
+  grid-template-columns: 272px minmax(0, 1fr);
+  gap: 24px;
   max-width: 1480px;
 }
 
 .factory-browse-marketplace-page .directory-filter-panel {
+  box-sizing: border-box;
+  width: 272px;
+  min-height: auto;
   top: 28px;
   gap: 24px;
   padding: 28px 24px;
+}
+
+.factory-browse-marketplace-page .directory-filter-header strong {
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.factory-browse-marketplace-page .directory-filter-header button {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.factory-browse-marketplace-page .directory-filter-group {
+  gap: 10px;
+}
+
+.factory-browse-marketplace-page .directory-filter-group h2 {
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.factory-browse-marketplace-page .directory-check {
+  grid-template-columns: 16px auto 1fr;
+  gap: 8px;
+  min-height: 22px;
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.factory-browse-marketplace-page .directory-check input {
+  width: 14px;
+  height: 14px;
 }
 
 .factory-browse-marketplace-page .directory-results {
@@ -2385,9 +2376,9 @@
   padding-left: 10px;
   border-left: 2px solid var(--primary);
   color: #465f84;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
-  line-height: 16px;
+  line-height: 18px;
 }
 
 .factory-request-trust {
@@ -2510,8 +2501,13 @@
   padding: 4px 10px;
   color: #0b1223;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 14px;
+}
+
+.factory-order-visuals:not(.has-gallery) .factory-request-visual-main img {
+  height: 160px;
+  aspect-ratio: auto;
 }
 
 .factory-request-tags {

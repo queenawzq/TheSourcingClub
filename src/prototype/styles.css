@@ -2836,13 +2836,10 @@ select {
 
 .rfq-card {
   display: grid;
-  grid-template-columns: 58px 430px 240px 42px minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  gap: 18px 24px;
-  min-height: 152px;
-  padding: 20px 24px 14px;
+  gap: 8px;
+  padding: 16px;
   border: 1px solid #d6e0ec;
-  border-radius: 12px;
+  border-radius: 8px;
   background: white;
 }
 
@@ -2857,12 +2854,16 @@ select {
   background: #f9fbff;
 }
 
-.rfq-thumbnail {
-  width: 58px;
-  height: 58px;
-  border: 1px solid #d7e0ea;
-  border-radius: 6px;
-  background: #ecf1f6;
+.rfq-card-top {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+}
+
+.rfq-title-row {
+  display: flex;
+  min-width: 0;
 }
 
 .rfq-main {
@@ -2873,38 +2874,95 @@ select {
   margin: 0;
   color: #0b1223;
   font-size: 20px;
-  line-height: 30px;
+  line-height: 28px;
   font-weight: 700;
 }
 
 .rfq-date {
-  margin: 4px 0 0;
+  margin: 1px 0 0;
   color: #5c7298;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 17px;
+}
+
+.rfq-description {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--primary);
+  color: #465f84;
   font-size: 13px;
   font-weight: 500;
   line-height: 18px;
 }
 
-.rfq-description {
-  max-width: 520px;
-  margin: 6px 0 0;
+.rfq-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  white-space: nowrap;
+}
+
+.rfq-card-body {
+  display: grid;
+  grid-template-columns: minmax(560px, 1fr) 420px;
+  gap: 16px;
+  align-items: start;
+}
+
+.rfq-brief {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.rfq-facts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.rfq-facts div {
+  min-height: 50px;
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.rfq-facts span,
+.rfq-facts strong {
+  display: block;
+}
+
+.rfq-facts span {
+  color: #60769b;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.rfq-facts strong {
   color: #0b1223;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13px;
   line-height: 18px;
+}
+
+.rfq-tag-section {
+  display: grid;
+  gap: 3px;
+  margin-top: 2px;
 }
 
 .rfq-tags {
   margin-top: 0;
-  padding-top: 14px;
+  padding-top: 0;
 }
 
 .rfq-tags .tag {
   color: #0b1223;
-}
-
-.rfq-status-row {
-  margin-top: 8px;
 }
 
 .rfq-status.ready {
@@ -2919,26 +2977,7 @@ select {
   color: #a65f00;
 }
 
-.rfq-metrics {
-  display: flex;
-  gap: 16px;
-  align-items: flex-start;
-  justify-content: flex-end;
-}
-
-.rfq-metrics .metric {
-  width: 72px;
-  text-align: center;
-}
-
-.rfq-metrics .metric strong {
-  font-size: 17px;
-  line-height: 22px;
-}
-
 .rfq-more {
-  grid-column: 5;
-  justify-self: end;
   display: grid;
   place-items: center;
   width: 42px;
@@ -2953,19 +2992,66 @@ select {
   line-height: 1;
 }
 
-.rfq-actions {
-  grid-column: 4 / 6;
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  align-self: start;
-  margin-top: -54px;
-}
-
-.rfq-actions .secondary-btn,
-.rfq-actions .primary-btn {
+.rfq-card-actions .primary-btn {
   min-width: 118px;
   padding: 0 20px;
+}
+
+.rfq-visuals {
+  align-self: start;
+  justify-self: end;
+  width: 420px;
+  min-width: 0;
+}
+
+.rfq-visuals.has-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.rfq-visuals figure {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.rfq-visuals img {
+  display: block;
+  width: 100%;
+  height: 160px;
+  object-fit: cover;
+  object-position: center;
+  background: #f4f6f8;
+}
+
+.rfq-visuals.has-gallery .rfq-visual-main {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+.rfq-visuals.has-gallery .rfq-visual-main img {
+  height: 140px;
+  aspect-ratio: auto;
+}
+
+.rfq-visuals.has-gallery figure:not(.rfq-visual-main) img {
+  height: 76px;
+  aspect-ratio: auto;
+}
+
+.rfq-visuals figcaption {
+  min-height: 22px;
+  padding: 4px 10px;
+  color: #0b1223;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
 }
 
 .projects-header {
@@ -4032,8 +4118,8 @@ select {
 
 .marketplace-shell {
   display: grid;
-  grid-template-columns: 280px minmax(860px, 1fr);
-  gap: 18px;
+  grid-template-columns: 272px minmax(860px, 1fr);
+  gap: 24px;
   align-items: start;
   max-width: 1360px;
   margin: 0;
@@ -4443,10 +4529,6 @@ select {
     margin-left: 88px;
   }
 
-  .rfq-card {
-    grid-template-columns: 58px minmax(260px, 1fr) 42px;
-  }
-
   .projects-controls {
     grid-template-columns: minmax(280px, 1fr) repeat(3, 160px);
     gap: 18px;
@@ -4477,17 +4559,6 @@ select {
 
   .project-milestone-item {
     grid-template-columns: 28px minmax(0, 1fr) 42px 160px;
-  }
-
-  .rfq-metrics {
-    grid-column: 2 / 4;
-    justify-content: flex-start;
-  }
-
-  .rfq-actions {
-    grid-column: 2 / 4;
-    justify-content: flex-start;
-    margin-top: 0;
   }
 
   .side-nav:not(.collapsed) + .directory-page {
@@ -4574,9 +4645,22 @@ select {
   }
 
   .rfq-card {
-    grid-template-columns: 48px minmax(0, 1fr);
     gap: 14px;
     padding: 18px;
+  }
+
+  .rfq-card-top,
+  .rfq-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .rfq-card-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .rfq-facts {
+    grid-template-columns: 1fr;
   }
 
   .brand-project-card {
@@ -4585,38 +4669,14 @@ select {
     padding: 18px;
   }
 
-  .rfq-thumbnail {
-    width: 48px;
-    height: 48px;
-  }
-
   .project-thumbnail {
     width: 48px;
     height: 48px;
   }
 
-  .rfq-more {
-    grid-column: 1;
-    grid-row: 2;
-    width: 36px;
-    height: 36px;
-  }
-
-  .rfq-metrics,
-  .rfq-actions,
   .project-facts,
   .project-actions {
     grid-column: 2;
-  }
-
-  .rfq-metrics {
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-
-  .rfq-actions {
-    flex-wrap: wrap;
-    margin-top: 0;
   }
 
   .project-facts {

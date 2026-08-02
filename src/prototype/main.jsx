@@ -309,6 +309,11 @@ const activeRfqs = [
     date: "Posted Jul 18 · Quote due Jul 24",
     description: "300 women's woven shirts in organic cotton poplin. Fit + PP sample before bulk approval.",
     tags: ["Cut & sew", "Middle $18-$40", "300 units"],
+    images: [
+      { label: "Poplin shirt reference", src: "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Material direction", src: "https://images.pexels.com/photos/6461392/pexels-photo-6461392.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Fit detail", src: "https://images.pexels.com/photos/7760024/pexels-photo-7760024.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     status: "Ready to compare",
     statusTone: "ready",
     metrics: [
@@ -323,6 +328,10 @@ const activeRfqs = [
     date: "Posted yesterday · Quote due Jul 26",
     description: "Fine-gauge merino blend tops and cardigans. Looking for visible sample-room support.",
     tags: ["Cut & sew", "Premium $40-$90", "300 units"],
+    images: [
+      { label: "Cardigan reference", src: "https://images.pexels.com/photos/9603624/pexels-photo-9603624.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Yarn direction", src: "https://images.pexels.com/photos/6069552/pexels-photo-6069552.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     status: "Ready to compare",
     statusTone: "ready",
     metrics: [
@@ -336,6 +345,10 @@ const activeRfqs = [
     date: "Posted 2 days ago · Quote due Jul 29",
     description: "Rigid denim jacket with two washes, trim confirmation, and split delivery for first retail test.",
     tags: ["Denim", "Middle $18-$40", "500 units"],
+    images: [
+      { label: "Denim jacket reference", src: "https://images.pexels.com/photos/28174872/pexels-photo-28174872.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Wash direction", src: "https://images.pexels.com/photos/31031120/pexels-photo-31031120.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     status: "Question open",
     statusTone: "warning",
     metrics: [
@@ -594,14 +607,14 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <SideNav
-        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Explore" : screen === "profile" ? "" : screen === "projects" ? "Projects" : screen === "rfqs" ? "RFQs" : "RFQs"}
+        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" ? "" : screen === "projects" ? "Projects" : screen === "rfqs" ? "RFQs" : "RFQs"}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onNav={(label) => {
           if (label === "Dashboard") goTo("home");
           if (label === "RFQs") goTo("rfqs");
           if (label === "Projects") goTo("projects");
-          if (label === "Explore") goTo("factoryMarketplace");
+          if (label === "Browse factories") goTo("factoryMarketplace");
         }}
         onProfile={() => goTo("profile")}
       />
@@ -644,7 +657,7 @@ function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
     { label: "Dashboard", icon: "home" },
     { label: "RFQs", icon: "rfq" },
     { label: "Projects", icon: "projects" },
-    { label: "Explore", icon: "explore" },
+    { label: "Browse factories", icon: "explore" },
     { label: "Connections", icon: "connections" },
     { label: "Messages", icon: "messages" },
     { label: "Bookmarks", icon: "bookmarks" },
@@ -1365,7 +1378,7 @@ function FactoryMarketplaceScreen({ goTo }) {
         <header className="marketplace-header">
           <div>
             <p className="eyebrow">FACTORY DIRECTORY</p>
-            <h1>BROWSE FACTORIES BY WHAT THEY MAKE</h1>
+            <h1>BROWSE FACTORIES</h1>
           </div>
           <label className="directory-search marketplace-search">
             <SearchIcon />
@@ -1553,30 +1566,61 @@ function RfqsScreen({ goTo }) {
 }
 
 function RfqCard({ rfq, goTo }) {
+  const [quotesReceived, invitedCount, messageCount] = rfq.metrics;
+  const quoteDue = rfq.date.split("Quote due ")[1] || "TBD";
+  const [primaryImage] = rfq.images || [];
+  const facts = [
+    ["Quotes received", quotesReceived[0]],
+    ["Invited", invitedCount[0]],
+    ["Messages", messageCount[0]],
+    ["Quote due", quoteDue]
+  ];
+
   return (
     <article className={rfq.featured ? "rfq-card featured" : "rfq-card"}>
-      <div className="rfq-thumbnail" aria-hidden="true" />
-      <div className="rfq-main">
-        <h2>{rfq.title}</h2>
-        <p className="rfq-date">{rfq.date}</p>
-        <p className="rfq-description">{rfq.description}</p>
-        <div className="tag-row compact-tags rfq-tags">
-          {rfq.tags.map((tag) => (
-            <span className="tag" key={tag}>{tag}</span>
-          ))}
+      <header className="rfq-card-top">
+        <div className="rfq-title-row">
+          <div className="rfq-main">
+            <h2>{rfq.title}</h2>
+            <p className="rfq-date">{rfq.date}</p>
+          </div>
         </div>
-        <div className="tag-row compact-tags rfq-status-row">
+        <div className="rfq-card-actions">
           <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>
+          <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View RFQ</button>
+          <button className="rfq-more" type="button" aria-label={`More options for ${rfq.title}`}>...</button>
         </div>
-      </div>
-      <div className="rfq-metrics">
-        {rfq.metrics.map(([value, label]) => (
-          <Metric label={label} value={value} key={label} />
-        ))}
-      </div>
-      <button className="rfq-more" type="button" aria-label={`More options for ${rfq.title}`}>...</button>
-      <div className="rfq-actions">
-        <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View RFQ</button>
+      </header>
+
+      <div className="rfq-card-body">
+        <aside className="rfq-brief">
+          <div className="rfq-facts">
+            {facts.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+          <p className="rfq-description">{rfq.description}</p>
+          <div className="rfq-tag-section">
+            <span className="marketplace-tag-label">Request tags</span>
+            <div className="tag-row compact-tags rfq-tags">
+              {rfq.tags.map((tag) => (
+                <span className="tag" key={tag}>{tag}</span>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <div className="rfq-visuals" aria-label={`${rfq.title} reference images`}>
+          {primaryImage && (
+            <figure className="rfq-visual-main">
+              <img src={primaryImage.src} alt={`${rfq.title} ${primaryImage.label}`} />
+              <figcaption>{primaryImage.label}</figcaption>
+            </figure>
+          )}
+        </div>
       </div>
     </article>
   );
