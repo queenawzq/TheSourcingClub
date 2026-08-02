@@ -4,9 +4,9 @@ import "../prototype/styles.css";
 import "./styles.css";
 
 const factorySamplePhotos = [
-  "https://www.figma.com/api/mcp/asset/34578f9c-c721-48f7-9bb1-74b4a599cf31",
-  "https://www.figma.com/api/mcp/asset/2d98726a-f212-432c-a44a-858969b0b506",
-  "https://www.figma.com/api/mcp/asset/34578f9c-c721-48f7-9bb1-74b4a599cf31"
+  "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=600",
+  "https://images.pexels.com/photos/7752585/pexels-photo-7752585.jpeg?auto=compress&dpr=1&w=600",
+  "https://images.pexels.com/photos/7505060/pexels-photo-7505060.jpeg?auto=compress&dpr=1&w=600"
 ];
 
 const brandProjects = [
@@ -1436,7 +1436,7 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
           <p className="rfq-description" data-no-translate>{isZh ? getTranslatedListDescription(rfq) : rfq.description}</p>
           {isZh && <ListTranslationMeta />}
           <div className="factory-request-trust">
-            <img src="/assets/prototype-icons/payment-protection.svg" alt="" />
+            <span className="factory-request-trust-icon" aria-hidden="true">$</span>
             <strong>Payment verified</strong>
             <span>{rfq.trust}</span>
           </div>
@@ -2531,7 +2531,7 @@ function BrandProjectCard({ project, language, onViewDetails }) {
             <p data-no-translate>{project.specialty}</p>
           )}
           <div className="factory-request-trust">
-            <img src="/assets/prototype-icons/payment-protection.svg" alt="" />
+            <span className="factory-request-trust-icon" aria-hidden="true">$</span>
             <strong>Payment verified</strong>
             <span>{project.trust}</span>
           </div>
@@ -2661,28 +2661,97 @@ function getTranslatedProjectSummary(project) {
 
 function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
   const isZh = language === "zh";
+  const translatedTitle = getTranslatedProjectTitle(project.title);
+  const requestImages = project.images || [];
+  const [primaryImage, ...supportImages] = requestImages;
+  const hasGallery = requestImages.length >= 3;
+  const requestFacts = [
+    ["Unit target", project.budget],
+    ["Quantity", project.quantity],
+    ["Samples", project.samples],
+    ["Quote due", project.quoteDue]
+  ];
 
   return (
     <main className="factory-detail-page">
       <header className="factory-detail-header">
         <button className="text-link" type="button" onClick={onBack}>‹ Back to explore</button>
-        <h1 data-no-translate={!isZh || undefined}>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</h1>
-        <p data-no-translate>
-          {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : `${project.brand} · ${project.location} · ${project.posted}`}
-        </p>
-        {isZh && (
-          <div className="brand-brief-translation-meta factory-detail-translation-meta">
-            <span>由英文自动翻译</span>
-            <button type="button">查看英文原文</button>
-          </div>
-        )}
-        <p className="factory-detail-header-summary" data-no-translate={!isZh || undefined}>
-          {isZh ? getTranslatedProjectSummary(project) : project.specialty}
-        </p>
       </header>
 
       <div className="factory-detail-layout">
         <section className="factory-detail-main">
+          <article className={project.featured ? "factory-request-card featured factory-detail-hero-card" : "factory-request-card factory-detail-hero-card"}>
+            <div className="factory-request-card-top">
+              <div className="factory-request-title">
+                <div className="factory-avatar">{project.initials}</div>
+                <div>
+                  <h1 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h1>
+                  <p data-no-translate>
+                    {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : `${project.brand} · ${project.location} · ${project.posted}`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {isZh && (
+              <div className="brand-brief-translation-meta factory-detail-translation-meta">
+                <span>由英文自动翻译</span>
+                <button type="button">查看英文原文</button>
+              </div>
+            )}
+
+            <div className="factory-request-card-body">
+              <aside className="factory-request-brief">
+                <div className="factory-request-facts">
+                  {requestFacts.map(([label, value]) => (
+                    <div key={label}>
+                      <span>{label}</span>
+                      <strong>{value}</strong>
+                    </div>
+                  ))}
+                </div>
+                {isZh ? (
+                  <TranslatedProjectSummary project={project} />
+                ) : (
+                  <p data-no-translate>{project.specialty}</p>
+                )}
+                <div className="factory-request-trust">
+                  <span className="factory-request-trust-icon" aria-hidden="true">$</span>
+                  <strong>Payment verified</strong>
+                  <span>{project.trust}</span>
+                </div>
+                <div className="factory-request-tags">
+                  <span className="marketplace-tag-label">Request tags</span>
+                  <div className="tag-row compact-tags">
+                    {project.tags.map((tag) => (
+                      <span className="tag garment-tag" key={tag}>{tag}</span>
+                    ))}
+                  </div>
+                </div>
+              </aside>
+
+              <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${project.brand} request references`}>
+                {primaryImage ? (
+                  <figure className="factory-request-visual-main">
+                    <img src={primaryImage.src} alt={`${project.title} ${primaryImage.label}`} />
+                    <figcaption>{primaryImage.label}</figcaption>
+                  </figure>
+                ) : (
+                  <div className="factory-request-visual-placeholder">
+                    <strong>No reference image uploaded</strong>
+                    <span>Review the written brief, request tags, and attached tech pack in details.</span>
+                  </div>
+                )}
+                {hasGallery && supportImages.slice(0, 2).map((image) => (
+                  <figure key={image.label}>
+                    <img src={image.src} alt={`${project.title} ${image.label}`} />
+                    <figcaption>{image.label}</figcaption>
+                  </figure>
+                ))}
+              </div>
+            </div>
+          </article>
+
           <DetailCard title="Project brief">
             <BrandBrief language={language} />
           </DetailCard>
@@ -2736,7 +2805,7 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
           </DetailCard>
         </section>
 
-        <aside className="factory-detail-side">
+        <aside className="factory-detail-side factory-detail-top-side">
           <section className="factory-side-card project-fit-card">
             <h2>Project brief</h2>
             <p>Your August capacity and low-MOQ woven experience match the brand request.</p>
@@ -3117,28 +3186,83 @@ function QuoteTranslationReview() {
 
 function FactoryQuoteRequestCard({ project, language }) {
   const isZh = language === "zh";
+  const translatedTitle = getTranslatedProjectTitle(project.title);
+  const requestImages = project.images || [];
+  const [primaryImage, ...supportImages] = requestImages;
+  const hasGallery = requestImages.length >= 3;
+  const requestFacts = [
+    ["Unit target", project.budget],
+    ["Quantity", project.quantity],
+    ["Samples", project.samples],
+    ["Quote due", project.quoteDue]
+  ];
 
   return (
-    <article className="factory-submit-card factory-submit-project-card">
-      <div className="factory-submit-project-copy">
-        <h2 data-no-translate={!isZh || undefined}>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</h2>
-        <p data-no-translate>{project.brand} · {project.location} · {isZh ? "18 分钟前发布" : project.posted}</p>
-        {isZh ? (
-          <TranslatedProjectSummary project={project} />
-        ) : (
-          <strong data-no-translate>{project.specialty}</strong>
-        )}
-        <div className="tag-row compact-tags factory-submit-tags">
-          {project.tags.map((tag) => (
-            <span className="tag" key={tag}>{tag}</span>
+    <article className="factory-submit-card factory-submit-project-card factory-request-card">
+      <header className="factory-request-card-top">
+        <div className="factory-request-title">
+          <div className="factory-avatar">{project.initials}</div>
+          <div>
+            <h2 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h2>
+            <p data-no-translate>{project.brand} · {project.location} · {isZh ? "18 分钟前发布" : project.posted}</p>
+          </div>
+        </div>
+        <div className="factory-request-card-actions">
+          <span className={`factory-project-fit ${project.fitTone}`}>{project.capacity.join(" · ")}</span>
+        </div>
+      </header>
+
+      <div className="factory-request-card-body">
+        <aside className="factory-request-brief">
+          <div className="factory-request-facts">
+            {requestFacts.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+          {isZh ? (
+            <TranslatedProjectSummary project={project} />
+          ) : (
+            <p data-no-translate>{project.specialty}</p>
+          )}
+          <div className="factory-request-trust">
+            <span className="factory-request-trust-icon" aria-hidden="true">$</span>
+            <strong>Payment verified</strong>
+            <span>{project.trust}</span>
+          </div>
+          <div className="factory-request-tags">
+            <span className="marketplace-tag-label">Request tags</span>
+            <div className="tag-row compact-tags factory-submit-tags">
+              {project.tags.map((tag) => (
+                <span className="tag garment-tag" key={tag}>{tag}</span>
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${project.brand} request references`}>
+          {primaryImage ? (
+            <figure className="factory-request-visual-main">
+              <img src={primaryImage.src} alt={`${project.title} ${primaryImage.label}`} />
+              <figcaption>{primaryImage.label}</figcaption>
+            </figure>
+          ) : (
+            <div className="factory-request-visual-placeholder">
+              <strong>No reference image uploaded</strong>
+              <span>Review the written brief, request tags, and attached tech pack in details.</span>
+            </div>
+          )}
+          {hasGallery && supportImages.slice(0, 2).map((image) => (
+            <figure key={image.label}>
+              <img src={image.src} alt={`${project.title} ${image.label}`} />
+              <figcaption>{image.label}</figcaption>
+            </figure>
           ))}
         </div>
-        <span className="factory-project-fit strong">{project.capacity.join(" · ")}</span>
       </div>
-      <div className="factory-submit-project-meta">
-        <DetailPair label="Requested quantity" value="300 units · 3 colors" />
-        <DetailPair label="Quote due" value="Jul 24" />
-      </div>
+
       <div className="factory-submit-attachments">
         <span>Brand attachments</span>
         <strong>Tech pack v3.pdf · Measurement chart · Reference photos</strong>

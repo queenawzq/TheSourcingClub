@@ -3,9 +3,9 @@ import { createRoot } from "react-dom/client";
 import "./styles.css";
 
 const samplePhotos = [
-  "https://www.figma.com/api/mcp/asset/0946693b-696e-46c6-ba0a-5657572676ed",
-  "https://www.figma.com/api/mcp/asset/14256e3c-62c6-4b41-abc6-3ed953eda03a",
-  "https://www.figma.com/api/mcp/asset/0946693b-696e-46c6-ba0a-5657572676ed"
+  "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=600",
+  "https://images.pexels.com/photos/7752585/pexels-photo-7752585.jpeg?auto=compress&dpr=1&w=600",
+  "https://images.pexels.com/photos/7505060/pexels-photo-7505060.jpeg?auto=compress&dpr=1&w=600"
 ];
 
 const steps = [
@@ -49,7 +49,7 @@ const screenMeta = {
   review: { step: 1, title: "Review your quote brief.", cta: "Invite factories" },
   invite: { step: 2, title: "Invite factories to quote.", cta: "Invite factories" },
   quotes: { step: 3, title: "Review factory quotes.", cta: "Review quote" },
-  quoteDetail: { step: 3, title: "Review Atelier Minho quote.", cta: "Use this quote" },
+  quoteDetail: { step: 3, title: "Review Atelier Minho quote.", cta: "Choose quote" },
   contract: { step: 4, title: "Set contract terms.", cta: "Continue to payment" },
   payment: { step: 5, title: "Choose payment terms.", cta: "Add production steps" },
   milestones: {
@@ -77,10 +77,12 @@ const screenMeta = {
 
 const factories = [
   {
+    initials: "AM",
     name: "Atelier Minho",
     location: "Porto, Portugal",
     trust: "trusted",
-    fit: "94%",
+    fit: "96%",
+    response: "< 6h",
     fitType: "Strong fit",
     fitSummary: "Premium shirting fit, low-MOQ sampling, and available August capacity.",
     factoryNote: "Premium finish support and tighter sample review. No open questions after tech pack upload.",
@@ -88,13 +90,26 @@ const factories = [
     quoteQuantity: "300 units",
     lead: "28 days",
     note: "Best match for organic cotton woven shirts with sample-first production.",
+    stats: [
+      ["MOQ", "150/style"],
+      ["Price point", "$18-$40"],
+      ["Bulk lead", "22-28 days"],
+      ["Capacity", "420 units"]
+    ],
+    products: [
+      { name: "Organic poplin shirt", image: "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Linen resort set", image: "https://images.pexels.com/photos/6461392/pexels-photo-6461392.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Light trench shell", image: "https://images.pexels.com/photos/7760024/pexels-photo-7760024.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     tags: ["Cut & sew", "Middle $18-$40", "MOQ 150", "22-28 days lead", "Open Aug 12-30", "420 units"]
   },
   {
+    initials: "HS",
     name: "Hanshu Studio",
     location: "Seoul, Korea",
     trust: "verified",
-    fit: "87%",
+    fit: "91%",
+    response: "< 12h",
     fitType: "Good fit",
     fitSummary: "Higher unit cost, but strongest finish quality and responsive team.",
     factoryNote: "Premium finish support and tighter sample review. No open questions after tech pack upload.",
@@ -102,13 +117,26 @@ const factories = [
     quoteQuantity: "300 units",
     lead: "32 days",
     note: "Strong construction and finishing, slightly higher sample cost.",
+    stats: [
+      ["MOQ", "150/style"],
+      ["Price point", "$18-$40"],
+      ["Bulk lead", "22-28 days"],
+      ["Capacity", "420 units"]
+    ],
+    products: [
+      { name: "Fine-gauge cardigan", image: "https://images.pexels.com/photos/9603624/pexels-photo-9603624.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Ribbed knit tank", image: "https://images.pexels.com/photos/8433475/pexels-photo-8433475.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Merino polo", image: "https://images.pexels.com/photos/914668/pexels-photo-914668.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     tags: ["Cut & sew", "Middle $18-$40", "MOQ 150", "22-28 days lead", "Open Aug 12-30", "420 units"]
   },
   {
+    initials: "NW",
     name: "Ningbo Woven Co",
     location: "Ningbo, China",
     trust: "basic",
     fit: "78%",
+    response: "< 24h",
     fitType: "Tradeoff",
     fitSummary: "Best price, but quoted at a revised 500-unit production run.",
     factoryNote: "Can split colorways after deposit. Brand should accept 500 units or request a revised 300-unit quote.",
@@ -116,6 +144,17 @@ const factories = [
     quoteQuantity: "500 units",
     lead: "35 days",
     note: "Competitive bulk pricing, needs closer sample approval before production.",
+    stats: [
+      ["MOQ", "500/style"],
+      ["Price point", "$8-$18"],
+      ["Bulk lead", "32 days"],
+      ["Capacity", "Best price"]
+    ],
+    products: [
+      { name: "Cotton shirt run", image: "https://images.pexels.com/photos/4621919/pexels-photo-4621919.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Bulk cutting table", image: "https://images.pexels.com/photos/4620625/pexels-photo-4620625.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Garment finishing", image: "https://images.pexels.com/photos/31031119/pexels-photo-31031119.jpeg?auto=compress&dpr=1&w=900" }
+    ],
     tags: ["Cut & sew", "Mass $8-$18", "MOQ 500", "32 days lead", "GOTS", "Best price", "split colorways"]
   }
 ];
@@ -372,6 +411,7 @@ const activeProjects = [
     currentStep: "Fit sample",
     nextDue: "Aug 16",
     progress: 2,
+    image: { label: "Poplin shirt reference", src: "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=900" },
     featured: true
   },
   {
@@ -385,7 +425,8 @@ const activeProjects = [
     statusDetail: "Lab dip approval requested by factory",
     currentStep: "Fit / lab dip",
     nextDue: "Aug 08",
-    progress: 3
+    progress: 3,
+    image: { label: "Knit capsule reference", src: "https://images.pexels.com/photos/9603624/pexels-photo-9603624.jpeg?auto=compress&dpr=1&w=900" }
   },
   {
     title: "Denim jacket wash development and small bulk",
@@ -398,7 +439,8 @@ const activeProjects = [
     statusDetail: "First milestone not funded",
     currentStep: "Fund milestone",
     nextDue: "Jul 30",
-    progress: 1
+    progress: 1,
+    image: { label: "Denim jacket reference", src: "https://images.pexels.com/photos/28174872/pexels-photo-28174872.jpeg?auto=compress&dpr=1&w=900" }
   },
   {
     title: "Low-MOQ swim capsule with recycled nylon",
@@ -411,7 +453,8 @@ const activeProjects = [
     statusDetail: "First milestone not funded",
     currentStep: "Fund milestone",
     nextDue: "Jul 28",
-    progress: 1
+    progress: 1,
+    image: { label: "Swim capsule reference", src: "https://images.pexels.com/photos/3998649/pexels-photo-3998649.jpeg?auto=compress&dpr=1&w=900" }
   }
 ];
 
@@ -607,13 +650,13 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <SideNav
-        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" ? "" : screen === "projects" ? "Projects" : screen === "rfqs" ? "RFQs" : "RFQs"}
+        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" ? "" : screen === "projects" ? "Production orders" : screen === "rfqs" ? "RFQs" : "RFQs"}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onNav={(label) => {
           if (label === "Dashboard") goTo("home");
           if (label === "RFQs") goTo("rfqs");
-          if (label === "Projects") goTo("projects");
+          if (label === "Production orders") goTo("projects");
           if (label === "Browse factories") goTo("factoryMarketplace");
         }}
         onProfile={() => goTo("profile")}
@@ -656,7 +699,7 @@ function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
   const nav = [
     { label: "Dashboard", icon: "home" },
     { label: "RFQs", icon: "rfq" },
-    { label: "Projects", icon: "projects" },
+    { label: "Production orders", icon: "projects" },
     { label: "Browse factories", icon: "explore" },
     { label: "Connections", icon: "connections" },
     { label: "Messages", icon: "messages" },
@@ -1436,7 +1479,7 @@ function MarketplaceFactoryCard({ factory, onQuote }) {
         </div>
         <div className="marketplace-factory-actions">
           <button className="secondary-btn" type="button">Save</button>
-          <button className="secondary-btn" type="button">Contact</button>
+          <button className="secondary-btn" type="button">Message</button>
           <button className="primary-btn" type="button" onClick={onQuote}>Request quote</button>
         </div>
       </div>
@@ -1631,7 +1674,7 @@ function ProjectsScreen({ goTo }) {
     <div className="rfqs-shell projects-shell">
       <header className="rfqs-header projects-header">
         <div>
-          <h1>Projects</h1>
+          <h1>Production orders</h1>
           <p>Track funded factory work, sample approvals, milestones, messages, and shared files.</p>
         </div>
       </header>
@@ -1671,11 +1714,11 @@ function ProjectsScreen({ goTo }) {
       </section>
 
       <nav className="rfqs-tabs projects-tabs" aria-label="Project status">
-        <button className="active" type="button">Active projects (4)</button>
+        <button className="active" type="button">Active orders (4)</button>
         <button type="button">Closed (6)</button>
       </nav>
 
-      <section className="projects-list" aria-label="Active projects">
+      <section className="projects-list" aria-label="Active orders">
         {activeProjects.map((project) => (
           <ProjectListCard project={project} goTo={goTo} key={project.title} />
         ))}
@@ -1685,32 +1728,50 @@ function ProjectsScreen({ goTo }) {
 }
 
 function ProjectListCard({ project, goTo }) {
+  const projectFacts = [
+    ["Current step", project.currentStep],
+    ["Next due", project.nextDue]
+  ];
+
   return (
     <article className={project.featured ? "brand-project-card featured" : "brand-project-card"}>
-      <div className="project-thumbnail" aria-hidden="true" />
-      <div className="project-main">
-        <h2>{project.title}</h2>
-        <p className="project-meta">{project.factory} · {project.location} · {project.started}</p>
-        <p className="project-description">{project.description}</p>
-        <div className="project-status-row">
+      <header className="project-card-top">
+        <div className="project-main">
+          <h2>{project.title}</h2>
+          <p className="project-meta">{project.factory} · {project.location} · {project.started}</p>
+        </div>
+        <div className="project-actions">
           <span className={`project-status ${project.statusTone}`}>{project.status}</span>
-          <span>{project.statusDetail}</span>
+          <button className="secondary-btn" type="button">Message</button>
+          <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>View project</button>
         </div>
-        <ProjectProgress progress={project.progress} />
-      </div>
-      <div className="project-facts">
-        <div>
-          <span>CURRENT STEP</span>
-          <strong>{project.currentStep}</strong>
+      </header>
+
+      <div className="project-card-body">
+        <aside className="project-card-brief">
+          <div className="project-facts">
+            {projectFacts.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+          <p className="project-description">{project.description}</p>
+          <div className="project-status-row">
+            <span>{project.statusDetail}</span>
+          </div>
+          <ProjectProgress progress={project.progress} />
+        </aside>
+
+        <div className="project-visuals" aria-label={`${project.title} production reference`}>
+          {project.image && (
+            <figure>
+              <img src={project.image.src} alt={`${project.title} ${project.image.label}`} />
+              <figcaption>{project.image.label}</figcaption>
+            </figure>
+          )}
         </div>
-        <div>
-          <span>NEXT DUE</span>
-          <strong>{project.nextDue}</strong>
-        </div>
-      </div>
-      <div className="project-actions">
-        <button className="secondary-btn" type="button">Message</button>
-        <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>View project</button>
       </div>
     </article>
   );
@@ -1965,42 +2026,121 @@ function InviteScreen({ selectedFactories, setSelectedFactories }) {
       <Card className="invite-results">
         <div className="factory-list">
           {factories.map((factory) => (
-            <button
-              className={selectedFactories.includes(factory.name) ? "factory-card selected" : "factory-card"}
+            <InviteFactoryCard
+              factory={factory}
+              isSelected={selectedFactories.includes(factory.name)}
               key={factory.name}
-              type="button"
-              onClick={() => toggle(factory.name)}
-            >
-              <span className={selectedFactories.includes(factory.name) ? "check-box checked" : "check-box"}>
-              </span>
-              <div className="factory-avatar">AM</div>
-              <div className="factory-main">
-                <div className="factory-name-row">
-                  <h3>{factory.name}</h3>
-                  <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
-                </div>
-                <p>{factory.location}</p>
-                <span>{factory.note}</span>
-                <div className="tag-row compact-tags">
-                  {factory.tags.slice(0, 6).map((tag) => (
-                    <span className={isBlueTag(tag) ? "tag blue-tag" : "tag"} key={tag}>{tag}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="factory-card-metrics">
-                <Metric label="match" value={factory.fit} className={matchTierClass(factory.fit)} />
-                <Metric label="rating" value={factory.name === "Atelier Minho" ? "4.9" : factory.name === "Hanshu Studio" ? "4.8" : "4.7"} />
-                <span className="orders-count">{factory.name === "Atelier Minho" ? "12" : factory.name === "Hanshu Studio" ? "8" : "19"} Club orders</span>
-              </div>
-              <div className="factory-actions">
-                <span className="save-pill">Save</span>
-                <strong>{selectedFactories.includes(factory.name) ? "Selected" : "Invite"}</strong>
-              </div>
-            </button>
+              onToggle={() => toggle(factory.name)}
+            />
           ))}
         </div>
       </Card>
     </div>
+  );
+}
+
+function InviteFactoryCard({ factory, isSelected, onToggle }) {
+  const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
+  const updateSampleScroll = (element) => {
+    if (!element) return;
+    const remaining = element.scrollWidth - element.clientWidth - element.scrollLeft;
+    setSampleScroll({
+      left: element.scrollLeft > 4,
+      right: remaining > 4
+    });
+  };
+
+  return (
+    <button
+      className={isSelected ? "factory-card selected" : "factory-card"}
+      type="button"
+      aria-pressed={isSelected}
+      onClick={onToggle}
+    >
+      <span className={isSelected ? "check-box checked" : "check-box"} />
+      <div className="invite-factory-content">
+        <div className="invite-factory-top">
+          <div className="marketplace-factory-title">
+            <div className="factory-avatar">{factory.initials}</div>
+            <div>
+              <div className="factory-name-row">
+                <h3>{factory.name}</h3>
+                <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+              </div>
+              <p>{factory.location}</p>
+            </div>
+          </div>
+          <div className="factory-card-metrics">
+            <Metric label="match" value={factory.fit} className={matchTierClass(factory.fit)} />
+            <Metric label="rating" value={factory.name === "Atelier Minho" ? "4.9" : factory.name === "Hanshu Studio" ? "4.8" : "4.7"} />
+            <Metric label="response" value={factory.response} />
+            <span className="orders-count">{factory.name === "Atelier Minho" ? "12" : factory.name === "Hanshu Studio" ? "8" : "19"} Club orders</span>
+          </div>
+          <div className="factory-actions">
+            <span className="save-pill">Message</span>
+            <strong>{isSelected ? "Selected" : "Invite"}</strong>
+          </div>
+        </div>
+
+        <div className="invite-factory-body">
+          <div className="marketplace-spec-panel invite-spec-panel">
+            <div className="marketplace-stat-grid invite-stat-grid">
+              {factory.stats.map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="marketplace-note-list invite-note-list">
+              <p>{factory.note}</p>
+            </div>
+          </div>
+          <div className="marketplace-samples-shell invite-samples-shell">
+            <button
+              className={sampleScroll.left ? "marketplace-samples-prev visible" : "marketplace-samples-prev"}
+              type="button"
+              aria-label="Scroll sample images back"
+              onClick={(event) => {
+                event.stopPropagation();
+                const scroller = event.currentTarget.nextElementSibling;
+                scroller?.scrollBy({ left: -240, behavior: "smooth" });
+                window.setTimeout(() => updateSampleScroll(scroller), 260);
+              }}
+            >
+              <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+            </button>
+            <div
+              className="marketplace-samples invite-samples"
+              aria-label={`${factory.name} sample products`}
+              onScroll={(event) => updateSampleScroll(event.currentTarget)}
+            >
+              {factory.products.map((product) => (
+                <figure className="marketplace-sample invite-sample" key={product.name}>
+                  <img src={product.image} alt={`${factory.name} ${product.name}`} />
+                  <figcaption>
+                    <strong>{product.name}</strong>
+                  </figcaption>
+                </figure>
+              ))}
+            </div>
+            <button
+              className={sampleScroll.right ? "marketplace-samples-next visible" : "marketplace-samples-next"}
+              type="button"
+              aria-label="Scroll sample images"
+              onClick={(event) => {
+                event.stopPropagation();
+                const scroller = event.currentTarget.previousElementSibling;
+                scroller?.scrollBy({ left: 240, behavior: "smooth" });
+                window.setTimeout(() => updateSampleScroll(scroller), 260);
+              }}
+            >
+              <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -2029,14 +2169,6 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, goTo }) {
         <button className="active" type="button">All quotes (3)</button>
         <button type="button">Messages (2)</button>
       </div>
-      <div className="quote-toolbar">
-        <label className="search-field">
-          <SearchIcon />
-          <input placeholder="Search factories" />
-        </label>
-        <button className="filter-button sort-button" type="button">Sort: Best fit</button>
-        <button className="filter-button" type="button">≡ Filter</button>
-      </div>
       <div className="quote-list">
         {factories.map((factory) => (
           <button
@@ -2045,34 +2177,52 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, goTo }) {
             className={selectedQuote === factory.name ? "factory-card quote-card selected" : "factory-card quote-card"}
             onClick={() => setSelectedQuote(factory.name)}
           >
-            <div className="factory-avatar">AM</div>
-            <div className="factory-main">
-              <div className="factory-name-row">
-                <h3>{factory.name}</h3>
-                <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+            <div className="quote-factory-content">
+              <div className="quote-factory-top">
+                <div className="marketplace-factory-title">
+                  <div className="factory-avatar">{factory.initials}</div>
+                  <div>
+                    <div className="factory-name-row">
+                      <h3>{factory.name}</h3>
+                      <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+                    </div>
+                    <p>{factory.location}</p>
+                  </div>
+                </div>
+                <div className="factory-actions quote-actions">
+                  <span className="save-pill">Message</span>
+                  <strong onClick={() => goTo("quoteDetail")}>Review</strong>
+                </div>
               </div>
-              <p>{factory.location}</p>
-              <span>{factory.note}</span>
-              <div className="tag-row compact-tags">
-                {factory.tags.slice(0, 4).map((tag) => (
-                  <span className="tag" key={tag}>{tag}</span>
-                ))}
+
+              <div className="quote-factory-body">
+                <div className="marketplace-spec-panel quote-spec-panel">
+                  <div className="marketplace-stat-grid quote-stat-grid">
+                    <div>
+                      <span>Unit price</span>
+                      <strong>{factory.price}</strong>
+                    </div>
+                    <div>
+                      <span>Quantity</span>
+                      <strong>{factory.quoteQuantity}</strong>
+                    </div>
+                    <div>
+                      <span>Bulk lead</span>
+                      <strong>{factory.lead}</strong>
+                    </div>
+                  </div>
+                  <div className="marketplace-note-list quote-note-list">
+                    <div className="quote-fit-row">
+                      <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>
+                      <p>{factory.fitSummary}</p>
+                    </div>
+                    <div className="factory-note-box">
+                      <strong>Notes from factory</strong>
+                      <span>{factory.factoryNote}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
-            <Metric label="unit price" value={factory.price} />
-            <Metric label="quantity" value={factory.quoteQuantity} />
-            <Metric label="bulk lead" value={factory.lead} />
-            <div className="factory-actions quote-actions">
-              <span className="save-pill">Message</span>
-              <strong onClick={() => goTo("quoteDetail")}>Review</strong>
-            </div>
-            <div className="quote-fit-row">
-              <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>
-              <p>{factory.fitSummary}</p>
-            </div>
-            <div className="factory-note-box">
-              <strong>Notes from factory</strong>
-              <span>{factory.factoryNote}</span>
             </div>
           </button>
         ))}
@@ -2093,26 +2243,39 @@ function QuoteDetailScreen({ selectedQuote, goTo }) {
       <div className="quote-detail-grid">
         <Card className="quote-detail-card">
           <section className="quote-detail-summary">
-            <div className="factory-avatar">AM</div>
-            <div className="factory-main">
-              <div className="factory-name-row">
-                <h3>{factory.name}</h3>
-                <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+            <div className="quote-detail-summary-top">
+              <div className="quote-detail-summary-main">
+                <div className="factory-avatar">{factory.initials}</div>
+                <div className="factory-main">
+                  <div className="factory-name-row">
+                    <h3>{factory.name}</h3>
+                    <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+                  </div>
+                  <p>{factory.location}</p>
+                </div>
               </div>
-              <p>{factory.location}</p>
-              <span>{factory.note}</span>
-              <div className="tag-row compact-tags">
-                {["Cut & sew", "GOTS", "Pattern support"].map((tag) => (
-                  <span className="tag" key={tag}>{tag}</span>
-                ))}
+              <div className="factory-actions quote-actions">
+                <span className="save-pill">Message</span>
+                <strong onClick={() => goTo("contract")}>Choose quote</strong>
               </div>
             </div>
-            <Metric label="unit price" value={factory.price} />
-            <Metric label="quantity" value={factory.quoteQuantity} />
-            <Metric label="bulk lead" value={factory.lead} />
-            <div className="factory-actions quote-actions">
-              <span className="save-pill">Message</span>
-              <strong onClick={() => goTo("contract")}>Choose quote</strong>
+
+            <div className="quote-detail-stat-grid">
+              {[
+                ["Unit price", factory.price],
+                ["Quantity", factory.quoteQuantity],
+                ["Bulk lead", factory.lead]
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+
+            <div className="quote-detail-fit-row">
+              <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>
+              <p>{factory.fitSummary}</p>
             </div>
           </section>
 
