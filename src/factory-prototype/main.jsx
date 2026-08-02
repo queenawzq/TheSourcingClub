@@ -9,6 +9,17 @@ const factorySamplePhotos = [
   "https://images.pexels.com/photos/7505060/pexels-photo-7505060.jpeg?auto=compress&dpr=1&w=600"
 ];
 
+const dashboardRfqPhotos = {
+  MR: { src: "/assets/dashboard-rfq-shirt.jpg", position: "50% 35%" },
+  ES: { src: "/assets/dashboard-rfq-knit.jpg", position: "52% 45%" },
+  NL: { src: "/assets/dashboard-rfq-denim.jpg", position: "50% 42%" }
+};
+
+const dashboardOrderPhotos = {
+  MR: { src: "/assets/dashboard-rfq-shirt.jpg", position: "50% 35%" },
+  LR: { src: "/assets/dashboard-rfq-knit.jpg", position: "52% 45%" }
+};
+
 const brandProjects = [
   {
     initials: "MR",
@@ -174,7 +185,9 @@ const factoryMainZhText = {
   "quote sent": "报价已发送",
   "quote due": "报价截止",
   "View RFQ": "查看询价",
+  "Edit quote": "编辑报价",
   "‹ Back to RFQs": "‹ 返回询价",
+  "‹ Back to view request": "‹ 返回查看需求",
   "Requested quantity": "需求数量",
   "300 units · 3 colors": "300 件 · 3 个颜色",
   "Review the brand request and the quote you submitted.": "查看品牌需求和你已提交的报价。",
@@ -263,7 +276,7 @@ const factoryMainZhText = {
   "Flexible": "灵活",
   "Certifications": "认证",
   "Projects shown are matched to your capacity, certifications, region fit, client spend, and payment status.": "显示的项目会根据你的产能、认证、地区匹配度、客户消费记录和付款状态进行匹配。",
-  "PROJECT MARKETPLACE": "项目市场",
+  "SOURCING MARKETPLACE": "寻源市场",
   "BROWSE BRAND REQUESTS": "浏览品牌需求",
   "Search organic cotton, denim, sample-ready...": "搜索有机棉、牛仔、可打样...",
   "24 open requests": "24 个开放需求",
@@ -271,6 +284,9 @@ const factoryMainZhText = {
   "Sort: Best fit": "排序：最匹配",
   "Save": "保存",
   "View details": "查看详情",
+  "Request details": "需求详情",
+  "Review the brand request, attachments, and quote requirements before sending your factory response.": "在发送工厂回复前，查看品牌需求、附件和报价要求。",
+  "Request match": "需求匹配",
   "Project brief": "项目简介",
   "‹ Back to explore": "‹ 返回浏览",
   "Quote-ready details": "报价所需信息",
@@ -296,7 +312,7 @@ const factoryMainZhText = {
   "Sample-room support": "样品间支持",
   "Your August capacity and low-MOQ woven experience match the brand request.": "你的 8 月产能和低 MOQ 梭织经验符合品牌需求。",
   "Send quote": "发送报价",
-  "Save project": "保存项目",
+  "Save request": "保存需求",
   "Verified brand": "已验证品牌",
   "Yes": "是",
   "Club orders": "平台订单",
@@ -368,7 +384,6 @@ const factoryMainZhText = {
   "Quote total shown to brand": "品牌将看到的报价总计",
   "Ready to send?": "准备发送？",
   "Confirm the quote is complete before it appears in the brand comparison page.": "发送前请确认报价完整，它会出现在品牌的报价比较页。",
-  "Save progress": "保存进度",
   "Quote sent successfully": "报价发送成功",
   "Your quote is now visible to the brand. They can compare it with other factory quotes, message you, or choose your quote for contract terms.": "品牌现在可以看到你的报价。他们可以与其他工厂报价比较、给你发消息，或选择你的报价进入合同条款。",
   "quote submitted": "报价已提交",
@@ -1005,6 +1020,7 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [screen, setScreen] = useState(shouldOpenPrototypeScreen ? requestedScreen : "dashboard");
   const [detailBackTarget, setDetailBackTarget] = useState("browse");
+  const [quoteBackTarget, setQuoteBackTarget] = useState("detail");
   const [capacityDrawerOpen, setCapacityDrawerOpen] = useState(false);
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
   const selectedProject = brandProjects[0];
@@ -1101,7 +1117,10 @@ function App() {
         <FactoryRfqsPage
           language={onboardingLanguage}
           onViewRequest={() => setScreen("rfqReadOnly")}
-          onEditQuote={() => setScreen("quote")}
+          onEditQuote={() => {
+            setQuoteBackTarget("rfqs");
+            setScreen("quote");
+          }}
         />
       )}
       {screen === "rfqReadOnly" && (
@@ -1109,6 +1128,10 @@ function App() {
           project={selectedProject}
           language={onboardingLanguage}
           onBack={() => setScreen("rfqs")}
+          onEdit={() => {
+            setQuoteBackTarget("rfqs");
+            setScreen("quote");
+          }}
         />
       )}
       {screen === "detail" && (
@@ -1116,7 +1139,10 @@ function App() {
           project={selectedProject}
           language={onboardingLanguage}
           onBack={() => setScreen(detailBackTarget)}
-          onSendQuote={() => setScreen("quote")}
+          onSendQuote={() => {
+            setQuoteBackTarget("detail");
+            setScreen("quote");
+          }}
         />
       )}
       {screen === "projectDetail" && (
@@ -1138,7 +1164,8 @@ function App() {
         <FactorySubmitQuote
           project={selectedProject}
           language={onboardingLanguage}
-          onBack={() => setScreen("detail")}
+          backLabel={quoteBackTarget === "rfqs" ? "‹ Back to RFQs" : "‹ Back to view request"}
+          onBack={() => setScreen(quoteBackTarget)}
           onReviewTotal={() => setScreen("reviewTotal")}
         />
       )}
@@ -1175,7 +1202,6 @@ function App() {
 
 function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onViewRfqs, onViewProjects }) {
   const capacityUnits = getCapacityUnitRange(capacityValue);
-  const isZh = language === "zh";
 
   return (
     <main className="factory-dashboard-page">
@@ -1187,7 +1213,7 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
         <section className="factory-dashboard-grid" aria-label="Factory dashboard overview">
           <div className="factory-dashboard-metrics">
             <FactoryMetricCard label="Open RFQs" value="7" note="+3 invited this week" tone="blue" />
-            <FactoryMetricCard label="Quotes sent" value="14" note="4 awaiting brand review" tone="green" />
+            <FactoryMetricCard label="Quotes sent this month" value="14" note="4 awaiting brand review" tone="green" />
             <FactoryMetricCard label="Active production orders" value="5" note="2 need sample updates" tone="amber" />
           </div>
 
@@ -1208,9 +1234,9 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
             action="View all"
             onAction={onViewRfqs}
           >
-            <FactoryDashboardRfqRow brand="Maison Rue" brief="Organic shirts - due today" budget="$18-$24" quantity="300 units" fit="Strong fit" tone="strong" />
-            <FactoryDashboardRfqRow brand="Elara Studio" brief="Stretch jersey capsule - 2 questions" budget="$40-$55" quantity="180 units" fit="Good fit" tone="good" />
-            <FactoryDashboardRfqRow brand="Northline Supply" brief="Recycled fleece overshirt - new brief" budget="$28-$36" quantity="500 units" fit="Potential fit" tone="warn" />
+            {factoryRfqs.slice(0, 3).map((rfq) => (
+              <FactoryDashboardRfqRow rfq={rfq} language={language} onView={onViewRfqs} key={rfq.title} />
+            ))}
           </FactoryDashboardPanel>
 
           <FactoryDashboardPanel
@@ -1227,12 +1253,13 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
           <FactoryDashboardPanel
             className="factory-active-projects-panel"
             title="Active production orders"
-            subtitle="Prioritized requests that match your capacity and capabilities."
+            subtitle="Track current orders and next action dates."
             action="View all"
             onAction={onViewProjects}
           >
-            <FactoryProjectDashboardRow language={language} title="Organic cotton woven shirt production" meta="Maison Rue · New York, USA · Started Jul 19" step="Fit sample" due={isZh ? "8 月 16 日" : "Aug 16"} status="Waiting for sample approval" tone="strong" progressStep={2} />
-            <FactoryProjectDashboardRow language={language} title="Premium knit capsule for resort drop" meta="Hansu Studio · Seoul, Korea · Started Jul 12" step="Fit / lab dip" due={isZh ? "8 月 16 日" : "Aug 16"} status="Submit lab dip" tone="warn" progressStep={3} />
+            {factoryProjects.slice(0, 2).map((project) => (
+              <FactoryProjectDashboardRow project={project} language={language} onView={onViewProjects} key={project.title} />
+            ))}
           </FactoryDashboardPanel>
         </section>
       </div>
@@ -1265,17 +1292,55 @@ function FactoryDashboardPanel({ title, subtitle, action, onAction, className = 
   );
 }
 
-function FactoryDashboardRfqRow({ brand, brief, budget, quantity, fit, tone }) {
+function FactoryDashboardRfqRow({ rfq, language, onView }) {
+  const isZh = language === "zh";
+  const [primaryImage] = rfq.images || [];
+  const dashboardPhoto = dashboardRfqPhotos[rfq.initials];
+  const inviteFacts = [
+    ["Unit target", rfq.facts.find(([label]) => label === "Unit target")?.[1] || ""],
+    ["Quantity", rfq.facts.find(([label]) => label === "Quantity")?.[1] || ""]
+  ];
+  const fit = rfq.statusTone === "warning" ? "Good fit" : rfq.statusTone === "danger" ? "Potential fit" : "Strong fit";
+  const fitTone = rfq.statusTone === "warning" ? "good" : rfq.statusTone === "danger" ? "warn" : "strong";
+
   return (
-    <article className="factory-dashboard-row factory-dashboard-rfq-row">
-      <span className="factory-dashboard-thumb" />
-      <div className="factory-dashboard-row-main">
-        <strong>{brand}</strong>
-        <p>{brief}</p>
+    <article className="factory-request-card factory-dashboard-mini-card factory-dashboard-rfq-row">
+      <header className="factory-request-card-top">
+        <div className="factory-request-title">
+          {dashboardPhoto || primaryImage ? (
+            <img
+              className="factory-dashboard-rfq-image"
+              src={dashboardPhoto?.src || primaryImage.src}
+              alt={`${rfq.title} reference`}
+              style={dashboardPhoto ? { objectPosition: dashboardPhoto.position } : undefined}
+            />
+          ) : (
+            <div className="factory-avatar">{rfq.initials}</div>
+          )}
+          <div>
+            <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(rfq.title) : rfq.title}</h2>
+            <p data-no-translate>
+              {isZh ? getTranslatedListMeta(`${rfq.brand} · ${rfq.location} · ${rfq.trust}`) : `${rfq.brand} · ${rfq.location} · ${rfq.trust}`}
+            </p>
+          </div>
+        </div>
+        <div className="factory-request-card-actions">
+          <span className={`factory-project-fit ${fitTone}`}>{fit}</span>
+          <button className="primary-btn" type="button" onClick={onView}>View RFQ</button>
+        </div>
+      </header>
+
+      <div className="factory-request-brief">
+        <div className="factory-request-facts">
+          {inviteFacts.map(([label, value]) => (
+            <div key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+        <p data-no-translate>{isZh ? getTranslatedListDescription(rfq) : rfq.description}</p>
       </div>
-      <Metric label="unit target" value={budget} />
-      <Metric label="quantity" value={quantity} />
-      <span className={`factory-project-fit ${tone}`}>{fit}</span>
     </article>
   );
 }
@@ -1293,44 +1358,49 @@ function FactoryMessageRow({ brand, message, time, unread = false, brandAuthored
   );
 }
 
-function FactoryProjectDashboardRow({ language, title, meta, step, due, status, tone, progressStep }) {
-  const steps = ["1st step funded", "Fit sample", "Fit / lab dip", "Production", "Shipped"];
+function FactoryProjectDashboardRow({ project, language, onView }) {
   const isZh = language === "zh";
+  const dashboardPhoto = dashboardOrderPhotos[project.initials];
+  const [primaryImage] = project.images || [];
+  const productionFacts = [
+    ["Production step", project.currentStep],
+    ["Next due", project.nextDue]
+  ];
 
   return (
-    <article className="factory-dashboard-row factory-project-dashboard-row">
-      <span className="factory-dashboard-thumb" />
-      <div className="factory-dashboard-row-main">
-        <strong data-no-translate>{isZh ? getTranslatedProjectTitle(title) : title}</strong>
-        <p data-no-translate>{isZh ? getTranslatedListMeta(meta) : meta}</p>
-        <div className="factory-project-progress" aria-label={`${title} progress`}>
-          <div className="factory-project-progress-line">
-            <span style={{ width: `${Math.max(0, progressStep - 1) * 25}%` }} />
+    <article className="factory-request-card factory-dashboard-mini-card factory-project-dashboard-row">
+      <div className="factory-project-dashboard-main">
+        <div className="factory-project-dashboard-heading">
+          <img
+            className="factory-project-dashboard-image"
+            src={dashboardPhoto?.src || primaryImage?.src}
+            alt={`${project.title} reference`}
+            style={dashboardPhoto ? { objectPosition: dashboardPhoto.position } : undefined}
+          />
+          <div>
+            <strong data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</strong>
+            <p className="project-meta" data-no-translate>
+              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : `${project.brand} · ${project.location} · ${project.started}`}
+            </p>
           </div>
-          {steps.map((label, index) => {
-            const stepNumber = index + 1;
-            const complete = stepNumber < progressStep;
-            const active = stepNumber === progressStep;
-
-            return (
-              <div className={complete ? "complete" : active ? "active" : ""} key={label}>
-                <span>{complete ? "✓" : stepNumber}</span>
-                <small>{label}</small>
-              </div>
-            );
-          })}
         </div>
       </div>
-      <div className="factory-project-mini-metric">
-        <span>Production step</span>
-        <strong>{step}</strong>
+
+      <div className="factory-project-dashboard-meta">
+        {productionFacts.map(([label, value]) => (
+          <div className="factory-project-mini-metric" key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+        <span className={`project-status ${project.statusTone}`}>{project.status}</span>
       </div>
-      <div className="factory-project-mini-metric">
-        <span>Next due</span>
-        <strong>{due}</strong>
+
+      <div className="factory-project-dashboard-progress">
+        <ProjectProgress progress={project.progress} />
       </div>
-      <span className={`factory-project-fit ${tone}`}>{status}</span>
-      <button className="primary-btn factory-project-view-btn" type="button">View order</button>
+
+      <button className="primary-btn factory-project-view-btn" type="button" onClick={onView}>View order</button>
     </article>
   );
 }
@@ -1395,8 +1465,8 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   const hasGallery = (rfq.images || []).length > 1;
   const rfqFacts = [
     ["Your quote", rfq.metrics[0]?.[0] || "Draft"],
-    [rfq.metrics[1]?.[1] || "Quote due", rfq.metrics[1]?.[0] || ""],
     rfq.facts.find(([label]) => label === "Quantity"),
+    [rfq.metrics[1]?.[1] || "Quote due", rfq.metrics[1]?.[0] || ""],
     rfq.facts.find(([label]) => label === "Samples")
   ].filter(Boolean);
 
@@ -1474,7 +1544,7 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   );
 }
 
-function FactoryReadOnlyRfqPage({ project, language, onBack }) {
+function FactoryReadOnlyRfqPage({ project, language, onBack, onEdit }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-rfq-read-page">
       <div className="factory-submit-content">
@@ -1482,6 +1552,7 @@ function FactoryReadOnlyRfqPage({ project, language, onBack }) {
           <button className="text-link" type="button" onClick={onBack}>‹ Back to RFQs</button>
           <h1>View RFQ</h1>
           <p>Review the brand request and the quote you submitted.</p>
+          <button className="secondary-btn factory-rfq-edit-btn" type="button" onClick={onEdit}>Edit quote</button>
         </header>
 
         <div className="factory-submit-layout factory-rfq-read-layout">
@@ -1491,6 +1562,8 @@ function FactoryReadOnlyRfqPage({ project, language, onBack }) {
           </section>
 
           <aside className="factory-submit-side">
+            <FactoryPriceTotalCard project={project} />
+
             <section className="factory-submit-card factory-status-card">
               <h2>RFQ status</h2>
               <p>Your quote was submitted and is visible to Maison Rue.</p>
@@ -1500,18 +1573,44 @@ function FactoryReadOnlyRfqPage({ project, language, onBack }) {
                 <DetailPair label="Status" value="Quote submitted" />
               </div>
             </section>
-
-            <section className="factory-submit-reminder">
-              <h2>Helpful reminder</h2>
-              <p>
-                Factories should quote exact units and exact lead time here. MOQ only belongs on profile/search,
-                not on a response to a known order quantity.
-              </p>
-            </section>
           </aside>
         </div>
       </div>
     </main>
+  );
+}
+
+function FactoryPriceTotalCard({ project }) {
+  const rows = [
+    ["Unit price", "$18.40"],
+    ["Quantity", "300 units"],
+    ["Production subtotal", "$5,520"],
+    ["Sample plan", "Fit + PP · $260"],
+    ["Sample shipping", "TBD"],
+    ["Payment terms", "30% / 70%"],
+  ];
+
+  return (
+    <section className="factory-submit-card factory-review-card">
+      <header className="factory-review-card-header">
+        <h2>Price total</h2>
+        <p data-no-translate>{project.brand} · {project.location}</p>
+      </header>
+
+      <div className="factory-review-rows">
+        {rows.map(([label, value]) => (
+          <React.Fragment key={label}>
+            <span>{label}</span>
+            <strong data-no-translate>{value}</strong>
+          </React.Fragment>
+        ))}
+      </div>
+
+      <div className="factory-review-total">
+        <span>Brand sees</span>
+        <strong data-no-translate>$5,780</strong>
+      </div>
+    </section>
   );
 }
 
@@ -1749,7 +1848,7 @@ function FactoryBrowsePage({ language, onViewDetails }) {
         <section className="directory-results" aria-label="Brand project results">
           <header className="directory-hero">
             <div>
-              <p className="eyebrow">PROJECT MARKETPLACE</p>
+              <p className="eyebrow">SOURCING MARKETPLACE</p>
               <h1>BROWSE BRAND REQUESTS</h1>
             </div>
             <label className="directory-search">
@@ -2509,7 +2608,7 @@ function BrandProjectCard({ project, language, onViewDetails }) {
           </div>
         </div>
         <div className="factory-request-card-actions">
-          <span className={`factory-project-fit ${project.fitTone}`}>{project.capacity.join(" · ")}</span>
+          <span className={`factory-project-fit ${project.fitTone}`}>{project.capacity[0]}</span>
           <button className="secondary-btn" type="button">Save</button>
           <button className="primary-btn" type="button" onClick={onViewDetails}>View details</button>
         </div>
@@ -2676,6 +2775,8 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
     <main className="factory-detail-page">
       <header className="factory-detail-header">
         <button className="text-link" type="button" onClick={onBack}>‹ Back to explore</button>
+        <h1>Request details</h1>
+        <p>Review the brand request, attachments, and quote requirements before sending your factory response.</p>
       </header>
 
       <div className="factory-detail-layout">
@@ -2807,12 +2908,12 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
 
         <aside className="factory-detail-side factory-detail-top-side">
           <section className="factory-side-card project-fit-card">
-            <h2>Project brief</h2>
+            <h2>Request match</h2>
             <p>Your August capacity and low-MOQ woven experience match the brand request.</p>
             <span className="factory-project-fit strong">Strong fit</span>
             <div className="factory-side-actions">
               <button className="primary-btn" type="button" onClick={onSendQuote}>Send quote</button>
-              <button className="secondary-btn" type="button">Save project</button>
+              <button className="secondary-btn" type="button">Save request</button>
             </div>
           </section>
 
@@ -2895,7 +2996,7 @@ function FactoryProjectProgressDetail({ language, onBack, onPostUpdate, showPost
       <header className="factory-detail-header factory-project-detail-header">
         <button className="text-link" type="button" onClick={onBack}>‹ Back to production orders</button>
         <h1 data-no-translate>{isZh ? getTranslatedProjectTitle("Organic cotton woven shirt production") : "Organic cotton woven shirt production"}</h1>
-        <p data-no-translate>{isZh ? getTranslatedListMeta("Atelier Minho · Porto, Portugal · Started Jul 19") : "Atelier Minho · Porto, Portugal · Started Jul 19"}</p>
+        <p data-no-translate>{isZh ? getTranslatedListMeta("Maison Rue · New York, USA · Started Jul 19") : "Maison Rue · New York, USA · Started Jul 19"}</p>
       </header>
 
       <div className="factory-project-detail-grid">
@@ -3044,14 +3145,14 @@ function AddUpdateModal({ language, milestone, onClose, onPost }) {
   );
 }
 
-function FactorySubmitQuote({ project, language, onBack, onReviewTotal }) {
+function FactorySubmitQuote({ project, language, backLabel = "‹ Back to view request", onBack, onReviewTotal }) {
   const isZh = language === "zh";
 
   return (
     <main className="factory-detail-page factory-submit-page">
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header">
-          <button className="text-link" type="button" onClick={onBack}>‹ Back to view project</button>
+          <button className="text-link" type="button" onClick={onBack}>{backLabel}</button>
           <h1>Submit quote</h1>
           <p>Quote the exact unit price, sample path, lead time, and any questions before the brand chooses a factory.</p>
           {isZh && <small className="submit-page-language-hint">You can fill this page in Chinese. We'll create an English version for you to review before sending.</small>}
@@ -3067,7 +3168,6 @@ function FactorySubmitQuote({ project, language, onBack, onReviewTotal }) {
         </div>
       </div>
       <footer className="factory-submit-bottom-bar">
-        <button className="secondary-btn" type="button" onClick={onBack}>Back</button>
         <div className="factory-submit-bottom-actions">
           <button className="secondary-btn" type="button">Save draft</button>
           <button className="primary-btn" type="button" onClick={onReviewTotal}>Review quote</button>
@@ -3078,15 +3178,6 @@ function FactorySubmitQuote({ project, language, onBack, onReviewTotal }) {
 }
 
 function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) {
-  const rows = [
-    ["Unit price", "$18.40"],
-    ["Quantity", "300 units"],
-    ["Production subtotal", "$5,520"],
-    ["Sample plan", "Fit + PP · $260"],
-    ["Sample shipping", "TBD"],
-    ["Payment terms", "30% / 70%"],
-  ];
-
   return (
     <main className="factory-detail-page factory-submit-page factory-review-page">
       <div className="factory-submit-content">
@@ -3103,26 +3194,7 @@ function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) 
           </section>
 
           <aside className="factory-review-side">
-            <section className="factory-submit-card factory-review-card">
-              <header className="factory-review-card-header">
-                <h2>Price total</h2>
-                <p data-no-translate>{project.brand} · {project.location}</p>
-              </header>
-
-              <div className="factory-review-rows">
-                {rows.map(([label, value]) => (
-                  <React.Fragment key={label}>
-                    <span>{label}</span>
-                    <strong data-no-translate>{value}</strong>
-                  </React.Fragment>
-                ))}
-              </div>
-
-              <div className="factory-review-total">
-                <span>Brand sees</span>
-                <strong data-no-translate>$5,780</strong>
-              </div>
-            </section>
+            <FactoryPriceTotalCard project={project} />
 
             <section className="factory-submit-card factory-ready-card">
               <div>
@@ -3131,7 +3203,7 @@ function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) 
               </div>
               <div className="factory-ready-actions">
                 <button className="primary-btn" type="button" onClick={onSendQuote}>Send quote</button>
-                <button className="secondary-btn" type="button">Save progress</button>
+                <button className="secondary-btn" type="button">Save draft</button>
               </div>
             </section>
           </aside>

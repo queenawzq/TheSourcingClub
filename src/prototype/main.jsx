@@ -1474,7 +1474,6 @@ function MarketplaceFactoryCard({ factory, onQuote }) {
         <div className="marketplace-factory-metrics">
           <Metric label="match" value={factory.match} className={matchTierClass(factory.match)} />
           <Metric label="rating" value={factory.rating} />
-          <Metric label="response" value={factory.response} />
           <span>{factory.orders}</span>
         </div>
         <div className="marketplace-factory-actions">
