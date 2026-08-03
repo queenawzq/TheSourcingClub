@@ -3394,6 +3394,11 @@ select {
   line-height: 16px;
 }
 
+.project-status-row strong {
+  color: #0b1223;
+  font-weight: 700;
+}
+
 .project-status {
   display: inline-grid;
   place-items: center;
@@ -4506,7 +4511,7 @@ select {
 
 .marketplace-factory-top {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) max-content max-content;
+  grid-template-columns: minmax(260px, 420px) max-content minmax(260px, 1fr);
   gap: 14px;
   align-items: start;
 }
@@ -4534,7 +4539,8 @@ select {
 .marketplace-factory-metrics {
   display: flex;
   align-items: flex-start;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  justify-self: start;
   gap: 14px;
 }
 
@@ -4548,6 +4554,7 @@ select {
 
 .marketplace-factory-actions {
   display: flex;
+  justify-self: end;
   justify-content: flex-end;
   min-width: 0;
   gap: 8px;
@@ -5171,4 +5178,64 @@ select {
   .marketplace-factory-actions .secondary-btn {
     flex: 1;
   }
+}
+
+button.primary-btn,
+button.secondary-btn,
+a.primary-btn,
+a.secondary-btn {
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 14px !important;
+  border-radius: 34px !important;
+  font-size: 13px !important;
+  line-height: 1 !important;
+  white-space: nowrap;
+}
+
+.rfq-more {
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 34px !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 !important;
+  background: #fff url("/assets/prototype-icons/menu.svg") center / 14px 4px no-repeat !important;
+  color: transparent !important;
+  font-size: 0 !important;
+  line-height: 1 !important;
+}
+
+.pill,
+.tag,
+.rfq-status,
+.project-status,
+.save-pill,
+.factory-actions strong,
+.quote-actions strong {
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 0 12px !important;
+  border-radius: 7px !important;
+  font-size: 12px !important;
+  line-height: 1 !important;
+}
+
+.bottom-bar button.primary-btn,
+.bottom-bar button.secondary-btn {
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 22px !important;
+  border-radius: 40px !important;
+  font-size: 14px !important;
 }

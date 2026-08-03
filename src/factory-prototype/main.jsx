@@ -348,8 +348,8 @@ const factoryMainZhText = {
   "0-25% open": "0-25% 可接单",
   "BRANDS WILL SEE": "品牌将看到",
   "Save changes": "保存更改",
-  "Submit quote": "提交报价",
-  "Quote the exact unit price, sample path, lead time, and any questions before the brand chooses a factory.": "在品牌选择工厂前，填写准确单价、样品路径、交期和需要确认的问题。",
+  "Prepare quote": "准备报价",
+  "Set the unit price, sample path, lead time, and any questions before sending your quote.": "发送报价前，填写单价、样品路径、交期和需要确认的问题。",
   "‹ Back to view project": "‹ 返回项目详情",
   "Back": "返回",
   "Save draft": "保存草稿",
@@ -376,7 +376,6 @@ const factoryMainZhText = {
   "Factory response": "工厂回复",
   "Additional details and questions": "补充信息和问题",
   "Add supporting files or questions regarding the quote.": "添加与报价相关的支持文件或问题。",
-  "Review quote total": "确认报价总计",
   "‹ Back to edit quote": "‹ 返回编辑报价",
   "Totals are calculated after saving the quote. Review the breakdown before sending it to Maison Rue.": "保存报价后会计算总计。发送给 Maison Rue 前请确认明细。",
   "Production subtotal": "生产小计",
@@ -428,7 +427,7 @@ const factoryMainZhText = {
   "Sample photos expected Aug 16": "预计 8 月 16 日上传样品照片",
   "Bulk deposit locked until approval": "大货定金需审批后解锁",
   "Production timeline": "生产时间线",
-  "Manage milestones": "管理里程碑",
+  "Manage step": "管理步骤",
   "Add update": "添加更新",
   "View all updates (7)": "查看全部更新 (7)",
   "Fit sample is ready for review. Uploaded front, side, and detail photos for approval.": "试身样已准备好审核。已上传正面、侧面和细节照片供审批。",
@@ -1248,6 +1247,8 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
             <FactoryMessageRow unread brand="Maison Rue" message="Can you split fit and PP sample cost?" time="12 min" brandAuthored />
             <FactoryMessageRow brand="Elara Studio" message="Uploaded updated colorway sheet." time="1 hr" brandAuthored />
             <FactoryMessageRow brand="TSC ops" message="Verification renewal due this month." time="Today" />
+            <FactoryMessageRow brand="Northline" message="Can you confirm wash sample lead time?" time="Today" brandAuthored />
+            <FactoryMessageRow brand="Luna Resort" message="Shared updated knit measurement notes." time="Yesterday" brandAuthored />
           </FactoryDashboardPanel>
 
           <FactoryDashboardPanel
@@ -1362,20 +1363,26 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
   const isZh = language === "zh";
   const dashboardPhoto = dashboardOrderPhotos[project.initials];
   const [primaryImage] = project.images || [];
+  const statusLabel = {
+    "Waiting for sample approval": "Sample approval",
+    "Submit lab dip": "Lab dip"
+  }[project.status] || project.status;
   const productionFacts = [
     ["Production step", project.currentStep],
     ["Next due", project.nextDue]
   ];
+  const imageSrc = dashboardPhoto?.src || primaryImage?.src;
+  const imagePosition = dashboardPhoto?.position;
 
   return (
     <article className="factory-request-card factory-dashboard-mini-card factory-project-dashboard-row">
-      <div className="factory-project-dashboard-main">
+      <header className="factory-project-dashboard-top">
         <div className="factory-project-dashboard-heading">
           <img
-            className="factory-project-dashboard-image"
-            src={dashboardPhoto?.src || primaryImage?.src}
+            className="factory-project-dashboard-thumb-image"
+            src={imageSrc}
             alt={`${project.title} reference`}
-            style={dashboardPhoto ? { objectPosition: dashboardPhoto.position } : undefined}
+            style={imagePosition ? { objectPosition: imagePosition } : undefined}
           />
           <div>
             <strong data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</strong>
@@ -1384,23 +1391,28 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
             </p>
           </div>
         </div>
-      </div>
+        <div className="factory-project-dashboard-actions">
+          <span className={`project-status ${project.statusTone}`}>{statusLabel}</span>
+          <button className="primary-btn factory-project-view-btn" type="button" onClick={onView}>View order</button>
+        </div>
+      </header>
 
-      <div className="factory-project-dashboard-meta">
-        {productionFacts.map(([label, value]) => (
-          <div className="factory-project-mini-metric" key={label}>
-            <span>{label}</span>
-            <strong>{value}</strong>
+      <div className="factory-project-dashboard-body">
+        <div className="factory-project-dashboard-left">
+          <div className="factory-project-dashboard-meta">
+            {productionFacts.map(([label, value]) => (
+              <div className="factory-project-mini-metric" key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
           </div>
-        ))}
-        <span className={`project-status ${project.statusTone}`}>{project.status}</span>
-      </div>
 
-      <div className="factory-project-dashboard-progress">
-        <ProjectProgress progress={project.progress} />
+          <div className="factory-project-dashboard-progress">
+            <ProjectProgress progress={project.progress} />
+          </div>
+        </div>
       </div>
-
-      <button className="primary-btn factory-project-view-btn" type="button" onClick={onView}>View order</button>
     </article>
   );
 }
@@ -3028,7 +3040,7 @@ function FactoryProjectProgressDetail({ language, onBack, onPostUpdate, showPost
                 />
               ))}
             </div>
-            <button className="secondary-btn factory-manage-milestones" type="button">Manage milestones</button>
+            <button className="secondary-btn factory-manage-milestones" type="button">Manage step</button>
           </section>
         </section>
 
@@ -3153,8 +3165,8 @@ function FactorySubmitQuote({ project, language, backLabel = "‹ Back to view r
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header">
           <button className="text-link" type="button" onClick={onBack}>{backLabel}</button>
-          <h1>Submit quote</h1>
-          <p>Quote the exact unit price, sample path, lead time, and any questions before the brand chooses a factory.</p>
+          <h1>Prepare quote</h1>
+          <p>Set the unit price, sample path, lead time, and any questions before sending your quote.</p>
           {isZh && <small className="submit-page-language-hint">You can fill this page in Chinese. We'll create an English version for you to review before sending.</small>}
         </header>
 
@@ -3183,7 +3195,7 @@ function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) 
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header factory-review-header">
           <button className="text-link" type="button" onClick={onEdit}>‹ Back to edit quote</button>
-          <h1>Review quote total</h1>
+          <h1>Review quote</h1>
           <p>Totals are calculated after saving the quote. Review the breakdown before sending it to Maison Rue.</p>
         </header>
 

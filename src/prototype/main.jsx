@@ -1758,7 +1758,7 @@ function ProjectListCard({ project, goTo }) {
           </div>
           <p className="project-description">{project.description}</p>
           <div className="project-status-row">
-            <span>{project.statusDetail}</span>
+            <span><strong>Current status:</strong> {project.statusDetail}</span>
           </div>
           <ProjectProgress progress={project.progress} />
         </aside>
