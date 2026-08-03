@@ -799,9 +799,14 @@ const onboardingCopy = {
         businessLabel: "Business registration certificate *",
         businessUpload: "Click or drag files to upload",
         businessHelper: "Required for verification.",
+        certificationLabel: "Add certifications you hold",
         search: "Search or select a certification",
-        certifications: [["GOTS", "Upload certificate"], ["OEKO-TEX Standard 100", "Uploaded"], ["BSCI", "Upload certificate"]],
-        add: "+ Add another certification",
+        add: "Add certification",
+        certifications: [["GOTS", "pending"], ["OEKO-TEX Standard 100", "uploaded"], ["BSCI", "pending"]],
+        uploadCertificate: "Click or drag certificate to upload",
+        uploadedCertificate: "Certificate uploaded",
+        deleteCertificate: "Delete",
+        certificateHelper: "PDF, PNG, or JPG",
         reference: "Client references",
         addReference: "+ Add another reference",
         referenceHelper: "Brands or retailers you have produced for."
@@ -906,9 +911,14 @@ const onboardingCopy = {
         businessLabel: "营业执照 / 公司注册文件 *",
         businessUpload: "点击或拖拽文件上传",
         businessHelper: "验证必填。",
+        certificationLabel: "添加你已持有的认证",
         search: "搜索或选择认证",
-        certifications: [["GOTS", "上传证书"], ["OEKO-TEX Standard 100", "已上传"], ["BSCI", "上传证书"]],
-        add: "+ 添加另一个认证",
+        add: "添加认证",
+        certifications: [["GOTS", "pending"], ["OEKO-TEX Standard 100", "uploaded"], ["BSCI", "pending"]],
+        uploadCertificate: "点击或拖拽证书上传",
+        uploadedCertificate: "证书已上传",
+        deleteCertificate: "删除",
+        certificateHelper: "PDF、PNG 或 JPG",
         reference: "客户参考",
         addReference: "+ 添加另一个客户参考",
         referenceHelper: "你曾合作过的品牌或零售商。"
@@ -1606,7 +1616,7 @@ function FactoryProfilePage({ language }) {
                     <span data-no-translate>{data.location}</span>
                   </div>
                 </div>
-                <button className="primary-btn" type="button">Start conversation</button>
+                <button className="primary-btn" type="button">Contact factory</button>
                 <button className="secondary-btn" type="button">Invite to RFQ</button>
               </section>
             )}
@@ -2641,18 +2651,39 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
           <button className="onboarding-file-upload" type="button">{content.businessUpload}</button>
           <small>{content.businessHelper}</small>
         </div>
-        <OnboardingField label={language === "zh" ? "持有的认证" : "Certifications you hold"} placeholder={content.search} />
+        <div className="certification-add-control">
+          <label className="factory-onboarding-field">
+            <span>{content.certificationLabel}</span>
+            <input placeholder={content.search} />
+          </label>
+          <button className="secondary-btn" type="button">{content.add}</button>
+        </div>
         <div className="certification-upload-list">
           {content.certifications.map(([name, status]) => (
             <div className="certification-upload-row" key={name}>
-              <strong>{name}</strong>
-              <button className={status === "Uploaded" || status === "已上传" ? "uploaded-pill" : "secondary-btn"} type="button">
-                {status}
-              </button>
+              <div className="certification-upload-heading">
+                <strong>{name}</strong>
+              </div>
+              {status === "uploaded" ? (
+                <div className="certification-file-row">
+                  <div>
+                    <span>{`${name.replace(/\s+/g, "-").toLowerCase()}-certificate.pdf`}</span>
+                    <small>{content.uploadedCertificate}</small>
+                  </div>
+                  <button type="button">
+                    <img src="/assets/prototype-icons/trash.svg" alt="" />
+                    {content.deleteCertificate}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button className="onboarding-file-upload certification-file-upload" type="button">{content.uploadCertificate}</button>
+                  <small>{content.certificateHelper}</small>
+                </>
+              )}
             </div>
           ))}
         </div>
-        <button className="onboarding-text-action" type="button">{content.add}</button>
         <div className="onboarding-reference-row compact">
           <strong>{content.reference}</strong>
           <div>

@@ -646,7 +646,13 @@ const brandOnboardingSteps = [
 function App() {
   const query = new URLSearchParams(window.location.search);
   const requestedScreen = query.get("screen");
-  const initialScreen = requestedScreen === "brandOnboarding" || query.get("view") === "brand-onboarding" ? "brandOnboarding" : query.get("view") === "marketplace" ? "factoryMarketplace" : "projects";
+  const initialScreen = requestedScreen === "brandOnboarding" || query.get("view") === "brand-onboarding"
+    ? "brandOnboarding"
+    : screenMeta[requestedScreen]
+      ? requestedScreen
+      : query.get("view") === "marketplace"
+        ? "factoryMarketplace"
+        : "projects";
   const [screen, setScreen] = useState(initialScreen);
   const [brandOnboardingStep, setBrandOnboardingStep] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -896,7 +902,11 @@ function BrandOnboarding({ step, onBack, onNext }) {
 
 function BrandOnboardingStep({ content, step }) {
   if (content.type === "welcome") {
-    return <p className="brand-onboarding-time">{content.meta}</p>;
+    return (
+      <div className="brand-welcome-meta">
+        <p className="brand-onboarding-time">{content.meta}</p>
+      </div>
+    );
   }
 
   if (content.type === "fields") {
@@ -935,11 +945,9 @@ function BrandOnboardingStep({ content, step }) {
   if (content.type === "assets") {
     return (
       <div className="brand-assets-step">
-        <div className="brand-assets-grid">
-          <BrandAssetUploadCard title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" />
-          <BrandAssetUploadCard title="Product photos" helper="Upload current styles or reference products factories should understand." accept="3-6 images recommended" wide />
-          <BrandAssetUploadCard title="Brand direction" helper="Upload a lookbook, moodboard, range plan, or line sheet." accept="PDF, PNG, JPG, or deck" wide />
-        </div>
+        <BrandAssetUploadCard title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" />
+        <BrandAssetUploadCard title="Product photos" helper="Upload current styles or reference products factories should understand." accept="3-6 images recommended" />
+        <BrandAssetUploadCard title="Brand direction" helper="Upload a lookbook, moodboard, range plan, or line sheet." accept="PDF, PNG, JPG, or deck" />
       </div>
     );
   }
@@ -982,9 +990,10 @@ function BrandOnboardingStep({ content, step }) {
 
   if (content.type === "review") {
     const sections = [
-      ["Brand basics", [["Brand name", "Maison Rue"], ["Category", "Fashion brand"], ["Founded", "2021"], ["HQ location", "New York, USA"], ["Business email", "name@maisonrue.com"]]],
+      ["Brand basics", [["Brand name", "Maison Rue"], ["Category", "Fashion brand"], ["Business email", "name@maisonrue.com"], ["Founded", "2021"], ["Website URL", "www.maisonrue.com"], ["HQ location", "New York, USA"]]],
       ["Sourcing fit", [["Product categories", "Womenswear"], ["Garment focus", "Wovens, cut & sew knits"], ["Market level", "Premium / contemporary"]]],
-      ["Preferences & verification", [["Regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services", "Full package, sample development"], ["Documents", "Registration uploaded"], ["Assets", "Logo, product photos, brand direction"]]]
+      ["Factory preferences", [["Preferred regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services needed", "Full package, sample development"]]],
+      ["Trust & assets", [["Annual revenue", "$1M-$5M"], ["Key stakeholders", "Founder / production lead added"], ["Business certificate", "Registration or resale certificate uploaded"], ["Logo", "Uploaded"], ["Product photos", "3-6 images added"], ["Brand direction", "Lookbook or range plan uploaded"]]]
     ];
 
     return (
@@ -1050,18 +1059,18 @@ function BrandOnboardingChipGroup({ label, options, selected = [] }) {
   );
 }
 
-function BrandAssetUploadCard({ title, helper, accept, wide = false }) {
+function BrandAssetUploadCard({ title, helper, accept }) {
   return (
-    <section className={wide ? "brand-asset-card wide" : "brand-asset-card"}>
+    <section className="brand-asset-card">
       <div>
         <strong>{title}</strong>
         <span>{helper}</span>
-        <small>{accept}</small>
       </div>
-      <button type="button">
+      <button className="brand-onboarding-upload-row" type="button">
         <img src="/assets/prototype-icons/upload.svg" alt="" />
-        Upload
+        <strong>Click or drag files to upload</strong>
       </button>
+      <small>{accept}</small>
     </section>
   );
 }
@@ -1242,6 +1251,35 @@ function RightRail({ screen, selectedQuote }) {
 }
 
 function HomeScreen({ goTo }) {
+  const attentionItems = [
+    {
+      type: "Quote",
+      tone: "danger",
+      title: activeRfqs[0].title,
+      meta: "Atelier Minho · $18.40 quote · Expires in 2 days",
+      facts: [["Quotes", "3"], ["Due", "Jul 24"]],
+      action: "Review quote",
+      onClick: () => goTo("quoteDetail")
+    },
+    {
+      type: "Message",
+      tone: "info",
+      title: "Seoul Knit Works asked about yarn substitutions",
+      meta: `${activeProjects[1].title} · Reply requested today`,
+      facts: [["Project", "Resort knit"], ["From", "Factory"]],
+      action: "Reply"
+    },
+    {
+      type: "Order",
+      tone: "warning",
+      title: activeProjects[1].title,
+      meta: `${activeProjects[1].factory} · ${activeProjects[1].statusDetail}`,
+      facts: [["Step", activeProjects[1].currentStep], ["Next due", activeProjects[1].nextDue]],
+      action: "Review",
+      onClick: () => goTo("projectDetail")
+    }
+  ];
+
   return (
     <div className="home-stack">
       <header className="home-header">
@@ -1269,24 +1307,35 @@ function HomeScreen({ goTo }) {
           <button className="pill" type="button" onClick={() => goTo("describe")}>Help me start a new project</button>
         </div>
       </section>
-      <section className="home-attention">
-        <h2>Needs your attention</h2>
-        <div className="home-action-card">
-          <img className="attention-icon" src="/assets/prototype-icons/circle-warning.svg" alt="" />
-          <strong>Quote from Atelier Minho expires in 2 days</strong>
-          <button className="secondary-btn compact-btn" type="button" onClick={() => goTo("quoteDetail")}>Review quote</button>
-        </div>
-        <div className="home-action-card">
-          <img className="attention-icon" src="/assets/prototype-icons/mail.svg" alt="" />
-          <strong>New message from Seoul Knit Works</strong>
-          <button className="secondary-btn compact-btn" type="button">Reply</button>
-        </div>
-        <div className="home-action-card">
-          <img className="attention-icon" src="/assets/prototype-icons/bell-ring.svg" alt="" />
-          <strong>Ship date confirmation needed for Summer Collection</strong>
-          <button className="secondary-btn compact-btn" type="button">Confirm</button>
-        </div>
-      </section>
+      <div className="home-dashboard-grid">
+        <section className="home-active-rfqs">
+          <header className="home-panel-header">
+            <div>
+              <h2>Active RFQs</h2>
+              <p>Compare quote activity and open questions before choosing a factory.</p>
+            </div>
+            <button className="secondary-btn" type="button" onClick={() => goTo("rfqs")}>View all</button>
+          </header>
+          <div className="home-rfq-list">
+            {activeRfqs.slice(0, 3).map((rfq) => (
+              <HomeRfqMiniCard rfq={rfq} goTo={goTo} key={rfq.title} />
+            ))}
+          </div>
+        </section>
+        <section className="home-attention">
+          <header className="home-panel-header compact">
+            <div>
+              <h2>Needs your attention</h2>
+              <p>Priority quotes, messages, and production steps.</p>
+            </div>
+          </header>
+          <div className="home-attention-grid">
+            {attentionItems.map((item) => (
+              <HomeAttentionCard item={item} key={item.title} />
+            ))}
+          </div>
+        </section>
+      </div>
       <section className="home-active-orders">
         <header className="home-panel-header">
           <div>
@@ -1302,6 +1351,66 @@ function HomeScreen({ goTo }) {
         </div>
       </section>
     </div>
+  );
+}
+
+function HomeAttentionCard({ item }) {
+  return (
+    <article className={`home-attention-card ${item.tone}`}>
+      <div className="home-attention-type">
+        <span>{item.type}</span>
+      </div>
+      <div className="home-attention-copy">
+        <h3>{item.title}</h3>
+        <p>{item.meta}</p>
+      </div>
+      <div className="home-attention-facts">
+        {item.facts.map(([label, value]) => (
+          <div key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </div>
+        ))}
+      </div>
+      <button className="secondary-btn compact-btn" type="button" onClick={item.onClick}>{item.action}</button>
+    </article>
+  );
+}
+
+function HomeRfqMiniCard({ rfq, goTo }) {
+  const [quotesReceived, invitedCount] = rfq.metrics;
+  const quoteDue = rfq.date.split("Quote due ")[1] || "TBD";
+  const [primaryImage] = rfq.images || [];
+
+  return (
+    <article className="home-rfq-card">
+      <header className="home-production-title">
+        {primaryImage && <img src={primaryImage.src} alt={`${rfq.title} reference`} />}
+        <div>
+          <h3>{rfq.title}</h3>
+          <p>{rfq.date}</p>
+        </div>
+      </header>
+      <div className="home-rfq-side">
+        <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>
+        <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View RFQ</button>
+      </div>
+      <div className="home-production-facts home-rfq-facts">
+        <div>
+          <span>Quotes received</span>
+          <strong>{quotesReceived[0]}</strong>
+        </div>
+        <div>
+          <span>Invited</span>
+          <strong>{invitedCount[0]}</strong>
+        </div>
+        <div>
+          <span>Due</span>
+          <strong>{quoteDue}</strong>
+        </div>
+      </div>
+      <p className="home-rfq-description">{rfq.description}</p>
+    </article>
   );
 }
 
@@ -1343,104 +1452,352 @@ function HomeProjectMiniCard({ project, goTo }) {
 }
 
 function BrandProfileScreen() {
-  const info = [
-    ["Category", "Streetwear"],
-    ["Year Founded", "2012"],
-    ["Website", "www.atelierlabel.com"],
-    ["Company Size", "2-10"],
-    ["Business Type", "Own Brand"],
-    ["Brands Working With", "Aritzia"],
-    ["Preferred Language", "English"]
+  const [projectTab, setProjectTab] = useState("completed");
+  const [profileMode, setProfileMode] = useState("edit");
+  const isOwnerView = profileMode === "edit";
+  const data = {
+    name: "Maison Rue",
+    location: "New York, USA",
+    founded: "2021",
+    category: "Fashion brand",
+    website: "www.maisonrue.com",
+    businessEmail: "name@maisonrue.com",
+    annualRevenue: "$1M-$5M",
+    paymentStatus: "Verified",
+    responseTime: "1 day",
+    clubOrders: "4",
+    activeRfqs: "3",
+    repeatFactories: "2",
+    profileVerified: "Business registration uploaded",
+    intro:
+      "Premium womenswear brand focused on organic cotton shirts, polished woven tops, and small-batch capsule production. Maison Rue shares clear product references, quick feedback, and defined sample approval paths so factories can quote confidently.",
+    productCategories: ["Womenswear"],
+    garmentFocus: ["Wovens", "Cut & sew knits"],
+    marketLevel: ["Premium / contemporary"],
+    preferredRegions: ["Portugal", "China", "Korea"],
+    certifications: ["GOTS", "OEKO-TEX"],
+    services: ["Full package", "Sample development", "Fabric sourcing"],
+    assets: [
+      { title: "Logo", meta: "SVG, PNG, JPG uploaded", src: "/assets/logo.svg" },
+      { title: "Product photos", meta: "Organic poplin shirt references", src: "/assets/dashboard-rfq-shirt.jpg" },
+      { title: "Brand direction", meta: "Lookbook and material moodboard", src: "/assets/moodboard-warm-clay.jpg" }
+    ],
+    verification: [
+      { name: "Business registration", status: "Uploaded" },
+      { name: "Business email", status: "Verified" },
+      { name: "Key stakeholders", status: "Added" },
+      { name: "Payment status", status: "Verified" }
+    ],
+    stakeholders: ["Founder added", "Production lead added"],
+    completedProjects: [
+      {
+        title: "Organic cotton woven shirt production",
+        partner: "Atelier Minho",
+        date: "May 2026 - Jul 2026",
+        result: "Completed on time",
+        summary: "Fit and PP sample path for 300 organic cotton poplin shirts, followed by a small-batch production run.",
+        rating: "5.0",
+        review: "Clear brief, fast approvals, and thoughtful feedback during sample rounds.",
+        tags: ["Wovens", "Fit sample", "PP sample", "Low MOQ", "Responsive"]
+      },
+      {
+        title: "Denim wash development",
+        partner: "Hangzhou Denim Lab",
+        date: "Jan 2026 - Mar 2026",
+        result: "Factory rebooked",
+        summary: "Wash development and reference sampling for a premium denim jacket capsule.",
+        rating: "4.9",
+        review: "Strong direction and organized assets made the development process efficient.",
+        tags: ["Denim", "Wash sample", "Reference photos", "Premium"]
+      }
+    ],
+    activeProjects: [
+      {
+        title: "Poplin shirt restock RFQ",
+        partner: "Atelier Minho",
+        date: "Posted 18 minutes ago",
+        result: "Quote due",
+        summary: "300 organic cotton poplin shirts across 3 colors with fit and PP sample before bulk approval.",
+        tags: ["Wovens", "GOTS preferred", "3 colors", "Fit + PP"]
+      },
+      {
+        title: "Resort knit capsule",
+        partner: "Luna Resort shortlist",
+        date: "Drafting",
+        result: "Preparing RFQ",
+        summary: "Lightweight knit tops and cardigans with visible sample-room support and moodboard references.",
+        tags: ["Knitwear", "Sample room", "Moodboard", "Premium"]
+      }
+    ]
+  };
+  const visibleProjects = projectTab === "completed" ? data.completedProjects : data.activeProjects;
+  const overviewRows = [
+    ["Brand category", data.category],
+    ["Year founded", data.founded],
+    ["Website", data.website],
+    ["Business email", data.businessEmail],
+    ["Annual revenue", data.annualRevenue],
+    ["Payment status", data.paymentStatus]
   ];
 
   return (
-    <div className="brand-profile">
-      <header className="profile-header">
-        <div>
-          <div className="profile-title-row">
-            <h1>Maison Rue</h1>
-            <span className="verified-pill">
-              <img src="/assets/prototype-icons/verified-partner.svg" alt="" />
-              Verified Partner
-            </span>
+    <div className="brand-profile brand-profile-redesign">
+      <div className="factory-profile-shell">
+        <section className="factory-profile-owner-bar">
+          <div>
+            <span>Brand profile</span>
+            <strong>{isOwnerView ? "Edit what factories see" : "Public preview"}</strong>
           </div>
-          <p className="profile-location">
-            <img src="/assets/prototype-icons/location.svg" alt="" />
-            New York, NY
-          </p>
-        </div>
-        <button className="primary-btn" type="button">Edit Profile</button>
-      </header>
-      <div className="profile-grid">
-        <main className="profile-main">
-          <section className="card profile-info-card">
-            {info.map(([label, value]) => (
-              <div className="profile-field" key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-              </div>
-            ))}
-          </section>
-          <Card title="Company Overview">
-            <p className="profile-body-copy">
-              Maison Rue is a premium sustainable fashion brand specializing in high-quality
-              denim and activewear. Founded in 2018 in Porto, we bridge traditional Portuguese
-              craftsmanship and modern eco-conscious production methods. Our focus is creating
-              timeless, durable pieces while maintaining strict environmental and ethical labor
-              standards across our supply chain.
-            </p>
-          </Card>
-          <section className="profile-section">
-            <h2>Designs</h2>
-            <div className="sample-photo-grid">
-              <img src="/assets/moodboard-soft-concrete.jpg" alt="Denim sample reference" />
-              <img src="/assets/moodboard-warm-clay.jpg" alt="Footwear sample reference" />
+          <div className="factory-profile-view-toggle" role="tablist" aria-label="Brand profile view">
+            <button
+              className={isOwnerView ? "active" : ""}
+              type="button"
+              onClick={() => setProfileMode("edit")}
+              role="tab"
+              aria-selected={isOwnerView}
+            >
+              Edit profile
+            </button>
+            <button
+              className={!isOwnerView ? "active" : ""}
+              type="button"
+              onClick={() => setProfileMode("public")}
+              role="tab"
+              aria-selected={!isOwnerView}
+            >
+              View as public
+            </button>
+          </div>
+        </section>
+
+        <section className="factory-profile-hero brand-profile-hero">
+          {isOwnerView && <button className="factory-profile-banner-edit" type="button">Edit banner</button>}
+          <div className="factory-profile-identity">
+            <div className="factory-profile-logo-wrap">
+              <div className="factory-profile-logo">MR</div>
+              {isOwnerView && <button className="factory-profile-logo-edit" type="button">Edit</button>}
             </div>
-          </section>
-          <section className="profile-section">
-            <div className="profile-section-header">
-              <h2>Past Projects</h2>
-              <button className="text-link" type="button">View all projects</button>
-            </div>
-            <div className="past-project-grid">
-              <ProjectCard
-                title="Shanghai Minho Factory"
-                dates="01/2026 - 6/2026"
-                body="Activewear development and large-batch production."
-                quote="Maison Rue provides incredibly clear tech packs and maintains a very efficient feedback loop. A pleasure to work with."
-              />
-              <ProjectCard
-                title="GW Denim Mill"
-                dates="07/2025 - 12/2025"
-                body="Sustainable denim development and small-batch production."
-                quote="Maison Rue was a good team to work with. Great communications and always give clear direction made it easier for our factory to keep track of production."
-              />
-            </div>
-          </section>
-        </main>
-        <aside className="profile-side">
-          <Card title="Company Revenue">
-            <strong className="profile-revenue">$1M-5M</strong>
-            <p className="helper">Annual Revenue</p>
-          </Card>
-          <Card title="Production Focus">
-            <div className="tag-row compact-tags profile-tags">
-              {["Denim", "Eco-Activewear", "GOTS Certified", "Knitwear", "Outerwear"].map((tag) => (
-                <span className={tag === "GOTS Certified" ? "tag blue-tag" : "tag"} key={tag}>
-                  {tag}
+            <div>
+              <div className="factory-profile-title-row">
+                <h1>{data.name}</h1>
+                <span className="factory-profile-verified" title={data.profileVerified} aria-label={data.profileVerified}>
+                  <img src="/assets/prototype-icons/basic.svg" alt="" />
                 </span>
-              ))}
+              </div>
+              <p>{data.location} · {data.category} · {data.annualRevenue} revenue</p>
+              <div className="tag-row compact-tags factory-profile-hero-tags">
+                {data.productCategories.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                {data.garmentFocus.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                {data.marketLevel.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+              </div>
             </div>
-          </Card>
-          <Card title="Certifications Required">
-            <div className="cert-list">
-              <CertificationCard title="GOTS" detail="Global Organic Textile Standard" icon="cert-gots" />
-              <CertificationCard title="GRS" detail="Global Recycled Standard" icon="cert-grs" />
-              <CertificationCard title="OEKO-TEX" detail="Standard 100" icon="cert-oeko" />
+          </div>
+          {!isOwnerView && (
+            <div className="factory-profile-actions">
+              <button className="secondary-btn" type="button">Save brand</button>
+              <button className="primary-btn" type="button">Contact brand</button>
             </div>
-          </Card>
-        </aside>
+          )}
+        </section>
+
+        <div className="factory-profile-layout">
+          <main className="factory-profile-main">
+            <section className="factory-profile-card factory-profile-performance">
+              <div>
+                <span>Brand activity</span>
+                <strong>{data.clubOrders}</strong>
+                <p>Club orders · {data.responseTime} avg. response</p>
+              </div>
+              <div className="factory-profile-score-grid">
+                <Metric label="Active RFQs" value={data.activeRfqs} />
+                <Metric label="Repeat factories" value={data.repeatFactories} />
+                <Metric label="Payment status" value={data.paymentStatus} />
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <BrandProfileCardHeader title="Overview" editable={isOwnerView} />
+              <p>{data.intro}</p>
+              <div className="factory-profile-detail-grid">
+                {overviewRows.map(([label, value]) => <BrandProfileDetailPair label={label} value={value} key={label} />)}
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <BrandProfileCardHeader title="Sourcing fit" editable={isOwnerView} />
+              <BrandProfileChipSection label="Product categories" items={data.productCategories} />
+              <BrandProfileChipSection label="Garment focus" items={data.garmentFocus} />
+              <BrandProfileChipSection label="Market level" items={data.marketLevel} />
+              <BrandProfileChipSection label="Preferred regions" items={data.preferredRegions} />
+              <BrandProfileChipSection label="Certifications requested" items={data.certifications} />
+              <BrandProfileChipSection label="Services needed" items={data.services} />
+            </section>
+
+            <section className="factory-profile-card">
+              <BrandProfileCardHeader title="Brand assets" editable={isOwnerView} actionLabel="Manage assets" />
+              <div className="factory-profile-product-grid">
+                {data.assets.map((asset) => (
+                  <article className="factory-profile-product brand-profile-asset" key={asset.title}>
+                    <img src={asset.src} alt={`${asset.title} preview`} />
+                    <strong>{asset.title}</strong>
+                    <span>{asset.meta}</span>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <div className="factory-profile-section-header">
+                <div>
+                  <h2>Past work with factories</h2>
+                  <p>Completed and active TSC activity that helps factories understand how this brand works.</p>
+                </div>
+                {isOwnerView && <button className="factory-profile-edit-button" type="button">Manage projects</button>}
+              </div>
+              <div className="factory-profile-project-tabs" role="tablist" aria-label="Brand project status">
+                <button
+                  className={projectTab === "completed" ? "active" : ""}
+                  type="button"
+                  onClick={() => setProjectTab("completed")}
+                  role="tab"
+                  aria-selected={projectTab === "completed"}
+                >
+                  Completed ({data.completedProjects.length})
+                </button>
+                <button
+                  className={projectTab === "active" ? "active" : ""}
+                  type="button"
+                  onClick={() => setProjectTab("active")}
+                  role="tab"
+                  aria-selected={projectTab === "active"}
+                >
+                  Active ({data.activeProjects.length})
+                </button>
+              </div>
+              <div className="factory-profile-project-list">
+                {visibleProjects.map((project) => (
+                  <article className="factory-profile-history-card" key={project.title}>
+                    <header>
+                      <div>
+                        <h3>{project.title}</h3>
+                        <p>{project.partner} · {project.date}</p>
+                      </div>
+                      <span>{project.result}</span>
+                    </header>
+                    <p>{project.summary}</p>
+                    {projectTab === "completed" && (
+                      <div className="factory-profile-history-review">
+                        <strong>{project.rating}</strong>
+                        <p>"{project.review}"</p>
+                      </div>
+                    )}
+                    <div className="factory-profile-history-footer">
+                      <div className="tag-row compact-tags">
+                        {project.tags.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </main>
+
+          <aside className="factory-profile-side">
+            {isOwnerView ? (
+              <>
+                <section className="factory-profile-card factory-profile-owner-card">
+                  <h2>Profile status</h2>
+                  <div className="factory-profile-status-meter">
+                    <strong>88%</strong>
+                    <span>Profile complete</span>
+                  </div>
+                  <div className="factory-profile-status-track"><span /></div>
+                  <p>Add the remaining certifications and one more project photo to strengthen this profile.</p>
+                  <div className="factory-profile-owner-actions">
+                    <button className="primary-btn" type="button">Publish changes</button>
+                    <button className="secondary-btn" type="button" onClick={() => setProfileMode("public")}>View as public</button>
+                  </div>
+                </section>
+
+                <section className="factory-profile-card">
+                  <h2>Suggested updates</h2>
+                  <div className="factory-profile-owner-task-list">
+                    <span>Refresh product photos</span>
+                    <span>Add preferred launch calendar</span>
+                    <span>Confirm stakeholder access</span>
+                  </div>
+                </section>
+              </>
+            ) : (
+              <section className="factory-profile-card factory-profile-contact-card">
+                <h2>Brand contact</h2>
+                <div className="factory-profile-contact-row">
+                  <div className="factory-avatar">MR</div>
+                  <div>
+                    <strong>{data.name}</strong>
+                    <span>{data.location}</span>
+                  </div>
+                </div>
+                <button className="primary-btn" type="button">Contact brand</button>
+              </section>
+            )}
+
+            <section className="factory-profile-card">
+              <BrandProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Manage docs" />
+              <div className="factory-profile-cert-list">
+                {data.verification.map((item) => (
+                  <div className="factory-profile-cert" key={item.name}>
+                    <strong>{item.name}</strong>
+                    <span className="verified">{item.status}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <BrandProfileCardHeader title="Decision makers" editable={isOwnerView} actionLabel="Edit" />
+              <div className="factory-profile-reference-list">
+                {data.stakeholders.map((stakeholder) => (
+                  <div key={stakeholder}>
+                    <span>{stakeholder.slice(0, 2).toUpperCase()}</span>
+                    <strong>{stakeholder}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+          </aside>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function BrandProfileCardHeader({ title, editable = false, actionLabel = "Edit" }) {
+  return (
+    <div className="factory-profile-card-header">
+      <h2>{title}</h2>
+      {editable && <button className="factory-profile-edit-button" type="button">{actionLabel}</button>}
+    </div>
+  );
+}
+
+function BrandProfileChipSection({ label, items }) {
+  return (
+    <div className="factory-profile-chip-section">
+      <span>{label}</span>
+      <div className="tag-row compact-tags">
+        {items.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
+      </div>
+    </div>
+  );
+}
+
+function BrandProfileDetailPair({ label, value }) {
+  return (
+    <div className="factory-detail-pair">
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
