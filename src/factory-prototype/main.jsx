@@ -1012,7 +1012,7 @@ function getCapacityUnitRange(lineHours, minPercent = 60, maxPercent = 100) {
 
 function App() {
   const requestedScreen = new URLSearchParams(window.location.search).get("screen");
-  const shouldOpenPrototypeScreen = ["dashboard", "browse", "rfqs", "projects"].includes(requestedScreen);
+  const shouldOpenPrototypeScreen = ["dashboard", "browse", "rfqs", "projects", "detail", "profile"].includes(requestedScreen);
   const [onboardingComplete, setOnboardingComplete] = useState(shouldOpenPrototypeScreen);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingLanguage, setOnboardingLanguage] = useState("en");
@@ -1023,7 +1023,7 @@ function App() {
   const [capacityDrawerOpen, setCapacityDrawerOpen] = useState(false);
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
   const selectedProject = brandProjects[0];
-  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : "Browse RFQs";
+  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "profile" ? "" : "Browse RFQs";
 
   if (!onboardingComplete) {
     return (
@@ -1057,7 +1057,7 @@ function App() {
           <img src={`/assets/prototype-icons/${sidebarCollapsed ? "expand" : "collapse"}.svg`} alt="" />
         </button>
         {!sidebarCollapsed && <img src="/assets/logo.svg" alt="The Sourcing Club" className="side-logo" />}
-        <button className={sidebarCollapsed ? "account-card collapsed-account" : "account-card"} type="button" aria-label="Factory account">
+        <button className={sidebarCollapsed ? "account-card collapsed-account" : "account-card"} type="button" aria-label="Factory account" onClick={() => setScreen("profile")}>
           <span>AM</span>
           <div>
             <strong>Atelier Minho</strong>
@@ -1094,8 +1094,15 @@ function App() {
           capacityValue={dashboardCapacity}
           onUpdateCapacity={() => setCapacityDrawerOpen(true)}
           onViewRfqs={() => setScreen("rfqs")}
+          onViewRfqDetail={() => {
+            setDetailBackTarget("browse");
+            setScreen("detail");
+          }}
           onViewProjects={() => setScreen("projects")}
         />
+      )}
+      {screen === "profile" && (
+        <FactoryProfilePage language={onboardingLanguage} />
       )}
       {screen === "browse" && (
         <FactoryBrowsePage
@@ -1199,7 +1206,7 @@ function App() {
   );
 }
 
-function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onViewRfqs, onViewProjects }) {
+function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onViewRfqs, onViewRfqDetail, onViewProjects }) {
   const capacityUnits = getCapacityUnitRange(capacityValue);
 
   return (
@@ -1234,7 +1241,7 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
             onAction={onViewRfqs}
           >
             {factoryRfqs.slice(0, 3).map((rfq) => (
-              <FactoryDashboardRfqRow rfq={rfq} language={language} onView={onViewRfqs} key={rfq.title} />
+              <FactoryDashboardRfqRow rfq={rfq} language={language} onView={onViewRfqDetail} key={rfq.title} />
             ))}
           </FactoryDashboardPanel>
 
@@ -1265,6 +1272,392 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
         </section>
       </div>
     </main>
+  );
+}
+
+const factoryProfileData = {
+  name: "Atelier Minho",
+  location: "Porto, Portugal",
+  nearestPort: "Port of Leixoes",
+  founded: "2016",
+  registrationDate: "Feb 2016",
+  employees: "120",
+  registeredCapital: "€500k",
+  responseTime: "1 day",
+  rating: "4.8",
+  reviews: "29",
+  clubOrders: "12",
+  repeatBrands: "7",
+  profileVerified: "Business registration verified",
+  intro:
+    "Premium cut-and-sew partner for woven shirts, lightweight tops, bottoms, and contemporary capsule production. Best for brands that need sampling support, clear production communication, and smaller paid production runs.",
+  productionTypes: ["Cut & sew knits", "Wovens"],
+  categories: ["Tops", "Bottoms", "Activewear", "Outerwear"],
+  marketLevel: "Premium / contemporary",
+  services: ["Full package (FPP)", "Pattern making", "Sample development", "Tech pack support", "Grading"],
+  tools: ["CLO 3D", "Lectra", "Gerber"],
+  specialties: ["Organic poplin shirts", "Low-MOQ woven tops", "Fit sample development", "Small capsule production", "QC photo reporting"],
+  moq: "100 units / style",
+  leadTime: "30-45 days",
+  lineHours: "2,400 hours / month",
+  capacityEstimate: "Aug roughly 4,800-8,000 woven shirts",
+  booking: "Aug mostly open; Sep partly booked",
+  referenceStyle: "Basic woven shirt · ~18 min/pc",
+  certifications: [
+    { name: "Business registration", status: "Verified" },
+    { name: "OEKO-TEX Standard 100", status: "Uploaded" },
+    { name: "GOTS", status: "Pending upload" },
+    { name: "BSCI", status: "Pending upload" }
+  ],
+  walkthrough: ["Entrance or reception", "Main production floor", "Materials/components", "Quality control area", "Packing or warehouse"],
+  references: ["Maison Rue", "Elara Studio", "Northline"],
+  products: [
+    { title: "Organic cotton poplin shirt", meta: "Wovens · MOQ 100", src: "/assets/dashboard-rfq-shirt.jpg" },
+    { title: "Fine-gauge knit capsule", meta: "Knitwear · sample room", src: "/assets/dashboard-rfq-knit.jpg" },
+    { title: "Denim jacket development", meta: "Denim · wash sample", src: "/assets/dashboard-rfq-denim.jpg" }
+  ],
+  pastProjects: [
+    {
+      title: "Organic cotton woven shirt production",
+      brand: "Maison Rue",
+      date: "May 2026 - Jul 2026",
+      result: "Completed on time",
+      summary: "Fit and PP sample path for 300 organic cotton poplin shirts, followed by small-batch production.",
+      rating: "5.0",
+      review: "Clear sample updates, careful sewing, and quick communication through approval rounds.",
+      tags: ["Wovens", "Fit sample", "PP sample", "Low MOQ", "Responsive"]
+    },
+    {
+      title: "Resort knit capsule sampling",
+      brand: "Elara Studio",
+      date: "Feb 2026 - Apr 2026",
+      result: "Repeat brand",
+      summary: "Sample-room support, yarn sourcing coordination, and size-set development for lightweight knit tops.",
+      rating: "4.8",
+      review: "Strong fit support and good production planning for a small capsule with changing color direction.",
+      tags: ["Knitwear", "Sample room", "Yarn sourcing", "Premium", "Solution oriented"]
+    }
+  ],
+  inProductionProjects: [
+    {
+      title: "Organic poplin shirt bulk",
+      brand: "Maison Rue",
+      date: "Started Jul 19",
+      result: "Fit sample",
+      summary: "Factory is preparing fit sample photos and construction notes before PP sample approval.",
+      rating: "Active",
+      review: "Next update due Aug 16; brand approval unlocks the next sample milestone.",
+      tags: ["Wovens", "Fit sample", "Sample approval", "QC photos"]
+    },
+    {
+      title: "Lightweight knit resort capsule",
+      brand: "Luna Resort",
+      date: "Started Jul 12",
+      result: "Lab dip review",
+      summary: "Lab dip and yarn color review are in progress before bulk materials are ordered.",
+      rating: "Active",
+      review: "Factory uploaded lab dip notes; brand review is pending.",
+      tags: ["Knitwear", "Lab dip", "Yarn sourcing", "Color review"]
+    }
+  ]
+};
+
+function FactoryProfilePage({ language }) {
+  const isZh = language === "zh";
+  const data = factoryProfileData;
+  const [projectTab, setProjectTab] = useState("completed");
+  const [profileMode, setProfileMode] = useState(new URLSearchParams(window.location.search).get("view") === "public" ? "public" : "edit");
+  const isOwnerView = profileMode === "edit";
+  const visibleProjects = projectTab === "completed" ? data.pastProjects : data.inProductionProjects;
+  const overviewRows = [
+    ["Year founded", data.founded],
+    ["Registration date", data.registrationDate],
+    ["Total employees", data.employees],
+    ["Registered capital", data.registeredCapital],
+    ["Nearest port", data.nearestPort],
+    ["Market level", data.marketLevel]
+  ];
+  const capacityRows = [
+    ["MOQ", data.moq],
+    ["Typical lead time", data.leadTime],
+    ["Line-hours", data.lineHours],
+    ["Estimated capacity", data.capacityEstimate],
+    ["Booking level", data.booking],
+    ["Reference style", data.referenceStyle]
+  ];
+
+  return (
+    <main className="factory-profile-page">
+      <div className="factory-profile-shell">
+        <section className="factory-profile-owner-bar">
+          <div>
+            <span>Factory profile</span>
+            <strong>{isOwnerView ? "Edit what brands see" : "Public preview"}</strong>
+          </div>
+          <div className="factory-profile-view-toggle" role="tablist" aria-label="Profile view mode">
+            <button
+              className={isOwnerView ? "active" : ""}
+              type="button"
+              onClick={() => setProfileMode("edit")}
+              role="tab"
+              aria-selected={isOwnerView}
+            >
+              Edit profile
+            </button>
+            <button
+              className={!isOwnerView ? "active" : ""}
+              type="button"
+              onClick={() => setProfileMode("public")}
+              role="tab"
+              aria-selected={!isOwnerView}
+            >
+              View as public
+            </button>
+          </div>
+        </section>
+
+        <section className="factory-profile-hero">
+          {isOwnerView && <button className="factory-profile-banner-edit" type="button">Edit banner</button>}
+          <div className="factory-profile-identity">
+            <div className="factory-profile-logo-wrap">
+              <div className="factory-profile-logo">AM</div>
+              {isOwnerView && <button className="factory-profile-logo-edit" type="button">Edit</button>}
+            </div>
+            <div>
+              <div className="factory-profile-title-row">
+                <h1 data-no-translate>{data.name}</h1>
+                <span className="factory-profile-verified" title={data.profileVerified} aria-label={data.profileVerified}>
+                  <img src="/assets/prototype-icons/basic.svg" alt="" />
+                </span>
+              </div>
+              <p data-no-translate>{data.location} · {data.nearestPort} · {data.employees} employees</p>
+              <div className="tag-row compact-tags factory-profile-hero-tags">
+                {data.productionTypes.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                <span className="tag garment-tag">{data.marketLevel}</span>
+              </div>
+            </div>
+          </div>
+          <div className="factory-profile-actions">
+            {!isOwnerView && (
+              <>
+                <button className="secondary-btn" type="button" onClick={() => setProfileMode("edit")}>Save factory</button>
+                <button className="primary-btn" type="button">Contact factory</button>
+              </>
+            )}
+          </div>
+        </section>
+
+        <div className="factory-profile-layout">
+          <section className="factory-profile-main">
+            <section className="factory-profile-card factory-profile-performance">
+              <div>
+                <span>Factory performance</span>
+                <strong>{data.rating}</strong>
+                <p>{data.reviews} reviews · {data.responseTime} avg. response</p>
+              </div>
+              <div className="factory-profile-score-grid">
+                <Metric label="Club orders" value={data.clubOrders} />
+                <Metric label="Repeat brands" value={data.repeatBrands} />
+                <Metric label="Lead time" value={data.leadTime} />
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <FactoryProfileCardHeader title="Overview" editable={isOwnerView} />
+              <p>{data.intro}</p>
+              <div className="factory-profile-detail-grid">
+                {overviewRows.map(([label, value]) => <DetailPair label={label} value={value} key={label} />)}
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <FactoryProfileCardHeader title="Production fit" editable={isOwnerView} />
+              <FactoryProfileChipSection label="Product categories" items={data.categories} />
+              <FactoryProfileChipSection label="Services" items={data.services} />
+              <FactoryProfileChipSection label="Specialties" items={data.specialties} />
+              <FactoryProfileChipSection label="Digital tools" items={data.tools} />
+            </section>
+
+            <section className="factory-profile-card">
+              <FactoryProfileCardHeader title="Capacity and terms" editable={isOwnerView} />
+              <div className="factory-profile-detail-grid">
+                {capacityRows.map(([label, value]) => <DetailPair label={label} value={value} key={label} />)}
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <FactoryProfileCardHeader title="Factory walkthrough" editable={isOwnerView} actionLabel="Manage video" />
+              <div className="factory-profile-video-card">
+                <div className="factory-profile-video-preview">
+                  <img src="/assets/factory-header.png" alt="Factory walkthrough preview" />
+                  <span>2:48</span>
+                </div>
+                <div>
+                  <strong>Verified production-floor walkthrough</strong>
+                  <p>Continuous facility walkthrough covering the core areas requested during onboarding.</p>
+                  <div className="tag-row compact-tags">
+                    {data.walkthrough.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <FactoryProfileCardHeader title="Sample work" editable={isOwnerView} actionLabel="Manage samples" />
+              <div className="factory-profile-product-grid">
+                {data.products.map((product) => (
+                  <article className="factory-profile-product" key={product.title}>
+                    <img src={product.src} alt={`${product.title} reference`} />
+                    <strong>{product.title}</strong>
+                    <span>{product.meta}</span>
+                  </article>
+                ))}
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <div className="factory-profile-section-header">
+                <div>
+                  <h2>Past projects</h2>
+                  <p>Completed TSC orders with brand feedback, project scope, and production strengths.</p>
+                </div>
+                {isOwnerView && <button className="factory-profile-edit-button" type="button">Manage projects</button>}
+              </div>
+              <div className="factory-profile-project-tabs" role="tablist" aria-label="Past project status">
+                <button
+                  className={projectTab === "completed" ? "active" : ""}
+                  type="button"
+                  onClick={() => setProjectTab("completed")}
+                  role="tab"
+                  aria-selected={projectTab === "completed"}
+                >
+                  Completed ({data.pastProjects.length})
+                </button>
+                <button
+                  className={projectTab === "inProduction" ? "active" : ""}
+                  type="button"
+                  onClick={() => setProjectTab("inProduction")}
+                  role="tab"
+                  aria-selected={projectTab === "inProduction"}
+                >
+                  In production ({data.inProductionProjects.length})
+                </button>
+              </div>
+              <div className="factory-profile-project-list">
+                {visibleProjects.map((project) => (
+                  <article className="factory-profile-history-card" key={project.title}>
+                    <header>
+                      <div>
+                        <h3>{project.title}</h3>
+                        <p>{project.brand} · {project.date}</p>
+                      </div>
+                      <span>{project.result}</span>
+                    </header>
+                    <p>{project.summary}</p>
+                    {projectTab === "completed" && (
+                      <div className="factory-profile-history-review">
+                        <strong>{project.rating}</strong>
+                        <p>"{project.review}"</p>
+                      </div>
+                    )}
+                    <div className="factory-profile-history-footer">
+                      <div className="tag-row compact-tags">
+                        {project.tags.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </section>
+
+          <aside className="factory-profile-side">
+            {isOwnerView ? (
+              <>
+                <section className="factory-profile-card factory-profile-owner-card">
+                  <h2>Profile status</h2>
+                  <div className="factory-profile-status-meter">
+                    <strong>88%</strong>
+                    <span>Profile complete</span>
+                  </div>
+                  <div className="factory-profile-status-track"><span /></div>
+                  <p>Add the remaining certifications and one more project photo to strengthen this profile.</p>
+                  <div className="factory-profile-owner-actions">
+                    <button className="primary-btn" type="button">Publish changes</button>
+                    <button className="secondary-btn" type="button" onClick={() => setProfileMode("public")}>View as public</button>
+                  </div>
+                </section>
+                <section className="factory-profile-card">
+                  <h2>Suggested updates</h2>
+                  <div className="factory-profile-owner-task-list">
+                    <span>Upload GOTS certificate</span>
+                    <span>Add August available capacity</span>
+                    <span>Add one production-floor photo</span>
+                  </div>
+                </section>
+              </>
+            ) : (
+              <section className="factory-profile-card factory-profile-contact-card">
+                <h2>Contact supplier</h2>
+                <div className="factory-profile-contact-row">
+                  <div className="factory-avatar">AM</div>
+                  <div>
+                    <strong data-no-translate>{data.name}</strong>
+                    <span data-no-translate>{data.location}</span>
+                  </div>
+                </div>
+                <button className="primary-btn" type="button">Start conversation</button>
+                <button className="secondary-btn" type="button">Invite to RFQ</button>
+              </section>
+            )}
+
+            <section className="factory-profile-card">
+              <FactoryProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Manage docs" />
+              <div className="factory-profile-cert-list">
+                {data.certifications.map((cert) => (
+                  <div className="factory-profile-cert" key={cert.name}>
+                    <strong>{cert.name}</strong>
+                    <span className={cert.status === "Verified" || cert.status === "Uploaded" ? "verified" : ""}>{cert.status}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <FactoryProfileCardHeader title="Client references" editable={isOwnerView} actionLabel="Edit" />
+              <div className="factory-profile-reference-list">
+                {data.references.map((reference) => (
+                  <div key={reference}>
+                    <span>{reference.slice(0, 2).toUpperCase()}</span>
+                    <strong>{reference}</strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+function FactoryProfileCardHeader({ title, editable = false, actionLabel = "Edit" }) {
+  return (
+    <div className="factory-profile-card-header">
+      <h2>{title}</h2>
+      {editable && <button className="factory-profile-edit-button" type="button">{actionLabel}</button>}
+    </div>
+  );
+}
+
+function FactoryProfileChipSection({ label, items }) {
+  return (
+    <div className="factory-profile-chip-section">
+      <span>{label}</span>
+      <div className="tag-row compact-tags">
+        {items.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
+      </div>
+    </div>
   );
 }
 
@@ -1365,7 +1758,7 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
   const [primaryImage] = project.images || [];
   const statusLabel = {
     "Waiting for sample approval": "Sample approval",
-    "Submit lab dip": "Lab dip"
+    "Submit lab dip": "Lab dip review"
   }[project.status] || project.status;
   const productionFacts = [
     ["Production step", project.currentStep],
@@ -1731,7 +2124,7 @@ function FactoryProjectListCard({ project, language, onViewProject }) {
           <p className="project-description" data-no-translate>{isZh ? getTranslatedListDescription(project) : project.description}</p>
           {isZh && <ListTranslationMeta />}
           <div className="project-status-row">
-            <span>{project.statusDetail}</span>
+            <span><strong>Current status:</strong> {project.statusDetail}</span>
           </div>
           <ProjectProgress progress={project.progress} />
         </aside>
@@ -2622,7 +3015,7 @@ function BrandProjectCard({ project, language, onViewDetails }) {
         <div className="factory-request-card-actions">
           <span className={`factory-project-fit ${project.fitTone}`}>{project.capacity[0]}</span>
           <button className="secondary-btn" type="button">Save</button>
-          <button className="primary-btn" type="button" onClick={onViewDetails}>View details</button>
+          <button className="primary-btn" type="button" onClick={onViewDetails}>View RFQ</button>
         </div>
       </header>
 
@@ -2787,7 +3180,7 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
     <main className="factory-detail-page">
       <header className="factory-detail-header">
         <button className="text-link" type="button" onClick={onBack}>‹ Back to explore</button>
-        <h1>Request details</h1>
+        <h1>RFQ details</h1>
         <p>Review the brand request, attachments, and quote requirements before sending your factory response.</p>
       </header>
 
