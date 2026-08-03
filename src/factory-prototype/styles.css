@@ -1368,6 +1368,88 @@
   line-height: 16px;
 }
 
+.factory-attention-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 12px;
+  align-items: center;
+  min-height: 86px;
+  padding: 10px 12px;
+  border: 1px solid #d9dfe9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.factory-attention-type {
+  display: flex;
+  justify-content: space-between;
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.factory-attention-type span {
+  display: inline-grid;
+  place-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: #f1f6ff;
+  color: #2454f4;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.factory-attention-card.danger .factory-attention-type span {
+  background: #fff0ea;
+  color: #d95a2b;
+}
+
+.factory-attention-card.warning .factory-attention-type span {
+  background: #fff8eb;
+  color: #b96b00;
+}
+
+.factory-attention-card.success .factory-attention-type span {
+  background: #eef2f7;
+  color: #5c7298;
+}
+
+.factory-attention-copy {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.factory-attention-copy h3 {
+  margin: 0;
+  color: #0b1020;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 17px;
+}
+
+.factory-attention-copy p {
+  margin: 0;
+  color: #5c7298;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 15px;
+}
+
+.factory-attention-card .compact-btn {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  min-width: 88px;
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
 .factory-project-mini-metric {
   display: grid;
   gap: 4px;

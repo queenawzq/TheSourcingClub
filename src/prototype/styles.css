@@ -514,49 +514,56 @@ button {
 
 .home-search-card {
   display: grid;
-  gap: 18px;
-  padding: 28px;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 8px;
 }
 
 .home-search-field {
-  height: 56px;
-  border-color: var(--border-strong);
-  border-radius: 999px;
-  background: var(--bg-page);
+  height: 44px;
+  padding: 0 12px;
+  border-color: #d6e0ec;
+  border-radius: 8px;
+  background: #fff;
 }
 
 .home-search-field input {
   color: #a7b0be;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 500;
 }
 
 .home-search-field b {
   color: var(--primary);
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1;
 }
 
 .home-section-label {
   margin: 0;
   color: #5a6b87;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  letter-spacing: 0;
 }
 
 .home-suggestion-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .home-suggestion-row .pill {
-  min-height: 36px;
-  border-radius: 999px;
-  background: #fbfdff;
-  font-size: 13px;
+  min-height: 30px;
+  padding: 0 10px;
+  border-color: #d6e0ec;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #465f84;
+  font-size: 11px;
   font-weight: 500;
+  line-height: 14px;
 }
 
 .home-attention {
@@ -566,7 +573,7 @@ button {
 }
 
 .home-panel-header.compact {
-  margin-bottom: -2px;
+  margin-bottom: 0;
 }
 
 .home-dashboard-grid {
@@ -574,6 +581,15 @@ button {
   grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
   gap: 26px;
   align-items: start;
+}
+
+.home-dashboard-grid .home-active-rfqs,
+.home-dashboard-grid .home-attention {
+  gap: 14px;
+}
+
+.home-dashboard-grid .home-panel-header {
+  min-height: 58px;
 }
 
 .home-attention-grid {
@@ -622,6 +638,11 @@ button {
 .home-attention-card.warning .home-attention-type span {
   background: #fff8eb;
   color: #b96b00;
+}
+
+.home-attention-card.success .home-attention-type span {
+  background: #eef2f7;
+  color: #5c7298;
 }
 
 .home-attention-copy {
@@ -742,7 +763,7 @@ button {
 
 .home-rfq-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 240px;
   gap: 8px 14px;
   align-items: start;
   padding: 14px 14px 16px;
@@ -760,6 +781,8 @@ button {
 .home-production-facts.home-rfq-facts {
   grid-column: 1 / -1;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  justify-self: start;
+  width: min(980px, 100%);
 }
 
 .home-rfq-card .home-production-title {
@@ -802,6 +825,8 @@ button {
 
 .home-rfq-description {
   grid-column: 1 / -1;
+  justify-self: start;
+  width: min(980px, 100%);
   margin: 0;
   padding-left: 10px;
   border-left: 3px solid #2454f4;
@@ -933,6 +958,7 @@ button {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  align-items: center;
 }
 
 .home-production-actions .project-status {
@@ -2106,7 +2132,7 @@ textarea {
   padding: 18px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-page);
+  background: #f6f9fc;
 }
 
 .attachment-chip {
@@ -2117,7 +2143,7 @@ textarea {
   padding: 0 10px 0 14px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  background: #ecf1f6;
+  background: #fff !important;
   color: #0b1020;
   font-size: 12px;
   font-weight: 700;

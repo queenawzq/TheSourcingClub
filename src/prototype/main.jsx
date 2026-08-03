@@ -1253,30 +1253,38 @@ function RightRail({ screen, selectedQuote }) {
 function HomeScreen({ goTo }) {
   const attentionItems = [
     {
-      type: "Quote",
+      type: "Draft",
       tone: "danger",
-      title: activeRfqs[0].title,
-      meta: "Atelier Minho · $18.40 quote · Expires in 2 days",
-      facts: [["Quotes", "3"], ["Due", "Jul 24"]],
-      action: "Review quote",
-      onClick: () => goTo("quoteDetail")
+      title: "Finish your RFQ draft",
+      meta: "Add target pricing and invite factories before sending.",
+      facts: [],
+      action: "Continue draft",
+      onClick: () => goTo("describe")
     },
     {
       type: "Message",
       tone: "info",
       title: "Seoul Knit Works asked about yarn substitutions",
       meta: `${activeProjects[1].title} · Reply requested today`,
-      facts: [["Project", "Resort knit"], ["From", "Factory"]],
+      facts: [],
       action: "Reply"
     },
     {
-      type: "Order",
+      type: "Profile",
       tone: "warning",
-      title: activeProjects[1].title,
-      meta: `${activeProjects[1].factory} · ${activeProjects[1].statusDetail}`,
-      facts: [["Step", activeProjects[1].currentStep], ["Next due", activeProjects[1].nextDue]],
-      action: "Review",
-      onClick: () => goTo("projectDetail")
+      title: "Complete your profile",
+      meta: "Add certifications and one more project photo to improve factory confidence.",
+      facts: [],
+      action: "Edit profile",
+      onClick: () => goTo("profile")
+    },
+    {
+      type: "Verification",
+      tone: "success",
+      title: "Review verification checklist",
+      meta: "Check what is still needed while your brand profile is being verified.",
+      facts: [],
+      action: "View checklist"
     }
   ];
 
@@ -1286,25 +1294,18 @@ function HomeScreen({ goTo }) {
         <h1>Hi Maison Rue</h1>
         <span />
       </header>
-      <section className="card soft home-verification">
-        <div>
-          <h2>Your profile is being verified</h2>
-          <p>You can browse and favorite factories now. A few things still need your attention.</p>
-        </div>
-        <button className="primary-btn" type="button">View checklist</button>
-      </section>
       <section className="card home-search-card">
         <label className="search-field home-search-field">
           <SearchIcon />
           <input placeholder="Ask anything about sourcing, factories, or your projects..." />
           <b aria-hidden="true">✦</b>
         </label>
-        <p className="home-section-label">SUGGESTED ACTIONS</p>
+        <p className="home-section-label">Suggested actions</p>
         <div className="home-suggestion-row">
           <button className="pill" type="button">Find a denim factory with MOQ under 500</button>
           <button className="pill" type="button">Show me factories with GOTS certification</button>
           <button className="pill" type="button">What do I still need for verification?</button>
-          <button className="pill" type="button" onClick={() => goTo("describe")}>Help me start a new project</button>
+          <button className="pill" type="button" onClick={() => goTo("describe")}>Start a new project</button>
         </div>
       </section>
       <div className="home-dashboard-grid">
@@ -1364,14 +1365,16 @@ function HomeAttentionCard({ item }) {
         <h3>{item.title}</h3>
         <p>{item.meta}</p>
       </div>
-      <div className="home-attention-facts">
-        {item.facts.map(([label, value]) => (
-          <div key={label}>
-            <span>{label}</span>
-            <strong>{value}</strong>
-          </div>
-        ))}
-      </div>
+      {item.facts.length > 0 && (
+        <div className="home-attention-facts">
+          {item.facts.map(([label, value]) => (
+            <div key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      )}
       <button className="secondary-btn compact-btn" type="button" onClick={item.onClick}>{item.action}</button>
     </article>
   );
@@ -2350,7 +2353,7 @@ function RfqCard({ rfq, goTo }) {
         </div>
         <div className="rfq-card-actions">
           <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>
-          <button className="primary-btn" type="button" onClick={() => goTo("quoteDetail")}>View RFQ</button>
+          <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View RFQ</button>
           <button className="rfq-more" type="button" aria-label={`More options for ${rfq.title}`}>...</button>
         </div>
       </header>

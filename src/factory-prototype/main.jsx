@@ -141,6 +141,20 @@ const factoryMainZhText = {
   "Prioritized requests that match your capacity and capabilities.": "优先显示与你的产能和能力匹配的需求。",
   "View all": "查看全部",
   "Brand messages": "品牌消息",
+  "Needs your attention": "需要你处理",
+  "Priority RFQs, messages, and production steps.": "优先处理的询价、消息和生产步骤。",
+  "Question": "问题",
+  "Maison Rue asked about sample costs": "Maison Rue 询问样品费用",
+  "Split fit and PP sample cost before quote review.": "在报价审核前拆分试衣样和产前样费用。",
+  "Capacity": "产能",
+  "Update August capacity": "更新 8 月产能",
+  "Your capacity is marked mostly open for new RFQ matches.": "你的产能仍标记为较空，会影响新的询价匹配。",
+  "Verification": "验证",
+  "Review verification renewal": "查看验证续期",
+  "TSC ops needs updated documents this month.": "TSC 运营本月需要更新文件。",
+  "Sample": "样品",
+  "Upload sample update": "上传样品更新",
+  "Add fit-sample notes for the active Maison Rue order.": "为进行中的 Maison Rue 订单添加试衣样备注。",
   "Organic shirts - due today": "有机棉衬衫 - 今天截止",
   "Quote for": "报价：",
   "Stretch jersey capsule - 2 questions": "弹力针织系列 - 2 个问题",
@@ -1034,6 +1048,10 @@ function App() {
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
   const selectedProject = brandProjects[0];
   const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "profile" ? "" : "Browse RFQs";
+  const goToDashboard = () => {
+    window.history.replaceState(null, "", `${window.location.pathname}?screen=dashboard`);
+    setScreen("dashboard");
+  };
 
   if (!onboardingComplete) {
     return (
@@ -1198,7 +1216,7 @@ function App() {
         <FactoryQuoteSent
           project={selectedProject}
           onBack={() => setScreen("quote")}
-          onDashboard={() => setScreen("dashboard")}
+          onDashboard={goToDashboard}
         />
       )}
       {capacityDrawerOpen && (
@@ -1257,15 +1275,39 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
 
           <FactoryDashboardPanel
             className="factory-brand-messages-panel"
-            title="Brand messages"
-            action="View all"
-            onAction={() => {}}
+            title="Needs your attention"
+            subtitle="Priority RFQs, messages, and production steps."
           >
-            <FactoryMessageRow unread brand="Maison Rue" message="Can you split fit and PP sample cost?" time="12 min" brandAuthored />
-            <FactoryMessageRow brand="Elara Studio" message="Uploaded updated colorway sheet." time="1 hr" brandAuthored />
-            <FactoryMessageRow brand="TSC ops" message="Verification renewal due this month." time="Today" />
-            <FactoryMessageRow brand="Northline" message="Can you confirm wash sample lead time?" time="Today" brandAuthored />
-            <FactoryMessageRow brand="Luna Resort" message="Shared updated knit measurement notes." time="Yesterday" brandAuthored />
+            <FactoryAttentionCard
+              type="Question"
+              tone="info"
+              title="Maison Rue asked about sample costs"
+              meta="Split fit and PP sample cost before quote review."
+              action="Reply"
+            />
+            <FactoryAttentionCard
+              type="Capacity"
+              tone="danger"
+              title="Update August capacity"
+              meta="Your capacity is marked mostly open for new RFQ matches."
+              action="Update"
+              onAction={onUpdateCapacity}
+            />
+            <FactoryAttentionCard
+              type="Verification"
+              tone="success"
+              title="Review verification renewal"
+              meta="TSC ops needs updated documents this month."
+              action="Review"
+            />
+            <FactoryAttentionCard
+              type="Sample"
+              tone="warning"
+              title="Upload sample update"
+              meta="Add fit-sample notes for the active Maison Rue order."
+              action="Update"
+              onAction={onViewProjects}
+            />
           </FactoryDashboardPanel>
 
           <FactoryDashboardPanel
@@ -1745,6 +1787,21 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
         </div>
         <p data-no-translate>{isZh ? getTranslatedListDescription(rfq) : rfq.description}</p>
       </div>
+    </article>
+  );
+}
+
+function FactoryAttentionCard({ type, tone, title, meta, action, onAction }) {
+  return (
+    <article className={`factory-attention-card ${tone}`}>
+      <div className="factory-attention-type">
+        <span>{type}</span>
+      </div>
+      <div className="factory-attention-copy">
+        <h3>{title}</h3>
+        <p>{meta}</p>
+      </div>
+      <button className="secondary-btn compact-btn" type="button" onClick={onAction}>{action}</button>
     </article>
   );
 }
