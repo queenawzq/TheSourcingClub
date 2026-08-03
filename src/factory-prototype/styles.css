@@ -864,13 +864,15 @@
 
 .factory-onboarding-actions .primary-btn,
 .factory-onboarding-actions .secondary-btn {
-  height: 44px;
+  height: 40px;
+  min-height: 40px;
   min-width: 116px;
   padding: 0 24px;
 }
 
 .factory-onboarding-card.step-11 .factory-onboarding-actions .primary-btn {
-  height: 44px;
+  height: 40px;
+  min-height: 40px;
   min-width: 244px;
   padding: 0 48px;
   border-radius: 999px;
@@ -5885,6 +5887,15 @@ a.secondary-btn {
 .factory-submit-bottom-bar .secondary-btn,
 .factory-sent-card .success-actions .primary-btn,
 .factory-sent-card .success-actions .secondary-btn {
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 24px !important;
+  border-radius: 40px !important;
+  font-size: 14px !important;
+}
+
+.factory-onboarding-actions .primary-btn,
+.factory-onboarding-actions .secondary-btn {
   height: 40px !important;
   min-height: 40px !important;
   padding: 0 24px !important;

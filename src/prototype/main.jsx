@@ -577,11 +577,14 @@ const brandOnboardingSteps = [
     intro: "This helps factories understand who they are quoting for.",
     type: "fields",
     fields: [
-      ["Brand name", "Maison Rue"],
-      ["Website", "www.maisonrue.com"],
-      ["Headquarters", "New York, USA"],
-      ["Primary contact", "Name and role"]
-    ]
+      ["Brand name", "e.g. Aria Studio"],
+      ["Brand category", "", "select"],
+      ["Business email", "name@maisonrue.com"],
+      ["Year founded", "YYYY"],
+      ["Website URL", "www.example.com"],
+      ["HQ location", "City, Country"]
+    ],
+    helper: "We'll use this to help build your profile in a later step."
   },
   {
     title: "What do you make?",
@@ -599,17 +602,6 @@ const brandOnboardingSteps = [
     type: "assets"
   },
   {
-    title: "Share your sourcing needs",
-    intro: "This helps us recommend factories that match the orders you are likely to place.",
-    type: "fields",
-    fields: [
-      ["Typical order quantity", "e.g. 100-500 units / style"],
-      ["Target unit price", "e.g. $18-$40"],
-      ["Typical sample path", "Fit sample + PP sample"],
-      ["Upcoming timeline", "e.g. August sampling, September bulk"]
-    ]
-  },
-  {
     title: "Factory preferences",
     intro: "Set the regions, certifications, and services you care about most.",
     type: "chips",
@@ -620,18 +612,32 @@ const brandOnboardingSteps = [
     ]
   },
   {
-    title: "Verification details",
-    intro: "Verification keeps the network trusted and unlocks factory messaging.",
-    type: "verification"
+    title: "Help factories trust you",
+    intro: "Verified brands get faster responses. We review this in the background so you can keep exploring while we do.",
+    type: "trust"
   },
   {
     title: "Review your profile",
     intro: "Confirm the information factories will use to understand your brand.",
-    type: "review"
+    type: "review",
+    cta: "Confirm & Continue"
+  },
+  {
+    title: "Terms & Conditions",
+    intro: "Please read and sign our terms before continuing.",
+    type: "terms",
+    terms: [
+      ["Platform Usage", "Use The Sourcing Club to share accurate brand information, submit real sourcing needs, and communicate with factories in good faith."],
+      ["Data Privacy & Confidentiality", "Only upload assets, product references, and company documents you are allowed to share. Factory quotes, pricing, and private project details should remain confidential."],
+      ["Brand Responsibilities", "Keep your profile, project briefs, payment status, and decision-maker details accurate so factories can quote and plan production confidently."]
+    ],
+    agreement: "I have read and agree to the Terms and Conditions",
+    signature: "Type your full name to sign electronically",
+    cta: "Sign & Continue"
   },
   {
     title: "You're all set",
-    intro: "Your profile is complete and verification is underway. You can browse and favorite factories right away — messaging unlocks once you're verified. We'll notify you when it's done.",
+    intro: "Your brand profile has been submitted. We'll review your verification documents and let you know when your profile is ready for factories to discover.",
     cta: "Go to Dashboard",
     type: "complete"
   }
@@ -896,10 +902,20 @@ function BrandOnboardingStep({ content, step }) {
   if (content.type === "fields") {
     return (
       <div className="brand-onboarding-form-grid">
-        {content.fields.map(([label, placeholder]) => (
+        {content.fields.map(([label, placeholder, type]) => (
           <label className="brand-onboarding-field" key={label}>
             <span>{label}</span>
-            <input placeholder={placeholder} />
+            {type === "select" ? (
+              <select defaultValue="">
+                <option value="" disabled />
+                <option>Fashion brand</option>
+                <option>Retailer</option>
+                <option>Emerging designer</option>
+                <option>Private label</option>
+              </select>
+            ) : (
+              <input placeholder={placeholder} />
+            )}
           </label>
         ))}
       </div>
@@ -919,37 +935,46 @@ function BrandOnboardingStep({ content, step }) {
   if (content.type === "assets") {
     return (
       <div className="brand-assets-step">
-        <button className="brand-assets-dropzone" type="button">
-          <img src="/assets/prototype-icons/upload.svg" alt="" />
-          <strong>Drag and drop brand files</strong>
-          <span>Logos, product references, lookbooks, line sheets, or moodboards</span>
-        </button>
         <div className="brand-assets-grid">
-          <BrandAssetUploadCard title="Logo" helper="SVG, PNG, or JPG" />
-          <BrandAssetUploadCard title="Product photos" helper="Add 3-6 current or reference styles" wide />
-          <BrandAssetUploadCard title="Brand direction" helper="Lookbook, moodboard, or range plan" wide />
+          <BrandAssetUploadCard title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" />
+          <BrandAssetUploadCard title="Product photos" helper="Upload current styles or reference products factories should understand." accept="3-6 images recommended" wide />
+          <BrandAssetUploadCard title="Brand direction" helper="Upload a lookbook, moodboard, range plan, or line sheet." accept="PDF, PNG, JPG, or deck" wide />
         </div>
       </div>
     );
   }
 
-  if (content.type === "verification") {
+  if (content.type === "trust") {
     return (
-      <div className="brand-verification-step">
-        <label className="brand-onboarding-field">
-          <span>Business email</span>
-          <input placeholder="name@maisonrue.com" />
+      <div className="brand-trust-step">
+        <label className="brand-onboarding-field full">
+          <span>Annual revenue</span>
+          <select defaultValue="">
+            <option value="" disabled />
+            <option>Under $250k</option>
+            <option>$250k-$1M</option>
+            <option>$1M-$5M</option>
+            <option>$5M+</option>
+          </select>
+          <small>Self-reported. Not shown publicly.</small>
         </label>
-        <label className="brand-onboarding-field">
+
+        <section className="brand-trust-group">
+          <strong>Key stakeholders</strong>
+          <div className="brand-trust-input-row">
+            <input placeholder="Full name" />
+            <input placeholder="LinkedIn or registry URL" />
+          </div>
+          <button className="brand-onboarding-text-action" type="button">+ Add another stakeholder</button>
+          <p>Founders or decision-makers. We use this to verify your team.</p>
+        </section>
+
+        <label className="brand-onboarding-field full">
           <span>Business registration or resale certificate</span>
           <button className="brand-onboarding-upload-row" type="button">
             <img src="/assets/prototype-icons/upload.svg" alt="" />
-            <strong>Upload document</strong>
+            <strong>Click or drag files to upload</strong>
           </button>
-        </label>
-        <label className="brand-onboarding-check">
-          <input type="checkbox" defaultChecked />
-          <span>I can confirm this brand is allowed to source and share uploaded assets.</span>
         </label>
       </div>
     );
@@ -957,9 +982,9 @@ function BrandOnboardingStep({ content, step }) {
 
   if (content.type === "review") {
     const sections = [
-      ["Brand basics", [["Brand", "Maison Rue"], ["Location", "New York, USA"], ["Market level", "Premium / contemporary"]]],
-      ["Sourcing fit", [["Categories", "Womenswear, wovens"], ["Order size", "100-500 units / style"], ["Sample path", "Fit + PP sample"]]],
-      ["Preferences", [["Regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Assets", "Logo, product photos, lookbook"]]]
+      ["Brand basics", [["Brand name", "Maison Rue"], ["Category", "Fashion brand"], ["Founded", "2021"], ["HQ location", "New York, USA"], ["Business email", "name@maisonrue.com"]]],
+      ["Sourcing fit", [["Product categories", "Womenswear"], ["Garment focus", "Wovens, cut & sew knits"], ["Market level", "Premium / contemporary"]]],
+      ["Preferences & verification", [["Regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services", "Full package, sample development"], ["Documents", "Registration uploaded"], ["Assets", "Logo, product photos, brand direction"]]]
     ];
 
     return (
@@ -967,9 +992,37 @@ function BrandOnboardingStep({ content, step }) {
         {sections.map(([title, rows]) => (
           <section key={title}>
             <h2>{title}</h2>
-            {rows.map(([label, value]) => <DetailPair label={label} value={value} key={label} />)}
+            <div className="brand-onboarding-review-rows">
+              {rows.map(([label, value]) => (
+                <div className="detail-pair" key={label}>
+                  <strong>{label}</strong>
+                  <span>{value}</span>
+                </div>
+              ))}
+            </div>
           </section>
         ))}
+      </div>
+    );
+  }
+
+  if (content.type === "terms") {
+    return (
+      <div className="brand-terms-section">
+        {content.terms.map(([term, description], index) => (
+          <article key={term}>
+            <h2>{index + 1}. {term}</h2>
+            <p>{description}</p>
+          </article>
+        ))}
+        <label className="brand-onboarding-check brand-terms-check">
+          <input type="checkbox" defaultChecked />
+          <span>{content.agreement}</span>
+        </label>
+        <label className="brand-onboarding-field full">
+          <span>Signature</span>
+          <input placeholder={content.signature} />
+        </label>
       </div>
     );
   }
@@ -979,13 +1032,7 @@ function BrandOnboardingStep({ content, step }) {
       <img className="brand-onboarding-success-icon" src="/assets/prototype-icons/success.svg" alt="" />
       <h1>{content.title}</h1>
       <p>{content.intro}</p>
-      <div className="brand-onboarding-preview-card" aria-hidden="true">
-        <span />
-        <div>
-          <strong />
-          <strong />
-        </div>
-      </div>
+      <img className="brand-onboarding-success-preview" src="/assets/prototype-icons/container-margin.svg" alt="" />
     </div>
   );
 }
@@ -1003,16 +1050,17 @@ function BrandOnboardingChipGroup({ label, options, selected = [] }) {
   );
 }
 
-function BrandAssetUploadCard({ title, helper, wide = false }) {
+function BrandAssetUploadCard({ title, helper, accept, wide = false }) {
   return (
     <section className={wide ? "brand-asset-card wide" : "brand-asset-card"}>
       <div>
         <strong>{title}</strong>
         <span>{helper}</span>
+        <small>{accept}</small>
       </div>
       <button type="button">
         <img src="/assets/prototype-icons/upload.svg" alt="" />
-        Add
+        Upload
       </button>
     </section>
   );
