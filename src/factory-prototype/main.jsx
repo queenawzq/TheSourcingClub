@@ -101,13 +101,117 @@ const brandProjects = [
   }
 ];
 
+const factoryMessageThreads = [
+  {
+    id: "maison-rue",
+    name: "Maison Rue",
+    primaryContact: "Ari Chen",
+    initials: "MR",
+    location: "New York, USA",
+    status: "Online",
+    localTime: "4:18 PM local time",
+    project: "Organic cotton woven shirt production",
+    kind: "Production order",
+    lastDate: "12 min",
+    lastPreview: "Can you split fit and PP sample cost?",
+    unread: 1,
+    scheduleNote: "Your time: Porto time - Maison Rue: ET",
+    scheduleSlots: [
+      { factory: "Tue 3:00 PM Porto", brand: "Maison Rue: Tue 10:00 AM ET" },
+      { factory: "Tue 5:30 PM Porto", brand: "Maison Rue: Tue 12:30 PM ET" },
+      { factory: "Wed 2:30 PM Porto", brand: "Maison Rue: Wed 9:30 AM ET" }
+    ],
+    files: ["Tech pack v3.pdf", "Measurement chart", "Reference photos"],
+    messages: [
+      {
+        from: "brand",
+        time: "9:48 AM",
+        body: "Can you split fit and PP sample cost in the quote? We want to approve the first fit sample before locking PP timing."
+      },
+      {
+        from: "factory",
+        time: "10:12 AM",
+        body: "Yes. We can separate fit sample, PP sample, and bulk unit pricing. I will update the assumptions in the quote."
+      },
+      {
+        from: "factory",
+        time: "10:18 AM",
+        language: "pt",
+        original: "Podemos enviar fotos de controle de qualidade antes do saldo final.",
+        translation: "We can send quality control photos before the final balance."
+      }
+    ]
+  },
+  {
+    id: "elara-studio",
+    name: "Elara Studio",
+    primaryContact: "Maya Hart",
+    initials: "ES",
+    location: "Los Angeles, USA",
+    status: "Away",
+    localTime: "1:18 PM local time",
+    project: "Premium knit capsule for resort drop",
+    kind: "RFQ",
+    lastDate: "1 hr",
+    lastPreview: "Uploaded updated colorway sheet.",
+    unread: 0,
+    scheduleNote: "Your time: Porto time - Elara Studio: PT",
+    scheduleSlots: [
+      { factory: "Wed 5:00 PM Porto", brand: "Elara Studio: Wed 9:00 AM PT" },
+      { factory: "Thu 6:30 PM Porto", brand: "Elara Studio: Thu 10:30 AM PT" },
+      { factory: "Fri 4:00 PM Porto", brand: "Elara Studio: Fri 8:00 AM PT" }
+    ],
+    files: ["Colorway sheet", "Yarn card"],
+    messages: [
+      {
+        from: "brand",
+        time: "Yesterday",
+        body: "We uploaded the updated colorway sheet. Please quote the lab dip review as a separate line."
+      },
+      {
+        from: "factory",
+        time: "Today",
+        body: "Received. We can quote yarn sourcing and lab dip review separately."
+      }
+    ]
+  },
+  {
+    id: "northline",
+    name: "Northline",
+    primaryContact: "Jon Bell",
+    initials: "NL",
+    location: "Toronto, Canada",
+    status: "Online",
+    localTime: "4:18 PM local time",
+    project: "Denim jacket wash development and small bulk",
+    kind: "Saved RFQ",
+    lastDate: "Today",
+    lastPreview: "Can you confirm wash sample lead time?",
+    unread: 0,
+    scheduleNote: "Your time: Porto time - Northline: ET",
+    scheduleSlots: [
+      { factory: "Tue 7:00 PM Porto", brand: "Northline: Tue 2:00 PM ET" },
+      { factory: "Wed 4:00 PM Porto", brand: "Northline: Wed 11:00 AM ET" },
+      { factory: "Thu 5:30 PM Porto", brand: "Northline: Thu 12:30 PM ET" }
+    ],
+    files: ["Wash direction", "Trim notes"],
+    messages: [
+      {
+        from: "brand",
+        time: "Today",
+        body: "Can you confirm wash sample lead time before we invite the full denim RFQ group?"
+      }
+    ]
+  }
+];
+
 const nav = [
   { label: "Dashboard", icon: "home" },
   { label: "RFQs", icon: "rfq" },
   { label: "Production orders", icon: "projects" },
   { label: "Browse RFQs", icon: "explore" },
   { label: "Connections", icon: "connections" },
-  { label: "Messages", icon: "messages" },
+  { label: "Conversations", icon: "messages" },
   { label: "Saved", icon: "bookmarks" },
   { label: "Settings", icon: "settings" },
   { label: "Notifications", icon: "notification" }
@@ -118,7 +222,7 @@ const factoryMainZhText = {
   "Production orders": "生产订单",
   "Browse RFQs": "浏览询价",
   "Connections": "联系人",
-  "Messages": "消息",
+  "Conversations": "对话",
   "Saved": "收藏",
   "Settings": "设置",
   "Notifications": "通知",
@@ -1036,7 +1140,7 @@ function getCapacityUnitRange(lineHours, minPercent = 60, maxPercent = 100) {
 
 function App() {
   const requestedScreen = new URLSearchParams(window.location.search).get("screen");
-  const shouldOpenPrototypeScreen = ["dashboard", "browse", "rfqs", "projects", "detail", "profile"].includes(requestedScreen);
+  const shouldOpenPrototypeScreen = ["dashboard", "browse", "rfqs", "projects", "detail", "profile", "messages", "saved", "settings"].includes(requestedScreen);
   const [onboardingComplete, setOnboardingComplete] = useState(shouldOpenPrototypeScreen);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingLanguage, setOnboardingLanguage] = useState("en");
@@ -1047,7 +1151,7 @@ function App() {
   const [capacityDrawerOpen, setCapacityDrawerOpen] = useState(false);
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
   const selectedProject = brandProjects[0];
-  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "profile" ? "" : "Browse RFQs";
+  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "settings" ? "Settings" : screen === "profile" ? "" : "Browse RFQs";
   const goToDashboard = () => {
     window.history.replaceState(null, "", `${window.location.pathname}?screen=dashboard`);
     setScreen("dashboard");
@@ -1104,6 +1208,9 @@ function App() {
                   if (item.label === "RFQs") setScreen("rfqs");
                   if (item.label === "Production orders") setScreen("projects");
                   if (item.label === "Browse RFQs") setScreen("browse");
+                  if (item.label === "Conversations") setScreen("messages");
+                  if (item.label === "Saved") setScreen("saved");
+                  if (item.label === "Settings") setScreen("settings");
                 }}
                 aria-label={item.label}
                 title={sidebarCollapsed ? item.label : undefined}
@@ -1156,6 +1263,25 @@ function App() {
             setScreen("quote");
           }}
         />
+      )}
+      {screen === "saved" && (
+        <FactorySavedPage
+          language={onboardingLanguage}
+          onViewRfq={() => {
+            setDetailBackTarget("saved");
+            setScreen("detail");
+          }}
+        />
+      )}
+      {screen === "messages" && (
+        <main className="messages-page factory-messages-page">
+          <FactoryMessagesScreen />
+        </main>
+      )}
+      {screen === "settings" && (
+        <main className="settings-page-shell factory-settings-page">
+          <FactorySettingsScreen />
+        </main>
       )}
       {screen === "rfqReadOnly" && (
         <FactoryReadOnlyRfqPage
@@ -1929,6 +2055,453 @@ function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
   );
 }
 
+function FactorySavedPage({ language, onViewRfq }) {
+  const [tab, setTab] = useState("brands");
+  const savedBrandProfiles = {
+    "Maison Rue": ["Fashion brand", "$1M-$5M revenue", "4 Club orders"],
+    "Elara Studio": ["Contemporary brand", "$5M-$10M revenue", "2 repeat factories"],
+    Northline: ["Outerwear brand", "Toronto market", "1 day avg. response"]
+  };
+  const savedBrands = brandProjects.slice(0, 3).map((project) => ({
+    initials: project.initials,
+    name: project.brand,
+    location: project.location,
+    trust: project.trust,
+    focus: project.title,
+    fit: project.capacity[0],
+    note: project.insight[0],
+    tags: savedBrandProfiles[project.brand]
+  }));
+  const savedRfqs = brandProjects.slice(0, 3);
+
+  return (
+    <main className="rfqs-page factory-saved-page">
+      <div className="rfqs-shell saved-shell">
+        <header className="rfqs-header saved-header">
+          <div>
+            <h1>Saved</h1>
+            <p>Keep track of brands you want to work with and RFQs you may quote later.</p>
+          </div>
+        </header>
+
+        <nav className="rfqs-tabs saved-tabs" aria-label="Saved lists">
+          <button className={tab === "brands" ? "active" : ""} type="button" onClick={() => setTab("brands")}>Saved brands ({savedBrands.length})</button>
+          <button className={tab === "rfqs" ? "active" : ""} type="button" onClick={() => setTab("rfqs")}>Saved RFQs ({savedRfqs.length})</button>
+        </nav>
+
+        <section className="rfqs-controls saved-controls" aria-label="Saved filters">
+          <label className="rfqs-search">
+            <span>{tab === "brands" ? "Search saved brands" : "Search saved RFQs"}</span>
+            <div>
+              <SearchIcon />
+              <input placeholder={tab === "brands" ? "Brand name, category, location..." : "RFQ name, product, brand..."} />
+            </div>
+          </label>
+          <label className="rfqs-sort">
+            <span>Sort By</span>
+            <select defaultValue="recent">
+              <option value="recent">Recently saved</option>
+              <option value="fit">Best fit</option>
+              <option value="due">Due soon</option>
+            </select>
+          </label>
+        </section>
+
+        {tab === "brands" ? (
+          <section className="factory-saved-brand-grid" aria-label="Saved brands">
+            {savedBrands.map((brand) => (
+              <FactorySavedBrandCard brand={brand} key={brand.name} />
+            ))}
+          </section>
+        ) : (
+          <section className="factory-saved-rfq-list" aria-label="Saved RFQs">
+            {savedRfqs.map((project) => (
+              <FactorySavedRfqCard project={project} language={language} onViewRfq={onViewRfq} key={project.title} />
+            ))}
+          </section>
+        )}
+      </div>
+    </main>
+  );
+}
+
+function FactorySavedBrandCard({ brand }) {
+  const fitTone = brand.fit === "Good fit" ? "good" : brand.fit === "Potential fit" ? "warn" : "strong";
+
+  return (
+    <article className="factory-saved-brand-card">
+      <header>
+        <div className="factory-saved-brand-identity">
+          <div className="factory-avatar">{brand.initials}</div>
+          <div>
+            <h2>{brand.name}</h2>
+            <p>{brand.location}</p>
+          </div>
+        </div>
+        <div className="factory-saved-card-actions">
+          <button className="secondary-btn" type="button">Contact brand</button>
+          <button className="primary-btn" type="button">View brand</button>
+        </div>
+      </header>
+      <div className="factory-saved-brand-fit">
+        <span className={`factory-project-fit ${fitTone}`}>{brand.fit}</span>
+        <strong>{brand.focus}</strong>
+      </div>
+      <div className="factory-request-trust factory-saved-brand-trust">
+        <span className="factory-request-trust-icon" aria-hidden="true">$</span>
+        <strong>Payment verified</strong>
+        <span>{brand.trust}</span>
+      </div>
+      <div className="tag-row compact-tags">
+        {brand.tags.map((tag) => (
+          <span className="tag garment-tag" key={tag}>{tag}</span>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function FactorySavedRfqCard({ project, language, onViewRfq }) {
+  const isZh = language === "zh";
+  const title = isZh ? getTranslatedProjectTitle(project.title) : project.title;
+  const meta = `${project.brand} · ${project.location} · ${project.posted}`;
+  const [primaryImage] = project.images || [];
+
+  return (
+    <article className="factory-request-card factory-saved-rfq-card">
+      <header className="factory-request-card-top">
+        <div className="factory-request-title">
+          <div className="factory-avatar">{project.initials}</div>
+          <div className="rfq-main">
+            <h2 data-no-translate>{title}</h2>
+            <p className="rfq-date" data-no-translate>{isZh ? getTranslatedListMeta(meta) : meta}</p>
+          </div>
+        </div>
+        <div className="factory-saved-card-actions">
+          <button className="secondary-btn" type="button">Remove</button>
+          <button className="primary-btn" type="button" onClick={onViewRfq}>View RFQ</button>
+        </div>
+      </header>
+
+      <div className="factory-saved-rfq-body">
+        <div className="factory-saved-rfq-copy">
+          <div className="factory-request-facts">
+            <div>
+              <span>Unit target</span>
+              <strong>{project.budget}</strong>
+            </div>
+            <div>
+              <span>Quantity</span>
+              <strong>{project.quantity}</strong>
+            </div>
+            <div>
+              <span>Quote due</span>
+              <strong>{project.quoteDue}</strong>
+            </div>
+          </div>
+          <p className="rfq-description" data-no-translate>{isZh ? getTranslatedListDescription(project) : project.specialty}</p>
+          <div className="factory-request-tags">
+            <span className="marketplace-tag-label">Request tags</span>
+            <div className="tag-row compact-tags rfq-tags">
+              {project.tags.slice(0, 4).map((tag) => (
+                <span className="tag" key={tag}>{tag}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+        {primaryImage && (
+          <figure className="factory-saved-rfq-visual">
+            <img src={primaryImage.src} alt={`${project.title} ${primaryImage.label}`} />
+            <figcaption>{primaryImage.label}</figcaption>
+          </figure>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function FactoryMessagesScreen() {
+  const [activeThreadId, setActiveThreadId] = useState(factoryMessageThreads[0].id);
+  const [composer, setComposer] = useState("");
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [callMode, setCallMode] = useState("idle");
+  const [translatedMessages, setTranslatedMessages] = useState({});
+  const [scheduledCalls, setScheduledCalls] = useState({
+    "maison-rue": {
+      title: "Sample cost review",
+      factoryTime: "Tue 3:00 PM Porto",
+      brandTime: "Maison Rue: Tue 10:00 AM ET",
+      agenda: "Review fit sample and PP sample cost split before quote approval.",
+      hasVideo: true
+    }
+  });
+  const activeThread = factoryMessageThreads.find((thread) => thread.id === activeThreadId) || factoryMessageThreads[0];
+  const activeScheduledCall = scheduledCalls[activeThread.id];
+
+  const toggleTranslation = (threadId, index) => {
+    const key = `${threadId}-${index}`;
+    setTranslatedMessages((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  return (
+    <div className="messages-shell factory-messages-shell">
+      <aside className="messages-list-panel">
+        <header className="messages-list-header">
+          <div>
+            <h1>Messages</h1>
+          </div>
+        </header>
+        <label className="rfqs-search message-search-field">
+          <div>
+            <SearchIcon />
+            <input placeholder="Search conversations..." />
+          </div>
+        </label>
+        <div className="message-filter-row">
+          <button className="pill active" type="button">All</button>
+          <button className="pill" type="button">Unread</button>
+        </div>
+        <div className="message-thread-list">
+          {factoryMessageThreads.map((thread) => (
+            <button
+              className={thread.id === activeThread.id ? "message-thread-card active" : "message-thread-card"}
+              type="button"
+              onClick={() => {
+                setActiveThreadId(thread.id);
+                setShowSchedule(false);
+                setCallMode("idle");
+              }}
+              key={thread.id}
+            >
+              <span className="message-avatar">{thread.initials}</span>
+              <span>
+                <strong>{thread.name}</strong>
+                <small>{thread.project}</small>
+                <em>{thread.lastPreview}</em>
+              </span>
+              <time>{thread.lastDate}</time>
+              {thread.unread > 0 && <b>{thread.unread}</b>}
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <section className="message-workspace">
+        <header className="message-room-header">
+          <div className="message-room-identity">
+            <span className="message-avatar large">{activeThread.initials}</span>
+            <div>
+              <h2>{activeThread.primaryContact}</h2>
+              <p>{activeThread.name} - {activeThread.localTime} - {activeThread.project}</p>
+            </div>
+          </div>
+          <div className="message-room-actions">
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule((value) => !value)}>Schedule call</button>
+            <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>
+          </div>
+        </header>
+
+        {callMode !== "idle" && (
+          <FactoryVideoCallPanel thread={activeThread} mode={callMode} setMode={setCallMode} />
+        )}
+
+        <div className="message-timeline">
+          {activeThread.messages.map((message, index) => {
+            const translationKey = `${activeThread.id}-${index}`;
+            const showTranslation = Boolean(translatedMessages[translationKey]);
+            return (
+              <FactoryMessageBubble
+                message={message}
+                showTranslation={showTranslation}
+                onToggleTranslation={() => toggleTranslation(activeThread.id, index)}
+                key={`${message.time}-${index}`}
+              />
+            );
+          })}
+        </div>
+
+        <footer className="message-composer">
+          <textarea
+            value={composer}
+            onChange={(event) => setComposer(event.target.value)}
+            placeholder={`Message ${activeThread.primaryContact}...`}
+            rows={3}
+          />
+          <div className="message-send-actions">
+            <button className="message-upload-btn" type="button">
+              <img src="/assets/prototype-icons/upload.svg" alt="" />
+              <span>Attach file</span>
+            </button>
+            <button className="primary-btn compact-btn" type="button" onClick={() => setComposer("")}>Send</button>
+          </div>
+        </footer>
+      </section>
+
+      <aside className="message-side-panel">
+        {activeScheduledCall && <FactoryUpcomingCallCard call={activeScheduledCall} />}
+        <FactoryScheduleCallPanel
+          key={activeThread.id}
+          thread={activeThread}
+          isOpen={showSchedule}
+          onOpen={() => setShowSchedule(true)}
+          onSchedule={(call) => {
+            setScheduledCalls((current) => ({ ...current, [activeThread.id]: call }));
+            setShowSchedule(false);
+          }}
+        />
+        <section className="message-profile-card">
+          <h3>{activeThread.name}</h3>
+          <p>{activeThread.location} - {activeThread.status}</p>
+          <div className="message-file-list">
+            {activeThread.files.map((file) => (
+              <button type="button" key={file}>
+                <span>{file}</span>
+                <img src="/assets/prototype-icons/download.svg" alt="" />
+              </button>
+            ))}
+          </div>
+        </section>
+      </aside>
+    </div>
+  );
+}
+
+function FactoryMessageBubble({ message, showTranslation, onToggleTranslation }) {
+  const isFactory = message.from === "factory";
+  const hasTranslation = Boolean(message.translation);
+
+  return (
+    <article className={isFactory ? "message-bubble own" : "message-bubble"}>
+      <div>
+        <span>{isFactory ? "Atelier Minho" : "Brand"}</span>
+        <time>{message.time}</time>
+      </div>
+      <p>{showTranslation && hasTranslation ? message.translation : message.body || message.original}</p>
+      {hasTranslation && (
+        <div className="message-translation-card">
+          <button type="button" onClick={onToggleTranslation}>
+            {showTranslation ? "Show original" : "Translate to English"}
+          </button>
+        </div>
+      )}
+      {message.attachments && (
+        <div className="message-attachment-row">
+          {message.attachments.map((attachment) => (
+            <button type="button" key={attachment}>
+              <span>{attachment}</span>
+              <img src="/assets/prototype-icons/download.svg" alt="" />
+            </button>
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function FactoryVideoCallPanel({ thread, mode, setMode }) {
+  const inCall = mode === "active";
+
+  return (
+    <section className={inCall ? "video-call-panel active" : "video-call-panel"}>
+      <div className="video-call-stage">
+        <span className="message-avatar xl">{thread.initials}</span>
+        <div>
+          <h3>{inCall ? `Live with ${thread.primaryContact}` : `Ready to call ${thread.primaryContact}`}</h3>
+          <p>{inCall ? "Video preview - screen share available - call notes stay in this thread" : "Start a prototype call room. This is not connected to a live video provider yet."}</p>
+        </div>
+      </div>
+      <div className="video-call-controls">
+        <button type="button" aria-label="Toggle camera">Cam</button>
+        <button type="button" aria-label="Toggle microphone">Mic</button>
+        <button type="button" aria-label="Share screen">Share</button>
+        <button className={inCall ? "danger" : ""} type="button" onClick={() => setMode(inCall ? "idle" : "active")}>{inCall ? "End call" : "Start call"}</button>
+      </div>
+    </section>
+  );
+}
+
+function FactoryUpcomingCallCard({ call }) {
+  return (
+    <section className="upcoming-call-card">
+      <div className="upcoming-call-label">Scheduled call</div>
+      <h3>{call.title}</h3>
+      <div className="upcoming-call-time">
+        <strong>{call.factoryTime}</strong>
+        <span>{call.brandTime}</span>
+      </div>
+      <p>{call.agenda}</p>
+      <div className="upcoming-call-actions">
+        {call.hasVideo && <span>Video link added</span>}
+        <button className="secondary-btn compact-btn" type="button">Join call</button>
+      </div>
+    </section>
+  );
+}
+
+function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
+  const timeSlots = thread.scheduleSlots || [
+    { factory: "Tue 3:00 PM Porto", brand: `${thread.name}: local time shown after invite` },
+    { factory: "Tue 5:30 PM Porto", brand: `${thread.name}: local time shown after invite` },
+    { factory: "Wed 2:30 PM Porto", brand: `${thread.name}: local time shown after invite` }
+  ];
+  const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
+  const [callTitle, setCallTitle] = useState("Sample cost review");
+  const [callDescription, setCallDescription] = useState(`Review open questions with ${thread.name} and confirm next actions.`);
+  const [hasVideo, setHasVideo] = useState(true);
+  const selectedSlot = timeSlots[selectedSlotIndex] || timeSlots[0];
+
+  return (
+    <section className={isOpen ? "schedule-card open" : "schedule-card"}>
+      <header>
+        <div>
+          <h3>Schedule call</h3>
+          <p>{thread.scheduleNote}</p>
+        </div>
+        {!isOpen && <button className="secondary-btn compact-btn" type="button" onClick={onOpen}>Open</button>}
+      </header>
+      {isOpen && (
+        <>
+          <label className="schedule-field">
+            <span>Title</span>
+            <input value={callTitle} onChange={(event) => setCallTitle(event.target.value)} />
+          </label>
+          <label className="schedule-field">
+            <span>Description</span>
+            <textarea rows={3} value={callDescription} onChange={(event) => setCallDescription(event.target.value)} />
+          </label>
+          <div className="schedule-slot-grid">
+            {timeSlots.map((slot, index) => (
+              <button className={index === selectedSlotIndex ? "selected" : ""} type="button" onClick={() => setSelectedSlotIndex(index)} key={slot.factory}>
+                <strong>{slot.factory}</strong>
+                <span>{slot.brand}</span>
+              </button>
+            ))}
+          </div>
+          <div className="schedule-footer">
+            <label>
+              <input type="checkbox" checked={hasVideo} onChange={(event) => setHasVideo(event.target.checked)} />
+              Add video link
+            </label>
+            <button
+              className="primary-btn compact-btn"
+              type="button"
+              onClick={() => onSchedule?.({
+                title: callTitle,
+                factoryTime: selectedSlot.factory,
+                brandTime: selectedSlot.brand,
+                agenda: callDescription,
+                hasVideo
+              })}
+            >
+              Send invite
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
 function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   const isZh = language === "zh";
   const meta = `${rfq.brand} · ${rfq.location} · Payment verified · ${rfq.trust}`;
@@ -2599,6 +3172,224 @@ function CapacityMonthRow({ language, month, selected, onSelect }) {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+const factorySettingsPermissionLabels = [
+  { key: "pay", label: "Pay" },
+  { key: "approve", label: "Approve" },
+  { key: "reply", label: "Reply" },
+  { key: "calls", label: "Calls" },
+  { key: "team", label: "Team" }
+];
+
+function FactorySettingsScreen() {
+  const [activeSection, setActiveSection] = useState("account");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [team, setTeam] = useState([
+    { name: "Ines Carvalho", email: "ines@atelierminho.pt", role: "Owner", permissions: ["pay", "approve", "reply", "calls", "team"] },
+    { name: "Mateo Silva", email: "mateo@atelierminho.pt", role: "Production lead", permissions: ["approve", "reply", "calls"] },
+    { name: "Sofia Ramos", email: "sofia@atelierminho.pt", role: "Finance", permissions: ["pay"] }
+  ]);
+  const account = {
+    name: "Atelier Minho",
+    email: "ops@atelierminho.pt",
+    phone: "+351 22 000 1842",
+    location: "Porto, Portugal",
+    payment: "Wise business ending in 9021",
+    backup: "Visa ending in 4412"
+  };
+
+  const togglePermission = (memberEmail, permission) => {
+    setTeam((current) =>
+      current.map((member) => {
+        if (member.email !== memberEmail || member.role === "Owner") return member;
+        const hasPermission = member.permissions.includes(permission);
+        return {
+          ...member,
+          permissions: hasPermission
+            ? member.permissions.filter((item) => item !== permission)
+            : [...member.permissions, permission]
+        };
+      })
+    );
+  };
+
+  const settingsNav = [
+    ["account", "Basic information"],
+    ["security", "Password & security"],
+    ["payment", "Payment method"],
+    ["team", "Team & stakeholders"],
+    ["notifications", "Notifications"]
+  ];
+  const goToSettingsSection = (id) => {
+    setActiveSection(id);
+    document.getElementById(`settings-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  return (
+    <div className="settings-page">
+      <aside className="settings-nav-panel">
+        <h1>Settings</h1>
+        <nav aria-label="Settings sections">
+          {settingsNav.map(([id, label]) => (
+            <button className={activeSection === id ? "active" : ""} type="button" onClick={() => goToSettingsSection(id)} key={id}>
+              {label}
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      <section className="settings-content">
+        <header className="settings-heading">
+          <div>
+            <p>Factory account</p>
+            <h2>Account settings</h2>
+          </div>
+          <button className="primary-btn" type="button">Save changes</button>
+        </header>
+
+        <section className="settings-section" id="settings-account">
+              <div className="settings-section-header">
+                <h3>Basic information</h3>
+                <p>Edit the details brands use for orders, calls, and account verification.</p>
+              </div>
+              <div className="settings-form-grid">
+                <label>
+                  <span>Account name</span>
+                  <input defaultValue={account.name} />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input defaultValue={account.email} type="email" />
+                </label>
+                <label>
+                  <span>Phone</span>
+                  <input defaultValue={account.phone} />
+                </label>
+                <label>
+                  <span>Location</span>
+                  <input defaultValue={account.location} />
+                </label>
+              </div>
+            </section>
+
+            <section className="settings-section" id="settings-security">
+              <div className="settings-section-header">
+                <h3>Password & security</h3>
+                <p>Update login access and keep payout or approval actions protected.</p>
+              </div>
+              <div className="settings-form-grid">
+                <label>
+                  <span>Current password</span>
+                  <input placeholder="Enter current password" type="password" />
+                </label>
+                <label>
+                  <span>New password</span>
+                  <input placeholder="Create new password" type="password" />
+                </label>
+              </div>
+            </section>
+
+        <section className="settings-section" id="settings-payment">
+            <div className="settings-section-header">
+              <h3>Payment method</h3>
+              <p>Add, update, or remove the payout methods used for production milestones.</p>
+            </div>
+            <div className="settings-payment-list">
+              <div>
+                <span className="settings-card-brand">Primary</span>
+                <strong>{account.payment}</strong>
+                <small>Receives released milestone funds.</small>
+              </div>
+              <button className="secondary-btn compact-btn" type="button">Edit</button>
+            </div>
+            <div className="settings-payment-list">
+              <div>
+                <span className="settings-card-brand">Backup</span>
+                <strong>{account.backup}</strong>
+                <small>Helps avoid payout interruptions.</small>
+              </div>
+              <button className="secondary-btn compact-btn" type="button">Remove</button>
+            </div>
+            <button className="settings-add-btn" type="button">+ Add payment method</button>
+          </section>
+
+        <section className="settings-section" id="settings-team">
+            <div className="settings-section-header split">
+              <div>
+                <h3>Manage team & stakeholders</h3>
+                <p>Control who can pay, approve work, reply to messages, schedule calls, and manage access.</p>
+              </div>
+              <button className="primary-btn compact-btn" type="button" onClick={() => setInviteEmail("")}>Invite member</button>
+            </div>
+
+            <div className="settings-invite-row">
+              <label>
+                <span>Invite email</span>
+                <input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="name@company.com" type="email" />
+              </label>
+              <label>
+                <span>Role</span>
+                <select defaultValue="Stakeholder">
+                  <option>Stakeholder</option>
+                  <option>Production lead</option>
+                  <option>Finance</option>
+                  <option>Viewer</option>
+                </select>
+              </label>
+              <button className="secondary-btn" type="button">Send invite</button>
+            </div>
+
+            <div className="settings-permission-table" role="table" aria-label="Team permissions">
+              <div className="settings-permission-row header" role="row">
+                <span>Member</span>
+                {factorySettingsPermissionLabels.map((permission) => (
+                  <span key={permission.key}>{permission.label}</span>
+                ))}
+              </div>
+              {team.map((member) => (
+                <div className="settings-permission-row" role="row" key={member.email}>
+                  <div>
+                    <strong>{member.name}</strong>
+                    <small>{member.role} - {member.email}</small>
+                  </div>
+                  {factorySettingsPermissionLabels.map((permission) => (
+                    <label className="settings-check" key={permission.key}>
+                      <input
+                        type="checkbox"
+                        checked={member.permissions.includes(permission.key)}
+                        disabled={member.role === "Owner"}
+                        onChange={() => togglePermission(member.email, permission.key)}
+                      />
+                      <span>{permission.label}</span>
+                    </label>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </section>
+
+        <section className="settings-section" id="settings-notifications">
+            <div className="settings-section-header">
+              <h3>Notifications</h3>
+              <p>Choose which updates should reach your team by email.</p>
+            </div>
+            {["New RFQ matches", "Payment and approval requests", "Messages and call invites"].map((label) => (
+              <div className="settings-inline-row" key={label}>
+                <div>
+                  <strong>{label}</strong>
+                  <span>Send email notifications to members with matching authority.</span>
+                </div>
+                <label className="settings-switch">
+                  <input type="checkbox" defaultChecked />
+                  <span />
+                </label>
+              </div>
+            ))}
+          </section>
+      </section>
     </div>
   );
 }

@@ -45,6 +45,24 @@ const screenMeta = {
     description: "",
     cta: ""
   },
+  messages: {
+    step: 0,
+    title: "Messages",
+    description: "",
+    cta: ""
+  },
+  saved: {
+    step: 0,
+    title: "Saved",
+    description: "",
+    cta: ""
+  },
+  settings: {
+    step: 0,
+    title: "Settings",
+    description: "",
+    cta: ""
+  },
   describe: { step: 0, title: "Describe what you need made.", cta: "Generate brief" },
   review: { step: 1, title: "Review your quote brief.", cta: "Invite factories" },
   invite: { step: 2, title: "Invite factories to quote.", cta: "Invite factories" },
@@ -564,6 +582,146 @@ const milestones = [
   }
 ];
 
+const messageThreads = [
+  {
+    id: "atelier",
+    name: "Atelier Minho",
+    initials: "AM",
+    location: "Porto, Portugal",
+    status: "Online",
+    localTime: "9:18 PM local time",
+    project: "Organic cotton woven shirt production",
+    kind: "Production order",
+    lastDate: "Today",
+    lastPreview: "Fit sample front, side, and detail photos are ready for review.",
+    unread: 2,
+    responseLabel: "Usually replies in 2h",
+    scheduleNote: "Your time: ET · Atelier Minho: Porto time",
+    scheduleSlots: [
+      { brand: "Tue 10:00 AM ET", factory: "Atelier Minho: Tue 3:00 PM" },
+      { brand: "Tue 12:30 PM ET", factory: "Atelier Minho: Tue 5:30 PM" },
+      { brand: "Wed 9:30 AM ET", factory: "Atelier Minho: Wed 2:30 PM" }
+    ],
+    files: ["Front photo", "Measurement update"],
+    messages: [
+      {
+        from: "factory",
+        time: "9:48 AM",
+        body: "Fit sample is ready for review. Uploaded front, side, and detail photos for approval.",
+        attachments: ["Front photo", "Detail photo", "Back photo"]
+      },
+      {
+        from: "brand",
+        time: "10:12 AM",
+        body: "Thanks. Can you confirm if the sleeve opening follows the updated measurement chart?"
+      },
+      {
+        from: "factory",
+        time: "11:03 AM",
+        language: "pt",
+        original: "Sim, seguimos a tabela atualizada. Ajustamos a abertura da manga para 28 cm conforme indicado.",
+        translation: "Yes, we followed the updated chart. We adjusted the sleeve opening to 28 cm as requested."
+      }
+    ]
+  },
+  {
+    id: "hansu",
+    name: "Hansu Studio",
+    initials: "HS",
+    location: "Seoul, Korea",
+    status: "Away",
+    localTime: "10:18 AM local time",
+    project: "Premium knit capsule for resort drop",
+    kind: "Production order",
+    lastDate: "Yesterday",
+    lastPreview: "Yarn substitution question is waiting for your reply.",
+    unread: 1,
+    responseLabel: "Usually replies same day",
+    scheduleNote: "Your time: ET · Hansu Studio: Seoul time",
+    scheduleSlots: [
+      { brand: "Mon 7:00 PM ET", factory: "Hansu Studio: Tue 8:00 AM" },
+      { brand: "Tue 8:30 PM ET", factory: "Hansu Studio: Wed 9:30 AM" },
+      { brand: "Wed 7:30 PM ET", factory: "Hansu Studio: Thu 8:30 AM" }
+    ],
+    files: ["Colorway sheet", "Yarn card"],
+    messages: [
+      {
+        from: "factory",
+        time: "Yesterday",
+        body: "The original yarn supplier can still meet the lead time, but the minimum is higher than planned."
+      },
+      {
+        from: "factory",
+        time: "Yesterday",
+        language: "ko",
+        original: "대체 원사는 촉감이 비슷하지만 색상은 조금 더 따뜻합니다. 승인 전에 랩딥을 보내드릴 수 있습니다.",
+        translation: "The substitute yarn has a similar handfeel, but the color is slightly warmer. We can send a lab dip before approval."
+      }
+    ]
+  },
+  {
+    id: "northline",
+    name: "Northline",
+    initials: "NO",
+    location: "Toronto, Canada",
+    status: "Online",
+    localTime: "4:18 PM local time",
+    project: "Denim jacket wash development and small bulk",
+    kind: "RFQ",
+    lastDate: "Mon",
+    lastPreview: "Can you confirm target wash sample lead time?",
+    unread: 0,
+    responseLabel: "Usually replies in 4h",
+    scheduleNote: "Your time: ET · Northline: Toronto time",
+    scheduleSlots: [
+      { brand: "Tue 2:00 PM ET", factory: "Northline: Tue 2:00 PM" },
+      { brand: "Tue 4:30 PM ET", factory: "Northline: Tue 4:30 PM" },
+      { brand: "Wed 1:00 PM ET", factory: "Northline: Wed 1:00 PM" }
+    ],
+    files: ["Wash direction", "Trim notes"],
+    messages: [
+      {
+        from: "factory",
+        time: "Mon",
+        body: "Can you confirm target wash sample lead time? We can quote two options once timing is locked."
+      },
+      {
+        from: "brand",
+        time: "Mon",
+        body: "Please quote the faster option, but note any surcharge separately."
+      }
+    ]
+  },
+  {
+    id: "tirupur",
+    name: "Tirupur Natural Studio",
+    initials: "TN",
+    location: "Tirupur, India",
+    status: "Offline",
+    localTime: "6:48 AM local time",
+    project: "Low-MOQ swim capsule with recycled nylon",
+    kind: "Saved factory",
+    lastDate: "Jul 30",
+    lastPreview: "Shared updated certification list and recycled nylon range.",
+    unread: 0,
+    responseLabel: "Usually replies in 1 day",
+    scheduleNote: "Your time: ET · Tirupur Natural Studio: India time",
+    scheduleSlots: [
+      { brand: "Tue 8:30 AM ET", factory: "Tirupur Natural Studio: Tue 6:00 PM" },
+      { brand: "Wed 9:00 AM ET", factory: "Tirupur Natural Studio: Wed 6:30 PM" },
+      { brand: "Thu 8:00 AM ET", factory: "Tirupur Natural Studio: Thu 5:30 PM" }
+    ],
+    files: ["Certification list", "Nylon range"],
+    messages: [
+      {
+        from: "factory",
+        time: "Jul 30",
+        body: "We added the updated certification list and recycled nylon range for your review."
+      }
+    ]
+  }
+];
+
 const brandOnboardingSteps = [
   {
     title: "Welcome to The Sourcing Club",
@@ -666,7 +824,7 @@ function App() {
 
   const index = screenOrder.indexOf(screen);
   const meta = screenMeta[screen];
-  const isStandalone = screen === "home" || screen === "profile" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "rfqs" || screen === "projects" || screen === "projectDetail";
+  const isStandalone = screen === "home" || screen === "profile" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "messages" || screen === "saved" || screen === "settings";
   const isWideFlow = screen === "invite" || screen === "quotes" || screen === "quoteDetail";
 
   const goTo = (next) => {
@@ -710,6 +868,12 @@ function App() {
         return <ProjectsScreen goTo={goTo} />;
       case "projectDetail":
         return <ProjectDetailScreen goTo={goTo} />;
+      case "messages":
+        return <MessagesScreen />;
+      case "saved":
+        return <SavedFactoriesScreen goTo={goTo} />;
+      case "settings":
+        return <SettingsScreen accountType="brand" />;
       case "describe":
         return <DescribeScreen onContinue={next} />;
       case "review":
@@ -754,7 +918,7 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <SideNav
-        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "rfqs" ? "RFQs" : "RFQs"}
+        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "settings" ? "Settings" : screen === "rfqs" ? "RFQs" : "RFQs"}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onNav={(label) => {
@@ -762,10 +926,13 @@ function App() {
           if (label === "RFQs") goTo("rfqs");
           if (label === "Production orders") goTo("projects");
           if (label === "Browse factories") goTo("factoryMarketplace");
+          if (label === "Conversations") goTo("messages");
+          if (label === "Saved") goTo("saved");
+          if (label === "Settings") goTo("settings");
         }}
         onProfile={() => goTo("profile")}
       />
-      <main className={screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : "flow-page"}>
+      <main className={screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : "flow-page"}>
         {!isStandalone && <JourneyRail current={meta.step} />}
         <section className="flow-content">
           {!isStandalone && screen !== "quoteDetail" && (
@@ -806,7 +973,7 @@ function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
     { label: "Production orders", icon: "projects" },
     { label: "Browse factories", icon: "explore" },
     { label: "Connections", icon: "connections" },
-    { label: "Messages", icon: "messages" },
+    { label: "Conversations", icon: "messages" },
     { label: "Saved", icon: "bookmarks" },
     { label: "Settings", icon: "settings" },
     { label: "Notifications", icon: "notification" }
@@ -859,6 +1026,630 @@ function CloseIconButton({ label }) {
     <button type="button" aria-label={label}>
       <img src="/assets/prototype-icons/close.svg" alt="" />
     </button>
+  );
+}
+
+function MessagesScreen() {
+  const [activeThreadId, setActiveThreadId] = useState(messageThreads[0].id);
+  const [composer, setComposer] = useState("");
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [callMode, setCallMode] = useState("idle");
+  const [translatedMessages, setTranslatedMessages] = useState({});
+  const [scheduledCalls, setScheduledCalls] = useState({
+    atelier: {
+      title: "Sample review call",
+      brandTime: "Tue 10:00 AM ET",
+      factoryTime: "Atelier Minho: Tue 3:00 PM",
+      agenda: "Review sample photos and confirm sleeve measurement update.",
+      hasVideo: true
+    }
+  });
+  const activeThread = messageThreads.find((thread) => thread.id === activeThreadId) || messageThreads[0];
+  const activeScheduledCall = scheduledCalls[activeThread.id];
+
+  const toggleTranslation = (threadId, index) => {
+    const key = `${threadId}-${index}`;
+    setTranslatedMessages((current) => ({ ...current, [key]: !current[key] }));
+  };
+
+  return (
+    <div className="messages-shell">
+      <aside className="messages-list-panel">
+        <header className="messages-list-header">
+          <div>
+            <h1>Messages</h1>
+          </div>
+        </header>
+        <label className="rfqs-search message-search-field">
+          <div>
+            <SearchIcon />
+            <input placeholder="Search conversations..." />
+          </div>
+        </label>
+        <div className="message-filter-row">
+          <button className="pill active" type="button">All</button>
+          <button className="pill" type="button">Unread</button>
+        </div>
+        <div className="message-thread-list">
+          {messageThreads.map((thread) => (
+            <button
+              className={thread.id === activeThread.id ? "message-thread-card active" : "message-thread-card"}
+              type="button"
+              onClick={() => {
+                setActiveThreadId(thread.id);
+                setShowSchedule(false);
+                setCallMode("idle");
+              }}
+              key={thread.id}
+            >
+              <span className="message-avatar">{thread.initials}</span>
+              <span>
+                <strong>{thread.name}</strong>
+                <small>{thread.project}</small>
+                <em>{thread.lastPreview}</em>
+              </span>
+              <time>{thread.lastDate}</time>
+              {thread.unread > 0 && <b>{thread.unread}</b>}
+            </button>
+          ))}
+        </div>
+      </aside>
+
+      <section className="message-workspace">
+        <header className="message-room-header">
+          <div className="message-room-identity">
+            <span className="message-avatar large">{activeThread.initials}</span>
+            <div>
+              <h2>{activeThread.name}</h2>
+              <p>{activeThread.localTime} · {activeThread.project}</p>
+            </div>
+          </div>
+          <div className="message-room-actions">
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule((value) => !value)}>Schedule call</button>
+            <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>
+          </div>
+        </header>
+
+        {callMode !== "idle" && (
+          <VideoCallPanel thread={activeThread} mode={callMode} setMode={setCallMode} />
+        )}
+
+        <div className="message-timeline">
+          {activeThread.messages.map((message, index) => {
+            const translationKey = `${activeThread.id}-${index}`;
+            const showTranslation = Boolean(translatedMessages[translationKey]);
+            return (
+              <MessageBubble
+                message={message}
+                showTranslation={showTranslation}
+                onToggleTranslation={() => toggleTranslation(activeThread.id, index)}
+                key={`${message.time}-${index}`}
+              />
+            );
+          })}
+        </div>
+
+        <footer className="message-composer">
+          <textarea
+            value={composer}
+            onChange={(event) => setComposer(event.target.value)}
+            placeholder={`Message ${activeThread.name}...`}
+            rows={3}
+          />
+          <div className="message-send-actions">
+            <button className="message-upload-btn" type="button">
+              <img src="/assets/prototype-icons/upload.svg" alt="" />
+              <span>Attach file</span>
+            </button>
+            <button className="primary-btn compact-btn" type="button" onClick={() => setComposer("")}>Send</button>
+          </div>
+        </footer>
+      </section>
+
+      <aside className="message-side-panel">
+        {activeScheduledCall && <UpcomingCallCard call={activeScheduledCall} thread={activeThread} />}
+        <ScheduleCallPanel
+          key={activeThread.id}
+          thread={activeThread}
+          isOpen={showSchedule}
+          onOpen={() => setShowSchedule(true)}
+          onSchedule={(call) => {
+            setScheduledCalls((current) => ({ ...current, [activeThread.id]: call }));
+            setShowSchedule(false);
+          }}
+        />
+        <section className="message-profile-card">
+          <h3>{activeThread.name}</h3>
+          <p>{activeThread.location} · {activeThread.status}</p>
+          <div className="message-file-list">
+            {activeThread.files.map((file) => (
+              <button type="button" key={file}>
+                <span>{file}</span>
+                <img src="/assets/prototype-icons/download.svg" alt="" />
+              </button>
+            ))}
+          </div>
+        </section>
+      </aside>
+    </div>
+  );
+}
+
+function MessageBubble({ message, showTranslation, onToggleTranslation }) {
+  const isBrand = message.from === "brand";
+  const hasTranslation = Boolean(message.translation);
+
+  return (
+    <article className={isBrand ? "message-bubble own" : "message-bubble"}>
+      <div>
+        <span>{isBrand ? "Maison Rue" : "Factory"}</span>
+        <time>{message.time}</time>
+      </div>
+      <p>{showTranslation && hasTranslation ? message.translation : message.body || message.original}</p>
+      {hasTranslation && (
+        <div className="message-translation-card">
+          <button type="button" onClick={onToggleTranslation}>
+            {showTranslation ? "Show original" : "Translate to English"}
+          </button>
+        </div>
+      )}
+      {message.attachments && (
+        <div className="message-attachment-row">
+          {message.attachments.map((attachment) => (
+            <button type="button" key={attachment}>
+              <span>{attachment}</span>
+              <img src="/assets/prototype-icons/download.svg" alt="" />
+            </button>
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function VideoCallPanel({ thread, mode, setMode }) {
+  const inCall = mode === "active";
+
+  return (
+    <section className={inCall ? "video-call-panel active" : "video-call-panel"}>
+      <div className="video-call-stage">
+        <span className="message-avatar xl">{thread.initials}</span>
+        <div>
+          <h3>{inCall ? `Live with ${thread.name}` : `Ready to call ${thread.name}`}</h3>
+          <p>{inCall ? "Video preview · screen share available · call notes stay in this thread" : "Start a prototype call room. This is not connected to a live video provider yet."}</p>
+        </div>
+      </div>
+      <div className="video-call-controls">
+        <button type="button" aria-label="Toggle camera">▣</button>
+        <button type="button" aria-label="Toggle microphone">◉</button>
+        <button type="button" aria-label="Share screen">⇧</button>
+        <button className={inCall ? "danger" : ""} type="button" onClick={() => setMode(inCall ? "idle" : "active")}>{inCall ? "End call" : "Start call"}</button>
+      </div>
+    </section>
+  );
+}
+
+function UpcomingCallCard({ call, thread }) {
+  return (
+    <section className="upcoming-call-card">
+      <div className="upcoming-call-label">Scheduled call</div>
+      <h3>{call.title}</h3>
+      <div className="upcoming-call-time">
+        <strong>{call.brandTime}</strong>
+        <span>{call.factoryTime}</span>
+      </div>
+      <p>{call.agenda}</p>
+      <div className="upcoming-call-actions">
+        {call.hasVideo && <span>Video link added</span>}
+        <button className="secondary-btn compact-btn" type="button">Join call</button>
+      </div>
+    </section>
+  );
+}
+
+function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
+  const timeSlots = thread.scheduleSlots || [
+    { brand: "Tue 10:00 AM ET", factory: `${thread.name}: local time shown after invite` },
+    { brand: "Tue 12:30 PM ET", factory: `${thread.name}: local time shown after invite` },
+    { brand: "Wed 9:30 AM ET", factory: `${thread.name}: local time shown after invite` }
+  ];
+  const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
+  const [callTitle, setCallTitle] = useState("Sample review call");
+  const [callDescription, setCallDescription] = useState(`Review open questions with ${thread.name} and confirm next actions.`);
+  const [hasVideo, setHasVideo] = useState(true);
+  const selectedSlot = timeSlots[selectedSlotIndex] || timeSlots[0];
+
+  return (
+    <section className={isOpen ? "schedule-card open" : "schedule-card"}>
+      <header>
+        <div>
+          <h3>Schedule call</h3>
+          <p>{thread.scheduleNote}</p>
+        </div>
+        {!isOpen && <button className="secondary-btn compact-btn" type="button" onClick={onOpen}>Open</button>}
+      </header>
+      {isOpen && (
+        <>
+          <label className="schedule-field">
+            <span>Title</span>
+            <input value={callTitle} onChange={(event) => setCallTitle(event.target.value)} />
+          </label>
+          <label className="schedule-field">
+            <span>Description</span>
+            <textarea rows={3} value={callDescription} onChange={(event) => setCallDescription(event.target.value)} />
+          </label>
+          <div className="schedule-slot-grid">
+            {timeSlots.map((slot, index) => (
+              <button className={index === selectedSlotIndex ? "selected" : ""} type="button" onClick={() => setSelectedSlotIndex(index)} key={slot.brand}>
+                <strong>{slot.brand}</strong>
+                <span>{slot.factory}</span>
+              </button>
+            ))}
+          </div>
+          <div className="schedule-footer">
+            <label>
+              <input type="checkbox" checked={hasVideo} onChange={(event) => setHasVideo(event.target.checked)} />
+              Add video link
+            </label>
+            <button
+              className="primary-btn compact-btn"
+              type="button"
+              onClick={() => onSchedule?.({
+                title: callTitle,
+                brandTime: selectedSlot.brand,
+                factoryTime: selectedSlot.factory,
+                agenda: callDescription,
+                hasVideo
+              })}
+            >
+              Send invite
+            </button>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
+
+const settingsPermissionLabels = [
+  { key: "rfqFlow", label: "RFQ flow", detail: "Create RFQ, choose quote, set terms and milestones", single: true },
+  { key: "approve", label: "Approve samples", detail: "Lab dip, strike-off, sample, and more" },
+  { key: "releaseFunds", label: "Release funds", detail: "Release approved payments from project funds" },
+  { key: "primaryContact", label: "Primary contact", detail: "Main factory contact for messages and calls", single: true }
+];
+
+function SettingsScreen({ accountType = "brand" }) {
+  const isFactory = accountType === "factory";
+  const [activeSection, setActiveSection] = useState("account");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
+  const [stakeholderTab, setStakeholderTab] = useState("members");
+  const [team, setTeam] = useState(
+    isFactory
+      ? [
+          { name: "Ines Carvalho", email: "ines@atelierminho.pt", role: "Owner", permissions: ["pay", "approve", "reply", "calls", "team"] },
+          { name: "Mateo Silva", email: "mateo@atelierminho.pt", role: "Production lead", permissions: ["approve", "reply", "calls"] },
+          { name: "Sofia Ramos", email: "sofia@atelierminho.pt", role: "Finance", permissions: ["pay"] }
+        ]
+      : [
+          { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder", permissions: ["rfqFlow", "approve", "primaryContact"] },
+          { name: "Maya Lee", email: "maya@maisonrue.com", role: "Production lead", permissions: ["approve"] },
+          { name: "Jon Bell", email: "jon@maisonrue.com", role: "Finance", permissions: ["releaseFunds"] }
+        ]
+  );
+  const account = isFactory
+    ? {
+        name: "Atelier Minho",
+        email: "ops@atelierminho.pt",
+        phone: "+351 22 000 1842",
+        location: "Porto, Portugal",
+        payment: "Wise business ending in 9021",
+        backup: "Visa ending in 4412"
+      }
+    : {
+        name: "Maison Rue",
+        email: "studio@maisonrue.com",
+        phone: "+1 212 555 0188",
+        location: "New York, USA",
+        payment: "American Express ending in 1021",
+        backup: "ACH ending in 7782"
+      };
+  const pendingInvites = isFactory
+    ? [
+        { email: "quality@atelierminho.pt", role: "Production lead", sent: "Sent today" },
+        { email: "finance@atelierminho.pt", role: "Finance", sent: "Sent yesterday" }
+      ]
+    : [
+        { email: "lena@maisonrue.com", role: "Stakeholder", sent: "Sent today" },
+        { email: "ops@maisonrue.com", role: "View only", sent: "Sent yesterday" }
+      ];
+
+  const togglePermission = (memberEmail, permission) => {
+    const permissionMeta = settingsPermissionLabels.find((item) => item.key === permission);
+    setTeam((current) =>
+      current.map((member) => {
+        if (permissionMeta?.single) {
+          return {
+            ...member,
+            permissions:
+              member.email === memberEmail
+                ? Array.from(new Set([...member.permissions, permission]))
+                : member.permissions.filter((item) => item !== permission)
+          };
+        }
+        if (member.email !== memberEmail || member.role === "Owner") return member;
+        const hasPermission = member.permissions.includes(permission);
+        return {
+          ...member,
+          permissions: hasPermission
+            ? member.permissions.filter((item) => item !== permission)
+            : [...member.permissions, permission]
+        };
+      })
+    );
+  };
+
+  const settingsNav = [
+    ["account", "Basic information"],
+    ["security", "Password & security"],
+    ["payment", "Payment method"],
+    ["team", "Roles & access"],
+    ["notifications", "Notifications"]
+  ];
+  const goToSettingsSection = (id) => {
+    setActiveSection(id);
+    document.getElementById(`settings-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  React.useEffect(() => {
+    if (!isInvitePanelOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isInvitePanelOpen]);
+
+  return (
+    <div className={isFactory ? "settings-page" : "settings-page brand-settings-page"}>
+      <aside className="settings-nav-panel">
+        <h1>Settings</h1>
+        <nav aria-label="Settings sections">
+          {settingsNav.map(([id, label]) => (
+            <button className={activeSection === id ? "active" : ""} type="button" onClick={() => goToSettingsSection(id)} key={id}>
+              {label}
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      <section className="settings-content">
+        <header className="settings-heading">
+          <div>
+            <p>{isFactory ? "Factory account" : "Brand account"}</p>
+            <h2>Account settings</h2>
+          </div>
+          <button className="primary-btn" type="button">Save changes</button>
+        </header>
+
+        <section className="settings-section" id="settings-account">
+              <div className="settings-section-header">
+                <h3>Basic information</h3>
+                <p>Edit the details other teams use for orders, calls, and account verification.</p>
+              </div>
+              <div className="settings-form-grid">
+                <label>
+                  <span>Account name</span>
+                  <input defaultValue={account.name} />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input defaultValue={account.email} type="email" />
+                </label>
+                <label>
+                  <span>Phone</span>
+                  <input defaultValue={account.phone} />
+                </label>
+                <label>
+                  <span>Location</span>
+                  <input defaultValue={account.location} />
+                </label>
+              </div>
+            </section>
+
+            <section className="settings-section" id="settings-security">
+              <div className="settings-section-header">
+                <h3>Password & security</h3>
+                <p>Update login access and keep payment or approval actions protected.</p>
+              </div>
+              <div className="settings-form-grid">
+                <label>
+                  <span>Current password</span>
+                  <input placeholder="Enter current password" type="password" />
+                </label>
+                <label>
+                  <span>New password</span>
+                  <input placeholder="Create new password" type="password" />
+                </label>
+              </div>
+            </section>
+
+        <section className="settings-section" id="settings-payment">
+            <div className="settings-section-header">
+              <h3>Payment method</h3>
+              <p>Add, update, or remove the payment methods used for production milestones.</p>
+            </div>
+            <div className="settings-payment-list">
+              <div>
+                <span className="settings-card-brand">Primary</span>
+                <strong>{account.payment}</strong>
+                <small>{isFactory ? "Receives released milestone funds" : "Used for deposits and milestone funding"}</small>
+              </div>
+              <button className="secondary-btn compact-btn" type="button">Edit</button>
+            </div>
+            <div className="settings-payment-list">
+              <div>
+                <span className="settings-card-brand">Backup</span>
+                <strong>{account.backup}</strong>
+                <small>Helps avoid payment interruptions.</small>
+              </div>
+              <button className="secondary-btn compact-btn" type="button">Remove</button>
+            </div>
+            <button className="settings-add-btn" type="button">+ Add payment method</button>
+          </section>
+
+        <section className="settings-section" id="settings-team">
+            <div className="settings-section-header split">
+              <div>
+                <h3>Stakeholder authority</h3>
+                <p>Assign RFQ flow, sample approvals, fund release, and the primary factory contact.</p>
+              </div>
+              <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
+            </div>
+
+            <div className="settings-access-tabs" role="tablist" aria-label="Stakeholder list">
+              <button
+                className={stakeholderTab === "members" ? "active" : ""}
+                type="button"
+                role="tab"
+                aria-selected={stakeholderTab === "members"}
+                onClick={() => setStakeholderTab("members")}
+              >
+                Members
+              </button>
+              <button
+                className={stakeholderTab === "invited" ? "active" : ""}
+                type="button"
+                role="tab"
+                aria-selected={stakeholderTab === "invited"}
+                onClick={() => setStakeholderTab("invited")}
+              >
+                Invited
+              </button>
+            </div>
+
+            {stakeholderTab === "members" ? (
+              <div className="settings-permission-table" role="table" aria-label="Stakeholder authority">
+                <div className="settings-permission-row header" role="row">
+                  <span>Member</span>
+                  {settingsPermissionLabels.map((permission) => (
+                    <span key={permission.key}>
+                      {permission.label}
+                      {permission.detail && <small>{permission.detail}</small>}
+                    </span>
+                  ))}
+                </div>
+                {team.map((member) => (
+                  <div className="settings-permission-row" role="row" key={member.email}>
+                    <div>
+                      <strong>{member.name}</strong>
+                      <small>{member.role} - {member.email}</small>
+                    </div>
+                    {settingsPermissionLabels.map((permission) => (
+                      <label className="settings-check" key={permission.key}>
+                        <input
+                          type="checkbox"
+                          checked={member.permissions.includes(permission.key)}
+                          onChange={() => togglePermission(member.email, permission.key)}
+                        />
+                        <span>{permission.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="settings-invited-table" role="table" aria-label="Pending stakeholder invites">
+                <div className="settings-invited-row header" role="row">
+                  <span>Email</span>
+                  <span>Role</span>
+                  <span>Status</span>
+                  <span>Action</span>
+                </div>
+                {pendingInvites.map((invite) => (
+                  <div className="settings-invited-row" role="row" key={invite.email}>
+                    <strong>{invite.email}</strong>
+                    <span>{invite.role}</span>
+                    <small>{invite.sent}</small>
+                    <button className="secondary-btn compact-btn" type="button">Resend</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+
+        {isInvitePanelOpen && (
+          <div className="settings-drawer-layer" role="presentation">
+            <button className="settings-drawer-scrim" type="button" aria-label="Close invite panel" onClick={() => setIsInvitePanelOpen(false)} />
+            <aside className="settings-drawer" aria-label="Invite stakeholder">
+              <header>
+                <div>
+                  <h3>Invite member</h3>
+                  <p>Add their details and choose what they can manage.</p>
+                </div>
+                <button className="settings-drawer-close" type="button" aria-label="Close invite panel" onClick={() => setIsInvitePanelOpen(false)}>
+                  <img src="/assets/prototype-icons/close.svg" alt="" />
+                </button>
+              </header>
+              <div className="settings-drawer-form">
+                <label>
+                  <span>Name</span>
+                  <input placeholder="Full name" />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="name@company.com" type="email" />
+                </label>
+                <label>
+                  <span>Role</span>
+                  <select defaultValue="Stakeholder">
+                    <option>Stakeholder</option>
+                    <option>Founder</option>
+                    <option>Production lead</option>
+                    <option>Finance</option>
+                    <option>View only</option>
+                  </select>
+                </label>
+                <fieldset className="settings-drawer-authority">
+                  <legend>Authority</legend>
+                  {settingsPermissionLabels.map((permission) => (
+                    <label key={permission.key}>
+                      <input type="checkbox" defaultChecked={permission.key === "approve"} />
+                      <span>
+                        <strong>{permission.label}</strong>
+                        {permission.detail && <small>{permission.detail}</small>}
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+              </div>
+              <footer>
+                <button className="secondary-btn" type="button" onClick={() => setIsInvitePanelOpen(false)}>Cancel</button>
+                <button className="primary-btn" type="button" onClick={() => setIsInvitePanelOpen(false)}>Send invite</button>
+              </footer>
+            </aside>
+          </div>
+        )}
+
+        <section className="settings-section" id="settings-notifications">
+            <div className="settings-section-header">
+              <h3>Notifications</h3>
+              <p>Choose which updates should reach your team by email.</p>
+            </div>
+            {["New quote or RFQ activity", "Payment and approval requests", "Messages and call invites"].map((label) => (
+              <div className="settings-inline-row" key={label}>
+                <div>
+                  <strong>{label}</strong>
+                  <span>Send email notifications to members with matching authority.</span>
+                </div>
+                <label className="settings-switch">
+                  <input type="checkbox" defaultChecked />
+                  <span />
+                </label>
+              </div>
+            ))}
+          </section>
+      </section>
+    </div>
   );
 }
 
@@ -2281,6 +3072,104 @@ function MarketplaceFactoryCard({ factory, onQuote }) {
             ))}
           </div>
         </div>
+      </div>
+    </article>
+  );
+}
+
+function SavedFactoriesScreen({ goTo }) {
+  const savedFactories = marketplaceFactories.slice(0, 4);
+
+  return (
+    <div className="rfqs-shell saved-shell">
+      <header className="rfqs-header saved-header">
+        <div>
+          <h1>Saved factories</h1>
+          <p>Factories Maison Rue saved for current RFQs, future sourcing, and production follow-up.</p>
+        </div>
+        <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse factories</button>
+      </header>
+
+      <section className="rfqs-controls saved-controls" aria-label="Saved factory filters">
+        <label className="rfqs-search">
+          <span>Search saved factories</span>
+          <div>
+            <SearchIcon />
+            <input placeholder="Factory name, category, location..." />
+          </div>
+        </label>
+        <label className="rfqs-sort">
+          <span>Sort By</span>
+          <select defaultValue="recent">
+            <option value="recent">Recently saved</option>
+            <option value="fit">Best fit</option>
+            <option value="rating">Highest rating</option>
+          </select>
+        </label>
+      </section>
+
+      <section className="saved-card-grid" aria-label="Saved factories">
+        {savedFactories.map((factory) => (
+          <SavedFactoryCard factory={factory} goTo={goTo} key={factory.name} />
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function SavedFactoryCard({ factory, goTo }) {
+  const preview = factory.products?.[0];
+
+  return (
+    <article className="saved-factory-card">
+      <header className="saved-factory-card-top">
+        <div className="saved-factory-identity">
+          <div className="factory-avatar">{factory.initials}</div>
+          <div>
+            <div className="factory-name-row">
+              <h2>{factory.name}</h2>
+              <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+            </div>
+            <p>{factory.location}</p>
+          </div>
+        </div>
+        <div className="saved-factory-meta">
+          <Metric label="match" value={factory.match} className={matchTierClass(factory.match)} />
+          <Metric label="rating" value={factory.rating} />
+          <span className="saved-factory-orders">{factory.orders}</span>
+        </div>
+        <div className="saved-factory-actions">
+          <button className="secondary-btn" type="button">Message</button>
+          <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Request quote</button>
+        </div>
+      </header>
+
+      <div className="saved-factory-card-body">
+        <aside className="saved-factory-profile-copy">
+          <div className="saved-factory-stat-grid">
+            {factory.stats.map(([label, value]) => (
+              <div key={label}>
+                <span>{label}</span>
+                <strong>{value}</strong>
+              </div>
+            ))}
+          </div>
+          <p>{factory.notes?.[0]}</p>
+          <div className="saved-factory-tag-section">
+            <span className="marketplace-tag-label">Makes</span>
+            <div className="tag-row compact-tags">
+              {factory.categories.slice(0, 4).map((tag) => (
+                <span className="tag garment-tag" key={tag}>{tag}</span>
+              ))}
+            </div>
+          </div>
+        </aside>
+        {preview && (
+          <figure className="saved-factory-visual">
+            <img src={preview.image} alt={`${factory.name} ${preview.name}`} />
+            <figcaption>{preview.name}</figcaption>
+          </figure>
+        )}
       </div>
     </article>
   );
