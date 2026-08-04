@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { createPortal } from "react-dom";
 import "../prototype/styles.css";
 import "./styles.css";
 
@@ -210,9 +211,9 @@ const nav = [
   { label: "RFQs", icon: "rfq" },
   { label: "Production orders", icon: "projects" },
   { label: "Browse RFQs", icon: "explore" },
-  { label: "Connections", icon: "connections" },
   { label: "Conversations", icon: "messages" },
   { label: "Saved", icon: "bookmarks" },
+  { label: "Billing", icon: "billing" },
   { label: "Settings", icon: "settings" },
   { label: "Notifications", icon: "notification" }
 ];
@@ -772,6 +773,42 @@ const factoryRfqs = [
   }
 ];
 
+const factoryDraftRfqs = factoryRfqs.filter((rfq) => rfq.metrics?.[0]?.[0] === "Draft");
+const factoryInvitedRfqs = factoryRfqs.slice(1, 3).map((rfq) => ({
+  ...rfq,
+  status: "Invited",
+  statusTone: "ready",
+  metrics: [
+    ["Not started", "your quote"],
+    [rfq.facts.find(([label]) => label === "Quote due")?.[1] || "TBD", "quote due"]
+  ]
+}));
+const factoryClosedRfqs = [
+  {
+    ...factoryRfqs[0],
+    title: "Linen camp shirt summer run",
+    description: "Short-sleeve linen shirts with corozo buttons and garment wash. Quote accepted and moved to production.",
+    status: "Accepted",
+    statusTone: "ready",
+    metrics: [
+      ["$21.20", "your quote"],
+      ["Jul 12", "closed"]
+    ]
+  },
+  {
+    ...factoryRfqs[2],
+    title: "Rib knit base layer set",
+    brand: "Northline",
+    description: "Rib tank and short set with compact MOQ and two lab dip rounds.",
+    status: "Closed",
+    statusTone: "neutral",
+    metrics: [
+      ["$16.80", "your quote"],
+      ["Jun 28", "closed"]
+    ]
+  }
+];
+
 const factoryProjects = [
   {
     initials: "MR",
@@ -883,6 +920,7 @@ const onboardingCopy = {
         groups: [
           ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods", "Other"], ["Cut & sew knits", "Wovens"]],
           ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories", "Other"], ["Tops", "Bottoms"]],
+          ["Makes", ["Button-down shirts", "Poplin blouses", "Woven dresses", "Linen co-ords", "Lightweight jackets", "Pleated skirts", "Rib tops", "Canvas totes", "Denim jackets", "Swim sets"], ["Button-down shirts", "Poplin blouses", "Woven dresses"]],
           ["Market level", ["Luxury / high-end", "Premium / contemporary", "Mid range", "Mass market"], ["Premium / contemporary"]]
         ],
       },
@@ -890,11 +928,12 @@ const onboardingCopy = {
         title: "Specialty, services, and tools",
         intro: "Add the capabilities brands use to understand your sampling support and production setup.",
         groups: [
+          ["Specializes in", ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton", "Wash development", "Trim sourcing", "QC photo updates", "Low-MOQ sampling"], ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton"]],
           ["Design Services", ["Pattern making", "Grading", "Sample development", "Tech pack support", "Full package (FPP)", "CMT only"], ["Full package (FPP)"]],
           ["3D & digital tools (optional)", ["CLO 3D", "Browzwear", "Lectra", "Gerber", "None"], []]
         ],
-        specialtyLabel: "Specialty & Machines",
-        specialtyPlaceholder: "Search or type a specialty"
+        equipmentLabel: "Key machines or equipment",
+        equipmentPlaceholder: "Optional: flatlock, linking, embroidery, washing, laser cutting..."
       },
       {
         title: "Your capacity and terms",
@@ -946,7 +985,7 @@ const onboardingCopy = {
         intro: "Confirm the main details brands will use to understand and match with your factory.",
         sections: [
           ["Factory details", [["Factory Name", "Golden Thread Manufacturing"], ["Year Founded", "2016"], ["Location", "Dongguan, China"], ["Nearest Port", "Shenzhen"]]],
-          ["Production fit", [["Production Type", "Cut & sew knits, Wovens"], ["Product Categories", "Tops, Bottoms, Activewear"], ["Market Level", "Premium / contemporary"], ["Services", "Full package (FPP), Pattern making"]]],
+          ["Production fit", [["Production Type", "Cut & sew knits, Wovens"], ["Product Categories", "Tops, Bottoms, Activewear"], ["Makes", "Button-down shirts, Poplin blouses, Woven dresses"], ["Specializes in", "In-house pattern room, Fit sample + PP sample, Small-batch export, GOTS cotton"], ["Market Level", "Premium / contemporary"], ["Services", "Full package (FPP), Pattern making"]]],
           ["Capacity & verification", [["MOQ", "100 units / style"], ["Lead Time", "30-45 days"], ["Line-hours", "2,400 hours / month"], ["Estimated units", "Aug roughly 4,800-8,000 pcs"], ["Booking level", "Aug mostly open; Sep partly booked"], ["Verification", "Registration uploaded; certificates pending"]]]
         ],
         cta: "Confirm"
@@ -998,6 +1037,7 @@ const onboardingCopy = {
         groups: [
           ["生产类型", ["针织裁剪缝制", "梭织", "毛衫 / 针织成衣", "牛仔", "无缝 / 圆机针织", "内衣 / 精细工艺", "皮革 / 麂皮", "包袋 / 软配件", "其他"], ["针织裁剪缝制", "梭织"]],
           ["产品品类", ["上装", "下装", "连衣裙 / 连体衣", "外套", "运动服", "内衣", "泳装", "睡衣 / 家居服", "童装 / 婴童", "制服 / 工装", "配饰", "其他"], ["上装", "下装"]],
+          ["可生产款式", ["纽扣衬衫", "府绸上衣", "梭织连衣裙", "亚麻套装", "轻薄外套", "百褶裙", "罗纹上衣", "帆布托特包", "牛仔夹克", "泳装套装"], ["纽扣衬衫", "府绸上衣", "梭织连衣裙"]],
           ["市场层级", ["奢侈 / 高端", "高级成衣 / 当代品牌", "中端市场", "大众市场"], ["高级成衣 / 当代品牌"]]
         ],
       },
@@ -1005,11 +1045,12 @@ const onboardingCopy = {
         title: "专长、服务与工具",
         intro: "补充品牌会用于判断打样支持和生产配置的能力信息。",
         groups: [
+          ["专长", ["内部制版房", "试身样 + 产前样", "小批量出口", "GOTS 棉", "水洗开发", "辅料采购", "QC 图片更新", "低起订量打样"], ["内部制版房", "试身样 + 产前样", "小批量出口", "GOTS 棉"]],
           ["设计服务", ["制版", "放码", "样衣开发", "Tech pack 支持", "全包生产 FPP", "仅 CMT"], ["全包生产 FPP"]],
           ["3D 和数字工具（选填）", ["CLO 3D", "Browzwear", "Lectra", "Gerber", "无"], []]
         ],
-        specialtyLabel: "专长与机器",
-        specialtyPlaceholder: "搜索或输入专长"
+        equipmentLabel: "关键机器或设备",
+        equipmentPlaceholder: "选填：绷缝机、套口机、刺绣、水洗、激光裁剪..."
       },
       {
         title: "产能与合作条件",
@@ -1058,7 +1099,7 @@ const onboardingCopy = {
         intro: "请确认品牌将看到并用于匹配的主要信息。",
         sections: [
           ["工厂信息", [["工厂名称", "金线服装制造"], ["成立年份", "2016"], ["所在地", "中国东莞"], ["最近港口", "深圳"]]],
-          ["生产匹配", [["生产类型", "针织裁剪缝制，梭织"], ["产品品类", "上装，下装，运动服"], ["市场层级", "高级成衣 / 当代品牌"], ["服务", "全包生产 FPP，制版"]]],
+          ["生产匹配", [["生产类型", "针织裁剪缝制，梭织"], ["产品品类", "上装，下装，运动服"], ["可生产款式", "纽扣衬衫，府绸上衣，梭织连衣裙"], ["专长", "内部制版房，试身样 + 产前样，小批量出口，GOTS 棉"], ["市场层级", "高级成衣 / 当代品牌"], ["服务", "全包生产 FPP，制版"]]],
           ["产能与验证", [["MOQ", "100 件 / 款"], ["交期", "30-45 天"], ["产线工时", "2,400 小时 / 月"], ["估算件数", "8 月约 4,800-8,000 件"], ["接单状态", "8 月较空；9 月部分已订"], ["验证状态", "注册文件已上传；认证待补充"]]]
         ],
         cta: "确认"
@@ -1087,6 +1128,24 @@ const onboardingCopy = {
 };
 
 const factoryOnboardingSteps = onboardingCopy.en.steps;
+const factoryScreens = [
+  "dashboard",
+  "browse",
+  "rfqs",
+  "projects",
+  "detail",
+  "profile",
+  "messages",
+  "saved",
+  "billing",
+  "settings",
+  "rfqReadOnly",
+  "projectDetail",
+  "projectPostedUpdate",
+  "quote",
+  "reviewTotal",
+  "quoteSent"
+];
 
 const factoryProjectMilestones = [
   {
@@ -1139,21 +1198,38 @@ function getCapacityUnitRange(lineHours, minPercent = 60, maxPercent = 100) {
 }
 
 function App() {
-  const requestedScreen = new URLSearchParams(window.location.search).get("screen");
-  const shouldOpenPrototypeScreen = ["dashboard", "browse", "rfqs", "projects", "detail", "profile", "messages", "saved", "settings"].includes(requestedScreen);
+  const query = new URLSearchParams(window.location.search);
+  const requestedScreen = query.get("screen");
+  const shouldForceOnboarding = query.get("onboarding") === "1" || query.get("view") === "onboarding";
+  if (shouldForceOnboarding) {
+    window.localStorage.removeItem("tscFactoryPrototypeScreen");
+  }
+  const savedScreen = window.localStorage.getItem("tscFactoryPrototypeScreen");
+  const restoredScreen = !shouldForceOnboarding && factoryScreens.includes(requestedScreen)
+    ? requestedScreen
+    : !shouldForceOnboarding && factoryScreens.includes(savedScreen)
+      ? savedScreen
+      : "";
+  const shouldOpenPrototypeScreen = Boolean(restoredScreen);
   const [onboardingComplete, setOnboardingComplete] = useState(shouldOpenPrototypeScreen);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingLanguage, setOnboardingLanguage] = useState("en");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [screen, setScreen] = useState(shouldOpenPrototypeScreen ? requestedScreen : "dashboard");
+  const [screen, setScreen] = useState(shouldOpenPrototypeScreen ? restoredScreen : "dashboard");
   const [detailBackTarget, setDetailBackTarget] = useState("browse");
   const [quoteBackTarget, setQuoteBackTarget] = useState("detail");
   const [capacityDrawerOpen, setCapacityDrawerOpen] = useState(false);
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
   const selectedProject = brandProjects[0];
-  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "settings" ? "Settings" : screen === "profile" ? "" : "Browse RFQs";
+  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "profile" ? "" : "Browse RFQs";
+
+  useEffect(() => {
+    if (!onboardingComplete || !factoryScreens.includes(screen)) return;
+    window.localStorage.setItem("tscFactoryPrototypeScreen", screen);
+    window.history.replaceState(null, "", `${window.location.pathname}?screen=${screen}`);
+  }, [onboardingComplete, screen]);
+
   const goToDashboard = () => {
-    window.history.replaceState(null, "", `${window.location.pathname}?screen=dashboard`);
     setScreen("dashboard");
   };
 
@@ -1199,7 +1275,7 @@ function App() {
         <nav>
           {nav.map((item, index) => (
             <React.Fragment key={item.label}>
-              {index === 3 || index === 7 ? <span className="nav-divider" /> : null}
+              {index === 3 || index === 6 ? <span className="nav-divider" /> : null}
               <button
                 className={item.label === activeNav ? "active" : ""}
                 type="button"
@@ -1210,6 +1286,7 @@ function App() {
                   if (item.label === "Browse RFQs") setScreen("browse");
                   if (item.label === "Conversations") setScreen("messages");
                   if (item.label === "Saved") setScreen("saved");
+                  if (item.label === "Billing") setScreen("billing");
                   if (item.label === "Settings") setScreen("settings");
                 }}
                 aria-label={item.label}
@@ -1281,6 +1358,11 @@ function App() {
       {screen === "settings" && (
         <main className="settings-page-shell factory-settings-page">
           <FactorySettingsScreen />
+        </main>
+      )}
+      {screen === "billing" && (
+        <main className="billing-page-shell factory-billing-page">
+          <BillingScreen accountType="factory" />
         </main>
       )}
       {screen === "rfqReadOnly" && (
@@ -2004,6 +2086,15 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
 }
 
 function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
+  const [activeTab, setActiveTab] = useState("active");
+  const tabs = [
+    ["active", "Active RFQs (4)", factoryRfqs],
+    ["drafts", "Drafts (3)", factoryDraftRfqs],
+    ["invited", "Invited (2)", factoryInvitedRfqs],
+    ["closed", "Closed (6)", factoryClosedRfqs]
+  ];
+  const activeRfqs = tabs.find(([key]) => key === activeTab)?.[2] || factoryRfqs;
+
   return (
     <main className="rfqs-page factory-rfqs-page">
       <div className="rfqs-shell">
@@ -2033,14 +2124,21 @@ function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
         </section>
 
         <nav className="rfqs-tabs" aria-label="RFQ status">
-          <button className="active" type="button">Active RFQs (4)</button>
-          <button type="button">Drafts (3)</button>
-          <button type="button">Invited (2)</button>
-          <button type="button">Closed (6)</button>
+          {tabs.map(([key, label]) => (
+            <button
+              className={activeTab === key ? "active" : ""}
+              type="button"
+              aria-current={activeTab === key ? "page" : undefined}
+              onClick={() => setActiveTab(key)}
+              key={key}
+            >
+              {label}
+            </button>
+          ))}
         </nav>
 
         <section className="rfq-list" aria-label="Factory RFQs">
-          {factoryRfqs.map((rfq) => (
+          {activeRfqs.map((rfq) => (
             <FactoryRfqCard
               rfq={rfq}
               language={language}
@@ -2226,17 +2324,18 @@ function FactoryMessagesScreen() {
   const [showSchedule, setShowSchedule] = useState(false);
   const [callMode, setCallMode] = useState("idle");
   const [translatedMessages, setTranslatedMessages] = useState({});
-  const [scheduledCalls, setScheduledCalls] = useState({
-    "maison-rue": {
-      title: "Sample cost review",
-      factoryTime: "Tue 3:00 PM Porto",
-      brandTime: "Maison Rue: Tue 10:00 AM ET",
-      agenda: "Review fit sample and PP sample cost split before quote approval.",
-      hasVideo: true
-    }
-  });
+  const [scheduledCalls, setScheduledCalls] = useState({});
   const activeThread = factoryMessageThreads.find((thread) => thread.id === activeThreadId) || factoryMessageThreads[0];
   const activeScheduledCall = scheduledCalls[activeThread.id];
+
+  useEffect(() => {
+    if (!showSchedule) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showSchedule]);
 
   const toggleTranslation = (threadId, index) => {
     const key = `${threadId}-${index}`;
@@ -2244,7 +2343,7 @@ function FactoryMessagesScreen() {
   };
 
   return (
-    <div className="messages-shell factory-messages-shell">
+    <div className={activeScheduledCall ? "messages-shell factory-messages-shell has-side-panel" : "messages-shell factory-messages-shell"}>
       <aside className="messages-list-panel">
         <header className="messages-list-header">
           <div>
@@ -2289,14 +2388,13 @@ function FactoryMessagesScreen() {
       <section className="message-workspace">
         <header className="message-room-header">
           <div className="message-room-identity">
-            <span className="message-avatar large">{activeThread.initials}</span>
             <div>
               <h2>{activeThread.primaryContact}</h2>
               <p>{activeThread.name} - {activeThread.localTime} - {activeThread.project}</p>
             </div>
           </div>
           <div className="message-room-actions">
-            <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule((value) => !value)}>Schedule call</button>
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>Schedule call</button>
             <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>
           </div>
         </header>
@@ -2337,31 +2435,30 @@ function FactoryMessagesScreen() {
         </footer>
       </section>
 
-      <aside className="message-side-panel">
-        {activeScheduledCall && <FactoryUpcomingCallCard call={activeScheduledCall} />}
-        <FactoryScheduleCallPanel
-          key={activeThread.id}
-          thread={activeThread}
-          isOpen={showSchedule}
-          onOpen={() => setShowSchedule(true)}
-          onSchedule={(call) => {
-            setScheduledCalls((current) => ({ ...current, [activeThread.id]: call }));
-            setShowSchedule(false);
-          }}
-        />
-        <section className="message-profile-card">
-          <h3>{activeThread.name}</h3>
-          <p>{activeThread.location} - {activeThread.status}</p>
-          <div className="message-file-list">
-            {activeThread.files.map((file) => (
-              <button type="button" key={file}>
-                <span>{file}</span>
-                <img src="/assets/prototype-icons/download.svg" alt="" />
-              </button>
-            ))}
+      {activeScheduledCall && (
+        <aside className="message-side-panel">
+          <FactoryUpcomingCallCard call={activeScheduledCall} />
+        </aside>
+      )}
+      {showSchedule && createPortal((
+        <div className="message-schedule-modal-layer" role="presentation">
+          <button className="message-schedule-modal-scrim" type="button" aria-label="Close schedule call" onClick={() => setShowSchedule(false)} />
+          <div className="message-schedule-modal" role="dialog" aria-label="Schedule call">
+            <button className="settings-drawer-close" type="button" aria-label="Close schedule call" onClick={() => setShowSchedule(false)}>
+              <img src="/assets/prototype-icons/close.svg" alt="" />
+            </button>
+            <FactoryScheduleCallPanel
+              key={activeThread.id}
+              thread={activeThread}
+              isOpen
+              onSchedule={(call) => {
+                setScheduledCalls((current) => ({ ...current, [activeThread.id]: call }));
+                setShowSchedule(false);
+              }}
+            />
           </div>
-        </section>
-      </aside>
+        </div>
+      ), document.body)}
     </div>
   );
 }
@@ -3177,34 +3274,144 @@ function CapacityMonthRow({ language, month, selected, onSelect }) {
 }
 
 const factorySettingsPermissionLabels = [
-  { key: "pay", label: "Pay" },
-  { key: "approve", label: "Approve" },
-  { key: "reply", label: "Reply" },
-  { key: "calls", label: "Calls" },
-  { key: "team", label: "Team" }
+  { key: "rfqFlow", label: "RFQ flow", detail: "Give quotes and submit RFQ details", single: true },
+  { key: "addUpdate", label: "Add update", detail: "Post production updates and files" },
+  { key: "primaryContact", label: "Primary contact", detail: "Main contact for messages and calls", single: true },
+  { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
 ];
+
+const factoryPageBillingHistory = {
+  earnings: [
+    { title: "Sample milestone released", client: "Maison Rue", meta: "Maison Rue - Jul 29, 2026", status: "Received", amount: "$620.00" },
+    { title: "Production deposit released", client: "Maison Rue", meta: "Maison Rue - Jul 18, 2026", status: "Received", amount: "$1,840.00" },
+    { title: "Fit sample update", client: "Northline Studio", meta: "Northline Studio - Jul 10, 2026", status: "Received", amount: "$410.00" }
+  ],
+  payments: [
+    { title: "Platform service fee", client: "The Sourcing Club", meta: "Monthly billing - Aug 1, 2026", status: "Paid", amount: "$49.00" },
+    { title: "Verified profile review", client: "The Sourcing Club", meta: "Account service - Jul 12, 2026", status: "Paid", amount: "$95.00" }
+  ]
+};
+
+function BillingScreen() {
+  const [tab, setTab] = useState("earnings");
+  const [client, setClient] = useState("All clients");
+  const allRows = factoryPageBillingHistory[tab];
+  const clients = ["All clients", ...Array.from(new Set(allRows.map((row) => row.client)))];
+  const selectedClient = clients.includes(client) ? client : "All clients";
+  const rows = tab === "payments" || selectedClient === "All clients" ? allRows : allRows.filter((row) => row.client === selectedClient);
+  const total = rows.reduce((sum, row) => sum + Number(row.amount.replace(/[$,]/g, "")), 0);
+  const formattedTotal = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const summaryMetrics = [
+    ["total earned", formattedTotal],
+    ["received this month", "$1,214.00"],
+    ["pending release", "$1,656.00"],
+    ["next payment", "$828.00", "highlight"]
+  ];
+  const changeTab = (nextTab) => {
+    setTab(nextTab);
+    setClient("All clients");
+  };
+
+  return (
+    <section className="billing-history-page">
+      <header className="billing-history-header">
+        <div>
+          <p>Factory billing</p>
+          <h1>Billing</h1>
+        </div>
+      </header>
+      <div className="billing-controls">
+        <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Billing history type">
+          <button className={tab === "earnings" ? "active" : ""} type="button" role="tab" aria-selected={tab === "earnings"} onClick={() => changeTab("earnings")}>Earnings</button>
+          <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => changeTab("payments")}>Payments</button>
+        </div>
+        {tab === "earnings" && (
+          <label>
+            <span>Filter by client</span>
+            <select value={selectedClient} onChange={(event) => setClient(event.target.value)}>
+              {clients.map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {tab === "payments" && (
+          <label className="billing-filter-placeholder" aria-hidden="true">
+            <span>Filter by client</span>
+            <select tabIndex={-1} value="All clients" readOnly>
+              <option>All clients</option>
+            </select>
+          </label>
+        )}
+      </div>
+      {tab === "earnings" && (
+        <div className="factory-project-summary-card factory-billing-summary-strip" aria-label="Earnings payment summary">
+          {summaryMetrics.map(([label, value, tone]) => (
+            <Metric label={label} value={value} className={tone || ""} key={label} />
+          ))}
+        </div>
+      )}
+      <div className="billing-history-list">
+        {rows.map((row) => (
+          <article className="billing-history-row" key={`${row.title}-${row.meta}`}>
+            <div>
+              <strong>{row.title}</strong>
+              <span>{row.client} - {row.meta}</span>
+            </div>
+            <span className="billing-status">{row.status}</span>
+            <strong>{row.amount}</strong>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 function FactorySettingsScreen() {
   const [activeSection, setActiveSection] = useState("account");
   const [inviteEmail, setInviteEmail] = useState("");
+  const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
+  const [paymentTab, setPaymentTab] = useState("earnings");
   const [team, setTeam] = useState([
-    { name: "Ines Carvalho", email: "ines@atelierminho.pt", role: "Owner", permissions: ["pay", "approve", "reply", "calls", "team"] },
-    { name: "Mateo Silva", email: "mateo@atelierminho.pt", role: "Production lead", permissions: ["approve", "reply", "calls"] },
-    { name: "Sofia Ramos", email: "sofia@atelierminho.pt", role: "Finance", permissions: ["pay"] }
+    { name: "Ines Carvalho", email: "ines@atelierminho.pt", role: "Owner", permissions: ["rfqFlow", "addUpdate", "primaryContact", "settingsAccess"] },
+    { name: "Mateo Silva", email: "mateo@atelierminho.pt", role: "Production lead", permissions: ["addUpdate"] },
+    { name: "Sofia Ramos", email: "sofia@atelierminho.pt", role: "Finance", permissions: [] }
   ]);
   const account = {
     name: "Atelier Minho",
     email: "ops@atelierminho.pt",
     phone: "+351 22 000 1842",
     location: "Porto, Portugal",
-    payment: "Wise business ending in 9021",
-    backup: "Visa ending in 4412"
+    earningsPrimary: "Wise business ending in 9021",
+    earningsSecondary: "Bank account ending in 1184",
+    billingPrimary: "Visa ending in 4412",
+    billingSecondary: "Mastercard ending in 8840"
+  };
+  const paymentMethods = {
+    earnings: [
+      { label: "Primary", name: account.earningsPrimary, note: "Receives released milestone funds from brand orders." },
+      { label: "Secondary", name: account.earningsSecondary, note: "Backup account for receiving earnings." }
+    ],
+    billing: [
+      { label: "Primary", name: account.billingPrimary, note: "Used to pay platform fees, services, or billing charges." },
+      { label: "Secondary", name: account.billingSecondary, note: "Backup method for billing charges." }
+    ]
   };
 
   const togglePermission = (memberEmail, permission) => {
+    const permissionMeta = factorySettingsPermissionLabels.find((item) => item.key === permission);
     setTeam((current) =>
       current.map((member) => {
-        if (member.email !== memberEmail || member.role === "Owner") return member;
+        if (permissionMeta?.single) {
+          return {
+            ...member,
+            permissions:
+              member.email === memberEmail
+                ? Array.from(new Set([...member.permissions, permission]))
+                : member.permissions.filter((item) => item !== permission)
+          };
+        }
+        if (member.email !== memberEmail) return member;
         const hasPermission = member.permissions.includes(permission);
         return {
           ...member,
@@ -3214,6 +3421,9 @@ function FactorySettingsScreen() {
         };
       })
     );
+  };
+  const removeMember = (memberEmail) => {
+    setTeam((current) => current.filter((member) => member.email !== memberEmail));
   };
 
   const settingsNav = [
@@ -3227,9 +3437,17 @@ function FactorySettingsScreen() {
     setActiveSection(id);
     document.getElementById(`settings-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
+  useEffect(() => {
+    if (!isInvitePanelOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isInvitePanelOpen]);
 
   return (
-    <div className="settings-page">
+    <div className="settings-page factory-settings-page">
       <aside className="settings-nav-panel">
         <h1>Settings</h1>
         <nav aria-label="Settings sections">
@@ -3294,25 +3512,39 @@ function FactorySettingsScreen() {
 
         <section className="settings-section" id="settings-payment">
             <div className="settings-section-header">
-              <h3>Payment method</h3>
-              <p>Add, update, or remove the payout methods used for production milestones.</p>
+              <h3>Payment methods</h3>
+              <p>Manage where you receive earnings and which method is used for billing.</p>
             </div>
-            <div className="settings-payment-list">
-              <div>
-                <span className="settings-card-brand">Primary</span>
-                <strong>{account.payment}</strong>
-                <small>Receives released milestone funds.</small>
+            <div className="settings-access-tabs settings-payment-tabs" role="tablist" aria-label="Payment method type">
+              <button
+                className={paymentTab === "earnings" ? "active" : ""}
+                type="button"
+                role="tab"
+                aria-selected={paymentTab === "earnings"}
+                onClick={() => setPaymentTab("earnings")}
+              >
+                Earnings
+              </button>
+              <button
+                className={paymentTab === "billing" ? "active" : ""}
+                type="button"
+                role="tab"
+                aria-selected={paymentTab === "billing"}
+                onClick={() => setPaymentTab("billing")}
+              >
+                Billing
+              </button>
+            </div>
+            {paymentMethods[paymentTab].map((method) => (
+              <div className="settings-payment-list" key={`${paymentTab}-${method.label}`}>
+                <div>
+                  <span className="settings-card-brand">{method.label}</span>
+                  <strong>{method.name}</strong>
+                  <small>{method.note}</small>
+                </div>
+                <button className="settings-menu-btn" type="button" aria-label={`More options for ${method.name}`} />
               </div>
-              <button className="secondary-btn compact-btn" type="button">Edit</button>
-            </div>
-            <div className="settings-payment-list">
-              <div>
-                <span className="settings-card-brand">Backup</span>
-                <strong>{account.backup}</strong>
-                <small>Helps avoid payout interruptions.</small>
-              </div>
-              <button className="secondary-btn compact-btn" type="button">Remove</button>
-            </div>
+            ))}
             <button className="settings-add-btn" type="button">+ Add payment method</button>
           </section>
 
@@ -3320,34 +3552,21 @@ function FactorySettingsScreen() {
             <div className="settings-section-header split">
               <div>
                 <h3>Manage team & stakeholders</h3>
-                <p>Control who can pay, approve work, reply to messages, schedule calls, and manage access.</p>
+                <p>Control who can quote RFQs, post updates, and act as the primary contact.</p>
               </div>
-              <button className="primary-btn compact-btn" type="button" onClick={() => setInviteEmail("")}>Invite member</button>
-            </div>
-
-            <div className="settings-invite-row">
-              <label>
-                <span>Invite email</span>
-                <input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="name@company.com" type="email" />
-              </label>
-              <label>
-                <span>Role</span>
-                <select defaultValue="Stakeholder">
-                  <option>Stakeholder</option>
-                  <option>Production lead</option>
-                  <option>Finance</option>
-                  <option>Viewer</option>
-                </select>
-              </label>
-              <button className="secondary-btn" type="button">Send invite</button>
+              <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
             </div>
 
             <div className="settings-permission-table" role="table" aria-label="Team permissions">
               <div className="settings-permission-row header" role="row">
                 <span>Member</span>
                 {factorySettingsPermissionLabels.map((permission) => (
-                  <span key={permission.key}>{permission.label}</span>
+                  <span key={permission.key}>
+                    {permission.label}
+                    {permission.detail && <small>{permission.detail}</small>}
+                  </span>
                 ))}
+                <span aria-hidden="true" />
               </div>
               {team.map((member) => (
                 <div className="settings-permission-row" role="row" key={member.email}>
@@ -3360,16 +3579,76 @@ function FactorySettingsScreen() {
                       <input
                         type="checkbox"
                         checked={member.permissions.includes(permission.key)}
-                        disabled={member.role === "Owner"}
                         onChange={() => togglePermission(member.email, permission.key)}
                       />
                       <span>{permission.label}</span>
                     </label>
                   ))}
+                  <button
+                    className="settings-remove-member-btn"
+                    type="button"
+                    aria-label={`Remove ${member.name}`}
+                    disabled={member.role === "Owner"}
+                    onClick={() => removeMember(member.email)}
+                  >
+                    <img src="/assets/prototype-icons/trash.svg" alt="" />
+                  </button>
                 </div>
               ))}
             </div>
           </section>
+
+        {isInvitePanelOpen && createPortal((
+          <div className="settings-drawer-layer" role="presentation">
+            <button className="settings-drawer-scrim" type="button" aria-label="Close invite panel" onClick={() => setIsInvitePanelOpen(false)} />
+            <aside className="settings-drawer" aria-label="Invite stakeholder">
+              <header>
+                <div>
+                  <h3>Invite member</h3>
+                  <p>Add their details and choose what they can manage.</p>
+                </div>
+                <button className="settings-drawer-close" type="button" aria-label="Close invite panel" onClick={() => setIsInvitePanelOpen(false)}>
+                  <img src="/assets/prototype-icons/close.svg" alt="" />
+                </button>
+              </header>
+              <div className="settings-drawer-form">
+                <label>
+                  <span>Name</span>
+                  <input placeholder="Full name" />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="name@company.com" type="email" />
+                </label>
+                <label>
+                  <span>Role</span>
+                  <select defaultValue="Stakeholder">
+                    <option>Stakeholder</option>
+                    <option>Production lead</option>
+                    <option>Finance</option>
+                    <option>Viewer</option>
+                  </select>
+                </label>
+                <fieldset className="settings-drawer-authority">
+                  <legend>Authority</legend>
+                  {factorySettingsPermissionLabels.map((permission) => (
+                    <label key={permission.key}>
+                      <input type="checkbox" defaultChecked={permission.key === "addUpdate"} />
+                      <span>
+                        <strong>{permission.label}</strong>
+                        {permission.detail && <small>{permission.detail}</small>}
+                      </span>
+                    </label>
+                  ))}
+                </fieldset>
+              </div>
+              <footer>
+                <button className="secondary-btn" type="button" onClick={() => setIsInvitePanelOpen(false)}>Cancel</button>
+                <button className="primary-btn" type="button" onClick={() => setIsInvitePanelOpen(false)}>Send invite</button>
+              </footer>
+            </aside>
+          </div>
+        ), document.body)}
 
         <section className="settings-section" id="settings-notifications">
             <div className="settings-section-header">
@@ -3485,10 +3764,10 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
   if (step === 4) {
     return (
       <div className="factory-onboarding-section production-fit-section">
-        <OnboardingField label={content.specialtyLabel} placeholder={content.specialtyPlaceholder} />
         {content.groups.map(([label, options, selected]) => (
           <OnboardingChipGroup label={label} options={options} selected={selected} key={label} />
         ))}
+        <OnboardingField label={content.equipmentLabel} placeholder={content.equipmentPlaceholder} />
       </div>
     );
   }
@@ -3793,7 +4072,72 @@ function OnboardingCapacitySetup({ content, language }) {
 
 function OnboardingChipGroup({ label, options, selected = [], balanced = false }) {
   const [selectedOptions, setSelectedOptions] = useState(selected);
+  const [customOptions, setCustomOptions] = useState([]);
+  const [customValue, setCustomValue] = useState("");
   const isSingleSelect = label.toLowerCase().includes("market") || label.includes("市场");
+  const canAddCustom = ["makes", "specializes", "可生产款式", "专长"].some((term) =>
+    label.toLowerCase().includes(term)
+  );
+  const groupCopy = {
+    "Makes": {
+      title: "What products do you make?",
+      helper: "Select all that apply, then add as many specific product types as you want to help brands find you."
+    },
+    "Specializes in": {
+      title: "What do you specialize in?",
+      helper: "Select the capabilities brands should know about, then add your own."
+    },
+    "Production type": {
+      title: "Production type",
+      helper: "Choose the main production methods your factory can reliably support."
+    },
+    "Product categories": {
+      title: "Product categories",
+      helper: "Select the broad categories brands can match you with."
+    },
+    "Market level": {
+      title: "Market level",
+      helper: "Choose the brand price level your factory is best set up for."
+    },
+    "Design Services": {
+      title: "Design services",
+      helper: "Select the product development services you can offer before production."
+    },
+    "3D & digital tools (optional)": {
+      title: "3D & digital tools",
+      helper: "Optional: select tools your team uses for development or production."
+    },
+    "可生产款式": {
+      title: "你可以生产哪些具体款式？",
+      helper: "可多选，也可以添加任意数量的自定义款式。"
+    },
+    "专长": {
+      title: "你的工厂有哪些专长？",
+      helper: "选择品牌需要了解的能力，也可以添加自定义专长。"
+    },
+    "生产类型": {
+      title: "生产类型",
+      helper: "选择工厂可以稳定支持的主要生产方式。"
+    },
+    "产品品类": {
+      title: "产品品类",
+      helper: "选择品牌可以用来匹配你的大类。"
+    },
+    "市场层级": {
+      title: "市场层级",
+      helper: "选择你的工厂最适合服务的品牌价格层级。"
+    },
+    "设计服务": {
+      title: "设计服务",
+      helper: "选择你在生产前可以提供的产品开发服务。"
+    },
+    "3D 和数字工具（选填）": {
+      title: "3D 和数字工具",
+      helper: "选填：选择团队在开发或生产中使用的工具。"
+    }
+  };
+  const copy = groupCopy[label] || { title: label, helper: "" };
+  const visibleOptions = [...options, ...customOptions];
 
   const toggleOption = (option) => {
     setSelectedOptions((current) => {
@@ -3806,12 +4150,23 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false }
         : [...current, option];
     });
   };
+  const addCustomOption = (event) => {
+    event.preventDefault();
+    const nextOption = customValue.trim();
+    if (!nextOption || visibleOptions.includes(nextOption)) return;
+    setCustomOptions((current) => [...current, nextOption]);
+    setSelectedOptions((current) => [...current, nextOption]);
+    setCustomValue("");
+  };
 
   return (
     <section className={balanced ? "onboarding-chip-group balanced" : "onboarding-chip-group"}>
-      <h2>{label}</h2>
+      <div className="onboarding-chip-heading">
+        <h2>{copy.title}</h2>
+        {copy.helper && <p>{copy.helper}</p>}
+      </div>
       <div className="tag-row compact-tags">
-        {options.map((option) => (
+        {visibleOptions.map((option) => (
           <button
             className={selectedOptions.includes(option) ? "tag selected" : "tag"}
             type="button"
@@ -3823,6 +4178,16 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false }
           </button>
         ))}
       </div>
+      {canAddCustom && (
+        <form className="onboarding-chip-add-row" onSubmit={addCustomOption}>
+          <input
+            value={customValue}
+            onChange={(event) => setCustomValue(event.target.value)}
+            placeholder={label.includes("可") || label.includes("专") ? "输入自定义选项" : "Add your own"}
+          />
+          <button className="secondary-btn compact-btn" type="submit">Add</button>
+        </form>
+      )}
     </section>
   );
 }
@@ -4277,7 +4642,13 @@ function BrandBrief({ language }) {
 
 function FactoryProjectProgressDetail({ language, onBack, onPostUpdate, showPostedUpdate = false }) {
   const [updateMilestone, setUpdateMilestone] = useState(null);
+  const [activeDetailTab, setActiveDetailTab] = useState("overview");
   const isZh = language === "zh";
+  const detailTabs = [
+    ["overview", "Overview"],
+    ["files", "Files"],
+    ["contract", "Contract details"]
+  ];
 
   return (
     <main className="factory-detail-page factory-project-detail-page">
@@ -4297,27 +4668,37 @@ function FactoryProjectProgressDetail({ language, onBack, onPostUpdate, showPost
           </section>
 
           <nav className="rfqs-tabs factory-project-detail-tabs" aria-label="Production order detail sections">
-            <button className="active" type="button">Overview</button>
-            <button type="button">Messages (2)</button>
-            <button type="button">Files</button>
-            <button type="button">Contract details</button>
+            {detailTabs.map(([key, label]) => (
+              <button
+                className={activeDetailTab === key ? "active" : ""}
+                type="button"
+                aria-current={activeDetailTab === key ? "page" : undefined}
+                onClick={() => setActiveDetailTab(key)}
+                key={key}
+              >
+                {label}
+              </button>
+            ))}
           </nav>
 
-          <section className="factory-milestone-card">
-            <h2>Production timeline</h2>
-            <div className="factory-milestone-list">
-              {factoryProjectMilestones.map((milestone, index) => (
-                <FactoryMilestoneItem
-                  milestone={milestone}
-                  index={index}
-                  key={milestone.title}
-                  onAddUpdate={setUpdateMilestone}
-                  showUpdate={showPostedUpdate && index === 0}
-                />
-              ))}
-            </div>
-            <button className="secondary-btn factory-manage-milestones" type="button">Manage step</button>
-          </section>
+          {activeDetailTab === "overview" && (
+            <section className="factory-milestone-card">
+              <h2>Production timeline</h2>
+              <div className="factory-milestone-list">
+                {factoryProjectMilestones.map((milestone, index) => (
+                  <FactoryMilestoneItem
+                    milestone={milestone}
+                    index={index}
+                    key={milestone.title}
+                    onAddUpdate={setUpdateMilestone}
+                    showUpdate={showPostedUpdate && index === 0}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+          {activeDetailTab === "files" && <FactoryProjectFilesPanel />}
+          {activeDetailTab === "contract" && <FactoryContractDetailsPanel />}
         </section>
 
         <aside className="factory-detail-side">
@@ -4355,6 +4736,107 @@ function FactoryProjectProgressDetail({ language, onBack, onPostUpdate, showPost
         />
       )}
     </main>
+  );
+}
+
+function FactoryProjectFilesPanel() {
+  const files = [
+    ["Tech pack v3.pdf", "Brand spec · updated Jul 18"],
+    ["Measurement chart.xlsx", "Sizing and tolerance sheet"],
+    ["Fit sample photos.zip", "Factory upload · 6 files"],
+    ["Approved quote.pdf", "Commercial terms reference"]
+  ];
+
+  return (
+    <section className="factory-milestone-card factory-detail-tab-panel">
+      <h2>Files</h2>
+      <div className="factory-detail-file-list">
+        {files.map(([name, meta]) => (
+          <button className="factory-detail-file-row" type="button" key={name}>
+            <div>
+              <strong>{name}</strong>
+              <span>{meta}</span>
+            </div>
+            <img src="/assets/prototype-icons/download.svg" alt="" />
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function FactoryContractDetailsPanel() {
+  const workDetails = [
+    ["Contract title", "Organic cotton woven shirt sample + bulk production"],
+    ["Scope of work", "Produce organic cotton woven shirts based on the attached tech pack. Quote covers 300 units across 3 colors, fit sample and PP sample before bulk, and a 28-day bulk lead after PP approval."],
+    ["Approvals, revisions, and delivery", "Fit sample + PP sample before bulk; 3 colors at 100 units per color; one included fit sample revision; QC photos before final balance; delivery address confirmed before bulk; extra revision fees quoted separately."]
+  ];
+  const acceptedQuote = [
+    ["Brand", "Maison Rue · New York, USA"],
+    ["Unit price", "$18.40"],
+    ["Quantity", "300 units"],
+    ["Samples", "Fit + PP · $260"],
+    ["Bulk lead", "28 days"],
+    ["Capacity", "Aug 12-30"],
+    ["Terms", "30/70"],
+    ["Quote total", "$5,780"]
+  ];
+  const paymentTerms = [
+    ["Payment split", "30% deposit · 70% before shipment"],
+    ["Sample payment", "Fit + PP samples quoted at $260"],
+    ["Milestone release", "Sample funds release after brand approval; bulk funds release after final QC approval."],
+    ["Release rule", "Funds release after the brand approves the relevant production step."],
+    ["Shipping / incoterms", "EXW quoted · freight not included"]
+  ];
+  const attachments = ["Tech pack v3.pdf", "Measurement chart", "Reference photo", "Color breakdown"];
+
+  return (
+    <section className="factory-milestone-card factory-detail-tab-panel factory-contract-readonly-panel">
+      <div className="factory-contract-panel-header">
+        <h2>Contract details</h2>
+      </div>
+      <div className="factory-contract-section">
+        <h3>Work details</h3>
+        <div className="factory-contract-detail-grid single">
+          {workDetails.map(([label, value]) => (
+            <div className="factory-contract-detail-item" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="factory-contract-section">
+        <h3>Accepted quote</h3>
+        <div className="factory-contract-detail-grid">
+          {acceptedQuote.map(([label, value]) => (
+            <div className="factory-contract-detail-item" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="factory-contract-section">
+        <h3>Payment and release terms</h3>
+        <div className="factory-contract-detail-grid">
+          {paymentTerms.map(([label, value]) => (
+            <div className="factory-contract-detail-item" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="factory-contract-section">
+        <h3>Attachments</h3>
+        <div className="factory-contract-attachment-row">
+          {attachments.map((file) => (
+            <span key={file}>{file}</span>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { createPortal } from "react-dom";
 import "./styles.css";
 
 const samplePhotos = [
@@ -416,6 +417,78 @@ const activeRfqs = [
   }
 ];
 
+const draftRfqs = [
+  {
+    title: "Silk slip dress capsule",
+    date: "Draft saved Aug 2 · Needs factory invite",
+    description: "Bias-cut silk blend slip dresses across two colors. Need final size range and target price before inviting factories.",
+    tags: ["Wovens", "Premium $40-$90", "180 units"],
+    images: [
+      { label: "Slip dress reference", src: "https://images.pexels.com/photos/1036622/pexels-photo-1036622.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Fabric direction", src: "https://images.pexels.com/photos/7679720/pexels-photo-7679720.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    status: "Draft",
+    statusTone: "warning",
+    metrics: [
+      ["0", "quotes"],
+      ["0", "invited"],
+      ["0", "message"]
+    ]
+  },
+  {
+    title: "Cotton canvas tote reorder",
+    date: "Draft saved Jul 30 · Missing artwork",
+    description: "Structured canvas totes with printed logo, inside pocket, and two handle lengths.",
+    tags: ["Accessories", "Value $8-$18", "600 units"],
+    images: [
+      { label: "Canvas tote reference", src: "https://images.pexels.com/photos/5706277/pexels-photo-5706277.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    status: "Needs brief",
+    statusTone: "warning",
+    metrics: [
+      ["0", "quotes"],
+      ["0", "invited"],
+      ["0", "message"]
+    ]
+  }
+];
+
+const closedRfqs = [
+  {
+    title: "Linen camp shirt summer run",
+    date: "Closed Jul 12 · Quote accepted",
+    description: "Short-sleeve linen shirts with corozo buttons and garment wash. Moved to production with Atelier Minho.",
+    tags: ["Wovens", "Middle $18-$40", "240 units"],
+    images: [
+      { label: "Linen shirt reference", src: "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Wash direction", src: "https://images.pexels.com/photos/6461321/pexels-photo-6461321.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    status: "Accepted",
+    statusTone: "ready",
+    metrics: [
+      ["5", "quotes"],
+      ["8", "invited"],
+      ["4", "message"]
+    ]
+  },
+  {
+    title: "Rib knit base layer set",
+    date: "Closed Jun 28 · Archived",
+    description: "Rib tank and short set with compact MOQ and two lab dip rounds.",
+    tags: ["Knits", "Value $8-$18", "400 units"],
+    images: [
+      { label: "Rib set reference", src: "https://images.pexels.com/photos/6069552/pexels-photo-6069552.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    status: "Closed",
+    statusTone: "neutral",
+    metrics: [
+      ["3", "quotes"],
+      ["6", "invited"],
+      ["2", "message"]
+    ]
+  }
+];
+
 const activeProjects = [
   {
     title: "Organic cotton woven shirt production",
@@ -816,6 +889,7 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [selectedFactories, setSelectedFactories] = useState(["Atelier Minho", "Hanshu Studio"]);
   const [selectedQuote, setSelectedQuote] = useState("Atelier Minho");
+  const [fundingMilestone, setFundingMilestone] = useState(null);
   const [milestoneTypes, setMilestoneTypes] = useState(
     Object.fromEntries(milestones.map((milestone) => [milestone.name, milestone.type]))
   );
@@ -824,19 +898,33 @@ function App() {
 
   const index = screenOrder.indexOf(screen);
   const meta = screenMeta[screen];
-  const isStandalone = screen === "home" || screen === "profile" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "messages" || screen === "saved" || screen === "settings";
+  const activeMeta = screen === "fund" && fundingMilestone
+    ? {
+        ...meta,
+        title: `Fund ${fundingMilestone.title.toLowerCase()}`,
+        description: `Add ${fundingMilestone.amount} to project funds for ${fundingMilestone.title.toLowerCase()}. Funds stay protected until the related step is approved.`,
+        cta: `Fund ${fundingMilestone.amount}`
+      }
+    : meta;
+  const isStandalone = screen === "home" || screen === "profile" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "messages" || screen === "saved" || screen === "settings" || screen === "billing";
   const isWideFlow = screen === "invite" || screen === "quotes" || screen === "quoteDetail";
 
   const goTo = (next) => {
+    if (next !== "fund") setFundingMilestone(null);
     setScreen(next);
     setTransitionKey((value) => value + 1);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const goToFundingMilestone = (milestone) => {
+    setFundingMilestone(milestone);
+    goTo("fund");
+  };
+
   const next = () => {
     if (screen === "invite") setToast("RFQ sent to 2 selected factories");
     if (screen === "quoteDetail") setSelectedQuote("Atelier Minho");
-    if (screen === "fund") setToast("Sample payment funded");
+    if (screen === "fund") setToast(fundingMilestone ? `${fundingMilestone.title} funded` : "Sample payment funded");
     goTo(screenOrder[Math.min(index + 1, screenOrder.length - 1)]);
   };
 
@@ -867,11 +955,13 @@ function App() {
       case "projects":
         return <ProjectsScreen goTo={goTo} />;
       case "projectDetail":
-        return <ProjectDetailScreen goTo={goTo} />;
+        return <ProjectDetailScreen goTo={goTo} goToFundingMilestone={goToFundingMilestone} />;
       case "messages":
         return <MessagesScreen />;
       case "saved":
         return <SavedFactoriesScreen goTo={goTo} />;
+      case "billing":
+        return <BillingScreen accountType="brand" />;
       case "settings":
         return <SettingsScreen accountType="brand" />;
       case "describe":
@@ -891,7 +981,7 @@ function App() {
       case "milestones":
         return <MilestonesScreen milestoneTypes={milestoneTypes} setMilestoneTypes={setMilestoneTypes} />;
       case "fund":
-        return <FundScreen />;
+        return <FundScreen fundingMilestone={fundingMilestone} goTo={goTo} setFundingMilestone={setFundingMilestone} />;
       case "success":
         return <SuccessScreen goTo={goTo} />;
       default:
@@ -918,7 +1008,7 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <SideNav
-        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "settings" ? "Settings" : screen === "rfqs" ? "RFQs" : "RFQs"}
+        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "rfqs" ? "RFQs" : "RFQs"}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onNav={(label) => {
@@ -928,19 +1018,33 @@ function App() {
           if (label === "Browse factories") goTo("factoryMarketplace");
           if (label === "Conversations") goTo("messages");
           if (label === "Saved") goTo("saved");
+          if (label === "Billing") goTo("billing");
           if (label === "Settings") goTo("settings");
         }}
         onProfile={() => goTo("profile")}
       />
-      <main className={screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : "flow-page"}>
-        {!isStandalone && <JourneyRail current={meta.step} />}
+      <main className={screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : "flow-page"}>
+        {!isStandalone && <JourneyRail current={activeMeta.step} isMilestoneFunding={Boolean(fundingMilestone)} />}
         <section className="flow-content">
           {!isStandalone && screen !== "quoteDetail" && (
             <header className="flow-header">
-              <p className="eyebrow">FACTORY QUOTE REQUEST</p>
-              <h1>{meta.title}</h1>
+              {screen === "fund" && fundingMilestone ? (
+                <button
+                  className="project-back-link funding-header-link"
+                  type="button"
+                  onClick={() => {
+                    setFundingMilestone(null);
+                    goTo("projectDetail");
+                  }}
+                >
+                  ‹ Back to production detail
+                </button>
+              ) : (
+                <p className="eyebrow">FACTORY QUOTE REQUEST</p>
+              )}
+              <h1>{activeMeta.title}</h1>
               <p>
-                {meta.description ||
+                {activeMeta.description ||
                   "Organic cotton woven shirts, 300 units, fit sample and PP sample before bulk approval."}
               </p>
             </header>
@@ -949,14 +1053,14 @@ function App() {
             {content}
           </div>
         </section>
-        {!isStandalone && <RightRail screen={screen} selectedQuote={selectedQuote} />}
+        {!isStandalone && <RightRail screen={screen} selectedQuote={selectedQuote} fundingMilestone={fundingMilestone} />}
       </main>
       {!isStandalone && screen !== "describe" && (
         <BottomBar
           canBack={index > 0}
           onBack={back}
           onNext={screen === "success" ? () => goTo("describe") : next}
-          primaryLabel={screen === "quotes" || screen === "success" ? "" : meta.cta}
+          primaryLabel={screen === "quotes" || screen === "success" ? "" : activeMeta.cta}
           centerText={screen === "invite" ? `${selectedFactories.length} factories selected · 5 recommended` : ""}
           secondaryLabel={screen === "invite" ? "Save draft" : ""}
         />
@@ -972,9 +1076,9 @@ function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
     { label: "RFQs", icon: "rfq" },
     { label: "Production orders", icon: "projects" },
     { label: "Browse factories", icon: "explore" },
-    { label: "Connections", icon: "connections" },
     { label: "Conversations", icon: "messages" },
     { label: "Saved", icon: "bookmarks" },
+    { label: "Billing", icon: "billing" },
     { label: "Settings", icon: "settings" },
     { label: "Notifications", icon: "notification" }
   ];
@@ -995,7 +1099,7 @@ function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
       <nav>
         {nav.map((item, index) => (
           <React.Fragment key={item.label}>
-            {(index === 3 || index === 7) && <span className="nav-divider" />}
+            {(index === 3 || index === 6) && <span className="nav-divider" />}
             <button
               className={item.label === active ? "active" : ""}
               type="button"
@@ -1029,6 +1133,87 @@ function CloseIconButton({ label }) {
   );
 }
 
+function BillingScreen({ accountType = "brand" }) {
+  const isFactory = accountType === "factory";
+  const [tab, setTab] = useState("earnings");
+  const defaultFilter = isFactory ? "All clients" : "All factories";
+  const [client, setClient] = useState(defaultFilter);
+  const allRows = isFactory ? factoryBillingHistory[tab] : brandBillingHistory;
+  const clients = [defaultFilter, ...Array.from(new Set(allRows.map((row) => row.client)))];
+  const selectedClient = clients.includes(client) ? client : defaultFilter;
+  const rows = selectedClient === defaultFilter ? allRows : allRows.filter((row) => row.client === selectedClient);
+  const total = rows.reduce((sum, row) => sum + Number(row.amount.replace(/[$,]/g, "")), 0);
+  const formattedTotal = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const brandSummaryMetrics = [
+    ["total paid", formattedTotal],
+    ["funded", "$120.00"],
+    ["remaining", "$5,660.00"],
+    ["next payment", "$1,656.00", "highlight"]
+  ];
+
+  return (
+    <section className="billing-history-page">
+      <header className="billing-history-header">
+        <div>
+          <p>{isFactory ? "Factory billing" : "Brand billing"}</p>
+          <h1>Billing</h1>
+        </div>
+      </header>
+      <div className="billing-controls">
+        {isFactory && (
+          <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Billing history type">
+            <button className={tab === "earnings" ? "active" : ""} type="button" role="tab" aria-selected={tab === "earnings"} onClick={() => setTab("earnings")}>Earnings</button>
+            <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => setTab("payments")}>Payments</button>
+          </div>
+        )}
+        <label>
+          <span>{isFactory && tab === "payments" ? "Filter by source" : isFactory ? "Filter by client" : "Filter by factory"}</span>
+          <select value={selectedClient} onChange={(event) => setClient(event.target.value)}>
+            {clients.map((item) => (
+              <option key={item}>{item}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {!isFactory && (
+        <div className="project-summary-strip billing-payment-strip" aria-label="Billing payment summary">
+          {brandSummaryMetrics.map(([label, value, tone]) => (
+            <Metric label={label} value={value} className={tone || ""} key={label} />
+          ))}
+        </div>
+      )}
+      {isFactory && (
+        <div className="billing-summary-grid">
+          <div>
+            <span>{tab === "earnings" ? "Total received" : "Total paid"}</span>
+            <strong>{formattedTotal}</strong>
+          </div>
+          <div>
+            <span>Latest activity</span>
+            <strong>{rows[0]?.status || "Received"}</strong>
+          </div>
+          <div>
+            <span>Records</span>
+            <strong>{rows.length}</strong>
+          </div>
+        </div>
+      )}
+      <div className="billing-history-list">
+        {rows.map((row) => (
+          <article className="billing-history-row" key={`${row.title}-${row.meta}`}>
+            <div>
+              <strong>{row.title}</strong>
+              <span>{row.client} - {row.meta}</span>
+            </div>
+            <span className="billing-status">{row.status}</span>
+            <strong>{row.amount}</strong>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function MessagesScreen() {
   const [activeThreadId, setActiveThreadId] = useState(messageThreads[0].id);
   const [composer, setComposer] = useState("");
@@ -1046,6 +1231,15 @@ function MessagesScreen() {
   });
   const activeThread = messageThreads.find((thread) => thread.id === activeThreadId) || messageThreads[0];
   const activeScheduledCall = scheduledCalls[activeThread.id];
+
+  useEffect(() => {
+    if (!showSchedule) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [showSchedule]);
 
   const toggleTranslation = (threadId, index) => {
     const key = `${threadId}-${index}`;
@@ -1105,7 +1299,7 @@ function MessagesScreen() {
             </div>
           </div>
           <div className="message-room-actions">
-            <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule((value) => !value)}>Schedule call</button>
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>Schedule call</button>
             <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>
           </div>
         </header>
@@ -1148,29 +1342,26 @@ function MessagesScreen() {
 
       <aside className="message-side-panel">
         {activeScheduledCall && <UpcomingCallCard call={activeScheduledCall} thread={activeThread} />}
-        <ScheduleCallPanel
-          key={activeThread.id}
-          thread={activeThread}
-          isOpen={showSchedule}
-          onOpen={() => setShowSchedule(true)}
-          onSchedule={(call) => {
-            setScheduledCalls((current) => ({ ...current, [activeThread.id]: call }));
-            setShowSchedule(false);
-          }}
-        />
-        <section className="message-profile-card">
-          <h3>{activeThread.name}</h3>
-          <p>{activeThread.location} · {activeThread.status}</p>
-          <div className="message-file-list">
-            {activeThread.files.map((file) => (
-              <button type="button" key={file}>
-                <span>{file}</span>
-                <img src="/assets/prototype-icons/download.svg" alt="" />
-              </button>
-            ))}
-          </div>
-        </section>
       </aside>
+      {showSchedule && createPortal((
+        <div className="message-schedule-modal-layer" role="presentation">
+          <button className="message-schedule-modal-scrim" type="button" aria-label="Close schedule call" onClick={() => setShowSchedule(false)} />
+          <div className="message-schedule-modal" role="dialog" aria-label="Schedule call">
+            <button className="settings-drawer-close" type="button" aria-label="Close schedule call" onClick={() => setShowSchedule(false)}>
+              <img src="/assets/prototype-icons/close.svg" alt="" />
+            </button>
+            <ScheduleCallPanel
+              key={activeThread.id}
+              thread={activeThread}
+              isOpen
+              onSchedule={(call) => {
+                setScheduledCalls((current) => ({ ...current, [activeThread.id]: call }));
+                setShowSchedule(false);
+              }}
+            />
+          </div>
+        </div>
+      ), document.body)}
     </div>
   );
 }
@@ -1315,8 +1506,34 @@ const settingsPermissionLabels = [
   { key: "rfqFlow", label: "RFQ flow", detail: "Create RFQ, choose quote, set terms and milestones", single: true },
   { key: "approve", label: "Approve samples", detail: "Lab dip, strike-off, sample, and more" },
   { key: "releaseFunds", label: "Release funds", detail: "Release approved payments from project funds" },
-  { key: "primaryContact", label: "Primary contact", detail: "Main factory contact for messages and calls", single: true }
+  { key: "primaryContact", label: "Primary contact", detail: "Main factory contact for messages and calls", single: true },
+  { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
 ];
+
+const factoryAccountPermissionLabels = [
+  { key: "rfqFlow", label: "RFQ flow", detail: "Give quotes and submit RFQ details", single: true },
+  { key: "addUpdate", label: "Add update", detail: "Post production updates and files" },
+  { key: "primaryContact", label: "Primary contact", detail: "Main contact for messages and calls", single: true },
+  { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
+];
+
+const brandBillingHistory = [
+  { title: "Initial deposit", client: "Atelier Minho", meta: "Organic cotton woven shirt - Jul 18, 2026", status: "Paid", amount: "$1,840.00" },
+  { title: "Sample milestone", client: "Atelier Minho", meta: "Atelier Minho - Jul 29, 2026", status: "Paid", amount: "$620.00" },
+  { title: "Platform service fee", client: "The Sourcing Club", meta: "Monthly billing - Aug 1, 2026", status: "Paid", amount: "$79.00" }
+];
+
+const factoryBillingHistory = {
+  earnings: [
+    { title: "Sample milestone released", client: "Maison Rue", meta: "Maison Rue - Jul 29, 2026", status: "Received", amount: "$620.00" },
+    { title: "Production deposit released", client: "Maison Rue", meta: "Maison Rue - Jul 18, 2026", status: "Received", amount: "$1,840.00" },
+    { title: "Fit sample update", client: "Northline Studio", meta: "Northline Studio - Jul 10, 2026", status: "Received", amount: "$410.00" }
+  ],
+  payments: [
+    { title: "Platform service fee", client: "The Sourcing Club", meta: "Monthly billing - Aug 1, 2026", status: "Paid", amount: "$49.00" },
+    { title: "Verified profile review", client: "The Sourcing Club", meta: "Account service - Jul 12, 2026", status: "Paid", amount: "$95.00" }
+  ]
+};
 
 function SettingsScreen({ accountType = "brand" }) {
   const isFactory = accountType === "factory";
@@ -1324,15 +1541,16 @@ function SettingsScreen({ accountType = "brand" }) {
   const [inviteEmail, setInviteEmail] = useState("");
   const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
   const [stakeholderTab, setStakeholderTab] = useState("members");
+  const [paymentTab, setPaymentTab] = useState("earnings");
   const [team, setTeam] = useState(
     isFactory
       ? [
-          { name: "Ines Carvalho", email: "ines@atelierminho.pt", role: "Owner", permissions: ["pay", "approve", "reply", "calls", "team"] },
-          { name: "Mateo Silva", email: "mateo@atelierminho.pt", role: "Production lead", permissions: ["approve", "reply", "calls"] },
-          { name: "Sofia Ramos", email: "sofia@atelierminho.pt", role: "Finance", permissions: ["pay"] }
+          { name: "Ines Carvalho", email: "ines@atelierminho.pt", role: "Owner", permissions: ["rfqFlow", "addUpdate", "primaryContact", "settingsAccess"] },
+          { name: "Mateo Silva", email: "mateo@atelierminho.pt", role: "Production lead", permissions: ["addUpdate"] },
+          { name: "Sofia Ramos", email: "sofia@atelierminho.pt", role: "Finance", permissions: [] }
         ]
       : [
-          { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder", permissions: ["rfqFlow", "approve", "primaryContact"] },
+          { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder", permissions: ["rfqFlow", "approve", "primaryContact", "settingsAccess"] },
           { name: "Maya Lee", email: "maya@maisonrue.com", role: "Production lead", permissions: ["approve"] },
           { name: "Jon Bell", email: "jon@maisonrue.com", role: "Finance", permissions: ["releaseFunds"] }
         ]
@@ -1344,7 +1562,11 @@ function SettingsScreen({ accountType = "brand" }) {
         phone: "+351 22 000 1842",
         location: "Porto, Portugal",
         payment: "Wise business ending in 9021",
-        backup: "Visa ending in 4412"
+        backup: "Visa ending in 4412",
+        earningsPrimary: "Wise business ending in 9021",
+        earningsSecondary: "Bank account ending in 1184",
+        billingPrimary: "Visa ending in 4412",
+        billingSecondary: "Mastercard ending in 8840"
       }
     : {
         name: "Maison Rue",
@@ -1354,6 +1576,16 @@ function SettingsScreen({ accountType = "brand" }) {
         payment: "American Express ending in 1021",
         backup: "ACH ending in 7782"
       };
+  const factoryPaymentMethods = {
+    earnings: [
+      { label: "Primary", name: account.earningsPrimary, note: "Receives released milestone funds from brand orders." },
+      { label: "Secondary", name: account.earningsSecondary, note: "Backup account for receiving earnings." }
+    ],
+    billing: [
+      { label: "Primary", name: account.billingPrimary, note: "Used to pay platform fees, services, or billing charges." },
+      { label: "Secondary", name: account.billingSecondary, note: "Backup method for billing charges." }
+    ]
+  };
   const pendingInvites = isFactory
     ? [
         { email: "quality@atelierminho.pt", role: "Production lead", sent: "Sent today" },
@@ -1363,9 +1595,10 @@ function SettingsScreen({ accountType = "brand" }) {
         { email: "lena@maisonrue.com", role: "Stakeholder", sent: "Sent today" },
         { email: "ops@maisonrue.com", role: "View only", sent: "Sent yesterday" }
       ];
+  const activePermissionLabels = isFactory ? factoryAccountPermissionLabels : settingsPermissionLabels;
 
   const togglePermission = (memberEmail, permission) => {
-    const permissionMeta = settingsPermissionLabels.find((item) => item.key === permission);
+    const permissionMeta = activePermissionLabels.find((item) => item.key === permission);
     setTeam((current) =>
       current.map((member) => {
         if (permissionMeta?.single) {
@@ -1377,7 +1610,7 @@ function SettingsScreen({ accountType = "brand" }) {
                 : member.permissions.filter((item) => item !== permission)
           };
         }
-        if (member.email !== memberEmail || member.role === "Owner") return member;
+        if (member.email !== memberEmail) return member;
         const hasPermission = member.permissions.includes(permission);
         return {
           ...member,
@@ -1387,6 +1620,9 @@ function SettingsScreen({ accountType = "brand" }) {
         };
       })
     );
+  };
+  const removeMember = (memberEmail) => {
+    setTeam((current) => current.filter((member) => member.email !== memberEmail));
   };
 
   const settingsNav = [
@@ -1400,7 +1636,7 @@ function SettingsScreen({ accountType = "brand" }) {
     setActiveSection(id);
     document.getElementById(`settings-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
-  React.useEffect(() => {
+  useEffect(() => {
     if (!isInvitePanelOpen) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -1410,7 +1646,7 @@ function SettingsScreen({ accountType = "brand" }) {
   }, [isInvitePanelOpen]);
 
   return (
-    <div className={isFactory ? "settings-page" : "settings-page brand-settings-page"}>
+    <div className={isFactory ? "settings-page factory-settings-page" : "settings-page brand-settings-page"}>
       <aside className="settings-nav-panel">
         <h1>Settings</h1>
         <nav aria-label="Settings sections">
@@ -1475,33 +1711,70 @@ function SettingsScreen({ accountType = "brand" }) {
 
         <section className="settings-section" id="settings-payment">
             <div className="settings-section-header">
-              <h3>Payment method</h3>
-              <p>Add, update, or remove the payment methods used for production milestones.</p>
+              <h3>{isFactory ? "Payment methods" : "Payment method"}</h3>
+              <p>{isFactory ? "Manage where you receive earnings and which method is used for billing." : "Add, update, or remove the payment methods used for production milestones."}</p>
             </div>
-            <div className="settings-payment-list">
-              <div>
-                <span className="settings-card-brand">Primary</span>
-                <strong>{account.payment}</strong>
-                <small>{isFactory ? "Receives released milestone funds" : "Used for deposits and milestone funding"}</small>
-              </div>
-              <button className="secondary-btn compact-btn" type="button">Edit</button>
-            </div>
-            <div className="settings-payment-list">
-              <div>
-                <span className="settings-card-brand">Backup</span>
-                <strong>{account.backup}</strong>
-                <small>Helps avoid payment interruptions.</small>
-              </div>
-              <button className="secondary-btn compact-btn" type="button">Remove</button>
-            </div>
+            {isFactory ? (
+              <>
+                <div className="settings-access-tabs settings-payment-tabs" role="tablist" aria-label="Payment method type">
+                  <button
+                    className={paymentTab === "earnings" ? "active" : ""}
+                    type="button"
+                    role="tab"
+                    aria-selected={paymentTab === "earnings"}
+                    onClick={() => setPaymentTab("earnings")}
+                  >
+                    Earnings
+                  </button>
+                  <button
+                    className={paymentTab === "billing" ? "active" : ""}
+                    type="button"
+                    role="tab"
+                    aria-selected={paymentTab === "billing"}
+                    onClick={() => setPaymentTab("billing")}
+                  >
+                    Billing
+                  </button>
+                </div>
+                {factoryPaymentMethods[paymentTab].map((method) => (
+                  <div className="settings-payment-list" key={`${paymentTab}-${method.label}`}>
+                    <div>
+                      <span className="settings-card-brand">{method.label}</span>
+                      <strong>{method.name}</strong>
+                      <small>{method.note}</small>
+                    </div>
+                    <button className="settings-menu-btn" type="button" aria-label={`More options for ${method.name}`} />
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                <div className="settings-payment-list">
+                  <div>
+                    <span className="settings-card-brand">Primary</span>
+                    <strong>{account.payment}</strong>
+                    <small>Used for deposits and milestone funding</small>
+                  </div>
+                  <button className="settings-menu-btn" type="button" aria-label={`More options for ${account.payment}`} />
+                </div>
+                <div className="settings-payment-list">
+                  <div>
+                    <span className="settings-card-brand">Backup</span>
+                    <strong>{account.backup}</strong>
+                    <small>Helps avoid payment interruptions.</small>
+                  </div>
+                  <button className="settings-menu-btn" type="button" aria-label={`More options for ${account.backup}`} />
+                </div>
+              </>
+            )}
             <button className="settings-add-btn" type="button">+ Add payment method</button>
           </section>
 
         <section className="settings-section" id="settings-team">
             <div className="settings-section-header split">
               <div>
-                <h3>Stakeholder authority</h3>
-                <p>Assign RFQ flow, sample approvals, fund release, and the primary factory contact.</p>
+                <h3>{isFactory ? "Manage team & stakeholders" : "Stakeholder authority"}</h3>
+                <p>{isFactory ? "Control who can quote RFQs, post updates, and act as the primary contact." : "Assign RFQ flow, sample approvals, fund release, and the primary factory contact."}</p>
               </div>
               <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
             </div>
@@ -1531,12 +1804,13 @@ function SettingsScreen({ accountType = "brand" }) {
               <div className="settings-permission-table" role="table" aria-label="Stakeholder authority">
                 <div className="settings-permission-row header" role="row">
                   <span>Member</span>
-                  {settingsPermissionLabels.map((permission) => (
+                  {activePermissionLabels.map((permission) => (
                     <span key={permission.key}>
                       {permission.label}
                       {permission.detail && <small>{permission.detail}</small>}
                     </span>
                   ))}
+                  <span aria-hidden="true" />
                 </div>
                 {team.map((member) => (
                   <div className="settings-permission-row" role="row" key={member.email}>
@@ -1544,7 +1818,7 @@ function SettingsScreen({ accountType = "brand" }) {
                       <strong>{member.name}</strong>
                       <small>{member.role} - {member.email}</small>
                     </div>
-                    {settingsPermissionLabels.map((permission) => (
+                    {activePermissionLabels.map((permission) => (
                       <label className="settings-check" key={permission.key}>
                         <input
                           type="checkbox"
@@ -1554,6 +1828,9 @@ function SettingsScreen({ accountType = "brand" }) {
                         <span>{permission.label}</span>
                       </label>
                     ))}
+                    <button className="settings-remove-member-btn" type="button" aria-label={`Remove ${member.name}`} onClick={() => removeMember(member.email)}>
+                      <img src="/assets/prototype-icons/trash.svg" alt="" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -1577,7 +1854,7 @@ function SettingsScreen({ accountType = "brand" }) {
             )}
           </section>
 
-        {isInvitePanelOpen && (
+        {isInvitePanelOpen && createPortal((
           <div className="settings-drawer-layer" role="presentation">
             <button className="settings-drawer-scrim" type="button" aria-label="Close invite panel" onClick={() => setIsInvitePanelOpen(false)} />
             <aside className="settings-drawer" aria-label="Invite stakeholder">
@@ -1611,9 +1888,9 @@ function SettingsScreen({ accountType = "brand" }) {
                 </label>
                 <fieldset className="settings-drawer-authority">
                   <legend>Authority</legend>
-                  {settingsPermissionLabels.map((permission) => (
+                  {activePermissionLabels.map((permission) => (
                     <label key={permission.key}>
-                      <input type="checkbox" defaultChecked={permission.key === "approve"} />
+                      <input type="checkbox" defaultChecked={permission.key === (isFactory ? "addUpdate" : "approve")} />
                       <span>
                         <strong>{permission.label}</strong>
                         {permission.detail && <small>{permission.detail}</small>}
@@ -1628,7 +1905,7 @@ function SettingsScreen({ accountType = "brand" }) {
               </footer>
             </aside>
           </div>
-        )}
+        ), document.body)}
 
         <section className="settings-section" id="settings-notifications">
             <div className="settings-section-header">
@@ -1866,13 +2143,19 @@ function BrandAssetUploadCard({ title, helper, accept }) {
   );
 }
 
-function JourneyRail({ current }) {
+function JourneyRail({ current, isMilestoneFunding = false }) {
+  const journeySteps = steps.map((step, index) =>
+    index === steps.length - 1 && isMilestoneFunding
+      ? { ...step, title: "Fund payment" }
+      : step
+  );
+
   return (
     <aside className="journey-rail">
       <p>QUOTE TO CONTRACT</p>
-      {steps.map((step, i) => (
+      {journeySteps.map((step, i) => (
         <div className="journey-step" key={step.title}>
-          {i < steps.length - 1 && <span className={i < current ? "rail-line complete" : "rail-line"} />}
+          {i < journeySteps.length - 1 && <span className={i < current ? "rail-line complete" : "rail-line"} />}
           <span className={i < current ? "dot complete" : i === current ? "dot current" : "dot"}>
             {i < current ? "✓" : i + 1}
           </span>
@@ -1886,7 +2169,27 @@ function JourneyRail({ current }) {
   );
 }
 
-function RightRail({ screen, selectedQuote }) {
+function formatCurrency(value) {
+  const amount = Number(String(value).replace(/[^0-9.]/g, ""));
+  if (!Number.isFinite(amount)) return "$0.00";
+  return amount.toLocaleString("en-US", { style: "currency", currency: "USD" });
+}
+
+function calculateFundingSummary(milestone) {
+  const subtotal = milestone?.amount || "$120";
+  const fee = Number(String(subtotal).replace(/[^0-9.]/g, "")) * 0.03;
+  const taxes = fee;
+  const total = Number(String(subtotal).replace(/[^0-9.]/g, "")) + fee + taxes;
+  return {
+    paymentLabel: milestone ? milestone.title : "Sample order",
+    subtotal: formatCurrency(subtotal),
+    fee: formatCurrency(fee),
+    taxes: formatCurrency(taxes),
+    total: formatCurrency(total)
+  };
+}
+
+function RightRail({ screen, selectedQuote, fundingMilestone }) {
   if (screen === "invite" || screen === "quotes" || screen === "quoteDetail") {
     return null;
   }
@@ -1924,6 +2227,7 @@ function RightRail({ screen, selectedQuote }) {
   }
 
   if (screen === "fund") {
+    const fundingSummary = calculateFundingSummary(fundingMilestone);
     return (
       <aside className="right-rail">
         <section className="project-funds-panel">
@@ -1936,16 +2240,16 @@ function RightRail({ screen, selectedQuote }) {
           </div>
           <h2>Project funds</h2>
           <div className="fund-summary-rows">
-            <Metric label="Payment 1" value="Sample order" />
-            <Metric label="Subtotal" value="$120.00" />
-            <Metric label="TSC service fee" value="$3.60" />
-            <Metric label="Estimated taxes" value="$3.60" />
+            <Metric label={fundingMilestone ? "Payment" : "Payment 1"} value={fundingSummary.paymentLabel} />
+            <Metric label="Subtotal" value={fundingSummary.subtotal} />
+            <Metric label="TSC service fee" value={fundingSummary.fee} />
+            <Metric label="Estimated taxes" value={fundingSummary.taxes} />
           </div>
           <div className="fund-total-row">
             <span>Estimated total</span>
-            <strong>$124.14</strong>
+            <strong>{fundingSummary.total}</strong>
           </div>
-          <button className="primary-btn fund-side-btn" type="button">Fund payment & start</button>
+          <button className="primary-btn fund-side-btn" type="button">{fundingMilestone ? "Fund milestone" : "Fund payment & start"}</button>
           <p className="payment-protection">
             <img src="/assets/prototype-icons/payment-protection.svg" alt="" />
             TSC Payment Protection
@@ -3176,6 +3480,14 @@ function SavedFactoryCard({ factory, goTo }) {
 }
 
 function RfqsScreen({ goTo }) {
+  const [activeTab, setActiveTab] = useState("active");
+  const tabs = [
+    ["active", "Active RFQs (4)", activeRfqs],
+    ["drafts", "Drafts (2)", draftRfqs],
+    ["closed", "Closed (6)", closedRfqs]
+  ];
+  const activeRfqsForTab = tabs.find(([key]) => key === activeTab)?.[2] || activeRfqs;
+
   return (
     <div className="rfqs-shell">
       <header className="rfqs-header">
@@ -3205,14 +3517,21 @@ function RfqsScreen({ goTo }) {
       </section>
 
       <nav className="rfqs-tabs" aria-label="RFQ status">
-        <button className="active" type="button">Active RFQs (4)</button>
-        <button type="button">Drafts (2)</button>
-        <button type="button">Invited (2)</button>
-        <button type="button">Closed (6)</button>
+        {tabs.map(([key, label]) => (
+          <button
+            className={activeTab === key ? "active" : ""}
+            type="button"
+            aria-current={activeTab === key ? "page" : undefined}
+            onClick={() => setActiveTab(key)}
+            key={key}
+          >
+            {label}
+          </button>
+        ))}
       </nav>
 
-      <section className="rfq-list" aria-label="Active RFQs">
-        {activeRfqs.map((rfq) => (
+      <section className="rfq-list" aria-label={`${activeTab} RFQs`}>
+        {activeRfqsForTab.map((rfq) => (
           <RfqCard rfq={rfq} goTo={goTo} key={rfq.title} />
         ))}
       </section>
@@ -3339,7 +3658,7 @@ function ProjectsScreen({ goTo }) {
   );
 }
 
-function ProjectListCard({ project, goTo, actionLabel = "View project" }) {
+function ProjectListCard({ project, goTo, actionLabel = "View details" }) {
   const projectFacts = [
     ["Current step", project.currentStep],
     ["Next due", project.nextDue]
@@ -3410,10 +3729,21 @@ function ProjectProgress({ progress }) {
   );
 }
 
-function ProjectDetailScreen({ goTo }) {
+function ProjectDetailScreen({ goTo, goToFundingMilestone }) {
+  const [activeDetailTab, setActiveDetailTab] = useState("overview");
+  const [approveFundMilestone, setApproveFundMilestone] = useState(null);
+  const [paidMilestones, setPaidMilestones] = useState([]);
+  const [approvalMilestone, setApprovalMilestone] = useState(null);
+  const [approvedMilestones, setApprovedMilestones] = useState([]);
+  const detailTabs = [
+    ["overview", "Overview"],
+    ["files", "Files"],
+    ["contract", "Contract details"]
+  ];
+
   return (
     <div className="project-detail-shell">
-      <button className="project-back-link" type="button" onClick={() => goTo("projects")}>&lt; Back to projects</button>
+      <button className="project-back-link" type="button" onClick={() => goTo("projects")}>‹ Back to production orders</button>
       <header className="project-detail-header">
         <h1>Organic cotton woven shirt production</h1>
         <p>Atelier Minho · Porto, Portugal · Started Jul 19</p>
@@ -3429,21 +3759,41 @@ function ProjectDetailScreen({ goTo }) {
           </section>
 
           <nav className="rfqs-tabs project-detail-tabs" aria-label="Project detail sections">
-            <button className="active" type="button">Overview</button>
-            <button type="button">Messages (2)</button>
-            <button type="button">Files</button>
-            <button type="button">Contract details</button>
+            {detailTabs.map(([key, label]) => (
+              <button
+                className={activeDetailTab === key ? "active" : ""}
+                type="button"
+                aria-current={activeDetailTab === key ? "page" : undefined}
+                onClick={() => setActiveDetailTab(key)}
+                key={key}
+              >
+                {label}
+              </button>
+            ))}
           </nav>
 
-          <section className="milestone-timeline-card">
-            <h2>Production timeline</h2>
-            <div className="milestone-timeline-list">
-              {projectDetailMilestones.map((milestone, index) => (
-                <ProjectMilestoneItem milestone={milestone} index={index} key={milestone.title} />
-              ))}
-            </div>
-            <button className="secondary-btn manage-milestones" type="button">Manage milestones</button>
-          </section>
+          {activeDetailTab === "overview" && (
+            <section className="milestone-timeline-card">
+              <h2>Production timeline</h2>
+              <div className="milestone-timeline-list">
+                {projectDetailMilestones.map((milestone, index) => (
+                  <ProjectMilestoneItem
+                    milestone={milestone}
+                    index={index}
+                    isPaid={paidMilestones.includes(milestone.title)}
+                    isApproved={approvedMilestones.includes(milestone.title)}
+                    onApproveFund={setApproveFundMilestone}
+                    onFundMilestone={goToFundingMilestone}
+                    onApprove={setApprovalMilestone}
+                    key={milestone.title}
+                  />
+                ))}
+              </div>
+              <button className="secondary-btn manage-milestones" type="button">Manage milestones</button>
+            </section>
+          )}
+          {activeDetailTab === "files" && <ProjectFilesPanel />}
+          {activeDetailTab === "contract" && <ProjectContractDetailsPanel goTo={goTo} />}
         </div>
 
         <aside className="project-detail-side">
@@ -3468,11 +3818,141 @@ function ProjectDetailScreen({ goTo }) {
           </section>
         </aside>
       </div>
+      {approveFundMilestone && createPortal((
+        <ApproveFundModal
+          milestone={approveFundMilestone}
+          onClose={() => setApproveFundMilestone(null)}
+          onApprove={() => {
+            setPaidMilestones((current) => current.includes(approveFundMilestone.title) ? current : [...current, approveFundMilestone.title]);
+            setApproveFundMilestone(null);
+          }}
+        />
+      ), document.body)}
+      {approvalMilestone && createPortal((
+        <ApproveMilestoneModal
+          milestone={approvalMilestone}
+          onClose={() => setApprovalMilestone(null)}
+          onApprove={() => {
+            setApprovedMilestones((current) => current.includes(approvalMilestone.title) ? current : [...current, approvalMilestone.title]);
+            setApprovalMilestone(null);
+          }}
+        />
+      ), document.body)}
     </div>
   );
 }
 
-function ProjectMilestoneItem({ milestone, index }) {
+function ProjectFilesPanel() {
+  const files = [
+    ["Tech pack v3.pdf", "Brand spec · updated Jul 18"],
+    ["Measurement chart.xlsx", "Sizing and tolerance sheet"],
+    ["Reference photos.zip", "Design references · 12 files"],
+    ["Approved quote.pdf", "Atelier Minho quote reference"]
+  ];
+
+  return (
+    <section className="milestone-timeline-card project-detail-tab-panel">
+      <h2>Files</h2>
+      <div className="project-detail-file-list">
+        {files.map(([name, meta]) => (
+          <button className="project-detail-file-row" type="button" key={name}>
+            <div>
+              <strong>{name}</strong>
+              <span>{meta}</span>
+            </div>
+            <img src="/assets/prototype-icons/download.svg" alt="" />
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ProjectContractDetailsPanel({ goTo }) {
+  const workDetails = [
+    ["Contract title", "Organic cotton woven shirt sample + bulk production"],
+    ["Scope of work", "Produce organic cotton woven shirts based on the attached tech pack. Quote covers 300 units across 3 colors, fit sample and PP sample before bulk, and a 28-day bulk lead after PP approval."],
+    ["Approvals, revisions, and delivery", "Fit sample + PP sample before bulk; 3 colors at 100 units per color; one included fit sample revision; QC photos before final balance; delivery address confirmed before bulk; extra revision fees quoted separately."]
+  ];
+  const acceptedQuote = [
+    ["Factory", "Atelier Minho · Porto, Portugal"],
+    ["Unit price", "$18.40"],
+    ["Quantity", "300 units"],
+    ["Samples", "Fit + PP · $260"],
+    ["Bulk lead", "28 days"],
+    ["Capacity", "Aug 12-30"],
+    ["Terms", "30/70"],
+    ["Quote total", "$5,780"]
+  ];
+  const paymentTerms = [
+    ["Payment split", "30% deposit · 70% before shipment"],
+    ["Sample payment", "Fit + PP samples quoted at $260"],
+    ["Milestone release", "Sample funds release after brand approval; bulk funds release after final QC approval."],
+    ["Release rule", "Funds release after the brand approves the relevant production step."],
+    ["Shipping / incoterms", "EXW quoted · freight not included"]
+  ];
+  const attachments = ["Tech pack v3.pdf", "Measurement chart", "Reference photo", "Color breakdown"];
+
+  return (
+    <section className="milestone-timeline-card project-detail-tab-panel project-contract-readonly-panel">
+      <div className="project-contract-panel-header">
+        <div>
+          <h2>Contract details</h2>
+        </div>
+        <button className="secondary-btn compact-btn" type="button" onClick={() => goTo("contract")}>Edit</button>
+      </div>
+      <div className="project-contract-section">
+        <h3>Work details</h3>
+        <div className="project-contract-detail-grid single">
+          {workDetails.map(([label, value]) => (
+            <div className="project-contract-detail-item" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="project-contract-section">
+        <h3>Accepted quote</h3>
+        <div className="project-contract-detail-grid">
+          {acceptedQuote.map(([label, value]) => (
+            <div className="project-contract-detail-item" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="project-contract-section">
+        <h3>Payment and release terms</h3>
+        <div className="project-contract-detail-grid">
+          {paymentTerms.map(([label, value]) => (
+            <div className="project-contract-detail-item" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="project-contract-section">
+        <h3>Attachments</h3>
+        <div className="project-contract-attachment-row">
+          {attachments.map((file) => (
+            <span key={file}>{file}</span>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = false, onApproveFund, onFundMilestone, onApprove }) {
+  const handleAction = () => {
+    if (milestone.action === "Approve fund") onApproveFund?.(milestone);
+    if (milestone.action === "Fund milestone") onFundMilestone?.(milestone);
+    if (milestone.action === "Approve") onApprove?.(milestone);
+  };
+
   return (
     <article className="project-milestone-item">
       <span className={index === 0 ? "milestone-number current" : "milestone-number"}>{index + 1}</span>
@@ -3482,7 +3962,9 @@ function ProjectMilestoneItem({ milestone, index }) {
             <h3>{milestone.title}</h3>
             <p>{milestone.meta}</p>
           </div>
-          {milestone.amount && <strong>{milestone.amount}</strong>}
+          <div className="milestone-amount-cell">
+            {milestone.amount && <strong>{milestone.amount}</strong>}
+          </div>
         </div>
         <p className="milestone-description">{milestone.description}</p>
         {milestone.update && <ProjectUpdateCard />}
@@ -3490,12 +3972,89 @@ function ProjectMilestoneItem({ milestone, index }) {
       <button className="milestone-comment" type="button" aria-label={`Add update for ${milestone.title}`}>
         <img src="/assets/prototype-icons/add-update.svg" alt="" />
       </button>
-      {milestone.action && (
-        <button className={milestone.tone === "primary" ? "primary-btn milestone-action" : "secondary-btn milestone-action"} type="button">
+      {(isPaid || isApproved) && (
+        <span className={isApproved ? "milestone-paid-status approved" : "milestone-paid-status"}>
+          {isApproved ? "Approved" : "Paid"}
+        </span>
+      )}
+      {milestone.action && !isPaid && !isApproved && (
+        <button className={milestone.tone === "primary" ? "primary-btn milestone-action" : "secondary-btn milestone-action"} type="button" onClick={handleAction}>
           {milestone.action}
         </button>
       )}
     </article>
+  );
+}
+
+function ApproveMilestoneModal({ milestone, onClose, onApprove }) {
+  return (
+    <div className="approve-fund-modal-layer" role="presentation">
+      <button className="approve-fund-modal-scrim" type="button" aria-label="Close approval" onClick={onClose} />
+      <section className="approve-fund-modal approve-step-modal" role="dialog" aria-modal="true" aria-labelledby="approve-step-title">
+        <button className="settings-drawer-close" type="button" aria-label="Close approval" onClick={onClose}>
+          <img src="/assets/prototype-icons/close.svg" alt="" />
+        </button>
+        <header>
+          <p>Approve step</p>
+          <h2 id="approve-step-title">Approve {milestone.title.toLowerCase()}</h2>
+          <span>This marks the production step as approved and lets Atelier Minho continue to the next step.</span>
+        </header>
+        <div className="approve-fund-summary single">
+          <div>
+            <span>Step</span>
+            <strong>{milestone.title}</strong>
+          </div>
+        </div>
+        <label className="approve-fund-note">
+          <span>Approval note</span>
+          <textarea rows={3} placeholder="Optional note for Atelier Minho..." />
+        </label>
+        <footer>
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onApprove}>Approve step</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function ApproveFundModal({ milestone, onClose, onApprove }) {
+  return (
+    <div className="approve-fund-modal-layer" role="presentation">
+      <button className="approve-fund-modal-scrim" type="button" aria-label="Close approve fund" onClick={onClose} />
+      <section className="approve-fund-modal" role="dialog" aria-modal="true" aria-labelledby="approve-fund-title">
+        <button className="settings-drawer-close" type="button" aria-label="Close approve fund" onClick={onClose}>
+          <img src="/assets/prototype-icons/close.svg" alt="" />
+        </button>
+        <header>
+          <p>Approve fund</p>
+          <h2 id="approve-fund-title">Release {milestone.amount} for {milestone.title.toLowerCase()}</h2>
+          <span>Funds will move from project funds to Atelier Minho after approval.</span>
+        </header>
+        <div className="approve-fund-summary">
+          <div>
+            <span>Milestone</span>
+            <strong>{milestone.title}</strong>
+          </div>
+          <div>
+            <span>Amount</span>
+            <strong>{milestone.amount}</strong>
+          </div>
+          <div>
+            <span>Review item</span>
+            <strong>Fit sample photos and uploaded files</strong>
+          </div>
+        </div>
+        <label className="approve-fund-note">
+          <span>Approval note</span>
+          <textarea rows={3} placeholder="Optional note for Atelier Minho..." />
+        </label>
+        <footer>
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onApprove}>Approve and release fund</button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
@@ -3863,7 +4422,7 @@ function QuoteDetailScreen({ selectedQuote, goTo }) {
   const factory = factories.find((item) => item.name === selectedQuote) || factories[0];
   return (
     <div className="quote-detail-layout">
-      <button className="text-link quote-back-link" type="button" onClick={() => goTo("quotes")}>&lt; Back to factory quotes</button>
+      <button className="text-link quote-back-link" type="button" onClick={() => goTo("quotes")}>‹ Back to factory quotes</button>
       <header className="quote-detail-header">
         <h1>{factory.name} quotation</h1>
         <p>Review the full factory quote before messaging, asking a follow-up question, or choosing this quote for contract terms.</p>
@@ -4181,7 +4740,7 @@ function MilestonesScreen({ milestoneTypes, setMilestoneTypes }) {
   );
 }
 
-function FundScreen() {
+function FundScreen({ fundingMilestone, goTo, setFundingMilestone }) {
   return (
     <div className="stack">
       <Card title="Select billing method">

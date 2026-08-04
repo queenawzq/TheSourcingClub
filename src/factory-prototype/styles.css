@@ -422,6 +422,23 @@
   gap: 10px;
 }
 
+.onboarding-chip-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.onboarding-chip-heading h2 {
+  margin: 0;
+}
+
+.onboarding-chip-heading p {
+  margin: 0;
+  color: #5d6f8f;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
 .onboarding-chip-group.balanced .tag-row {
   max-width: 760px;
 }
@@ -449,6 +466,34 @@
   border-color: #8db7ff;
   background: #eaf4ff;
   color: #174df2;
+}
+
+.onboarding-chip-add-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  max-width: 520px;
+}
+
+.onboarding-chip-add-row input {
+  flex: 1;
+  height: 34px;
+  padding: 0 12px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  color: #0b1020;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.onboarding-chip-add-row input::placeholder {
+  color: #8a97aa;
+}
+
+.onboarding-chip-add-row .compact-btn {
+  min-height: 34px;
+  padding: 0 16px;
 }
 
 .certification-upload-list {
@@ -1208,6 +1253,10 @@
   grid-column: 2;
   grid-row: 2;
   margin-top: 0;
+}
+
+.factory-messages-shell:not(.has-side-panel) {
+  grid-template-columns: 300px minmax(560px, 1fr);
 }
 
 .factory-active-projects-panel {
@@ -4467,16 +4516,17 @@
   color: #174df2;
 }
 
+.factory-billing-summary-strip {
+  margin-bottom: -10px;
+}
+
 .factory-project-detail-tabs {
+  gap: 44px;
   margin-top: -2px;
 }
 
 .factory-project-detail-tabs button {
-  min-width: 82px;
-}
-
-.factory-project-detail-tabs button:first-child {
-  min-width: 112px;
+  min-width: 0;
 }
 
 .factory-milestone-card {
@@ -4493,6 +4543,133 @@
   font-size: 22px;
   font-weight: 700;
   line-height: 28px;
+}
+
+.factory-detail-tab-panel {
+  gap: 18px;
+}
+
+.factory-detail-file-list {
+  display: grid;
+  gap: 12px;
+}
+
+.factory-detail-file-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 74px;
+  padding: 16px 18px;
+  border: 1px solid #d6e0ec;
+  border-radius: 8px;
+  background: #fff;
+  color: #0b1223;
+  text-align: left;
+}
+
+.factory-detail-file-row strong,
+.factory-detail-file-row span {
+  display: block;
+}
+
+.factory-detail-file-row strong {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.factory-detail-file-row span {
+  margin-top: 4px;
+  color: #61738f;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.factory-detail-file-row img {
+  width: 18px;
+  height: 18px;
+}
+
+.factory-contract-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.factory-contract-detail-grid.single {
+  grid-template-columns: 1fr;
+}
+
+.factory-contract-section {
+  display: grid;
+  gap: 12px;
+}
+
+.factory-contract-section h3 {
+  margin: 0;
+  color: #0b1223;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 22px;
+}
+
+.factory-contract-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.factory-contract-panel-header h2 {
+  margin: 0;
+}
+
+.factory-contract-detail-item {
+  display: grid;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid #d6e0ec;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.factory-contract-detail-item span {
+  color: #61738f;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.factory-contract-detail-item strong {
+  color: #182234;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.factory-contract-attachment-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #d6e0ec;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.factory-contract-attachment-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid #d6e0ec;
+  border-radius: 8px;
+  background: #fff;
+  color: #182234;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .factory-milestone-list {
