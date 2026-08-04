@@ -2409,7 +2409,7 @@ function FactoryCapacityDrawer({ language, initialCapacity, onClose, onSaveCapac
   const isZh = language === "zh";
   const [lineHours, setLineHours] = useState(initialCapacity || "2400");
   const [capacityUnits, setCapacityUnits] = useState("7200");
-  const [capacityInputMode, setCapacityInputMode] = useState("hours");
+  const [capacityInputMode, setCapacityInputMode] = useState("units");
   const [selectedCategory, setSelectedCategory] = useState("wovens");
   const [monthOffset, setMonthOffset] = useState(0);
   const [monthSelections, setMonthSelections] = useState({
@@ -2452,10 +2452,10 @@ function FactoryCapacityDrawer({ language, initialCapacity, onClose, onSaveCapac
   const previewFormula = isZh
     ? capacityInputMode === "hours"
       ? `${availableHours.toLocaleString()} 小时 × 60 分钟 ÷ ${activeCategory.minutesPerPiece} 分钟 / 件参考款 × ${activeRange.min}%-${activeRange.max}% 可用`
-      : `${directUnits.toLocaleString()} 件 / 月 × ${activeRange.min}%-${activeRange.max}% 可用，参考款约 ${activeCategory.minutesPerPiece} 分钟 / 件`
+      : `${directUnits.toLocaleString()} 件 / 月 × ${activeRange.min}%-${activeRange.max}% 可用`
     : capacityInputMode === "hours"
       ? `${availableHours.toLocaleString()} hours × 60 min ÷ ${activeCategory.minutesPerPiece} min/pc reference style × ${activeRange.min}%-${activeRange.max}% free`
-      : `${directUnits.toLocaleString()} units / month × ${activeRange.min}%-${activeRange.max}% free, using ${activeCategory.minutesPerPiece} min/pc reference timing`;
+      : `${directUnits.toLocaleString()} units / month × ${activeRange.min}%-${activeRange.max}% free`;
 
   const updateMonthSelection = (month, selected) => {
     setMonthSelections((current) => ({ ...current, [month]: selected }));
@@ -2492,8 +2492,8 @@ function FactoryCapacityDrawer({ language, initialCapacity, onClose, onSaveCapac
           <div className="capacity-section-heading-row">
             <h3>{capacityInputMode === "hours" ? (isZh ? "每月可用产线工时" : "Line-hours available per month") : (isZh ? "每月可生产件数" : "Units available per month")}</h3>
             <div className="capacity-mode-toggle" role="group" aria-label={isZh ? "产能输入方式" : "Capacity input method"}>
-              <button className={capacityInputMode === "hours" ? "selected" : ""} type="button" onClick={() => setCapacityInputMode("hours")}>{isZh ? "工时" : "Hours"}</button>
               <button className={capacityInputMode === "units" ? "selected" : ""} type="button" onClick={() => setCapacityInputMode("units")}>{isZh ? "件数" : "Units"}</button>
+              <button className={capacityInputMode === "hours" ? "selected" : ""} type="button" onClick={() => setCapacityInputMode("hours")}>{isZh ? "工时" : "Hours"}</button>
             </div>
           </div>
           <div className="line-hours-control">
@@ -2521,20 +2521,22 @@ function FactoryCapacityDrawer({ language, initialCapacity, onClose, onSaveCapac
           </p>
         </section>
 
-        <section className="capacity-drawer-section">
-          <h3>{isZh ? "估算使用标准参考款" : "Estimate uses a standard reference style"}</h3>
-          <div className="reference-style-card">
-            <div>
-              <strong>{isZh ? activeCategory.referenceStyleZh : activeCategory.referenceStyle}</strong>
-              <span>~{activeCategory.minutesPerPiece} min/pc</span>
+        {capacityInputMode === "hours" && (
+          <section className="capacity-drawer-section">
+            <h3>{isZh ? "估算使用标准参考款" : "Estimate uses a standard reference style"}</h3>
+            <div className="reference-style-card">
+              <div>
+                <strong>{isZh ? activeCategory.referenceStyleZh : activeCategory.referenceStyle}</strong>
+                <span>~{activeCategory.minutesPerPiece} min/pc</span>
+              </div>
+              <p>
+                {isZh
+                  ? "切换品类时，参考款和每件用时会一起改变。品牌提供 tech pack 后，可以按实际款式调整估算。"
+                  : "When the category changes, the reference style and time per unit change with it. Once a brand shares a tech pack, the estimate can be adjusted to the actual style."}
+              </p>
             </div>
-            <p>
-              {isZh
-                ? "切换品类时，参考款和每件用时会一起改变。品牌提供 tech pack 后，可以按实际款式调整估算。"
-                : "When the category changes, the reference style and time per unit change with it. Once a brand shares a tech pack, the estimate can be adjusted to the actual style."}
-            </p>
-          </div>
-        </section>
+          </section>
+        )}
 
         <section className="capacity-drawer-section">
           <h3>{isZh ? "每月接单状态" : "Booking level, month by month"}</h3>
@@ -2847,7 +2849,7 @@ function OnboardingField({ label, placeholder }) {
 function OnboardingCapacitySetup({ content, language }) {
   const [lineHours, setLineHours] = useState("2400");
   const [capacityUnits, setCapacityUnits] = useState("7200");
-  const [capacityInputMode, setCapacityInputMode] = useState("hours");
+  const [capacityInputMode, setCapacityInputMode] = useState("units");
   const [selectedCategory, setSelectedCategory] = useState("wovens");
   const [monthOffset, setMonthOffset] = useState(0);
   const [monthSelections, setMonthSelections] = useState({
@@ -2921,8 +2923,8 @@ function OnboardingCapacitySetup({ content, language }) {
               : (language === "zh" ? "每月可生产件数" : "Units available per month")}
           </p>
           <div className="capacity-mode-toggle" role="group" aria-label={language === "zh" ? "产能输入方式" : "Capacity input method"}>
-            <button className={capacityInputMode === "hours" ? "selected" : ""} type="button" onClick={() => setCapacityInputMode("hours")}>{language === "zh" ? "工时" : "Hours"}</button>
             <button className={capacityInputMode === "units" ? "selected" : ""} type="button" onClick={() => setCapacityInputMode("units")}>{language === "zh" ? "件数" : "Units"}</button>
+            <button className={capacityInputMode === "hours" ? "selected" : ""} type="button" onClick={() => setCapacityInputMode("hours")}>{language === "zh" ? "工时" : "Hours"}</button>
           </div>
         </div>
 
@@ -2945,17 +2947,19 @@ function OnboardingCapacitySetup({ content, language }) {
           <span>{capacityInputMode === "hours" ? (language === "zh" ? "小时 / 月" : "hours / month") : (language === "zh" ? "件 / 月" : "units / month")}</span>
         </label>
 
-        <div className="reference-style-card onboarding-reference-style">
-          <div>
-            <strong>{language === "zh" ? activeCategory.referenceStyleZh : activeCategory.referenceStyle}</strong>
-            <span>{language === "zh" ? `~${activeCategory.minutesPerPiece} 分钟 / 件参考款` : `~${activeCategory.minutesPerPiece} min/pc reference style`}</span>
+        {capacityInputMode === "hours" && (
+          <div className="reference-style-card onboarding-reference-style">
+            <div>
+              <strong>{language === "zh" ? activeCategory.referenceStyleZh : activeCategory.referenceStyle}</strong>
+              <span>{language === "zh" ? `~${activeCategory.minutesPerPiece} 分钟 / 件参考款` : `~${activeCategory.minutesPerPiece} min/pc reference style`}</span>
+            </div>
+            <p>
+              {language === "zh"
+                ? "切换品类时，参考款和每件用时会一起改变。"
+                : "Changing category updates the reference style and time per unit."}
+            </p>
           </div>
-          <p>
-            {language === "zh"
-              ? "切换品类时，参考款和每件用时会一起改变。"
-              : "Changing category updates the reference style and time per unit."}
-          </p>
-        </div>
+        )}
 
         <div className="onboarding-month-section">
           <div className="onboarding-month-heading-row">

@@ -3215,12 +3215,13 @@
 }
 
 .factory-rfq-card .factory-request-card-body {
-  grid-template-columns: minmax(560px, 1fr) 420px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 38%);
 }
 
 .factory-rfq-card .factory-request-visuals {
   justify-self: end;
-  width: 420px;
+  width: 100%;
+  max-width: 420px;
 }
 
 .factory-projects-page .rfqs-shell {
@@ -3296,12 +3297,13 @@
 }
 
 .factory-active-project-card .factory-request-card-body {
-  grid-template-columns: minmax(560px, 1fr) 420px;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 38%);
 }
 
 .factory-order-visuals {
   justify-self: end;
-  width: 420px;
+  width: 100%;
+  max-width: 420px;
 }
 
 .factory-project-card {
@@ -5798,6 +5800,29 @@
 
   .factory-detail-side {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1320px) {
+  .factory-rfq-card .factory-request-card-top,
+  .factory-active-project-card .factory-request-card-top {
+    grid-template-columns: 1fr;
+  }
+
+  .factory-rfq-card .factory-request-card-actions,
+  .factory-active-project-card .factory-request-card-actions {
+    justify-content: flex-start;
+  }
+
+  .factory-rfq-card .factory-request-card-body,
+  .factory-active-project-card .factory-request-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .factory-rfq-card .factory-request-visuals,
+  .factory-order-visuals {
+    justify-self: stretch;
+    max-width: none;
   }
 }
 

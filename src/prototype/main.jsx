@@ -754,7 +754,7 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <SideNav
-        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" ? "" : screen === "projects" ? "Production orders" : screen === "rfqs" ? "RFQs" : "RFQs"}
+        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "rfqs" ? "RFQs" : "RFQs"}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onNav={(label) => {
@@ -807,7 +807,7 @@ function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
     { label: "Browse factories", icon: "explore" },
     { label: "Connections", icon: "connections" },
     { label: "Messages", icon: "messages" },
-    { label: "Bookmarks", icon: "bookmarks" },
+    { label: "Saved", icon: "bookmarks" },
     { label: "Settings", icon: "settings" },
     { label: "Notifications", icon: "notification" }
   ];
@@ -3321,6 +3321,11 @@ function FundScreen() {
 }
 
 function SuccessScreen({ goTo }) {
+  const goToDashboard = () => {
+    window.history.replaceState(null, "", `${window.location.pathname}?screen=home`);
+    goTo("home");
+  };
+
   return (
     <div className="stack">
       <section className="success-card">
@@ -3340,7 +3345,7 @@ function SuccessScreen({ goTo }) {
           </p>
         </section>
         <div className="success-actions">
-          <button className="primary-btn" type="button" onClick={() => goTo("projects")}>
+          <button className="primary-btn" type="button" onClick={goToDashboard}>
             Go to dashboard
           </button>
           <button className="secondary-btn" type="button">
