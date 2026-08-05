@@ -918,8 +918,8 @@ const onboardingCopy = {
         title: "What type of production does your factory specialize in?",
         intro: "Start with the production method, then choose the garment categories you can reliably make.",
         groups: [
-          ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods", "Other"], ["Cut & sew knits", "Wovens"]],
-          ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories", "Other"], ["Tops", "Bottoms"]],
+          ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"], ["Cut & sew knits", "Wovens"]],
+          ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"], ["Tops", "Bottoms"]],
           ["Makes", ["Button-down shirts", "Poplin blouses", "Woven dresses", "Linen co-ords", "Lightweight jackets", "Pleated skirts", "Rib tops", "Canvas totes", "Denim jackets", "Swim sets"], ["Button-down shirts", "Poplin blouses", "Woven dresses"]],
           ["Market level", ["Luxury / high-end", "Premium / contemporary", "Mid range", "Mass market"], ["Premium / contemporary"]]
         ],
@@ -1135,6 +1135,7 @@ const factoryScreens = [
   "projects",
   "detail",
   "profile",
+  "profileCompletion",
   "messages",
   "saved",
   "billing",
@@ -1200,7 +1201,7 @@ function getCapacityUnitRange(lineHours, minPercent = 60, maxPercent = 100) {
 function App() {
   const query = new URLSearchParams(window.location.search);
   const requestedScreen = query.get("screen");
-  const shouldForceOnboarding = query.get("onboarding") === "1" || query.get("view") === "onboarding";
+  const shouldForceOnboarding = requestedScreen === "onboarding" || query.get("onboarding") === "1" || query.get("view") === "onboarding";
   if (shouldForceOnboarding) {
     window.localStorage.removeItem("tscFactoryPrototypeScreen");
   }
@@ -1221,7 +1222,7 @@ function App() {
   const [capacityDrawerOpen, setCapacityDrawerOpen] = useState(false);
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
   const selectedProject = brandProjects[0];
-  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "profile" ? "" : "Browse RFQs";
+  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "profile" || screen === "profileCompletion" ? "" : "Browse RFQs";
 
   useEffect(() => {
     if (!onboardingComplete || !factoryScreens.includes(screen)) return;
@@ -1314,7 +1315,10 @@ function App() {
         />
       )}
       {screen === "profile" && (
-        <FactoryProfilePage language={onboardingLanguage} />
+        <FactoryProfilePage language={onboardingLanguage} onViewCompletion={() => setScreen("profileCompletion")} />
+      )}
+      {screen === "profileCompletion" && (
+        <FactoryProfileCompletionPage onBack={() => setScreen("profile")} />
       )}
       {screen === "browse" && (
         <FactoryBrowsePage
@@ -1553,6 +1557,7 @@ const factoryProfileData = {
     "Premium cut-and-sew partner for woven shirts, lightweight tops, bottoms, and contemporary capsule production. Best for brands that need sampling support, clear production communication, and smaller paid production runs.",
   productionTypes: ["Cut & sew knits", "Wovens"],
   categories: ["Tops", "Bottoms", "Activewear", "Outerwear"],
+  makes: ["Button-down shirts", "Poplin blouses", "Woven dresses"],
   marketLevel: "Premium / contemporary",
   services: ["Full package (FPP)", "Pattern making", "Sample development", "Tech pack support", "Grading"],
   tools: ["CLO 3D", "Lectra", "Gerber"],
@@ -1560,14 +1565,22 @@ const factoryProfileData = {
   moq: "100 units / style",
   leadTime: "30-45 days",
   lineHours: "2,400 hours / month",
+  capacityCategoryKey: "wovens",
+  capacityInputMode: "units",
+  capacityMonthlyUnits: "7200",
+  capacityMonthSelections: {
+    Aug: "open",
+    Sep: "partial",
+    Oct: "full"
+  },
   capacityEstimate: "Aug roughly 4,800-8,000 woven shirts",
   booking: "Aug mostly open; Sep partly booked",
   referenceStyle: "Basic woven shirt · ~18 min/pc",
   certifications: [
     { name: "Business registration", status: "Verified" },
     { name: "OEKO-TEX Standard 100", status: "Uploaded" },
-    { name: "GOTS", status: "Pending upload" },
-    { name: "BSCI", status: "Pending upload" }
+    { name: "GOTS", status: "Not uploaded" },
+    { name: "BSCI", status: "Not uploaded" }
   ],
   walkthrough: ["Entrance or reception", "Main production floor", "Materials/components", "Quality control area", "Packing or warehouse"],
   references: ["Maison Rue", "Elara Studio", "Northline"],
@@ -1622,13 +1635,33 @@ const factoryProfileData = {
   ]
 };
 
-function FactoryProfilePage({ language }) {
+const factoryProfileEditorOptions = {
+  productionTypes: ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"],
+  categories: ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"],
+  makes: ["Button-down shirts", "Poplin blouses", "Woven dresses", "Linen co-ords", "Lightweight jackets", "Pleated skirts", "Rib tops", "Canvas totes", "Denim jackets", "Swim sets"],
+  marketLevel: ["Luxury / high-end", "Premium / contemporary", "Mid range", "Mass market"],
+  services: ["Pattern making", "Grading", "Sample development", "Tech pack support", "Full package (FPP)", "CMT only"],
+  specialties: ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton", "Wash development", "Trim sourcing", "QC photo updates", "Low-MOQ sampling", "Organic poplin shirts", "Low-MOQ woven tops"],
+  tools: ["CLO 3D", "Browzwear", "Lectra", "Gerber", "None"]
+};
+
+function FactoryProfilePage({ language, onViewCompletion }) {
   const isZh = language === "zh";
-  const data = factoryProfileData;
+  const [profileData, setProfileData] = useState(factoryProfileData);
+  const data = profileData;
   const [projectTab, setProjectTab] = useState("completed");
   const [profileMode, setProfileMode] = useState(new URLSearchParams(window.location.search).get("view") === "public" ? "public" : "edit");
+  const [activeEditor, setActiveEditor] = useState(null);
   const isOwnerView = profileMode === "edit";
   const visibleProjects = projectTab === "completed" ? data.pastProjects : data.inProductionProjects;
+  const openEditor = (editor) => {
+    setProfileMode("edit");
+    setActiveEditor(editor);
+  };
+  const saveProfileSection = (updates) => {
+    setProfileData((current) => ({ ...current, ...updates }));
+    setActiveEditor(null);
+  };
   const overviewRows = [
     ["Year founded", data.founded],
     ["Registration date", data.registrationDate],
@@ -1658,7 +1691,7 @@ function FactoryProfilePage({ language }) {
             <button
               className={isOwnerView ? "active" : ""}
               type="button"
-              onClick={() => setProfileMode("edit")}
+              onClick={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
               role="tab"
               aria-selected={isOwnerView}
             >
@@ -1677,11 +1710,11 @@ function FactoryProfilePage({ language }) {
         </section>
 
         <section className="factory-profile-hero">
-          {isOwnerView && <button className="factory-profile-banner-edit" type="button">Edit banner</button>}
+          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit banner</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
               <div className="factory-profile-logo">AM</div>
-              {isOwnerView && <button className="factory-profile-logo-edit" type="button">Edit</button>}
+              {isOwnerView && <button className="factory-profile-logo-edit" type="button" onClick={() => openEditor("overview")}>Edit</button>}
             </div>
             <div>
               <div className="factory-profile-title-row">
@@ -1723,7 +1756,7 @@ function FactoryProfilePage({ language }) {
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Overview" editable={isOwnerView} />
+              <FactoryProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
               <p>{data.intro}</p>
               <div className="factory-profile-detail-grid">
                 {overviewRows.map(([label, value]) => <DetailPair label={label} value={value} key={label} />)}
@@ -1731,22 +1764,24 @@ function FactoryProfilePage({ language }) {
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Production fit" editable={isOwnerView} />
+              <FactoryProfileCardHeader title="Production fit" editable={isOwnerView} onEdit={() => openEditor("production")} />
+              <FactoryProfileChipSection label="Production type" items={data.productionTypes} />
               <FactoryProfileChipSection label="Product categories" items={data.categories} />
+              <FactoryProfileChipSection label="Makes" items={data.makes} />
               <FactoryProfileChipSection label="Services" items={data.services} />
               <FactoryProfileChipSection label="Specialties" items={data.specialties} />
               <FactoryProfileChipSection label="Digital tools" items={data.tools} />
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Capacity and terms" editable={isOwnerView} />
+              <FactoryProfileCardHeader title="Capacity and terms" editable={isOwnerView} onEdit={() => openEditor("capacity")} />
               <div className="factory-profile-detail-grid">
                 {capacityRows.map(([label, value]) => <DetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Factory walkthrough" editable={isOwnerView} actionLabel="Manage video" />
+              <FactoryProfileCardHeader title="Factory walkthrough" editable={isOwnerView} actionLabel="Manage video" onEdit={() => openEditor("walkthrough")} />
               <div className="factory-profile-video-card">
                 <div className="factory-profile-video-preview">
                   <img src="/assets/factory-header.png" alt="Factory walkthrough preview" />
@@ -1763,7 +1798,7 @@ function FactoryProfilePage({ language }) {
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Sample work" editable={isOwnerView} actionLabel="Manage samples" />
+              <FactoryProfileCardHeader title="Sample work" editable={isOwnerView} actionLabel="Manage samples" onEdit={() => openEditor("samples")} />
               <div className="factory-profile-product-grid">
                 {data.products.map((product) => (
                   <article className="factory-profile-product" key={product.title}>
@@ -1781,7 +1816,7 @@ function FactoryProfilePage({ language }) {
                   <h2>Past projects</h2>
                   <p>Completed TSC orders with brand feedback, project scope, and production strengths.</p>
                 </div>
-                {isOwnerView && <button className="factory-profile-edit-button" type="button">Manage projects</button>}
+                {isOwnerView && <button className="factory-profile-edit-button" type="button" onClick={() => openEditor("projects")}>Manage projects</button>}
               </div>
               <div className="factory-profile-project-tabs" role="tablist" aria-label="Past project status">
                 <button
@@ -1835,24 +1870,19 @@ function FactoryProfilePage({ language }) {
             {isOwnerView ? (
               <>
                 <section className="factory-profile-card factory-profile-owner-card">
-                  <h2>Profile status</h2>
+                  <div className="factory-profile-card-header">
+                    <h2>Profile status</h2>
+                    <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>See details</button>
+                  </div>
                   <div className="factory-profile-status-meter">
                     <strong>88%</strong>
                     <span>Profile complete</span>
                   </div>
                   <div className="factory-profile-status-track"><span /></div>
-                  <p>Add the remaining certifications and one more project photo to strengthen this profile.</p>
+                  <p>Add the remaining certifications and keep monthly capacity current to strengthen this profile.</p>
                   <div className="factory-profile-owner-actions">
                     <button className="primary-btn" type="button">Publish changes</button>
                     <button className="secondary-btn" type="button" onClick={() => setProfileMode("public")}>View as public</button>
-                  </div>
-                </section>
-                <section className="factory-profile-card">
-                  <h2>Suggested updates</h2>
-                  <div className="factory-profile-owner-task-list">
-                    <span>Upload GOTS certificate</span>
-                    <span>Add August available capacity</span>
-                    <span>Add one production-floor photo</span>
                   </div>
                 </section>
               </>
@@ -1872,7 +1902,7 @@ function FactoryProfilePage({ language }) {
             )}
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Manage docs" />
+              <FactoryProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Manage docs" onEdit={() => openEditor("verification")} />
               <div className="factory-profile-cert-list">
                 {data.certifications.map((cert) => (
                   <div className="factory-profile-cert" key={cert.name}>
@@ -1884,7 +1914,7 @@ function FactoryProfilePage({ language }) {
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Client references" editable={isOwnerView} actionLabel="Edit" />
+              <FactoryProfileCardHeader title="Client references" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("references")} />
               <div className="factory-profile-reference-list">
                 {data.references.map((reference) => (
                   <div key={reference}>
@@ -1897,15 +1927,164 @@ function FactoryProfilePage({ language }) {
           </aside>
         </div>
       </div>
+      {activeEditor && createPortal((
+        <FactoryProfileEditModal
+          editor={activeEditor}
+          data={data}
+          onClose={() => setActiveEditor(null)}
+          onSave={saveProfileSection}
+        />
+      ), document.body)}
     </main>
   );
 }
 
-function FactoryProfileCardHeader({ title, editable = false, actionLabel = "Edit" }) {
+const profileCompletionChecks = [
+  {
+    title: "Factory identity",
+    status: "Verified",
+    tone: "complete",
+    description: "Factory name, location, nearest port, company registration date, employee count, and registered capital are complete."
+  },
+  {
+    title: "Production fit",
+    status: "Verified",
+    tone: "complete",
+    description: "Production type, product categories, make tags, services, specialties, market level, and digital tools are filled in."
+  },
+  {
+    title: "Capacity and terms",
+    status: "Verified",
+    tone: "complete",
+    description: "MOQ, lead time, booking level, reference style, and estimated monthly capacity are visible to brands."
+  },
+  {
+    title: "Client proof",
+    status: "Verified",
+    tone: "complete",
+    description: "Completed projects, repeat-brand history, client references, and sample work are attached to support buyer trust."
+  },
+  {
+    title: "Verification documents",
+    status: "In review",
+    tone: "progress",
+    description: "Business registration is verified and OEKO-TEX is uploaded. GOTS and BSCI are still pending, so verified-certification matching is not fully unlocked yet."
+  },
+  {
+    title: "Factory walkthrough",
+    status: "Verified",
+    tone: "complete",
+    description: "The walkthrough video is present and covers the core production areas requested during onboarding."
+  },
+  {
+    title: "GOTS certificate",
+    status: "Needs attention",
+    tone: "missing",
+    description: "Upload the certificate file or remove the pending certification if it is not currently held.",
+    action: "Upload certificate"
+  },
+  {
+    title: "Monthly capacity freshness",
+    status: "Needs attention",
+    tone: "missing",
+    description: "August capacity is available, but the profile needs the latest monthly update to improve RFQ matching confidence.",
+    action: "Update capacity"
+  },
+];
+
+const profileCompletionIconMap = {
+  complete: "/assets/prototype-icons/done.svg",
+  progress: "/assets/prototype-icons/pending.svg",
+  missing: "/assets/prototype-icons/warning.svg"
+};
+
+function FactoryProfileCompletionPage({ onBack }) {
+  const completeCount = profileCompletionChecks.filter((item) => item.tone === "complete").length;
+  const progressCount = profileCompletionChecks.filter((item) => item.tone === "progress").length;
+  const attentionCount = profileCompletionChecks.filter((item) => item.tone === "missing").length;
+
+  return (
+    <main className="factory-profile-page factory-profile-completion-page">
+      <div className="factory-profile-shell">
+        <button className="text-link factory-profile-completion-back" type="button" onClick={onBack}>‹ Back to profile</button>
+
+        <section className="factory-profile-completion-hero">
+          <div>
+            <span>Profile verification</span>
+            <h1>Profile completion summary</h1>
+            <p>You can publish and receive matching RFQs now. Complete the items below to improve trust signals and help brands understand the factory faster.</p>
+          </div>
+          <div className="factory-profile-completion-score">
+            <strong>88%</strong>
+            <span>Profile complete</span>
+            <div className="factory-profile-status-track"><span /></div>
+          </div>
+        </section>
+
+        <section className="factory-profile-completion-layout">
+          <div className="factory-profile-completion-main">
+            <section className="factory-profile-card factory-profile-completion-group">
+              <div className="factory-profile-section-header">
+                <div>
+                  <h2>Verification checklist</h2>
+                  <p>Each item shows whether brands can rely on it now, whether TSC is still reviewing it, or whether action is needed.</p>
+                </div>
+              </div>
+              <div className="profile-completion-check-list">
+                {profileCompletionChecks.map((item) => (
+                  <article className={`profile-completion-check ${item.tone}`} key={item.title}>
+                    <span className="profile-completion-check-icon" aria-hidden="true">
+                      <img src={profileCompletionIconMap[item.tone]} alt="" />
+                    </span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <small>{item.status}</small>
+                      <p>{item.description}</p>
+                      {item.action && <button className="secondary-btn compact-btn" type="button">{item.action}</button>}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <aside className="factory-profile-side">
+            <section className="factory-profile-card">
+              <h2>Summary</h2>
+              <div className="profile-completion-summary-grid">
+                <ProfileCompletionSummaryRow label="Verified" value={`${completeCount} items`} />
+                <ProfileCompletionSummaryRow label="In review" value={`${progressCount} items`} />
+                <ProfileCompletionSummaryRow label="Needs attention" value={`${attentionCount} items`} />
+              </div>
+            </section>
+            <section className="factory-profile-card">
+              <h2>Suggested updates</h2>
+              <div className="factory-profile-owner-task-list">
+                <span>Upload GOTS certificate</span>
+                <span>Add August available capacity</span>
+              </div>
+            </section>
+          </aside>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function ProfileCompletionSummaryRow({ label, value }) {
+  return (
+    <div className="profile-completion-summary-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function FactoryProfileCardHeader({ title, editable = false, actionLabel = "Edit", onEdit }) {
   return (
     <div className="factory-profile-card-header">
       <h2>{title}</h2>
-      {editable && <button className="factory-profile-edit-button" type="button">{actionLabel}</button>}
+      {editable && <button className="factory-profile-edit-button" type="button" onClick={onEdit}>{actionLabel}</button>}
     </div>
   );
 }
@@ -1918,6 +2097,443 @@ function FactoryProfileChipSection({ label, items }) {
         {items.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
       </div>
     </div>
+  );
+}
+
+function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
+  const isSimpleMediaEditor = ["banner", "walkthrough", "samples", "projects"].includes(editor);
+  const editorTitles = {
+    overview: ["Edit overview", "Update the factory details brands see at the top of this profile."],
+    production: ["Edit production fit", "Update the production tags brands use to find and evaluate this factory."],
+    capacity: ["Edit capacity and terms", "Keep MOQ, lead time, booking level, and capacity estimates current."],
+    references: ["Edit client references", "Add or update the brand references shown on the public profile."],
+    banner: ["Edit banner", "Upload or replace the banner image used on this profile."],
+    walkthrough: ["Manage walkthrough", "Update the verified production-floor walkthrough and covered areas."],
+    samples: ["Manage samples", "Add sample work that represents the factory's strongest production fit."],
+    projects: ["Manage projects", "Update completed and in-production project proof for brands."],
+    verification: ["Manage verification documents", "Upload certificates and registration documents for profile review."]
+  };
+  const [title, helper] = editorTitles[editor] || editorTitles.overview;
+  const [form, setForm] = useState(() => ({
+    name: data.name,
+    location: data.location,
+    nearestPort: data.nearestPort,
+    founded: data.founded,
+    registrationDate: data.registrationDate,
+    employees: data.employees,
+    registeredCapital: data.registeredCapital,
+    intro: data.intro,
+    moq: data.moq,
+    leadTime: data.leadTime,
+    lineHoursInput: data.lineHours.replace(/\D/g, "") || "2400",
+    lineHours: data.lineHours,
+    capacityCategoryKey: data.capacityCategoryKey,
+    capacityInputMode: data.capacityInputMode,
+    capacityMonthlyUnits: data.capacityMonthlyUnits,
+    capacityMonthSelections: data.capacityMonthSelections,
+    capacityEstimate: data.capacityEstimate,
+    booking: data.booking,
+    referenceStyle: data.referenceStyle,
+    productionTypes: data.productionTypes,
+    categories: data.categories,
+    makes: data.makes,
+    marketLevel: [data.marketLevel],
+    services: data.services,
+    specialties: data.specialties,
+    tools: data.tools,
+    referencesText: data.references.join("\n"),
+    certifications: data.certifications
+  }));
+  const updateField = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const save = () => {
+    if (editor === "overview") {
+      onSave({
+        name: form.name,
+        location: form.location,
+        nearestPort: form.nearestPort,
+        founded: form.founded,
+        registrationDate: form.registrationDate,
+        employees: form.employees,
+        registeredCapital: form.registeredCapital,
+        intro: form.intro
+      });
+      return;
+    }
+
+    if (editor === "production") {
+      onSave({
+        productionTypes: form.productionTypes,
+        categories: form.categories,
+        makes: form.makes,
+        marketLevel: form.marketLevel[0] || data.marketLevel,
+        services: form.services,
+        specialties: form.specialties,
+        tools: form.tools
+      });
+      return;
+    }
+
+    if (editor === "capacity") {
+      const category = FACTORY_CAPACITY_CATEGORIES.find((item) => item.key === form.capacityCategoryKey) || FACTORY_CAPACITY_CATEGORIES[1];
+      const activeMonth = "Aug";
+      const activeLevel = form.capacityMonthSelections?.[activeMonth] || "open";
+      const levelRanges = {
+        open: { label: "mostly open", min: 60, max: 100 },
+        partial: { label: "partly booked", min: 25, max: 60 },
+        full: { label: "mostly full", min: 0, max: 25 }
+      };
+      const range = levelRanges[activeLevel] || levelRanges.open;
+      const availableHours = Number.parseInt(form.lineHoursInput || "0", 10) || 0;
+      const monthlyUnits = form.capacityInputMode === "hours"
+        ? Math.round((availableHours * 60) / category.minutesPerPiece)
+        : Number.parseInt(form.capacityMonthlyUnits || "0", 10) || 0;
+      const minPieces = Math.round(monthlyUnits * (range.min / 100));
+      const maxPieces = Math.round(monthlyUnits * (range.max / 100));
+      const pieceSummary = minPieces === maxPieces ? maxPieces.toLocaleString() : `${minPieces.toLocaleString()}-${maxPieces.toLocaleString()}`;
+      const monthSummary = Object.entries(form.capacityMonthSelections || {})
+        .map(([month, level]) => `${month} ${levelRanges[level]?.label || "mostly open"}`)
+        .join("; ");
+
+      onSave({
+        moq: form.moq,
+        leadTime: form.leadTime,
+        lineHours: `${availableHours.toLocaleString()} hours / month`,
+        capacityCategoryKey: form.capacityCategoryKey,
+        capacityInputMode: form.capacityInputMode,
+        capacityMonthlyUnits: String(monthlyUnits),
+        capacityMonthSelections: form.capacityMonthSelections,
+        capacityEstimate: `${activeMonth} roughly ${pieceSummary} ${category.label.toLowerCase()} units`,
+        booking: monthSummary,
+        referenceStyle: `${category.referenceStyle} · ~${category.minutesPerPiece} min/pc`
+      });
+      return;
+    }
+
+    if (editor === "references") {
+      onSave({
+        references: form.referencesText.split("\n").map((item) => item.trim()).filter(Boolean)
+      });
+      return;
+    }
+
+    if (editor === "verification") {
+      onSave({
+        certifications: form.certifications
+      });
+      return;
+    }
+
+    onClose();
+  };
+
+  return (
+    <div className="factory-profile-modal-layer" role="presentation">
+      <button className="factory-profile-modal-scrim" type="button" aria-label="Close profile editor" onClick={onClose} />
+      <section className="factory-profile-modal factory-onboarding-card" role="dialog" aria-modal="true" aria-labelledby="factory-profile-edit-title">
+        <CloseIconButton className="factory-update-close" label="Close profile editor" onClick={onClose} />
+        <header className="factory-onboarding-card-header">
+          <h1 id="factory-profile-edit-title">{title}</h1>
+          <p>{helper}</p>
+        </header>
+
+        {editor === "overview" && (
+          <div className="factory-onboarding-form-grid">
+            <ProfileEditField label="Factory name" value={form.name} onChange={(value) => updateField("name", value)} />
+            <ProfileEditField label="Factory location" value={form.location} onChange={(value) => updateField("location", value)} />
+            <ProfileEditField label="Nearest port" value={form.nearestPort} onChange={(value) => updateField("nearestPort", value)} />
+            <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
+            <ProfileEditField label="Registration date" value={form.registrationDate} onChange={(value) => updateField("registrationDate", value)} />
+            <ProfileEditField label="Total employees" value={form.employees} onChange={(value) => updateField("employees", value)} />
+            <ProfileEditField label="Registered capital" value={form.registeredCapital} onChange={(value) => updateField("registeredCapital", value)} />
+            <label className="factory-onboarding-field full-width">
+              <span>Profile overview</span>
+              <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
+            </label>
+          </div>
+        )}
+
+        {editor === "production" && (
+          <div className="factory-onboarding-section production-fit-section">
+            <ProfileChipEditor label="Production type" options={factoryProfileEditorOptions.productionTypes} selected={form.productionTypes} onChange={(items) => updateField("productionTypes", items)} />
+            <ProfileChipEditor label="Product categories" options={factoryProfileEditorOptions.categories} selected={form.categories} onChange={(items) => updateField("categories", items)} />
+            <ProfileChipEditor label="Makes" options={factoryProfileEditorOptions.makes} selected={form.makes} onChange={(items) => updateField("makes", items)} allowCustom />
+            <ProfileChipEditor label="Market level" options={factoryProfileEditorOptions.marketLevel} selected={form.marketLevel} onChange={(items) => updateField("marketLevel", items)} singleSelect />
+            <ProfileChipEditor label="Services" options={factoryProfileEditorOptions.services} selected={form.services} onChange={(items) => updateField("services", items)} />
+            <ProfileChipEditor label="Specialties" options={factoryProfileEditorOptions.specialties} selected={form.specialties} onChange={(items) => updateField("specialties", items)} allowCustom />
+            <ProfileChipEditor label="Digital tools" options={factoryProfileEditorOptions.tools} selected={form.tools} onChange={(items) => updateField("tools", items)} />
+          </div>
+        )}
+
+        {editor === "capacity" && (
+          <ProfileCapacityEditor form={form} onChange={updateField} />
+        )}
+
+        {editor === "references" && (
+          <label className="factory-onboarding-field">
+            <span>Client references</span>
+            <textarea value={form.referencesText} onChange={(event) => updateField("referencesText", event.target.value)} />
+            <small>One brand name per line.</small>
+          </label>
+        )}
+
+        {editor === "verification" && (
+          <ProfileVerificationEditor certifications={form.certifications} onChange={(items) => updateField("certifications", items)} />
+        )}
+
+        {isSimpleMediaEditor && (
+          <div className="factory-profile-modal-placeholder">
+            <button className="onboarding-file-upload" type="button">Click or drag files to upload</button>
+            <p>Uploads are mocked in this prototype, but this is the same update window pattern brands and factories use during onboarding.</p>
+          </div>
+        )}
+
+        <footer className="factory-onboarding-actions">
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={save}>Save changes</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function ProfileVerificationEditor({ certifications, onChange }) {
+  const [customCertificationName, setCustomCertificationName] = useState("");
+  const displayedCertifications = certifications.filter((cert) => cert.name !== "Business registration");
+  const addCustomCertification = (event) => {
+    event.preventDefault();
+    const nextName = customCertificationName.trim();
+    if (!nextName || displayedCertifications.some((cert) => cert.name.toLowerCase() === nextName.toLowerCase())) return;
+    onChange([...certifications, { name: nextName, status: "Not uploaded" }]);
+    setCustomCertificationName("");
+  };
+
+  return (
+    <div className="factory-onboarding-section verification-step profile-verification-editor">
+      <div className="verification-upload-block">
+        <strong>Business registration certificate</strong>
+        <div className="certification-file-row">
+          <div>
+            <span>business-registration.pdf</span>
+            <small>Verified</small>
+          </div>
+          <button type="button">
+            <img src="/assets/prototype-icons/download.svg" alt="" />
+            View
+          </button>
+        </div>
+      </div>
+
+      <form className="certification-add-control" onSubmit={addCustomCertification}>
+        <label className="factory-onboarding-field">
+          <span>Add certifications you hold</span>
+          <input
+            value={customCertificationName}
+            onChange={(event) => setCustomCertificationName(event.target.value)}
+            placeholder="Type certification name, e.g. WRAP, SEDEX, ISO 9001"
+          />
+        </label>
+        <button className="secondary-btn" type="submit">Add certification</button>
+      </form>
+
+      <div className="certification-upload-list">
+        {displayedCertifications.map((cert) => {
+          const isUploaded = cert.status === "Uploaded" || cert.status === "Verified";
+
+          return (
+            <div className="certification-upload-row" key={cert.name}>
+              <div className="certification-upload-heading">
+                <strong>{cert.name}</strong>
+                <small>{isUploaded ? cert.status : "Not uploaded"}</small>
+              </div>
+              {isUploaded ? (
+                <div className="certification-file-row">
+                  <div>
+                    <span>{`${cert.name.replace(/\s+/g, "-").toLowerCase()}-certificate.pdf`}</span>
+                    <small>Certificate uploaded</small>
+                  </div>
+                  <button type="button">
+                    <img src="/assets/prototype-icons/download.svg" alt="" />
+                    View
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button className="onboarding-file-upload certification-file-upload" type="button">Click or drag certificate to upload</button>
+                  <small>PDF, PNG, or JPG</small>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProfileEditField({ label, value, onChange }) {
+  return (
+    <label className="factory-onboarding-field">
+      <span>{label}</span>
+      <input value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function ProfileCapacityEditor({ form, onChange }) {
+  const monthNames = ["Aug", "Sep", "Oct"];
+  const selectedCategory = FACTORY_CAPACITY_CATEGORIES.find((category) => category.key === form.capacityCategoryKey) || FACTORY_CAPACITY_CATEGORIES[1];
+  const availableHours = Number.parseInt(form.lineHoursInput || "0", 10) || 0;
+  const directUnits = Number.parseInt(form.capacityMonthlyUnits || "0", 10) || 0;
+  const monthlyUnits = form.capacityInputMode === "hours"
+    ? Math.round((availableHours * 60) / selectedCategory.minutesPerPiece)
+    : directUnits;
+  const levelRanges = {
+    open: { min: 60, max: 100 },
+    partial: { min: 25, max: 60 },
+    full: { min: 0, max: 25 }
+  };
+  const activeRange = levelRanges[form.capacityMonthSelections?.Aug || "open"] || levelRanges.open;
+  const minPieces = Math.round(monthlyUnits * (activeRange.min / 100));
+  const maxPieces = Math.round(monthlyUnits * (activeRange.max / 100));
+  const pieceSummary = minPieces === maxPieces ? maxPieces.toLocaleString() : `${minPieces.toLocaleString()}-${maxPieces.toLocaleString()}`;
+  const previewFormula = form.capacityInputMode === "hours"
+    ? `${availableHours.toLocaleString()} hours × 60 min ÷ ${selectedCategory.minutesPerPiece} min/pc reference style × ${activeRange.min}%-${activeRange.max}% free`
+    : `${monthlyUnits.toLocaleString()} units / month × ${activeRange.min}%-${activeRange.max}% free`;
+  const updateMonth = (month, selected) => {
+    onChange("capacityMonthSelections", { ...form.capacityMonthSelections, [month]: selected });
+  };
+
+  return (
+    <div className="profile-capacity-editor">
+      <div className="factory-onboarding-form-grid">
+        <ProfileEditField label="Minimum order quantity" value={form.moq} onChange={(value) => onChange("moq", value)} />
+        <ProfileEditField label="Typical lead time" value={form.leadTime} onChange={(value) => onChange("leadTime", value)} />
+      </div>
+
+      <section className="onboarding-capacity-panel profile-capacity-editor-panel">
+        <div className="profile-capacity-input-stack">
+          <div className="onboarding-capacity-topline">
+            <span>Category</span>
+            <label className="capacity-select-field onboarding-capacity-select">
+              <select value={form.capacityCategoryKey} onChange={(event) => onChange("capacityCategoryKey", event.target.value)} aria-label="Select category">
+                {FACTORY_CAPACITY_CATEGORIES.map((category) => (
+                  <option value={category.key} key={category.key}>{category.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <div className="capacity-section-heading-row onboarding-capacity-input-heading">
+            <p className="capacity-helper">{form.capacityInputMode === "hours" ? "Line-hours available per month" : "Units available per month"}</p>
+            <div className="capacity-mode-toggle" role="group" aria-label="Capacity input method">
+              <button className={form.capacityInputMode === "units" ? "selected" : ""} type="button" onClick={() => onChange("capacityInputMode", "units")}>Units</button>
+              <button className={form.capacityInputMode === "hours" ? "selected" : ""} type="button" onClick={() => onChange("capacityInputMode", "hours")}>Hours</button>
+            </div>
+          </div>
+
+          <label className="line-hours-control onboarding-line-hours">
+            {form.capacityInputMode === "hours" ? (
+              <input
+                inputMode="numeric"
+                value={form.lineHoursInput}
+                onChange={(event) => onChange("lineHoursInput", event.target.value.replace(/\D/g, ""))}
+                aria-label="Line-hours available per month"
+              />
+            ) : (
+              <input
+                inputMode="numeric"
+                value={form.capacityMonthlyUnits}
+                onChange={(event) => onChange("capacityMonthlyUnits", event.target.value.replace(/\D/g, ""))}
+                aria-label="Units available per month"
+              />
+            )}
+            <span>{form.capacityInputMode === "hours" ? "hours / month" : "units / month"}</span>
+          </label>
+
+          {form.capacityInputMode === "hours" && (
+            <div className="reference-style-card onboarding-reference-style">
+              <div>
+                <strong>{selectedCategory.referenceStyle}</strong>
+                <span>~{selectedCategory.minutesPerPiece} min/pc reference style</span>
+              </div>
+              <p>Changing category updates the reference style and estimated monthly unit range.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="onboarding-month-section">
+          <div className="onboarding-month-heading-row">
+            <h2>Booking level, month by month</h2>
+          </div>
+          <div className="onboarding-month-list">
+            {monthNames.map((month) => (
+              <CapacityMonthRow
+                language="en"
+                month={month}
+                selected={form.capacityMonthSelections?.[month] || "open"}
+                onSelect={(selected) => updateMonth(month, selected)}
+                key={month}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="capacity-brand-preview onboarding-capacity-preview">
+          <span>BRANDS WILL SEE</span>
+          <strong>{`${selectedCategory.label} · Aug start · roughly ${pieceSummary} pieces that month`}</strong>
+          <p>{previewFormula}</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ProfileChipEditor({ label, options, selected, onChange, allowCustom = false, singleSelect = false }) {
+  const [customValue, setCustomValue] = useState("");
+  const visibleOptions = [...options, ...selected.filter((item) => !options.includes(item))];
+  const toggleOption = (option) => {
+    if (singleSelect) {
+      onChange([option]);
+      return;
+    }
+
+    onChange(selected.includes(option)
+      ? selected.filter((item) => item !== option)
+      : [...selected, option]);
+  };
+  const addCustomOption = (event) => {
+    event.preventDefault();
+    const nextOption = customValue.trim();
+    if (!nextOption || visibleOptions.includes(nextOption)) return;
+    onChange([...selected, nextOption]);
+    setCustomValue("");
+  };
+
+  return (
+    <section className="onboarding-chip-group balanced">
+      <div className="onboarding-chip-heading">
+        <h2>{label}</h2>
+      </div>
+      <div className="tag-row compact-tags">
+        {visibleOptions.map((option) => (
+          <button
+            className={selected.includes(option) ? "tag selected" : "tag"}
+            type="button"
+            aria-pressed={selected.includes(option)}
+            onClick={() => toggleOption(option)}
+            key={option}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+      {allowCustom && (
+        <form className="onboarding-chip-add-row" onSubmit={addCustomOption}>
+          <input value={customValue} onChange={(event) => setCustomValue(event.target.value)} placeholder="Add your own" />
+          <button className="secondary-btn compact-btn" type="submit">Add</button>
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -4075,7 +4691,7 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false }
   const [customOptions, setCustomOptions] = useState([]);
   const [customValue, setCustomValue] = useState("");
   const isSingleSelect = label.toLowerCase().includes("market") || label.includes("市场");
-  const canAddCustom = ["makes", "specializes", "可生产款式", "专长"].some((term) =>
+  const canAddCustom = ["production type", "product categories", "makes", "specializes", "生产类型", "产品品类", "可生产款式", "专长"].some((term) =>
     label.toLowerCase().includes(term)
   );
   const groupCopy = {

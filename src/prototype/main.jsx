@@ -46,6 +46,12 @@ const screenMeta = {
     description: "",
     cta: ""
   },
+  profileCompletion: {
+    step: 0,
+    title: "Profile completion",
+    description: "",
+    cta: ""
+  },
   messages: {
     step: 0,
     title: "Messages",
@@ -799,7 +805,7 @@ const brandOnboardingSteps = [
   {
     title: "Welcome to The Sourcing Club",
     intro: "Let's set up your brand profile. It takes about 4 minutes, and you can edit everything later.",
-    meta: "9 steps · 4 minutes",
+    meta: "8 steps · 3 minutes",
     cta: "Get started",
     type: "welcome"
   },
@@ -818,19 +824,14 @@ const brandOnboardingSteps = [
     helper: "We'll use this to help build your profile in a later step."
   },
   {
-    title: "What do you make?",
-    intro: "Choose the product areas and market level factories should associate with your brand.",
+    title: "What are you looking to make?",
+    intro: "Choose the production methods and product categories factories should match against.",
     type: "chips",
     groups: [
-      ["Product categories", ["Womenswear", "Menswear", "Childrenswear", "Activewear", "Swimwear", "Accessories"], ["Womenswear"]],
-      ["Garment focus", ["Wovens", "Cut & sew knits", "Knitwear", "Denim", "Outerwear", "Intimates"], ["Wovens", "Cut & sew knits"]],
+      ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"], ["Cut & sew knits", "Wovens"]],
+      ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"], ["Tops", "Bottoms"]],
       ["Market level", ["Luxury", "Premium / contemporary", "Mid range", "Mass market"], ["Premium / contemporary"]]
     ]
-  },
-  {
-    title: "Upload your brand assets",
-    intro: "Add the pieces factories need to recognize your brand and understand your product direction.",
-    type: "assets"
   },
   {
     title: "Factory preferences",
@@ -906,7 +907,7 @@ function App() {
         cta: `Fund ${fundingMilestone.amount}`
       }
     : meta;
-  const isStandalone = screen === "home" || screen === "profile" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "messages" || screen === "saved" || screen === "settings" || screen === "billing";
+  const isStandalone = screen === "home" || screen === "profile" || screen === "profileCompletion" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "messages" || screen === "saved" || screen === "settings" || screen === "billing";
   const isWideFlow = screen === "invite" || screen === "quotes" || screen === "quoteDetail";
 
   const goTo = (next) => {
@@ -945,7 +946,9 @@ function App() {
       case "home":
         return <HomeScreen goTo={goTo} />;
       case "profile":
-        return <BrandProfileScreen />;
+        return <BrandProfileScreen onViewCompletion={() => goTo("profileCompletion")} />;
+      case "profileCompletion":
+        return <BrandProfileCompletionPage onBack={() => goTo("profile")} onAddPayment={() => goTo("profile")} />;
       case "factorySearch":
         return <FactorySearchScreen goTo={goTo} />;
       case "factoryMarketplace":
@@ -1008,7 +1011,7 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <SideNav
-        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "rfqs" ? "RFQs" : "RFQs"}
+        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" || screen === "profileCompletion" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "rfqs" ? "RFQs" : "RFQs"}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onNav={(label) => {
@@ -1023,7 +1026,7 @@ function App() {
         }}
         onProfile={() => goTo("profile")}
       />
-      <main className={screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : "flow-page"}>
+      <main className={screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : "flow-page"}>
         {!isStandalone && <JourneyRail current={activeMeta.step} isMilestoneFunding={Boolean(fundingMilestone)} />}
         <section className="flow-content">
           {!isStandalone && screen !== "quoteDetail" && (
@@ -1969,6 +1972,33 @@ function BrandOnboarding({ step, onBack, onNext }) {
 }
 
 function BrandOnboardingStep({ content, step }) {
+  const [onboardingStakeholders, setOnboardingStakeholders] = useState([
+    { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder" },
+    { name: "Maya Lee", email: "maya@maisonrue.com", role: "Production lead" }
+  ]);
+  const [stakeholderModalOpen, setStakeholderModalOpen] = useState(false);
+  const [stakeholderDraft, setStakeholderDraft] = useState({ name: "", email: "", role: "Stakeholder" });
+
+  function updateStakeholderDraft(key, value) {
+    setStakeholderDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function addOnboardingStakeholder() {
+    const nextStakeholder = {
+      name: stakeholderDraft.name.trim(),
+      email: stakeholderDraft.email.trim(),
+      role: stakeholderDraft.role.trim() || "Stakeholder"
+    };
+    if (!nextStakeholder.name && !nextStakeholder.email) return;
+    setOnboardingStakeholders((current) => [...current, nextStakeholder]);
+    setStakeholderDraft({ name: "", email: "", role: "Stakeholder" });
+    setStakeholderModalOpen(false);
+  }
+
+  function removeOnboardingStakeholder(index) {
+    setOnboardingStakeholders((current) => current.filter((_, stakeholderIndex) => stakeholderIndex !== index));
+  }
+
   if (content.type === "welcome") {
     return (
       <div className="brand-welcome-meta">
@@ -2035,15 +2065,48 @@ function BrandOnboardingStep({ content, step }) {
           <small>Self-reported. Not shown publicly.</small>
         </label>
 
-        <section className="brand-trust-group">
-          <strong>Key stakeholders</strong>
-          <div className="brand-trust-input-row">
-            <input placeholder="Full name" />
-            <input placeholder="LinkedIn or registry URL" />
+        <section className="brand-trust-group brand-onboarding-stakeholders">
+          <div className="brand-onboarding-stakeholder-heading">
+            <strong>Decision makers</strong>
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setStakeholderModalOpen(true)}>+ Add stakeholder</button>
           </div>
-          <button className="brand-onboarding-text-action" type="button">+ Add another stakeholder</button>
+          <div className="brand-onboarding-stakeholder-list">
+            {onboardingStakeholders.map((stakeholder, index) => (
+              <article className="brand-onboarding-stakeholder-card" key={`${stakeholder.email}-${index}`}>
+                <span>{(stakeholder.name || "Stakeholder").slice(0, 2).toUpperCase()}</span>
+                <div>
+                  <strong>{stakeholder.name || "Stakeholder"}</strong>
+                  <p>{stakeholder.role}{stakeholder.email ? ` · ${stakeholder.email}` : ""}</p>
+                </div>
+                <button className="text-link" type="button" onClick={() => removeOnboardingStakeholder(index)}>Remove</button>
+              </article>
+            ))}
+          </div>
           <p>Founders or decision-makers. We use this to verify your team.</p>
         </section>
+
+        {stakeholderModalOpen && createPortal(
+          <div className="brand-profile-modal-layer brand-onboarding-stakeholder-modal-layer">
+            <button className="brand-profile-modal-scrim" type="button" aria-label="Close add stakeholder" onClick={() => setStakeholderModalOpen(false)} />
+            <section className="brand-profile-modal brand-onboarding-stakeholder-modal" role="dialog" aria-modal="true" aria-labelledby="brand-onboarding-stakeholder-title">
+              <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setStakeholderModalOpen(false)}>×</button>
+              <header className="brand-profile-modal-header">
+                <h1 id="brand-onboarding-stakeholder-title">Add stakeholder</h1>
+                <p>Add one person factories should expect to work with.</p>
+              </header>
+              <div className="brand-profile-edit-stack">
+                <BrandProfileEditField label="Name" value={stakeholderDraft.name} onChange={(value) => updateStakeholderDraft("name", value)} />
+                <BrandProfileEditField label="Email" value={stakeholderDraft.email} onChange={(value) => updateStakeholderDraft("email", value)} />
+                <BrandProfileEditField label="Role" value={stakeholderDraft.role} onChange={(value) => updateStakeholderDraft("role", value)} />
+              </div>
+              <footer className="brand-profile-modal-actions">
+                <button className="secondary-btn" type="button" onClick={() => setStakeholderModalOpen(false)}>Cancel</button>
+                <button className="primary-btn" type="button" onClick={addOnboardingStakeholder}>Add stakeholder</button>
+              </footer>
+            </section>
+          </div>,
+          document.body
+        )}
 
         <label className="brand-onboarding-field full">
           <span>Business registration or resale certificate</span>
@@ -2059,9 +2122,9 @@ function BrandOnboardingStep({ content, step }) {
   if (content.type === "review") {
     const sections = [
       ["Brand basics", [["Brand name", "Maison Rue"], ["Category", "Fashion brand"], ["Business email", "name@maisonrue.com"], ["Founded", "2021"], ["Website URL", "www.maisonrue.com"], ["HQ location", "New York, USA"]]],
-      ["Sourcing fit", [["Product categories", "Womenswear"], ["Garment focus", "Wovens, cut & sew knits"], ["Market level", "Premium / contemporary"]]],
+      ["Sourcing fit", [["Production type", "Cut & sew knits, wovens"], ["Product categories", "Tops, bottoms"], ["Market level", "Premium / contemporary"]]],
       ["Factory preferences", [["Preferred regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services needed", "Full package, sample development"]]],
-      ["Trust & assets", [["Annual revenue", "$1M-$5M"], ["Key stakeholders", "Founder / production lead added"], ["Business certificate", "Registration or resale certificate uploaded"], ["Logo", "Uploaded"], ["Product photos", "3-6 images added"], ["Brand direction", "Lookbook or range plan uploaded"]]]
+      ["Trust", [["Annual revenue", "$1M-$5M"], ["Decision makers", "Founder / production lead added"], ["Business certificate", "Registration or resale certificate uploaded"]]]
     ];
 
     return (
@@ -2115,14 +2178,33 @@ function BrandOnboardingStep({ content, step }) {
 }
 
 function BrandOnboardingChipGroup({ label, options, selected = [] }) {
+  const [customValue, setCustomValue] = useState("");
+  const [customOptions, setCustomOptions] = useState([]);
+  const canAddCustom = ["Production type", "Product categories", "Certifications", "Services needed"].includes(label);
+  const visibleOptions = [...options, ...customOptions];
+
+  function addCustomOption(event) {
+    event.preventDefault();
+    const trimmedValue = customValue.trim();
+    if (!trimmedValue || visibleOptions.includes(trimmedValue)) return;
+    setCustomOptions((items) => [...items, trimmedValue]);
+    setCustomValue("");
+  }
+
   return (
     <section className="brand-onboarding-chip-group">
       <strong>{label}</strong>
       <div className="tag-row compact-tags">
-        {options.map((option) => (
+        {visibleOptions.map((option) => (
           <button className={selected.includes(option) ? "selected" : ""} type="button" key={option}>{option}</button>
         ))}
       </div>
+      {canAddCustom && (
+        <form className="brand-onboarding-chip-add-row" onSubmit={addCustomOption}>
+          <input value={customValue} onChange={(event) => setCustomValue(event.target.value)} placeholder="Add your own" />
+          <button className="secondary-btn compact-btn" type="submit">Add</button>
+        </form>
+      )}
     </section>
   );
 }
@@ -2549,11 +2631,12 @@ function HomeProjectMiniCard({ project, goTo }) {
   );
 }
 
-function BrandProfileScreen() {
+function BrandProfileScreen({ onViewCompletion }) {
   const [projectTab, setProjectTab] = useState("completed");
   const [profileMode, setProfileMode] = useState("edit");
   const isOwnerView = profileMode === "edit";
-  const data = {
+  const [activeEditor, setActiveEditor] = useState(null);
+  const [profileData, setProfileData] = useState({
     name: "Maison Rue",
     location: "New York, USA",
     founded: "2021",
@@ -2561,12 +2644,12 @@ function BrandProfileScreen() {
     website: "www.maisonrue.com",
     businessEmail: "name@maisonrue.com",
     annualRevenue: "$1M-$5M",
-    paymentStatus: "Verified",
+    paymentStatus: "Unverified",
+    paymentMethodStatus: "Not added",
     responseTime: "1 day",
     clubOrders: "4",
     activeRfqs: "3",
     repeatFactories: "2",
-    profileVerified: "Business registration uploaded",
     intro:
       "Premium womenswear brand focused on organic cotton shirts, polished woven tops, and small-batch capsule production. Maison Rue shares clear product references, quick feedback, and defined sample approval paths so factories can quote confidently.",
     productCategories: ["Womenswear"],
@@ -2583,10 +2666,13 @@ function BrandProfileScreen() {
     verification: [
       { name: "Business registration", status: "Uploaded" },
       { name: "Business email", status: "Verified" },
-      { name: "Key stakeholders", status: "Added" },
-      { name: "Payment status", status: "Verified" }
+      { name: "Payment method", status: "Not added" },
+      { name: "Payment status", status: "Unverified" }
     ],
-    stakeholders: ["Founder added", "Production lead added"],
+    stakeholders: [
+      { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder", permissions: ["rfqFlow", "approve", "primaryContact", "settingsAccess"] },
+      { name: "Maya Lee", email: "maya@maisonrue.com", role: "Production lead", permissions: ["approve"] }
+    ],
     completedProjects: [
       {
         title: "Organic cotton woven shirt production",
@@ -2627,6 +2713,15 @@ function BrandProfileScreen() {
         tags: ["Knitwear", "Sample room", "Moodboard", "Premium"]
       }
     ]
+  });
+  const data = profileData;
+  const openEditor = (editor) => {
+    setProfileMode("edit");
+    setActiveEditor(editor);
+  };
+  const saveProfileSection = (updates) => {
+    setProfileData((current) => ({ ...current, ...updates }));
+    setActiveEditor(null);
   };
   const visibleProjects = projectTab === "completed" ? data.completedProjects : data.activeProjects;
   const overviewRows = [
@@ -2650,7 +2745,7 @@ function BrandProfileScreen() {
             <button
               className={isOwnerView ? "active" : ""}
               type="button"
-              onClick={() => setProfileMode("edit")}
+              onClick={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
               role="tab"
               aria-selected={isOwnerView}
             >
@@ -2669,18 +2764,15 @@ function BrandProfileScreen() {
         </section>
 
         <section className="factory-profile-hero brand-profile-hero">
-          {isOwnerView && <button className="factory-profile-banner-edit" type="button">Edit banner</button>}
+          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit banner</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
               <div className="factory-profile-logo">MR</div>
-              {isOwnerView && <button className="factory-profile-logo-edit" type="button">Edit</button>}
+              {isOwnerView && <button className="factory-profile-logo-edit" type="button" onClick={() => openEditor("overview")}>Edit</button>}
             </div>
             <div>
               <div className="factory-profile-title-row">
                 <h1>{data.name}</h1>
-                <span className="factory-profile-verified" title={data.profileVerified} aria-label={data.profileVerified}>
-                  <img src="/assets/prototype-icons/basic.svg" alt="" />
-                </span>
               </div>
               <p>{data.location} · {data.category} · {data.annualRevenue} revenue</p>
               <div className="tag-row compact-tags factory-profile-hero-tags">
@@ -2714,7 +2806,7 @@ function BrandProfileScreen() {
             </section>
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Overview" editable={isOwnerView} />
+              <BrandProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
               <p>{data.intro}</p>
               <div className="factory-profile-detail-grid">
                 {overviewRows.map(([label, value]) => <BrandProfileDetailPair label={label} value={value} key={label} />)}
@@ -2722,7 +2814,7 @@ function BrandProfileScreen() {
             </section>
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Sourcing fit" editable={isOwnerView} />
+              <BrandProfileCardHeader title="Sourcing fit" editable={isOwnerView} onEdit={() => openEditor("sourcing")} />
               <BrandProfileChipSection label="Product categories" items={data.productCategories} />
               <BrandProfileChipSection label="Garment focus" items={data.garmentFocus} />
               <BrandProfileChipSection label="Market level" items={data.marketLevel} />
@@ -2732,7 +2824,7 @@ function BrandProfileScreen() {
             </section>
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Brand assets" editable={isOwnerView} actionLabel="Manage assets" />
+              <BrandProfileCardHeader title="Brand assets" editable={isOwnerView} actionLabel="Manage assets" onEdit={() => openEditor("assets")} />
               <div className="factory-profile-product-grid">
                 {data.assets.map((asset) => (
                   <article className="factory-profile-product brand-profile-asset" key={asset.title}>
@@ -2750,7 +2842,7 @@ function BrandProfileScreen() {
                   <h2>Past work with factories</h2>
                   <p>Completed and active TSC activity that helps factories understand how this brand works.</p>
                 </div>
-                {isOwnerView && <button className="factory-profile-edit-button" type="button">Manage projects</button>}
+                {isOwnerView && <button className="factory-profile-edit-button" type="button" onClick={() => openEditor("projects")}>Manage projects</button>}
               </div>
               <div className="factory-profile-project-tabs" role="tablist" aria-label="Brand project status">
                 <button
@@ -2804,25 +2896,19 @@ function BrandProfileScreen() {
             {isOwnerView ? (
               <>
                 <section className="factory-profile-card factory-profile-owner-card">
-                  <h2>Profile status</h2>
+                  <div className="factory-profile-card-header">
+                    <h2>Profile status</h2>
+                    <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>View details</button>
+                  </div>
                   <div className="factory-profile-status-meter">
                     <strong>88%</strong>
                     <span>Profile complete</span>
                   </div>
                   <div className="factory-profile-status-track"><span /></div>
-                  <p>Add the remaining certifications and one more project photo to strengthen this profile.</p>
+                  <p>Review what is complete, what is in progress, and what would strengthen this profile.</p>
                   <div className="factory-profile-owner-actions">
                     <button className="primary-btn" type="button">Publish changes</button>
                     <button className="secondary-btn" type="button" onClick={() => setProfileMode("public")}>View as public</button>
-                  </div>
-                </section>
-
-                <section className="factory-profile-card">
-                  <h2>Suggested updates</h2>
-                  <div className="factory-profile-owner-task-list">
-                    <span>Refresh product photos</span>
-                    <span>Add preferred launch calendar</span>
-                    <span>Confirm stakeholder access</span>
                   </div>
                 </section>
               </>
@@ -2841,24 +2927,24 @@ function BrandProfileScreen() {
             )}
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Manage docs" />
+              <BrandProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("verification")} />
               <div className="factory-profile-cert-list">
                 {data.verification.map((item) => (
                   <div className="factory-profile-cert" key={item.name}>
                     <strong>{item.name}</strong>
-                    <span className="verified">{item.status}</span>
+                    <span className={["Verified", "Uploaded", "Added"].includes(item.status) ? "verified" : ""}>{item.status}</span>
                   </div>
                 ))}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Decision makers" editable={isOwnerView} actionLabel="Edit" />
+              <BrandProfileCardHeader title="Decision makers" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("stakeholders")} />
               <div className="factory-profile-reference-list">
                 {data.stakeholders.map((stakeholder) => (
-                  <div key={stakeholder}>
-                    <span>{stakeholder.slice(0, 2).toUpperCase()}</span>
-                    <strong>{stakeholder}</strong>
+                  <div key={typeof stakeholder === "string" ? stakeholder : stakeholder.email || stakeholder.name}>
+                    <span>{(typeof stakeholder === "string" ? stakeholder : stakeholder.name).slice(0, 2).toUpperCase()}</span>
+                    <strong>{typeof stakeholder === "string" ? stakeholder : `${stakeholder.name} · ${stakeholder.role}`}</strong>
                   </div>
                 ))}
               </div>
@@ -2867,16 +2953,541 @@ function BrandProfileScreen() {
           </aside>
         </div>
       </div>
+      {activeEditor && createPortal((
+        <BrandProfileEditModal
+          editor={activeEditor}
+          data={data}
+          onClose={() => setActiveEditor(null)}
+          onSave={saveProfileSection}
+        />
+      ), document.body)}
     </div>
   );
 }
 
-function BrandProfileCardHeader({ title, editable = false, actionLabel = "Edit" }) {
+function BrandProfileCardHeader({ title, editable = false, actionLabel = "Edit", onEdit }) {
   return (
     <div className="factory-profile-card-header">
       <h2>{title}</h2>
-      {editable && <button className="factory-profile-edit-button" type="button">{actionLabel}</button>}
+      {editable && <button className="factory-profile-edit-button" type="button" onClick={onEdit}>{actionLabel}</button>}
     </div>
+  );
+}
+
+const brandProfileEditorOptions = {
+  productCategories: ["Womenswear", "Menswear", "Childrenswear", "Activewear", "Swimwear", "Accessories"],
+  garmentFocus: ["Wovens", "Cut & sew knits", "Knitwear", "Denim", "Outerwear", "Intimates"],
+  marketLevel: ["Luxury", "Premium / contemporary", "Mid range", "Mass market"],
+  preferredRegions: ["Portugal", "China", "Korea", "India", "Turkey", "United States"],
+  certifications: ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP", "No preference"],
+  services: ["Full package", "CMT", "Pattern making", "Sample development", "Fabric sourcing"]
+};
+
+const brandProfileCompletionChecks = [
+  {
+    title: "Business registration",
+    status: "Uploaded",
+    tone: "complete",
+    description: "The registration document is on file and can support brand account review."
+  },
+  {
+    title: "Business email",
+    status: "Verified",
+    tone: "complete",
+    description: "The brand email has been confirmed, so factories can trust the listed contact channel."
+  },
+  {
+    title: "Decision makers",
+    status: "Added",
+    tone: "complete",
+    description: "Founder and production lead contacts are listed so factories know who they will work with."
+  },
+  {
+    title: "Brand assets",
+    status: "Added",
+    tone: "complete",
+    description: "Product references and visual assets are present, helping factories understand the brand direction."
+  },
+  {
+    title: "Payment method",
+    status: "Not added",
+    tone: "missing",
+    description: "Add a card or bank account now, or during the RFQ flow before confirming production.",
+    action: "Add payment method"
+  }
+];
+
+const brandProfileCompletionIconMap = {
+  complete: "/assets/prototype-icons/done.svg",
+  progress: "/assets/prototype-icons/pending.svg",
+  missing: "/assets/prototype-icons/warning.svg"
+};
+
+function BrandProfileCompletionPage({ onBack, onAddPayment }) {
+  const completeCount = brandProfileCompletionChecks.filter((item) => item.tone === "complete").length;
+  const progressCount = brandProfileCompletionChecks.filter((item) => item.tone === "progress").length;
+  const attentionCount = brandProfileCompletionChecks.filter((item) => item.tone === "missing").length;
+
+  return (
+    <main className="factory-profile-page factory-profile-completion-page brand-profile-completion-page">
+      <div className="factory-profile-shell">
+        <button className="text-link factory-profile-completion-back" type="button" onClick={onBack}>‹ Back to profile</button>
+
+        <section className="factory-profile-completion-hero">
+          <div>
+            <span>Profile verification</span>
+            <h1>Profile completion summary</h1>
+            <p>You can browse factories and draft RFQs now. Complete the items below to improve trust signals and make the brand easier for factories to evaluate.</p>
+          </div>
+          <div className="factory-profile-completion-score">
+            <strong>88%</strong>
+            <span>Profile complete</span>
+            <div className="factory-profile-status-track"><span /></div>
+          </div>
+        </section>
+
+        <section className="factory-profile-completion-layout">
+          <div className="factory-profile-completion-main">
+            <section className="factory-profile-card factory-profile-completion-group">
+              <div className="factory-profile-section-header">
+                <div>
+                  <h2>Verification checklist</h2>
+                  <p>Each item shows whether factories can rely on it now, whether it is still in progress, or whether action is needed.</p>
+                </div>
+              </div>
+              <div className="profile-completion-check-list">
+                {brandProfileCompletionChecks.map((item) => (
+                  <article className={`profile-completion-check ${item.tone}`} key={item.title}>
+                    <span className="profile-completion-check-icon" aria-hidden="true">
+                      <img src={brandProfileCompletionIconMap[item.tone]} alt="" />
+                    </span>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <small>{item.status}</small>
+                      <p>{item.description}</p>
+                      {item.action && (
+                        <button
+                          className="secondary-btn compact-btn"
+                          type="button"
+                          onClick={item.title === "Payment method" ? onAddPayment : undefined}
+                        >
+                          {item.action}
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <aside className="factory-profile-side">
+            <section className="factory-profile-card">
+              <h2>Summary</h2>
+              <div className="profile-completion-summary-grid">
+                <ProfileCompletionSummaryRow label="Complete" value={`${completeCount} items`} />
+                <ProfileCompletionSummaryRow label="In progress" value={`${progressCount} item`} />
+                <ProfileCompletionSummaryRow label="Needs attention" value={`${attentionCount} item`} />
+              </div>
+            </section>
+            <section className="factory-profile-card">
+              <h2>Suggested updates</h2>
+              <div className="factory-profile-owner-task-list">
+                <span>Add payment method</span>
+              </div>
+            </section>
+          </aside>
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function ProfileCompletionSummaryRow({ label, value }) {
+  return (
+    <div className="profile-completion-summary-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function BrandProfileEditModal({ editor, data, onClose, onSave }) {
+  const isUploadEditor = ["banner", "assets", "projects"].includes(editor);
+  const editorTitles = {
+    overview: ["Edit overview", "Update the brand details factories see on this profile."],
+    sourcing: ["Edit sourcing fit", "Update the tags factories use to understand what this brand is looking for."],
+    banner: ["Edit banner", "Upload or replace the banner image used on this profile."],
+    assets: ["Manage brand assets", "Upload logos, product photos, direction files, and brand references."],
+    projects: ["Manage projects", "Update completed or active TSC work shown to factories."],
+    verification: ["Edit verification", "Add or update the onboarding verification details shown on this brand profile."],
+    payment: ["Add payment method", "Add a card or bank account so payment status can be verified on the brand profile."],
+    stakeholders: ["Edit decision makers", "Add or update the people factories should expect to work with."]
+  };
+  const [title, helper] = editorTitles[editor] || editorTitles.overview;
+  const [form, setForm] = useState(() => ({
+    name: data.name,
+    location: data.location,
+    category: data.category,
+    founded: data.founded,
+    website: data.website,
+    businessEmail: data.businessEmail,
+    annualRevenue: data.annualRevenue,
+    intro: data.intro,
+    productCategories: data.productCategories,
+    garmentFocus: data.garmentFocus,
+    marketLevel: data.marketLevel,
+    preferredRegions: data.preferredRegions,
+    certifications: data.certifications,
+    services: data.services,
+    stakeholders: data.stakeholders.map((stakeholder) => typeof stakeholder === "string"
+      ? { name: stakeholder, email: "", role: "Stakeholder", permissions: ["approve"] }
+      : { permissions: ["approve"], ...stakeholder }),
+    businessEmailVerified: data.businessEmail,
+    paymentMethodType: "card",
+    paymentName: data.name,
+    cardNumber: "",
+    cardExpiry: "",
+    cardCvc: "",
+    bankName: "",
+    routingNumber: "",
+    accountNumber: "",
+    showPaymentFields: false
+  }));
+  const updateField = (key, value) => setForm((current) => ({ ...current, [key]: value }));
+  const updateStakeholder = (index, key, value) => {
+    setForm((current) => ({
+      ...current,
+      stakeholders: current.stakeholders.map((stakeholder, stakeholderIndex) => stakeholderIndex === index
+        ? { ...stakeholder, [key]: value }
+        : stakeholder)
+    }));
+  };
+  const addStakeholder = () => {
+    setForm((current) => ({
+      ...current,
+      stakeholders: [...current.stakeholders, { name: "", email: "", role: "Stakeholder", permissions: ["approve"], isInvite: true }]
+    }));
+  };
+  const toggleStakeholderPermission = (index, key) => {
+    setForm((current) => ({
+      ...current,
+      stakeholders: current.stakeholders.map((stakeholder, stakeholderIndex) => {
+        if (stakeholderIndex !== index) return stakeholder;
+        const permissions = stakeholder.permissions || [];
+        return {
+          ...stakeholder,
+          permissions: permissions.includes(key)
+            ? permissions.filter((permission) => permission !== key)
+            : [...permissions, key]
+        };
+      })
+    }));
+  };
+  const serializeStakeholders = (stakeholders) => stakeholders
+    .map((stakeholder) => ({
+      name: stakeholder.name.trim(),
+      email: stakeholder.email.trim(),
+      role: stakeholder.role.trim() || "Stakeholder",
+      permissions: stakeholder.permissions || ["approve"]
+    }))
+    .filter((stakeholder) => stakeholder.name || stakeholder.email);
+  const sendStakeholderInvite = (index) => {
+    const nextStakeholders = form.stakeholders.map((stakeholder, stakeholderIndex) => stakeholderIndex === index
+      ? { ...stakeholder, isInvite: false }
+      : stakeholder);
+    setForm((current) => ({ ...current, stakeholders: nextStakeholders }));
+    onSave({ stakeholders: serializeStakeholders(nextStakeholders) });
+  };
+  const removeStakeholder = (index) => {
+    setForm((current) => ({
+      ...current,
+      stakeholders: current.stakeholders.filter((_, stakeholderIndex) => stakeholderIndex !== index)
+    }));
+  };
+  const save = () => {
+    if (editor === "overview") {
+      onSave({
+        name: form.name,
+        location: form.location,
+        category: form.category,
+        founded: form.founded,
+        website: form.website,
+        businessEmail: form.businessEmail,
+        annualRevenue: form.annualRevenue,
+        intro: form.intro
+      });
+      return;
+    }
+
+    if (editor === "sourcing") {
+      onSave({
+        productCategories: form.productCategories,
+        garmentFocus: form.garmentFocus,
+        marketLevel: form.marketLevel,
+        preferredRegions: form.preferredRegions,
+        certifications: form.certifications,
+        services: form.services
+      });
+      return;
+    }
+
+    if (editor === "stakeholders") {
+      onSave({
+        stakeholders: serializeStakeholders(form.stakeholders)
+      });
+      return;
+    }
+
+    if (editor === "verification") {
+      const paymentWasAdded = form.showPaymentFields;
+      onSave({
+        businessEmail: form.businessEmailVerified,
+        paymentStatus: paymentWasAdded ? "Verified" : data.paymentStatus,
+        paymentMethodStatus: paymentWasAdded ? (form.paymentMethodType === "bank" ? "Bank account added" : "Card added") : data.paymentMethodStatus,
+        verification: data.verification.map((item) => {
+          if (item.name === "Business registration") return { ...item, status: "Uploaded" };
+          if (item.name === "Business email") return { ...item, status: form.businessEmailVerified ? "Verified" : "Not added" };
+          if (paymentWasAdded && item.name === "Payment method") return { ...item, status: form.paymentMethodType === "bank" ? "Bank added" : "Card added" };
+          if (paymentWasAdded && item.name === "Payment status") return { ...item, status: "Verified" };
+          return item;
+        })
+      });
+      return;
+    }
+
+    if (editor === "payment") {
+      onSave({
+        paymentStatus: "Verified",
+        paymentMethodStatus: form.paymentMethodType === "bank" ? "Bank account added" : "Card added",
+        verification: data.verification.map((item) => {
+          if (item.name === "Payment method") return { ...item, status: form.paymentMethodType === "bank" ? "Bank added" : "Card added" };
+          if (item.name === "Payment status") return { ...item, status: "Verified" };
+          return item;
+        })
+      });
+      return;
+    }
+
+    onClose();
+  };
+
+  return (
+    <div className="brand-profile-modal-layer" role="presentation">
+      <button className="brand-profile-modal-scrim" type="button" aria-label="Close brand profile editor" onClick={onClose} />
+      <section className="brand-profile-modal" role="dialog" aria-modal="true" aria-labelledby="brand-profile-edit-title">
+        <button className="brand-profile-modal-close" type="button" aria-label="Close brand profile editor" onClick={onClose}>×</button>
+        <header className="brand-profile-modal-header">
+          <h1 id="brand-profile-edit-title">{title}</h1>
+          <p>{helper}</p>
+        </header>
+
+        {editor === "overview" && (
+          <div className="brand-profile-edit-grid">
+            <BrandProfileEditField label="Brand name" value={form.name} onChange={(value) => updateField("name", value)} />
+            <BrandProfileEditField label="Location" value={form.location} onChange={(value) => updateField("location", value)} />
+            <BrandProfileEditField label="Brand category" value={form.category} onChange={(value) => updateField("category", value)} />
+            <BrandProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
+            <BrandProfileEditField label="Website" value={form.website} onChange={(value) => updateField("website", value)} />
+            <BrandProfileEditField label="Business email" value={form.businessEmail} onChange={(value) => updateField("businessEmail", value)} />
+            <BrandProfileEditField label="Annual revenue" value={form.annualRevenue} onChange={(value) => updateField("annualRevenue", value)} />
+            <label className="brand-profile-edit-field full-width">
+              <span>Profile overview</span>
+              <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
+            </label>
+          </div>
+        )}
+
+        {editor === "sourcing" && (
+          <div className="brand-profile-edit-stack">
+            <section className="brand-profile-edit-section">
+              <h2>What do you make?</h2>
+              <BrandProfileChipEditor label="Product categories" options={brandProfileEditorOptions.productCategories} selected={form.productCategories} onChange={(items) => updateField("productCategories", items)} />
+              <BrandProfileChipEditor label="Garment focus" options={brandProfileEditorOptions.garmentFocus} selected={form.garmentFocus} onChange={(items) => updateField("garmentFocus", items)} />
+              <BrandProfileChipEditor label="Market level" options={brandProfileEditorOptions.marketLevel} selected={form.marketLevel} onChange={(items) => updateField("marketLevel", items)} singleSelect />
+            </section>
+            <section className="brand-profile-edit-section">
+              <h2>Factory preferences</h2>
+              <BrandProfileChipEditor label="Preferred regions" options={brandProfileEditorOptions.preferredRegions} selected={form.preferredRegions} onChange={(items) => updateField("preferredRegions", items)} />
+              <BrandProfileChipEditor label="Certifications" options={brandProfileEditorOptions.certifications} selected={form.certifications} onChange={(items) => updateField("certifications", items)} />
+              <BrandProfileChipEditor label="Services needed" options={brandProfileEditorOptions.services} selected={form.services} onChange={(items) => updateField("services", items)} />
+            </section>
+          </div>
+        )}
+
+        {editor === "stakeholders" && (
+          <div className="brand-stakeholder-fields">
+            {form.stakeholders.map((stakeholder, index) => (
+              <section className="brand-stakeholder-editor-card" key={`${stakeholder.email}-${index}`}>
+                <div className="brand-stakeholder-editor-header">
+                  <strong>{stakeholder.name || `Stakeholder ${index + 1}`}</strong>
+                  <button className="text-link" type="button" onClick={() => removeStakeholder(index)}>Remove</button>
+                </div>
+                <BrandProfileEditField label="Name" value={stakeholder.name} onChange={(value) => updateStakeholder(index, "name", value)} />
+                <BrandProfileEditField label="Email" value={stakeholder.email} onChange={(value) => updateStakeholder(index, "email", value)} />
+                <BrandProfileEditField label="Role" value={stakeholder.role} onChange={(value) => updateStakeholder(index, "role", value)} />
+                {stakeholder.isInvite && (
+                  <>
+                    <fieldset className="settings-drawer-authority brand-stakeholder-authority">
+                      <legend>Authority</legend>
+                      {settingsPermissionLabels.map((permission) => (
+                        <label key={permission.key}>
+                          <input
+                            type="checkbox"
+                            checked={(stakeholder.permissions || []).includes(permission.key)}
+                            onChange={() => toggleStakeholderPermission(index, permission.key)}
+                          />
+                          <span>
+                            <strong>{permission.label}</strong>
+                            {permission.detail && <small>{permission.detail}</small>}
+                          </span>
+                        </label>
+                      ))}
+                    </fieldset>
+                    <div className="brand-stakeholder-invite-actions">
+                      <button className="primary-btn compact-btn" type="button" onClick={() => sendStakeholderInvite(index)}>Send invite</button>
+                    </div>
+                  </>
+                )}
+              </section>
+            ))}
+            <button className="secondary-btn" type="button" onClick={addStakeholder}>+ Add another stakeholder</button>
+          </div>
+        )}
+
+        {editor === "verification" && (
+          <div className="brand-verification-editor">
+            <section className="brand-verification-edit-row">
+              <div>
+                <strong>Business registration</strong>
+                <span>Uploaded</span>
+              </div>
+              <button className="brand-onboarding-upload-row" type="button">
+                <img src="/assets/prototype-icons/upload.svg" alt="" />
+                <strong>Click or drag files to upload</strong>
+              </button>
+            </section>
+            <section className="brand-verification-edit-row">
+              <div>
+                <strong>Business email</strong>
+                <span>{form.businessEmailVerified ? "Verified" : "Not added"}</span>
+              </div>
+              <BrandProfileEditField label="Email address" value={form.businessEmailVerified} onChange={(value) => updateField("businessEmailVerified", value)} />
+            </section>
+            <section className="brand-verification-edit-row">
+              <div>
+                <strong>Payment method</strong>
+                <span>{data.paymentMethodStatus}</span>
+              </div>
+              <button className="secondary-btn" type="button" onClick={() => updateField("showPaymentFields", !form.showPaymentFields)}>
+                {form.showPaymentFields ? "Hide payment fields" : "Add payment method"}
+              </button>
+              {form.showPaymentFields && (
+                <div className="brand-payment-editor">
+                  <div className="brand-payment-method-toggle" role="group" aria-label="Payment method type">
+                    <button className={form.paymentMethodType === "card" ? "selected" : ""} type="button" onClick={() => updateField("paymentMethodType", "card")}>Credit card</button>
+                    <button className={form.paymentMethodType === "bank" ? "selected" : ""} type="button" onClick={() => updateField("paymentMethodType", "bank")}>Bank account</button>
+                  </div>
+                  {form.paymentMethodType === "card" ? (
+                    <div className="brand-profile-edit-grid">
+                      <BrandProfileEditField label="Cardholder name" value={form.paymentName} onChange={(value) => updateField("paymentName", value)} />
+                      <BrandProfileEditField label="Card number" value={form.cardNumber} onChange={(value) => updateField("cardNumber", value)} />
+                      <BrandProfileEditField label="Expiry" value={form.cardExpiry} onChange={(value) => updateField("cardExpiry", value)} />
+                      <BrandProfileEditField label="CVC" value={form.cardCvc} onChange={(value) => updateField("cardCvc", value)} />
+                    </div>
+                  ) : (
+                    <div className="brand-profile-edit-grid">
+                      <BrandProfileEditField label="Account holder" value={form.paymentName} onChange={(value) => updateField("paymentName", value)} />
+                      <BrandProfileEditField label="Bank name" value={form.bankName} onChange={(value) => updateField("bankName", value)} />
+                      <BrandProfileEditField label="Routing number" value={form.routingNumber} onChange={(value) => updateField("routingNumber", value)} />
+                      <BrandProfileEditField label="Account number" value={form.accountNumber} onChange={(value) => updateField("accountNumber", value)} />
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+
+        {editor === "payment" && (
+          <div className="brand-payment-editor">
+            <div className="brand-payment-method-toggle" role="group" aria-label="Payment method type">
+              <button className={form.paymentMethodType === "card" ? "selected" : ""} type="button" onClick={() => updateField("paymentMethodType", "card")}>Credit card</button>
+              <button className={form.paymentMethodType === "bank" ? "selected" : ""} type="button" onClick={() => updateField("paymentMethodType", "bank")}>Bank account</button>
+            </div>
+            {form.paymentMethodType === "card" ? (
+              <div className="brand-profile-edit-grid">
+                <BrandProfileEditField label="Cardholder name" value={form.paymentName} onChange={(value) => updateField("paymentName", value)} />
+                <BrandProfileEditField label="Card number" value={form.cardNumber} onChange={(value) => updateField("cardNumber", value)} />
+                <BrandProfileEditField label="Expiry" value={form.cardExpiry} onChange={(value) => updateField("cardExpiry", value)} />
+                <BrandProfileEditField label="CVC" value={form.cardCvc} onChange={(value) => updateField("cardCvc", value)} />
+              </div>
+            ) : (
+              <div className="brand-profile-edit-grid">
+                <BrandProfileEditField label="Account holder" value={form.paymentName} onChange={(value) => updateField("paymentName", value)} />
+                <BrandProfileEditField label="Bank name" value={form.bankName} onChange={(value) => updateField("bankName", value)} />
+                <BrandProfileEditField label="Routing number" value={form.routingNumber} onChange={(value) => updateField("routingNumber", value)} />
+                <BrandProfileEditField label="Account number" value={form.accountNumber} onChange={(value) => updateField("accountNumber", value)} />
+              </div>
+            )}
+            <p>RFQs can still be drafted. This verifies the profile payment signal and prepares the account for production milestones.</p>
+          </div>
+        )}
+
+        {isUploadEditor && (
+          <div className="brand-profile-upload-panel">
+            <button className="brand-profile-file-upload" type="button">Click or drag files to upload</button>
+            <p>Uploads are mocked in this prototype, using the same popup pattern as onboarding.</p>
+          </div>
+        )}
+
+        <footer className="brand-profile-modal-actions">
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={save}>Save changes</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function BrandProfileEditField({ label, value, onChange }) {
+  return (
+    <label className="brand-profile-edit-field">
+      <span>{label}</span>
+      <input value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
+function BrandProfileChipEditor({ label, options, selected, onChange, singleSelect = false }) {
+  const toggleOption = (option) => {
+    if (singleSelect) {
+      onChange([option]);
+      return;
+    }
+
+    onChange(selected.includes(option)
+      ? selected.filter((item) => item !== option)
+      : [...selected, option]);
+  };
+
+  return (
+    <section className="brand-onboarding-chip-group brand-profile-chip-editor">
+      <strong>{label}</strong>
+      <div className="tag-row compact-tags">
+        {options.map((option) => (
+          <button
+            className={selected.includes(option) ? "selected" : ""}
+            type="button"
+            aria-pressed={selected.includes(option)}
+            onClick={() => toggleOption(option)}
+            key={option}
+          >
+            {option}
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
