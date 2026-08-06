@@ -322,6 +322,27 @@ const factoryMainZhText = {
   "Order name, ID, or brand...": "订单名称、编号或品牌...",
   "Factory": "工厂",
   "All factories": "所有工厂",
+  "Client": "客户",
+  "All clients": "所有客户",
+  "Factory billing": "工厂账单",
+  "Billing": "账单",
+  "Earnings": "收入",
+  "Payments": "付款",
+  "Filter by client": "按客户筛选",
+  "total earned": "累计收入",
+  "received this month": "本月已到账",
+  "pending release": "待放款",
+  "Sample milestone released": "样品里程碑已放款",
+  "Production deposit released": "生产定金已放款",
+  "Fit sample update": "试身样更新",
+  "Platform service fee": "平台服务费",
+  "Verified profile review": "认证资料审核",
+  "Monthly billing - Aug 1, 2026": "月度账单 - 2026 年 8 月 1 日",
+  "Account service - Jul 12, 2026": "账号服务 - 2026 年 7 月 12 日",
+  "Received": "已到账",
+  "Paid": "已支付",
+  "Monthly billing": "月度账单",
+  "Account service": "账号服务",
   "Date Range": "日期范围",
   "Any Time": "任意时间",
   "Last 30 days": "过去 30 天",
@@ -434,6 +455,66 @@ const factoryMainZhText = {
   "Save request": "保存需求",
   "Verified brand": "已验证品牌",
   "Yes": "是",
+  "Settings sections": "设置分区",
+  "Account settings": "账号设置",
+  "Basic information": "基本信息",
+  "Edit the details brands use for orders, calls, and account verification.": "编辑品牌用于订单、通话和账号验证的资料。",
+  "Account name": "账号名称",
+  "Email": "邮箱",
+  "Phone": "电话",
+  "Location": "所在地",
+  "Password & security": "密码与安全",
+  "Update login access and keep payout or approval actions protected.": "更新登录权限，并保护收款或审批操作。",
+  "Current password": "当前密码",
+  "New password": "新密码",
+  "Enter current password": "输入当前密码",
+  "Create new password": "创建新密码",
+  "Payment method": "付款方式",
+  "Payment methods": "付款方式",
+  "Manage where you receive earnings and which method is used for billing.": "管理收款账户，以及用于账单扣费的付款方式。",
+  "Payment method type": "付款方式类型",
+  "Primary": "主要",
+  "Secondary": "备用",
+  "Wise business ending in 9021": "Wise 企业账户尾号 9021",
+  "Bank account ending in 1184": "银行账户尾号 1184",
+  "Visa ending in 4412": "Visa 尾号 4412",
+  "Mastercard ending in 8840": "Mastercard 尾号 8840",
+  "Receives released milestone funds from brand orders.": "接收品牌订单已放款的里程碑款项。",
+  "Backup account for receiving earnings.": "用于接收收入的备用账户。",
+  "Used to pay platform fees, services, or billing charges.": "用于支付平台费、服务费或账单扣费。",
+  "Backup method for billing charges.": "用于账单扣费的备用付款方式。",
+  "+ Add payment method": "+ 添加付款方式",
+  "Team & stakeholders": "团队与相关人员",
+  "Manage team & stakeholders": "管理团队与相关人员",
+  "Control who can quote RFQs, post updates, and act as the primary contact.": "管理谁可以报价、发布更新，以及担任主要联系人。",
+  "Invite member": "邀请成员",
+  "Team permissions": "团队权限",
+  "Member": "成员",
+  "RFQ flow": "询价流程",
+  "Give quotes and submit RFQ details": "报价并提交询价详情",
+  "Post production updates and files": "发布生产更新和文件",
+  "Primary contact": "主要联系人",
+  "Main contact for messages and calls": "消息和通话的主要联系人",
+  "Settings access": "设置权限",
+  "Account, payments, and invites": "账号、付款和邀请",
+  "Owner": "所有者",
+  "Production lead": "生产负责人",
+  "Finance": "财务",
+  "Viewer": "查看者",
+  "Stakeholder": "相关人员",
+  "Close invite panel": "关闭邀请面板",
+  "Invite stakeholder": "邀请相关人员",
+  "Add their details and choose what they can manage.": "添加对方资料，并选择他们可以管理的内容。",
+  "Name": "姓名",
+  "Full name": "完整姓名",
+  "Role": "角色",
+  "Authority": "权限",
+  "Send invite": "发送邀请",
+  "Choose which updates should reach your team by email.": "选择哪些更新需要通过邮件发送给团队。",
+  "New RFQ matches": "新的询价匹配",
+  "Payment and approval requests": "付款和审批请求",
+  "Messages and call invites": "消息和通话邀请",
+  "Send email notifications to members with matching authority.": "向拥有对应权限的成员发送邮件通知。",
   "Club orders": "平台订单",
   "Avg. response": "平均回复",
   "1 day": "1 天",
@@ -604,6 +685,10 @@ const factoryMainZhReplacements = [
   [/Jul 24/g, "7 月 24 日"],
   [/July 26/g, "7 月 26 日"],
   [/July 29/g, "7 月 29 日"],
+  [/Jul 10, 2026/g, "2026 年 7 月 10 日"],
+  [/Jul 12, 2026/g, "2026 年 7 月 12 日"],
+  [/Jul 18, 2026/g, "2026 年 7 月 18 日"],
+  [/Jul 29, 2026/g, "2026 年 7 月 29 日"],
   [/Today/g, "今天"],
   [/Yesterday/g, "昨天"],
   [/Aug 1, 2026/g, "2026 年 8 月 1 日"],
@@ -1361,12 +1446,12 @@ function App() {
       )}
       {screen === "settings" && (
         <main className="settings-page-shell factory-settings-page">
-          <FactorySettingsScreen />
+          <FactorySettingsScreen language={onboardingLanguage} />
         </main>
       )}
       {screen === "billing" && (
         <main className="billing-page-shell factory-billing-page">
-          <BillingScreen accountType="factory" />
+          <BillingScreen language={onboardingLanguage} />
         </main>
       )}
       {screen === "rfqReadOnly" && (
@@ -1480,7 +1565,7 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
             action="View all"
             onAction={onViewRfqs}
           >
-            {factoryRfqs.slice(0, 3).map((rfq) => (
+            {factoryRfqs.slice(0, 4).map((rfq) => (
               <FactoryDashboardRfqRow rfq={rfq} language={language} onView={onViewRfqDetail} key={rfq.title} />
             ))}
           </FactoryDashboardPanel>
@@ -2637,7 +2722,7 @@ function FactoryDashboardCallCard({ language }) {
   return (
     <article className="factory-upcoming-call-card">
       <h2 className="factory-upcoming-call-label">{isZh ? "已安排通话" : "Scheduled calls"}</h2>
-      {calls.map((call) => (
+      {calls.slice(0, 1).map((call) => (
         <section className="factory-upcoming-call-time" key={call.title}>
           <div className="factory-upcoming-call-heading">
             <h3>{call.title}</h3>
@@ -3431,11 +3516,11 @@ function FactoryProjectsPage({ language, onViewProject }) {
             </div>
           </label>
           <label className="rfqs-sort">
-            <span>Factory</span>
+            <span>Brand</span>
             <select defaultValue="all">
-              <option value="all">All factories</option>
-              <option value="atelier">Atelier Minho</option>
-              <option value="hansu">Hansu Studio</option>
+              <option value="all">All brands</option>
+              <option value="maison">Maison Rue</option>
+              <option value="elara">Elara Studio</option>
             </select>
           </label>
           <label className="rfqs-sort">
@@ -3947,9 +4032,12 @@ const factoryPageBillingHistory = {
   ]
 };
 
-function BillingScreen() {
+function BillingScreen({ language = "en" }) {
   const [tab, setTab] = useState("earnings");
   const [client, setClient] = useState("All clients");
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
+  const formatBillingMeta = (row) => `${row.client} - ${tx(row.meta)}`;
   const allRows = factoryPageBillingHistory[tab];
   const clients = ["All clients", ...Array.from(new Set(allRows.map((row) => row.client)))];
   const selectedClient = clients.includes(client) ? client : "All clients";
@@ -3971,30 +4059,30 @@ function BillingScreen() {
     <section className="billing-history-page">
       <header className="billing-history-header">
         <div>
-          <p>Factory billing</p>
-          <h1>Billing</h1>
+          <p>{tx("Factory billing")}</p>
+          <h1>{tx("Billing")}</h1>
         </div>
       </header>
       <div className="billing-controls">
         <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Billing history type">
-          <button className={tab === "earnings" ? "active" : ""} type="button" role="tab" aria-selected={tab === "earnings"} onClick={() => changeTab("earnings")}>Earnings</button>
-          <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => changeTab("payments")}>Payments</button>
+          <button className={tab === "earnings" ? "active" : ""} type="button" role="tab" aria-selected={tab === "earnings"} onClick={() => changeTab("earnings")}>{tx("Earnings")}</button>
+          <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => changeTab("payments")}>{tx("Payments")}</button>
         </div>
         {tab === "earnings" && (
           <label>
-            <span>Filter by client</span>
+            <span>{tx("Filter by client")}</span>
             <select value={selectedClient} onChange={(event) => setClient(event.target.value)}>
               {clients.map((item) => (
-                <option key={item}>{item}</option>
+                <option key={item} value={item}>{tx(item)}</option>
               ))}
             </select>
           </label>
         )}
         {tab === "payments" && (
           <label className="billing-filter-placeholder" aria-hidden="true">
-            <span>Filter by client</span>
+            <span>{tx("Filter by client")}</span>
             <select tabIndex={-1} value="All clients" readOnly>
-              <option>All clients</option>
+              <option>{tx("All clients")}</option>
             </select>
           </label>
         )}
@@ -4002,7 +4090,7 @@ function BillingScreen() {
       {tab === "earnings" && (
         <div className="factory-project-summary-card factory-billing-summary-strip" aria-label="Earnings payment summary">
           {summaryMetrics.map(([label, value, tone]) => (
-            <Metric label={label} value={value} className={tone || ""} key={label} />
+            <Metric label={tx(label)} value={value} className={tone || ""} key={label} />
           ))}
         </div>
       )}
@@ -4010,10 +4098,10 @@ function BillingScreen() {
         {rows.map((row) => (
           <article className="billing-history-row" key={`${row.title}-${row.meta}`}>
             <div>
-              <strong>{row.title}</strong>
-              <span>{row.client} - {row.meta}</span>
+              <strong>{tx(row.title)}</strong>
+              <span>{formatBillingMeta(row)}</span>
             </div>
-            <span className="billing-status">{row.status}</span>
+            <span className="billing-status">{tx(row.status)}</span>
             <strong>{row.amount}</strong>
           </article>
         ))}
@@ -4022,11 +4110,13 @@ function BillingScreen() {
   );
 }
 
-function FactorySettingsScreen() {
+function FactorySettingsScreen({ language = "en" }) {
   const [activeSection, setActiveSection] = useState("account");
   const [inviteEmail, setInviteEmail] = useState("");
   const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
   const [paymentTab, setPaymentTab] = useState("earnings");
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const [team, setTeam] = useState([
     { name: "Ines Carvalho", email: "ines@atelierminho.pt", role: "Owner", permissions: ["rfqFlow", "addUpdate", "primaryContact", "settingsAccess"] },
     { name: "Mateo Silva", email: "mateo@atelierminho.pt", role: "Production lead", permissions: ["addUpdate"] },
@@ -4104,11 +4194,11 @@ function FactorySettingsScreen() {
   return (
     <div className="settings-page factory-settings-page">
       <aside className="settings-nav-panel">
-        <h1>Settings</h1>
-        <nav aria-label="Settings sections">
+        <h1>{tx("Settings")}</h1>
+        <nav aria-label={tx("Settings sections")}>
           {settingsNav.map(([id, label]) => (
             <button className={activeSection === id ? "active" : ""} type="button" onClick={() => goToSettingsSection(id)} key={id}>
-              {label}
+              {tx(label)}
             </button>
           ))}
         </nav>
@@ -4117,60 +4207,60 @@ function FactorySettingsScreen() {
       <section className="settings-content">
         <header className="settings-heading">
           <div>
-            <p>Factory account</p>
-            <h2>Account settings</h2>
+            <p>{tx("Factory account")}</p>
+            <h2>{tx("Account settings")}</h2>
           </div>
-          <button className="primary-btn" type="button">Save changes</button>
+          <button className="primary-btn" type="button">{tx("Save changes")}</button>
         </header>
 
         <section className="settings-section" id="settings-account">
               <div className="settings-section-header">
-                <h3>Basic information</h3>
-                <p>Edit the details brands use for orders, calls, and account verification.</p>
+                <h3>{tx("Basic information")}</h3>
+                <p>{tx("Edit the details brands use for orders, calls, and account verification.")}</p>
               </div>
               <div className="settings-form-grid">
                 <label>
-                  <span>Account name</span>
+                  <span>{tx("Account name")}</span>
                   <input defaultValue={account.name} />
                 </label>
                 <label>
-                  <span>Email</span>
+                  <span>{tx("Email")}</span>
                   <input defaultValue={account.email} type="email" />
                 </label>
                 <label>
-                  <span>Phone</span>
+                  <span>{tx("Phone")}</span>
                   <input defaultValue={account.phone} />
                 </label>
                 <label>
-                  <span>Location</span>
-                  <input defaultValue={account.location} />
+                  <span>{tx("Location")}</span>
+                  <input defaultValue={tx(account.location)} />
                 </label>
               </div>
             </section>
 
             <section className="settings-section" id="settings-security">
               <div className="settings-section-header">
-                <h3>Password & security</h3>
-                <p>Update login access and keep payout or approval actions protected.</p>
+                <h3>{tx("Password & security")}</h3>
+                <p>{tx("Update login access and keep payout or approval actions protected.")}</p>
               </div>
               <div className="settings-form-grid">
                 <label>
-                  <span>Current password</span>
-                  <input placeholder="Enter current password" type="password" />
+                  <span>{tx("Current password")}</span>
+                  <input placeholder={tx("Enter current password")} type="password" />
                 </label>
                 <label>
-                  <span>New password</span>
-                  <input placeholder="Create new password" type="password" />
+                  <span>{tx("New password")}</span>
+                  <input placeholder={tx("Create new password")} type="password" />
                 </label>
               </div>
             </section>
 
         <section className="settings-section" id="settings-payment">
             <div className="settings-section-header">
-              <h3>Payment methods</h3>
-              <p>Manage where you receive earnings and which method is used for billing.</p>
+              <h3>{tx("Payment methods")}</h3>
+              <p>{tx("Manage where you receive earnings and which method is used for billing.")}</p>
             </div>
-            <div className="settings-access-tabs settings-payment-tabs" role="tablist" aria-label="Payment method type">
+            <div className="settings-access-tabs settings-payment-tabs" role="tablist" aria-label={tx("Payment method type")}>
               <button
                 className={paymentTab === "earnings" ? "active" : ""}
                 type="button"
@@ -4178,7 +4268,7 @@ function FactorySettingsScreen() {
                 aria-selected={paymentTab === "earnings"}
                 onClick={() => setPaymentTab("earnings")}
               >
-                Earnings
+                {tx("Earnings")}
               </button>
               <button
                 className={paymentTab === "billing" ? "active" : ""}
@@ -4187,38 +4277,38 @@ function FactorySettingsScreen() {
                 aria-selected={paymentTab === "billing"}
                 onClick={() => setPaymentTab("billing")}
               >
-                Billing
+                {tx("Billing")}
               </button>
             </div>
             {paymentMethods[paymentTab].map((method) => (
               <div className="settings-payment-list" key={`${paymentTab}-${method.label}`}>
                 <div>
-                  <span className="settings-card-brand">{method.label}</span>
-                  <strong>{method.name}</strong>
-                  <small>{method.note}</small>
+                  <span className="settings-card-brand">{tx(method.label)}</span>
+                  <strong>{tx(method.name)}</strong>
+                  <small>{tx(method.note)}</small>
                 </div>
-                <button className="settings-menu-btn" type="button" aria-label={`More options for ${method.name}`} />
+                <button className="settings-menu-btn" type="button" aria-label={isZh ? `更多选项：${tx(method.name)}` : `More options for ${method.name}`} />
               </div>
             ))}
-            <button className="settings-add-btn" type="button">+ Add payment method</button>
+            <button className="settings-add-btn" type="button">{tx("+ Add payment method")}</button>
           </section>
 
         <section className="settings-section" id="settings-team">
             <div className="settings-section-header split">
               <div>
-                <h3>Manage team & stakeholders</h3>
-                <p>Control who can quote RFQs, post updates, and act as the primary contact.</p>
+                <h3>{tx("Manage team & stakeholders")}</h3>
+                <p>{tx("Control who can quote RFQs, post updates, and act as the primary contact.")}</p>
               </div>
-              <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
+              <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>{tx("Invite member")}</button>
             </div>
 
-            <div className="settings-permission-table" role="table" aria-label="Team permissions">
+            <div className="settings-permission-table" role="table" aria-label={tx("Team permissions")}>
               <div className="settings-permission-row header" role="row">
-                <span>Member</span>
+                <span>{tx("Member")}</span>
                 {factorySettingsPermissionLabels.map((permission) => (
                   <span key={permission.key}>
-                    {permission.label}
-                    {permission.detail && <small>{permission.detail}</small>}
+                    {tx(permission.label)}
+                    {permission.detail && <small>{tx(permission.detail)}</small>}
                   </span>
                 ))}
                 <span aria-hidden="true" />
@@ -4227,7 +4317,7 @@ function FactorySettingsScreen() {
                 <div className="settings-permission-row" role="row" key={member.email}>
                   <div>
                     <strong>{member.name}</strong>
-                    <small>{member.role} - {member.email}</small>
+                    <small>{tx(member.role)} - {member.email}</small>
                   </div>
                   {factorySettingsPermissionLabels.map((permission) => (
                     <label className="settings-check" key={permission.key}>
@@ -4236,13 +4326,13 @@ function FactorySettingsScreen() {
                         checked={member.permissions.includes(permission.key)}
                         onChange={() => togglePermission(member.email, permission.key)}
                       />
-                      <span>{permission.label}</span>
+                      <span>{tx(permission.label)}</span>
                     </label>
                   ))}
                   <button
                     className="settings-remove-member-btn"
                     type="button"
-                    aria-label={`Remove ${member.name}`}
+                    aria-label={isZh ? `移除 ${member.name}` : `Remove ${member.name}`}
                     disabled={member.role === "Owner"}
                     onClick={() => removeMember(member.email)}
                   >
@@ -4255,51 +4345,51 @@ function FactorySettingsScreen() {
 
         {isInvitePanelOpen && createPortal((
           <div className="settings-drawer-layer" role="presentation">
-            <button className="settings-drawer-scrim" type="button" aria-label="Close invite panel" onClick={() => setIsInvitePanelOpen(false)} />
-            <aside className="settings-drawer" aria-label="Invite stakeholder">
+            <button className="settings-drawer-scrim" type="button" aria-label={tx("Close invite panel")} onClick={() => setIsInvitePanelOpen(false)} />
+            <aside className="settings-drawer" aria-label={tx("Invite stakeholder")}>
               <header>
                 <div>
-                  <h3>Invite member</h3>
-                  <p>Add their details and choose what they can manage.</p>
+                  <h3>{tx("Invite member")}</h3>
+                  <p>{tx("Add their details and choose what they can manage.")}</p>
                 </div>
-                <button className="settings-drawer-close" type="button" aria-label="Close invite panel" onClick={() => setIsInvitePanelOpen(false)}>
+                <button className="settings-drawer-close" type="button" aria-label={tx("Close invite panel")} onClick={() => setIsInvitePanelOpen(false)}>
                   <img src="/assets/prototype-icons/close.svg" alt="" />
                 </button>
               </header>
               <div className="settings-drawer-form">
                 <label>
-                  <span>Name</span>
-                  <input placeholder="Full name" />
+                  <span>{tx("Name")}</span>
+                  <input placeholder={tx("Full name")} />
                 </label>
                 <label>
-                  <span>Email</span>
+                  <span>{tx("Email")}</span>
                   <input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} placeholder="name@company.com" type="email" />
                 </label>
                 <label>
-                  <span>Role</span>
+                  <span>{tx("Role")}</span>
                   <select defaultValue="Stakeholder">
-                    <option>Stakeholder</option>
-                    <option>Production lead</option>
-                    <option>Finance</option>
-                    <option>Viewer</option>
+                    <option value="Stakeholder">{tx("Stakeholder")}</option>
+                    <option value="Production lead">{tx("Production lead")}</option>
+                    <option value="Finance">{tx("Finance")}</option>
+                    <option value="Viewer">{tx("Viewer")}</option>
                   </select>
                 </label>
                 <fieldset className="settings-drawer-authority">
-                  <legend>Authority</legend>
+                  <legend>{tx("Authority")}</legend>
                   {factorySettingsPermissionLabels.map((permission) => (
                     <label key={permission.key}>
                       <input type="checkbox" defaultChecked={permission.key === "addUpdate"} />
                       <span>
-                        <strong>{permission.label}</strong>
-                        {permission.detail && <small>{permission.detail}</small>}
+                        <strong>{tx(permission.label)}</strong>
+                        {permission.detail && <small>{tx(permission.detail)}</small>}
                       </span>
                     </label>
                   ))}
                 </fieldset>
               </div>
               <footer>
-                <button className="secondary-btn" type="button" onClick={() => setIsInvitePanelOpen(false)}>Cancel</button>
-                <button className="primary-btn" type="button" onClick={() => setIsInvitePanelOpen(false)}>Send invite</button>
+                <button className="secondary-btn" type="button" onClick={() => setIsInvitePanelOpen(false)}>{tx("Cancel")}</button>
+                <button className="primary-btn" type="button" onClick={() => setIsInvitePanelOpen(false)}>{tx("Send invite")}</button>
               </footer>
             </aside>
           </div>
@@ -4307,14 +4397,14 @@ function FactorySettingsScreen() {
 
         <section className="settings-section" id="settings-notifications">
             <div className="settings-section-header">
-              <h3>Notifications</h3>
-              <p>Choose which updates should reach your team by email.</p>
+              <h3>{tx("Notifications")}</h3>
+              <p>{tx("Choose which updates should reach your team by email.")}</p>
             </div>
             {["New RFQ matches", "Payment and approval requests", "Messages and call invites"].map((label) => (
               <div className="settings-inline-row" key={label}>
                 <div>
-                  <strong>{label}</strong>
-                  <span>Send email notifications to members with matching authority.</span>
+                  <strong>{tx(label)}</strong>
+                  <span>{tx("Send email notifications to members with matching authority.")}</span>
                 </div>
                 <label className="settings-switch">
                   <input type="checkbox" defaultChecked />
