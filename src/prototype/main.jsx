@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
 import "./styles.css";
@@ -805,7 +805,7 @@ const brandOnboardingSteps = [
   {
     title: "Welcome to The Sourcing Club",
     intro: "Let's set up your brand profile. It takes about 4 minutes, and you can edit everything later.",
-    meta: "8 steps · 3 minutes",
+    meta: "10 steps · 4 minutes",
     cta: "Get started",
     type: "welcome"
   },
@@ -824,13 +824,31 @@ const brandOnboardingSteps = [
     helper: "We'll use this to help build your profile in a later step."
   },
   {
+    title: "Add brand context",
+    intro: "Share the details that help factories understand your brand direction and sourcing needs.",
+    type: "brandContext"
+  },
+  {
     title: "What are you looking to make?",
     intro: "Choose the production methods and product categories factories should match against.",
     type: "chips",
     groups: [
       ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"], ["Cut & sew knits", "Wovens"]],
       ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"], ["Tops", "Bottoms"]],
-      ["Market level", ["Luxury", "Premium / contemporary", "Mid range", "Mass market"], ["Premium / contemporary"]]
+      ["Market level", ["Luxury ($500+)", "Premium / contemporary ($100-$500)", "Mid range ($50-$100)", "Mass market (under $50)"], ["Premium / contemporary ($100-$500)"]]
+    ]
+  },
+  {
+    title: "Share your sourcing volume",
+    intro: "Help factories understand order size, cadence, and pricing fit before they quote.",
+    type: "sourcingPlan",
+    fields: [
+      ["Average pieces ordered per year", ["Under 1,000", "1,000-5,000", "5,000-20,000", "20,000-100,000", "100,000+"], "5,000-20,000"],
+      ["Typical order size per style", ["Under 100", "100-300", "300-1,000", "1,000-5,000", "5,000+"], "300-1,000"],
+      ["Collections per year", ["1", "2", "3-4", "5-6", "Monthly drops"], "3-4"],
+      ["Target sourcing price range", "e.g. $12-$28 FOB per unit"],
+      ["Typical reorder cadence", ["One-time seasonal buys", "Monthly reorders", "Quarterly reorders", "Repeat best sellers as needed"], "Quarterly reorders"],
+      ["Current sourcing stage", ["Exploring factories", "Sampling soon", "Ready for production", "Replacing current supplier"], "Sampling soon"]
     ]
   },
   {
@@ -890,6 +908,9 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [selectedFactories, setSelectedFactories] = useState(["Atelier Minho", "Hanshu Studio"]);
   const [selectedQuote, setSelectedQuote] = useState("Atelier Minho");
+  const [selectedQuotesForCompare, setSelectedQuotesForCompare] = useState(["Atelier Minho", "Hanshu Studio"]);
+  const [quoteCompareOpen, setQuoteCompareOpen] = useState(false);
+  const [selectedReorderProject, setSelectedReorderProject] = useState(null);
   const [fundingMilestone, setFundingMilestone] = useState(null);
   const [milestoneTypes, setMilestoneTypes] = useState(
     Object.fromEntries(milestones.map((milestone) => [milestone.name, milestone.type]))
@@ -937,6 +958,11 @@ function App() {
       setSelectedFactories,
       selectedQuote,
       setSelectedQuote,
+      selectedQuotesForCompare,
+      setSelectedQuotesForCompare,
+      quoteCompareOpen,
+      setQuoteCompareOpen,
+      setSelectedReorderProject,
       milestoneTypes,
       setMilestoneTypes,
       goTo
@@ -956,7 +982,7 @@ function App() {
       case "rfqs":
         return <RfqsScreen goTo={goTo} />;
       case "projects":
-        return <ProjectsScreen goTo={goTo} />;
+        return <ProjectsScreen goTo={goTo} setSelectedReorderProject={setSelectedReorderProject} />;
       case "projectDetail":
         return <ProjectDetailScreen goTo={goTo} goToFundingMilestone={goToFundingMilestone} />;
       case "messages":
@@ -976,9 +1002,9 @@ function App() {
       case "quotes":
         return <QuotesScreen {...props} />;
       case "quoteDetail":
-        return <QuoteDetailScreen selectedQuote={selectedQuote} goTo={goTo} />;
+        return <QuoteDetailScreen selectedQuote={selectedQuote} goTo={goTo} setSelectedReorderProject={setSelectedReorderProject} />;
       case "contract":
-        return <ContractScreen selectedQuote={selectedQuote} />;
+        return <ContractScreen selectedQuote={selectedQuote} reorderProject={selectedReorderProject} />;
       case "payment":
         return <PaymentScreen />;
       case "milestones":
@@ -990,7 +1016,7 @@ function App() {
       default:
         return null;
     }
-  }, [screen, selectedFactories, selectedQuote, milestoneTypes]);
+  }, [screen, selectedFactories, selectedQuote, selectedQuotesForCompare, quoteCompareOpen, selectedReorderProject, milestoneTypes]);
 
   if (screen === "brandOnboarding") {
     return (
@@ -2040,6 +2066,44 @@ function BrandOnboardingStep({ content, step }) {
     );
   }
 
+  if (content.type === "sourcingPlan") {
+    return (
+      <div className="brand-onboarding-form-grid brand-sourcing-volume-grid">
+        {content.fields.map(([label, optionsOrPlaceholder, defaultValue]) => (
+          <label className="brand-onboarding-field" key={label}>
+            <span>{label}</span>
+            {Array.isArray(optionsOrPlaceholder) ? (
+              <select defaultValue={defaultValue || ""}>
+                <option value="" disabled />
+                {optionsOrPlaceholder.map((option) => (
+                  <option key={option}>{option}</option>
+                ))}
+              </select>
+            ) : (
+              <input placeholder={optionsOrPlaceholder} />
+            )}
+          </label>
+        ))}
+      </div>
+    );
+  }
+
+  if (content.type === "brandContext") {
+    return (
+      <div className="brand-context-step">
+        <label className="brand-onboarding-field full">
+          <span>About the brand</span>
+          <textarea placeholder="A short overview of your aesthetic, customer, positioning, and what factories should understand about the brand." />
+        </label>
+
+        <div className="brand-context-upload-grid">
+          <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" />
+          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, or construction details." accept="PNG, JPG, or PDF" />
+        </div>
+      </div>
+    );
+  }
+
   if (content.type === "assets") {
     return (
       <div className="brand-assets-step">
@@ -2122,7 +2186,9 @@ function BrandOnboardingStep({ content, step }) {
   if (content.type === "review") {
     const sections = [
       ["Brand basics", [["Brand name", "Maison Rue"], ["Category", "Fashion brand"], ["Business email", "name@maisonrue.com"], ["Founded", "2021"], ["Website URL", "www.maisonrue.com"], ["HQ location", "New York, USA"]]],
-      ["Sourcing fit", [["Production type", "Cut & sew knits, wovens"], ["Product categories", "Tops, bottoms"], ["Market level", "Premium / contemporary"]]],
+      ["Brand context", [["About the brand", "Premium wardrobe staples with clean silhouettes and natural fibers"], ["Logo", "Uploaded"], ["Product images", "Reference images added"]]],
+      ["Sourcing fit", [["Production type", "Cut & sew knits, wovens"], ["Product categories", "Tops, bottoms"], ["Market level", "Premium / contemporary ($100-$500)"]]],
+      ["Sourcing volume", [["Annual order volume", "5,000-20,000 pieces"], ["Typical order per style", "300-1,000 pieces"], ["Collections per year", "3-4"], ["Target sourcing price", "$12-$28 FOB per unit"], ["Reorder cadence", "Quarterly reorders"]]],
       ["Factory preferences", [["Preferred regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services needed", "Full package, sample development"]]],
       ["Trust", [["Annual revenue", "$1M-$5M"], ["Decision makers", "Founder / production lead added"], ["Business certificate", "Registration or resale certificate uploaded"]]]
     ];
@@ -2178,16 +2244,28 @@ function BrandOnboardingStep({ content, step }) {
 }
 
 function BrandOnboardingChipGroup({ label, options, selected = [] }) {
+  const [selectedOptions, setSelectedOptions] = useState(selected);
   const [customValue, setCustomValue] = useState("");
   const [customOptions, setCustomOptions] = useState([]);
+  const isSingleSelect = label === "Market level";
   const canAddCustom = ["Production type", "Product categories", "Certifications", "Services needed"].includes(label);
   const visibleOptions = [...options, ...customOptions];
+
+  function toggleOption(option) {
+    setSelectedOptions((current) => {
+      if (isSingleSelect) return [option];
+      return current.includes(option)
+        ? current.filter((item) => item !== option)
+        : [...current, option];
+    });
+  }
 
   function addCustomOption(event) {
     event.preventDefault();
     const trimmedValue = customValue.trim();
     if (!trimmedValue || visibleOptions.includes(trimmedValue)) return;
     setCustomOptions((items) => [...items, trimmedValue]);
+    setSelectedOptions((items) => [...items, trimmedValue]);
     setCustomValue("");
   }
 
@@ -2196,7 +2274,15 @@ function BrandOnboardingChipGroup({ label, options, selected = [] }) {
       <strong>{label}</strong>
       <div className="tag-row compact-tags">
         {visibleOptions.map((option) => (
-          <button className={selected.includes(option) ? "selected" : ""} type="button" key={option}>{option}</button>
+          <button
+            className={selectedOptions.includes(option) ? "selected" : ""}
+            type="button"
+            aria-pressed={selectedOptions.includes(option)}
+            onClick={() => toggleOption(option)}
+            key={option}
+          >
+            {option}
+          </button>
         ))}
       </div>
       {canAddCustom && (
@@ -2209,9 +2295,9 @@ function BrandOnboardingChipGroup({ label, options, selected = [] }) {
   );
 }
 
-function BrandAssetUploadCard({ title, helper, accept }) {
+function BrandAssetUploadCard({ title, helper, accept, className = "" }) {
   return (
-    <section className="brand-asset-card">
+    <section className={className ? `brand-asset-card ${className}` : "brand-asset-card"}>
       <div>
         <strong>{title}</strong>
         <span>{helper}</span>
@@ -2384,18 +2470,9 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
               <span>Porto, Portugal</span>
             </div>
           </div>
-          <h2>Accepted quote</h2>
-          <div className="accepted-quote-rows">
-            <Metric label="Unit price" value="$18.40" />
-            <Metric label="Quantity" value="300 units" />
-            <Metric label="Samples" value="Fit + PP · $260" />
-            <Metric label="Bulk lead" value="28 days" />
-            <Metric label="Capacity" value="Aug 12-30" />
-            <Metric label="Terms" value="30/70" />
-          </div>
           <div className="accepted-reminder">
             <h3>TSC reminder</h3>
-            <p>Confirm sample scope, revisions, QC, and delivery terms before funding.</p>
+            <p>Message the factory to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
           </div>
         </section>
         {screen === "milestones" && (
@@ -4092,12 +4169,75 @@ function SavedFactoryCard({ factory, goTo }) {
 
 function RfqsScreen({ goTo }) {
   const [activeTab, setActiveTab] = useState("active");
-  const tabs = [
-    ["active", "Active RFQs (4)", activeRfqs],
-    ["drafts", "Drafts (2)", draftRfqs],
-    ["closed", "Closed (6)", closedRfqs]
-  ];
-  const activeRfqsForTab = tabs.find(([key]) => key === activeTab)?.[2] || activeRfqs;
+  const [rfqTabs, setRfqTabs] = useState([
+    { key: "active", label: "Active RFQs (4)", locked: true },
+    { key: "drafts", label: "Drafts (2)", locked: true },
+    { key: "closed", label: "Closed (6)", locked: true }
+  ]);
+  const [isAddingTab, setIsAddingTab] = useState(false);
+  const [newTabName, setNewTabName] = useState("");
+  const [manageTabsOpen, setManageTabsOpen] = useState(false);
+  const [draftTabs, setDraftTabs] = useState(rfqTabs);
+  const rfqDataByTab = {
+    active: activeRfqs,
+    drafts: draftRfqs,
+    closed: closedRfqs
+  };
+  const activeRfqsForTab = rfqDataByTab[activeTab] || activeRfqs;
+
+  function openManageTabs() {
+    setDraftTabs(rfqTabs);
+    setIsAddingTab(false);
+    setManageTabsOpen(true);
+  }
+
+  function addCustomTab(event) {
+    event.preventDefault();
+    const trimmedName = newTabName.trim();
+    if (!trimmedName || rfqTabs.some((tab) => tab.label === trimmedName)) return;
+    const nextTab = { key: `custom-${trimmedName}`, label: trimmedName, locked: false };
+    setRfqTabs((tabs) => [...tabs, nextTab]);
+    setActiveTab(nextTab.key);
+    setNewTabName("");
+    setIsAddingTab(false);
+  }
+
+  function updateDraftTab(index, value) {
+    setDraftTabs((tabs) => tabs.map((tab, tabIndex) => (tabIndex === index ? { ...tab, label: value } : tab)));
+  }
+
+  function removeDraftTab(index) {
+    setDraftTabs((tabs) => tabs.filter((tab, tabIndex) => tabIndex !== index || tab.locked));
+  }
+
+  function moveDraftTab(index, direction) {
+    setDraftTabs((tabs) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= tabs.length) return tabs;
+      const reorderedTabs = [...tabs];
+      [reorderedTabs[index], reorderedTabs[nextIndex]] = [reorderedTabs[nextIndex], reorderedTabs[index]];
+      return reorderedTabs;
+    });
+  }
+
+  function saveManagedTabs() {
+    const cleanedTabs = [];
+    const seenKeys = new Set();
+    draftTabs.forEach((tab) => {
+      const label = tab.label.trim();
+      if (!label) return;
+      const key = tab.locked ? tab.key : `custom-${label}`;
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+      cleanedTabs.push({ key, label, locked: tab.locked });
+    });
+    const nextTabs = cleanedTabs.length ? cleanedTabs : rfqTabs;
+    setRfqTabs(nextTabs);
+    if (!nextTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(nextTabs[0]?.key || "active");
+    }
+    setManageTabsOpen(false);
+  }
 
   return (
     <div className="rfqs-shell">
@@ -4127,19 +4267,96 @@ function RfqsScreen({ goTo }) {
         </label>
       </section>
 
-      <nav className="rfqs-tabs" aria-label="RFQ status">
-        {tabs.map(([key, label]) => (
-          <button
-            className={activeTab === key ? "active" : ""}
-            type="button"
-            aria-current={activeTab === key ? "page" : undefined}
-            onClick={() => setActiveTab(key)}
-            key={key}
-          >
-            {label}
-          </button>
+      <nav className="rfqs-tabs projects-tabs" aria-label="RFQ status">
+        {rfqTabs.map((tab) => (
+          !tab.locked ? (
+            <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+              <button
+                className={activeTab === tab.key ? "active" : ""}
+                type="button"
+                aria-current={activeTab === tab.key ? "page" : undefined}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            </div>
+          ) : (
+            <button
+              className={activeTab === tab.key ? "active" : ""}
+              type="button"
+              aria-current={activeTab === tab.key ? "page" : undefined}
+              onClick={() => setActiveTab(tab.key)}
+              key={tab.key}
+            >
+              {tab.label}
+            </button>
+          )
         ))}
+        {isAddingTab ? (
+          <form className="project-tab-add-form" onSubmit={addCustomTab}>
+            <input
+              value={newTabName}
+              onChange={(event) => setNewTabName(event.target.value)}
+              placeholder="Tab name"
+              autoFocus
+            />
+            <button type="submit">Add</button>
+            <button
+              className="project-tab-add-cancel"
+              type="button"
+              aria-label="Cancel adding tab"
+              onClick={() => {
+                setNewTabName("");
+                setIsAddingTab(false);
+              }}
+            >
+              ×
+            </button>
+          </form>
+        ) : (
+          <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+            + Add tab
+          </button>
+        )}
+        <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
+          Manage tabs
+        </button>
       </nav>
+
+      {manageTabsOpen && createPortal(
+        <div className="brand-profile-modal-layer">
+          <button className="brand-profile-modal-scrim" type="button" aria-label="Close tab manager" onClick={() => setManageTabsOpen(false)} />
+          <section className="brand-profile-modal project-tabs-modal" role="dialog" aria-modal="true" aria-labelledby="rfq-tabs-title">
+            <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setManageTabsOpen(false)}>×</button>
+            <header className="brand-profile-modal-header">
+              <h1 id="rfq-tabs-title">Manage tabs</h1>
+              <p>Create RFQ tabs for styles, seasons, collections, or any request grouping your team uses.</p>
+            </header>
+
+            <div className="project-tabs-manager">
+              {draftTabs.map((tab, index) => (
+                <div className="project-tabs-manager-row" key={`${tab.key}-${index}`}>
+                  <label>
+                    <span>Tab name {tab.locked ? <small>Default</small> : null}</span>
+                    <input value={tab.label} onChange={(event) => updateDraftTab(index, event.target.value)} />
+                  </label>
+                  <div className="project-tabs-manager-actions">
+                    <button type="button" disabled={index === 0} onClick={() => moveDraftTab(index, -1)}>Up</button>
+                    <button type="button" disabled={index === draftTabs.length - 1} onClick={() => moveDraftTab(index, 1)}>Down</button>
+                    <button type="button" disabled={tab.locked} onClick={() => removeDraftTab(index)}>Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <footer className="brand-profile-modal-actions">
+              <button className="secondary-btn" type="button" onClick={() => setManageTabsOpen(false)}>Cancel</button>
+              <button className="primary-btn" type="button" onClick={saveManagedTabs}>Save changes</button>
+            </footer>
+          </section>
+        </div>,
+        document.body
+      )}
 
       <section className="rfq-list" aria-label={`${activeTab} RFQs`}>
         {activeRfqsForTab.map((rfq) => (
@@ -4151,6 +4368,8 @@ function RfqsScreen({ goTo }) {
 }
 
 function RfqCard({ rfq, goTo }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
   const [quotesReceived, invitedCount, messageCount] = rfq.metrics;
   const quoteDue = rfq.date.split("Quote due ")[1] || "TBD";
   const [primaryImage] = rfq.images || [];
@@ -4160,6 +4379,18 @@ function RfqCard({ rfq, goTo }) {
     ["Messages", messageCount[0]],
     ["Quote due", quoteDue]
   ];
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+
+    function closeOnOutsideClick(event) {
+      if (menuRef.current?.contains(event.target)) return;
+      setMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [menuOpen]);
 
   return (
     <article className={rfq.featured ? "rfq-card featured" : "rfq-card"}>
@@ -4173,7 +4404,25 @@ function RfqCard({ rfq, goTo }) {
         <div className="rfq-card-actions">
           <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>
           <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View RFQ</button>
-          <button className="rfq-more" type="button" aria-label={`More options for ${rfq.title}`}>...</button>
+          <div className="project-overflow" ref={menuRef}>
+            <button
+              className="rfq-more"
+              type="button"
+              aria-label={`More options for ${rfq.title}`}
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              ...
+            </button>
+            {menuOpen && (
+              <div className="project-overflow-menu rfq-overflow-menu" role="menu">
+                <button type="button" role="menuitem" onClick={() => goTo("review")}>Edit RFQ</button>
+                <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate RFQ</button>
+                <button type="button" role="menuitem" onClick={() => goTo("invite")}>Invite more factories</button>
+                <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive RFQ</button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -4211,7 +4460,73 @@ function RfqCard({ rfq, goTo }) {
   );
 }
 
-function ProjectsScreen({ goTo }) {
+function ProjectsScreen({ goTo, setSelectedReorderProject }) {
+  const [activeTab, setActiveTab] = useState("active");
+  const [projectTabs, setProjectTabs] = useState([
+    { key: "active", label: "Active orders (4)", locked: true },
+    { key: "closed", label: "Closed (6)", locked: true },
+    { key: "custom-Spring 27", label: "Spring 27", locked: false }
+  ]);
+  const [isAddingTab, setIsAddingTab] = useState(false);
+  const [newTabName, setNewTabName] = useState("");
+  const [manageTabsOpen, setManageTabsOpen] = useState(false);
+  const [draftTabs, setDraftTabs] = useState(projectTabs);
+  const customTabs = projectTabs.filter((tab) => !tab.locked).map((tab) => tab.label);
+
+  function openManageTabs() {
+    setDraftTabs(projectTabs);
+    setIsAddingTab(false);
+    setManageTabsOpen(true);
+  }
+
+  function addCustomTab(event) {
+    event.preventDefault();
+    const trimmedName = newTabName.trim();
+    if (!trimmedName || projectTabs.some((tab) => tab.label === trimmedName)) return;
+    const nextTab = { key: `custom-${trimmedName}`, label: trimmedName, locked: false };
+    setProjectTabs((tabs) => [...tabs, nextTab]);
+    setActiveTab(nextTab.key);
+    setNewTabName("");
+    setIsAddingTab(false);
+  }
+
+  function updateDraftTab(index, value) {
+    setDraftTabs((tabs) => tabs.map((tab, tabIndex) => (tabIndex === index ? { ...tab, label: value } : tab)));
+  }
+
+  function removeDraftTab(index) {
+    setDraftTabs((tabs) => tabs.filter((tab, tabIndex) => tabIndex !== index || tab.locked));
+  }
+
+  function moveDraftTab(index, direction) {
+    setDraftTabs((tabs) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= tabs.length) return tabs;
+      const reorderedTabs = [...tabs];
+      [reorderedTabs[index], reorderedTabs[nextIndex]] = [reorderedTabs[nextIndex], reorderedTabs[index]];
+      return reorderedTabs;
+    });
+  }
+
+  function saveManagedTabs() {
+    const cleanedTabs = [];
+    const seenKeys = new Set();
+    draftTabs.forEach((tab) => {
+      const label = tab.label.trim();
+      if (!label) return;
+      const key = tab.locked ? tab.key : `custom-${label}`;
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+      cleanedTabs.push({ key, label, locked: tab.locked });
+    });
+    const nextTabs = cleanedTabs.length ? cleanedTabs : projectTabs;
+    setProjectTabs(nextTabs);
+    if (!nextTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(nextTabs[0]?.key || "active");
+    }
+    setManageTabsOpen(false);
+  }
+
   return (
     <div className="rfqs-shell projects-shell">
       <header className="rfqs-header projects-header">
@@ -4256,24 +4571,130 @@ function ProjectsScreen({ goTo }) {
       </section>
 
       <nav className="rfqs-tabs projects-tabs" aria-label="Project status">
-        <button className="active" type="button">Active orders (4)</button>
-        <button type="button">Closed (6)</button>
+        {projectTabs.map((tab) => (
+          !tab.locked ? (
+            <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+              <button
+                className={activeTab === tab.key ? "active" : ""}
+                type="button"
+                aria-current={activeTab === tab.key ? "page" : undefined}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            </div>
+          ) : (
+            <button
+              className={activeTab === tab.key ? "active" : ""}
+              type="button"
+              aria-current={activeTab === tab.key ? "page" : undefined}
+              onClick={() => setActiveTab(tab.key)}
+              key={tab.key}
+            >
+              {tab.label}
+            </button>
+          )
+        ))}
+        {isAddingTab ? (
+          <form className="project-tab-add-form" onSubmit={addCustomTab}>
+            <input
+              value={newTabName}
+              onChange={(event) => setNewTabName(event.target.value)}
+              placeholder="Tab name"
+              autoFocus
+            />
+            <button type="submit">Add</button>
+            <button
+              className="project-tab-add-cancel"
+              type="button"
+              aria-label="Cancel adding tab"
+              onClick={() => {
+                setNewTabName("");
+                setIsAddingTab(false);
+              }}
+            >
+              ×
+            </button>
+          </form>
+        ) : (
+          <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+            + Add tab
+          </button>
+        )}
+        <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
+          Manage tabs
+        </button>
       </nav>
 
-      <section className="projects-list" aria-label="Active orders">
+      {manageTabsOpen && createPortal(
+        <div className="brand-profile-modal-layer">
+          <button className="brand-profile-modal-scrim" type="button" aria-label="Close tab manager" onClick={() => setManageTabsOpen(false)} />
+          <section className="brand-profile-modal project-tabs-modal" role="dialog" aria-modal="true" aria-labelledby="project-tabs-title">
+            <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setManageTabsOpen(false)}>×</button>
+            <header className="brand-profile-modal-header">
+              <h1 id="project-tabs-title">Manage tabs</h1>
+              <p>Create tabs for collections, seasons, factories, or any order grouping your team uses.</p>
+            </header>
+
+            <div className="project-tabs-manager">
+              {draftTabs.map((tab, index) => (
+                <div className="project-tabs-manager-row" key={`${tab.key}-${index}`}>
+                  <label>
+                    <span>Tab name {tab.locked ? <small>Default</small> : null}</span>
+                    <input value={tab.label} onChange={(event) => updateDraftTab(index, event.target.value)} />
+                  </label>
+                  <div className="project-tabs-manager-actions">
+                    <button type="button" disabled={index === 0} onClick={() => moveDraftTab(index, -1)}>Up</button>
+                    <button type="button" disabled={index === draftTabs.length - 1} onClick={() => moveDraftTab(index, 1)}>Down</button>
+                    <button type="button" disabled={tab.locked} onClick={() => removeDraftTab(index)}>Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <footer className="brand-profile-modal-actions">
+              <button className="secondary-btn" type="button" onClick={() => setManageTabsOpen(false)}>Cancel</button>
+              <button className="primary-btn" type="button" onClick={saveManagedTabs}>Save changes</button>
+            </footer>
+          </section>
+        </div>,
+        document.body
+      )}
+
+      <section className="projects-list" aria-label={activeTab === "closed" ? "Closed orders" : "Active orders"}>
         {activeProjects.map((project) => (
-          <ProjectListCard project={project} goTo={goTo} key={project.title} />
+          <ProjectListCard
+            project={project}
+            goTo={goTo}
+            customTabs={customTabs}
+            setSelectedReorderProject={setSelectedReorderProject}
+            key={project.title}
+          />
         ))}
       </section>
     </div>
   );
 }
 
-function ProjectListCard({ project, goTo, actionLabel = "View details" }) {
+function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], setSelectedReorderProject = null }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
   const projectFacts = [
     ["Current step", project.currentStep],
     ["Next due", project.nextDue]
   ];
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+
+    function closeOnOutsideClick(event) {
+      if (menuRef.current?.contains(event.target)) return;
+      setMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [menuOpen]);
 
   return (
     <article className={project.featured ? "brand-project-card featured" : "brand-project-card"}>
@@ -4286,6 +4707,35 @@ function ProjectListCard({ project, goTo, actionLabel = "View details" }) {
           <span className={`project-status ${project.statusTone}`}>{project.status}</span>
           <button className="secondary-btn" type="button">Message</button>
           <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>{actionLabel}</button>
+          <div className="project-overflow" ref={menuRef}>
+            <button className="rfq-more" type="button" aria-label="More order actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
+            {menuOpen && (
+              <div className="project-overflow-menu" role="menu">
+                <div className="project-overflow-submenu">
+                  <button type="button" role="menuitem">Add to</button>
+                  <div className="project-overflow-submenu-panel">
+                    {customTabs.map((tab) => (
+                      <button type="button" role="menuitem" key={tab} onClick={() => setMenuOpen(false)}>
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setSelectedReorderProject?.(project);
+                    setMenuOpen(false);
+                    goTo("contract");
+                  }}
+                >
+                  Reorder style
+                </button>
+                <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive order</button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -4943,12 +5393,64 @@ function quoteFitClass(type) {
   return "quote-fit tradeoff-fit";
 }
 
-function QuotesScreen({ selectedQuote, setSelectedQuote, goTo }) {
+function parseQuoteCurrency(value) {
+  return Number.parseFloat(String(value).replace(/[^0-9.]/g, "")) || 0;
+}
+
+function parseQuoteUnits(value) {
+  return Number.parseInt(String(value).replace(/[^0-9]/g, ""), 10) || 0;
+}
+
+function formatQuoteCurrency(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0
+  }).format(value);
+}
+
+function getQuoteComparisonDetails(factory) {
+  const sampleSubtotal = factory.name === "Ningbo Woven Co" ? 220 : 260;
+  const productionSubtotal = parseQuoteCurrency(factory.price) * parseQuoteUnits(factory.quoteQuantity);
+  return {
+    productionSubtotal: formatQuoteCurrency(productionSubtotal),
+    sampleSubtotal: formatQuoteCurrency(sampleSubtotal),
+    total: formatQuoteCurrency(productionSubtotal + sampleSubtotal),
+    paymentTerms: factory.name === "Ningbo Woven Co" ? "40% deposit · 60% before shipment" : "30% deposit · 70% before shipment",
+    samplePlan: factory.name === "Ningbo Woven Co" ? "Fit + PP · 24 days" : "Fit + PP · 21 days",
+    shipping: factory.name === "Atelier Minho" ? "FOB quoted · freight not included" : "EXW quoted · freight not included",
+    capacityWindow: factory.name === "Ningbo Woven Co" ? "Sep 4-28 · 500 units reserved" : "Aug 12-30 · 420 units reserved"
+  };
+}
+
+function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompare, setSelectedQuotesForCompare, quoteCompareOpen, setQuoteCompareOpen, setSelectedReorderProject, goTo }) {
+  const selectedQuoteFactories = factories.filter((factory) => selectedQuotesForCompare.includes(factory.name));
+
+  function toggleCompareQuote(factoryName) {
+    setSelectedQuotesForCompare((current) =>
+      current.includes(factoryName)
+        ? current.filter((name) => name !== factoryName)
+        : [...current, factoryName]
+    );
+  }
+
   return (
     <div className="stack quote-review-stack">
       <div className="invite-tabs">
         <button className="active" type="button">All quotes (3)</button>
         <button type="button">Messages (2)</button>
+      </div>
+      <div className="quote-compare-topbar">
+        <div>
+          <strong>Compare quotes</strong>
+          <span>Select two or more quotes to review side by side.</span>
+        </div>
+        <div className="quote-compare-topbar-actions">
+          <span>{selectedQuotesForCompare.length} quotes selected</span>
+          <button className="secondary-btn compact-btn" type="button" disabled={selectedQuotesForCompare.length < 2} onClick={() => setQuoteCompareOpen(true)}>
+            Compare quotes
+          </button>
+        </div>
       </div>
       <div className="quote-list">
         {factories.map((factory) => (
@@ -4958,6 +5460,14 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, goTo }) {
             className={selectedQuote === factory.name ? "factory-card quote-card selected" : "factory-card quote-card"}
             onClick={() => setSelectedQuote(factory.name)}
           >
+            <span
+              className={selectedQuotesForCompare.includes(factory.name) ? "check-box checked quote-compare-check" : "check-box quote-compare-check"}
+              aria-hidden="true"
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleCompareQuote(factory.name);
+              }}
+            />
             <div className="quote-factory-content">
               <div className="quote-factory-top">
                 <div className="marketplace-factory-title">
@@ -4975,6 +5485,15 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, goTo }) {
                     className="save-pill"
                     onClick={(event) => {
                       event.stopPropagation();
+                      goTo("messages");
+                    }}
+                  >
+                    Message
+                  </span>
+                  <span
+                    className="save-pill"
+                    onClick={(event) => {
+                      event.stopPropagation();
                       setSelectedQuote(factory.name);
                       goTo("quoteDetail");
                     }}
@@ -4985,6 +5504,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, goTo }) {
                     onClick={(event) => {
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
+                      setSelectedReorderProject(null);
                       goTo("contract");
                     }}
                   >
@@ -5025,11 +5545,73 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, goTo }) {
           </button>
         ))}
       </div>
+      {quoteCompareOpen && createPortal(
+        <div className="brand-profile-modal-layer quote-compare-modal-layer">
+          <button className="brand-profile-modal-scrim" type="button" aria-label="Close quote comparison" onClick={() => setQuoteCompareOpen(false)} />
+          <section className="brand-profile-modal quote-compare-modal" role="dialog" aria-modal="true" aria-labelledby="quote-compare-title">
+            <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setQuoteCompareOpen(false)}>×</button>
+            <header className="brand-profile-modal-header">
+              <h1 id="quote-compare-title">Compare quotes</h1>
+              <p>Review selected factory quotes side by side before choosing one.</p>
+            </header>
+            <div className="quote-compare-table-wrap">
+              <table className="quote-compare-table">
+                <thead>
+                  <tr>
+                    <th>Factory</th>
+                    <th>Unit price</th>
+                    <th>Quantity</th>
+                    <th>Bulk lead</th>
+                    <th>Production subtotal</th>
+                    <th>Sample subtotal</th>
+                    <th>Payment terms</th>
+                    <th>Sample plan</th>
+                    <th>Shipping</th>
+                    <th>Capacity window</th>
+                    <th>Quote total</th>
+                    <th>Fit</th>
+                    <th>Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedQuoteFactories.map((factory) => {
+                    const details = getQuoteComparisonDetails(factory);
+                    return (
+                      <tr key={factory.name}>
+                        <td>
+                          <strong>{factory.name}</strong>
+                          <span>{factory.location}</span>
+                        </td>
+                        <td>{factory.price}</td>
+                        <td>{factory.quoteQuantity}</td>
+                        <td>{factory.lead}</td>
+                        <td>{details.productionSubtotal}</td>
+                        <td>{details.sampleSubtotal}</td>
+                        <td>{details.paymentTerms}</td>
+                        <td>{details.samplePlan}</td>
+                        <td>{details.shipping}</td>
+                        <td>{details.capacityWindow}</td>
+                        <td>{details.total}</td>
+                        <td><span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span></td>
+                        <td>{factory.factoryNote}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <footer className="brand-profile-modal-actions">
+              <button className="secondary-btn" type="button" onClick={() => setQuoteCompareOpen(false)}>Close</button>
+            </footer>
+          </section>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
 
-function QuoteDetailScreen({ selectedQuote, goTo }) {
+function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
   const factory = factories.find((item) => item.name === selectedQuote) || factories[0];
   return (
     <div className="quote-detail-layout">
@@ -5054,7 +5636,14 @@ function QuoteDetailScreen({ selectedQuote, goTo }) {
               </div>
               <div className="factory-actions quote-actions">
                 <span className="save-pill">Message</span>
-                <strong onClick={() => goTo("contract")}>Choose quote</strong>
+                <strong
+                  onClick={() => {
+                    setSelectedReorderProject?.(null);
+                    goTo("contract");
+                  }}
+                >
+                  Choose quote
+                </strong>
               </div>
             </div>
 
@@ -5165,28 +5754,51 @@ function DetailRows({ rows }) {
   );
 }
 
-function ContractScreen({ selectedQuote }) {
+function ContractScreen({ selectedQuote, reorderProject = null }) {
+  const isReorder = Boolean(reorderProject);
+  const reorderStyleName = reorderProject?.title?.replace(/\s+production$/i, "") || "";
+  const contractTitle = isReorder
+    ? `${reorderStyleName} reorder with ${reorderProject.factory}`
+    : "Organic cotton woven shirt sample + bulk production";
+  const scopeCopy = isReorder
+    ? `Repeat the previous ${reorderStyleName.toLowerCase()} order with ${reorderProject.factory}. Use the last approved style as the starting point, then confirm quantity, color breakdown, materials, trims, labels, packing, and any construction changes before funding.`
+    : "Produce the woven shirt styles described in the attached tech pack, including approved fabric, trims, measurements, construction details, color standards, labels, and packing requirements.";
+  const approvalCopy = isReorder
+    ? "Brand and factory should confirm whether new fit or PP samples are needed for this reorder. Any changes to revisions, QC photos, delivery handoff, pricing, or timeline should be confirmed in writing before funding."
+    : "Brand must approve samples before bulk starts. Factory will share QC photos before final balance release. Included revisions, extra revision fees, delivery handoff, and any change requests should be confirmed in writing before funding.";
+
   return (
     <div className="stack contract-stack">
-      <Card title="Work details">
+      <Card title="Confirm final terms" className="final-terms-card">
+        <p className="muted">
+          {isReorder
+            ? `Copied from ${reorderProject.title} with ${reorderProject.factory}. Update anything that changed before funding the reorder.`
+            : "Update these if anything changed after chatting with the factory. Confirm final pricing, samples, QC, delivery terms, and revisions in the conversation before funding."}
+        </p>
+        <div className="final-terms-grid">
+          <AcceptedQuoteField label="Unit price" value="$18.40" />
+          <AcceptedQuoteField label="Quantity" value="300 units" />
+          <AcceptedQuoteField label="Samples" value="Fit + PP · $260" />
+          <AcceptedQuoteField label="Bulk lead" value="28 days" />
+          <AcceptedQuoteField label="Capacity" value="Aug 12-30" />
+          <AcceptedQuoteField label="Terms" value="30/70" />
+        </div>
+      </Card>
+      <Card title="Work details" className="work-details-card">
         <Field
           label="Contract title"
-          value="Organic cotton woven shirt sample + bulk production"
+          value={contractTitle}
         />
         <section className="contract-section">
           <h3>Scope of work</h3>
           <div className="contract-textarea">
-            Produce organic cotton woven shirts based on the attached tech pack. Quote covers 300
-            units across 3 colors, fit sample and PP sample before bulk, and a 28-day bulk lead
-            after PP approval.
+            {scopeCopy}
           </div>
         </section>
         <section className="contract-section">
           <h3>Approvals, revisions, and delivery</h3>
           <div className="contract-textarea">
-            Fit sample + PP sample before bulk; 3 colors at 100 units per color; one included fit
-            sample revision; QC photos before final balance; delivery address confirmed before bulk;
-            extra revision fees quoted separately.
+            {approvalCopy}
           </div>
         </section>
         <section className="contract-section">
@@ -5211,7 +5823,7 @@ function ContractScreen({ selectedQuote }) {
 function PaymentScreen() {
   return (
     <div className="stack">
-      <Card title="Contract terms">
+      <Card title="Payment terms">
         <p className="muted">
           TSC project funds hold money until the approved step is released.
         </p>
@@ -5443,7 +6055,16 @@ function Metric({ label, value, className = "" }) {
   );
 }
 
-function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", secondaryLabel = "" }) {
+function AcceptedQuoteField({ label, value }) {
+  return (
+    <label className="accepted-quote-field">
+      <span>{label}</span>
+      <input defaultValue={value} />
+    </label>
+  );
+}
+
+function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null, secondaryLabel = "" }) {
   return (
     <footer className={canBack ? "bottom-bar has-back" : "bottom-bar no-back"}>
       {canBack && (
@@ -5451,7 +6072,16 @@ function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", sec
           Back
         </button>
       )}
-      {centerText && <span className="bottom-meta">{centerText}</span>}
+      {(centerText || centerAction) && (
+        <div className="bottom-meta-group">
+          {centerText && <span className="bottom-meta">{centerText}</span>}
+          {centerAction && (
+            <button className="secondary-btn compact-btn" type="button" disabled={centerAction.disabled} onClick={centerAction.onClick}>
+              {centerAction.label}
+            </button>
+          )}
+        </div>
+      )}
       <div className="bottom-actions">
         {secondaryLabel && <button className="secondary-btn" type="button">{secondaryLabel}</button>}
         {primaryLabel && (
