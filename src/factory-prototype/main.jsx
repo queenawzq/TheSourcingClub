@@ -1489,6 +1489,7 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
             className="factory-brand-messages-panel"
             title="Needs your attention"
             subtitle="Priority RFQs, messages, and production steps."
+            preHeader={<FactoryDashboardCallCard language={language} />}
           >
             <FactoryAttentionCard
               type="Question"
@@ -2547,9 +2548,10 @@ function FactoryMetricCard({ label, value, note, tone }) {
   );
 }
 
-function FactoryDashboardPanel({ title, subtitle, action, onAction, className = "", children }) {
+function FactoryDashboardPanel({ title, subtitle, action, onAction, className = "", preHeader = null, children }) {
   return (
     <section className={className ? `factory-dashboard-panel ${className}` : "factory-dashboard-panel"}>
+      {preHeader}
       <header>
         <div>
           <h2>{title}</h2>
@@ -2611,6 +2613,43 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
         </div>
         <p data-no-translate>{isZh ? getTranslatedListDescription(rfq) : rfq.description}</p>
       </div>
+    </article>
+  );
+}
+
+function FactoryDashboardCallCard({ language }) {
+  const isZh = language === "zh";
+  const calls = [
+    {
+      title: isZh ? "样衣评审通话" : "Sample review call",
+      time: isZh ? "周二 3:00 PM" : "Tue 3:00 PM",
+      counterpartTime: isZh ? "Maison Rue: 周二 10:00 AM ET" : "Maison Rue: Tue 10:00 AM ET",
+      description: isZh ? "查看样衣照片并确认袖长尺寸更新。" : "Review sample photos and confirm sleeve measurement update."
+    },
+    {
+      title: isZh ? "大货启动同步" : "Bulk kickoff sync",
+      time: isZh ? "周四 4:30 PM" : "Thu 4:30 PM",
+      counterpartTime: isZh ? "Maison Rue: 周四 11:30 AM ET" : "Maison Rue: Thu 11:30 AM ET",
+      description: isZh ? "确认大货排期和生产开始前的付款节点。" : "Confirm bulk timing and payment milestone before production starts."
+    }
+  ];
+
+  return (
+    <article className="factory-upcoming-call-card">
+      <h2 className="factory-upcoming-call-label">{isZh ? "已安排通话" : "Scheduled calls"}</h2>
+      {calls.map((call) => (
+        <section className="factory-upcoming-call-time" key={call.title}>
+          <div className="factory-upcoming-call-heading">
+            <h3>{call.title}</h3>
+            <strong>{call.time}</strong>
+          </div>
+          <span>{call.counterpartTime}</span>
+          <div className="factory-upcoming-call-actions">
+            <p className="factory-upcoming-call-description">{call.description}</p>
+            <button className="secondary-btn compact-btn" type="button">{isZh ? "加入通话" : "Join call"}</button>
+          </div>
+        </section>
+      ))}
     </article>
   );
 }

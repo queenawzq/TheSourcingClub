@@ -614,13 +614,99 @@ button {
 .home-attention-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 7px 12px;
-  align-items: center;
-  min-height: 86px;
-  padding: 10px 12px;
+  gap: 4px 12px;
+  align-items: start;
+  min-height: 80px;
+  padding: 9px 12px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: white;
+}
+
+.home-upcoming-call-card {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.home-upcoming-call-label {
+  margin: 0;
+  justify-self: start;
+  color: #0b1020;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 28px;
+}
+
+.home-upcoming-call-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.home-upcoming-call-heading h3 {
+  margin: 0;
+  color: #0b1020;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 21px;
+}
+
+.home-upcoming-call-heading strong {
+  flex: 0 0 auto;
+  color: #0b1020;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: right;
+}
+
+.home-upcoming-call-time {
+  display: grid;
+  gap: 7px;
+  padding: 12px 14px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.home-upcoming-call-time span {
+  display: block;
+}
+
+.home-upcoming-call-time > span {
+  margin: 0;
+  color: #60769b;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 15px;
+}
+
+.home-upcoming-call-description {
+  min-width: 0;
+  margin: 0;
+  padding-left: 8px;
+  border-left: 3px solid #2454f4;
+  color: #465f84;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+.home-upcoming-call-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.home-upcoming-call-actions .compact-btn {
+  flex: 0 0 auto;
+  min-width: 86px;
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
 }
 
 .home-attention-type {
@@ -628,6 +714,7 @@ button {
   justify-content: space-between;
   grid-column: 1;
   grid-row: 1;
+  transform: translateY(3px);
 }
 
 .home-attention-type span {
@@ -665,6 +752,7 @@ button {
   display: grid;
   gap: 3px;
   min-width: 0;
+  transform: translateY(-2px);
 }
 
 .home-attention-copy h3 {
@@ -727,6 +815,7 @@ button {
   grid-column: 2;
   grid-row: 1;
   justify-self: end;
+  align-self: center;
   min-width: 88px;
   min-height: 30px;
   padding: 0 12px;

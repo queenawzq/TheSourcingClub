@@ -1280,6 +1280,10 @@
   margin-top: 0;
 }
 
+.factory-brand-messages-panel .factory-upcoming-call-card {
+  margin-bottom: 18px;
+}
+
 .factory-messages-shell:not(.has-side-panel) {
   grid-template-columns: 300px minmax(560px, 1fr);
 }
@@ -1445,13 +1449,99 @@
 .factory-attention-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 7px 12px;
-  align-items: center;
-  min-height: 86px;
-  padding: 10px 12px;
+  gap: 4px 12px;
+  align-items: start;
+  min-height: 80px;
+  padding: 9px 12px 10px;
   border: 1px solid #d9dfe9;
   border-radius: 8px;
   background: #fff;
+}
+
+.factory-upcoming-call-card {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.factory-upcoming-call-label {
+  margin: 0;
+  justify-self: start;
+  color: #0b1020;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 28px;
+}
+
+.factory-upcoming-call-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.factory-upcoming-call-heading h3 {
+  margin: 0;
+  color: #0b1020;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 21px;
+}
+
+.factory-upcoming-call-heading strong {
+  flex: 0 0 auto;
+  color: #0b1020;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 17px;
+  text-align: right;
+}
+
+.factory-upcoming-call-time {
+  display: grid;
+  gap: 7px;
+  padding: 12px 14px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.factory-upcoming-call-time span {
+  display: block;
+}
+
+.factory-upcoming-call-time > span {
+  margin: 0;
+  color: #60769b;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 15px;
+}
+
+.factory-upcoming-call-description {
+  min-width: 0;
+  margin: 0;
+  padding-left: 8px;
+  border-left: 3px solid #2454f4;
+  color: #465f84;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+.factory-upcoming-call-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.factory-upcoming-call-actions .compact-btn {
+  flex: 0 0 auto;
+  min-width: 86px;
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
 }
 
 .factory-attention-type {
@@ -1459,6 +1549,7 @@
   justify-content: space-between;
   grid-column: 1;
   grid-row: 1;
+  transform: translateY(3px);
 }
 
 .factory-attention-type span {
@@ -1496,6 +1587,7 @@
   display: grid;
   gap: 3px;
   min-width: 0;
+  transform: translateY(-2px);
 }
 
 .factory-attention-copy h3 {
@@ -1518,6 +1610,7 @@
   grid-column: 2;
   grid-row: 1;
   justify-self: end;
+  align-self: center;
   min-width: 88px;
   min-height: 30px;
   padding: 0 12px;

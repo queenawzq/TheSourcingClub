@@ -420,6 +420,23 @@ const activeRfqs = [
       ["9", "invited"],
       ["1", "message"]
     ]
+  },
+  {
+    title: "Silk slip dress capsule",
+    date: "Posted today · Quote due Aug 4",
+    description: "Bias-cut silk blend slip dresses across two colors. Need final size range and target price before inviting factories.",
+    tags: ["Wovens", "Premium $40-$90", "180 units"],
+    images: [
+      { label: "Slip dress reference", src: "https://images.pexels.com/photos/1036622/pexels-photo-1036622.jpeg?auto=compress&dpr=1&w=900" },
+      { label: "Fabric direction", src: "https://images.pexels.com/photos/7679720/pexels-photo-7679720.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    status: "Draft needs review",
+    statusTone: "warning",
+    metrics: [
+      ["0", "quotes"],
+      ["5", "invited"],
+      ["0", "message"]
+    ]
   }
 ];
 
@@ -2572,12 +2589,13 @@ function HomeScreen({ goTo }) {
             <button className="secondary-btn" type="button" onClick={() => goTo("rfqs")}>View all</button>
           </header>
           <div className="home-rfq-list">
-            {activeRfqs.slice(0, 3).map((rfq) => (
+            {activeRfqs.slice(0, 4).map((rfq) => (
               <HomeRfqMiniCard rfq={rfq} goTo={goTo} key={rfq.title} />
             ))}
           </div>
         </section>
         <section className="home-attention">
+          <HomeUpcomingCallCard />
           <header className="home-panel-header compact">
             <div>
               <h2>Needs your attention</h2>
@@ -2606,6 +2624,42 @@ function HomeScreen({ goTo }) {
         </div>
       </section>
     </div>
+  );
+}
+
+function HomeUpcomingCallCard() {
+  const calls = [
+    {
+      title: "Sample review call",
+      time: "Tue 10:00 AM ET",
+      counterpartTime: "Atelier Minho: Tue 3:00 PM",
+      description: "Review sample photos and confirm sleeve measurement update."
+    },
+    {
+      title: "Bulk kickoff sync",
+      time: "Thu 11:30 AM ET",
+      counterpartTime: "Atelier Minho: Thu 4:30 PM",
+      description: "Confirm bulk timing and payment milestone before production starts."
+    }
+  ];
+
+  return (
+    <article className="home-upcoming-call-card">
+      <h2 className="home-upcoming-call-label">Scheduled calls</h2>
+      {calls.map((call) => (
+        <section className="home-upcoming-call-time" key={call.title}>
+          <div className="home-upcoming-call-heading">
+            <h3>{call.title}</h3>
+            <strong>{call.time}</strong>
+          </div>
+          <span>{call.counterpartTime}</span>
+          <div className="home-upcoming-call-actions">
+            <p className="home-upcoming-call-description">{call.description}</p>
+            <button className="secondary-btn compact-btn" type="button">Join call</button>
+          </div>
+        </section>
+      ))}
+    </article>
   );
 }
 
