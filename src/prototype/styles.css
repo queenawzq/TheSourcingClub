@@ -609,6 +609,9 @@ button {
 .home-attention-grid {
   display: grid;
   gap: 10px;
+  max-height: 270px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .home-attention-card {
@@ -861,15 +864,15 @@ button {
 
 .home-rfq-list {
   display: grid;
-  gap: 14px;
+  gap: 12px;
 }
 
 .home-rfq-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 240px;
-  gap: 8px 14px;
+  gap: 7px 14px;
   align-items: start;
-  padding: 14px 14px 16px;
+  padding: 12px 14px 13px;
   border: 1px solid #d6e0ec;
   border-radius: 8px;
   background: #fff;
@@ -912,8 +915,8 @@ button {
 }
 
 .home-rfq-card .home-production-facts div {
-  min-height: 40px;
-  padding: 6px 10px;
+  min-height: 36px;
+  padding: 5px 10px;
 }
 
 .home-rfq-card .home-production-facts span {
@@ -936,7 +939,7 @@ button {
   color: #465f84;
   font-size: 12px;
   font-weight: 500;
-  line-height: 17px;
+  line-height: 16px;
 }
 
 .home-rfq-side {
