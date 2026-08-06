@@ -33,7 +33,7 @@ const factoryTranslations = {
     'hero.title3': 'brands ready',
     'hero.title4': 'to produce.',
     'hero.body': 'The Sourcing Club brings you qualified, production-ready orders from vetted US and European fashion brands. No bidding wars, no tire-kickers, no middlemen taking your margin.',
-    'hero.tiny': '✧ Built for real factories that want serious buyers, clear specs, protected milestones, and long-term brand relationships.',
+    'hero.tiny': '✧ Free to join. First vetted factories get early access to qualified RFQs.',
     'stats.one.value': '100%',
     'stats.one.label': 'buyer briefs structured',
     'stats.two.value': 'Protected',
