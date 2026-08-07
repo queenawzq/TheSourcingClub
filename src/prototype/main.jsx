@@ -763,7 +763,7 @@ const messageThreads = [
     status: "Online",
     localTime: "4:18 PM local time",
     project: "Denim jacket wash development and small bulk",
-    kind: "RFQ",
+    kind: "Quote",
     lastDate: "Mon",
     lastPreview: "Can you confirm target wash sample lead time?",
     unread: 0,
@@ -962,7 +962,7 @@ function App() {
   };
 
   const next = () => {
-    if (screen === "invite") setToast("RFQ sent to 2 selected factories");
+    if (screen === "invite") setToast("Quote request sent to 2 selected factories");
     if (screen === "quoteDetail") setSelectedQuote("Atelier Minho");
     if (screen === "fund") setToast(fundingMilestone ? `${fundingMilestone.title} funded` : "Sample payment funded");
     goTo(screenOrder[Math.min(index + 1, screenOrder.length - 1)]);
@@ -1055,12 +1055,12 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <SideNav
-        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" || screen === "profileCompletion" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "rfqs" ? "RFQs" : "RFQs"}
+        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" || screen === "profileCompletion" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "rfqs" ? "Quotes" : "Quotes"}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onNav={(label) => {
           if (label === "Dashboard") goTo("home");
-          if (label === "RFQs") goTo("rfqs");
+          if (label === "Quotes") goTo("rfqs");
           if (label === "Production orders") goTo("projects");
           if (label === "Browse factories") goTo("factoryMarketplace");
           if (label === "Conversations") goTo("messages");
@@ -1121,7 +1121,7 @@ function App() {
 function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
   const nav = [
     { label: "Dashboard", icon: "home" },
-    { label: "RFQs", icon: "rfq" },
+    { label: "Quotes", icon: "rfq" },
     { label: "Production orders", icon: "projects" },
     { label: "Browse factories", icon: "explore" },
     { label: "Conversations", icon: "messages" },
@@ -1550,7 +1550,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
 }
 
 const settingsPermissionLabels = [
-  { key: "rfqFlow", label: "RFQ flow", detail: "Create RFQ, choose quote, set terms and milestones", single: true },
+  { key: "rfqFlow", label: "Quote flow", detail: "Create quote request, choose quote, set terms and milestones", single: true },
   { key: "approve", label: "Approve samples", detail: "Lab dip, strike-off, sample, and more" },
   { key: "releaseFunds", label: "Release funds", detail: "Release approved payments from project funds" },
   { key: "primaryContact", label: "Primary contact", detail: "Main factory contact for messages and calls", single: true },
@@ -1558,7 +1558,7 @@ const settingsPermissionLabels = [
 ];
 
 const factoryAccountPermissionLabels = [
-  { key: "rfqFlow", label: "RFQ flow", detail: "Give quotes and submit RFQ details", single: true },
+  { key: "rfqFlow", label: "Quote flow", detail: "Give quotes and submit quote details", single: true },
   { key: "addUpdate", label: "Add update", detail: "Post production updates and files" },
   { key: "primaryContact", label: "Primary contact", detail: "Main contact for messages and calls", single: true },
   { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
@@ -1821,7 +1821,7 @@ function SettingsScreen({ accountType = "brand" }) {
             <div className="settings-section-header split">
               <div>
                 <h3>{isFactory ? "Manage team & stakeholders" : "Stakeholder authority"}</h3>
-                <p>{isFactory ? "Control who can quote RFQs, post updates, and act as the primary contact." : "Assign RFQ flow, sample approvals, fund release, and the primary factory contact."}</p>
+                <p>{isFactory ? "Control who can quote requests, post updates, and act as the primary contact." : "Assign quote flow, sample approvals, fund release, and the primary factory contact."}</p>
               </div>
               <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
             </div>
@@ -1959,7 +1959,7 @@ function SettingsScreen({ accountType = "brand" }) {
               <h3>Notifications</h3>
               <p>Choose which updates should reach your team by email.</p>
             </div>
-            {["New quote or RFQ activity", "Payment and approval requests", "Messages and call invites"].map((label) => (
+            {["New quote activity", "Payment and approval requests", "Messages and call invites"].map((label) => (
               <div className="settings-inline-row" key={label}>
                 <div>
                   <strong>{label}</strong>
@@ -2556,7 +2556,7 @@ function HomeScreen({ goTo, onOpenActivity }) {
     {
       type: "Draft",
       tone: "danger",
-      title: "Finish your RFQ draft",
+      title: "Finish your quote draft",
       meta: "Add target pricing and invite factories before sending.",
       facts: [],
       action: "Continue draft",
@@ -2619,7 +2619,7 @@ function HomeScreen({ goTo, onOpenActivity }) {
         <section className="home-active-rfqs">
           <header className="home-panel-header">
             <div>
-              <h2>Active RFQs</h2>
+              <h2>Active quotes</h2>
               <p>Compare quote activity and open questions before choosing a factory.</p>
             </div>
             <button className="secondary-btn" type="button" onClick={() => goTo("rfqs")}>View all</button>
@@ -2773,7 +2773,7 @@ function HomeRfqMiniCard({ rfq, goTo }) {
       </header>
       <div className="home-rfq-side">
         <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>
-        <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View RFQ</button>
+        <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View quote</button>
       </div>
       <div className="home-production-facts home-rfq-facts">
         <div>
@@ -2897,7 +2897,7 @@ function BrandProfileScreen({ onViewCompletion }) {
     ],
     activeProjects: [
       {
-        title: "Poplin shirt restock RFQ",
+        title: "Poplin shirt restock quote",
         partner: "Atelier Minho",
         date: "Posted 18 minutes ago",
         result: "Quote due",
@@ -2908,7 +2908,7 @@ function BrandProfileScreen({ onViewCompletion }) {
         title: "Resort knit capsule",
         partner: "Luna Resort shortlist",
         date: "Drafting",
-        result: "Preparing RFQ",
+        result: "Preparing quote",
         summary: "Lightweight knit tops and cardigans with visible sample-room support and moodboard references.",
         tags: ["Knitwear", "Sample room", "Moodboard", "Premium"]
       }
@@ -2999,7 +2999,7 @@ function BrandProfileScreen({ onViewCompletion }) {
                 <p>Club orders · {data.responseTime} avg. response</p>
               </div>
               <div className="factory-profile-score-grid">
-                <Metric label="Active RFQs" value={data.activeRfqs} />
+                <Metric label="Active quotes" value={data.activeRfqs} />
                 <Metric label="Repeat factories" value={data.repeatFactories} />
                 <Metric label="Payment status" value={data.paymentStatus} />
               </div>
@@ -3212,7 +3212,7 @@ const brandProfileCompletionChecks = [
     title: "Payment method",
     status: "Not added",
     tone: "missing",
-    description: "Add a card or bank account now, or during the RFQ flow before confirming production.",
+    description: "Add a card or bank account now, or during the quote flow before confirming production.",
     action: "Add payment method"
   }
 ];
@@ -3237,7 +3237,7 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
           <div>
             <span>Profile verification</span>
             <h1>Profile completion summary</h1>
-            <p>You can browse factories and draft RFQs now. Complete the items below to improve trust signals and make the brand easier for factories to evaluate.</p>
+            <p>You can browse factories and draft quotes now. Complete the items below to improve trust signals and make the brand easier for factories to evaluate.</p>
           </div>
           <div className="factory-profile-completion-score">
             <strong>88%</strong>
@@ -3630,7 +3630,7 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
                 <BrandProfileEditField label="Account number" value={form.accountNumber} onChange={(value) => updateField("accountNumber", value)} />
               </div>
             )}
-            <p>RFQs can still be drafted. This verifies the profile payment signal and prepares the account for production milestones.</p>
+            <p>Quotes can still be drafted. This verifies the profile payment signal and prepares the account for production milestones.</p>
           </div>
         )}
 
@@ -4200,7 +4200,7 @@ function SavedFactoriesScreen({ goTo }) {
       <header className="rfqs-header saved-header">
         <div>
           <h1>Saved factories</h1>
-          <p>Factories Maison Rue saved for current RFQs, future sourcing, and production follow-up.</p>
+          <p>Factories Maison Rue saved for current quotes, future sourcing, and production follow-up.</p>
         </div>
         <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse factories</button>
       </header>
@@ -4293,7 +4293,7 @@ function SavedFactoryCard({ factory, goTo }) {
 function RfqsScreen({ goTo }) {
   const [activeTab, setActiveTab] = useState("active");
   const [rfqTabs, setRfqTabs] = useState([
-    { key: "active", label: "Active RFQs (4)", locked: true },
+    { key: "active", label: "Active quotes (4)", locked: true },
     { key: "drafts", label: "Drafts (2)", locked: true },
     { key: "closed", label: "Closed (6)", locked: true }
   ]);
@@ -4366,13 +4366,13 @@ function RfqsScreen({ goTo }) {
     <div className="rfqs-shell">
       <header className="rfqs-header">
         <div>
-          <h1>RFQs</h1>
+          <h1>Quotes</h1>
           <p>Track live factory quote requests, compare responses, and move selected quotes toward contract terms.</p>
         </div>
-        <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Post new RFQ</button>
+        <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Request new quote</button>
       </header>
 
-      <section className="rfqs-controls" aria-label="RFQ filters">
+      <section className="rfqs-controls" aria-label="Quote filters">
         <label className="rfqs-search">
           <span>Search Projects</span>
           <div>
@@ -4390,7 +4390,7 @@ function RfqsScreen({ goTo }) {
         </label>
       </section>
 
-      <nav className="rfqs-tabs projects-tabs" aria-label="RFQ status">
+      <nav className="rfqs-tabs projects-tabs" aria-label="Quote status">
         {rfqTabs.map((tab) => (
           !tab.locked ? (
             <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
@@ -4453,7 +4453,7 @@ function RfqsScreen({ goTo }) {
             <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setManageTabsOpen(false)}>×</button>
             <header className="brand-profile-modal-header">
               <h1 id="rfq-tabs-title">Manage tabs</h1>
-              <p>Create RFQ tabs for styles, seasons, collections, or any request grouping your team uses.</p>
+              <p>Create quote tabs for styles, seasons, collections, or any request grouping your team uses.</p>
             </header>
 
             <div className="project-tabs-manager">
@@ -4481,7 +4481,7 @@ function RfqsScreen({ goTo }) {
         document.body
       )}
 
-      <section className="rfq-list" aria-label={`${activeTab} RFQs`}>
+      <section className="rfq-list" aria-label={`${activeTab} quotes`}>
         {activeRfqsForTab.map((rfq) => (
           <RfqCard rfq={rfq} goTo={goTo} key={rfq.title} />
         ))}
@@ -4526,7 +4526,7 @@ function RfqCard({ rfq, goTo }) {
         </div>
         <div className="rfq-card-actions">
           <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>
-          <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View RFQ</button>
+          <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View quote</button>
           <div className="project-overflow" ref={menuRef}>
             <button
               className="rfq-more"
@@ -4539,10 +4539,10 @@ function RfqCard({ rfq, goTo }) {
             </button>
             {menuOpen && (
               <div className="project-overflow-menu rfq-overflow-menu" role="menu">
-                <button type="button" role="menuitem" onClick={() => goTo("review")}>Edit RFQ</button>
-                <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate RFQ</button>
+                <button type="button" role="menuitem" onClick={() => goTo("review")}>Edit quote</button>
+                <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate quote</button>
                 <button type="button" role="menuitem" onClick={() => goTo("invite")}>Invite more factories</button>
-                <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive RFQ</button>
+                <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive quote</button>
               </div>
             )}
           </div>
