@@ -155,7 +155,7 @@ const factoryTranslations = {
     'hero.title3': '已准备投产',
     'hero.title4': '的品牌订单。',
     'hero.body': 'The Sourcing Club 为你带来经过筛选、已具备生产条件的美国和欧洲时尚品牌订单。没有竞价大战，没有无效询盘，也没有中间商压缩你的利润。',
-    'hero.tiny': '✧ 为真正想服务严肃买家、清晰规格、受保护里程碑和长期品牌关系的工厂而建。',
+    'hero.tiny': '✧ 免费加入。首批通过审核的工厂可优先收到高质量询价。',
     'stats.one.value': '100%',
     'stats.one.label': '买家需求结构化',
     'stats.two.value': '有保障',
