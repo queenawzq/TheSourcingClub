@@ -933,6 +933,7 @@ function App() {
     Object.fromEntries(milestones.map((milestone) => [milestone.name, milestone.type]))
   );
   const [toast, setToast] = useState("");
+  const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
   const [transitionKey, setTransitionKey] = useState(0);
 
   const index = screenOrder.indexOf(screen);
@@ -987,7 +988,7 @@ function App() {
 
     switch (screen) {
       case "home":
-        return <HomeScreen goTo={goTo} />;
+        return <HomeScreen goTo={goTo} onOpenActivity={() => setActivityDrawerOpen(true)} />;
       case "profile":
         return <BrandProfileScreen onViewCompletion={() => goTo("profileCompletion")} />;
       case "profileCompletion":
@@ -1112,6 +1113,7 @@ function App() {
         />
       )}
       {toast && <Toast message={toast} onDone={() => setToast("")} />}
+      {activityDrawerOpen && <ActivityDrawer onClose={() => setActivityDrawerOpen(false)} />}
     </div>
   );
 }
@@ -1125,8 +1127,7 @@ function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
     { label: "Conversations", icon: "messages" },
     { label: "Saved", icon: "bookmarks" },
     { label: "Billing", icon: "billing" },
-    { label: "Settings", icon: "settings" },
-    { label: "Notifications", icon: "notification" }
+    { label: "Settings", icon: "settings" }
   ];
 
   return (
@@ -2521,7 +2522,36 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
   );
 }
 
-function HomeScreen({ goTo }) {
+const passiveActivityItems = [
+  {
+    type: "Quote",
+    title: "Atelier Minho updated their quote",
+    meta: "Organic cotton woven shirt production",
+    time: "12 min ago",
+    unread: true
+  },
+  {
+    type: "File",
+    title: "Seoul Knit Works uploaded a yarn card",
+    meta: "Premium knit capsule for resort drop",
+    time: "48 min ago",
+    unread: true
+  },
+  {
+    type: "Status",
+    title: "PP sample milestone moved to in review",
+    meta: "Washed denim overshirt reorder",
+    time: "Yesterday"
+  },
+  {
+    type: "Factory",
+    title: "Two saved factories added summer capacity",
+    meta: "Portugal and South Korea partners",
+    time: "Jul 22"
+  }
+];
+
+function HomeScreen({ goTo, onOpenActivity }) {
   const attentionItems = [
     {
       type: "Draft",
@@ -2562,8 +2592,14 @@ function HomeScreen({ goTo }) {
   return (
     <div className="home-stack">
       <header className="home-header">
-        <h1>Hi Maison Rue</h1>
-        <span />
+        <div>
+          <h1>Hi Maison Rue</h1>
+          <span />
+        </div>
+        <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">
+          <img src="/assets/prototype-icons/notification.svg" alt="" />
+          <b aria-hidden="true">4</b>
+        </button>
       </header>
       <section className="card home-search-card">
         <label className="search-field home-search-field">
@@ -2625,6 +2661,39 @@ function HomeScreen({ goTo }) {
       </section>
     </div>
   );
+}
+
+function ActivityDrawer({ onClose }) {
+  return createPortal((
+    <div className="activity-drawer-layer" role="presentation">
+      <button className="activity-drawer-scrim" type="button" aria-label="Close activity" onClick={onClose} />
+      <aside className="activity-drawer" role="dialog" aria-modal="true" aria-labelledby="activity-drawer-title">
+        <header className="activity-drawer-header">
+          <div>
+            <h2 id="activity-drawer-title">Activity</h2>
+            <p>Passive updates from quotes, files, factories, and production.</p>
+          </div>
+          <button className="activity-close-btn" type="button" aria-label="Close activity" onClick={onClose}>
+            <img src="/assets/prototype-icons/close.svg" alt="" />
+          </button>
+        </header>
+        <div className="activity-drawer-list">
+          {passiveActivityItems.map((item) => (
+            <article className={item.unread ? "activity-drawer-item unread" : "activity-drawer-item"} key={item.title}>
+              <div>
+                <div className="activity-drawer-meta">
+                  <span>{item.type}</span>
+                  <time>{item.time}</time>
+                </div>
+                <h3>{item.title}</h3>
+                <p>{item.meta}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </aside>
+    </div>
+  ), document.body);
 }
 
 function HomeUpcomingCallCard() {

@@ -214,8 +214,7 @@ const nav = [
   { label: "Conversations", icon: "messages" },
   { label: "Saved", icon: "bookmarks" },
   { label: "Billing", icon: "billing" },
-  { label: "Settings", icon: "settings" },
-  { label: "Notifications", icon: "notification" }
+  { label: "Settings", icon: "settings" }
 ];
 
 const factoryMainZhText = {
@@ -1305,6 +1304,7 @@ function App() {
   const [detailBackTarget, setDetailBackTarget] = useState("browse");
   const [quoteBackTarget, setQuoteBackTarget] = useState("detail");
   const [capacityDrawerOpen, setCapacityDrawerOpen] = useState(false);
+  const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
   const selectedProject = brandProjects[0];
   const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "profile" || screen === "profileCompletion" ? "" : "Browse RFQs";
@@ -1397,6 +1397,7 @@ function App() {
             setScreen("detail");
           }}
           onViewProjects={() => setScreen("projects")}
+          onOpenActivity={() => setActivityDrawerOpen(true)}
         />
       )}
       {screen === "profile" && (
@@ -1527,11 +1528,12 @@ function App() {
           }}
         />
       )}
+      {activityDrawerOpen && <FactoryActivityDrawer onClose={() => setActivityDrawerOpen(false)} />}
     </div>
   );
 }
 
-function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onViewRfqs, onViewRfqDetail, onViewProjects }) {
+function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onViewRfqs, onViewRfqDetail, onViewProjects, onOpenActivity }) {
   const capacityUnits = getCapacityUnitRange(capacityValue);
 
   return (
@@ -1539,6 +1541,10 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
       <div className="factory-dashboard-shell">
         <header className="factory-dashboard-header">
           <h1>Hi Atelier Minho</h1>
+          <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">
+            <img src="/assets/prototype-icons/notification.svg" alt="" />
+            <b aria-hidden="true">4</b>
+          </button>
         </header>
 
         <section className="factory-dashboard-grid" aria-label="Factory dashboard overview">
@@ -1623,6 +1629,68 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
       </div>
     </main>
   );
+}
+
+const factoryPassiveActivityItems = [
+  {
+    type: "RFQ",
+    title: "New RFQ match added to your invite list",
+    meta: "Premium knit capsule for resort drop",
+    time: "18 min ago",
+    unread: true
+  },
+  {
+    type: "File",
+    title: "Maison Rue downloaded your sample cost sheet",
+    meta: "Organic cotton woven shirt production",
+    time: "1 hr ago",
+    unread: true
+  },
+  {
+    type: "Status",
+    title: "Fit sample milestone moved to brand review",
+    meta: "Washed denim overshirt reorder",
+    time: "Yesterday"
+  },
+  {
+    type: "Profile",
+    title: "Your GOTS certificate was viewed 6 times",
+    meta: "Factory profile activity",
+    time: "Jul 22"
+  }
+];
+
+function FactoryActivityDrawer({ onClose }) {
+  return createPortal((
+    <div className="activity-drawer-layer" role="presentation">
+      <button className="activity-drawer-scrim" type="button" aria-label="Close activity" onClick={onClose} />
+      <aside className="activity-drawer" role="dialog" aria-modal="true" aria-labelledby="factory-activity-drawer-title">
+        <header className="activity-drawer-header">
+          <div>
+            <h2 id="factory-activity-drawer-title">Activity</h2>
+            <p>Passive updates from RFQs, files, brands, and production.</p>
+          </div>
+          <button className="activity-close-btn" type="button" aria-label="Close activity" onClick={onClose}>
+            <img src="/assets/prototype-icons/close.svg" alt="" />
+          </button>
+        </header>
+        <div className="activity-drawer-list">
+          {factoryPassiveActivityItems.map((item) => (
+            <article className={item.unread ? "activity-drawer-item unread" : "activity-drawer-item"} key={item.title}>
+              <div>
+                <div className="activity-drawer-meta">
+                  <span>{item.type}</span>
+                  <time>{item.time}</time>
+                </div>
+                <h3>{item.title}</h3>
+                <p>{item.meta}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </aside>
+    </div>
+  ), document.body);
 }
 
 const factoryProfileData = {
