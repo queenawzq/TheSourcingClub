@@ -213,7 +213,7 @@ const nav = [
   { label: "Browse RFQs", icon: "explore" },
   { label: "Conversations", icon: "messages" },
   { label: "Saved", icon: "bookmarks" },
-  { label: "Billing", icon: "billing" },
+  { label: "Payments", icon: "billing" },
   { label: "Settings", icon: "settings" }
 ];
 
@@ -323,7 +323,7 @@ const factoryMainZhText = {
   "All factories": "所有工厂",
   "Client": "客户",
   "All clients": "所有客户",
-  "Factory billing": "工厂账单",
+  "Factory payments": "工厂付款",
   "Billing": "账单",
   "Earnings": "收入",
   "Payments": "付款",
@@ -1306,8 +1306,11 @@ function App() {
   const [capacityDrawerOpen, setCapacityDrawerOpen] = useState(false);
   const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
+  const [creditBalance, setCreditBalance] = useState(factoryCreditStartingBalance);
+  const [quoteSentUsesCredit, setQuoteSentUsesCredit] = useState(false);
+  const [creditPurchaseOpen, setCreditPurchaseOpen] = useState(false);
   const selectedProject = brandProjects[0];
-  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "profile" || screen === "profileCompletion" ? "" : "Browse RFQs";
+  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Payments" : screen === "settings" ? "Settings" : screen === "profile" || screen === "profileCompletion" ? "" : "Browse RFQs";
 
   useEffect(() => {
     if (!onboardingComplete || !factoryScreens.includes(screen)) return;
@@ -1376,7 +1379,7 @@ function App() {
                   if (item.label === "Browse RFQs") setScreen("browse");
                   if (item.label === "Conversations") setScreen("messages");
                   if (item.label === "Saved") setScreen("saved");
-                  if (item.label === "Billing") setScreen("billing");
+                  if (item.label === "Payments") setScreen("billing");
                   if (item.label === "Settings") setScreen("settings");
                 }}
                 aria-label={item.label}
@@ -1394,7 +1397,9 @@ function App() {
         <FactoryDashboardPage
           language={onboardingLanguage}
           capacityValue={dashboardCapacity}
+          creditBalance={creditBalance}
           onUpdateCapacity={() => setCapacityDrawerOpen(true)}
+          onPurchaseCredits={() => setCreditPurchaseOpen(true)}
           onViewRfqs={() => setScreen("rfqs")}
           onViewRfqDetail={() => {
             setDetailBackTarget("browse");
@@ -1456,7 +1461,7 @@ function App() {
       )}
       {screen === "billing" && (
         <main className="billing-page-shell factory-billing-page">
-          <BillingScreen language={onboardingLanguage} />
+          <BillingScreen language={onboardingLanguage} creditBalance={creditBalance} quoteSent={quoteSentUsesCredit} />
         </main>
       )}
       {screen === "rfqReadOnly" && (
@@ -1511,12 +1516,21 @@ function App() {
           language={onboardingLanguage}
           onBack={() => setScreen("quote")}
           onEdit={() => setScreen("quote")}
-          onSendQuote={() => setScreen("quoteSent")}
+          creditBalance={creditBalance}
+          onPurchaseCredits={() => setCreditPurchaseOpen(true)}
+          onSendQuote={() => {
+            if (!quoteSentUsesCredit) {
+              setCreditBalance((current) => Math.max(0, current - factoryQuoteCreditCost.credits));
+              setQuoteSentUsesCredit(true);
+            }
+            setScreen("quoteSent");
+          }}
         />
       )}
       {screen === "quoteSent" && (
         <FactoryQuoteSent
           project={selectedProject}
+          creditBalance={creditBalance}
           onBack={() => setScreen("quote")}
           onDashboard={goToDashboard}
         />
@@ -1533,12 +1547,16 @@ function App() {
         />
       )}
       {activityDrawerOpen && <FactoryActivityDrawer onClose={() => setActivityDrawerOpen(false)} />}
+      {creditPurchaseOpen && (
+        <CreditPurchaseModal onClose={() => setCreditPurchaseOpen(false)} />
+      )}
     </div>
   );
 }
 
-function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onViewRfqs, onViewRfqDetail, onViewProjects, onOpenActivity }) {
+function FactoryDashboardPage({ language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onViewRfqs, onViewRfqDetail, onViewProjects, onOpenActivity }) {
   const capacityUnits = getCapacityUnitRange(capacityValue);
+  const [inviteFactoryOpen, setInviteFactoryOpen] = useState(false);
 
   return (
     <main className="factory-dashboard-page">
@@ -1552,71 +1570,87 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
         </header>
 
         <section className="factory-dashboard-grid" aria-label="Factory dashboard overview">
-          <div className="factory-dashboard-metrics">
-            <FactoryMetricCard label="Open RFQs" value="7" note="+3 invited this week" tone="blue" />
-            <FactoryMetricCard label="Quotes sent this month" value="14" note="4 awaiting brand review" tone="green" />
-            <FactoryMetricCard label="Active production orders" value="5" note="2 need sample updates" tone="amber" />
+          <div className="factory-dashboard-main-stack">
+            <div className="factory-dashboard-metrics">
+              <FactoryMetricCard label="Open RFQs" value="7" note="+3 invited this week" tone="blue" />
+              <FactoryMetricCard label="Quotes sent this month" value="14" note="4 awaiting brand review" tone="green" />
+              <FactoryMetricCard label="Active production orders" value="5" note="2 need sample updates" tone="amber" />
+            </div>
+
+            <FactoryDashboardPanel
+              className="factory-rfq-invites-panel"
+              title="RFQ invites"
+              subtitle="Prioritized requests that match your capacity and capabilities."
+              action="View all"
+              onAction={onViewRfqs}
+            >
+              {factoryRfqs.slice(0, 4).map((rfq) => (
+                <FactoryDashboardRfqRow rfq={rfq} language={language} onView={onViewRfqDetail} key={rfq.title} />
+              ))}
+            </FactoryDashboardPanel>
           </div>
 
-          <section className="factory-dashboard-capacity">
-            <span>August capacity</span>
-            <strong>Mostly open</strong>
-            <div className="capacity-chip-row">
-              <span>Open August</span>
-              <span>Capacity {capacityUnits} units</span>
-            </div>
-            <button className="primary-btn" type="button" onClick={onUpdateCapacity}>Update capacity</button>
-          </section>
+          <div className="factory-dashboard-side-stack">
+            <section className="factory-dashboard-capacity">
+              <span>August capacity</span>
+              <strong>Mostly open</strong>
+              <div className="capacity-chip-row">
+                <span>Open August</span>
+                <span>Capacity {capacityUnits} units</span>
+              </div>
+              <button className="primary-btn" type="button" onClick={onUpdateCapacity}>Update capacity</button>
+            </section>
 
-          <FactoryDashboardPanel
-            className="factory-rfq-invites-panel"
-            title="RFQ invites"
-            subtitle="Prioritized requests that match your capacity and capabilities."
-            action="View all"
-            onAction={onViewRfqs}
-          >
-            {factoryRfqs.slice(0, 4).map((rfq) => (
-              <FactoryDashboardRfqRow rfq={rfq} language={language} onView={onViewRfqDetail} key={rfq.title} />
-            ))}
-          </FactoryDashboardPanel>
+            <section className="factory-dashboard-credit-card">
+              <div>
+                <span>Remaining credits</span>
+                <strong>{creditBalance} credits</strong>
+                <p>500 credits = $50 value. Invite a verified factory to earn 500 more.</p>
+              </div>
+              <div className="factory-dashboard-credit-actions">
+                <button className="primary-btn compact-btn" type="button" onClick={onPurchaseCredits}>Purchase credits</button>
+                <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteFactoryOpen(true)}>Invite factory</button>
+              </div>
+            </section>
 
-          <FactoryDashboardPanel
-            className="factory-brand-messages-panel"
-            title="Needs your attention"
-            subtitle="Priority RFQs, messages, and production steps."
-            preHeader={<FactoryDashboardCallCard language={language} />}
-          >
-            <FactoryAttentionCard
-              type="Question"
-              tone="info"
-              title="Maison Rue asked about sample costs"
-              meta="Split fit and PP sample cost before quote review."
-              action="Reply"
-            />
-            <FactoryAttentionCard
-              type="Capacity"
-              tone="danger"
-              title="Update August capacity"
-              meta="Your capacity is marked mostly open for new RFQ matches."
-              action="Update"
-              onAction={onUpdateCapacity}
-            />
-            <FactoryAttentionCard
-              type="Verification"
-              tone="success"
-              title="Review verification renewal"
-              meta="TSC ops needs updated documents this month."
-              action="Review"
-            />
-            <FactoryAttentionCard
-              type="Sample"
-              tone="warning"
-              title="Upload sample update"
-              meta="Add fit-sample notes for the active Maison Rue order."
-              action="Update"
-              onAction={onViewProjects}
-            />
-          </FactoryDashboardPanel>
+            <FactoryDashboardPanel
+              className="factory-brand-messages-panel"
+              title="Needs your attention"
+              subtitle="Priority RFQs, messages, and production steps."
+              preHeader={<FactoryDashboardCallCard language={language} />}
+            >
+              <FactoryAttentionCard
+                type="Question"
+                tone="info"
+                title="Maison Rue asked about sample costs"
+                meta="Split fit and PP sample cost before quote review."
+                action="Reply"
+              />
+              <FactoryAttentionCard
+                type="Capacity"
+                tone="danger"
+                title="Update August capacity"
+                meta="Your capacity is marked mostly open for new RFQ matches."
+                action="Update"
+                onAction={onUpdateCapacity}
+              />
+              <FactoryAttentionCard
+                type="Verification"
+                tone="success"
+                title="Review verification renewal"
+                meta="TSC ops needs updated documents this month."
+                action="Review"
+              />
+              <FactoryAttentionCard
+                type="Sample"
+                tone="warning"
+                title="Upload sample update"
+                meta="Add fit-sample notes for the active Maison Rue order."
+                action="Update"
+                onAction={onViewProjects}
+              />
+            </FactoryDashboardPanel>
+          </div>
 
           <FactoryDashboardPanel
             className="factory-active-projects-panel"
@@ -1631,6 +1665,9 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
           </FactoryDashboardPanel>
         </section>
       </div>
+      {inviteFactoryOpen && (
+        <InviteFactoryModal onClose={() => setInviteFactoryOpen(false)} />
+      )}
     </main>
   );
 }
@@ -1663,6 +1700,35 @@ const factoryPassiveActivityItems = [
     time: "Jul 22"
   }
 ];
+
+function InviteFactoryModal({ onClose }) {
+  return (
+    <div className="factory-update-modal-layer" role="presentation">
+      <div className="factory-update-modal factory-invite-modal" role="dialog" aria-modal="true" aria-labelledby="factory-invite-title">
+        <CloseIconButton className="factory-update-close" label="Close invite factory" onClick={onClose} />
+        <header>
+          <h2 id="factory-invite-title">Invite a factory</h2>
+          <p>Send an invite link to a factory you trust. When they onboard and get verified, both accounts earn 500 credits.</p>
+        </header>
+
+        <label className="factory-invite-field">
+          <span>Factory email</span>
+          <input type="email" placeholder="name@factory.com" />
+        </label>
+
+        <label className="factory-invite-field">
+          <span>Message</span>
+          <textarea defaultValue="I thought The Sourcing Club could be useful for your factory. If you join and get verified, we both earn 500 quote credits." />
+        </label>
+
+        <footer>
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onClose}>Send invite</button>
+        </footer>
+      </div>
+    </div>
+  );
+}
 
 function FactoryActivityDrawer({ onClose }) {
   return createPortal((
@@ -2794,19 +2860,21 @@ function FactoryDashboardCallCard({ language }) {
   return (
     <article className="factory-upcoming-call-card">
       <h2 className="factory-upcoming-call-label">{isZh ? "已安排通话" : "Scheduled calls"}</h2>
-      {calls.slice(0, 1).map((call) => (
-        <section className="factory-upcoming-call-time" key={call.title}>
-          <div className="factory-upcoming-call-heading">
-            <h3>{call.title}</h3>
-            <strong>{call.time}</strong>
-          </div>
-          <span>{call.counterpartTime}</span>
-          <div className="factory-upcoming-call-actions">
-            <p className="factory-upcoming-call-description">{call.description}</p>
-            <button className="secondary-btn compact-btn" type="button">{isZh ? "加入通话" : "Join call"}</button>
-          </div>
-        </section>
-      ))}
+      <div className="factory-upcoming-call-list">
+        {calls.map((call) => (
+          <section className="factory-upcoming-call-time" key={call.title}>
+            <div className="factory-upcoming-call-heading">
+              <h3>{call.title}</h3>
+              <strong>{call.time}</strong>
+            </div>
+            <span>{call.counterpartTime}</span>
+            <div className="factory-upcoming-call-actions">
+              <p className="factory-upcoming-call-description">{call.description}</p>
+              <button className="secondary-btn compact-btn" type="button">{isZh ? "加入通话" : "Join call"}</button>
+            </div>
+          </section>
+        ))}
+      </div>
     </article>
   );
 }
@@ -4092,6 +4160,19 @@ const factorySettingsPermissionLabels = [
   { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
 ];
 
+const factoryCreditStartingBalance = 500;
+const factoryQuoteCreditCost = {
+  label: "Production run",
+  range: "$2k-$10k quote",
+  credits: 25,
+  quoteTotal: "$5,780"
+};
+const factoryCreditPackages = [
+  { label: "500 credits", value: "$50" },
+  { label: "1,000 credits", value: "$100" },
+  { label: "2,500 credits", value: "$250" }
+];
+
 const factoryPageBillingHistory = {
   earnings: [
     { title: "Sample milestone released", client: "Maison Rue", meta: "Maison Rue - Jul 29, 2026", status: "Received", amount: "$620.00" },
@@ -4101,20 +4182,30 @@ const factoryPageBillingHistory = {
   payments: [
     { title: "Platform service fee", client: "The Sourcing Club", meta: "Monthly billing - Aug 1, 2026", status: "Paid", amount: "$49.00" },
     { title: "Verified profile review", client: "The Sourcing Club", meta: "Account service - Jul 12, 2026", status: "Paid", amount: "$95.00" }
+  ],
+  credits: [
+    { title: "Verified onboarding bonus", client: "The Sourcing Club", meta: "Profile verified - Aug 10, 2026", status: "Earned", amount: "+500 credits" },
+    { title: "Referral bonus available", client: "The Sourcing Club", meta: "Invite a factory; both accounts earn after onboarding", status: "Pending", amount: "+500 credits" }
   ]
 };
 
-function BillingScreen({ language = "en" }) {
+function BillingScreen({ language = "en", creditBalance = factoryCreditStartingBalance, quoteSent = false }) {
   const [tab, setTab] = useState("earnings");
   const [client, setClient] = useState("All clients");
+  const [creditPurchaseOpen, setCreditPurchaseOpen] = useState(false);
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const formatBillingMeta = (row) => `${row.client} - ${tx(row.meta)}`;
-  const allRows = factoryPageBillingHistory[tab];
+  const allRows = quoteSent && tab === "credits"
+    ? [
+        { title: "Quote submitted", client: "Maison Rue", meta: `${factoryQuoteCreditCost.range} - ${factoryQuoteCreditCost.quoteTotal}`, status: "Used", amount: `-${factoryQuoteCreditCost.credits} credits` },
+        ...factoryPageBillingHistory.credits
+      ]
+    : factoryPageBillingHistory[tab];
   const clients = ["All clients", ...Array.from(new Set(allRows.map((row) => row.client)))];
   const selectedClient = clients.includes(client) ? client : "All clients";
-  const rows = tab === "payments" || selectedClient === "All clients" ? allRows : allRows.filter((row) => row.client === selectedClient);
-  const total = rows.reduce((sum, row) => sum + Number(row.amount.replace(/[$,]/g, "")), 0);
+  const rows = tab !== "earnings" || selectedClient === "All clients" ? allRows : allRows.filter((row) => row.client === selectedClient);
+  const total = rows.reduce((sum, row) => row.amount.startsWith("$") ? sum + Number(row.amount.replace(/[$,]/g, "")) : sum, 0);
   const formattedTotal = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const summaryMetrics = [
     ["total earned", formattedTotal],
@@ -4131,14 +4222,15 @@ function BillingScreen({ language = "en" }) {
     <section className="billing-history-page">
       <header className="billing-history-header">
         <div>
-          <p>{tx("Factory billing")}</p>
-          <h1>{tx("Billing")}</h1>
+          <p>{tx("Factory payments")}</p>
+          <h1>{tx("Payments")}</h1>
         </div>
       </header>
       <div className="billing-controls">
         <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Billing history type">
           <button className={tab === "earnings" ? "active" : ""} type="button" role="tab" aria-selected={tab === "earnings"} onClick={() => changeTab("earnings")}>{tx("Earnings")}</button>
           <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => changeTab("payments")}>{tx("Payments")}</button>
+          <button className={tab === "credits" ? "active" : ""} type="button" role="tab" aria-selected={tab === "credits"} onClick={() => changeTab("credits")}>{tx("Credits")}</button>
         </div>
         {tab === "earnings" && (
           <label>
@@ -4150,7 +4242,7 @@ function BillingScreen({ language = "en" }) {
             </select>
           </label>
         )}
-        {tab === "payments" && (
+        {tab !== "earnings" && (
           <label className="billing-filter-placeholder" aria-hidden="true">
             <span>{tx("Filter by client")}</span>
             <select tabIndex={-1} value="All clients" readOnly>
@@ -4166,6 +4258,18 @@ function BillingScreen({ language = "en" }) {
           ))}
         </div>
       )}
+      {tab === "credits" && (
+        <section className="factory-credit-billing-card">
+          <div>
+            <span>Credit balance</span>
+            <strong>{creditBalance} credits</strong>
+            <p>500 credits = $50 value. Credits are used when a quote is sent.</p>
+          </div>
+          <div className="factory-credit-billing-action">
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setCreditPurchaseOpen(true)}>Get more credits</button>
+          </div>
+        </section>
+      )}
       <div className="billing-history-list">
         {rows.map((row) => (
           <article className="billing-history-row" key={`${row.title}-${row.meta}`}>
@@ -4178,7 +4282,38 @@ function BillingScreen({ language = "en" }) {
           </article>
         ))}
       </div>
+      {creditPurchaseOpen && (
+        <CreditPurchaseModal onClose={() => setCreditPurchaseOpen(false)} />
+      )}
     </section>
+  );
+}
+
+function CreditPurchaseModal({ onClose }) {
+  return (
+    <div className="factory-update-modal-layer" role="presentation">
+      <div className="factory-update-modal factory-credit-purchase-modal" role="dialog" aria-modal="true" aria-labelledby="factory-credit-purchase-title">
+        <CloseIconButton className="factory-update-close" label="Close credit purchase" onClick={onClose} />
+        <header>
+          <h2 id="factory-credit-purchase-title">Get more credits</h2>
+          <p>Choose a credit pack to keep sending quotes. 500 credits = $50 value.</p>
+        </header>
+
+        <div className="factory-credit-purchase-options">
+          {factoryCreditPackages.map((pack) => (
+            <button type="button" key={pack.label}>
+              <span>{pack.label}</span>
+              <strong>{pack.value}</strong>
+            </button>
+          ))}
+        </div>
+
+        <footer>
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onClose}>Continue</button>
+        </footer>
+      </div>
+    </div>
   );
 }
 
@@ -4738,6 +4873,11 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
       <img className="factory-onboarding-success-icon" src="/assets/prototype-icons/success.svg" alt="" />
       <h1>{content.title}</h1>
       <p>{content.intro}</p>
+      <section className="factory-onboarding-credit-reward">
+        <span>{language === "zh" ? "验证奖励" : "Verification reward"}</span>
+        <strong>500 credits</strong>
+        <p>{language === "zh" ? "资料通过验证后可用于发送报价。500 credits = $50 value." : "Available after your profile is verified. 500 credits = $50 value."}</p>
+      </section>
       <img className="factory-onboarding-success-preview" src="/assets/prototype-icons/container-margin.svg" alt="" />
     </div>
   );
@@ -5783,7 +5923,7 @@ function FactorySubmitQuote({ project, language, backLabel = "‹ Back to view r
   );
 }
 
-function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) {
+function FactoryReviewTotal({ project, language, creditBalance, onBack, onEdit, onPurchaseCredits, onSendQuote }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-review-page">
       <div className="factory-submit-content">
@@ -5802,13 +5942,34 @@ function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) 
           <aside className="factory-review-side">
             <FactoryPriceTotalCard project={project} />
 
+            <section className="factory-submit-card factory-credit-cost-card">
+              <div className="factory-credit-card-header">
+                <h2>Quote credits</h2>
+                <p>Credits are charged only when you send this quote.</p>
+              </div>
+              <div className="factory-credit-required">
+                <span>Required to send</span>
+                <strong>{factoryQuoteCreditCost.credits} credits</strong>
+              </div>
+              <div className="factory-credit-summary">
+                <div>
+                  <span>Quote type</span>
+                  <strong>{factoryQuoteCreditCost.label}</strong>
+                </div>
+              </div>
+              <div className="factory-credit-balance-strip">
+                Remaining balance: {creditBalance} credits
+              </div>
+              <button className="secondary-btn compact-btn" type="button" onClick={onPurchaseCredits}>Purchase more credits</button>
+            </section>
+
             <section className="factory-submit-card factory-ready-card">
-              <div>
+              <div className="factory-ready-card-header">
                 <h2>Ready to send?</h2>
                 <p>Confirm the quote is complete before it appears in the brand comparison page.</p>
               </div>
               <div className="factory-ready-actions">
-                <button className="primary-btn" type="button" onClick={onSendQuote}>Send quote</button>
+                <button className="primary-btn" type="button" onClick={onSendQuote}>Send for {factoryQuoteCreditCost.credits} credits</button>
                 <button className="secondary-btn" type="button">Save draft</button>
               </div>
             </section>
@@ -5819,7 +5980,7 @@ function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) 
         <button className="secondary-btn" type="button" onClick={onBack}>Back</button>
         <div className="factory-submit-bottom-actions">
           <button className="secondary-btn" type="button">Save draft</button>
-          <button className="primary-btn" type="button" onClick={onSendQuote}>Send quote</button>
+          <button className="primary-btn" type="button" onClick={onSendQuote}>Send for {factoryQuoteCreditCost.credits} credits</button>
         </div>
       </footer>
     </main>
@@ -5998,7 +6159,7 @@ function FactoryQuoteReminder() {
   );
 }
 
-function FactoryQuoteSent({ project, onBack, onDashboard }) {
+function FactoryQuoteSent({ project, creditBalance, onBack, onDashboard }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-sent-page">
       <div className="factory-submit-content">
@@ -6027,6 +6188,8 @@ function FactoryQuoteSent({ project, onBack, onDashboard }) {
               <Metric label="quantity" value="300 units" />
               <Metric label="bulk lead" value="28 days" />
               <Metric label="quote total" value="$5,780" />
+              <Metric label="credits used" value={`${factoryQuoteCreditCost.credits}`} />
+              <Metric label="credit balance" value={`${creditBalance}`} />
             </section>
 
             <div className="success-actions">

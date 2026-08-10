@@ -1015,6 +1015,36 @@
   line-height: 25px;
 }
 
+.factory-onboarding-credit-reward {
+  display: grid;
+  gap: 5px;
+  width: min(360px, 100%);
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid #b8cdfd;
+  border-radius: 12px;
+  background: #f5f8ff;
+}
+
+.factory-onboarding-credit-reward span {
+  color: #4f668a;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.factory-onboarding-credit-reward strong {
+  color: #174df2;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 34px;
+}
+
+.factory-onboarding-credit-reward p {
+  font-size: 12px;
+  line-height: 17px;
+}
+
 .factory-onboarding-success-preview {
   width: min(390px, 100%);
   height: auto;
@@ -1145,9 +1175,14 @@
   align-items: start;
 }
 
-.factory-dashboard-metrics {
+.factory-dashboard-main-stack {
   grid-column: 1;
   grid-row: 1;
+  display: grid;
+  gap: 24px;
+}
+
+.factory-dashboard-metrics {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 14px;
@@ -1201,14 +1236,20 @@
   color: #a65f00;
 }
 
-.factory-dashboard-capacity {
+.factory-dashboard-side-stack {
   grid-column: 2;
   grid-row: 1;
   display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.factory-dashboard-capacity {
+  display: grid;
   align-content: center;
-  gap: 10px;
-  min-height: 178px;
-  padding: 20px;
+  gap: 8px;
+  min-height: 138px;
+  padding: 16px 18px;
   border-radius: 12px;
   background: #070b16;
   color: #fff;
@@ -1222,9 +1263,9 @@
 }
 
 .factory-dashboard-capacity > strong {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
-  line-height: 34px;
+  line-height: 30px;
 }
 
 .capacity-chip-row {
@@ -1250,12 +1291,69 @@
 }
 
 .factory-dashboard-capacity .primary-btn {
-  width: 150px;
-  height: 34px;
+  width: 132px;
+  height: 30px;
   margin-top: 2px;
-  padding: 0 16px;
-  border-radius: 34px;
-  font-size: 12px;
+  padding: 0 14px;
+  border-radius: 30px;
+  font-size: 11px;
+}
+
+.factory-dashboard-credit-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  border: 1px solid #d9dfe9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.factory-dashboard-credit-card > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.factory-dashboard-credit-card span {
+  color: #60769b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.factory-dashboard-credit-card strong {
+  color: #0b1223;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.factory-dashboard-credit-card p {
+  margin: 0;
+  color: #5c749c;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 14px;
+}
+
+.factory-dashboard-credit-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.factory-dashboard-credit-actions .compact-btn {
+  width: 118px;
+  height: 28px;
+  border-radius: 28px;
+  font-size: 11px;
+}
+
+.factory-dashboard-credit-actions .primary-btn {
+  min-height: 28px;
 }
 
 .factory-dashboard-panel {
@@ -1304,15 +1402,17 @@
 }
 
 .factory-rfq-invites-panel {
-  grid-column: 1;
-  grid-row: 2;
-  margin-top: -82px;
+  margin-top: 0;
 }
 
 .factory-brand-messages-panel {
-  grid-column: 2;
-  grid-row: 2;
   margin-top: 0;
+}
+
+.factory-brand-messages-panel .factory-dashboard-panel-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .factory-brand-messages-panel .factory-upcoming-call-card {
@@ -1325,7 +1425,7 @@
 
 .factory-active-projects-panel {
   grid-column: 1 / -1;
-  grid-row: 3;
+  grid-row: 2;
   min-width: 0;
 }
 
@@ -1506,6 +1606,14 @@
   font-size: 22px;
   font-weight: 700;
   line-height: 28px;
+}
+
+.factory-upcoming-call-list {
+  display: grid;
+  gap: 10px;
+  max-height: 118px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .factory-upcoming-call-heading {
@@ -4974,6 +5082,100 @@
   margin-bottom: -10px;
 }
 
+.factory-credit-billing-card {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(320px, auto);
+  gap: 18px;
+  align-items: center;
+  margin-bottom: -10px;
+  padding: 20px 22px;
+  border: 1px solid #d9dfe9;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.factory-credit-billing-card span {
+  color: #60769b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.factory-credit-billing-card strong {
+  display: block;
+  margin-top: 4px;
+  color: #0b1223;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 34px;
+}
+
+.factory-credit-billing-card p {
+  margin: 4px 0 0;
+  color: #5c749c;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.factory-credit-billing-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.factory-credit-billing-action .compact-btn {
+  min-width: 170px;
+  height: 38px;
+  border-radius: 38px;
+  font-size: 13px;
+}
+
+.factory-credit-purchase-modal {
+  width: 430px;
+  transform: translateY(-96px);
+}
+
+.factory-credit-purchase-options {
+  display: grid;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.factory-credit-purchase-options button {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
+  padding: 0 16px;
+  border: 1px solid #d3e0f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #0b1223;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.factory-credit-purchase-options button:hover {
+  border-color: #9cb4d6;
+  background: #f8fbff;
+}
+
+.factory-credit-purchase-options span {
+  color: #0b1223;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.factory-credit-purchase-options strong {
+  color: #5c749c;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
 .factory-project-detail-tabs {
   gap: 44px;
   margin-top: -2px;
@@ -5498,6 +5700,47 @@
 .factory-update-modal footer .primary-btn {
   min-height: 42px;
   padding: 0 30px;
+}
+
+.factory-invite-modal {
+  width: 460px;
+  transform: translateY(-96px);
+}
+
+.factory-invite-field {
+  display: grid;
+  gap: 8px;
+}
+
+.factory-invite-field span {
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.factory-invite-field input,
+.factory-invite-field textarea {
+  width: 100%;
+  border: 1px solid #d3e0f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #0b1223;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.factory-invite-field input {
+  height: 42px;
+  padding: 0 14px;
+}
+
+.factory-invite-field textarea {
+  min-height: 86px;
+  resize: none;
+  padding: 12px 14px;
+  line-height: 19px;
 }
 
 .factory-submit-page {
@@ -6311,6 +6554,103 @@
   line-height: 30px;
 }
 
+.factory-credit-cost-card {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+}
+
+.factory-credit-card-header {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #d8e2ef;
+}
+
+.factory-credit-cost-card h2 {
+  margin: 0;
+  color: #0b1020;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 30px;
+}
+
+.factory-credit-cost-card p {
+  margin: 0;
+  color: #5c749c;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.factory-credit-balance-strip {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  background: #e1e7ee;
+  color: #4d5d73;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.factory-credit-required {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.factory-credit-required span {
+  color: #5c749c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.factory-credit-required strong {
+  color: #0b1223;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+  text-align: right;
+}
+
+.factory-credit-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.factory-credit-summary div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.factory-credit-summary span {
+  color: #5c749c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.factory-credit-summary strong {
+  color: #0b1223;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: right;
+}
+
+.factory-credit-cost-card .compact-btn {
+  justify-self: stretch;
+  height: 34px;
+  border-radius: 34px;
+}
+
 .factory-review-check-card {
   display: grid;
   gap: 8px;
@@ -6337,6 +6677,11 @@
   display: grid;
   gap: 12px;
   padding: 24px;
+}
+
+.factory-ready-card-header {
+  display: grid;
+  gap: 8px;
 }
 
 .factory-ready-card h2 {
@@ -6501,7 +6846,10 @@
   }
 
   .factory-dashboard-metrics,
+  .factory-dashboard-main-stack,
+  .factory-dashboard-side-stack,
   .factory-dashboard-capacity,
+  .factory-dashboard-credit-card,
   .factory-rfq-invites-panel,
   .factory-brand-messages-panel,
   .factory-active-projects-panel {

@@ -1090,7 +1090,7 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <SideNav
-        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" || screen === "profileCompletion" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "rfqs" ? "Quotes" : "Quotes"}
+        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" || screen === "profileCompletion" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Payments" : screen === "settings" ? "Settings" : screen === "rfqs" ? "Quotes" : "Quotes"}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onNav={(label) => {
@@ -1100,7 +1100,7 @@ function App() {
           if (label === "Browse factories") goTo("factoryMarketplace");
           if (label === "Conversations") goTo("messages");
           if (label === "Saved") goTo("saved");
-          if (label === "Billing") goTo("billing");
+          if (label === "Payments") goTo("billing");
           if (label === "Settings") goTo("settings");
         }}
         onProfile={() => goTo("profile")}
@@ -1161,7 +1161,7 @@ function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
     { label: "Browse factories", icon: "explore" },
     { label: "Conversations", icon: "messages" },
     { label: "Saved", icon: "bookmarks" },
-    { label: "Billing", icon: "billing" },
+    { label: "Payments", icon: "billing" },
     { label: "Settings", icon: "settings" }
   ];
 
@@ -1217,10 +1217,10 @@ function CloseIconButton({ label }) {
 
 function BillingScreen({ accountType = "brand" }) {
   const isFactory = accountType === "factory";
-  const [tab, setTab] = useState("earnings");
+  const [tab, setTab] = useState(isFactory ? "earnings" : "payments");
   const defaultFilter = isFactory ? "All clients" : "All factories";
   const [client, setClient] = useState(defaultFilter);
-  const allRows = isFactory ? factoryBillingHistory[tab] : brandBillingHistory;
+  const allRows = isFactory ? factoryBillingHistory[tab] : tab === "discounts" ? [] : brandBillingHistory;
   const clients = [defaultFilter, ...Array.from(new Set(allRows.map((row) => row.client)))];
   const selectedClient = clients.includes(client) ? client : defaultFilter;
   const rows = selectedClient === defaultFilter ? allRows : allRows.filter((row) => row.client === selectedClient);
@@ -1237,8 +1237,8 @@ function BillingScreen({ accountType = "brand" }) {
     <section className="billing-history-page">
       <header className="billing-history-header">
         <div>
-          <p>{isFactory ? "Factory billing" : "Brand billing"}</p>
-          <h1>Billing</h1>
+          <p>{isFactory ? "Factory payments" : "Brand payments"}</p>
+          <h1>Payments</h1>
         </div>
       </header>
       <div className="billing-controls">
@@ -1248,21 +1248,68 @@ function BillingScreen({ accountType = "brand" }) {
             <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => setTab("payments")}>Payments</button>
           </div>
         )}
-        <label>
-          <span>{isFactory && tab === "payments" ? "Filter by source" : isFactory ? "Filter by client" : "Filter by factory"}</span>
-          <select value={selectedClient} onChange={(event) => setClient(event.target.value)}>
-            {clients.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-        </label>
+        {!isFactory && (
+          <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Brand payment type">
+            <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => setTab("payments")}>Payments</button>
+            <button className={tab === "discounts" ? "active" : ""} type="button" role="tab" aria-selected={tab === "discounts"} onClick={() => setTab("discounts")}>Discounts</button>
+          </div>
+        )}
+        {(isFactory || tab === "payments") && (
+          <label>
+            <span>{isFactory && tab === "payments" ? "Filter by source" : isFactory ? "Filter by client" : "Filter by factory"}</span>
+            <select value={selectedClient} onChange={(event) => setClient(event.target.value)}>
+              {clients.map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {!isFactory && tab === "discounts" && (
+          <label className="billing-filter-placeholder" aria-hidden="true">
+            <span>Filter by factory</span>
+            <select tabIndex={-1} value="All factories" readOnly>
+              <option>All factories</option>
+            </select>
+          </label>
+        )}
       </div>
-      {!isFactory && (
+      {!isFactory && tab === "payments" && (
         <div className="project-summary-strip billing-payment-strip" aria-label="Billing payment summary">
           {brandSummaryMetrics.map(([label, value, tone]) => (
             <Metric label={label} value={value} className={tone || ""} key={label} />
           ))}
         </div>
+      )}
+      {!isFactory && tab === "discounts" && (
+        <section className="brand-discounts-tab">
+          <section className="brand-discount-summary-card">
+            <div>
+              <span>Available discount</span>
+              <strong>$50</strong>
+            </div>
+            <p>For eligible orders. Invite a brand to earn another $50 discount.</p>
+          </section>
+          <header>
+            <h2>Discount codes</h2>
+            <p>Use an unused code at payment. Used codes stay here so finance can track order discounts.</p>
+          </header>
+          <div className="brand-discount-code-list">
+            {brandDiscountCodes.map((item) => (
+              <article className={item.status === "Used" ? "brand-discount-code-row used" : "brand-discount-code-row"} key={item.code}>
+                <div>
+                  <span>{item.source}</span>
+                  <strong>{item.code}</strong>
+                  {item.usedOn && <p>Used on {item.usedOn}</p>}
+                  {item.status === "Unused" && <button className="brand-copy-code-btn" type="button">Copy code</button>}
+                </div>
+                <div>
+                  <b>{item.value}</b>
+                  <em>{item.status}</em>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       )}
       {isFactory && (
         <div className="billing-summary-grid">
@@ -1280,18 +1327,20 @@ function BillingScreen({ accountType = "brand" }) {
           </div>
         </div>
       )}
-      <div className="billing-history-list">
-        {rows.map((row) => (
-          <article className="billing-history-row" key={`${row.title}-${row.meta}`}>
-            <div>
-              <strong>{row.title}</strong>
-              <span>{row.client} - {row.meta}</span>
-            </div>
-            <span className="billing-status">{row.status}</span>
-            <strong>{row.amount}</strong>
-          </article>
-        ))}
-      </div>
+      {(isFactory || tab === "payments") && (
+        <div className="billing-history-list">
+          {rows.map((row) => (
+            <article className="billing-history-row" key={`${row.title}-${row.meta}`}>
+              <div>
+                <strong>{row.title}</strong>
+                <span>{row.client} - {row.meta}</span>
+              </div>
+              <span className="billing-status">{row.status}</span>
+              <strong>{row.amount}</strong>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -2604,6 +2653,8 @@ const passiveActivityItems = [
 ];
 
 function HomeScreen({ goTo, onOpenActivity }) {
+  const [inviteBrandOpen, setInviteBrandOpen] = useState(false);
+  const [discountCodesOpen, setDiscountCodesOpen] = useState(false);
   const attentionItems = [
     {
       type: "Draft",
@@ -2683,6 +2734,13 @@ function HomeScreen({ goTo, onOpenActivity }) {
           </div>
         </section>
         <section className="home-attention">
+          <header className="home-panel-header compact">
+            <div>
+              <h2>Savings</h2>
+            </div>
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteBrandOpen(true)}>Invite brand</button>
+          </header>
+          <BrandDashboardDiscountCard onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
           <HomeUpcomingCallCard />
           <header className="home-panel-header compact">
             <div>
@@ -2711,8 +2769,99 @@ function HomeScreen({ goTo, onOpenActivity }) {
           ))}
         </div>
       </section>
+      {inviteBrandOpen && (
+        <InviteBrandModal onClose={() => setInviteBrandOpen(false)} />
+      )}
+      {discountCodesOpen && (
+        <DiscountCodesModal onClose={() => setDiscountCodesOpen(false)} />
+      )}
     </div>
   );
+}
+
+function BrandDashboardDiscountCard({ onInvite, onViewCodes }) {
+  return (
+    <section className="brand-dashboard-discount-card">
+      <div className="brand-discount-card-topline">
+        <span>Available discount</span>
+        <button className="brand-copy-code-btn" type="button" onClick={onViewCodes}>View discount codes</button>
+      </div>
+      <div className="brand-discount-card-body">
+        <div>
+          <strong>$50</strong>
+          <p>For eligible orders. Invite a brand to earn another $50 discount.</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const brandDiscountCodes = [
+  { code: "MRUE-50-AUG", status: "Unused", source: "Eligible order credit", value: "$50" },
+  { code: "REFER-MAYA-50", status: "Unused", source: "Brand referral", value: "$50" },
+  { code: "WELCOME-50", status: "Used", source: "First eligible order", value: "$50", usedOn: "Organic cotton woven shirt - Jul 18" }
+];
+
+function DiscountCodesModal({ onClose }) {
+  return createPortal((
+    <div className="brand-profile-modal-layer" role="presentation">
+      <button className="brand-profile-modal-scrim" type="button" aria-label="Close discount codes" onClick={onClose} />
+      <section className="brand-profile-modal brand-discount-codes-modal" role="dialog" aria-modal="true" aria-labelledby="brand-discount-codes-title">
+        <button className="brand-profile-modal-close brand-compact-modal-close" type="button" aria-label="Close discount codes" onClick={onClose}>
+          <img src="/assets/prototype-icons/close.svg" alt="" />
+        </button>
+        <header className="brand-profile-modal-header">
+          <h1 id="brand-discount-codes-title">Discount codes</h1>
+          <p>Use an unused code at payment. Used codes stay here so finance can track order discounts.</p>
+        </header>
+        <div className="brand-discount-code-list">
+          {brandDiscountCodes.map((item) => (
+            <article className={item.status === "Used" ? "brand-discount-code-row used" : "brand-discount-code-row"} key={item.code}>
+              <div>
+                <span>{item.source}</span>
+                <strong>{item.code}</strong>
+                {item.usedOn && <p>Used on {item.usedOn}</p>}
+                {item.status === "Unused" && <button className="brand-copy-code-btn" type="button">Copy code</button>}
+              </div>
+              <div>
+                <b>{item.value}</b>
+                <em>{item.status}</em>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  ), document.body);
+}
+
+function InviteBrandModal({ onClose }) {
+  return createPortal((
+    <div className="brand-profile-modal-layer brand-invite-modal-layer" role="presentation">
+      <button className="brand-profile-modal-scrim" type="button" aria-label="Close invite brand" onClick={onClose} />
+      <section className="brand-profile-modal brand-invite-modal" role="dialog" aria-modal="true" aria-labelledby="brand-invite-title">
+        <button className="brand-profile-modal-close brand-compact-modal-close" type="button" aria-label="Close invite brand" onClick={onClose}>
+          <img src="/assets/prototype-icons/close.svg" alt="" />
+        </button>
+        <header className="brand-profile-modal-header">
+          <h1 id="brand-invite-title">Invite a brand</h1>
+          <p>Send an invite link to another brand. When they place an eligible order, you earn a $50 discount and they get $50 too.</p>
+        </header>
+        <label className="brand-profile-edit-field full-width">
+          <span>Brand email</span>
+          <input type="email" placeholder="name@brand.com" />
+        </label>
+        <label className="brand-profile-edit-field full-width">
+          <span>Message</span>
+          <textarea defaultValue="I thought The Sourcing Club could be useful for your next production order. If you join and place an eligible order, we both get a $50 discount." />
+        </label>
+        <div className="brand-profile-modal-actions">
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onClose}>Send invite</button>
+        </div>
+      </section>
+    </div>
+  ), document.body);
 }
 
 function ActivityDrawer({ onClose }) {
@@ -2767,19 +2916,21 @@ function HomeUpcomingCallCard() {
   return (
     <article className="home-upcoming-call-card">
       <h2 className="home-upcoming-call-label">Scheduled calls</h2>
-      {calls.map((call) => (
-        <section className="home-upcoming-call-time" key={call.title}>
-          <div className="home-upcoming-call-heading">
-            <h3>{call.title}</h3>
-            <strong>{call.time}</strong>
-          </div>
-          <span>{call.counterpartTime}</span>
-          <div className="home-upcoming-call-actions">
-            <p className="home-upcoming-call-description">{call.description}</p>
-            <button className="secondary-btn compact-btn" type="button">Join call</button>
-          </div>
-        </section>
-      ))}
+      <div className="home-upcoming-call-list">
+        {calls.map((call) => (
+          <section className="home-upcoming-call-time" key={call.title}>
+            <div className="home-upcoming-call-heading">
+              <h3>{call.title}</h3>
+              <strong>{call.time}</strong>
+            </div>
+            <span>{call.counterpartTime}</span>
+            <div className="home-upcoming-call-actions">
+              <p className="home-upcoming-call-description">{call.description}</p>
+              <button className="secondary-btn compact-btn" type="button">Join call</button>
+            </div>
+          </section>
+        ))}
+      </div>
     </article>
   );
 }
@@ -6194,6 +6345,14 @@ function FundScreen({ fundingMilestone, goTo, setFundingMilestone }) {
           </div>
         </div>
         <button className="billing-add-btn" type="button">+ Add a new billing method</button>
+        <label className="discount-code-field">
+          <span>Discount code</span>
+          <div>
+            <input type="text" placeholder="Enter code" />
+            <button className="secondary-btn compact-btn" type="button">Apply</button>
+          </div>
+          <small>$50 discounts can be applied to eligible orders.</small>
+        </label>
         <section className="before-funding">
           <h3>Before funding</h3>
           <label>

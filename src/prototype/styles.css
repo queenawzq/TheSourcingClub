@@ -777,8 +777,340 @@ button {
   align-content: start;
 }
 
+.brand-dashboard-discount-card {
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.brand-discount-card-body {
+  display: block;
+}
+
+.brand-discount-card-body > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.brand-discount-card-topline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.brand-dashboard-discount-card span {
+  color: #60769b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.brand-dashboard-discount-card strong {
+  color: #0b1223;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.brand-dashboard-discount-card p {
+  margin: 0;
+  color: #5c749c;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 14px;
+}
+
+.brand-copy-code-btn {
+  justify-self: start;
+  width: max-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #174df2;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 15px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.brand-dashboard-discount-card .compact-btn {
+  flex: 0 0 auto;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 14px;
+  border-radius: 28px;
+  font-size: 11px;
+}
+
+.brand-profile-modal-layer.brand-invite-modal-layer {
+  padding-top: 306px;
+}
+
+.brand-profile-modal.brand-invite-modal {
+  gap: 12px;
+  width: 460px;
+  padding: 24px;
+  transform: translateY(-96px);
+}
+
+.brand-profile-modal.brand-invite-modal .brand-profile-modal-close {
+  top: 18px;
+  right: 18px;
+  width: 24px;
+  height: 24px;
+}
+
+.brand-profile-modal.brand-invite-modal .brand-profile-modal-header {
+  gap: 8px;
+  padding-right: 38px;
+}
+
+.brand-profile-modal.brand-invite-modal .brand-profile-modal-header h1 {
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.brand-profile-modal.brand-invite-modal .brand-profile-modal-header p {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.brand-profile-modal.brand-invite-modal .brand-profile-edit-field {
+  display: grid;
+  gap: 6px;
+}
+
+.brand-profile-modal.brand-invite-modal .brand-profile-edit-field span {
+  position: static;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.brand-profile-modal.brand-invite-modal .brand-profile-edit-field input,
+.brand-profile-modal.brand-invite-modal .brand-profile-edit-field textarea {
+  padding: 0 14px;
+  font-size: 14px;
+}
+
+.brand-profile-modal.brand-invite-modal .brand-profile-edit-field input {
+  height: 42px;
+  min-height: 42px;
+}
+
+.brand-profile-modal.brand-invite-modal .brand-profile-edit-field textarea {
+  min-height: 86px;
+  padding: 12px 14px;
+  resize: none;
+  line-height: 19px;
+}
+
+.brand-profile-modal.brand-invite-modal .brand-profile-modal-actions {
+  position: static;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border-top: 0;
+  background: transparent;
+  gap: 12px;
+}
+
+.brand-profile-modal.brand-discount-codes-modal {
+  gap: 12px;
+  width: min(460px, calc(100vw - 48px));
+  padding: 24px;
+  transform: translateY(80px);
+}
+
+.brand-profile-modal.brand-discount-codes-modal .brand-profile-modal-close {
+  top: 18px;
+  right: 18px;
+  width: 24px;
+  height: 24px;
+}
+
+.brand-profile-modal-close.brand-compact-modal-close {
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 0;
+}
+
+.brand-profile-modal-close.brand-compact-modal-close img {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.brand-profile-modal.brand-discount-codes-modal .brand-profile-modal-header {
+  gap: 8px;
+  padding-right: 38px;
+}
+
+.brand-profile-modal.brand-discount-codes-modal .brand-profile-modal-header h1 {
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.brand-profile-modal.brand-discount-codes-modal .brand-profile-modal-header p {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.brand-discount-code-list {
+  display: grid;
+  gap: 8px;
+}
+
+.brand-discount-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  min-height: 76px;
+  padding: 16px 18px;
+  border: 1px solid #d9e4f1;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.brand-discount-code-row.used {
+  background: #f8fafc;
+}
+
+.brand-discount-code-row > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.brand-discount-code-row > div:last-child {
+  justify-items: end;
+}
+
+.brand-discount-code-row span,
+.brand-discount-code-row em,
+.brand-discount-code-row p {
+  color: #5c749c;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.brand-discount-code-row > div:first-child > span {
+  color: #6c7f9f;
+  font-weight: 500;
+}
+
+.brand-discount-code-row p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 13px;
+}
+
+.brand-discount-code-row strong {
+  color: #0b1223;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 18px;
+}
+
+.brand-discount-code-row b {
+  color: #0b1223;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 18px;
+}
+
+.brand-discount-code-row.used strong,
+.brand-discount-code-row.used b {
+  color: #74839a;
+}
+
+.brand-discounts-tab {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+}
+
+.brand-discount-summary-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 16px 18px;
+  border: 1px solid #d9dfe9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.brand-discount-summary-card > div {
+  display: grid;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.brand-discount-summary-card span {
+  color: #60769b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 14px;
+}
+
+.brand-discount-summary-card strong {
+  color: #0b1223;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.brand-discount-summary-card p {
+  max-width: 520px;
+  margin: 0;
+  color: #5c749c;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 15px;
+  text-align: right;
+}
+
+.brand-discounts-tab header {
+  display: grid;
+  gap: 4px;
+}
+
+.brand-discounts-tab h2 {
+  margin: 0;
+  color: #0b1020;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 28px;
+}
+
+.brand-discounts-tab header p {
+  max-width: 560px;
+  margin: 0;
+  color: #536b94;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
 .home-panel-header.compact {
   margin-bottom: 0;
+  min-height: 0;
 }
 
 .home-dashboard-grid {
@@ -797,10 +1129,14 @@ button {
   min-height: 58px;
 }
 
+.home-dashboard-grid .home-attention .home-panel-header.compact {
+  min-height: 0;
+}
+
 .home-attention-grid {
   display: grid;
   gap: 10px;
-  max-height: 450px;
+  max-height: 326px;
   overflow-y: auto;
   padding-right: 4px;
   padding-bottom: 4px;
@@ -828,9 +1164,17 @@ button {
   margin: 0;
   justify-self: start;
   color: #0b1020;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 700;
   line-height: 28px;
+}
+
+.home-upcoming-call-list {
+  display: grid;
+  gap: 10px;
+  max-height: 118px;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .home-upcoming-call-heading {
@@ -934,6 +1278,10 @@ button {
 .home-attention-card.warning .home-attention-type span {
   background: #fff8eb;
   color: #b96b00;
+}
+
+.home-attention-card.warning {
+  min-height: 108px;
 }
 
 .home-attention-card.success .home-attention-type span {
@@ -1041,16 +1389,16 @@ button {
 .home-panel-header h2 {
   margin: 0;
   color: #0b1020;
-  font-size: 22px;
+  font-size: 20px;
   line-height: 28px;
 }
 
 .home-panel-header p {
   margin: 4px 0 0;
   color: #5c6f91;
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 500;
-  line-height: 21px;
+  line-height: 18px;
 }
 
 .home-panel-header .secondary-btn {
@@ -4783,6 +5131,51 @@ select {
   margin-top: 26px;
 }
 
+.discount-code-field {
+  display: grid;
+  gap: 8px;
+  margin-top: 18px;
+}
+
+.discount-code-field > span {
+  color: #0b1020;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.discount-code-field > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.discount-code-field input {
+  height: 42px;
+  min-width: 0;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #0b1020;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.discount-code-field .compact-btn {
+  height: 42px;
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 42px;
+}
+
+.discount-code-field small {
+  color: #5a6b87;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
 .before-funding h3 {
   margin: 0 0 2px;
   color: #0b1020;
@@ -6604,6 +6997,38 @@ select {
 
 .billing-payment-strip {
   margin-bottom: -10px;
+}
+
+.brand-discount-payment-card {
+  display: grid;
+  gap: 8px;
+  padding: 18px 20px;
+  border: 1px solid #d9dfe9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.brand-discount-payment-card span {
+  color: #60769b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.brand-discount-payment-card strong {
+  color: #0b1223;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 34px;
+}
+
+.brand-discount-payment-card p {
+  max-width: 680px;
+  margin: 0;
+  color: #5c749c;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
 }
 
 .project-detail-tabs {
