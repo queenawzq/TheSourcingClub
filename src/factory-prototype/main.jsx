@@ -1325,6 +1325,10 @@ function App() {
         language={onboardingLanguage}
         step={onboardingStep}
         onLanguageChange={setOnboardingLanguage}
+        onEditSection={(targetStep) => {
+          setOnboardingStep(targetStep);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
         onBack={() => setOnboardingStep((value) => Math.max(0, value - 1))}
         onNext={() => {
           if (onboardingStep >= factoryOnboardingSteps.length - 1) {
@@ -4486,7 +4490,7 @@ function FactorySettingsScreen({ language = "en" }) {
   );
 }
 
-function FactoryOnboarding({ language, step, onLanguageChange, onBack, onNext }) {
+function FactoryOnboarding({ language, step, onLanguageChange, onEditSection, onBack, onNext }) {
   const copy = onboardingCopy[language];
   const current = copy.steps[step];
   const isFirst = step === 0;
@@ -4508,7 +4512,13 @@ function FactoryOnboarding({ language, step, onLanguageChange, onBack, onNext })
           </div>
         )}
 
-        <FactoryOnboardingStep step={step} content={current} language={language} onLanguageChange={onLanguageChange} />
+        <FactoryOnboardingStep
+          step={step}
+          content={current}
+          language={language}
+          onLanguageChange={onLanguageChange}
+          onEditSection={onEditSection}
+        />
 
         <footer className="factory-onboarding-actions">
           {!isFirst && !isLast && (
@@ -4531,7 +4541,7 @@ function FactoryOnboarding({ language, step, onLanguageChange, onBack, onNext })
   );
 }
 
-function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
+function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEditSection }) {
   if (step === 0) {
     return (
       <div className="factory-onboarding-section welcome-section">
@@ -4676,11 +4686,24 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
   }
 
   if (step === 8) {
+    const reviewEditSteps = [1, 3, 5];
+    const editLabel = language === "zh" ? "编辑" : "Edit";
+
     return (
       <div className="factory-review-grid">
-        {content.sections.map(([title, rows]) => (
+        {content.sections.map(([title, rows], index) => (
           <section className="factory-review-section" key={title}>
-            <h2>{title}</h2>
+            <div className="factory-review-section-header">
+              <h2>{title}</h2>
+              <button
+                className="factory-review-section-edit"
+                type="button"
+                aria-label={`${editLabel} ${title}`}
+                onClick={() => onEditSection?.(reviewEditSteps[index] || 1)}
+              >
+                {editLabel}
+              </button>
+            </div>
             <div className="factory-onboarding-review-rows">
               {rows.map(([label, value]) => (
                 <DetailPair label={label} value={value} key={label} />
@@ -4906,7 +4929,7 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false }
     },
     "Product categories": {
       title: "Product categories",
-      helper: "Select the broad categories brands can match you with."
+      helper: "Choose the garment categories your factory can produce."
     },
     "Market level": {
       title: "Market level",
@@ -4934,7 +4957,7 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false }
     },
     "产品品类": {
       title: "产品品类",
-      helper: "选择品牌可以用来匹配你的大类。"
+      helper: "选择你的工厂可以生产的成衣品类。"
     },
     "市场层级": {
       title: "市场层级",

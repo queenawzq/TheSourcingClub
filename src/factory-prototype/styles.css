@@ -903,6 +903,37 @@
   background: #fff;
 }
 
+.factory-review-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.factory-review-section-edit {
+  appearance: none;
+  border: 1px solid #cfd8e3;
+  border-radius: 999px;
+  background: #fff;
+  color: #0e1118;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  padding: 8px 18px;
+}
+
+.factory-review-section-edit:hover {
+  border-color: #9aa8ba;
+  background: #f8fafc;
+}
+
+.factory-review-section-edit:focus-visible {
+  outline: 3px solid rgba(14, 17, 24, 0.12);
+  outline-offset: 2px;
+}
+
 .factory-onboarding-review-rows {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

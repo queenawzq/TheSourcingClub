@@ -70,18 +70,53 @@ const screenMeta = {
     description: "",
     cta: ""
   },
-  describe: { step: 0, title: "Describe what you need made.", cta: "Generate brief" },
-  review: { step: 1, title: "Review your quote brief.", cta: "Invite factories" },
-  invite: { step: 2, title: "Invite factories to quote.", cta: "Invite factories" },
-  quotes: { step: 3, title: "Review factory quotes.", cta: "Review quote" },
-  quoteDetail: { step: 3, title: "Review Atelier Minho quote.", cta: "Choose quote" },
-  contract: { step: 4, title: "Set contract terms.", cta: "Continue to payment" },
-  payment: { step: 5, title: "Choose payment terms.", cta: "Add production steps" },
+  describe: {
+    step: 0,
+    title: "Describe what you need made.",
+    description: "Start with the product, quantity, timeline, sample needs, target price, and any quality requirements factories should price against.",
+    cta: "Generate brief"
+  },
+  review: {
+    step: 1,
+    title: "Review your quote brief.",
+    description: "Check the structured request before it goes to factories, so every partner sees the same product details and expectations.",
+    cta: "Invite factories"
+  },
+  invite: {
+    step: 2,
+    title: "Invite factories to quote.",
+    description: "Choose matched factories and send the quote request to partners with the right category, MOQ, region, and service fit.",
+    cta: "Invite factories"
+  },
+  quotes: {
+    step: 3,
+    title: "Review factory quotes.",
+    description: "Compare pricing, timelines, sample plans, open questions, and factory fit before selecting who should move forward.",
+    cta: "Review quote"
+  },
+  quoteDetail: {
+    step: 3,
+    title: "Review Atelier Minho quote.",
+    description: "Inspect one factory response in detail, including unit pricing, lead time, sample terms, assumptions, and included revisions.",
+    cta: "Choose quote"
+  },
+  contract: {
+    step: 4,
+    title: "Set contract terms.",
+    description: "Turn the selected quote into a clear production scope with responsibilities, revision terms, deliverables, and approval expectations.",
+    cta: "Continue to payment"
+  },
+  payment: {
+    step: 5,
+    title: "Choose payment terms.",
+    description: "Choose whether to fund the full contract today or pay by production steps, with each staged release tied to a clear approval moment.",
+    cta: "Add production steps"
+  },
   milestones: {
     step: 6,
     title: "Add production steps",
     description:
-      "Create the full production schedule: paid steps, approval steps, and update-only checkpoints that match how this order will move.",
+      "Build your own production schedule with as many steps as needed. Each step can be update-only, approval-only, or a paid release.",
     cta: "Continue to funding"
   },
   fund: {
@@ -922,7 +957,7 @@ function App() {
         : "projects";
   const [screen, setScreen] = useState(initialScreen);
   const [brandOnboardingStep, setBrandOnboardingStep] = useState(0);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [selectedFactories, setSelectedFactories] = useState(["Atelier Minho", "Hanshu Studio"]);
   const [selectedQuote, setSelectedQuote] = useState("Atelier Minho");
   const [selectedQuotesForCompare, setSelectedQuotesForCompare] = useState(["Atelier Minho", "Hanshu Studio"]);
@@ -1092,7 +1127,7 @@ function App() {
               <h1>{activeMeta.title}</h1>
               <p>
                 {activeMeta.description ||
-                  "Organic cotton woven shirts, 300 units, fit sample and PP sample before bulk approval."}
+                  "Move this quote request forward with the next project detail."}
               </p>
             </header>
           )}
@@ -1998,7 +2033,14 @@ function BrandOnboarding({ step, onBack, onNext }) {
           </header>
         )}
 
-        <BrandOnboardingStep content={current} step={step} />
+        <BrandOnboardingStep
+          content={current}
+          step={step}
+          onEditSection={(targetStep) => {
+            setBrandOnboardingStep(targetStep);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        />
 
         <footer className="brand-onboarding-actions">
           {!isFirst && !isLast && <button className="secondary-btn" type="button" onClick={onBack}>Previous</button>}
@@ -2015,7 +2057,7 @@ function BrandOnboarding({ step, onBack, onNext }) {
   );
 }
 
-function BrandOnboardingStep({ content, step }) {
+function BrandOnboardingStep({ content, step, onEditSection }) {
   const [onboardingStakeholders, setOnboardingStakeholders] = useState([
     { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder" },
     { name: "Maya Lee", email: "maya@maisonrue.com", role: "Production lead" }
@@ -2203,19 +2245,29 @@ function BrandOnboardingStep({ content, step }) {
 
   if (content.type === "review") {
     const sections = [
-      ["Brand basics", [["Brand name", "Maison Rue"], ["Category", "Fashion brand"], ["Business email", "name@maisonrue.com"], ["Founded", "2021"], ["Website URL", "www.maisonrue.com"], ["HQ location", "New York, USA"]]],
-      ["Brand context", [["About the brand", "Premium wardrobe staples with clean silhouettes and natural fibers"], ["Logo", "Uploaded"], ["Product images", "Reference images added"]]],
-      ["Sourcing fit", [["Production type", "Cut & sew knits, wovens"], ["Product categories", "Tops, bottoms"], ["Market level", "Premium / contemporary ($100-$500)"]]],
-      ["Sourcing volume", [["Annual order volume", "5,000-20,000 pieces"], ["Typical order per style", "300-1,000 pieces"], ["Collections per year", "3-4"], ["Target sourcing price", "$12-$28 FOB per unit"], ["Reorder cadence", "Quarterly reorders"]]],
-      ["Factory preferences", [["Preferred regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services needed", "Full package, sample development"]]],
-      ["Trust", [["Annual revenue", "$1M-$5M"], ["Decision makers", "Founder / production lead added"], ["Business certificate", "Registration or resale certificate uploaded"]]]
+      { title: "Brand basics", step: 1, rows: [["Brand name", "Maison Rue"], ["Category", "Fashion brand"], ["Business email", "name@maisonrue.com"], ["Founded", "2021"], ["Website URL", "www.maisonrue.com"], ["HQ location", "New York, USA"]] },
+      { title: "Brand context", step: 2, rows: [["About the brand", "Premium wardrobe staples with clean silhouettes and natural fibers"], ["Logo", "Uploaded"], ["Product images", "Reference images added"]] },
+      { title: "Sourcing fit", step: 3, rows: [["Production type", "Cut & sew knits, wovens"], ["Product categories", "Tops, bottoms"], ["Market level", "Premium / contemporary ($100-$500)"]] },
+      { title: "Sourcing volume", step: 4, rows: [["Annual order volume", "5,000-20,000 pieces"], ["Typical order per style", "300-1,000 pieces"], ["Collections per year", "3-4"], ["Target sourcing price", "$12-$28 FOB per unit"], ["Reorder cadence", "Quarterly reorders"], ["Current sourcing stage", "Sampling soon"]] },
+      { title: "Factory preferences", step: 5, rows: [["Preferred regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services needed", "Full package, sample development"]] },
+      { title: "Trust", step: 6, rows: [["Annual revenue", "$1M-$5M"], ["Decision makers", "Founder / production lead added"], ["Business certificate", "Registration or resale certificate uploaded"]] }
     ];
 
     return (
       <div className="brand-onboarding-review-grid">
-        {sections.map(([title, rows]) => (
+        {sections.map(({ title, step: targetStep, rows }) => (
           <section key={title}>
-            <h2>{title}</h2>
+            <div className="brand-onboarding-review-section-header">
+              <h2>{title}</h2>
+              <button
+                className="brand-onboarding-review-edit"
+                type="button"
+                aria-label={`Edit ${title}`}
+                onClick={() => onEditSection?.(targetStep)}
+              >
+                Edit
+              </button>
+            </div>
             <div className="brand-onboarding-review-rows">
               {rows.map(([label, value]) => (
                 <div className="detail-pair" key={label}>
@@ -2852,12 +2904,20 @@ function BrandProfileScreen({ onViewCompletion }) {
     repeatFactories: "2",
     intro:
       "Premium womenswear brand focused on organic cotton shirts, polished woven tops, and small-batch capsule production. Maison Rue shares clear product references, quick feedback, and defined sample approval paths so factories can quote confidently.",
-    productCategories: ["Womenswear"],
-    garmentFocus: ["Wovens", "Cut & sew knits"],
-    marketLevel: ["Premium / contemporary"],
+    productCategories: ["Tops", "Bottoms"],
+    productionTypes: ["Cut & sew knits", "Wovens"],
+    marketLevel: ["Premium / contemporary ($100-$500)"],
     preferredRegions: ["Portugal", "China", "Korea"],
     certifications: ["GOTS", "OEKO-TEX"],
     services: ["Full package", "Sample development", "Fabric sourcing"],
+    sourcingVolume: {
+      annualVolume: "5,000-20,000 pieces",
+      orderSize: "300-1,000 pieces per style",
+      collectionsPerYear: "3-4",
+      targetPrice: "$12-$28 FOB per unit",
+      reorderCadence: "Quarterly reorders",
+      sourcingStage: "Sampling soon"
+    },
     assets: [
       { title: "Logo", meta: "SVG, PNG, JPG uploaded", src: "/assets/logo.svg" },
       { title: "Product photos", meta: "Organic poplin shirt references", src: "/assets/dashboard-rfq-shirt.jpg" },
@@ -2927,10 +2987,19 @@ function BrandProfileScreen({ onViewCompletion }) {
   const overviewRows = [
     ["Brand category", data.category],
     ["Year founded", data.founded],
+    ["HQ location", data.location],
     ["Website", data.website],
     ["Business email", data.businessEmail],
     ["Annual revenue", data.annualRevenue],
     ["Payment status", data.paymentStatus]
+  ];
+  const sourcingVolumeRows = [
+    ["Annual order volume", data.sourcingVolume.annualVolume],
+    ["Typical order size", data.sourcingVolume.orderSize],
+    ["Collections per year", data.sourcingVolume.collectionsPerYear],
+    ["Target sourcing price", data.sourcingVolume.targetPrice],
+    ["Reorder cadence", data.sourcingVolume.reorderCadence],
+    ["Current sourcing stage", data.sourcingVolume.sourcingStage]
   ];
 
   return (
@@ -2977,7 +3046,7 @@ function BrandProfileScreen({ onViewCompletion }) {
               <p>{data.location} · {data.category} · {data.annualRevenue} revenue</p>
               <div className="tag-row compact-tags factory-profile-hero-tags">
                 {data.productCategories.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
-                {data.garmentFocus.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                {data.productionTypes.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
                 {data.marketLevel.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
               </div>
             </div>
@@ -3016,11 +3085,18 @@ function BrandProfileScreen({ onViewCompletion }) {
             <section className="factory-profile-card">
               <BrandProfileCardHeader title="Sourcing fit" editable={isOwnerView} onEdit={() => openEditor("sourcing")} />
               <BrandProfileChipSection label="Product categories" items={data.productCategories} />
-              <BrandProfileChipSection label="Garment focus" items={data.garmentFocus} />
+              <BrandProfileChipSection label="Production type" items={data.productionTypes} />
               <BrandProfileChipSection label="Market level" items={data.marketLevel} />
               <BrandProfileChipSection label="Preferred regions" items={data.preferredRegions} />
               <BrandProfileChipSection label="Certifications requested" items={data.certifications} />
               <BrandProfileChipSection label="Services needed" items={data.services} />
+            </section>
+
+            <section className="factory-profile-card">
+              <BrandProfileCardHeader title="Sourcing volume" editable={isOwnerView} onEdit={() => openEditor("sourcingVolume")} />
+              <div className="factory-profile-detail-grid">
+                {sourcingVolumeRows.map(([label, value]) => <BrandProfileDetailPair label={label} value={value} key={label} />)}
+              </div>
             </section>
 
             <section className="factory-profile-card">
@@ -3175,9 +3251,9 @@ function BrandProfileCardHeader({ title, editable = false, actionLabel = "Edit",
 }
 
 const brandProfileEditorOptions = {
-  productCategories: ["Womenswear", "Menswear", "Childrenswear", "Activewear", "Swimwear", "Accessories"],
-  garmentFocus: ["Wovens", "Cut & sew knits", "Knitwear", "Denim", "Outerwear", "Intimates"],
-  marketLevel: ["Luxury", "Premium / contemporary", "Mid range", "Mass market"],
+  productCategories: ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"],
+  productionTypes: ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"],
+  marketLevel: ["Luxury ($500+)", "Premium / contemporary ($100-$500)", "Mid range ($50-$100)", "Mass market (under $50)"],
   preferredRegions: ["Portugal", "China", "Korea", "India", "Turkey", "United States"],
   certifications: ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP", "No preference"],
   services: ["Full package", "CMT", "Pattern making", "Sample development", "Fabric sourcing"]
@@ -3317,6 +3393,7 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
   const editorTitles = {
     overview: ["Edit overview", "Update the brand details factories see on this profile."],
     sourcing: ["Edit sourcing fit", "Update the tags factories use to understand what this brand is looking for."],
+    sourcingVolume: ["Edit sourcing volume", "Update order size, cadence, target pricing, and sourcing stage."],
     banner: ["Edit banner", "Upload or replace the banner image used on this profile."],
     assets: ["Manage brand assets", "Upload logos, product photos, direction files, and brand references."],
     projects: ["Manage projects", "Update completed or active TSC work shown to factories."],
@@ -3335,11 +3412,12 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
     annualRevenue: data.annualRevenue,
     intro: data.intro,
     productCategories: data.productCategories,
-    garmentFocus: data.garmentFocus,
+    productionTypes: data.productionTypes,
     marketLevel: data.marketLevel,
     preferredRegions: data.preferredRegions,
     certifications: data.certifications,
     services: data.services,
+    sourcingVolume: { ...data.sourcingVolume },
     stakeholders: data.stakeholders.map((stakeholder) => typeof stakeholder === "string"
       ? { name: stakeholder, email: "", role: "Stakeholder", permissions: ["approve"] }
       : { permissions: ["approve"], ...stakeholder }),
@@ -3423,11 +3501,18 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
     if (editor === "sourcing") {
       onSave({
         productCategories: form.productCategories,
-        garmentFocus: form.garmentFocus,
+        productionTypes: form.productionTypes,
         marketLevel: form.marketLevel,
         preferredRegions: form.preferredRegions,
         certifications: form.certifications,
         services: form.services
+      });
+      return;
+    }
+
+    if (editor === "sourcingVolume") {
+      onSave({
+        sourcingVolume: form.sourcingVolume
       });
       return;
     }
@@ -3503,7 +3588,7 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
             <section className="brand-profile-edit-section">
               <h2>What do you make?</h2>
               <BrandProfileChipEditor label="Product categories" options={brandProfileEditorOptions.productCategories} selected={form.productCategories} onChange={(items) => updateField("productCategories", items)} />
-              <BrandProfileChipEditor label="Garment focus" options={brandProfileEditorOptions.garmentFocus} selected={form.garmentFocus} onChange={(items) => updateField("garmentFocus", items)} />
+              <BrandProfileChipEditor label="Production type" options={brandProfileEditorOptions.productionTypes} selected={form.productionTypes} onChange={(items) => updateField("productionTypes", items)} />
               <BrandProfileChipEditor label="Market level" options={brandProfileEditorOptions.marketLevel} selected={form.marketLevel} onChange={(items) => updateField("marketLevel", items)} singleSelect />
             </section>
             <section className="brand-profile-edit-section">
@@ -3512,6 +3597,17 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
               <BrandProfileChipEditor label="Certifications" options={brandProfileEditorOptions.certifications} selected={form.certifications} onChange={(items) => updateField("certifications", items)} />
               <BrandProfileChipEditor label="Services needed" options={brandProfileEditorOptions.services} selected={form.services} onChange={(items) => updateField("services", items)} />
             </section>
+          </div>
+        )}
+
+        {editor === "sourcingVolume" && (
+          <div className="brand-profile-edit-grid">
+            <BrandProfileEditField label="Average pieces ordered per year" value={form.sourcingVolume.annualVolume} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, annualVolume: value })} />
+            <BrandProfileEditField label="Typical order size per style" value={form.sourcingVolume.orderSize} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, orderSize: value })} />
+            <BrandProfileEditField label="Collections per year" value={form.sourcingVolume.collectionsPerYear} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, collectionsPerYear: value })} />
+            <BrandProfileEditField label="Target sourcing price range" value={form.sourcingVolume.targetPrice} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, targetPrice: value })} />
+            <BrandProfileEditField label="Typical reorder cadence" value={form.sourcingVolume.reorderCadence} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, reorderCadence: value })} />
+            <BrandProfileEditField label="Current sourcing stage" value={form.sourcingVolume.sourcingStage} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, sourcingStage: value })} />
           </div>
         )}
 
