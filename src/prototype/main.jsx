@@ -2357,7 +2357,11 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
       <img className="brand-onboarding-success-icon" src="/assets/prototype-icons/success.svg" alt="" />
       <h1>{content.title}</h1>
       <p>{content.intro}</p>
-      <img className="brand-onboarding-success-preview" src="/assets/prototype-icons/container-margin.svg" alt="" />
+      <section className="brand-onboarding-discount-reward">
+        <span>Welcome discount</span>
+        <strong>$50 discount</strong>
+        <p>Available for eligible orders. Invite another brand to earn another $50 discount.</p>
+      </section>
     </div>
   );
 }

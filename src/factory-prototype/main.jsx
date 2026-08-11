@@ -234,6 +234,7 @@ const factoryMainZhText = {
   "Open RFQs": "待处理询价",
   "+3 invited this week": "本周新增 3 个邀请",
   "Quotes sent": "已发送报价",
+  "Quotes sent this month": "本月已发送报价",
   "4 awaiting brand review": "4 个等待品牌审核",
   "Active production orders": "进行中生产订单",
   "2 need sample updates": "2 个需要样品更新",
@@ -244,6 +245,8 @@ const factoryMainZhText = {
   "RFQ invites": "询价邀请",
   "Prioritized requests that match your capacity and capabilities.": "优先显示与你的产能和能力匹配的需求。",
   "View all": "查看全部",
+  "Add your own": "添加自定义选项",
+  "Add": "添加",
   "Brand messages": "品牌消息",
   "Needs your attention": "需要你处理",
   "Priority RFQs, messages, and production steps.": "优先处理的询价、消息和生产步骤。",
@@ -259,6 +262,7 @@ const factoryMainZhText = {
   "Sample": "样品",
   "Upload sample update": "上传样品更新",
   "Add fit-sample notes for the active Maison Rue order.": "为进行中的 Maison Rue 订单添加试衣样备注。",
+  "Track current orders and next action dates.": "跟踪当前订单和下一步截止日期。",
   "Organic shirts - due today": "有机棉衬衫 - 今天截止",
   "Quote for": "报价：",
   "Stretch jersey capsule - 2 questions": "弹力针织系列 - 2 个问题",
@@ -268,9 +272,12 @@ const factoryMainZhText = {
   "Next due": "下个截止日",
   "PRODUCTION STEP": "生产阶段",
   "NEXT DUE": "下个截止日",
+  "Sample approval": "样品审批",
+  "Lab dip review": "色样审核",
   "unit target": "单价目标",
   "quantity": "数量",
   "samples": "样品",
+  "bulk lead": "大货交期",
   "Strong fit": "高度匹配",
   "Good fit": "匹配",
   "Potential fit": "可能匹配",
@@ -299,6 +306,8 @@ const factoryMainZhText = {
   "Quote submitted": "报价已提交",
   "Due soon": "即将截止",
   "Due today": "今天截止",
+  "Accepted": "已接受",
+  "Closed": "已关闭",
   "your quote": "你的报价",
   "quote sent": "报价已发送",
   "quote due": "报价截止",
@@ -327,6 +336,24 @@ const factoryMainZhText = {
   "Billing": "账单",
   "Earnings": "收入",
   "Payments": "付款",
+  "Credits": "额度",
+  "Credit balance": "额度余额",
+  "Used": "已使用",
+  "Earned": "已获得",
+  "Pending": "待确认",
+  "Verified onboarding bonus": "验证通过奖励",
+  "Referral bonus available": "邀请奖励待获得",
+  "Profile verified - Aug 10, 2026": "资料已验证 - 2026 年 8 月 10 日",
+  "Invite a factory; both accounts earn after onboarding": "邀请工厂；对方完成入驻后双方获得奖励",
+  "500 credits = $50 value. Credits are used when a quote is sent.": "500 额度 = $50 价值。发送报价时会使用额度。",
+  "Get more credits": "购买更多额度",
+  "Choose a credit pack to keep sending quotes. 500 credits = $50 value.": "选择额度套餐以继续发送报价。500 额度 = $50 价值。",
+  "Quote credits": "报价额度",
+  "Credits are charged only when you send this quote.": "只有发送报价时才会扣除额度。",
+  "Required to send": "发送所需",
+  "Quote type": "报价类型",
+  "Production run": "生产订单",
+  "Purchase more credits": "购买更多额度",
   "Filter by client": "按客户筛选",
   "total earned": "累计收入",
   "received this month": "本月已到账",
@@ -452,6 +479,46 @@ const factoryMainZhText = {
   "Your August capacity and low-MOQ woven experience match the brand request.": "你的 8 月产能和低 MOQ 梭织经验符合品牌需求。",
   "Send quote": "发送报价",
   "Save request": "保存需求",
+  "Keep track of brands you want to work with and RFQs you may quote later.": "管理你想合作的品牌，以及之后可能报价的询价。",
+  "Saved brands": "收藏品牌",
+  "Saved RFQs": "收藏询价",
+  "Saved brands (3)": "收藏品牌 (3)",
+  "Saved RFQs (3)": "收藏询价 (3)",
+  "Search saved brands": "搜索收藏品牌",
+  "Search saved RFQs": "搜索收藏询价",
+  "Brand name, category, location...": "品牌名称、品类、地区...",
+  "Recently saved": "最近收藏",
+  "Best fit": "最匹配",
+  "Contact brand": "联系品牌",
+  "View brand": "查看品牌",
+  "Remove": "移除",
+  "Unit target": "单价目标",
+  "Quote due": "报价截止",
+  "Request tags": "需求标签",
+  "No reference image uploaded": "未上传参考图片",
+  "Review the written brief, request tags, and attached tech pack in details.": "请在详情中查看文字简介、需求标签和附件 tech pack。",
+  "Fashion brand": "时尚品牌",
+  "Contemporary brand": "当代品牌",
+  "Outerwear brand": "外套品牌",
+  "$1M-$5M revenue": "$1M-$5M 营收",
+  "$5M-$10M revenue": "$5M-$10M 营收",
+  "4 Club orders": "4 个 Club 订单",
+  "2 repeat factories": "2 家复购工厂",
+  "Toronto market": "多伦多市场",
+  "1 day avg. response": "平均 1 天回复",
+  "Denim jacket reference": "牛仔夹克参考图",
+  "$5k+ spent": "已消费 5k+ 美元",
+  "$25k+ spent": "已消费 25k+ 美元",
+  "Cut & sew": "裁剪缝制",
+  "GOTS preferred": "优先 GOTS",
+  "3 colors": "3 个颜色",
+  "China / Portugal / Korea": "中国 / 葡萄牙 / 韩国",
+  "OEKO-TEX": "OEKO-TEX",
+  "Yarn sourcing": "纱线采购",
+  "Poplin shirt reference": "府绸衬衫参考图",
+  "Material direction": "材料方向",
+  "Fit detail": "版型细节",
+  "Cardigan reference": "开衫参考图",
   "Verified brand": "已验证品牌",
   "Yes": "是",
   "Settings sections": "设置分区",
@@ -663,6 +730,7 @@ const factoryMainZhReplacements = [
   [/Started Jul 10/g, "7 月 10 日开始"],
   [/Started Jul 8/g, "7 月 8 日开始"],
   [/Payment verified/g, "付款已验证"],
+  [/(\d+) units/g, "$1 件"],
   [/\$(\d+)k\+ spent/g, "已消费 $1k+ 美元"],
   [/Cut & sew/g, "裁剪缝制"],
   [/Knitwear/g, "针织成衣"],
@@ -975,7 +1043,7 @@ const onboardingCopy = {
         intro: "Let's set up your factory profile so brands can find you. It takes about 5 minutes, and you can edit everything later.",
         meta: "11 steps · 5 minutes",
         languageLabel: "Language",
-        languageHelp: "You can change this anytime.",
+        languageHelp: "",
         cta: "Get started"
       },
       {
@@ -1102,7 +1170,7 @@ const onboardingCopy = {
         intro: "我们将帮你建立工厂资料，让品牌更容易找到你。大约需要 5 分钟，之后可以随时修改。",
         meta: "11 步 · 约 5 分钟",
         languageLabel: "语言",
-        languageHelp: "你可以随时更改。",
+        languageHelp: "",
         cta: "开始设置"
       },
       {
@@ -1451,7 +1519,7 @@ function App() {
       )}
       {screen === "messages" && (
         <main className="messages-page factory-messages-page">
-          <FactoryMessagesScreen />
+          <FactoryMessagesScreen language={onboardingLanguage} />
         </main>
       )}
       {screen === "settings" && (
@@ -1530,6 +1598,7 @@ function App() {
       {screen === "quoteSent" && (
         <FactoryQuoteSent
           project={selectedProject}
+          language={onboardingLanguage}
           creditBalance={creditBalance}
           onBack={() => setScreen("quote")}
           onDashboard={goToDashboard}
@@ -1546,9 +1615,9 @@ function App() {
           }}
         />
       )}
-      {activityDrawerOpen && <FactoryActivityDrawer onClose={() => setActivityDrawerOpen(false)} />}
+      {activityDrawerOpen && <FactoryActivityDrawer language={onboardingLanguage} onClose={() => setActivityDrawerOpen(false)} />}
       {creditPurchaseOpen && (
-        <CreditPurchaseModal onClose={() => setCreditPurchaseOpen(false)} />
+        <CreditPurchaseModal language={onboardingLanguage} onClose={() => setCreditPurchaseOpen(false)} />
       )}
     </div>
   );
@@ -1557,12 +1626,28 @@ function App() {
 function FactoryDashboardPage({ language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onViewRfqs, onViewRfqDetail, onViewProjects, onOpenActivity }) {
   const capacityUnits = getCapacityUnitRange(capacityValue);
   const [inviteFactoryOpen, setInviteFactoryOpen] = useState(false);
+  const tx = (value) => (language === "zh" ? translateFactoryMainText(value) : value);
+  const creditCardCopy = language === "zh"
+    ? {
+        label: "剩余额度",
+        value: `${creditBalance} 额度`,
+        description: "500 额度 = $50 价值。邀请已验证工厂可再获得 500 额度。",
+        purchase: "购买额度",
+        invite: "邀请工厂"
+      }
+    : {
+        label: "Remaining credits",
+        value: `${creditBalance} credits`,
+        description: "500 credits = $50 value. Invite a verified factory to earn 500 more.",
+        purchase: "Purchase credits",
+        invite: "Invite factory"
+      };
 
   return (
     <main className="factory-dashboard-page">
       <div className="factory-dashboard-shell">
         <header className="factory-dashboard-header">
-          <h1>Hi Atelier Minho</h1>
+          <h1>{language === "zh" ? "你好，Atelier Minho" : "Hi Atelier Minho"}</h1>
           <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">
             <img src="/assets/prototype-icons/notification.svg" alt="" />
             <b aria-hidden="true">4</b>
@@ -1572,16 +1657,16 @@ function FactoryDashboardPage({ language, capacityValue, creditBalance, onUpdate
         <section className="factory-dashboard-grid" aria-label="Factory dashboard overview">
           <div className="factory-dashboard-main-stack">
             <div className="factory-dashboard-metrics">
-              <FactoryMetricCard label="Open RFQs" value="7" note="+3 invited this week" tone="blue" />
-              <FactoryMetricCard label="Quotes sent this month" value="14" note="4 awaiting brand review" tone="green" />
-              <FactoryMetricCard label="Active production orders" value="5" note="2 need sample updates" tone="amber" />
+              <FactoryMetricCard label={tx("Open RFQs")} value="7" note={tx("+3 invited this week")} tone="blue" />
+              <FactoryMetricCard label={tx("Quotes sent this month")} value="14" note={tx("4 awaiting brand review")} tone="green" />
+              <FactoryMetricCard label={tx("Active production orders")} value="5" note={tx("2 need sample updates")} tone="amber" />
             </div>
 
             <FactoryDashboardPanel
               className="factory-rfq-invites-panel"
-              title="RFQ invites"
-              subtitle="Prioritized requests that match your capacity and capabilities."
-              action="View all"
+              title={tx("RFQ invites")}
+              subtitle={tx("Prioritized requests that match your capacity and capabilities.")}
+              action={tx("View all")}
               onAction={onViewRfqs}
             >
               {factoryRfqs.slice(0, 4).map((rfq) => (
@@ -1592,24 +1677,24 @@ function FactoryDashboardPage({ language, capacityValue, creditBalance, onUpdate
 
           <div className="factory-dashboard-side-stack">
             <section className="factory-dashboard-capacity">
-              <span>August capacity</span>
-              <strong>Mostly open</strong>
+              <span>{tx("August capacity")}</span>
+              <strong>{tx("Mostly open")}</strong>
               <div className="capacity-chip-row">
-                <span>Open August</span>
-                <span>Capacity {capacityUnits} units</span>
+                <span>{tx("Open August")}</span>
+                <span>{language === "zh" ? `产能 ${capacityUnits} 件` : `Capacity ${capacityUnits} units`}</span>
               </div>
-              <button className="primary-btn" type="button" onClick={onUpdateCapacity}>Update capacity</button>
+              <button className="primary-btn" type="button" onClick={onUpdateCapacity}>{tx("Update capacity")}</button>
             </section>
 
             <section className="factory-dashboard-credit-card">
               <div>
-                <span>Remaining credits</span>
-                <strong>{creditBalance} credits</strong>
-                <p>500 credits = $50 value. Invite a verified factory to earn 500 more.</p>
+                <span>{creditCardCopy.label}</span>
+                <strong>{creditCardCopy.value}</strong>
+                <p>{creditCardCopy.description}</p>
               </div>
               <div className="factory-dashboard-credit-actions">
-                <button className="primary-btn compact-btn" type="button" onClick={onPurchaseCredits}>Purchase credits</button>
-                <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteFactoryOpen(true)}>Invite factory</button>
+                <button className="primary-btn compact-btn" type="button" onClick={onPurchaseCredits}>{creditCardCopy.purchase}</button>
+                <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteFactoryOpen(true)}>{creditCardCopy.invite}</button>
               </div>
             </section>
 
@@ -1666,7 +1751,7 @@ function FactoryDashboardPage({ language, capacityValue, creditBalance, onUpdate
         </section>
       </div>
       {inviteFactoryOpen && (
-        <InviteFactoryModal onClose={() => setInviteFactoryOpen(false)} />
+        <InviteFactoryModal language={language} onClose={() => setInviteFactoryOpen(false)} />
       )}
     </main>
   );
@@ -1701,46 +1786,94 @@ const factoryPassiveActivityItems = [
   }
 ];
 
-function InviteFactoryModal({ onClose }) {
+function getFactoryActivityCopy(value) {
+  const copy = {
+    "Activity": "动态",
+    "Passive updates from RFQs, files, brands, and production.": "来自询价、文件、品牌和生产订单的被动更新。",
+    "Close activity": "关闭动态",
+    "RFQ": "询价",
+    "File": "文件",
+    "Status": "状态",
+    "Profile": "资料",
+    "18 min ago": "18 分钟前",
+    "1 hr ago": "1 小时前",
+    "Yesterday": "昨天",
+    "Jul 22": "7 月 22 日",
+    "New RFQ match added to your invite list": "新的询价匹配已加入你的邀请列表",
+    "Maison Rue downloaded your sample cost sheet": "Maison Rue 下载了你的样品费用表",
+    "Fit sample milestone moved to brand review": "试身样里程碑已进入品牌审核",
+    "Your GOTS certificate was viewed 6 times": "你的 GOTS 证书已被查看 6 次",
+    "Washed denim overshirt reorder": "水洗牛仔衬衫外套复单",
+    "Factory profile activity": "工厂资料动态"
+  };
+
+  return copy[value] || getTranslatedProjectTitle(value);
+}
+
+function InviteFactoryModal({ language = "en", onClose }) {
+  const copy = language === "zh"
+    ? {
+        close: "关闭邀请工厂弹窗",
+        title: "邀请工厂",
+        intro: "发送邀请链接给你信任的工厂。对方完成入驻并通过验证后，双方都会获得 500 额度。",
+        email: "工厂邮箱",
+        message: "留言",
+        defaultMessage: "我觉得 The Sourcing Club 可能适合你的工厂。如果你加入并通过验证，我们双方都可以获得 500 报价额度。",
+        cancel: "取消",
+        send: "发送邀请"
+      }
+    : {
+        close: "Close invite factory",
+        title: "Invite a factory",
+        intro: "Send an invite link to a factory you trust. When they onboard and get verified, both accounts earn 500 credits.",
+        email: "Factory email",
+        message: "Message",
+        defaultMessage: "I thought The Sourcing Club could be useful for your factory. If you join and get verified, we both earn 500 quote credits.",
+        cancel: "Cancel",
+        send: "Send invite"
+      };
   return (
     <div className="factory-update-modal-layer" role="presentation">
       <div className="factory-update-modal factory-invite-modal" role="dialog" aria-modal="true" aria-labelledby="factory-invite-title">
-        <CloseIconButton className="factory-update-close" label="Close invite factory" onClick={onClose} />
+        <CloseIconButton className="factory-update-close" label={copy.close} onClick={onClose} />
         <header>
-          <h2 id="factory-invite-title">Invite a factory</h2>
-          <p>Send an invite link to a factory you trust. When they onboard and get verified, both accounts earn 500 credits.</p>
+          <h2 id="factory-invite-title">{copy.title}</h2>
+          <p>{copy.intro}</p>
         </header>
 
         <label className="factory-invite-field">
-          <span>Factory email</span>
+          <span>{copy.email}</span>
           <input type="email" placeholder="name@factory.com" />
         </label>
 
         <label className="factory-invite-field">
-          <span>Message</span>
-          <textarea defaultValue="I thought The Sourcing Club could be useful for your factory. If you join and get verified, we both earn 500 quote credits." />
+          <span>{copy.message}</span>
+          <textarea defaultValue={copy.defaultMessage} />
         </label>
 
         <footer>
-          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="primary-btn" type="button" onClick={onClose}>Send invite</button>
+          <button className="secondary-btn" type="button" onClick={onClose}>{copy.cancel}</button>
+          <button className="primary-btn" type="button" onClick={onClose}>{copy.send}</button>
         </footer>
       </div>
     </div>
   );
 }
 
-function FactoryActivityDrawer({ onClose }) {
+function FactoryActivityDrawer({ language = "en", onClose }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? getFactoryActivityCopy(value) : value);
+
   return createPortal((
     <div className="activity-drawer-layer" role="presentation">
-      <button className="activity-drawer-scrim" type="button" aria-label="Close activity" onClick={onClose} />
+      <button className="activity-drawer-scrim" type="button" aria-label={tx("Close activity")} onClick={onClose} />
       <aside className="activity-drawer" role="dialog" aria-modal="true" aria-labelledby="factory-activity-drawer-title">
         <header className="activity-drawer-header">
           <div>
-            <h2 id="factory-activity-drawer-title">Activity</h2>
-            <p>Passive updates from RFQs, files, brands, and production.</p>
+            <h2 id="factory-activity-drawer-title">{tx("Activity")}</h2>
+            <p>{tx("Passive updates from RFQs, files, brands, and production.")}</p>
           </div>
-          <button className="activity-close-btn" type="button" aria-label="Close activity" onClick={onClose}>
+          <button className="activity-close-btn" type="button" aria-label={tx("Close activity")} onClick={onClose}>
             <img src="/assets/prototype-icons/close.svg" alt="" />
           </button>
         </header>
@@ -1749,11 +1882,11 @@ function FactoryActivityDrawer({ onClose }) {
             <article className={item.unread ? "activity-drawer-item unread" : "activity-drawer-item"} key={item.title}>
               <div>
                 <div className="activity-drawer-meta">
-                  <span>{item.type}</span>
-                  <time>{item.time}</time>
+                  <span>{tx(item.type)}</span>
+                  <time>{tx(item.time)}</time>
                 </div>
-                <h3>{item.title}</h3>
-                <p>{item.meta}</p>
+                <h3>{tx(item.title)}</h3>
+                <p>{tx(item.meta)}</p>
               </div>
             </article>
           ))}
@@ -2789,6 +2922,7 @@ function FactoryDashboardPanel({ title, subtitle, action, onAction, className = 
 
 function FactoryDashboardRfqRow({ rfq, language, onView }) {
   const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const [primaryImage] = rfq.images || [];
   const dashboardPhoto = dashboardRfqPhotos[rfq.initials];
   const inviteFacts = [
@@ -2820,8 +2954,8 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
           </div>
         </div>
         <div className="factory-request-card-actions">
-          <span className={`factory-project-fit ${fitTone}`}>{fit}</span>
-          <button className="primary-btn" type="button" onClick={onView}>View RFQ</button>
+          <span className={`factory-project-fit ${fitTone}`}>{tx(fit)}</span>
+          <button className="primary-btn" type="button" onClick={onView}>{tx("View RFQ")}</button>
         </div>
       </header>
 
@@ -2829,8 +2963,8 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
         <div className="factory-request-facts">
           {inviteFacts.map(([label, value]) => (
             <div key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
+              <span>{tx(label)}</span>
+              <strong>{isZh ? translateFactoryMainText(value) : value}</strong>
             </div>
           ))}
         </div>
@@ -3035,6 +3169,8 @@ function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
 
 function FactorySavedPage({ language, onViewRfq }) {
   const [tab, setTab] = useState("brands");
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const savedBrandProfiles = {
     "Maison Rue": ["Fashion brand", "$1M-$5M revenue", "4 Club orders"],
     "Elara Studio": ["Contemporary brand", "$5M-$10M revenue", "2 repeat factories"],
@@ -3058,29 +3194,29 @@ function FactorySavedPage({ language, onViewRfq }) {
         <header className="rfqs-header saved-header">
           <div>
             <h1>Saved</h1>
-            <p>Keep track of brands you want to work with and RFQs you may quote later.</p>
+            <p>{tx("Keep track of brands you want to work with and RFQs you may quote later.")}</p>
           </div>
         </header>
 
         <nav className="rfqs-tabs saved-tabs" aria-label="Saved lists">
-          <button className={tab === "brands" ? "active" : ""} type="button" onClick={() => setTab("brands")}>Saved brands ({savedBrands.length})</button>
-          <button className={tab === "rfqs" ? "active" : ""} type="button" onClick={() => setTab("rfqs")}>Saved RFQs ({savedRfqs.length})</button>
+          <button className={tab === "brands" ? "active" : ""} type="button" onClick={() => setTab("brands")}>{tx(`Saved brands (${savedBrands.length})`)}</button>
+          <button className={tab === "rfqs" ? "active" : ""} type="button" onClick={() => setTab("rfqs")}>{tx(`Saved RFQs (${savedRfqs.length})`)}</button>
         </nav>
 
         <section className="rfqs-controls saved-controls" aria-label="Saved filters">
           <label className="rfqs-search">
-            <span>{tab === "brands" ? "Search saved brands" : "Search saved RFQs"}</span>
+            <span>{tab === "brands" ? tx("Search saved brands") : tx("Search saved RFQs")}</span>
             <div>
               <SearchIcon />
-              <input placeholder={tab === "brands" ? "Brand name, category, location..." : "RFQ name, product, brand..."} />
+              <input placeholder={tab === "brands" ? tx("Brand name, category, location...") : tx("RFQ name, product, brand...")} />
             </div>
           </label>
           <label className="rfqs-sort">
-            <span>Sort By</span>
+            <span>{tx("Sort By")}</span>
             <select defaultValue="recent">
-              <option value="recent">Recently saved</option>
-              <option value="fit">Best fit</option>
-              <option value="due">Due soon</option>
+              <option value="recent">{tx("Recently saved")}</option>
+              <option value="fit">{tx("Best fit")}</option>
+              <option value="due">{tx("Due soon")}</option>
             </select>
           </label>
         </section>
@@ -3088,7 +3224,7 @@ function FactorySavedPage({ language, onViewRfq }) {
         {tab === "brands" ? (
           <section className="factory-saved-brand-grid" aria-label="Saved brands">
             {savedBrands.map((brand) => (
-              <FactorySavedBrandCard brand={brand} key={brand.name} />
+              <FactorySavedBrandCard brand={brand} language={language} key={brand.name} />
             ))}
           </section>
         ) : (
@@ -3103,7 +3239,9 @@ function FactorySavedPage({ language, onViewRfq }) {
   );
 }
 
-function FactorySavedBrandCard({ brand }) {
+function FactorySavedBrandCard({ brand, language = "en" }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const fitTone = brand.fit === "Good fit" ? "good" : brand.fit === "Potential fit" ? "warn" : "strong";
 
   return (
@@ -3113,26 +3251,26 @@ function FactorySavedBrandCard({ brand }) {
           <div className="factory-avatar">{brand.initials}</div>
           <div>
             <h2>{brand.name}</h2>
-            <p>{brand.location}</p>
+            <p>{tx(brand.location)}</p>
           </div>
         </div>
         <div className="factory-saved-card-actions">
-          <button className="secondary-btn" type="button">Contact brand</button>
-          <button className="primary-btn" type="button">View brand</button>
+          <button className="secondary-btn" type="button">{tx("Contact brand")}</button>
+          <button className="primary-btn" type="button">{tx("View brand")}</button>
         </div>
       </header>
       <div className="factory-saved-brand-fit">
-        <span className={`factory-project-fit ${fitTone}`}>{brand.fit}</span>
-        <strong>{brand.focus}</strong>
+        <span className={`factory-project-fit ${fitTone}`}>{tx(brand.fit)}</span>
+        <strong>{isZh ? getTranslatedProjectTitle(brand.focus) : brand.focus}</strong>
       </div>
       <div className="factory-request-trust factory-saved-brand-trust">
         <span className="factory-request-trust-icon" aria-hidden="true">$</span>
-        <strong>Payment verified</strong>
-        <span>{brand.trust}</span>
+        <strong>{tx("Payment verified")}</strong>
+        <span>{tx(brand.trust)}</span>
       </div>
       <div className="tag-row compact-tags">
         {brand.tags.map((tag) => (
-          <span className="tag garment-tag" key={tag}>{tag}</span>
+          <span className="tag garment-tag" key={tag}>{tx(tag)}</span>
         ))}
       </div>
     </article>
@@ -3156,8 +3294,8 @@ function FactorySavedRfqCard({ project, language, onViewRfq }) {
           </div>
         </div>
         <div className="factory-saved-card-actions">
-          <button className="secondary-btn" type="button">Remove</button>
-          <button className="primary-btn" type="button" onClick={onViewRfq}>View RFQ</button>
+          <button className="secondary-btn" type="button">{isZh ? translateFactoryMainText("Remove") : "Remove"}</button>
+          <button className="primary-btn" type="button" onClick={onViewRfq}>{isZh ? translateFactoryMainText("View RFQ") : "View RFQ"}</button>
         </div>
       </header>
 
@@ -3165,24 +3303,24 @@ function FactorySavedRfqCard({ project, language, onViewRfq }) {
         <div className="factory-saved-rfq-copy">
           <div className="factory-request-facts">
             <div>
-              <span>Unit target</span>
+              <span>{isZh ? translateFactoryMainText("Unit target") : "Unit target"}</span>
               <strong>{project.budget}</strong>
             </div>
             <div>
-              <span>Quantity</span>
+              <span>{isZh ? translateFactoryMainText("Quantity") : "Quantity"}</span>
               <strong>{project.quantity}</strong>
             </div>
             <div>
-              <span>Quote due</span>
+              <span>{isZh ? translateFactoryMainText("Quote due") : "Quote due"}</span>
               <strong>{project.quoteDue}</strong>
             </div>
           </div>
           <p className="rfq-description" data-no-translate>{isZh ? getTranslatedListDescription(project) : project.specialty}</p>
           <div className="factory-request-tags">
-            <span className="marketplace-tag-label">Request tags</span>
+            <span className="marketplace-tag-label">{isZh ? translateFactoryMainText("Request tags") : "Request tags"}</span>
             <div className="tag-row compact-tags rfq-tags">
               {project.tags.slice(0, 4).map((tag) => (
-                <span className="tag" key={tag}>{tag}</span>
+                <span className="tag" key={tag}>{isZh ? translateFactoryMainText(tag) : tag}</span>
               ))}
             </div>
           </div>
@@ -3190,7 +3328,7 @@ function FactorySavedRfqCard({ project, language, onViewRfq }) {
         {primaryImage && (
           <figure className="factory-saved-rfq-visual">
             <img src={primaryImage.src} alt={`${project.title} ${primaryImage.label}`} />
-            <figcaption>{primaryImage.label}</figcaption>
+            <figcaption>{isZh ? translateFactoryMainText(primaryImage.label) : primaryImage.label}</figcaption>
           </figure>
         )}
       </div>
@@ -3198,11 +3336,78 @@ function FactorySavedRfqCard({ project, language, onViewRfq }) {
   );
 }
 
-function FactoryMessagesScreen() {
+function getFactoryMessageCopy(value) {
+  const copy = {
+    "Messages": "对话",
+    "Search conversations...": "搜索对话...",
+    "All": "全部",
+    "Unread": "未读",
+    "Schedule call": "预约通话",
+    "Live video chat": "视频通话",
+    "Attach file": "上传文件",
+    "Send": "发送",
+    "Brand": "品牌",
+    "Translate to English": "翻译成中文",
+    "Show original": "查看原文",
+    "Scheduled call": "已预约通话",
+    "Join call": "加入通话",
+    "Video link added": "已添加视频链接",
+    "Open": "打开",
+    "Title": "标题",
+    "Description": "说明",
+    "Add video link": "添加视频链接",
+    "Send invite": "发送邀请",
+    "Ready to call": "准备呼叫",
+    "Live with": "正在通话",
+    "Start call": "开始通话",
+    "End call": "结束通话",
+    "Cam": "摄像头",
+    "Mic": "麦克风",
+    "Share": "共享",
+    "Organic cotton woven shi...": "有机棉梭织衬衫...",
+    "Premium knit capsule for re...": "高级针织度假系列...",
+    "牛仔 jacket wash developm...": "牛仔夹克洗水开发...",
+    "Can you split fit and PP sample cost?": "可以拆分试身样和 PP 样费用吗？",
+    "Uploaded updated colorway sheet.": "已上传更新后的配色表。",
+    "Can you confirm wash sample lead time?": "可以确认洗水样周期吗？",
+    "12 min": "12 分钟",
+    "1 hr": "1 小时",
+    "Today": "今天",
+    "4:18 PM local time": "当地时间 4:18 PM",
+    "1:18 PM local time": "当地时间 1:18 PM",
+    "Organic cotton woven shirt production": "有机棉梭织衬衫生产订单",
+    "Premium knit capsule for resort drop": "高级针织度假系列生产订单",
+    "Denim jacket wash development and small bulk": "牛仔夹克洗水开发与小批量生产",
+    "Can you split fit and PP sample cost in the quote? We want to approve the first fit sample before locking PP timing.": "报价里可以把试身样和 PP 样费用拆开吗？我们想先确认第一版试身样，再锁定 PP 样时间。",
+    "Yes. We can separate fit sample, PP sample, and bulk unit pricing. I will update the assumptions in the quote.": "可以。我们可以把试身样、PP 样和大货单价分开列。我会更新报价里的假设条件。",
+    "We can send quality control photos before the final balance.": "我们可以在支付尾款前发送质检照片。",
+    "We uploaded the updated colorway sheet. Please quote the lab dip review as a separate line.": "我们已上传更新后的配色表。请把色样审核作为单独项目报价。",
+    "Received. We can quote yarn sourcing and lab dip review separately.": "已收到。我们可以把纱线采购和色样审核分别报价。",
+    "Can you confirm wash sample lead time before we invite the full denim RFQ group?": "在邀请完整牛仔报价组之前，可以先确认洗水样周期吗？"
+  };
+
+  return copy[value] || getTranslatedProjectTitle(value);
+}
+
+function getFactoryThreadScheduleCopy(value) {
+  return value
+    .replace("Your time: Porto time", "你的时间：波尔图时间")
+    .replace("local time shown after invite", "邀请后显示当地时间")
+    .replace("Tue", "周二")
+    .replace("Wed", "周三")
+    .replace("Thu", "周四")
+    .replace("Fri", "周五")
+    .replace("Sample cost review", "样品费用确认")
+    .replace("Review open questions with", "和")
+    .replace("and confirm next actions.", "确认待处理问题和下一步。");
+}
+
+function FactoryMessagesScreen({ language = "en" }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? getFactoryMessageCopy(value) : value);
   const [activeThreadId, setActiveThreadId] = useState(factoryMessageThreads[0].id);
   const [composer, setComposer] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
-  const [callMode, setCallMode] = useState("idle");
   const [translatedMessages, setTranslatedMessages] = useState({});
   const [scheduledCalls, setScheduledCalls] = useState({});
   const activeThread = factoryMessageThreads.find((thread) => thread.id === activeThreadId) || factoryMessageThreads[0];
@@ -3227,18 +3432,18 @@ function FactoryMessagesScreen() {
       <aside className="messages-list-panel">
         <header className="messages-list-header">
           <div>
-            <h1>Messages</h1>
+            <h1>{tx("Messages")}</h1>
           </div>
         </header>
         <label className="rfqs-search message-search-field">
           <div>
             <SearchIcon />
-            <input placeholder="Search conversations..." />
+            <input placeholder={tx("Search conversations...")} />
           </div>
         </label>
         <div className="message-filter-row">
-          <button className="pill active" type="button">All</button>
-          <button className="pill" type="button">Unread</button>
+          <button className="pill active" type="button">{tx("All")}</button>
+          <button className="pill" type="button">{tx("Unread")}</button>
         </div>
         <div className="message-thread-list">
           {factoryMessageThreads.map((thread) => (
@@ -3248,17 +3453,16 @@ function FactoryMessagesScreen() {
               onClick={() => {
                 setActiveThreadId(thread.id);
                 setShowSchedule(false);
-                setCallMode("idle");
               }}
               key={thread.id}
             >
               <span className="message-avatar">{thread.initials}</span>
               <span>
                 <strong>{thread.name}</strong>
-                <small>{thread.project}</small>
-                <em>{thread.lastPreview}</em>
+                <small>{tx(thread.project)}</small>
+                <em>{tx(thread.lastPreview)}</em>
               </span>
-              <time>{thread.lastDate}</time>
+              <time>{tx(thread.lastDate)}</time>
               {thread.unread > 0 && <b>{thread.unread}</b>}
             </button>
           ))}
@@ -3270,18 +3474,14 @@ function FactoryMessagesScreen() {
           <div className="message-room-identity">
             <div>
               <h2>{activeThread.primaryContact}</h2>
-              <p>{activeThread.name} - {activeThread.localTime} - {activeThread.project}</p>
+              <p>{activeThread.name} - {tx(activeThread.localTime)} - {tx(activeThread.project)}</p>
             </div>
           </div>
           <div className="message-room-actions">
-            <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>Schedule call</button>
-            <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>{tx("Schedule call")}</button>
+            <button className="primary-btn compact-btn" type="button">{tx("Live video chat")}</button>
           </div>
         </header>
-
-        {callMode !== "idle" && (
-          <FactoryVideoCallPanel thread={activeThread} mode={callMode} setMode={setCallMode} />
-        )}
 
         <div className="message-timeline">
           {activeThread.messages.map((message, index) => {
@@ -3292,6 +3492,7 @@ function FactoryMessagesScreen() {
                 message={message}
                 showTranslation={showTranslation}
                 onToggleTranslation={() => toggleTranslation(activeThread.id, index)}
+                language={language}
                 key={`${message.time}-${index}`}
               />
             );
@@ -3302,35 +3503,36 @@ function FactoryMessagesScreen() {
           <textarea
             value={composer}
             onChange={(event) => setComposer(event.target.value)}
-            placeholder={`Message ${activeThread.primaryContact}...`}
+            placeholder={isZh ? `发送消息给 ${activeThread.primaryContact}...` : `Message ${activeThread.primaryContact}...`}
             rows={3}
           />
           <div className="message-send-actions">
             <button className="message-upload-btn" type="button">
               <img src="/assets/prototype-icons/upload.svg" alt="" />
-              <span>Attach file</span>
+              <span>{tx("Attach file")}</span>
             </button>
-            <button className="primary-btn compact-btn" type="button" onClick={() => setComposer("")}>Send</button>
+            <button className="primary-btn compact-btn" type="button" onClick={() => setComposer("")}>{tx("Send")}</button>
           </div>
         </footer>
       </section>
 
       {activeScheduledCall && (
         <aside className="message-side-panel">
-          <FactoryUpcomingCallCard call={activeScheduledCall} />
+          <FactoryUpcomingCallCard call={activeScheduledCall} language={language} />
         </aside>
       )}
       {showSchedule && createPortal((
         <div className="message-schedule-modal-layer" role="presentation">
-          <button className="message-schedule-modal-scrim" type="button" aria-label="Close schedule call" onClick={() => setShowSchedule(false)} />
-          <div className="message-schedule-modal" role="dialog" aria-label="Schedule call">
-            <button className="settings-drawer-close" type="button" aria-label="Close schedule call" onClick={() => setShowSchedule(false)}>
+          <button className="message-schedule-modal-scrim" type="button" aria-label={isZh ? "关闭预约通话" : "Close schedule call"} onClick={() => setShowSchedule(false)} />
+          <div className="message-schedule-modal" role="dialog" aria-label={tx("Schedule call")}>
+            <button className="settings-drawer-close" type="button" aria-label={isZh ? "关闭预约通话" : "Close schedule call"} onClick={() => setShowSchedule(false)}>
               <img src="/assets/prototype-icons/close.svg" alt="" />
             </button>
             <FactoryScheduleCallPanel
               key={activeThread.id}
               thread={activeThread}
               isOpen
+              language={language}
               onSchedule={(call) => {
                 setScheduledCalls((current) => ({ ...current, [activeThread.id]: call }));
                 setShowSchedule(false);
@@ -3343,21 +3545,40 @@ function FactoryMessagesScreen() {
   );
 }
 
-function FactoryMessageBubble({ message, showTranslation, onToggleTranslation }) {
+function FactoryMessageBubble({ message, showTranslation, onToggleTranslation, language = "en" }) {
   const isFactory = message.from === "factory";
-  const hasTranslation = Boolean(message.translation);
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? getFactoryMessageCopy(value) : value);
+  const sourceBody = message.body || message.original;
+  const sourceLanguage = message.language || "en";
+  const targetLanguage = isZh ? "zh" : "en";
+  const canTranslateBrandMessage = !isFactory && sourceLanguage !== targetLanguage;
+  const translatedBody = (() => {
+    if (isFactory) {
+      const factoryDisplayBody = message.translation || sourceBody;
+      return isZh ? tx(factoryDisplayBody) : factoryDisplayBody;
+    }
+
+    if (!canTranslateBrandMessage || !showTranslation) {
+      return sourceBody;
+    }
+
+    return isZh ? tx(sourceBody) : (message.translation || sourceBody);
+  })();
 
   return (
     <article className={isFactory ? "message-bubble own" : "message-bubble"}>
       <div>
-        <span>{isFactory ? "Atelier Minho" : "Brand"}</span>
+        <span>{isFactory ? "Atelier Minho" : tx("Brand")}</span>
         <time>{message.time}</time>
       </div>
-      <p>{showTranslation && hasTranslation ? message.translation : message.body || message.original}</p>
-      {hasTranslation && (
+      <p data-no-translate>{translatedBody}</p>
+      {canTranslateBrandMessage && (
         <div className="message-translation-card">
           <button type="button" onClick={onToggleTranslation}>
-            {showTranslation ? "Show original" : "Translate to English"}
+            {isZh
+              ? (showTranslation ? "查看原文" : "翻译成中文")
+              : (showTranslation ? "Show original" : "Translate to English")}
           </button>
         </div>
       )}
@@ -3375,55 +3596,37 @@ function FactoryMessageBubble({ message, showTranslation, onToggleTranslation })
   );
 }
 
-function FactoryVideoCallPanel({ thread, mode, setMode }) {
-  const inCall = mode === "active";
-
-  return (
-    <section className={inCall ? "video-call-panel active" : "video-call-panel"}>
-      <div className="video-call-stage">
-        <span className="message-avatar xl">{thread.initials}</span>
-        <div>
-          <h3>{inCall ? `Live with ${thread.primaryContact}` : `Ready to call ${thread.primaryContact}`}</h3>
-          <p>{inCall ? "Video preview - screen share available - call notes stay in this thread" : "Start a prototype call room. This is not connected to a live video provider yet."}</p>
-        </div>
-      </div>
-      <div className="video-call-controls">
-        <button type="button" aria-label="Toggle camera">Cam</button>
-        <button type="button" aria-label="Toggle microphone">Mic</button>
-        <button type="button" aria-label="Share screen">Share</button>
-        <button className={inCall ? "danger" : ""} type="button" onClick={() => setMode(inCall ? "idle" : "active")}>{inCall ? "End call" : "Start call"}</button>
-      </div>
-    </section>
-  );
-}
-
-function FactoryUpcomingCallCard({ call }) {
+function FactoryUpcomingCallCard({ call, language = "en" }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? getFactoryMessageCopy(value) : value);
   return (
     <section className="upcoming-call-card">
-      <div className="upcoming-call-label">Scheduled call</div>
-      <h3>{call.title}</h3>
+      <div className="upcoming-call-label">{tx("Scheduled call")}</div>
+      <h3>{isZh ? getFactoryThreadScheduleCopy(call.title) : call.title}</h3>
       <div className="upcoming-call-time">
-        <strong>{call.factoryTime}</strong>
-        <span>{call.brandTime}</span>
+        <strong>{isZh ? getFactoryThreadScheduleCopy(call.factoryTime) : call.factoryTime}</strong>
+        <span>{isZh ? getFactoryThreadScheduleCopy(call.brandTime) : call.brandTime}</span>
       </div>
-      <p>{call.agenda}</p>
+      <p>{isZh ? getFactoryThreadScheduleCopy(call.agenda) : call.agenda}</p>
       <div className="upcoming-call-actions">
-        {call.hasVideo && <span>Video link added</span>}
-        <button className="secondary-btn compact-btn" type="button">Join call</button>
+        {call.hasVideo && <span>{tx("Video link added")}</span>}
+        <button className="secondary-btn compact-btn" type="button">{tx("Join call")}</button>
       </div>
     </section>
   );
 }
 
-function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
+function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, language = "en" }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? getFactoryMessageCopy(value) : value);
   const timeSlots = thread.scheduleSlots || [
     { factory: "Tue 3:00 PM Porto", brand: `${thread.name}: local time shown after invite` },
     { factory: "Tue 5:30 PM Porto", brand: `${thread.name}: local time shown after invite` },
     { factory: "Wed 2:30 PM Porto", brand: `${thread.name}: local time shown after invite` }
   ];
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
-  const [callTitle, setCallTitle] = useState("Sample cost review");
-  const [callDescription, setCallDescription] = useState(`Review open questions with ${thread.name} and confirm next actions.`);
+  const [callTitle, setCallTitle] = useState(isZh ? "样品费用确认" : "Sample cost review");
+  const [callDescription, setCallDescription] = useState(isZh ? `和 ${thread.name} 确认待处理问题和下一步。` : `Review open questions with ${thread.name} and confirm next actions.`);
   const [hasVideo, setHasVideo] = useState(true);
   const selectedSlot = timeSlots[selectedSlotIndex] || timeSlots[0];
 
@@ -3431,33 +3634,33 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
     <section className={isOpen ? "schedule-card open" : "schedule-card"}>
       <header>
         <div>
-          <h3>Schedule call</h3>
-          <p>{thread.scheduleNote}</p>
+          <h3>{tx("Schedule call")}</h3>
+          <p>{isZh ? getFactoryThreadScheduleCopy(thread.scheduleNote) : thread.scheduleNote}</p>
         </div>
-        {!isOpen && <button className="secondary-btn compact-btn" type="button" onClick={onOpen}>Open</button>}
+        {!isOpen && <button className="secondary-btn compact-btn" type="button" onClick={onOpen}>{tx("Open")}</button>}
       </header>
       {isOpen && (
         <>
           <label className="schedule-field">
-            <span>Title</span>
+            <span>{tx("Title")}</span>
             <input value={callTitle} onChange={(event) => setCallTitle(event.target.value)} />
           </label>
           <label className="schedule-field">
-            <span>Description</span>
+            <span>{tx("Description")}</span>
             <textarea rows={3} value={callDescription} onChange={(event) => setCallDescription(event.target.value)} />
           </label>
           <div className="schedule-slot-grid">
             {timeSlots.map((slot, index) => (
               <button className={index === selectedSlotIndex ? "selected" : ""} type="button" onClick={() => setSelectedSlotIndex(index)} key={slot.factory}>
-                <strong>{slot.factory}</strong>
-                <span>{slot.brand}</span>
+                <strong>{isZh ? getFactoryThreadScheduleCopy(slot.factory) : slot.factory}</strong>
+                <span>{isZh ? getFactoryThreadScheduleCopy(slot.brand) : slot.brand}</span>
               </button>
             ))}
           </div>
           <div className="schedule-footer">
             <label>
               <input type="checkbox" checked={hasVideo} onChange={(event) => setHasVideo(event.target.checked)} />
-              Add video link
+              {tx("Add video link")}
             </label>
             <button
               className="primary-btn compact-btn"
@@ -3470,7 +3673,7 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
                 hasVideo
               })}
             >
-              Send invite
+              {tx("Send invite")}
             </button>
           </div>
         </>
@@ -3481,6 +3684,7 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
 
 function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const meta = `${rfq.brand} · ${rfq.location} · Payment verified · ${rfq.trust}`;
   const visibleTags = rfq.tags.slice(0, 4);
   const [primaryImage, ...supportImages] = rfq.images || [];
@@ -3503,15 +3707,15 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
           </div>
         </div>
         <div className="factory-request-card-actions factory-rfq-card-actions">
-          {rfq.status && <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>}
+          {rfq.status && <span className={`tag rfq-status ${rfq.statusTone}`}>{tx(rfq.status)}</span>}
           <button
             className="primary-btn"
             type="button"
             onClick={rfq.status === "Quote submitted" ? onViewRequest : onEditQuote}
           >
-            View RFQ
+            {tx("View RFQ")}
           </button>
-          <button className="rfq-more" type="button" aria-label={`More options for ${rfq.title}`}>...</button>
+          <button className="rfq-more" type="button" aria-label={isZh ? `${getTranslatedProjectTitle(rfq.title)} 的更多操作` : `More options for ${rfq.title}`}>...</button>
         </div>
       </header>
 
@@ -3520,8 +3724,8 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
           <div className="factory-request-facts">
             {rfqFacts.map(([label, value]) => (
               <div key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
+                <span>{tx(label)}</span>
+                <strong>{tx(value)}</strong>
               </div>
             ))}
           </div>
@@ -3529,14 +3733,14 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
           {isZh && <ListTranslationMeta />}
           <div className="factory-request-trust">
             <span className="factory-request-trust-icon" aria-hidden="true">$</span>
-            <strong>Payment verified</strong>
-            <span>{rfq.trust}</span>
+            <strong>{tx("Payment verified")}</strong>
+            <span>{tx(rfq.trust)}</span>
           </div>
           <div className="factory-request-tags">
-            <span className="marketplace-tag-label">Request tags</span>
+            <span className="marketplace-tag-label">{tx("Request tags")}</span>
             <div className="tag-row compact-tags rfq-tags">
               {visibleTags.map((tag) => (
-                <span className="tag" key={tag}>{tag}</span>
+                <span className="tag" key={tag}>{tx(tag)}</span>
               ))}
             </div>
           </div>
@@ -3546,18 +3750,18 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
           {primaryImage ? (
             <figure className="factory-request-visual-main">
               <img src={primaryImage.src} alt={`${rfq.title} ${primaryImage.label}`} />
-              <figcaption>{primaryImage.label}</figcaption>
+              <figcaption>{tx(primaryImage.label)}</figcaption>
             </figure>
           ) : (
             <div className="factory-request-visual-placeholder">
-              <strong>No reference image uploaded</strong>
-              <span>Review the written brief, request tags, and attached tech pack in details.</span>
+              <strong>{tx("No reference image uploaded")}</strong>
+              <span>{tx("Review the written brief, request tags, and attached tech pack in details.")}</span>
             </div>
           )}
           {hasGallery && supportImages.slice(0, 2).map((image) => (
             <figure key={image.label}>
               <img src={image.src} alt={`${rfq.title} ${image.label}`} />
-              <figcaption>{image.label}</figcaption>
+              <figcaption>{tx(image.label)}</figcaption>
             </figure>
           ))}
         </div>
@@ -4195,6 +4399,7 @@ function BillingScreen({ language = "en", creditBalance = factoryCreditStartingB
   const [creditPurchaseOpen, setCreditPurchaseOpen] = useState(false);
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
+  const formatCreditAmount = (value) => (isZh ? value.replace(/credits/g, "额度") : value);
   const formatBillingMeta = (row) => `${row.client} - ${tx(row.meta)}`;
   const allRows = quoteSent && tab === "credits"
     ? [
@@ -4261,12 +4466,12 @@ function BillingScreen({ language = "en", creditBalance = factoryCreditStartingB
       {tab === "credits" && (
         <section className="factory-credit-billing-card">
           <div>
-            <span>Credit balance</span>
-            <strong>{creditBalance} credits</strong>
-            <p>500 credits = $50 value. Credits are used when a quote is sent.</p>
+            <span>{tx("Credit balance")}</span>
+            <strong>{creditBalance} {isZh ? "额度" : "credits"}</strong>
+            <p>{tx("500 credits = $50 value. Credits are used when a quote is sent.")}</p>
           </div>
           <div className="factory-credit-billing-action">
-            <button className="secondary-btn compact-btn" type="button" onClick={() => setCreditPurchaseOpen(true)}>Get more credits</button>
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setCreditPurchaseOpen(true)}>{tx("Get more credits")}</button>
           </div>
         </section>
       )}
@@ -4278,39 +4483,41 @@ function BillingScreen({ language = "en", creditBalance = factoryCreditStartingB
               <span>{formatBillingMeta(row)}</span>
             </div>
             <span className="billing-status">{tx(row.status)}</span>
-            <strong>{row.amount}</strong>
+            <strong>{formatCreditAmount(row.amount)}</strong>
           </article>
         ))}
       </div>
       {creditPurchaseOpen && (
-        <CreditPurchaseModal onClose={() => setCreditPurchaseOpen(false)} />
+        <CreditPurchaseModal language={language} onClose={() => setCreditPurchaseOpen(false)} />
       )}
     </section>
   );
 }
 
-function CreditPurchaseModal({ onClose }) {
+function CreditPurchaseModal({ language = "en", onClose }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   return (
     <div className="factory-update-modal-layer" role="presentation">
       <div className="factory-update-modal factory-credit-purchase-modal" role="dialog" aria-modal="true" aria-labelledby="factory-credit-purchase-title">
-        <CloseIconButton className="factory-update-close" label="Close credit purchase" onClick={onClose} />
+        <CloseIconButton className="factory-update-close" label={isZh ? "关闭购买额度弹窗" : "Close credit purchase"} onClick={onClose} />
         <header>
-          <h2 id="factory-credit-purchase-title">Get more credits</h2>
-          <p>Choose a credit pack to keep sending quotes. 500 credits = $50 value.</p>
+          <h2 id="factory-credit-purchase-title">{tx("Get more credits")}</h2>
+          <p>{tx("Choose a credit pack to keep sending quotes. 500 credits = $50 value.")}</p>
         </header>
 
         <div className="factory-credit-purchase-options">
           {factoryCreditPackages.map((pack) => (
             <button type="button" key={pack.label}>
-              <span>{pack.label}</span>
+              <span>{isZh ? pack.label.replace(/credits/g, "额度") : pack.label}</span>
               <strong>{pack.value}</strong>
             </button>
           ))}
         </div>
 
         <footer>
-          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="primary-btn" type="button" onClick={onClose}>Continue</button>
+          <button className="secondary-btn" type="button" onClick={onClose}>{tx("Cancel")}</button>
+          <button className="primary-btn" type="button" onClick={onClose}>{isZh ? "继续" : "Continue"}</button>
         </footer>
       </div>
     </div>
@@ -4687,7 +4894,7 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
             <option value="en">English</option>
             <option value="zh">中文</option>
           </select>
-          <small>{content.languageHelp}</small>
+          {content.languageHelp && <small>{content.languageHelp}</small>}
         </label>
       </div>
     );
@@ -4713,7 +4920,7 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
     return (
       <div className="factory-onboarding-section production-fit-section">
         {content.groups.map(([label, options, selected]) => (
-          <OnboardingChipGroup label={label} options={options} selected={selected} balanced key={label} />
+          <OnboardingChipGroup label={label} options={options} selected={selected} balanced language={language} key={label} />
         ))}
       </div>
     );
@@ -4723,7 +4930,7 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
     return (
       <div className="factory-onboarding-section production-fit-section">
         {content.groups.map(([label, options, selected]) => (
-          <OnboardingChipGroup label={label} options={options} selected={selected} key={label} />
+          <OnboardingChipGroup label={label} options={options} selected={selected} language={language} key={label} />
         ))}
         <OnboardingField label={content.equipmentLabel} placeholder={content.equipmentPlaceholder} />
       </div>
@@ -4875,10 +5082,9 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
       <p>{content.intro}</p>
       <section className="factory-onboarding-credit-reward">
         <span>{language === "zh" ? "验证奖励" : "Verification reward"}</span>
-        <strong>500 credits</strong>
-        <p>{language === "zh" ? "资料通过验证后可用于发送报价。500 credits = $50 value." : "Available after your profile is verified. 500 credits = $50 value."}</p>
+        <strong>{language === "zh" ? "500 额度" : "500 credits"}</strong>
+        <p>{language === "zh" ? "资料通过验证后可用于发送报价。500 额度 = $50 价值。" : "Available after your profile is verified. 500 credits = $50 value."}</p>
       </section>
-      <img className="factory-onboarding-success-preview" src="/assets/prototype-icons/container-margin.svg" alt="" />
     </div>
   );
 }
@@ -5046,7 +5252,7 @@ function OnboardingCapacitySetup({ content, language }) {
   );
 }
 
-function OnboardingChipGroup({ label, options, selected = [], balanced = false }) {
+function OnboardingChipGroup({ label, options, selected = [], balanced = false, language = "en" }) {
   const [selectedOptions, setSelectedOptions] = useState(selected);
   const [customOptions, setCustomOptions] = useState([]);
   const [customValue, setCustomValue] = useState("");
@@ -5114,6 +5320,7 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false }
   };
   const copy = groupCopy[label] || { title: label, helper: "" };
   const visibleOptions = [...options, ...customOptions];
+  const isZh = language === "zh";
 
   const toggleOption = (option) => {
     setSelectedOptions((current) => {
@@ -5159,9 +5366,9 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false }
           <input
             value={customValue}
             onChange={(event) => setCustomValue(event.target.value)}
-            placeholder={label.includes("可") || label.includes("专") ? "输入自定义选项" : "Add your own"}
+            placeholder={isZh ? "添加自定义选项" : "Add your own"}
           />
-          <button className="secondary-btn compact-btn" type="submit">Add</button>
+          <button className="secondary-btn compact-btn" type="submit">{isZh ? "添加" : "Add"}</button>
         </form>
       )}
     </section>
@@ -5924,6 +6131,10 @@ function FactorySubmitQuote({ project, language, backLabel = "‹ Back to view r
 }
 
 function FactoryReviewTotal({ project, language, creditBalance, onBack, onEdit, onPurchaseCredits, onSendQuote }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
+  const creditUnit = isZh ? "额度" : "credits";
+  const sendForCredits = isZh ? `发送报价，使用 ${factoryQuoteCreditCost.credits} 额度` : `Send for ${factoryQuoteCreditCost.credits} credits`;
   return (
     <main className="factory-detail-page factory-submit-page factory-review-page">
       <div className="factory-submit-content">
@@ -5944,23 +6155,23 @@ function FactoryReviewTotal({ project, language, creditBalance, onBack, onEdit, 
 
             <section className="factory-submit-card factory-credit-cost-card">
               <div className="factory-credit-card-header">
-                <h2>Quote credits</h2>
-                <p>Credits are charged only when you send this quote.</p>
+                <h2>{tx("Quote credits")}</h2>
+                <p>{tx("Credits are charged only when you send this quote.")}</p>
               </div>
               <div className="factory-credit-required">
-                <span>Required to send</span>
-                <strong>{factoryQuoteCreditCost.credits} credits</strong>
+                <span>{tx("Required to send")}</span>
+                <strong>{factoryQuoteCreditCost.credits} {creditUnit}</strong>
               </div>
               <div className="factory-credit-summary">
                 <div>
-                  <span>Quote type</span>
-                  <strong>{factoryQuoteCreditCost.label}</strong>
+                  <span>{tx("Quote type")}</span>
+                  <strong>{tx(factoryQuoteCreditCost.label)}</strong>
                 </div>
               </div>
               <div className="factory-credit-balance-strip">
-                Remaining balance: {creditBalance} credits
+                {isZh ? "剩余额度：" : "Remaining balance:"} {creditBalance} {creditUnit}
               </div>
-              <button className="secondary-btn compact-btn" type="button" onClick={onPurchaseCredits}>Purchase more credits</button>
+              <button className="secondary-btn compact-btn" type="button" onClick={onPurchaseCredits}>{tx("Purchase more credits")}</button>
             </section>
 
             <section className="factory-submit-card factory-ready-card">
@@ -5969,7 +6180,7 @@ function FactoryReviewTotal({ project, language, creditBalance, onBack, onEdit, 
                 <p>Confirm the quote is complete before it appears in the brand comparison page.</p>
               </div>
               <div className="factory-ready-actions">
-                <button className="primary-btn" type="button" onClick={onSendQuote}>Send for {factoryQuoteCreditCost.credits} credits</button>
+                <button className="primary-btn" type="button" onClick={onSendQuote}>{sendForCredits}</button>
                 <button className="secondary-btn" type="button">Save draft</button>
               </div>
             </section>
@@ -5980,7 +6191,7 @@ function FactoryReviewTotal({ project, language, creditBalance, onBack, onEdit, 
         <button className="secondary-btn" type="button" onClick={onBack}>Back</button>
         <div className="factory-submit-bottom-actions">
           <button className="secondary-btn" type="button">Save draft</button>
-          <button className="primary-btn" type="button" onClick={onSendQuote}>Send for {factoryQuoteCreditCost.credits} credits</button>
+          <button className="primary-btn" type="button" onClick={onSendQuote}>{sendForCredits}</button>
         </div>
       </footer>
     </main>
@@ -6159,7 +6370,10 @@ function FactoryQuoteReminder() {
   );
 }
 
-function FactoryQuoteSent({ project, creditBalance, onBack, onDashboard }) {
+function FactoryQuoteSent({ project, language = "en", onBack, onDashboard }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
+
   return (
     <main className="factory-detail-page factory-submit-page factory-sent-page">
       <div className="factory-submit-content">
@@ -6184,12 +6398,10 @@ function FactoryQuoteSent({ project, creditBalance, onBack, onDashboard }) {
             </div>
 
             <section className="success-next-panel factory-sent-metrics">
-              <Metric label="unit price" value="$18.40" />
-              <Metric label="quantity" value="300 units" />
-              <Metric label="bulk lead" value="28 days" />
-              <Metric label="quote total" value="$5,780" />
-              <Metric label="credits used" value={`${factoryQuoteCreditCost.credits}`} />
-              <Metric label="credit balance" value={`${creditBalance}`} />
+              <Metric label={tx("unit price")} value="$18.40" />
+              <Metric label={tx("quantity")} value={isZh ? "300 件" : "300 units"} />
+              <Metric label={tx("bulk lead")} value={isZh ? "28 天" : "28 days"} />
+              <Metric label={tx("quote total")} value="$5,780" />
             </section>
 
             <div className="success-actions">

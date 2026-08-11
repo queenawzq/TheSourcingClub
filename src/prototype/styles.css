@@ -9825,7 +9825,7 @@ a.secondary-btn {
 }
 
 .brand-onboarding-complete h1 {
-  margin: 0 0 14px;
+  margin: 0 0 2px;
   color: #0f172b;
   font-size: 28px;
   font-weight: 700;
@@ -9838,14 +9838,46 @@ a.secondary-btn {
   color: #45556c;
   font-size: 16px;
   font-weight: 500;
-  line-height: 25px;
+  line-height: 23px;
 }
 
-.brand-onboarding-success-preview {
+.brand-onboarding-discount-reward {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  align-items: baseline;
+  column-gap: 10px;
+  row-gap: 5px;
   width: min(390px, 100%);
-  height: auto;
-  margin-top: 8px;
-  object-fit: contain;
+  margin: 14px 0 18px;
+  padding: 10px 16px 11px;
+  border: 1px solid #d7e1ef;
+  border-radius: 10px;
+  background: #fbfdff;
+}
+
+.brand-onboarding-discount-reward span {
+  color: #4f668a;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  transform: translateY(3px);
+}
+
+.brand-onboarding-discount-reward strong {
+  color: #174df2;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 20px;
+  transform: translateY(3px);
+}
+
+.brand-onboarding-discount-reward p {
+  grid-column: 1 / -1;
+  max-width: none;
+  font-size: 11px;
+  line-height: 16px;
+  transform: translateY(3px);
 }
 
 .brand-onboarding-actions {
