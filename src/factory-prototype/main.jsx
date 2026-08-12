@@ -632,6 +632,18 @@ const factoryMainZhText = {
   "Payment terms": "付款条款",
   "Shipping / incoterms": "运输 / 贸易条款",
   "Quote valid until": "报价有效期至",
+  "Material sourcing and component costs": "材料采购和辅料成本",
+  "Specify what is included in your quote and what the brand must provide.": "说明报价中包含哪些项目，以及品牌需要提供什么。",
+  "Factory includes": "工厂报价包含",
+  "Main production materials and standard components from the approved direction.": "按确认方向采购的主要生产材料和标准辅料。",
+  "Main production materials and standard components from approved direction, included in unit price": "按确认方向采购的主要生产材料和标准辅料，已包含在单价中",
+  "Brand provides separately": "品牌另行提供",
+  "Labels, packaging, final color standards, and special branded trims.": "商标、包装、最终颜色标准和特殊品牌辅料。",
+  "Brand will provide or approve before sampling": "品牌将在打样前提供或确认",
+  "Assumptions to confirm": "待确认假设",
+  "Fabric GSM, trim spec, MOQ surcharge, certification path, and lead-time impact": "面料 GSM、辅料规格、MOQ 附加费、认证路径和交期影响",
+  "Confirm in quote": "报价中确认",
+  "Which fabric, trim, or component costs are included, plus any MOQ or lead-time assumptions.": "哪些面料、辅料或组件成本已包含，以及任何 MOQ 或交期假设。",
   "Break out sample stages so the brand can compare quotes clearly.": "拆分样品阶段，方便品牌清楚比较报价。",
   "Stage": "阶段",
   "Cost": "费用",
@@ -5704,10 +5716,25 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
           </DetailCard>
 
           <DetailCard title="Materials and requirements">
-            <ul className="factory-detail-list">
-              <li>Organic cotton poplin, mid-weight</li>
-              <li>GOTS preferred, but brand can confirm certification path</li>
-            </ul>
+            <div className="factory-materials-summary">
+              <DetailPair label="Main material" value="Organic cotton poplin, mid-weight" />
+              <DetailPair label="Quality preference" value="GOTS preferred; brand can confirm certification path" />
+            </div>
+            <section className="factory-sourcing-responsibility">
+              <h3>Material sourcing responsibility</h3>
+              <div>
+                <span>Factory should source</span>
+                <p>Organic cotton poplin and button trims from the brand-approved direction.</p>
+              </div>
+              <div>
+                <span>Brand will provide</span>
+                <p>Labels, packaging, final color standards, and approval on material direction.</p>
+              </div>
+              <div>
+                <span>Confirm in quote</span>
+                <p>Which fabric, trim, or component costs are included, plus any MOQ or lead-time assumptions.</p>
+              </div>
+            </section>
           </DetailCard>
 
           <DetailCard title="Brand attachments">
@@ -5729,7 +5756,7 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
             <ol className="factory-detail-list" data-no-translate>
               <li>Can you quote fit sample and PP sample separately?</li>
               <li>Can you support 3 colors at 100 units each?</li>
-              <li>What fabric GSM or trim details do you need before final sample cost?</li>
+              <li>Which materials or components can you source, and what do you need the brand to provide?</li>
             </ol>
           </DetailCard>
 
@@ -6337,6 +6364,18 @@ function FactoryQuoteSections({ readOnly = false }) {
         </div>
       </SubmitSection>
 
+      <SubmitSection title="Material sourcing responsibility" description="Keep sourcing responsibility simple and clear for the brand.">
+        <section className="factory-sourcing-brand-provided">
+          <div>
+            <span>Brand provides separately</span>
+            <p>Labels, packaging, final color standards, and special branded trims.</p>
+          </div>
+        </section>
+        <div className="factory-sourcing-input-grid">
+          <QuoteField label="Factory includes" value="Main production materials and standard components from approved direction, included in unit price" />
+        </div>
+      </SubmitSection>
+
       <SubmitSection title="Sample plan" description="Break out sample stages so the brand can compare quotes clearly.">
         <div className="factory-submit-sample-rows">
           <SamplePlanRow stage="Fit sample" cost="$95" timing="10 days" includes="1 revision round" readOnly={readOnly} />
@@ -6345,8 +6384,8 @@ function FactoryQuoteSections({ readOnly = false }) {
         {!readOnly && <button className="factory-add-stage" type="button">+ Add sample stage</button>}
       </SubmitSection>
 
-      <SubmitSection title="Brand questions and factory notes" description="Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM or trim details do you need before final sample cost?" descriptionNoTranslate>
-        <QuoteTextarea value="Yes. We can quote fit and PP samples separately, support 3 colors at 100 units each, and need confirmed GSM, button trim, and final size spec before final sample cost." label="Factory response" />
+      <SubmitSection title="Brand questions and factory notes" description="Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM, trim, MOQ, or certification details do you need before final cost?" descriptionNoTranslate>
+        <QuoteTextarea value="Yes. We can quote fit and PP samples separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec." label="Factory response" />
       </SubmitSection>
 
       <SubmitSection title="Additional details and questions" description="Add supporting files or questions regarding the quote.">
@@ -6462,8 +6501,8 @@ function QuoteField({ label, value, helper }) {
 function QuoteTextarea({ value, label }) {
   return (
     <div className="factory-quote-textarea">
-      {label && <span>{label}</span>}
-      <span data-no-translate>{value}</span>
+      {label && <span className="factory-quote-textarea-label">{label}</span>}
+      <strong data-no-translate>{value}</strong>
     </div>
   );
 }

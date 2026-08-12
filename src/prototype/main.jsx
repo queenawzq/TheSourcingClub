@@ -15,7 +15,7 @@ const steps = [
   { title: "Invite factories", meta: "Choose who can quote" },
   { title: "Review quotes", meta: "Compare responses" },
   { title: "Contract terms", meta: "Scope and revisions" },
-  { title: "Payment terms", meta: "Fixed price setup" },
+  { title: "Trade terms", meta: "Delivery term" },
   { title: "Production steps", meta: "Payment + approvals" },
   { title: "Fund first payment", meta: "Start sample work" }
 ];
@@ -24,6 +24,7 @@ const screenOrder = [
   "describe",
   "review",
   "invite",
+  "inviteSuccess",
   "quotes",
   "quoteDetail",
   "contract",
@@ -88,6 +89,12 @@ const screenMeta = {
     description: "Choose matched factories and send the quote request to partners with the right category, MOQ, region, and service fit.",
     cta: "Invite factories"
   },
+  inviteSuccess: {
+    step: 2,
+    title: "Quote request sent.",
+    description: "Factories have the brief, attachments, and questions they need to decide whether to quote.",
+    cta: "Review quotes"
+  },
   quotes: {
     step: 3,
     title: "Review factory quotes.",
@@ -104,12 +111,12 @@ const screenMeta = {
     step: 4,
     title: "Set contract terms.",
     description: "Turn the selected quote into a clear production scope with responsibilities, revision terms, deliverables, and approval expectations.",
-    cta: "Continue to payment"
+    cta: "Continue to trade terms"
   },
   payment: {
     step: 5,
-    title: "Choose payment terms.",
-    description: "Choose whether to fund the full contract today or pay by production steps, with each staged release tied to a clear approval moment.",
+    title: "Confirm trade terms.",
+    description: "Choose the delivery term now. Milestones and card payment are handled in the next steps.",
     cta: "Add production steps"
   },
   milestones: {
@@ -898,7 +905,7 @@ const brandOnboardingSteps = [
       ["Average pieces ordered per year", ["Under 1,000", "1,000-5,000", "5,000-20,000", "20,000-100,000", "100,000+"], "5,000-20,000"],
       ["Typical order size per style", ["Under 100", "100-300", "300-1,000", "1,000-5,000", "5,000+"], "300-1,000"],
       ["Collections per year", ["1", "2", "3-4", "5-6", "Monthly drops"], "3-4"],
-      ["Target sourcing price range", "e.g. $12-$28 FOB per unit"],
+      ["Typical price range for core styles", "e.g. $12-$28 FOB per unit"],
       ["Typical reorder cadence", ["One-time seasonal buys", "Monthly reorders", "Quarterly reorders", "Repeat best sellers as needed"], "Quarterly reorders"],
       ["Current sourcing stage", ["Exploring factories", "Sampling soon", "Ready for production", "Replacing current supplier"], "Sampling soon"]
     ]
@@ -1052,6 +1059,8 @@ function App() {
         return <ReviewScreen />;
       case "invite":
         return <InviteScreen {...props} />;
+      case "inviteSuccess":
+        return <InviteSuccessScreen goTo={goTo} selectedFactories={selectedFactories} />;
       case "quotes":
         return <QuotesScreen {...props} />;
       case "quoteDetail":
@@ -1105,7 +1114,7 @@ function App() {
         }}
         onProfile={() => goTo("profile")}
       />
-      <main className={screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : "flow-page"}>
+      <main key={screen} className={screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page"}>
         {!isStandalone && <JourneyRail current={activeMeta.step} isMilestoneFunding={Boolean(fundingMilestone)} />}
         <section className="flow-content">
           {!isStandalone && screen !== "quoteDetail" && (
@@ -1141,7 +1150,7 @@ function App() {
         <BottomBar
           canBack={index > 0}
           onBack={back}
-          onNext={screen === "success" ? () => goTo("describe") : next}
+          onNext={screen === "success" ? () => goTo("describe") : screen === "inviteSuccess" ? () => goTo("quotes") : next}
           primaryLabel={screen === "quotes" || screen === "success" ? "" : activeMeta.cta}
           centerText={screen === "invite" ? `${selectedFactories.length} factories selected · 5 recommended` : ""}
           secondaryLabel={screen === "invite" ? "Save draft" : ""}
@@ -2297,7 +2306,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
       { title: "Brand basics", step: 1, rows: [["Brand name", "Maison Rue"], ["Category", "Fashion brand"], ["Business email", "name@maisonrue.com"], ["Founded", "2021"], ["Website URL", "www.maisonrue.com"], ["HQ location", "New York, USA"]] },
       { title: "Brand context", step: 2, rows: [["About the brand", "Premium wardrobe staples with clean silhouettes and natural fibers"], ["Logo", "Uploaded"], ["Product images", "Reference images added"]] },
       { title: "Sourcing fit", step: 3, rows: [["Production type", "Cut & sew knits, wovens"], ["Product categories", "Tops, bottoms"], ["Market level", "Premium / contemporary ($100-$500)"]] },
-      { title: "Sourcing volume", step: 4, rows: [["Annual order volume", "5,000-20,000 pieces"], ["Typical order per style", "300-1,000 pieces"], ["Collections per year", "3-4"], ["Target sourcing price", "$12-$28 FOB per unit"], ["Reorder cadence", "Quarterly reorders"], ["Current sourcing stage", "Sampling soon"]] },
+      { title: "Sourcing volume", step: 4, rows: [["Annual order volume", "5,000-20,000 pieces"], ["Typical order per style", "300-1,000 pieces"], ["Collections per year", "3-4"], ["Typical price range for core styles", "$12-$28 FOB per unit"], ["Reorder cadence", "Quarterly reorders"], ["Current sourcing stage", "Sampling soon"]] },
       { title: "Factory preferences", step: 5, rows: [["Preferred regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services needed", "Full package, sample development"]] },
       { title: "Trust", step: 6, rows: [["Annual revenue", "$1M-$5M"], ["Decision makers", "Founder / production lead added"], ["Business certificate", "Registration or resale certificate uploaded"]] }
     ];
@@ -2495,6 +2504,7 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
             <li>Sample stages needed</li>
             <li>Timeline</li>
             <li>Material / quality level</li>
+            <li>Materials and components sourcing responsibility</li>
             <li>Target unit price range</li>
             <li>Preferred region</li>
           </ul>
@@ -2507,11 +2517,16 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
     return (
       <aside className="right-rail review-right-rail">
         <Card title="What factories need" tone="soft">
-          <p>
-            For an initial quote, the must-haves are product type, quantity, color breakdown,
-            material quality, sample stage, timeline, and quote questions. Packaging and shipping
-            can be clarified later.
-          </p>
+          <ul className="clean-list">
+            <li>Product type</li>
+            <li>Quantity and color breakdown</li>
+            <li>Sample stages needed</li>
+            <li>Timeline</li>
+            <li>Material / quality level</li>
+            <li>Materials and components sourcing responsibility</li>
+            <li>Target unit price range</li>
+            <li>Questions factories should answer</li>
+          </ul>
         </Card>
       </aside>
     );
@@ -2593,17 +2608,26 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
               <span>Porto, Portugal</span>
             </div>
           </div>
-          <div className="accepted-reminder">
+          <button className="secondary-btn accepted-message-btn" type="button">
+            Message factory
+          </button>
+        </section>
+        {screen !== "milestones" && (
+          <section className="accepted-reminder">
             <h3>TSC reminder</h3>
             <p>Message the factory to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
-          </div>
-        </section>
+          </section>
+        )}
         {screen === "milestones" && (
           <Card title="What should production steps cover?" tone="soft">
-            <p>
-              For factories, production steps usually map to sample, bulk deposit, QC approval, and final
-              shipment. Keep revisions and acceptance criteria explicit.
-            </p>
+            <p>Use one step for each approval or payment moment.</p>
+            <ul className="production-step-guidance-list">
+              <li>Samples and revision approvals</li>
+              <li>Material, trim, or color confirmations</li>
+              <li>Bulk deposit and production start</li>
+              <li>In-line or final QC review</li>
+              <li>Shipment handoff and final balance</li>
+            </ul>
           </Card>
         )}
       </aside>
@@ -2611,18 +2635,20 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
   }
 
   return (
-    <aside className="right-rail">
+    <aside className={screen === "inviteSuccess" ? "right-rail invite-success-right-rail" : "right-rail"}>
       <Card title="Request summary">
         <Metric label="Product" value="Organic woven shirt" />
         <Metric label="Quantity" value="300 units" />
         <Metric label="Samples" value="Fit + PP" />
         <Metric label="Target" value="$18-$24" />
       </Card>
-      <Card title="TSC reminder" tone="soft">
-        <p>
-          Keep sample scope, revisions, approvals, QC, and delivery terms clear before funding.
-        </p>
-      </Card>
+      {screen !== "inviteSuccess" && (
+        <Card title="TSC reminder" tone="soft">
+          <p>
+            Keep sample scope, revisions, approvals, QC, and delivery terms clear before funding.
+          </p>
+        </Card>
+      )}
     </aside>
   );
 }
@@ -3152,7 +3178,7 @@ function BrandProfileScreen({ onViewCompletion }) {
     ["Annual order volume", data.sourcingVolume.annualVolume],
     ["Typical order size", data.sourcingVolume.orderSize],
     ["Collections per year", data.sourcingVolume.collectionsPerYear],
-    ["Target sourcing price", data.sourcingVolume.targetPrice],
+    ["Typical price range for core styles", data.sourcingVolume.targetPrice],
     ["Reorder cadence", data.sourcingVolume.reorderCadence],
     ["Current sourcing stage", data.sourcingVolume.sourcingStage]
   ];
@@ -3760,7 +3786,7 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
             <BrandProfileEditField label="Average pieces ordered per year" value={form.sourcingVolume.annualVolume} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, annualVolume: value })} />
             <BrandProfileEditField label="Typical order size per style" value={form.sourcingVolume.orderSize} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, orderSize: value })} />
             <BrandProfileEditField label="Collections per year" value={form.sourcingVolume.collectionsPerYear} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, collectionsPerYear: value })} />
-            <BrandProfileEditField label="Target sourcing price range" value={form.sourcingVolume.targetPrice} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, targetPrice: value })} />
+            <BrandProfileEditField label="Typical price range for core styles" value={form.sourcingVolume.targetPrice} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, targetPrice: value })} />
             <BrandProfileEditField label="Typical reorder cadence" value={form.sourcingVolume.reorderCadence} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, reorderCadence: value })} />
             <BrandProfileEditField label="Current sourcing stage" value={form.sourcingVolume.sourcingStage} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, sourcingStage: value })} />
           </div>
@@ -5560,10 +5586,31 @@ function ReviewScreen() {
           <Field label="Target unit price" value="Ideal $18-$24 per unit" />
           <Field label="Factory region preference" value="China, Portugal, Korea" />
           <Field label="Certifications" value="GOTS preferred" />
+          <Field label="Quote deadline" value="Jul 24, 2026 · 5 business days after publish" className="brief-grid-full" />
         </div>
-        <div className="single-field">
-          <Field label="Quote deadline" value="Jul 24, 2026 · 5 business days after publish" />
-        </div>
+        <section className="brief-sourcing-block">
+          <h3>Factory sourcing responsibility</h3>
+          <div className="brief-sourcing-section">
+            <div className="brief-sourcing-grid">
+            <label className="field-label" htmlFor="review-sourcing-support">
+              Sourcing support needed
+              <select id="review-sourcing-support" defaultValue="partial">
+                <option value="full">Factory should source all materials and components</option>
+                <option value="partial">Factory should source some materials or components</option>
+                <option value="brand-provided">Brand will provide all materials and components</option>
+                <option value="unsure">Not sure yet</option>
+              </select>
+            </label>
+            <label className="field-label" htmlFor="review-sourcing-details">
+              Details
+              <textarea
+                id="review-sourcing-details"
+                defaultValue="Factory should source organic cotton poplin and button trims from brand-approved direction. Brand will provide labels, packaging, and final color standards."
+              />
+            </label>
+            </div>
+          </div>
+        </section>
       </Card>
       <Card title="Additional details">
         <div className="note-field">
@@ -5581,7 +5628,7 @@ function ReviewScreen() {
           <ol>
             <li>Can you quote fit sample and PP sample separately?</li>
             <li>Can you support 3 colors at 100 units each?</li>
-            <li>What fabric GSM or trim details do you need before final sample cost?</li>
+            <li>Which materials or components can you source, and what do you need the brand to provide?</li>
           </ol>
         </div>
       </Card>
@@ -5746,6 +5793,41 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
         </div>
       </div>
     </button>
+  );
+}
+
+function InviteSuccessScreen({ goTo, selectedFactories }) {
+  const factoryCount = selectedFactories.length;
+
+  return (
+    <div className="stack">
+      <section className="success-card invite-success-card">
+        <span className="success-mark">✓</span>
+        <div className="success-copy">
+          <h2>Your quote request is live</h2>
+          <p>
+            We sent the brief to {factoryCount} selected factories. They can review the request,
+            ask questions, and submit quotes before the deadline.
+          </p>
+        </div>
+        <section className="success-next-panel">
+          <h3>What happens next</h3>
+          <ul className="success-next-list">
+            <li>Factories review your brief, attachments, and sourcing responsibilities.</li>
+            <li>You will see responses, questions, and quote status updates on the quotes page.</li>
+            <li>When enough quotes are ready, compare pricing, timing, and sample plans before choosing one.</li>
+          </ul>
+        </section>
+        <div className="success-actions">
+          <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>
+            Review quotes
+          </button>
+          <button className="secondary-btn" type="button" onClick={() => goTo("home")}>
+            Go to dashboard
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -6054,6 +6136,16 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
             />
           </section>
 
+          <section className="quote-detail-section quote-sourcing-section">
+            <h3>Material sourcing responsibility</h3>
+            <DetailPairs
+              rows={[
+                ["Brand provides separately", "Labels, packaging, final color standards, and special branded trims."],
+                ["Factory includes", "Main production materials and standard components from approved direction, included in unit price."]
+              ]}
+            />
+          </section>
+
           <section className="price-breakdown">
             <h3>Price breakdown</h3>
             <DetailRows
@@ -6082,7 +6174,7 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
 
           <section className="quote-note-panel">
             <h3>Factory notes and open clarification</h3>
-            <p>Can quote fit and PP separately. Needs confirmed fabric GSM, button trim, and final size spec before final sample cost.</p>
+            <p>Can quote fit and PP separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec.</p>
           </section>
         </Card>
 
@@ -6144,11 +6236,6 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
   return (
     <div className="stack contract-stack">
       <Card title="Confirm final terms" className="final-terms-card">
-        <p className="muted">
-          {isReorder
-            ? `Copied from ${reorderProject.title} with ${reorderProject.factory}. Update anything that changed before funding the reorder.`
-            : "Update these if anything changed after chatting with the factory. Confirm final pricing, samples, QC, delivery terms, and revisions in the conversation before funding."}
-        </p>
         <div className="final-terms-grid">
           <AcceptedQuoteField label="Unit price" value="$18.40" />
           <AcceptedQuoteField label="Quantity" value="300 units" />
@@ -6196,41 +6283,35 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
 
 function PaymentScreen() {
   return (
-    <div className="stack">
-      <Card title="Payment terms">
-        <p className="muted">
-          TSC project funds hold money until the approved step is released.
-        </p>
-        <div className="field single-field payment-amount-field">
-          <span>Contract amount</span>
-          <strong>$5,520 estimated production value</strong>
-        </div>
+    <div className="stack payment-terms-stack">
+      <Card title="Delivery term" className="payment-terms-card">
         <section className="payment-section">
-          <h3>Payment schedule</h3>
-          <div className="payment-options">
-            <label className="payment-choice selected">
-              <input type="radio" name="payment" defaultChecked />
-              <span className="radio-mark" aria-hidden="true" />
-              <span className="payment-copy">
-                <strong>
-                  Pay by production steps <span className="recommended-pill">Recommended</span>
-                </strong>
-                <span>Only fund the first step today. Fund later steps after approvals.</span>
-              </span>
-            </label>
-            <label className="payment-choice">
-              <input type="radio" name="payment" />
-              <span className="radio-mark" aria-hidden="true" />
-              <span className="payment-copy">
-                <strong>Pay full contract</strong>
-                <span>Fund the full estimated contract today.</span>
-              </span>
-            </label>
+          <div className="payment-section-heading">
+            <p>Who handles freight, duties, and delivery to the final destination?</p>
+          </div>
+          <div className="trade-term-grid">
+            {[
+              ["DDP", "Factory delivers to the final destination, including duties.", "Preferred"],
+              ["CIF", "Factory covers cost, insurance, and freight to port."],
+              ["FOB", "Factory delivers to export port; buyer handles freight."]
+            ].map(([term, description, badge]) => (
+              <label className={`trade-term-card ${badge ? "selected" : ""}`} key={term}>
+                <input type="radio" name="price-term" defaultChecked={Boolean(badge)} />
+                <span>
+                  <strong>{term}</strong>
+                  {badge && <em>{badge}</em>}
+                </span>
+                <p>{description}</p>
+              </label>
+            ))}
           </div>
         </section>
         <section className="payment-note">
-          <h3>Production terms are estimates</h3>
-          <p>Bulk deposit and final balance can adjust after sample approval and confirmed size breakdown.</p>
+          <h3>Payment comes later</h3>
+          <p>
+            Next, define milestone releases. Then the brand pays by card through TSC checkout so
+            funds can be held before release.
+          </p>
         </section>
       </Card>
     </div>
@@ -6419,9 +6500,9 @@ function Card({ title, children, className = "", tone = "" }) {
   );
 }
 
-function Field({ label, value, muted = false }) {
+function Field({ label, value, muted = false, className = "" }) {
   return (
-    <div className={muted ? "field muted-field" : "field"}>
+    <div className={`${muted ? "field muted-field" : "field"} ${className}`}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
