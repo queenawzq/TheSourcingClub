@@ -2178,7 +2178,7 @@ function FactoryProfilePage({ language, onViewCompletion }) {
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Samples developed" editable={isOwnerView} actionLabel="Update images" onEdit={() => openEditor("samples")} />
+              <FactoryProfileCardHeader title="Samples developed" editable={isOwnerView} actionLabel="Manage images" onEdit={() => openEditor("samples")} />
               <div className="factory-profile-product-grid">
                 {data.products.map((product) => (
                   <article className="factory-profile-product" key={product.title}>

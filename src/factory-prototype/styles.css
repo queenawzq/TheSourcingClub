@@ -2751,6 +2751,7 @@
   top: 2px;
   right: 2px;
   z-index: 2;
+  width: max-content;
 }
 
 .settings-menu-btn {
@@ -2776,8 +2777,8 @@
 
 .profile-asset-overflow-menu {
   position: absolute;
-  top: calc(100% - 8px);
-  right: 0;
+  top: calc(100% - 14px);
+  right: -2px;
   z-index: 4;
   display: grid;
   min-width: 128px;
@@ -2806,7 +2807,7 @@
 }
 
 .profile-asset-overflow-menu button.danger {
-  color: #9f2f2f;
+  color: #0b1020;
 }
 
 .profile-asset-manager-card > img {
