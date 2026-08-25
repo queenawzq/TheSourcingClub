@@ -1065,18 +1065,22 @@ const onboardingCopy = {
           ["Year Founded", "YYYY"],
           ["Website URL", "www.example.com"],
           ["Factory Location", "City, Country"],
-          ["Nearest Port", "e.g. Port of Shanghai"]
+          ["Nearest Port", "e.g. Port of Shanghai"],
+          ["Total Employees", "e.g. 120"]
         ],
         helper: "The seaport or airport you ship from most often."
       },
       {
-        title: "A little about your company",
-        fields: [
-          ["Company Registration Date", "MM/YYYY"],
-          ["Registered capital (optional)", "Amount"],
-          ["Total Employees", "e.g. 120"]
-        ],
-        helper: "Use your business registration details where applicable."
+        title: "Add factory context",
+        intro: "Share the details that help brands understand your factory, production strengths, and working style.",
+        brandLabel: "About the factory",
+        brandPlaceholder: "A short overview of your factory, production strengths, typical customers, quality standards, and what brands should understand before they send an RFQ.",
+        logoTitle: "Factory logo",
+        logoHelper: "Upload your factory logo, wordmark, or icon mark.",
+        logoAccept: "SVG, PNG, or JPG",
+        imagesTitle: "Samples developed",
+        imagesHelper: "Upload sample garments, product development examples, construction details, or finished pieces your factory has made.",
+        imagesAccept: "PNG, JPG, or PDF"
       },
       {
         title: "What type of production does your factory specialize in?",
@@ -1187,13 +1191,20 @@ const onboardingCopy = {
       },
       {
         title: "告诉我们你的工厂信息",
-        fields: [["工厂名称", "例如：金线服装制造"], ["成立年份", "YYYY"], ["官网", "www.example.com"], ["工厂所在地", "城市，国家/地区"], ["最近港口", "例如：深圳港"]],
+        fields: [["工厂名称", "例如：金线服装制造"], ["成立年份", "YYYY"], ["官网", "www.example.com"], ["工厂所在地", "城市，国家/地区"], ["最近港口", "例如：深圳港"], ["员工总数", "例如：120"]],
         helper: "你最常使用的海港或机场。"
       },
       {
-        title: "公司基本信息",
-        fields: [["公司注册日期", "MM/YYYY"], ["注册资本（选填）", "金额"], ["员工总数", "例如：120"]],
-        helper: "如适用，请按营业执照或注册资料填写。"
+        title: "添加工厂背景",
+        intro: "补充工厂介绍、生产优势和合作方式，帮助品牌更快判断是否匹配。",
+        brandLabel: "工厂介绍",
+        brandPlaceholder: "简要说明工厂情况、生产优势、常合作客户、质量标准，以及品牌发送 RFQ 前需要了解的信息。",
+        logoTitle: "工厂 Logo",
+        logoHelper: "上传工厂 logo、字标或图标。",
+        logoAccept: "SVG、PNG 或 JPG",
+        imagesTitle: "已开发样品",
+        imagesHelper: "上传工厂开发过的样衣、产品开发案例、结构细节或成品图片。",
+        imagesAccept: "PNG、JPG 或 PDF"
       },
       {
         title: "你的工厂擅长哪类生产？",
@@ -2167,7 +2178,7 @@ function FactoryProfilePage({ language, onViewCompletion }) {
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Sample work" editable={isOwnerView} actionLabel="Manage samples" onEdit={() => openEditor("samples")} />
+              <FactoryProfileCardHeader title="Samples developed" editable={isOwnerView} actionLabel="Update images" onEdit={() => openEditor("samples")} />
               <div className="factory-profile-product-grid">
                 {data.products.map((product) => (
                   <article className="factory-profile-product" key={product.title}>
@@ -2185,7 +2196,7 @@ function FactoryProfilePage({ language, onViewCompletion }) {
                   <h2>Past projects</h2>
                   <p>Completed TSC orders with brand feedback, project scope, and production strengths.</p>
                 </div>
-                {isOwnerView && <button className="factory-profile-edit-button" type="button" onClick={() => openEditor("projects")}>Manage projects</button>}
+                {isOwnerView && <span className="factory-profile-sync-pill">Auto-added</span>}
               </div>
               <div className="factory-profile-project-tabs" role="tablist" aria-label="Past project status">
                 <button
@@ -2478,7 +2489,7 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
     references: ["Edit client references", "Add or update the brand references shown on the public profile."],
     banner: ["Edit banner", "Upload or replace the banner image used on this profile."],
     walkthrough: ["Manage walkthrough", "Update the verified production-floor walkthrough and covered areas."],
-    samples: ["Manage samples", "Add sample work that represents the factory's strongest production fit."],
+    samples: ["Update sample images", "Add images of sample garments, development examples, and finished pieces that represent the factory's strongest production fit."],
     projects: ["Manage projects", "Update completed and in-production project proof for brands."],
     verification: ["Manage verification documents", "Upload certificates and registration documents for profile review."]
   };
@@ -2650,10 +2661,11 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
         )}
 
         {isSimpleMediaEditor && (
-          <div className="factory-profile-modal-placeholder">
-            <button className="onboarding-file-upload" type="button">Click or drag files to upload</button>
-            <p>Uploads are mocked in this prototype, but this is the same update window pattern brands and factories use during onboarding.</p>
-          </div>
+          <FactoryProfileMediaEditor
+            assets={getFactoryProfileMediaAssets(editor, data)}
+            uploadHelper={editor === "projects" ? "Add completed work, in-production orders, or project proof that helps brands understand your reliability." : editor === "samples" ? "Add sample garments, development examples, construction details, or finished pieces." : "Add another image or file."}
+            itemType={editor === "projects" ? "project" : "image"}
+          />
         )}
 
         <footer className="factory-onboarding-actions">
@@ -2735,6 +2747,143 @@ function ProfileVerificationEditor({ certifications, onChange }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function getFactoryProfileMediaAssets(editor, data) {
+  if (editor === "samples") return data.products;
+
+  if (editor === "banner") {
+    return [{ title: "Profile banner", meta: "Current factory profile image", src: "/assets/factory-header.png" }];
+  }
+
+  if (editor === "walkthrough") {
+    return [{ title: "Factory walkthrough", meta: "2:48 verified production-floor video", src: "/assets/factory-header.png" }];
+  }
+
+  if (editor === "projects") {
+    return [...data.pastProjects, ...data.inProductionProjects].map((project, index) => ({
+      title: project.title,
+      meta: `${project.brand} · ${project.result}`,
+      src: ["/assets/dashboard-rfq-shirt.jpg", "/assets/dashboard-rfq-knit.jpg", "/assets/dashboard-rfq-denim.jpg"][index % 3]
+    }));
+  }
+
+  return [];
+}
+
+function FactoryProfileMediaEditor({ assets, uploadHelper, itemType = "image" }) {
+  const [items, setItems] = useState(assets);
+  const [addImageOpen, setAddImageOpen] = useState(false);
+  const [openAssetMenu, setOpenAssetMenu] = useState("");
+  const [editingAsset, setEditingAsset] = useState(null);
+  const isProject = itemType === "project";
+
+  return (
+    <div className="factory-profile-modal-placeholder">
+      {items.length > 0 && (
+        <div className="profile-asset-manager-grid">
+          {items.map((asset) => (
+            <article className="profile-asset-manager-card" key={asset.title}>
+              <div className="profile-asset-card-menu">
+                <button
+                  className="settings-menu-btn"
+                  type="button"
+                  aria-label={`More options for ${asset.title}`}
+                  aria-expanded={openAssetMenu === asset.title}
+                  onClick={() => setOpenAssetMenu((current) => current === asset.title ? "" : asset.title)}
+                />
+                {openAssetMenu === asset.title && (
+                  <div className="profile-asset-overflow-menu" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setEditingAsset(asset);
+                        setOpenAssetMenu("");
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="danger"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setItems((current) => current.filter((item) => item.title !== asset.title));
+                        setOpenAssetMenu("");
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+              <img src={asset.src} alt={`${asset.title} preview`} />
+              <div>
+                <strong>{asset.title}</strong>
+                <span>{asset.meta}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      <button className="secondary-btn profile-asset-add-button" type="button" onClick={() => setAddImageOpen(true)}>{isProject ? "+ Add project" : "+ Add image"}</button>
+      {addImageOpen && (
+        <FactoryProfileAssetUploadDialog
+          helper={uploadHelper}
+          itemType={itemType}
+          onClose={() => setAddImageOpen(false)}
+        />
+      )}
+      {editingAsset && (
+        <FactoryProfileAssetUploadDialog
+          asset={editingAsset}
+          helper={isProject ? "Update the project image, title, or summary shown on this card." : "Update the image, name, or description shown on this card."}
+          itemType={itemType}
+          mode="edit"
+          onClose={() => setEditingAsset(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function FactoryProfileAssetUploadDialog({ asset = null, helper, itemType = "image", mode = "add", onClose }) {
+  const isEdit = mode === "edit";
+  const isProject = itemType === "project";
+
+  return (
+    <div className="profile-asset-upload-layer" role="presentation">
+      <button className="profile-asset-upload-scrim" type="button" aria-label={isEdit ? "Close edit image dialog" : "Close add image dialog"} onClick={onClose} />
+      <section className="profile-asset-upload-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-asset-upload-title">
+        <CloseIconButton className="factory-update-close profile-asset-upload-close" label={isEdit ? "Close edit image dialog" : "Close add image dialog"} onClick={onClose} />
+        <header>
+          <h2 id="profile-asset-upload-title">{isEdit ? (isProject ? "Edit project" : "Edit image") : (isProject ? "Add project" : "Add image")}</h2>
+          <p>{helper}</p>
+        </header>
+        {isEdit && asset?.src && (
+          <div className="profile-asset-edit-preview">
+            <img src={asset.src} alt={`${asset.title} preview`} />
+          </div>
+        )}
+        <button className="onboarding-file-upload" type="button">{isEdit ? (isProject ? "Click or drag files to replace project image" : "Click or drag files to replace image") : "Click or drag files to upload"}</button>
+        <div className="profile-asset-metadata-grid">
+          <label className="factory-onboarding-field">
+            <span>{isProject ? "Project title" : "Image name"}</span>
+            <input defaultValue={asset?.title || ""} placeholder={isProject ? "e.g. Organic cotton woven shirt production" : "e.g. Organic poplin fit sample"} />
+          </label>
+          <label className="factory-onboarding-field">
+            <span>{isProject ? "Project summary" : "Description"}</span>
+            <input defaultValue={asset?.meta || ""} placeholder={isProject ? "e.g. Maison Rue · Completed on time" : "e.g. Wovens · sample development"} />
+          </label>
+        </div>
+        <footer className="profile-asset-upload-actions">
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onClose}>{isEdit ? "Save changes" : (isProject ? "Add project" : "Add image")}</button>
+        </footer>
+      </section>
     </div>
   );
 }
@@ -4912,7 +5061,7 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
     );
   }
 
-  if ([1, 2].includes(step)) {
+  if (step === 1) {
     return (
       <div className="factory-onboarding-form-grid">
         {content.fields.map(([label, placeholder]) => (
@@ -4922,6 +5071,10 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
         {content.helper && <p className="onboarding-helper">{content.helper}</p>}
       </div>
     );
+  }
+
+  if (step === 2) {
+    return <OnboardingBrandContext content={content} language={language} />;
   }
 
   if (step === 5) {
@@ -5098,6 +5251,45 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
         <p>{language === "zh" ? "资料通过验证后可用于发送报价。500 额度 = $50 价值。" : "Available after your profile is verified. 500 credits = $50 value."}</p>
       </section>
     </div>
+  );
+}
+
+function OnboardingBrandContext({ content, language }) {
+  return (
+    <div className="factory-brand-context-step">
+      <label className="factory-onboarding-field full-width">
+        <span>{content.brandLabel}</span>
+        <textarea placeholder={content.brandPlaceholder} />
+      </label>
+
+      <div className="factory-brand-context-upload-grid">
+        <OnboardingAssetUploadCard
+          title={content.logoTitle}
+          helper={content.logoHelper}
+          accept={content.logoAccept}
+          uploadLabel={language === "zh" ? "点击或拖拽文件上传" : "Click or drag files to upload"}
+        />
+        <OnboardingAssetUploadCard
+          title={content.imagesTitle}
+          helper={content.imagesHelper}
+          accept={content.imagesAccept}
+          uploadLabel={language === "zh" ? "点击或拖拽文件上传" : "Click or drag files to upload"}
+        />
+      </div>
+    </div>
+  );
+}
+
+function OnboardingAssetUploadCard({ title, helper, accept, uploadLabel }) {
+  return (
+    <section className="factory-brand-asset-card">
+      <div>
+        <strong>{title}</strong>
+        <span>{helper}</span>
+      </div>
+      <button className="onboarding-file-upload factory-brand-asset-upload" type="button">{uploadLabel}</button>
+      <small>{accept}</small>
+    </section>
   );
 }
 

@@ -2216,7 +2216,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
 
         <div className="brand-context-upload-grid">
           <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" />
-          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, or construction details." accept="PNG, JPG, or PDF" />
+          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want factories to understand." accept="PNG, JPG, or PDF" />
         </div>
       </div>
     );
@@ -3299,7 +3299,7 @@ function BrandProfileScreen({ onViewCompletion }) {
                   <h2>Past work with factories</h2>
                   <p>Completed and active TSC activity that helps factories understand how this brand works.</p>
                 </div>
-                {isOwnerView && <button className="factory-profile-edit-button" type="button" onClick={() => openEditor("projects")}>Manage projects</button>}
+                {isOwnerView && <span className="factory-profile-sync-pill">Auto-added</span>}
               </div>
               <div className="factory-profile-project-tabs" role="tablist" aria-label="Brand project status">
                 <button
@@ -3912,15 +3912,152 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
         )}
 
         {isUploadEditor && (
-          <div className="brand-profile-upload-panel">
-            <button className="brand-profile-file-upload" type="button">Click or drag files to upload</button>
-            <p>Uploads are mocked in this prototype, using the same popup pattern as onboarding.</p>
-          </div>
+          <BrandProfileAssetEditor
+            assets={editor === "assets" ? data.assets : getBrandProfileMediaAssets(editor, data)}
+            uploadHelper={editor === "projects" ? "Add completed work, active production, or sampling proof that helps factories understand how this brand works." : editor === "assets" ? "Add logos, product photos, direction files, or brand references." : "Add another image or file."}
+            itemType={editor === "projects" ? "project" : "image"}
+          />
         )}
 
         <footer className="brand-profile-modal-actions">
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
           <button className="primary-btn" type="button" onClick={save}>Save changes</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function getBrandProfileMediaAssets(editor, data) {
+  if (editor === "banner") {
+    return [{ title: "Profile banner", meta: "Current profile header image", src: data.heroImage || "/assets/header-images.png" }];
+  }
+
+  if (editor === "projects") {
+    const projects = [...(data.completedProjects || []), ...(data.activeProjects || [])];
+
+    return projects.map((project, index) => ({
+      title: project.title,
+      meta: `${project.partner || "Factory partner"} · ${project.result}`,
+      src: ["/assets/dashboard-rfq-shirt.jpg", "/assets/dashboard-rfq-denim.jpg", "/assets/dashboard-rfq-knit.jpg"][index % 3]
+    }));
+  }
+
+  return [];
+}
+
+function BrandProfileAssetEditor({ assets, uploadHelper, itemType = "image" }) {
+  const [items, setItems] = useState(assets);
+  const [addImageOpen, setAddImageOpen] = useState(false);
+  const [openAssetMenu, setOpenAssetMenu] = useState("");
+  const [editingAsset, setEditingAsset] = useState(null);
+  const isProject = itemType === "project";
+
+  return (
+    <div className="brand-profile-upload-panel">
+      {items.length > 0 && (
+        <div className="profile-asset-manager-grid">
+          {items.map((asset) => (
+            <article className="profile-asset-manager-card" key={asset.title}>
+              <div className="profile-asset-card-menu">
+                <button
+                  className="settings-menu-btn"
+                  type="button"
+                  aria-label={`More options for ${asset.title}`}
+                  aria-expanded={openAssetMenu === asset.title}
+                  onClick={() => setOpenAssetMenu((current) => current === asset.title ? "" : asset.title)}
+                />
+                {openAssetMenu === asset.title && (
+                  <div className="profile-asset-overflow-menu" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setEditingAsset(asset);
+                        setOpenAssetMenu("");
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="danger"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setItems((current) => current.filter((item) => item.title !== asset.title));
+                        setOpenAssetMenu("");
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+              <img src={asset.src} alt={`${asset.title} preview`} />
+              <div>
+                <strong>{asset.title}</strong>
+                <span>{asset.meta}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      <button className="secondary-btn profile-asset-add-button" type="button" onClick={() => setAddImageOpen(true)}>{isProject ? "+ Add project" : "+ Add image"}</button>
+      {addImageOpen && (
+        <ProfileAssetUploadDialog
+          helper={uploadHelper}
+          itemType={itemType}
+          onClose={() => setAddImageOpen(false)}
+        />
+      )}
+      {editingAsset && (
+        <ProfileAssetUploadDialog
+          asset={editingAsset}
+          helper={isProject ? "Update the project image, title, or summary shown on this card." : "Update the image, name, or description shown on this card."}
+          itemType={itemType}
+          mode="edit"
+          onClose={() => setEditingAsset(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProfileAssetUploadDialog({ asset = null, helper, itemType = "image", mode = "add", onClose }) {
+  const isEdit = mode === "edit";
+  const isProject = itemType === "project";
+
+  return (
+    <div className="profile-asset-upload-layer" role="presentation">
+      <button className="profile-asset-upload-scrim" type="button" aria-label={isEdit ? "Close edit image dialog" : "Close add image dialog"} onClick={onClose} />
+      <section className="profile-asset-upload-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-asset-upload-title">
+        <button className="brand-profile-modal-close profile-asset-upload-close" type="button" aria-label={isEdit ? "Close edit image dialog" : "Close add image dialog"} onClick={onClose}>×</button>
+        <header>
+          <h2 id="profile-asset-upload-title">{isEdit ? (isProject ? "Edit project" : "Edit image") : (isProject ? "Add project" : "Add image")}</h2>
+          <p>{helper}</p>
+        </header>
+        {isEdit && asset?.src && (
+          <div className="profile-asset-edit-preview">
+            <img src={asset.src} alt={`${asset.title} preview`} />
+          </div>
+        )}
+        <button className="brand-profile-file-upload" type="button">
+          <img src="/assets/prototype-icons/upload.svg" alt="" />
+          <strong>{isEdit ? (isProject ? "Click or drag files to replace project image" : "Click or drag files to replace image") : "Click or drag files to upload"}</strong>
+        </button>
+        <div className="profile-asset-metadata-grid">
+          <label>
+            <span>{isProject ? "Project title" : "Image name"}</span>
+            <input defaultValue={asset?.title || ""} placeholder={isProject ? "e.g. Organic cotton woven shirt production" : "e.g. Organic poplin fit sample"} />
+          </label>
+          <label>
+            <span>{isProject ? "Project summary" : "Description"}</span>
+            <input defaultValue={asset?.meta || ""} placeholder={isProject ? "e.g. Factory partner · Completed on time" : "e.g. Wovens · sample development"} />
+          </label>
+        </div>
+        <footer className="profile-asset-upload-actions">
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onClose}>{isEdit ? "Save changes" : (isProject ? "Add project" : "Add image")}</button>
         </footer>
       </section>
     </div>

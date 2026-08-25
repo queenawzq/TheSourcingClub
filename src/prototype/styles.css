@@ -2002,10 +2002,14 @@ button {
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.9);
   color: #0b1020;
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
   font-size: 11px;
   font-weight: var(--weight-strong);
   line-height: 1;
+}
+
+.brand-profile-redesign .factory-profile-banner-edit:hover {
+  border-color: #cbd6e5;
+  background: #f8fafc;
 }
 
 .brand-profile-redesign .factory-profile-identity {
@@ -2047,10 +2051,14 @@ button {
   border-radius: 999px;
   background: #fff;
   color: #0b1020;
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
   font-size: 10px;
   font-weight: var(--weight-strong);
   line-height: 1;
+}
+
+.brand-profile-redesign .factory-profile-logo-edit:hover {
+  border-color: #cbd6e5;
+  background: #f8fafc;
 }
 
 .brand-profile-redesign .factory-profile-title-row {
@@ -2160,9 +2168,25 @@ button {
   white-space: nowrap;
 }
 
+.brand-profile-redesign .factory-profile-sync-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid #d6e0ec;
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #5c7298;
+  font-size: 12px;
+  font-weight: var(--weight-strong);
+  white-space: nowrap;
+}
+
 .brand-profile-redesign .factory-profile-edit-button:hover,
 .brand-profile-redesign .factory-profile-view-toggle button:hover {
-  border-color: #8cb5ff;
+  border-color: #cbd6e5;
+  background: #f8fafc;
 }
 
 .brand-profile-redesign .factory-profile-card p {
@@ -2858,6 +2882,229 @@ button {
   gap: 12px;
 }
 
+.profile-asset-manager-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profile-asset-manager-card {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  border: 1px solid #d6e0ec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.profile-asset-card-menu {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 2;
+}
+
+.profile-asset-card-menu .settings-menu-btn {
+  width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-color: rgba(203, 214, 229, 0.9);
+  background-size: 14px 4px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+}
+
+.profile-asset-overflow-menu {
+  position: absolute;
+  top: calc(100% - 8px);
+  right: 0;
+  z-index: 4;
+  display: grid;
+  min-width: 128px;
+  padding: 6px;
+  border: 1px solid #d6e0ec;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.16);
+}
+
+.profile-asset-overflow-menu button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #0b1020;
+  font: inherit;
+  font-size: 13px;
+  font-weight: var(--weight-strong);
+  text-align: left;
+}
+
+.profile-asset-overflow-menu button:hover {
+  background: #f5f8fc;
+}
+
+.profile-asset-overflow-menu button.danger {
+  color: #9f2f2f;
+}
+
+.profile-asset-manager-card > img {
+  width: 100%;
+  height: 104px;
+  object-fit: cover;
+  background: #f8fafc;
+}
+
+.profile-asset-manager-card > div:not(.profile-asset-manager-actions) {
+  display: grid;
+  gap: 2px;
+  min-height: 58px;
+  padding: 8px 12px 10px;
+}
+
+.profile-asset-manager-card strong {
+  color: #0b1020;
+  font-size: 13px;
+  font-weight: var(--weight-strong);
+  line-height: 18px;
+}
+
+.profile-asset-manager-card span {
+  color: #5c7298;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  line-height: 16px;
+}
+
+.brand-profile-upload-panel > small {
+  color: #90a1b9;
+  font-size: 13px;
+  font-weight: var(--weight-strong);
+  line-height: 18px;
+}
+
+.profile-asset-add-button {
+  justify-self: start;
+  min-height: 38px;
+  padding: 0 18px;
+}
+
+.profile-asset-upload-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.profile-asset-upload-scrim {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.profile-asset-upload-dialog {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 16px;
+  width: min(620px, calc(100vw - 48px));
+  padding: 28px 32px 30px;
+  border: 1px solid #d6e0ec;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 24px 72px rgba(15, 23, 42, 0.22);
+}
+
+.profile-asset-upload-dialog header {
+  display: grid;
+  gap: 6px;
+  padding-right: 44px;
+}
+
+.profile-asset-upload-dialog h2,
+.profile-asset-upload-dialog p {
+  margin: 0;
+}
+
+.profile-asset-upload-dialog h2 {
+  color: #0b1020;
+  font-size: 24px;
+  font-weight: var(--weight-heading);
+  line-height: 30px;
+}
+
+.profile-asset-upload-dialog p {
+  color: #465f84;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 21px;
+}
+
+.profile-asset-edit-preview {
+  overflow: hidden;
+  border: 1px solid #d6e0ec;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.profile-asset-edit-preview img {
+  display: block;
+  width: 100%;
+  height: 156px;
+  object-fit: cover;
+}
+
+.profile-asset-upload-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.profile-asset-metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profile-asset-metadata-grid label {
+  display: grid;
+  gap: 8px;
+}
+
+.profile-asset-metadata-grid span {
+  color: #0e1118;
+  font-size: 14px;
+  font-weight: var(--weight-strong);
+  line-height: 20px;
+}
+
+.profile-asset-metadata-grid input {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #0b1020;
+  font: inherit;
+  font-size: 14px !important;
+  line-height: 22px;
+  outline: none;
+}
+
+.profile-asset-metadata-grid input::placeholder {
+  color: #a7b0be;
+  font-size: 14px !important;
+}
+
+.profile-asset-metadata-grid input:focus {
+  border-color: #8db7ff;
+  box-shadow: 0 0 0 2px rgba(141, 183, 255, 0.24);
+}
+
 .brand-verification-editor {
   display: grid;
   gap: 12px;
@@ -2941,13 +3188,29 @@ button {
 }
 
 .brand-profile-file-upload {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  justify-items: center;
+  gap: 6px;
   min-height: 118px;
-  border: 1px dashed #8db7ff;
+  border: 1px solid #cbd5e1;
   border-radius: 8px;
-  background: #f6fbff;
-  color: #174df2;
-  font-size: 15px;
+  background: #f8fafc;
+  color: #45556c;
+  text-align: center;
+}
+
+.brand-profile-file-upload img {
+  width: 22px;
+  height: 22px;
+}
+
+.brand-profile-file-upload strong {
+  color: #45556c;
+  font-size: 14px;
   font-weight: var(--weight-strong);
+  line-height: 20px;
 }
 
 .brand-profile-modal-actions {
@@ -5832,6 +6095,12 @@ select {
 .secondary-btn {
   border: 1px solid var(--border-strong);
   background: white;
+  color: #0b1020;
+}
+
+.secondary-btn:hover {
+  border-color: #cbd6e5;
+  background: #f8fafc;
   color: #0b1020;
 }
 
@@ -11880,7 +12149,9 @@ a.secondary-btn {
     line-height: 23px;
   }
 
-  .brand-assets-grid {
+  .brand-assets-grid,
+  .profile-asset-manager-grid,
+  .profile-asset-metadata-grid {
     grid-template-columns: 1fr;
   }
 
