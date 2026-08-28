@@ -318,7 +318,7 @@ button {
 
 .flow-page.describe-flow .screen-transition,
 .flow-page.describe-flow .describe-right-rail {
-  margin-top: -112px;
+  margin-top: -72px;
 }
 
 .flow-page.quote-action-flow > .right-rail {
@@ -398,6 +398,7 @@ button {
   margin-top: 3px;
   color: var(--text-muted);
   font-size: 12px;
+  font-weight: var(--weight-medium);
 }
 
 .dot {
@@ -466,6 +467,7 @@ button {
   margin: 18px 0 0;
   color: var(--text-muted);
   font-size: 15px;
+  font-weight: var(--weight-medium);
   line-height: 22px;
 }
 
@@ -3612,7 +3614,7 @@ button {
   margin-bottom: 12px;
   color: var(--text-muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: var(--weight-medium);
 }
 
 textarea {
@@ -3765,6 +3767,7 @@ textarea {
   margin: 12px 0 0;
   color: var(--text);
   font-size: 14px;
+  font-weight: var(--weight-medium);
   line-height: 20px;
 }
 
@@ -3872,6 +3875,46 @@ textarea {
   text-align: left;
 }
 
+.confirmed-trade-term {
+  display: block;
+  padding: 14px 16px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.confirmed-trade-term > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.confirmed-trade-term label {
+  color: #5a6b87;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-transform: none;
+}
+
+.confirmed-trade-term select {
+  width: min(100%, 520px);
+  height: 40px;
+  padding: 0 38px 0 12px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  appearance: none;
+  background-color: #fbfdff;
+  background-image: url("/assets/prototype-icons/dropdown.svg");
+  background-repeat: no-repeat;
+  background-position: calc(100% - 12px) center;
+  background-size: 16px 16px;
+  color: #0b1020;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .contract-section h3 {
   margin: 0;
   font-size: 15px;
@@ -3953,12 +3996,14 @@ textarea {
   padding-left: 18px;
   color: var(--text);
   font-size: 14px;
+  font-weight: var(--weight-medium);
   line-height: 20px;
 }
 
 .card.soft .clean-list {
   gap: 6px;
   margin-top: 6px;
+  color: #5a6b87;
 }
 
 .factory-list,
@@ -4110,6 +4155,7 @@ textarea {
   gap: 10px;
   color: var(--text-muted);
   font-size: 13px;
+  font-weight: var(--weight-medium);
 }
 
 .filter-strip > div {
@@ -5518,6 +5564,11 @@ select {
 
 .helper {
   margin: 8px 0 14px;
+  font-weight: var(--weight-medium);
+}
+
+.production-schedule-helper {
+  font-weight: var(--weight-medium);
 }
 
 .step-type-guide {
@@ -5553,6 +5604,7 @@ select {
 .step-type-guide span {
   color: var(--text-muted);
   font-size: 10px;
+  font-weight: var(--weight-medium);
   line-height: 14px;
 }
 
@@ -6031,6 +6083,7 @@ select {
   padding-left: 18px;
   color: #5a6b87;
   font-size: 14px;
+  font-weight: var(--weight-medium);
   line-height: 20px;
 }
 
@@ -6225,6 +6278,7 @@ select {
   padding-left: 18px;
   color: var(--text);
   font-size: 13px;
+  font-weight: var(--weight-medium);
   line-height: 20px;
 }
 

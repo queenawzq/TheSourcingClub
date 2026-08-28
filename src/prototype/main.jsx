@@ -14,8 +14,7 @@ const steps = [
   { title: "Review brief", meta: "Quote-ready basics" },
   { title: "Invite factories", meta: "Choose who can quote" },
   { title: "Review quotes", meta: "Compare responses" },
-  { title: "Contract terms", meta: "Scope and revisions" },
-  { title: "Trade terms", meta: "Delivery term" },
+  { title: "Contract terms", meta: "Scope + delivery" },
   { title: "Production steps", meta: "Payment + approvals" },
   { title: "Fund first payment", meta: "Start sample work" }
 ];
@@ -28,7 +27,6 @@ const screenOrder = [
   "quotes",
   "quoteDetail",
   "contract",
-  "payment",
   "milestones",
   "fund",
   "success"
@@ -110,31 +108,25 @@ const screenMeta = {
   contract: {
     step: 4,
     title: "Set contract terms.",
-    description: "Turn the selected quote into a clear production scope with responsibilities, revision terms, deliverables, and approval expectations.",
-    cta: "Continue to trade terms"
-  },
-  payment: {
-    step: 5,
-    title: "Confirm trade terms.",
-    description: "Choose the delivery term now. Milestones and card payment are handled in the next steps.",
+    description: "Confirm the selected quote, production scope, delivery term, revisions, and approval expectations before building the payment schedule.",
     cta: "Add production steps"
   },
   milestones: {
-    step: 6,
+    step: 5,
     title: "Add production steps",
     description:
       "Build your own production schedule with as many steps as needed. Each step can be update-only, approval-only, or a paid release.",
     cta: "Continue to funding"
   },
   fund: {
-    step: 7,
+    step: 6,
     title: "Fund first payment",
     description:
       "The brand funds the sample payment now. Bulk production stays locked until sample approval.",
     cta: "Fund payment & start"
   },
   success: {
-    step: 7,
+    step: 6,
     title: "First payment funded",
     description:
       "Your sample payment is funded. The factory can start work, and funds are only released after you approve the sample.",
@@ -2596,7 +2588,7 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
     );
   }
 
-  const isQuoteArea = ["quotes", "quoteDetail", "contract", "payment", "milestones"].includes(screen);
+  const isQuoteArea = ["quotes", "quoteDetail", "contract", "milestones"].includes(screen);
   if (isQuoteArea) {
     return (
       <aside className="right-rail">
@@ -2620,7 +2612,6 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
         )}
         {screen === "milestones" && (
           <Card title="What should production steps cover?" tone="soft">
-            <p>Use one step for each approval or payment moment.</p>
             <ul className="production-step-guidance-list">
               <li>Samples and revision approvals</li>
               <li>Material, trim, or color confirmations</li>
@@ -6404,6 +6395,12 @@ function DetailRows({ rows }) {
 
 function ContractScreen({ selectedQuote, reorderProject = null }) {
   const isReorder = Boolean(reorderProject);
+  const deliveryTerms = [
+    ["DDP", "Factory delivers to final destination, including duties"],
+    ["CIF", "Factory covers cost, insurance, and freight to port"],
+    ["FOB", "Factory delivers to export port; buyer handles freight"]
+  ];
+  const [deliveryTerm, setDeliveryTerm] = useState("DDP");
   const reorderStyleName = reorderProject?.title?.replace(/\s+production$/i, "") || "";
   const contractTitle = isReorder
     ? `${reorderStyleName} reorder with ${reorderProject.factory}`
@@ -6426,6 +6423,16 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
           <AcceptedQuoteField label="Capacity" value="Aug 12-30" />
           <AcceptedQuoteField label="Terms" value="30/70" />
         </div>
+        <section className="confirmed-trade-term">
+          <div>
+            <label htmlFor="contract-delivery-term">Delivery term from quote</label>
+            <select id="contract-delivery-term" value={deliveryTerm} onChange={(event) => setDeliveryTerm(event.target.value)}>
+              {deliveryTerms.map(([term, description]) => (
+                <option value={term} key={term}>{term} ({description})</option>
+              ))}
+            </select>
+          </div>
+        </section>
       </Card>
       <Card title="Work details" className="work-details-card">
         <Field
@@ -6539,7 +6546,7 @@ function MilestonesScreen({ milestoneTypes, setMilestoneTypes }) {
   return (
     <div className="stack">
       <Card title="Production schedule">
-        <p className="muted">
+        <p className="muted production-schedule-helper">
           Select a step type for every production checkpoint. Use the helper text under the
           dropdown while deciding how that step should work.
         </p>
