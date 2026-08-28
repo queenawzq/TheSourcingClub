@@ -5671,6 +5671,7 @@ select {
   margin-top: 2px;
   color: var(--text-muted);
   font-size: 12px;
+  font-weight: var(--weight-medium);
   line-height: 16px;
 }
 
@@ -5752,6 +5753,7 @@ select {
   gap: 12px;
   color: #0b1020;
   font-size: 14px;
+  font-weight: var(--weight-medium);
   line-height: 20px;
 }
 
