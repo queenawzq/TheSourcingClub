@@ -1114,7 +1114,7 @@ function App() {
         }}
         onProfile={() => goTo("profile")}
       />
-      <main key={screen} className={screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page"}>
+      <main key={screen} className={screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" ? "rfqs-page brand-rfqs-page" : screen === "projects" || screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page"}>
         {!isStandalone && <JourneyRail current={activeMeta.step} isMilestoneFunding={Boolean(fundingMilestone)} />}
         <section className="flow-content">
           {!isStandalone && screen !== "quoteDetail" && (
@@ -4647,12 +4647,21 @@ function SavedFactoriesScreen({ goTo }) {
 }
 
 function SavedFactoryCard({ factory, goTo }) {
-  const preview = factory.products?.[0];
+  const previews = factory.products || [];
+  const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
+  const updateSampleScroll = (element) => {
+    if (!element) return;
+    const remaining = element.scrollWidth - element.clientWidth - element.scrollLeft;
+    setSampleScroll({
+      left: element.scrollLeft > 4,
+      right: remaining > 4
+    });
+  };
 
   return (
     <article className="saved-factory-card">
       <header className="saved-factory-card-top">
-        <div className="saved-factory-identity">
+        <div className="marketplace-factory-title saved-factory-identity">
           <div className="factory-avatar">{factory.initials}</div>
           <div>
             <div className="factory-name-row">
@@ -4674,7 +4683,7 @@ function SavedFactoryCard({ factory, goTo }) {
       </header>
 
       <div className="saved-factory-card-body">
-        <aside className="saved-factory-profile-copy">
+        <aside className="marketplace-spec-panel saved-factory-profile-copy">
           <div className="saved-factory-stat-grid">
             {factory.stats.map(([label, value]) => (
               <div key={label}>
@@ -4693,11 +4702,45 @@ function SavedFactoryCard({ factory, goTo }) {
             </div>
           </div>
         </aside>
-        {preview && (
-          <figure className="saved-factory-visual">
-            <img src={preview.image} alt={`${factory.name} ${preview.name}`} />
-            <figcaption>{preview.name}</figcaption>
-          </figure>
+        {previews.length > 0 && (
+          <div className="saved-factory-samples-shell">
+            <button
+              className={sampleScroll.left ? "marketplace-samples-prev visible" : "marketplace-samples-prev"}
+              type="button"
+              aria-label="Scroll saved sample images back"
+              onClick={(event) => {
+                const scroller = event.currentTarget.nextElementSibling;
+                scroller?.scrollBy({ left: -220, behavior: "smooth" });
+                window.setTimeout(() => updateSampleScroll(scroller), 260);
+              }}
+            >
+              <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+            </button>
+            <div
+              className="saved-factory-samples"
+              aria-label={`${factory.name} saved sample products`}
+              onScroll={(event) => updateSampleScroll(event.currentTarget)}
+            >
+              {previews.map((preview) => (
+                <figure className={preview.factory ? "saved-factory-visual factory-media" : "saved-factory-visual"} key={preview.name}>
+                  <img src={preview.image} alt={`${factory.name} ${preview.name}`} />
+                  <figcaption>{preview.name}</figcaption>
+                </figure>
+              ))}
+            </div>
+            <button
+              className={sampleScroll.right ? "marketplace-samples-next visible" : "marketplace-samples-next"}
+              type="button"
+              aria-label="Scroll saved sample images"
+              onClick={(event) => {
+                const scroller = event.currentTarget.previousElementSibling;
+                scroller?.scrollBy({ left: 220, behavior: "smooth" });
+                window.setTimeout(() => updateSampleScroll(scroller), 260);
+              }}
+            >
+              <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+            </button>
+          </div>
         )}
       </div>
     </article>
@@ -4709,6 +4752,7 @@ function RfqsScreen({ goTo }) {
   const [rfqTabs, setRfqTabs] = useState([
     { key: "active", label: "Active quotes (4)", locked: true },
     { key: "drafts", label: "Drafts (2)", locked: true },
+    { key: "invited", label: "Invited (2)", locked: true },
     { key: "closed", label: "Closed (6)", locked: true }
   ]);
   const [isAddingTab, setIsAddingTab] = useState(false);
@@ -4718,6 +4762,7 @@ function RfqsScreen({ goTo }) {
   const rfqDataByTab = {
     active: activeRfqs,
     drafts: draftRfqs,
+    invited: activeRfqs,
     closed: closedRfqs
   };
   const activeRfqsForTab = rfqDataByTab[activeTab] || activeRfqs;

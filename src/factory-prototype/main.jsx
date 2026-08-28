@@ -1524,6 +1524,7 @@ function App() {
       {screen === "rfqs" && (
         <FactoryRfqsPage
           language={onboardingLanguage}
+          onBrowseRfqs={() => setScreen("browse")}
           onViewRequest={() => setScreen("rfqReadOnly")}
           onEditQuote={() => {
             setQuoteBackTarget("rfqs");
@@ -3218,9 +3219,9 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
   const imagePosition = dashboardPhoto?.position;
 
   return (
-    <article className="factory-request-card factory-dashboard-mini-card factory-project-dashboard-row">
-      <header className="factory-project-dashboard-top">
-        <div className="factory-project-dashboard-heading">
+    <article className="factory-project-dashboard-row">
+      <div className="factory-project-dashboard-main">
+        <header className="factory-project-dashboard-heading">
           <img
             className="factory-project-dashboard-thumb-image"
             src={imageSrc}
@@ -3233,42 +3234,103 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
               {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : `${project.brand} · ${project.location} · ${project.started}`}
             </p>
           </div>
+        </header>
+        <div className="factory-project-dashboard-meta">
+          {productionFacts.map(([label, value]) => (
+            <div className="factory-project-mini-metric" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
         </div>
+      </div>
+
+      <div className="factory-project-dashboard-side">
         <div className="factory-project-dashboard-actions">
           <span className={`project-status ${project.statusTone}`}>{statusLabel}</span>
           <button className="primary-btn factory-project-view-btn" type="button" onClick={onView}>View order</button>
         </div>
-      </header>
-
-      <div className="factory-project-dashboard-body">
-        <div className="factory-project-dashboard-left">
-          <div className="factory-project-dashboard-meta">
-            {productionFacts.map(([label, value]) => (
-              <div className="factory-project-mini-metric" key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-              </div>
-            ))}
-          </div>
-
-          <div className="factory-project-dashboard-progress">
-            <ProjectProgress progress={project.progress} />
-          </div>
+        <div className="factory-project-dashboard-progress">
+          <ProjectProgress progress={project.progress} />
         </div>
       </div>
     </article>
   );
 }
 
-function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
+function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote }) {
   const [activeTab, setActiveTab] = useState("active");
-  const tabs = [
-    ["active", "Active RFQs (4)", factoryRfqs],
-    ["drafts", "Drafts (3)", factoryDraftRfqs],
-    ["invited", "Invited (2)", factoryInvitedRfqs],
-    ["closed", "Closed (6)", factoryClosedRfqs]
-  ];
-  const activeRfqs = tabs.find(([key]) => key === activeTab)?.[2] || factoryRfqs;
+  const [rfqTabs, setRfqTabs] = useState([
+    { key: "active", label: "Active RFQs (4)", locked: true },
+    { key: "drafts", label: "Drafts (3)", locked: true },
+    { key: "invited", label: "Invited (2)", locked: true },
+    { key: "closed", label: "Closed (6)", locked: true }
+  ]);
+  const [isAddingTab, setIsAddingTab] = useState(false);
+  const [newTabName, setNewTabName] = useState("");
+  const [manageTabsOpen, setManageTabsOpen] = useState(false);
+  const [draftTabs, setDraftTabs] = useState(rfqTabs);
+  const rfqDataByTab = {
+    active: factoryRfqs,
+    drafts: factoryDraftRfqs,
+    invited: factoryInvitedRfqs,
+    closed: factoryClosedRfqs
+  };
+  const activeRfqs = rfqDataByTab[activeTab] || factoryRfqs;
+
+  function openManageTabs() {
+    setDraftTabs(rfqTabs);
+    setIsAddingTab(false);
+    setManageTabsOpen(true);
+  }
+
+  function addCustomTab(event) {
+    event.preventDefault();
+    const trimmedName = newTabName.trim();
+    if (!trimmedName || rfqTabs.some((tab) => tab.label === trimmedName)) return;
+    const nextTab = { key: `custom-${trimmedName}`, label: trimmedName, locked: false };
+    setRfqTabs((tabs) => [...tabs, nextTab]);
+    setActiveTab(nextTab.key);
+    setNewTabName("");
+    setIsAddingTab(false);
+  }
+
+  function updateDraftTab(index, value) {
+    setDraftTabs((tabs) => tabs.map((tab, tabIndex) => (tabIndex === index ? { ...tab, label: value } : tab)));
+  }
+
+  function removeDraftTab(index) {
+    setDraftTabs((tabs) => tabs.filter((tab, tabIndex) => tabIndex !== index || tab.locked));
+  }
+
+  function moveDraftTab(index, direction) {
+    setDraftTabs((tabs) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= tabs.length) return tabs;
+      const reorderedTabs = [...tabs];
+      [reorderedTabs[index], reorderedTabs[nextIndex]] = [reorderedTabs[nextIndex], reorderedTabs[index]];
+      return reorderedTabs;
+    });
+  }
+
+  function saveManagedTabs() {
+    const cleanedTabs = [];
+    const seenKeys = new Set();
+    draftTabs.forEach((tab) => {
+      const label = tab.label.trim();
+      if (!label) return;
+      const key = tab.locked ? tab.key : `custom-${label}`;
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+      cleanedTabs.push({ key, label, locked: tab.locked });
+    });
+    const nextTabs = cleanedTabs.length ? cleanedTabs : rfqTabs;
+    setRfqTabs(nextTabs);
+    if (!nextTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(nextTabs[0]?.key || "active");
+    }
+    setManageTabsOpen(false);
+  }
 
   return (
     <main className="rfqs-page factory-rfqs-page">
@@ -3278,9 +3340,10 @@ function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
             <h1>RFQs</h1>
             <p>Track active requests you were invited to, quotes you already sent, and brand questions that need an answer.</p>
           </div>
+          <button className="primary-btn" type="button" onClick={onBrowseRfqs}>Browse RFQs</button>
         </header>
 
-        <section className="rfqs-controls" aria-label="RFQ filters">
+        <section className="projects-controls" aria-label="RFQ filters">
           <label className="rfqs-search">
             <span>Search RFQs</span>
             <div>
@@ -3298,19 +3361,96 @@ function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
           </label>
         </section>
 
-        <nav className="rfqs-tabs" aria-label="RFQ status">
-          {tabs.map(([key, label]) => (
-            <button
-              className={activeTab === key ? "active" : ""}
-              type="button"
-              aria-current={activeTab === key ? "page" : undefined}
-              onClick={() => setActiveTab(key)}
-              key={key}
-            >
-              {label}
-            </button>
+        <nav className="rfqs-tabs projects-tabs" aria-label="RFQ status">
+          {rfqTabs.map((tab) => (
+            !tab.locked ? (
+              <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+                <button
+                  className={activeTab === tab.key ? "active" : ""}
+                  type="button"
+                  aria-current={activeTab === tab.key ? "page" : undefined}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              </div>
+            ) : (
+              <button
+                className={activeTab === tab.key ? "active" : ""}
+                type="button"
+                aria-current={activeTab === tab.key ? "page" : undefined}
+                onClick={() => setActiveTab(tab.key)}
+                key={tab.key}
+              >
+                {tab.label}
+              </button>
+            )
           ))}
+          {isAddingTab ? (
+            <form className="project-tab-add-form" onSubmit={addCustomTab}>
+              <input
+                value={newTabName}
+                onChange={(event) => setNewTabName(event.target.value)}
+                placeholder="Tab name"
+                autoFocus
+              />
+              <button type="submit">Add</button>
+              <button
+                className="project-tab-add-cancel"
+                type="button"
+                aria-label="Cancel adding tab"
+                onClick={() => {
+                  setNewTabName("");
+                  setIsAddingTab(false);
+                }}
+              >
+                ×
+              </button>
+            </form>
+          ) : (
+            <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+              + Add tab
+            </button>
+          )}
+          <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
+            Manage tabs
+          </button>
         </nav>
+
+        {manageTabsOpen && createPortal(
+          <div className="brand-profile-modal-layer">
+            <button className="brand-profile-modal-scrim" type="button" aria-label="Close tab manager" onClick={() => setManageTabsOpen(false)} />
+            <section className="brand-profile-modal project-tabs-modal" role="dialog" aria-modal="true" aria-labelledby="factory-rfq-tabs-title">
+              <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setManageTabsOpen(false)}>×</button>
+              <header className="brand-profile-modal-header">
+                <h1 id="factory-rfq-tabs-title">Manage tabs</h1>
+                <p>Create RFQ tabs for categories, seasons, brand groups, or any request grouping your team uses.</p>
+              </header>
+
+              <div className="project-tabs-manager">
+                {draftTabs.map((tab, index) => (
+                  <div className="project-tabs-manager-row" key={`${tab.key}-${index}`}>
+                    <label>
+                      <span>Tab name {tab.locked ? <small>Default</small> : null}</span>
+                      <input value={tab.label} onChange={(event) => updateDraftTab(index, event.target.value)} />
+                    </label>
+                    <div className="project-tabs-manager-actions">
+                      <button type="button" disabled={index === 0} onClick={() => moveDraftTab(index, -1)}>Up</button>
+                      <button type="button" disabled={index === draftTabs.length - 1} onClick={() => moveDraftTab(index, 1)}>Down</button>
+                      <button type="button" disabled={tab.locked} onClick={() => removeDraftTab(index)}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <footer className="brand-profile-modal-actions">
+                <button className="secondary-btn" type="button" onClick={() => setManageTabsOpen(false)}>Cancel</button>
+                <button className="primary-btn" type="button" onClick={saveManagedTabs}>Save changes</button>
+              </footer>
+            </section>
+          </div>,
+          document.body
+        )}
 
         <section className="rfq-list" aria-label="Factory RFQs">
           {activeRfqs.map((rfq) => (
@@ -4002,6 +4142,70 @@ function FactoryPriceTotalCard({ project }) {
 }
 
 function FactoryProjectsPage({ language, onViewProject }) {
+  const [activeTab, setActiveTab] = useState("active");
+  const [projectTabs, setProjectTabs] = useState([
+    { key: "active", label: "Active orders (4)", locked: true },
+    { key: "closed", label: "Closed (6)", locked: true }
+  ]);
+  const [isAddingTab, setIsAddingTab] = useState(false);
+  const [newTabName, setNewTabName] = useState("");
+  const [manageTabsOpen, setManageTabsOpen] = useState(false);
+  const [draftTabs, setDraftTabs] = useState(projectTabs);
+
+  function openManageTabs() {
+    setDraftTabs(projectTabs);
+    setIsAddingTab(false);
+    setManageTabsOpen(true);
+  }
+
+  function addCustomTab(event) {
+    event.preventDefault();
+    const trimmedName = newTabName.trim();
+    if (!trimmedName || projectTabs.some((tab) => tab.label === trimmedName)) return;
+    const nextTab = { key: `custom-${trimmedName}`, label: trimmedName, locked: false };
+    setProjectTabs((tabs) => [...tabs, nextTab]);
+    setActiveTab(nextTab.key);
+    setNewTabName("");
+    setIsAddingTab(false);
+  }
+
+  function updateDraftTab(index, value) {
+    setDraftTabs((tabs) => tabs.map((tab, tabIndex) => (tabIndex === index ? { ...tab, label: value } : tab)));
+  }
+
+  function removeDraftTab(index) {
+    setDraftTabs((tabs) => tabs.filter((tab, tabIndex) => tabIndex !== index || tab.locked));
+  }
+
+  function moveDraftTab(index, direction) {
+    setDraftTabs((tabs) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= tabs.length) return tabs;
+      const reorderedTabs = [...tabs];
+      [reorderedTabs[index], reorderedTabs[nextIndex]] = [reorderedTabs[nextIndex], reorderedTabs[index]];
+      return reorderedTabs;
+    });
+  }
+
+  function saveManagedTabs() {
+    const cleanedTabs = [];
+    const seenKeys = new Set();
+    draftTabs.forEach((tab) => {
+      const label = tab.label.trim();
+      if (!label) return;
+      const key = tab.locked ? tab.key : `custom-${label}`;
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+      cleanedTabs.push({ key, label, locked: tab.locked });
+    });
+    const nextTabs = cleanedTabs.length ? cleanedTabs : projectTabs;
+    setProjectTabs(nextTabs);
+    if (!nextTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(nextTabs[0]?.key || "active");
+    }
+    setManageTabsOpen(false);
+  }
+
   return (
     <main className="rfqs-page factory-projects-page">
       <div className="rfqs-shell projects-shell">
@@ -4047,9 +4251,95 @@ function FactoryProjectsPage({ language, onViewProject }) {
         </section>
 
         <nav className="rfqs-tabs projects-tabs" aria-label="Production order status">
-          <button className="active" type="button">Active orders (4)</button>
-          <button type="button">Closed (6)</button>
+          {projectTabs.map((tab) => (
+            !tab.locked ? (
+              <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+                <button
+                  className={activeTab === tab.key ? "active" : ""}
+                  type="button"
+                  aria-current={activeTab === tab.key ? "page" : undefined}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              </div>
+            ) : (
+              <button
+                className={activeTab === tab.key ? "active" : ""}
+                type="button"
+                aria-current={activeTab === tab.key ? "page" : undefined}
+                onClick={() => setActiveTab(tab.key)}
+                key={tab.key}
+              >
+                {tab.label}
+              </button>
+            )
+          ))}
+          {isAddingTab ? (
+            <form className="project-tab-add-form" onSubmit={addCustomTab}>
+              <input
+                value={newTabName}
+                onChange={(event) => setNewTabName(event.target.value)}
+                placeholder="Tab name"
+                autoFocus
+              />
+              <button type="submit">Add</button>
+              <button
+                className="project-tab-add-cancel"
+                type="button"
+                aria-label="Cancel adding tab"
+                onClick={() => {
+                  setNewTabName("");
+                  setIsAddingTab(false);
+                }}
+              >
+                ×
+              </button>
+            </form>
+          ) : (
+            <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+              + Add tab
+            </button>
+          )}
+          <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
+            Manage tabs
+          </button>
         </nav>
+
+        {manageTabsOpen && createPortal(
+          <div className="brand-profile-modal-layer">
+            <button className="brand-profile-modal-scrim" type="button" aria-label="Close tab manager" onClick={() => setManageTabsOpen(false)} />
+            <section className="brand-profile-modal project-tabs-modal" role="dialog" aria-modal="true" aria-labelledby="factory-project-tabs-title">
+              <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setManageTabsOpen(false)}>×</button>
+              <header className="brand-profile-modal-header">
+                <h1 id="factory-project-tabs-title">Manage tabs</h1>
+                <p>Create tabs for collections, seasons, brands, or any order grouping your team uses.</p>
+              </header>
+
+              <div className="project-tabs-manager">
+                {draftTabs.map((tab, index) => (
+                  <div className="project-tabs-manager-row" key={`${tab.key}-${index}`}>
+                    <label>
+                      <span>Tab name {tab.locked ? <small>Default</small> : null}</span>
+                      <input value={tab.label} onChange={(event) => updateDraftTab(index, event.target.value)} />
+                    </label>
+                    <div className="project-tabs-manager-actions">
+                      <button type="button" disabled={index === 0} onClick={() => moveDraftTab(index, -1)}>Up</button>
+                      <button type="button" disabled={index === draftTabs.length - 1} onClick={() => moveDraftTab(index, 1)}>Down</button>
+                      <button type="button" disabled={tab.locked} onClick={() => removeDraftTab(index)}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <footer className="brand-profile-modal-actions">
+                <button className="secondary-btn" type="button" onClick={() => setManageTabsOpen(false)}>Cancel</button>
+                <button className="primary-btn" type="button" onClick={saveManagedTabs}>Save changes</button>
+              </footer>
+            </section>
+          </div>,
+          document.body
+        )}
 
         <section className="projects-list" aria-label="Active factory production orders">
           {factoryProjects.map((project) => (
@@ -4090,6 +4380,7 @@ function FactoryProjectListCard({ project, language, onViewProject }) {
           <span className={`project-status ${project.statusTone}`}>{project.status}</span>
           <button className="secondary-btn" type="button">Message</button>
           <button className="primary-btn" type="button" onClick={onViewProject}>View order</button>
+          <button className="rfq-more" type="button" aria-label="More order actions">...</button>
         </div>
       </header>
 

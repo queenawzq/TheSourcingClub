@@ -4378,8 +4378,9 @@ textarea {
 
 .factory-card-metrics .orders-count {
   margin-top: 4px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
+  line-height: 16px;
   white-space: nowrap;
 }
 
@@ -4481,13 +4482,14 @@ textarea {
 }
 
 .invite-factory-top .factory-card-metrics .metric strong {
-  font-size: 20px;
-  line-height: 24px;
+  font-size: 19px;
+  line-height: 23px;
 }
 
 .invite-factory-top .factory-card-metrics .metric span,
 .invite-factory-top .factory-card-metrics .orders-count {
   font-size: 12px;
+  font-weight: 500;
   line-height: 16px;
 }
 
@@ -4570,17 +4572,17 @@ textarea {
 }
 
 .invite-sample {
-  flex: 0 0 min(270px, calc((100% - 28px) / 2.35));
+  flex: 0 0 220px;
   border-radius: 8px;
 }
 
 .invite-sample img {
-  height: 164px;
+  height: 136px;
 }
 
 .invite-sample figcaption {
-  min-height: 42px;
-  padding: 12px 14px;
+  min-height: 30px;
+  padding: 7px 10px;
 }
 
 .quote-factory-content {
@@ -6934,7 +6936,7 @@ select {
 }
 
 .saved-shell {
-  max-width: 1100px;
+  max-width: 1048px;
 }
 
 .saved-header .secondary-btn {
@@ -6949,31 +6951,28 @@ select {
 
 .saved-card-grid {
   display: grid;
-  gap: 18px;
+  gap: 14px;
 }
 
 .saved-factory-card {
   display: grid;
-  gap: 14px;
+  gap: 10px;
   padding: 16px;
   border: 1px solid #d6e0ec;
   border-radius: 8px;
   background: #fff;
+  overflow: hidden;
 }
 
 .saved-factory-card-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) max-content minmax(260px, 1fr);
+  gap: 12px;
+  align-items: start;
 }
 
 .saved-factory-identity {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 220px;
+  gap: 14px;
 }
 
 .saved-factory-card h2 {
@@ -6985,33 +6984,34 @@ select {
 }
 
 .saved-factory-card p {
-  margin: 0;
+  margin: -4px 0 0;
   color: #536b94;
   font-size: 13px;
   font-weight: 500;
-  line-height: 19px;
+  line-height: 18px;
 }
 
 .saved-factory-card-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 34%);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 18px;
   align-items: start;
 }
 
 .saved-factory-profile-copy {
   display: grid;
-  gap: 12px;
+  align-content: start;
+  gap: 10px;
 }
 
 .saved-factory-stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
 }
 
 .saved-factory-stat-grid div {
-  min-height: 50px;
+  min-height: 48px;
   padding: 8px 10px;
   border: 1px solid #e2e8f0;
   border-radius: 6px;
@@ -7048,7 +7048,61 @@ select {
   line-height: 18px;
 }
 
+.saved-factory-samples-shell {
+  position: relative;
+  min-width: 0;
+}
+
+.saved-factory-samples-shell::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 4px;
+  width: 52px;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), #fff 72%);
+}
+
+.saved-factory-samples-shell::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 4px;
+  left: 0;
+  z-index: 1;
+  width: 44px;
+  pointer-events: none;
+  background: linear-gradient(270deg, rgba(255, 255, 255, 0), #fff 72%);
+  opacity: 0;
+}
+
+.saved-factory-samples-shell .marketplace-samples-next {
+  right: 8px;
+}
+
+.saved-factory-samples-shell .marketplace-samples-prev {
+  left: 8px;
+}
+
+.saved-factory-samples {
+  display: flex;
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 0 44px 4px 0;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+
+.saved-factory-samples::-webkit-scrollbar {
+  display: none;
+}
+
 .saved-factory-visual {
+  flex: 0 0 180px;
   min-width: 0;
   margin: 0;
   overflow: hidden;
@@ -7060,15 +7114,22 @@ select {
 .saved-factory-visual img {
   display: block;
   width: 100%;
-  height: 134px;
+  aspect-ratio: 1 / 0.62;
+  height: auto;
   object-fit: cover;
   object-position: center;
   background: #f4f6f8;
 }
 
+.saved-factory-visual.factory-media img {
+  object-fit: contain;
+  padding: 8px;
+}
+
 .saved-factory-visual figcaption {
-  min-height: 26px;
-  padding: 6px 10px;
+  display: block;
+  min-height: 24px;
+  padding: 4px 10px 5px;
   color: #0b1223;
   font-size: 11px;
   font-weight: 600;
@@ -7077,45 +7138,59 @@ select {
 
 .saved-factory-tag-section {
   display: grid;
-  gap: 1px;
-  margin-top: 2px;
+  gap: 8px;
+  margin-top: 0;
 }
 
 .saved-factory-tag-section .tag-row.compact-tags {
+  flex-wrap: nowrap;
   margin-top: 0;
+  overflow: hidden;
 }
 
 .saved-factory-meta {
   display: flex;
   align-items: flex-start;
-  gap: 34px;
-}
-
-.saved-factory-meta .metric {
-  min-width: 48px;
+  justify-content: center;
+  justify-self: center;
+  gap: 14px;
+  padding-right: 12px;
 }
 
 .saved-factory-orders {
-  padding-top: 4px;
+  margin-top: 4px;
   color: #536b94;
-  font-size: 14px;
-  font-weight: 700;
-  line-height: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
   white-space: nowrap;
+}
+
+.saved-factory-meta .metric strong {
+  font-size: 19px;
+  line-height: 23px;
+}
+
+.saved-factory-meta .metric span {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
 }
 
 .saved-factory-actions {
   display: flex;
+  justify-self: end;
   justify-content: flex-end;
-  gap: 10px;
-  flex-shrink: 0;
+  min-width: 0;
+  gap: 8px;
 }
 
 .saved-factory-actions .primary-btn,
 .saved-factory-actions .secondary-btn {
-  min-width: 118px;
-  height: 38px;
-  padding: 0 16px;
+  flex: 0 0 auto;
+  min-width: 0;
+  height: 34px;
+  padding: 0 14px;
   font-size: 13px;
 }
 
@@ -8725,10 +8800,11 @@ select {
 
 .marketplace-shell {
   display: grid;
-  grid-template-columns: 272px minmax(860px, 1fr);
+  grid-template-columns: 272px minmax(0, 1fr);
   gap: 24px;
   align-items: start;
-  max-width: 1360px;
+  width: 100%;
+  max-width: 1480px;
   margin: 0;
 }
 
@@ -8745,6 +8821,8 @@ select {
   top: 28px;
   display: grid;
   gap: 24px;
+  box-sizing: border-box;
+  width: 272px;
   padding: 28px 24px;
 }
 
@@ -8821,8 +8899,8 @@ select {
 
 .marketplace-factory-top {
   display: grid;
-  grid-template-columns: minmax(260px, 420px) max-content minmax(260px, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(260px, 340px) max-content minmax(260px, 1fr);
+  gap: 12px;
   align-items: start;
 }
 
@@ -8853,14 +8931,32 @@ select {
   justify-content: flex-start;
   justify-self: start;
   gap: 14px;
+  padding-right: 36px;
 }
 
 .marketplace-factory-metrics > span {
   margin-top: 4px;
   color: #5c7298;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 500;
+  line-height: 16px;
   white-space: nowrap;
+}
+
+.marketplace-factory-metrics .metric strong {
+  font-size: 19px;
+  line-height: 23px;
+}
+
+.marketplace-factory-metrics .metric span,
+.invite-factory-top .factory-card-metrics .metric span {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.invite-factory-top .factory-card-metrics .metric span {
+  margin-top: -2px;
 }
 
 .marketplace-factory-actions {
@@ -9542,6 +9638,7 @@ a.secondary-btn {
   justify-content: center !important;
   height: 34px !important;
   min-height: 34px !important;
+  min-width: 0 !important;
   padding: 0 14px !important;
   border-radius: 34px !important;
   font-size: 13px !important;
@@ -9669,7 +9766,7 @@ a.secondary-btn {
 }
 
 .quote-factory-top .save-pill {
-  min-width: 112px !important;
+  min-width: 0 !important;
 }
 
 .quote-factory-top .quote-actions strong {
@@ -9689,7 +9786,7 @@ a.secondary-btn {
 
 .quote-detail-summary .quote-actions .save-pill,
 .quote-detail-summary .quote-actions strong {
-  min-width: 112px !important;
+  min-width: 0 !important;
 }
 
 .quote-detail-summary .quote-actions strong {
@@ -12190,4 +12287,98 @@ a.secondary-btn {
   .brand-onboarding-actions .secondary-btn {
     width: 100%;
   }
+}
+
+button.primary-btn,
+a.primary-btn {
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 14px !important;
+  border-radius: 34px !important;
+  font-size: 13px !important;
+  font-weight: var(--weight-strong) !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+button.secondary-btn,
+a.secondary-btn,
+.save-pill,
+.filter-button,
+.sort-button {
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  min-width: 0 !important;
+  padding: 0 14px !important;
+  border-radius: 34px !important;
+  font-size: 13px !important;
+  font-weight: var(--weight-strong) !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+}
+
+.brand-rfqs-page .rfqs-shell {
+  gap: 26px !important;
+  max-width: 1048px !important;
+}
+
+.brand-rfqs-page .rfqs-controls {
+  grid-template-columns: minmax(0, 1fr) 186px !important;
+  gap: 24px !important;
+  margin-top: 0 !important;
+}
+
+.brand-rfqs-page .rfqs-tabs {
+  align-items: center !important;
+  gap: 24px !important;
+  margin-top: -8px !important;
+}
+
+.brand-rfqs-page .projects-tabs .project-tab-manage {
+  align-self: center !important;
+  margin-left: auto !important;
+}
+
+.home-rfq-side button.primary-btn,
+.home-production-actions button.primary-btn,
+.rfq-card-actions button.primary-btn,
+.project-actions button.primary-btn {
+  min-width: 0 !important;
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 14px !important;
+  border-radius: 34px !important;
+  font-size: 13px !important;
+}
+
+.home-production-actions .project-status,
+.project-actions .project-status,
+.rfq-card-actions .rfq-status,
+.home-rfq-side .rfq-status {
+  height: 26px !important;
+  min-height: 26px !important;
+  min-width: 0 !important;
+  padding: 0 10px !important;
+  border-radius: 5px !important;
+  font-size: 11px !important;
+  line-height: 24px !important;
+}
+
+.rfq-status.warning,
+.project-status.warning,
+.home-rfq-side .rfq-status.warning,
+.rfq-card-actions .rfq-status.warning,
+.home-production-actions .project-status.warning,
+.project-actions .project-status.warning {
+  border-color: #f2b253 !important;
+  background: #fff7e8 !important;
+  color: #a65f00 !important;
 }
