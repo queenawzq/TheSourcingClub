@@ -3910,8 +3910,8 @@ textarea {
   background-position: calc(100% - 12px) center;
   background-size: 16px 16px;
   color: #0b1020;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1;
 }
 
