@@ -1231,7 +1231,7 @@
 }
 
 .factory-dashboard-shell {
-  max-width: 1026px;
+  max-width: 1232px;
   width: 100%;
 }
 
@@ -1264,9 +1264,9 @@
 
 .factory-dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(560px, 632px) minmax(300px, 370px);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
   grid-template-rows: auto auto auto;
-  gap: 28px 24px;
+  gap: 28px 26px;
   align-items: start;
 }
 
@@ -1584,11 +1584,11 @@
 
 .factory-dashboard-row-main p {
   margin: 0;
-  color: #636d7f;
+  color: #5c7298;
   overflow: hidden;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  line-height: 17px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1892,9 +1892,10 @@
 }
 
 .factory-project-dashboard-row .factory-dashboard-row-main p {
+  color: #5c7298;
   font-size: 12px;
-  font-weight: 500;
-  line-height: 18px;
+  font-weight: var(--weight-medium);
+  line-height: 17px;
 }
 
 .factory-project-dashboard-row .factory-project-mini-metric span,
@@ -1913,7 +1914,7 @@
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
+  align-items: center;
 }
 
 .factory-project-dashboard-top {
@@ -1940,24 +1941,31 @@
 
 .factory-project-dashboard-heading strong {
   display: block;
-  color: #0e1118;
+  color: #0b1020;
   overflow: hidden;
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 21px;
+  margin: 0;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  line-height: 19px !important;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .factory-project-dashboard-heading p {
-  margin: 3px 0 0;
-  color: #465f84;
+  margin: 4px 0 0;
+  color: #5c7298;
   overflow: hidden;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 18px;
+  font-size: 12px !important;
+  font-weight: var(--weight-medium) !important;
+  line-height: 17px !important;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.factory-dashboard-panel .factory-project-dashboard-heading .project-meta {
+  margin: 4px 0 0;
 }
 
 .factory-project-dashboard-actions {
@@ -1978,7 +1986,7 @@
 
 .factory-project-dashboard-left {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 430px);
   align-items: center;
   justify-content: space-between;
   gap: 28px;
@@ -1987,41 +1995,41 @@
 
 .factory-project-dashboard-progress {
   justify-self: end;
+  width: min(100%, 430px);
   min-width: 0;
 }
 
 .factory-project-dashboard-progress .project-progress {
   position: relative;
-  grid-template-columns: repeat(5, 56px);
-  gap: 12px;
-  width: max-content;
-  max-width: 100%;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0;
+  width: 100%;
   margin: 0;
-  padding-top: 10px;
+  padding-top: 8px;
 }
 
 .factory-project-dashboard-progress .project-progress-line {
   position: absolute;
-  top: 20px;
-  right: 24px;
-  left: 24px;
+  top: 21px;
+  right: 10%;
+  left: 10%;
   height: 2px;
   border-radius: 999px;
   background: linear-gradient(90deg, #1a4df2 0 var(--project-progress), #d7e0ea var(--project-progress) 100%);
 }
 
 .factory-project-dashboard-progress .project-progress-step span {
-  width: 21px;
-  height: 21px;
-  font-size: 10px;
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
 }
 
 .factory-project-dashboard-progress .project-progress-step small {
   display: block;
-  max-width: 72px;
+  max-width: none;
   overflow: visible;
-  font-size: 9px;
-  line-height: 12px;
+  font-size: 11px;
+  line-height: 15px;
   text-overflow: clip;
 }
 
@@ -2183,8 +2191,8 @@
 }
 
 .factory-dashboard-mini-card .factory-request-title p {
-  font-size: 13px;
-  line-height: 18px;
+  font-size: 12px;
+  line-height: 17px;
 }
 
 .factory-dashboard-mini-card .factory-request-card-actions {
@@ -2300,6 +2308,11 @@
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr);
   gap: 10px;
+  align-items: center;
+}
+
+.factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-title > div:last-child {
+  transform: translateY(1px);
 }
 
 .factory-dashboard-rfq-image {
@@ -2322,9 +2335,10 @@
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-title p {
-  margin-top: 1px;
+  margin-top: 2px;
   font-size: 12px !important;
-  line-height: 16px !important;
+  font-weight: var(--weight-medium) !important;
+  line-height: 17px !important;
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-card-actions {
@@ -4353,7 +4367,11 @@
 }
 
 .factory-active-project-card .project-meta {
+  margin: 6px 0 0;
+  color: #5c7298;
   font-size: 12px;
+  font-weight: var(--weight-medium);
+  line-height: 17px;
 }
 
 .factory-project-card-actions .secondary-btn,
@@ -4440,7 +4458,7 @@
 
 .factory-project-card .directory-factory-intro p {
   margin: 0 0 4px;
-  font-weight: 500;
+  font-weight: var(--weight-medium);
 }
 
 .factory-project-card .directory-factory-intro strong {
@@ -4734,8 +4752,9 @@
 .factory-request-title p {
   margin: 1px 0 0;
   color: #5c7298;
-  font-size: 12px;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  line-height: 18px;
 }
 
 .factory-request-card-actions {
@@ -6154,6 +6173,13 @@
   margin-left: 276px;
   padding: 72px 48px 128px;
   background: #fbfaf7;
+  animation: none;
+  transform: none;
+}
+
+.factory-flow > main.factory-submit-page {
+  animation: none;
+  transform: none;
 }
 
 .side-nav.collapsed + .factory-submit-page {
@@ -6681,7 +6707,7 @@
   position: fixed;
   right: 0;
   bottom: 0;
-  left: 0;
+  left: 275px;
   z-index: 30;
   display: flex;
   align-items: center;
@@ -6690,6 +6716,11 @@
   padding: 0 64px;
   border: 1px solid #dbe5f2;
   background: #fff;
+}
+
+.side-nav.collapsed + .factory-submit-page .factory-submit-bottom-bar,
+.nav-collapsed .factory-submit-page .factory-submit-bottom-bar {
+  left: 77px;
 }
 
 .factory-submit-bottom-actions {
@@ -7520,6 +7551,18 @@
 
   .factory-detail-page {
     padding: 24px 12px 56px;
+  }
+
+  .factory-submit-page {
+    margin-left: 0;
+    padding: 24px 12px 104px;
+  }
+
+  .factory-submit-page .factory-submit-bottom-bar,
+  .side-nav.collapsed + .factory-submit-page .factory-submit-bottom-bar,
+  .nav-collapsed .factory-submit-page .factory-submit-bottom-bar {
+    left: 0;
+    padding: 0 12px;
   }
 
   .factory-profile-page {
