@@ -2619,6 +2619,10 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
 
         {editor === "overview" && (
           <div className="factory-onboarding-form-grid">
+            <label className="factory-onboarding-field full-width">
+              <span>Profile overview</span>
+              <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
+            </label>
             <ProfileEditField label="Factory name" value={form.name} onChange={(value) => updateField("name", value)} />
             <ProfileEditField label="Factory location" value={form.location} onChange={(value) => updateField("location", value)} />
             <ProfileEditField label="Nearest port" value={form.nearestPort} onChange={(value) => updateField("nearestPort", value)} />
@@ -2626,10 +2630,6 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
             <ProfileEditField label="Registration date" value={form.registrationDate} onChange={(value) => updateField("registrationDate", value)} />
             <ProfileEditField label="Total employees" value={form.employees} onChange={(value) => updateField("employees", value)} />
             <ProfileEditField label="Registered capital" value={form.registeredCapital} onChange={(value) => updateField("registeredCapital", value)} />
-            <label className="factory-onboarding-field full-width">
-              <span>Profile overview</span>
-              <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
-            </label>
           </div>
         )}
 

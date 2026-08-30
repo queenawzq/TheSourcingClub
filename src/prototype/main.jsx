@@ -3741,6 +3741,10 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
 
         {editor === "overview" && (
           <div className="brand-profile-edit-grid">
+            <label className="brand-profile-edit-field full-width">
+              <span>Profile overview</span>
+              <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
+            </label>
             <BrandProfileEditField label="Brand name" value={form.name} onChange={(value) => updateField("name", value)} />
             <BrandProfileEditField label="Location" value={form.location} onChange={(value) => updateField("location", value)} />
             <BrandProfileEditField label="Brand category" value={form.category} onChange={(value) => updateField("category", value)} />
@@ -3748,10 +3752,6 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
             <BrandProfileEditField label="Website" value={form.website} onChange={(value) => updateField("website", value)} />
             <BrandProfileEditField label="Business email" value={form.businessEmail} onChange={(value) => updateField("businessEmail", value)} />
             <BrandProfileEditField label="Annual revenue" value={form.annualRevenue} onChange={(value) => updateField("annualRevenue", value)} />
-            <label className="brand-profile-edit-field full-width">
-              <span>Profile overview</span>
-              <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
-            </label>
           </div>
         )}
 
@@ -4743,7 +4743,6 @@ function RfqsScreen({ goTo }) {
   const [rfqTabs, setRfqTabs] = useState([
     { key: "active", label: "Active quotes (4)", locked: true },
     { key: "drafts", label: "Drafts (2)", locked: true },
-    { key: "invited", label: "Invited (2)", locked: true },
     { key: "closed", label: "Closed (6)", locked: true }
   ]);
   const [isAddingTab, setIsAddingTab] = useState(false);
@@ -4753,10 +4752,10 @@ function RfqsScreen({ goTo }) {
   const rfqDataByTab = {
     active: activeRfqs,
     drafts: draftRfqs,
-    invited: activeRfqs,
     closed: closedRfqs
   };
   const activeRfqsForTab = rfqDataByTab[activeTab] || activeRfqs;
+  const customTabs = rfqTabs.filter((tab) => !tab.locked).map((tab) => tab.label);
 
   function openManageTabs() {
     setDraftTabs(rfqTabs);
@@ -4933,14 +4932,14 @@ function RfqsScreen({ goTo }) {
 
       <section className="rfq-list" aria-label={`${activeTab} quotes`}>
         {activeRfqsForTab.map((rfq) => (
-          <RfqCard rfq={rfq} goTo={goTo} key={rfq.title} />
+          <RfqCard rfq={rfq} goTo={goTo} customTabs={customTabs} key={rfq.title} />
         ))}
       </section>
     </div>
   );
 }
 
-function RfqCard({ rfq, goTo }) {
+function RfqCard({ rfq, goTo, customTabs = [] }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const [quotesReceived, invitedCount, messageCount] = rfq.metrics;
@@ -4989,6 +4988,18 @@ function RfqCard({ rfq, goTo }) {
             </button>
             {menuOpen && (
               <div className="project-overflow-menu rfq-overflow-menu" role="menu">
+                <div className="project-overflow-submenu">
+                  <button type="button" role="menuitem">Add to</button>
+                  {customTabs.length > 0 && (
+                    <div className="project-overflow-submenu-panel">
+                      {customTabs.map((tab) => (
+                        <button type="button" role="menuitem" key={tab} onClick={() => setMenuOpen(false)}>
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <button type="button" role="menuitem" onClick={() => goTo("review")}>Edit quote</button>
                 <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate quote</button>
                 <button type="button" role="menuitem" onClick={() => goTo("invite")}>Invite more factories</button>

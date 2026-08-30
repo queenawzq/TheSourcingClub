@@ -2606,7 +2606,7 @@
   margin: 3px 0 0;
   color: #5c7298;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 18px;
 }
 
@@ -3389,7 +3389,7 @@
 .factory-profile-completion-hero span {
   color: #60769b;
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 14px;
   text-transform: uppercase;
 }
@@ -3397,9 +3397,9 @@
 .factory-profile-completion-hero h1 {
   margin: 0;
   color: #0b1020;
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 800;
-  line-height: 38px;
+  line-height: 34px;
 }
 
 .factory-profile-completion-hero p,
@@ -3413,8 +3413,8 @@
 
 .factory-profile-completion-score {
   display: grid;
-  gap: 10px;
-  padding: 20px;
+  gap: 8px;
+  padding: 18px 20px;
   border: 1px solid #d6e0ec;
   border-radius: 8px;
   background: #f8fafc;
@@ -3422,9 +3422,9 @@
 
 .factory-profile-completion-score strong {
   color: #0b1020;
-  font-size: 48px;
+  font-size: 34px;
   font-weight: 950;
-  line-height: 52px;
+  line-height: 38px;
 }
 
 .factory-profile-completion-layout {

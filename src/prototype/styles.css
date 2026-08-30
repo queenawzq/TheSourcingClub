@@ -3283,9 +3283,7 @@ button {
 }
 
 .brand-profile-completion-page {
-  width: min(1280px, calc(100vw - 112px));
-  margin-left: 112px;
-  padding-top: 32px;
+  padding-top: 72px;
 }
 
 .factory-profile-completion-back {
@@ -3302,7 +3300,7 @@ button {
   grid-template-columns: minmax(0, 1fr) 280px;
   gap: 24px;
   align-items: center;
-  padding: 30px 34px;
+  padding: 28px;
   border: 1px solid #d6e0ec;
   border-radius: 8px;
   background: #fff;
@@ -3324,9 +3322,9 @@ button {
 .factory-profile-completion-hero h1 {
   margin: 0;
   color: #0b1020;
-  font-size: 32px;
+  font-size: 28px;
   font-weight: var(--weight-display);
-  line-height: 38px;
+  line-height: 34px;
 }
 
 .factory-profile-completion-hero p,
@@ -3340,9 +3338,9 @@ button {
 
 .factory-profile-completion-score {
   display: grid;
-  gap: 10px;
-  min-height: 116px;
-  padding: 20px 22px;
+  gap: 8px;
+  min-height: 104px;
+  padding: 18px 20px;
   border: 1px solid #d6e0ec;
   border-radius: 8px;
   background: #f8fafc;
@@ -3350,9 +3348,9 @@ button {
 
 .factory-profile-completion-score strong {
   color: #0b1020;
-  font-size: 48px;
+  font-size: 34px;
   font-weight: var(--weight-display);
-  line-height: 52px;
+  line-height: 38px;
 }
 
 .factory-profile-completion-layout {
@@ -3369,8 +3367,8 @@ button {
 
 .brand-profile-completion-page .factory-profile-card {
   display: grid;
-  gap: 16px;
-  padding: 22px;
+  gap: 14px;
+  padding: 20px;
   border: 1px solid #d6e0ec;
   border-radius: 8px;
   background: #fff;
@@ -3391,9 +3389,8 @@ button {
   align-items: flex-start;
 }
 
-.brand-profile-completion-page .factory-profile-section-header > div {
-  display: grid;
-  gap: 6px;
+.brand-profile-completion-page .factory-profile-section-header h2 {
+  margin-bottom: 4px;
 }
 
 .factory-profile-completion-main,
