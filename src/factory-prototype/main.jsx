@@ -1925,6 +1925,7 @@ const factoryProfileData = {
   location: "Porto, Portugal",
   nearestPort: "Port of Leixoes",
   founded: "2016",
+  website: "www.atelierminho.pt",
   registrationDate: "Feb 2016",
   employees: "120",
   registeredCapital: "€500k",
@@ -2044,12 +2045,12 @@ function FactoryProfilePage({ language, onViewCompletion }) {
     setActiveEditor(null);
   };
   const overviewRows = [
+    ["Factory name", data.name],
     ["Year founded", data.founded],
-    ["Registration date", data.registrationDate],
-    ["Total employees", data.employees],
-    ["Registered capital", data.registeredCapital],
+    ["Website URL", data.website],
+    ["Factory location", data.location],
     ["Nearest port", data.nearestPort],
-    ["Market level", data.marketLevel]
+    ["Total employees", data.employees]
   ];
   const capacityRows = [
     ["MOQ", data.moq],
@@ -2500,6 +2501,7 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
     location: data.location,
     nearestPort: data.nearestPort,
     founded: data.founded,
+    website: data.website,
     registrationDate: data.registrationDate,
     employees: data.employees,
     registeredCapital: data.registeredCapital,
@@ -2533,9 +2535,8 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
         location: form.location,
         nearestPort: form.nearestPort,
         founded: form.founded,
-        registrationDate: form.registrationDate,
+        website: form.website,
         employees: form.employees,
-        registeredCapital: form.registeredCapital,
         intro: form.intro
       });
       return;
@@ -2624,12 +2625,11 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
               <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
             </label>
             <ProfileEditField label="Factory name" value={form.name} onChange={(value) => updateField("name", value)} />
+            <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
+            <ProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
             <ProfileEditField label="Factory location" value={form.location} onChange={(value) => updateField("location", value)} />
             <ProfileEditField label="Nearest port" value={form.nearestPort} onChange={(value) => updateField("nearestPort", value)} />
-            <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
-            <ProfileEditField label="Registration date" value={form.registrationDate} onChange={(value) => updateField("registrationDate", value)} />
             <ProfileEditField label="Total employees" value={form.employees} onChange={(value) => updateField("employees", value)} />
-            <ProfileEditField label="Registered capital" value={form.registeredCapital} onChange={(value) => updateField("registeredCapital", value)} />
           </div>
         )}
 
@@ -3343,7 +3343,7 @@ function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote })
           <button className="primary-btn" type="button" onClick={onBrowseRfqs}>Browse RFQs</button>
         </header>
 
-        <section className="projects-controls" aria-label="RFQ filters">
+        <section className="rfqs-controls" aria-label="RFQ filters">
           <label className="rfqs-search">
             <span>Search RFQs</span>
             <div>
@@ -4527,7 +4527,7 @@ function FactoryBrowsePage({ language, onViewDetails }) {
           <header className="directory-hero">
             <div>
               <p className="eyebrow">SOURCING MARKETPLACE</p>
-              <h1>BROWSE BRAND REQUESTS</h1>
+              <h1>Browse RFQs</h1>
             </div>
             <label className="directory-search">
               <SearchIcon />
@@ -5890,8 +5890,9 @@ function FilterCheck({ checked = false, label }) {
 
 function SearchIcon() {
   return (
-    <svg className="search-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M10.8 18.1a7.3 7.3 0 1 1 0-14.6 7.3 7.3 0 0 1 0 14.6Zm5.2-2.1 4.5 4.5" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+    <svg className="search-icon" viewBox="0 0 20 20" aria-hidden="true">
+      <circle cx="8.75" cy="8.75" r="5.25" fill="none" stroke="currentColor" strokeWidth="2.4" />
+      <path d="M12.6 12.6L16.25 16.25" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
     </svg>
   );
 }

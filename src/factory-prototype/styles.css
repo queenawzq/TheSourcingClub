@@ -1216,6 +1216,7 @@
 
 .factory-dashboard-page {
   width: min(1280px, calc(100vw - 316px));
+  box-sizing: border-box;
   min-height: 100vh;
   margin-left: 316px;
   padding: 72px 48px 70px 0;
@@ -1229,7 +1230,7 @@
 
 .nav-collapsed .factory-dashboard-page {
   width: min(1280px, calc(100vw - 118px));
-  margin-left: 170px;
+  margin-left: 118px;
   padding-left: 0;
 }
 
@@ -4074,6 +4075,7 @@
 
 .factory-rfqs-page .rfqs-shell {
   gap: 26px;
+  width: 100%;
   max-width: 1048px;
 }
 
@@ -4086,22 +4088,16 @@
   max-width: 851px;
 }
 
-.factory-rfqs-page .projects-controls {
-  grid-template-columns: minmax(0, 1fr) repeat(3, 186px);
+.factory-rfqs-page .rfqs-controls {
+  grid-template-columns: minmax(0, 1fr) 186px;
   gap: 24px;
   margin-top: 0;
 }
 
-.factory-rfqs-page .rfqs-search {
-  grid-column: auto;
-}
-
-.factory-rfqs-page .rfqs-sort {
-  grid-column: 4;
-}
-
 .factory-rfqs-page .rfqs-tabs {
-  margin-top: -4px;
+  align-items: center;
+  gap: 24px;
+  margin-top: -8px;
 }
 
 .factory-project-card {
@@ -7377,61 +7373,13 @@
 }
 
 @media (max-width: 1180px) {
-  .factory-dashboard-grid {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto;
-  }
-
-  .factory-dashboard-metrics,
-  .factory-dashboard-main-stack,
-  .factory-dashboard-side-stack,
-  .factory-dashboard-capacity,
-  .factory-dashboard-credit-card,
-  .factory-rfq-invites-panel,
-  .factory-brand-messages-panel,
-  .factory-active-projects-panel {
-    grid-column: 1;
-    grid-row: auto;
-  }
-
-  .factory-brand-messages-panel {
-    margin-top: 0;
-  }
-
-  .factory-rfq-invites-panel {
-    margin-top: 0;
-  }
-
-  .factory-dashboard-rfq-row,
-  .factory-project-dashboard-row {
-    grid-template-columns: 1fr;
-  }
-
-  .factory-dashboard-mini-card.factory-project-dashboard-row {
-    grid-template-columns: 1fr;
-  }
-
-  .factory-dashboard-row-facts {
-    grid-column: 1 / -1;
-    width: 100%;
-  }
-
-  .factory-project-dashboard-left {
-    grid-template-columns: 1fr;
-    justify-content: stretch;
-  }
-
-  .factory-project-dashboard-meta {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .factory-project-dashboard-progress {
-    justify-self: start;
-  }
-
-  .factory-project-dashboard-row .factory-project-fit,
-  .factory-project-view-btn {
-    justify-self: start;
+  .factory-dashboard-page,
+  .side-nav:not(.collapsed) + .factory-dashboard-page,
+  .nav-collapsed .factory-dashboard-page {
+    width: calc(100vw - 118px);
+    max-width: 1280px;
+    margin-left: 118px;
+    padding-right: 24px;
   }
 
   .factory-detail-page {
@@ -7505,12 +7453,41 @@
 @media (max-width: 1320px) {
   .factory-rfq-card .factory-request-card-top,
   .factory-active-project-card .factory-request-card-top {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .factory-rfq-card .factory-request-card-actions,
   .factory-active-project-card .factory-request-card-actions {
-    justify-content: flex-start;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .factory-active-project-card .factory-project-card-actions {
+    display: grid;
+    grid-template-columns: auto auto auto;
+    grid-template-areas:
+      "message primary more"
+      "status status status";
+    justify-content: end;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .factory-active-project-card .factory-project-card-actions .project-status {
+    grid-area: status;
+    justify-self: start;
+  }
+
+  .factory-active-project-card .factory-project-card-actions .secondary-btn {
+    grid-area: message;
+  }
+
+  .factory-active-project-card .factory-project-card-actions .primary-btn {
+    grid-area: primary;
+  }
+
+  .factory-active-project-card .factory-project-card-actions .rfq-more {
+    grid-area: more;
   }
 
   .factory-rfq-card .factory-request-card-body,
@@ -7519,9 +7496,20 @@
   }
 
   .factory-rfq-card .factory-request-visuals,
-  .factory-order-visuals {
-    justify-self: stretch;
-    max-width: none;
+  .factory-active-project-card .factory-order-visuals {
+    justify-self: start;
+    width: min(100%, 420px);
+    max-width: 420px;
+  }
+
+  .factory-active-project-card .factory-request-facts {
+    width: 100%;
+  }
+
+  .factory-active-project-card .project-progress {
+    width: 100%;
+    max-width: 504px;
+    margin-left: 0;
   }
 }
 
@@ -7533,15 +7521,40 @@
 
 @media (max-width: 760px) {
   .factory-dashboard-page {
-    width: auto;
-    margin-left: 0;
-    padding: 28px 16px 48px;
+    width: min(1280px, calc(100vw - 118px));
+    margin-left: 118px;
+    padding: 28px 12px 48px 0;
   }
 
   .side-nav:not(.collapsed) + .factory-dashboard-page,
   .nav-collapsed .factory-dashboard-page {
-    margin-left: 0;
-    padding-left: 16px;
+    margin-left: 118px;
+    padding-left: 0;
+  }
+
+  .factory-dashboard-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+
+  .factory-dashboard-metrics,
+  .factory-dashboard-main-stack,
+  .factory-dashboard-side-stack,
+  .factory-dashboard-capacity,
+  .factory-dashboard-credit-card,
+  .factory-rfq-invites-panel,
+  .factory-brand-messages-panel,
+  .factory-active-projects-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .factory-brand-messages-panel {
+    margin-top: 0;
+  }
+
+  .factory-rfq-invites-panel {
+    margin-top: 0;
   }
 
   .factory-dashboard-metrics,

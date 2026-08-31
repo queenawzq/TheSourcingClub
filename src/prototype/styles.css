@@ -334,6 +334,7 @@ button {
 
 .home-page {
   width: min(1280px, calc(100vw - 316px));
+  box-sizing: border-box;
   margin-left: 316px;
   padding: 72px 48px 72px 0;
   transition: margin-left 180ms ease, width 180ms ease;
@@ -356,7 +357,7 @@ button {
 
 .nav-collapsed .home-page {
   width: min(1280px, calc(100vw - 118px));
-  margin-left: 170px;
+  margin-left: 118px;
 }
 
 .journey-rail {
@@ -2274,14 +2275,14 @@ button {
 .brand-profile-redesign .factory-detail-pair span {
   color: #5c749c;
   font-size: 12px;
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-heading);
   line-height: 16px;
 }
 
 .brand-profile-redesign .factory-detail-pair strong {
   color: #0b1220;
   font-size: 14px;
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-heading);
   line-height: 18px;
 }
 
@@ -2574,7 +2575,7 @@ button {
 .brand-profile-redesign .factory-profile-status-meter span {
   color: #5c7298;
   font-size: 13px;
-  font-weight: var(--weight-medium);
+  font-weight: var(--weight-heading);
   line-height: 18px;
   text-align: right;
 }
@@ -2841,7 +2842,8 @@ button {
 }
 
 .brand-profile-edit-field input,
-.brand-profile-edit-field textarea {
+.brand-profile-edit-field textarea,
+.brand-profile-edit-field select {
   width: 100%;
   min-height: 58px;
   padding: 22px 14px 8px;
@@ -2855,6 +2857,15 @@ button {
   outline: none;
 }
 
+.brand-profile-edit-field select {
+  appearance: none;
+  padding-right: 40px;
+  background-image: url("/assets/prototype-icons/dropdown.svg");
+  background-position: right 14px center;
+  background-repeat: no-repeat;
+  background-size: 18px;
+}
+
 .brand-profile-edit-field textarea {
   min-height: 110px;
   height: auto;
@@ -2864,7 +2875,8 @@ button {
 }
 
 .brand-profile-edit-field input:focus,
-.brand-profile-edit-field textarea:focus {
+.brand-profile-edit-field textarea:focus,
+.brand-profile-edit-field select:focus {
   border-color: #8db7ff;
   box-shadow: 0 0 0 2px rgba(141, 183, 255, 0.24);
 }
@@ -6307,6 +6319,7 @@ select {
 }
 
 .rfqs-page {
+  box-sizing: border-box;
   min-height: 100vh;
   margin-left: 78px;
   padding: 72px 48px 84px;
@@ -9248,25 +9261,71 @@ select {
 
 @media (max-width: 1180px) {
   .side-nav {
-    width: 88px;
-    padding: 24px 14px;
+    width: 78px;
+    padding: 28px 15px;
   }
 
   .side-logo,
   .account-card div,
-  .side-nav nav button:not(.active) {
+  .side-nav .nav-label {
     display: none;
   }
 
+  .side-nav .collapse-toggle {
+    right: 25px;
+  }
+
   .account-card {
-    width: 58px;
-    padding: 5px;
+    justify-content: center;
+    width: 48px;
+    height: 58px;
+    margin-top: 84px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+
+  .account-card > span {
+    width: 48px;
+    height: 48px;
+  }
+
+  .side-nav nav {
+    gap: 4px;
+    margin-top: 28px;
+  }
+
+  .side-nav nav button {
+    display: grid;
+    grid-template-columns: 1fr;
+    justify-content: center;
+    width: 48px;
+    height: 40px;
+    padding: 0;
+  }
+
+  .side-nav:not(.collapsed) .nav-icon {
+    justify-self: center;
+    margin-left: 0;
+  }
+
+  .side-nav .nav-divider {
+    width: 42px;
+    margin: 12px 3px;
   }
 
   .flow-page {
     width: calc(100vw - 112px);
     margin-left: 112px;
     grid-template-columns: 1fr;
+    padding-right: 24px;
+  }
+
+  .home-page,
+  .nav-collapsed .home-page {
+    width: calc(100vw - 118px);
+    max-width: 1280px;
+    margin-left: 118px;
     padding-right: 24px;
   }
 
@@ -9285,12 +9344,14 @@ select {
   }
 
   .rfqs-page {
-    margin-left: 88px;
+    width: calc(100vw - 118px);
+    max-width: 1280px;
+    margin-left: 118px;
     padding: 48px 24px 64px;
   }
 
   .side-nav:not(.collapsed) + .rfqs-page {
-    margin-left: 88px;
+    margin-left: 118px;
   }
 
   .factory-profile-page {
@@ -9309,19 +9370,75 @@ select {
     gap: 18px;
   }
 
-  .brand-project-card {
-    grid-template-columns: 58px minmax(260px, 1fr);
+  .rfq-card-top {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .project-facts {
-    grid-column: 2;
-    justify-content: start;
+  .rfq-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .rfq-card-actions {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    margin-top: 0;
+  }
+
+  .rfq-facts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .rfq-visuals {
+    justify-self: start;
+    width: min(100%, 420px);
+    max-width: 420px;
+  }
+
+  .project-card-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .project-card-body {
+    grid-template-columns: 1fr;
   }
 
   .project-actions {
-    grid-column: 2;
-    justify-content: flex-start;
+    display: grid;
+    grid-template-columns: auto auto auto;
+    grid-template-areas:
+      "message primary more"
+      "status status status";
+    justify-content: end;
+    align-items: center;
+    gap: 10px;
     margin-top: 0;
+  }
+
+  .project-actions .project-status {
+    grid-area: status;
+    justify-self: start;
+  }
+
+  .project-actions .secondary-btn {
+    grid-area: message;
+  }
+
+  .project-actions .primary-btn {
+    grid-area: primary;
+  }
+
+  .project-actions .project-overflow {
+    grid-area: more;
+  }
+
+  .project-visuals {
+    justify-self: start;
+    width: min(100%, 420px);
+  }
+
+  .project-facts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: start;
   }
 
   .project-detail-layout {
@@ -9391,7 +9508,9 @@ select {
   }
 
   .rfqs-page {
-    margin-left: 88px;
+    width: calc(100vw - 118px);
+    max-width: 1280px;
+    margin-left: 118px;
     padding: 24px 12px 48px;
   }
 
@@ -9473,7 +9592,10 @@ select {
     width: 100%;
   }
 
-  .project-card-top,
+  .project-card-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
   .project-card-body {
     grid-template-columns: 1fr;
   }
@@ -9483,9 +9605,32 @@ select {
   }
 
   .project-actions {
-    justify-content: flex-start;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: auto auto auto;
+    grid-template-areas:
+      "message primary more"
+      "status status status";
+    justify-content: end;
+    align-items: center;
+    gap: 10px;
     margin-top: 0;
+  }
+
+  .project-actions .project-status {
+    grid-area: status;
+    justify-self: start;
+  }
+
+  .project-actions .secondary-btn {
+    grid-area: message;
+  }
+
+  .project-actions .primary-btn {
+    grid-area: primary;
+  }
+
+  .project-actions .project-overflow {
+    grid-area: more;
   }
 
   .project-visuals {

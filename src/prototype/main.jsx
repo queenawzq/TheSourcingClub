@@ -3157,13 +3157,12 @@ function BrandProfileScreen({ onViewCompletion }) {
   };
   const visibleProjects = projectTab === "completed" ? data.completedProjects : data.activeProjects;
   const overviewRows = [
+    ["Brand name", data.name],
     ["Brand category", data.category],
-    ["Year founded", data.founded],
-    ["HQ location", data.location],
-    ["Website", data.website],
     ["Business email", data.businessEmail],
-    ["Annual revenue", data.annualRevenue],
-    ["Payment status", data.paymentStatus]
+    ["Year founded", data.founded],
+    ["Website URL", data.website],
+    ["HQ location", data.location],
   ];
   const sourcingVolumeRows = [
     ["Annual order volume", data.sourcingVolume.annualVolume],
@@ -3746,12 +3745,17 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
               <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
             </label>
             <BrandProfileEditField label="Brand name" value={form.name} onChange={(value) => updateField("name", value)} />
-            <BrandProfileEditField label="Location" value={form.location} onChange={(value) => updateField("location", value)} />
-            <BrandProfileEditField label="Brand category" value={form.category} onChange={(value) => updateField("category", value)} />
-            <BrandProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
-            <BrandProfileEditField label="Website" value={form.website} onChange={(value) => updateField("website", value)} />
+            <BrandProfileEditField
+              label="Brand category"
+              value={form.category}
+              onChange={(value) => updateField("category", value)}
+              type="select"
+              options={["Fashion brand", "Retailer", "Emerging designer", "Private label"]}
+            />
             <BrandProfileEditField label="Business email" value={form.businessEmail} onChange={(value) => updateField("businessEmail", value)} />
-            <BrandProfileEditField label="Annual revenue" value={form.annualRevenue} onChange={(value) => updateField("annualRevenue", value)} />
+            <BrandProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
+            <BrandProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
+            <BrandProfileEditField label="HQ location" value={form.location} onChange={(value) => updateField("location", value)} />
           </div>
         )}
 
@@ -4055,11 +4059,17 @@ function ProfileAssetUploadDialog({ asset = null, helper, itemType = "image", mo
   );
 }
 
-function BrandProfileEditField({ label, value, onChange }) {
+function BrandProfileEditField({ label, value, onChange, type = "text", options = [] }) {
   return (
     <label className="brand-profile-edit-field">
       <span>{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
+      {type === "select" ? (
+        <select value={value} onChange={(event) => onChange(event.target.value)}>
+          {options.map((option) => <option value={option} key={option}>{option}</option>)}
+        </select>
+      ) : (
+        <input value={value} onChange={(event) => onChange(event.target.value)} />
+      )}
     </label>
   );
 }
@@ -4456,7 +4466,7 @@ function FactoryMarketplaceScreen({ goTo }) {
         <header className="marketplace-header">
           <div>
             <p className="eyebrow">FACTORY DIRECTORY</p>
-            <h1>BROWSE FACTORIES</h1>
+              <h1>Browse factories</h1>
           </div>
           <label className="directory-search marketplace-search">
             <SearchIcon />
