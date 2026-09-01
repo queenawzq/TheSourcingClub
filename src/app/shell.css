@@ -272,3 +272,32 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .spinner { animation: none; }
 }
+
+/* ---- Sign-in code --------------------------------------------------- */
+
+.code-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 22px;
+  letter-spacing: .34em;
+  text-align: center;
+}
+
+.gate-row { display: flex; justify-content: space-between; gap: 12px; }
+.gate-row .quiet-btn { align-self: auto; }
+.gate-row .quiet-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+.gate-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.gate-divider::before,
+.gate-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}

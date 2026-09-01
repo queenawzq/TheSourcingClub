@@ -1,9 +1,12 @@
 /**
- * Authentication — Google only.
+ * Authentication — passwordless.
  *
- * v1 stores no passwords. There is no email/password path enabled in the
- * Supabase config at all, so this is the whole surface: sign in with Google,
- * sign out, and read the current session.
+ * Primary method is a one-time code emailed to the user. Google is supported
+ * too, but only lights up once OAuth credentials exist, so the app is never
+ * blocked on an external provider being configured.
+ *
+ * Neither path involves a password. Nothing here calls signInWithPassword and
+ * no account ever has one set.
  */
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase, isConfigured } from "./supabase.js";
@@ -97,6 +100,45 @@ export function AuthProvider({ children }) {
       selectOrg(orgId) {
         setActiveOrgId(orgId);
         window.localStorage.setItem("tscActiveOrg", orgId);
+      },
+
+      /** True once a Google OAuth client has been configured for the project. */
+      googleEnabled: Boolean(import.meta.env.VITE_GOOGLE_AUTH_ENABLED === "true"),
+
+      /**
+       * Email a one-time code. The same email also carries a magic link, so
+       * whichever is easier works — the code matters most on a preview deploy
+       * behind SSO, where following the link lands somewhere useless.
+       */
+      async sendEmailCode(email) {
+        setError(null);
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email: email.trim().toLowerCase(),
+          options: {
+            shouldCreateUser: true,
+            emailRedirectTo: window.location.origin + window.location.pathname,
+          },
+        });
+        if (otpError) {
+          setError(otpError);
+          return false;
+        }
+        return true;
+      },
+
+      /** Exchange the emailed code for a session. */
+      async verifyEmailCode(email, token) {
+        setError(null);
+        const { error: verifyError } = await supabase.auth.verifyOtp({
+          email: email.trim().toLowerCase(),
+          token: token.trim(),
+          type: "email",
+        });
+        if (verifyError) {
+          setError(verifyError);
+          return false;
+        }
+        return true;
       },
 
       async signInWithGoogle() {

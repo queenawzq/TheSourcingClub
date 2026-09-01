@@ -110,4 +110,10 @@ Both suites run against the same local database with no reset between them, so *
 
 ### Auth
 
-Google OAuth only — email/password signup is disabled in `config.toml` and no passwords exist anywhere in the system. Local development needs a Google Cloud OAuth client with `http://127.0.0.1:54321/auth/v1/callback` as an authorised redirect, and its id/secret in `supabase/.env` (git-ignored; see `supabase/.env.example`).
+Passwordless. The primary method is a one-time code emailed to the user; nothing in the app calls `signInWithPassword` and no account ever has a password set. Google is coded and ready but disabled until credentials exist — set the two secrets in `supabase/.env`, flip `enabled` in `[auth.external.google]`, and set `VITE_GOOGLE_AUTH_ENABLED=true` so the button appears.
+
+Local emails land in Mailpit at http://127.0.0.1:54324 and carry both a six-digit code and a link, from `supabase/templates/magic_link.html`.
+
+**Hosted sends a link only, and rarely.** Supabase rejects custom email templates on a free-tier project using the built-in sender, and that sender allows roughly two emails an hour — fine for a solo check, useless for testing with several people. Configuring custom SMTP (Resend, Postmark, SES) fixes both at once: hosted emails get the code back, and the rate limit goes away.
+
+Push auth settings to the hosted project with `./scripts/push-config.sh --project-ref <ref>`, which strips the template block the free tier rejects. Once SMTP is configured, delete that stripping and use `supabase config push` directly.

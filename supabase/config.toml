@@ -156,14 +156,19 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-site_url = "http://127.0.0.1:5173"
+site_url = "https://the-sourcing-club.vercel.app"
 # The public URL that Auth serves on. Defaults to the API external URL with `/auth/v1` appended.
 # external_url = ""
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
 additional_redirect_urls = [
   "http://127.0.0.1:5173",
   "http://localhost:5173",
+  "http://127.0.0.1:5173/app.html",
+  "http://localhost:5173/app.html",
   "https://the-sourcing-club.vercel.app",
+  "https://the-sourcing-club.vercel.app/app.html",
+  # Vercel gives every preview deploy its own hostname.
+  "https://the-sourcing-club-*-john-maheswarans-projects.vercel.app/**",
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
@@ -222,8 +227,10 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-# Google is the only sign-in method in v1; there is no password path at all.
-enable_signup = false
+# Email is the primary sign-in method: a one-time code, never a password.
+# Enabling this does NOT create a password path — nothing in the app ever calls
+# signInWithPassword, and no account has a password set.
+enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true
@@ -232,7 +239,7 @@ enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
 secure_password_change = false
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
-max_frequency = "1s"
+max_frequency = "20s"
 # Number of characters used in the email OTP.
 otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
@@ -247,6 +254,14 @@ otp_expiry = 3600
 # pass = "env(SENDGRID_API_KEY)"
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
+
+# Local only. Supabase rejects template changes on a free-tier project using the
+# default email provider, so scripts/push-config.sh strips this block before
+# pushing. Once custom SMTP is configured the strip can be removed and hosted
+# emails will carry a code as well as a link.
+[auth.email.template.magic_link]
+subject = "Your Sourcing Club sign-in code"
+content_path = "./supabase/templates/magic_link.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
@@ -337,7 +352,10 @@ max_frequency = "5s"
 #   http://127.0.0.1:54321/auth/v1/callback
 # ---------------------------------------------------------------------------
 [auth.external.google]
-enabled = true
+# Flip to true once SUPABASE_AUTH_GOOGLE_CLIENT_ID and SUPABASE_AUTH_GOOGLE_SECRET
+# exist in supabase/.env. Email sign-in works without it, so nothing is blocked
+# on this. Also set VITE_GOOGLE_AUTH_ENABLED=true so the app shows the button.
+enabled = false
 client_id = "env(SUPABASE_AUTH_GOOGLE_CLIENT_ID)"
 secret = "env(SUPABASE_AUTH_GOOGLE_SECRET)"
 skip_nonce_check = false

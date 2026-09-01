@@ -19,6 +19,9 @@ const URL = process.env.SUPABASE_URL ?? "http://127.0.0.1:54321";
 const ANON =
   process.env.SUPABASE_ANON_KEY ?? "";
 const SERVICE = process.env.SUPABASE_SERVICE_KEY ?? "";
+// Local mail catcher. Absent when pointing at a hosted project, in which case
+// the sign-in round trip is skipped rather than failed.
+const MAIL = process.env.SUPABASE_MAIL_URL ?? "http://127.0.0.1:54324";
 
 const admin = createClient(URL, SERVICE, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -321,6 +324,78 @@ console.log("\nprivate documents");
   reviewError
     ? ok("a brand cannot verify its own registration")
     : fail("LEAK: self-verification succeeded");
+}
+
+console.log("\nemail sign-in");
+{
+  // The real login path, not a stand-in: request a code, read the delivered
+  // email, and sign in with what it actually contains.
+  let mailReachable = true;
+  try {
+    await fetch(`${MAIL}/api/v1/messages`);
+  } catch {
+    mailReachable = false;
+  }
+
+  if (!mailReachable) {
+    console.log("  –  skipped (no local mail server at " + MAIL + ")");
+  } else {
+    const email = `signin-${stamp}@example.com`;
+    const client = createClient(URL, ANON, { auth: { persistSession: false } });
+
+    const { error: sendError } = await client.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true },
+    });
+    if (sendError) fail("request a sign-in code", sendError);
+    else ok("code requested");
+
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    const list = await (await fetch(`${MAIL}/api/v1/messages`)).json();
+    const message = (list.messages ?? list.items ?? []).find((entry) =>
+      (entry.To ?? entry.to ?? []).some((to) => (to.Address ?? to.address) === email),
+    );
+
+    if (!message) {
+      fail("no sign-in email was delivered");
+    } else {
+      const body = await (await fetch(`${MAIL}/api/v1/message/${message.ID ?? message.id}`)).json();
+      const html = body.HTML ?? body.html ?? "";
+      const code = (html.match(/>\s*(\d{6})\s*</) ?? [])[1];
+      const hasLink = /token_hash|\/auth\/v1\/verify/.test(html);
+
+      code
+        ? ok(`email carries a ${code.length}-digit code`)
+        : fail("template did not render the code — check magic_link.html");
+      hasLink
+        ? ok("email also carries a magic link, for whichever is easier")
+        : fail("email has no sign-in link");
+
+      if (code) {
+        const { data, error: verifyError } = await client.auth.verifyOtp({
+          email,
+          token: code,
+          type: "email",
+        });
+        if (verifyError) fail("sign in with the code", verifyError);
+        else ok(`signed in as ${data.user.email}`);
+
+        const { error: queryError } = await client.from("taxonomy_terms").select("slug").limit(1);
+        queryError
+          ? fail("signed-in session cannot query", queryError)
+          : ok("the session reads the database under RLS");
+      }
+
+      const other = createClient(URL, ANON, { auth: { persistSession: false } });
+      const { error: badCode } = await other.auth.verifyOtp({
+        email,
+        token: "000000",
+        type: "email",
+      });
+      badCode ? ok("a wrong code is rejected") : fail("LEAK: wrong code accepted");
+    }
+  }
 }
 
 console.log(
