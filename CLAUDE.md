@@ -64,3 +64,37 @@ A `"local"` build falls back to sniffing `*.netlify.app` / `*.vercel.app` from t
 Config lives in `netlify.toml` and `vercel.json`; both just run `npm run build` and publish `dist`.
 
 Note: submissions use `mode: 'no-cors'`, so `fetch` resolves even when the Apps Script rejects the request — only a network-level failure surfaces the error state. That is pre-existing behavior shared with the signup forms.
+
+## Backend (Supabase)
+
+Phase 1 of the backend lives on `feature/supabase-backend`. Schema, access rules and tests are done; the two prototypes are not yet wired to it and still run on mock data at their original URLs.
+
+```bash
+supabase start        # local stack in Docker; prints the URL + keys
+npm run db:reset      # re-apply every migration from scratch
+npm run db:test       # pgTAP access-rule suite (25 assertions)
+npm run smoke         # end-to-end check through supabase-js
+npm run taxonomy      # regenerate migration 007 from the seed JSON
+```
+
+Put the local URL and publishable key in `.env.local` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; `app.html` shows a setup message rather than crashing when they are absent.
+
+### Shape
+
+The browser talks to Postgres directly with the publishable key, and **row level security is the entire authorisation layer** — there is no server tier to enforce anything a second time. A mistake in a policy is a data breach, not a bug, which is why `supabase/tests/access_rules_test.sql` is mostly *negative* assertions: a policy that accidentally grants everything still passes every positive test.
+
+Two roles matter. `authenticated` and `anon` hold the publishable key and are fully governed by RLS; `anon` deliberately has no table grants at all, so a signed-out visitor is refused before RLS is consulted. `service_role` carries `BYPASSRLS` and is only ever used by server code holding the secret key — never anything bundled into the browser.
+
+Migrations are numbered and immutable once pushed. `007` is generated from `supabase/seed/taxonomy.json` by `scripts/build-taxonomy.py`; edit the JSON, never the SQL.
+
+### Things that will bite
+
+- **`current_org_ids()` and friends are `SECURITY DEFINER` on purpose.** A policy on `org_members` that reads `org_members` recurses infinitely; running the lookup as the definer bypasses RLS inside the function and breaks the cycle. Do not "fix" them to be invoker.
+- **Capacity maths exists in two places by design** — `capacity_monthly_units()` in migration 003 and `src/lib/domain/capacity.js`. They must stay identical, or a factory sees one number while the brand ranking it sees another. The prototypes have four copies, one of which hardcodes 18 min/piece for every category and so overstates a sweater factory by ~2.3x.
+- **Taxonomy is the identity, labels are not.** Terms carry `label_en` and `label_zh`, so vocabulary never goes near machine translation. Match on slug, never on displayed text.
+- **Every amount is minor units plus a currency code.** Only USD is offered, but RMB is coming and adding currency to a populated payments table later is invasive.
+- **Two storage buckets, and the split is effectively irreversible.** Logos and product shots go in `org-public`; business registrations and certificates go in `org-private` and are reachable only by signed URL. A private document that lands in the public bucket may be cached or indexed long after the mistake is noticed.
+
+### Auth
+
+Google OAuth only — email/password signup is disabled in `config.toml` and no passwords exist anywhere in the system. Local development needs a Google Cloud OAuth client with `http://127.0.0.1:54321/auth/v1/callback` as an authorised redirect, and its id/secret in `supabase/.env` (git-ignored; see `supabase/.env.example`).

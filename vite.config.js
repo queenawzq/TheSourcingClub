@@ -20,6 +20,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: "index.html",
+        app: "app.html",
         caseStudy: "case-study.html",
         factories: "factories.html",
         factorySearch: "factory-search.html",

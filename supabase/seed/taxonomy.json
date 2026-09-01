@@ -1,0 +1,1189 @@
+{
+  "kinds": [
+    {
+      "kind": "production_type",
+      "note": "Canonical 8-item list (factory-side factoryProfileEditorOptions.productionTypes and both files' onboarding chip groups agree) reconciled against brand-side brandProfileEditorOptions.garmentFocus (a 6-item variant: Wovens, Cut & sew knits, Knitwear, Denim, Outerwear, Intimates). 'Knitwear' aliased to 'Sweaters / knitwear'; 'Intimates' aliased to 'Intimates / delicate garments'; 'Outerwear' was excluded here because it is actually a product_category value (garmentFocus conflates the two axes). 'Other' was added because the zh onboarding step groups include an extra '其他' item that the English arrays omit.",
+      "terms": [
+        {
+          "slug": "cut-sew-knits",
+          "label_en": "Cut & sew knits",
+          "label_zh": "针织裁剪缝制",
+          "sort": 1
+        },
+        {
+          "slug": "wovens",
+          "label_en": "Wovens",
+          "label_zh": "梭织",
+          "sort": 2
+        },
+        {
+          "slug": "sweaters-knitwear",
+          "label_en": "Sweaters / knitwear",
+          "label_zh": "毛衫 / 针织成衣",
+          "sort": 3,
+          "aliases": [
+            "Knitwear"
+          ]
+        },
+        {
+          "slug": "denim",
+          "label_en": "Denim",
+          "label_zh": "牛仔",
+          "sort": 4
+        },
+        {
+          "slug": "seamless-circular-knit",
+          "label_en": "Seamless / circular knit",
+          "label_zh": "无缝 / 圆机针织",
+          "sort": 5
+        },
+        {
+          "slug": "intimates-delicate-garments",
+          "label_en": "Intimates / delicate garments",
+          "label_zh": "内衣 / 精细服装",
+          "sort": 6,
+          "aliases": [
+            "Intimates"
+          ]
+        },
+        {
+          "slug": "leather-suede",
+          "label_en": "Leather / suede",
+          "label_zh": "皮革 / 麂皮",
+          "sort": 7
+        },
+        {
+          "slug": "bags-soft-goods",
+          "label_en": "Bags / soft goods",
+          "label_zh": "包袋 / 软配件",
+          "sort": 8
+        },
+        {
+          "slug": "other",
+          "label_en": "Other",
+          "label_zh": "其他",
+          "sort": 9
+        }
+      ]
+    },
+    {
+      "kind": "product_category",
+      "note": "Canonical 11-item garment-type list (matches factory-side and both files' onboarding chip groups exactly) reconciled against brandProfileEditorOptions.productCategories, a 6-item demographic-segment variant (Womenswear, Menswear, Childrenswear, Activewear, Swimwear, Accessories). Activewear/Swimwear/Accessories were exact duplicates; Childrenswear aliased to 'Childrenswear / baby'; Womenswear and Menswear added as new terms since they describe a buyer-segment axis the garment-type list doesn't cover. 'Other' added because the zh onboarding step groups include an extra '其他' item that the English arrays omit.",
+      "terms": [
+        {
+          "slug": "tops",
+          "label_en": "Tops",
+          "label_zh": "上装",
+          "sort": 1
+        },
+        {
+          "slug": "bottoms",
+          "label_en": "Bottoms",
+          "label_zh": "下装",
+          "sort": 2
+        },
+        {
+          "slug": "dresses-jumpsuits",
+          "label_en": "Dresses & jumpsuits",
+          "label_zh": "连衣裙 / 连体衣",
+          "sort": 3
+        },
+        {
+          "slug": "outerwear",
+          "label_en": "Outerwear",
+          "label_zh": "外套",
+          "sort": 4
+        },
+        {
+          "slug": "activewear",
+          "label_en": "Activewear",
+          "label_zh": "运动服",
+          "sort": 5
+        },
+        {
+          "slug": "intimates-underwear",
+          "label_en": "Intimates / underwear",
+          "label_zh": "内衣",
+          "sort": 6
+        },
+        {
+          "slug": "swimwear",
+          "label_en": "Swimwear",
+          "label_zh": "泳装",
+          "sort": 7
+        },
+        {
+          "slug": "sleepwear-loungewear",
+          "label_en": "Sleepwear / loungewear",
+          "label_zh": "睡衣 / 家居服",
+          "sort": 8
+        },
+        {
+          "slug": "childrenswear-baby",
+          "label_en": "Childrenswear / baby",
+          "label_zh": "童装 / 婴童",
+          "sort": 9,
+          "aliases": [
+            "Childrenswear"
+          ]
+        },
+        {
+          "slug": "uniforms-workwear",
+          "label_en": "Uniforms / workwear",
+          "label_zh": "制服 / 工装",
+          "sort": 10
+        },
+        {
+          "slug": "accessories",
+          "label_en": "Accessories",
+          "label_zh": "配饰",
+          "sort": 11
+        },
+        {
+          "slug": "womenswear",
+          "label_en": "Womenswear",
+          "label_zh": null,
+          "sort": 12
+        },
+        {
+          "slug": "menswear",
+          "label_en": "Menswear",
+          "label_zh": null,
+          "sort": 13
+        },
+        {
+          "slug": "other",
+          "label_en": "Other",
+          "label_zh": "其他",
+          "sort": 14
+        }
+      ]
+    },
+    {
+      "kind": "market_level",
+      "note": "Three spelling variants found: brand onboarding chip group (fullest, with $ price qualifiers), brandProfileEditorOptions (bare label), factory-side onboarding/profile-editor ('Luxury / high-end' instead of 'Luxury'). Canonical label_en keeps the fullest ($-range) wording; the other spellings are recorded as aliases. label_zh comes from the factory-side onboarding zh group.",
+      "terms": [
+        {
+          "slug": "luxury",
+          "label_en": "Luxury ($500+)",
+          "label_zh": "奢侈 / 高端",
+          "sort": 1,
+          "aliases": [
+            "Luxury",
+            "Luxury / high-end"
+          ]
+        },
+        {
+          "slug": "premium-contemporary",
+          "label_en": "Premium / contemporary ($100-$500)",
+          "label_zh": "高级成衣 / 当代品牌",
+          "sort": 2,
+          "aliases": [
+            "Premium / contemporary"
+          ]
+        },
+        {
+          "slug": "mid-range",
+          "label_en": "Mid range ($50-$100)",
+          "label_zh": "中端市场",
+          "sort": 3,
+          "aliases": [
+            "Mid range"
+          ]
+        },
+        {
+          "slug": "mass-market",
+          "label_en": "Mass market (under $50)",
+          "label_zh": "大众市场",
+          "sort": 4,
+          "aliases": [
+            "Mass market"
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "region",
+      "note": "Brand onboarding/profile-editor chip list (6 items, 'United States') reconciled against the directory/marketplace filter panels in both files (7 items, includes 'Europe', uses 'USA'). Canonical uses the fuller 'United States' country name; 'Europe' merged in from the filter list as an additional region. No zh translations of country names were found in either file.",
+      "terms": [
+        {
+          "slug": "china",
+          "label_en": "China",
+          "sort": 1,
+          "extra": {
+            "countries": [
+              "CN"
+            ]
+          }
+        },
+        {
+          "slug": "portugal",
+          "label_en": "Portugal",
+          "sort": 2,
+          "extra": {
+            "countries": [
+              "PT"
+            ]
+          }
+        },
+        {
+          "slug": "korea",
+          "label_en": "Korea",
+          "sort": 3,
+          "extra": {
+            "countries": [
+              "KR"
+            ]
+          }
+        },
+        {
+          "slug": "europe",
+          "label_en": "Europe",
+          "sort": 4,
+          "extra": {
+            "countries": [
+              "PT",
+              "ES",
+              "IT",
+              "FR",
+              "DE",
+              "PL",
+              "RO",
+              "BG",
+              "GR",
+              "LT",
+              "HU",
+              "SK",
+              "CZ",
+              "NL",
+              "GB"
+            ]
+          }
+        },
+        {
+          "slug": "india",
+          "label_en": "India",
+          "sort": 5,
+          "extra": {
+            "countries": [
+              "IN"
+            ]
+          }
+        },
+        {
+          "slug": "turkey",
+          "label_en": "Turkey",
+          "sort": 6,
+          "extra": {
+            "countries": [
+              "TR"
+            ]
+          }
+        },
+        {
+          "slug": "united-states",
+          "label_en": "United States",
+          "sort": 7,
+          "aliases": [
+            "USA"
+          ],
+          "extra": {
+            "countries": [
+              "US"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "kind": "certification",
+      "note": "Reconciled 4 divergent lists: brand onboarding/profile-editor (GOTS, OEKO-TEX, BSCI, GRS, WRAP, No preference), directory/marketplace filter panels in both files (GOTS, OEKO-TEX, BSCI, WRAP, Fair Trade -- no GRS or No preference), and factory onboarding's actual-certs-held list (GOTS, OEKO-TEX Standard 100, BSCI). Canonical label uses the fuller 'OEKO-TEX Standard 100'; 'OEKO-TEX' recorded as an alias. 'Business registration' (factory legal/account verification) was intentionally excluded -- it is a verification checkbox, not a product or labor certification. No zh translations exist; certification acronyms are kept in English even on the zh onboarding screen.",
+      "terms": [
+        {
+          "slug": "gots",
+          "label_en": "GOTS",
+          "label_zh": null,
+          "sort": 1
+        },
+        {
+          "slug": "oeko-tex-standard-100",
+          "label_en": "OEKO-TEX Standard 100",
+          "label_zh": null,
+          "sort": 2,
+          "aliases": [
+            "OEKO-TEX"
+          ]
+        },
+        {
+          "slug": "bsci",
+          "label_en": "BSCI",
+          "label_zh": null,
+          "sort": 3
+        },
+        {
+          "slug": "grs",
+          "label_en": "GRS",
+          "label_zh": null,
+          "sort": 4
+        },
+        {
+          "slug": "wrap",
+          "label_en": "WRAP",
+          "label_zh": null,
+          "sort": 5
+        },
+        {
+          "slug": "fair-trade",
+          "label_en": "Fair Trade",
+          "label_zh": null,
+          "sort": 6
+        },
+        {
+          "slug": "no-preference",
+          "label_en": "No preference",
+          "label_zh": null,
+          "sort": 7
+        }
+      ]
+    },
+    {
+      "kind": "service",
+      "note": "Brand-side 'Services needed' vocabulary (src/prototype/main.jsx onboarding + profile editor). Distinct from the factory-side design_service vocabulary though largely overlapping in intent -- see design_service note for the cross-mapping. No zh translations exist (this file has no Chinese UI).",
+      "terms": [
+        {
+          "slug": "full-package",
+          "label_en": "Full package",
+          "label_zh": null,
+          "sort": 1
+        },
+        {
+          "slug": "cmt",
+          "label_en": "CMT",
+          "label_zh": null,
+          "sort": 2
+        },
+        {
+          "slug": "pattern-making",
+          "label_en": "Pattern making",
+          "label_zh": null,
+          "sort": 3
+        },
+        {
+          "slug": "sample-development",
+          "label_en": "Sample development",
+          "label_zh": null,
+          "sort": 4
+        },
+        {
+          "slug": "fabric-sourcing",
+          "label_en": "Fabric sourcing",
+          "label_zh": null,
+          "sort": 5
+        }
+      ]
+    },
+    {
+      "kind": "design_service",
+      "note": "Factory-side capability list (onboarding 'Design Services' group and factoryProfileEditorOptions.services, identical in both places). Overlaps conceptually with the brand-side service kind (Full package/CMT/Pattern making/Sample development appear in both under slightly different labels, cross-referenced here via aliases); kept as a separate kind since design_service additionally includes Grading and Tech pack support, which the brand's service list lacks, while service's Fabric sourcing has no design_service counterpart.",
+      "terms": [
+        {
+          "slug": "pattern-making",
+          "label_en": "Pattern making",
+          "label_zh": "制版",
+          "sort": 1
+        },
+        {
+          "slug": "grading",
+          "label_en": "Grading",
+          "label_zh": "放码",
+          "sort": 2
+        },
+        {
+          "slug": "sample-development",
+          "label_en": "Sample development",
+          "label_zh": "样衣开发",
+          "sort": 3
+        },
+        {
+          "slug": "tech-pack-support",
+          "label_en": "Tech pack support",
+          "label_zh": "Tech pack 支持",
+          "sort": 4
+        },
+        {
+          "slug": "full-package-fpp",
+          "label_en": "Full package (FPP)",
+          "label_zh": "全包生产 FPP",
+          "sort": 5,
+          "aliases": [
+            "Full package"
+          ]
+        },
+        {
+          "slug": "cmt-only",
+          "label_en": "CMT only",
+          "label_zh": "仅 CMT",
+          "sort": 6,
+          "aliases": [
+            "CMT"
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "digital_tool",
+      "note": "Factory-side only (factoryProfileEditorOptions.tools and onboarding '3D & digital tools' group), single source, no conflicts.",
+      "terms": [
+        {
+          "slug": "clo-3d",
+          "label_en": "CLO 3D",
+          "label_zh": "CLO 3D",
+          "sort": 1
+        },
+        {
+          "slug": "browzwear",
+          "label_en": "Browzwear",
+          "label_zh": "Browzwear",
+          "sort": 2
+        },
+        {
+          "slug": "lectra",
+          "label_en": "Lectra",
+          "label_zh": "Lectra",
+          "sort": 3
+        },
+        {
+          "slug": "gerber",
+          "label_en": "Gerber",
+          "label_zh": "Gerber",
+          "sort": 4
+        },
+        {
+          "slug": "none",
+          "label_en": "None",
+          "label_zh": "无",
+          "sort": 5
+        }
+      ]
+    },
+    {
+      "kind": "specialty",
+      "note": "Factory onboarding/profile-editor 'Specializes in' list (8 core items + 2 profile-only items) merged with the brand-side marketplace filter's 'Specializes in' list (5 items). Only 'Wash development' was an exact duplicate. The remaining brand-filter items are near-duplicates of factory items in intent but differ in wording (e.g. 'Small-batch production' vs 'Small-batch export', 'Fit sample support' vs 'Fit sample + PP sample') -- kept as distinct terms rather than merged as aliases since their precise meaning differs; flagged for product-owner review.",
+      "terms": [
+        {
+          "slug": "in-house-pattern-room",
+          "label_en": "In-house pattern room",
+          "label_zh": "内部制版房",
+          "sort": 1
+        },
+        {
+          "slug": "fit-sample-pp-sample",
+          "label_en": "Fit sample + PP sample",
+          "label_zh": "试身样 + 产前样",
+          "sort": 2
+        },
+        {
+          "slug": "small-batch-export",
+          "label_en": "Small-batch export",
+          "label_zh": "小批量出口",
+          "sort": 3
+        },
+        {
+          "slug": "gots-cotton",
+          "label_en": "GOTS cotton",
+          "label_zh": "GOTS 棉",
+          "sort": 4
+        },
+        {
+          "slug": "wash-development",
+          "label_en": "Wash development",
+          "label_zh": "水洗开发",
+          "sort": 5
+        },
+        {
+          "slug": "trim-sourcing",
+          "label_en": "Trim sourcing",
+          "label_zh": "辅料采购",
+          "sort": 6
+        },
+        {
+          "slug": "qc-photo-updates",
+          "label_en": "QC photo updates",
+          "label_zh": "QC 图片更新",
+          "sort": 7
+        },
+        {
+          "slug": "low-moq-sampling",
+          "label_en": "Low-MOQ sampling",
+          "label_zh": "低起订量打样",
+          "sort": 8
+        },
+        {
+          "slug": "organic-poplin-shirts",
+          "label_en": "Organic poplin shirts",
+          "label_zh": null,
+          "sort": 9
+        },
+        {
+          "slug": "low-moq-woven-tops",
+          "label_en": "Low-MOQ woven tops",
+          "label_zh": null,
+          "sort": 10
+        },
+        {
+          "slug": "small-batch-production",
+          "label_en": "Small-batch production",
+          "label_zh": null,
+          "sort": 11
+        },
+        {
+          "slug": "fit-sample-support",
+          "label_en": "Fit sample support",
+          "label_zh": null,
+          "sort": 12
+        },
+        {
+          "slug": "yarn-sourcing",
+          "label_en": "Yarn sourcing",
+          "label_zh": null,
+          "sort": 13
+        },
+        {
+          "slug": "embroidery-print",
+          "label_en": "Embroidery / print",
+          "label_zh": null,
+          "sort": 14
+        }
+      ]
+    },
+    {
+      "kind": "make",
+      "note": "Factory-side only (onboarding 'Makes' group, factoryProfileEditorOptions.makes, and factoryProfileData.makes all agree), single source, no conflicts.",
+      "terms": [
+        {
+          "slug": "button-down-shirts",
+          "label_en": "Button-down shirts",
+          "label_zh": "纽扣衬衫",
+          "sort": 1
+        },
+        {
+          "slug": "poplin-blouses",
+          "label_en": "Poplin blouses",
+          "label_zh": "府绸上衣",
+          "sort": 2
+        },
+        {
+          "slug": "woven-dresses",
+          "label_en": "Woven dresses",
+          "label_zh": "梭织连衣裙",
+          "sort": 3
+        },
+        {
+          "slug": "linen-co-ords",
+          "label_en": "Linen co-ords",
+          "label_zh": "亚麻套装",
+          "sort": 4
+        },
+        {
+          "slug": "lightweight-jackets",
+          "label_en": "Lightweight jackets",
+          "label_zh": "轻薄外套",
+          "sort": 5
+        },
+        {
+          "slug": "pleated-skirts",
+          "label_en": "Pleated skirts",
+          "label_zh": "百褶裙",
+          "sort": 6
+        },
+        {
+          "slug": "rib-tops",
+          "label_en": "Rib tops",
+          "label_zh": "罗纹上衣",
+          "sort": 7
+        },
+        {
+          "slug": "canvas-totes",
+          "label_en": "Canvas totes",
+          "label_zh": "帆布托特包",
+          "sort": 8
+        },
+        {
+          "slug": "denim-jackets",
+          "label_en": "Denim jackets",
+          "label_zh": "牛仔夹克",
+          "sort": 9
+        },
+        {
+          "slug": "swim-sets",
+          "label_en": "Swim sets",
+          "label_zh": "泳装套装",
+          "sort": 10
+        }
+      ]
+    },
+    {
+      "kind": "price_point",
+      "note": "Identical list in both files' 'Price point' filter groups, no conflicts.",
+      "terms": [
+        {
+          "slug": "mass",
+          "label_en": "Mass $8-$18",
+          "label_zh": "大众 $8-$18",
+          "sort": 1
+        },
+        {
+          "slug": "middle",
+          "label_en": "Middle $18-$40",
+          "label_zh": "中端 $18-$40",
+          "sort": 2
+        },
+        {
+          "slug": "premium",
+          "label_en": "Premium $40-$90",
+          "label_zh": "高级 $40-$90",
+          "sort": 3
+        },
+        {
+          "slug": "luxury",
+          "label_en": "Luxury $90+",
+          "label_zh": "奢侈 $90+",
+          "sort": 4
+        }
+      ]
+    },
+    {
+      "kind": "lead_time_band",
+      "note": "Brand-side directory/marketplace filter only (src/prototype/main.jsx). The factory side only stores lead time as free text (e.g. '30-45 days') on the profile, not as a selectable band list, so no cross-file conflict exists. No zh translation exists (this file has no Chinese UI).",
+      "terms": [
+        {
+          "slug": "under-30-days",
+          "label_en": "Under 30 days",
+          "label_zh": null,
+          "sort": 1
+        },
+        {
+          "slug": "30-45-days",
+          "label_en": "30-45 days",
+          "label_zh": null,
+          "sort": 2
+        },
+        {
+          "slug": "45-plus-days",
+          "label_en": "45+ days",
+          "label_zh": null,
+          "sort": 3
+        }
+      ]
+    },
+    {
+      "kind": "capacity_category",
+      "note": "From FACTORY_CAPACITY_CATEGORIES (src/factory-prototype/main.jsx, ~line 3759), single source. Slugs preserve the original `key` values from the array since they are load-bearing identifiers referenced elsewhere in the code (e.g. form.capacityCategoryKey). minutesPerPiece is required for capacity math and captured in extra.",
+      "terms": [
+        {
+          "slug": "cut-sew-knits",
+          "label_en": "Cut & sew knits",
+          "label_zh": "裁剪车缝针织",
+          "sort": 1,
+          "extra": {
+            "minutes_per_piece": 12,
+            "reference_style_en": "Basic jersey T-shirt",
+            "reference_style_zh": "基础针织 T 恤"
+          }
+        },
+        {
+          "slug": "wovens",
+          "label_en": "Wovens",
+          "label_zh": "梭织",
+          "sort": 2,
+          "extra": {
+            "minutes_per_piece": 18,
+            "reference_style_en": "Basic woven shirt",
+            "reference_style_zh": "基础梭织衬衫"
+          }
+        },
+        {
+          "slug": "sweaters",
+          "label_en": "Sweaters / knitwear",
+          "label_zh": "毛衫 / 针织衫",
+          "sort": 3,
+          "extra": {
+            "minutes_per_piece": 42,
+            "reference_style_en": "Basic crewneck sweater",
+            "reference_style_zh": "基础圆领毛衫"
+          }
+        },
+        {
+          "slug": "denim",
+          "label_en": "Denim",
+          "label_zh": "牛仔",
+          "sort": 4,
+          "extra": {
+            "minutes_per_piece": 34,
+            "reference_style_en": "Five-pocket denim jean",
+            "reference_style_zh": "五袋牛仔裤"
+          }
+        },
+        {
+          "slug": "seamless",
+          "label_en": "Seamless / circular knit",
+          "label_zh": "无缝 / 圆机针织",
+          "sort": 5,
+          "extra": {
+            "minutes_per_piece": 9,
+            "reference_style_en": "Seamless knit top",
+            "reference_style_zh": "无缝针织上衣"
+          }
+        },
+        {
+          "slug": "intimates",
+          "label_en": "Intimates / delicate garments",
+          "label_zh": "内衣 / 精细服装",
+          "sort": 6,
+          "extra": {
+            "minutes_per_piece": 26,
+            "reference_style_en": "Soft bra or delicate top",
+            "reference_style_zh": "软杯文胸或精细上衣"
+          }
+        },
+        {
+          "slug": "bags",
+          "label_en": "Bags / soft goods",
+          "label_zh": "包袋 / 软配件",
+          "sort": 7,
+          "extra": {
+            "minutes_per_piece": 22,
+            "reference_style_en": "Simple tote bag",
+            "reference_style_zh": "基础托特包"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "brand_category",
+      "note": "Brand onboarding 'Brand category' select (src/prototype/main.jsx, ~line 2062), single source.",
+      "terms": [
+        {
+          "slug": "fashion-brand",
+          "label_en": "Fashion brand",
+          "label_zh": null,
+          "sort": 1
+        },
+        {
+          "slug": "retailer",
+          "label_en": "Retailer",
+          "label_zh": null,
+          "sort": 2
+        },
+        {
+          "slug": "emerging-designer",
+          "label_en": "Emerging designer",
+          "label_zh": null,
+          "sort": 3
+        },
+        {
+          "slug": "private-label",
+          "label_en": "Private label",
+          "label_zh": null,
+          "sort": 4
+        }
+      ]
+    },
+    {
+      "kind": "annual_revenue_band",
+      "note": "Brand onboarding trust step select (src/prototype/main.jsx, ~line 2141), single source.",
+      "terms": [
+        {
+          "slug": "under-250k",
+          "label_en": "Under $250k",
+          "label_zh": null,
+          "sort": 1
+        },
+        {
+          "slug": "250k-1m",
+          "label_en": "$250k-$1M",
+          "label_zh": null,
+          "sort": 2
+        },
+        {
+          "slug": "1m-5m",
+          "label_en": "$1M-$5M",
+          "label_zh": null,
+          "sort": 3
+        },
+        {
+          "slug": "5m-plus",
+          "label_en": "$5M+",
+          "label_zh": null,
+          "sort": 4
+        }
+      ]
+    },
+    {
+      "kind": "pieces_per_year_band",
+      "note": "Brand onboarding 'Share your sourcing volume' step, field 'Average pieces ordered per year' (src/prototype/main.jsx, ~line 863), single source.",
+      "terms": [
+        {
+          "slug": "under-1000",
+          "label_en": "Under 1,000",
+          "label_zh": null,
+          "sort": 1
+        },
+        {
+          "slug": "1000-5000",
+          "label_en": "1,000-5,000",
+          "label_zh": null,
+          "sort": 2
+        },
+        {
+          "slug": "5000-20000",
+          "label_en": "5,000-20,000",
+          "label_zh": null,
+          "sort": 3
+        },
+        {
+          "slug": "20000-100000",
+          "label_en": "20,000-100,000",
+          "label_zh": null,
+          "sort": 4
+        },
+        {
+          "slug": "100000-plus",
+          "label_en": "100,000+",
+          "label_zh": null,
+          "sort": 5
+        }
+      ]
+    },
+    {
+      "kind": "order_size_band",
+      "note": "Brand onboarding 'Share your sourcing volume' step, field 'Typical order size per style' (src/prototype/main.jsx, ~line 864), single source. Distinct kind from quantity_band, which buckets RFQ/directory quantities rather than per-style order size.",
+      "terms": [
+        {
+          "slug": "under-100",
+          "label_en": "Under 100",
+          "label_zh": null,
+          "sort": 1
+        },
+        {
+          "slug": "100-300",
+          "label_en": "100-300",
+          "label_zh": null,
+          "sort": 2
+        },
+        {
+          "slug": "300-1000",
+          "label_en": "300-1,000",
+          "label_zh": null,
+          "sort": 3
+        },
+        {
+          "slug": "1000-5000",
+          "label_en": "1,000-5,000",
+          "label_zh": null,
+          "sort": 4
+        },
+        {
+          "slug": "5000-plus",
+          "label_en": "5,000+",
+          "label_zh": null,
+          "sort": 5
+        }
+      ]
+    },
+    {
+      "kind": "collections_per_year",
+      "note": "Brand onboarding 'Share your sourcing volume' step, field 'Collections per year' (src/prototype/main.jsx, ~line 865), single source.",
+      "terms": [
+        {
+          "slug": "one",
+          "label_en": "1",
+          "label_zh": null,
+          "sort": 1
+        },
+        {
+          "slug": "two",
+          "label_en": "2",
+          "label_zh": null,
+          "sort": 2
+        },
+        {
+          "slug": "three-to-four",
+          "label_en": "3-4",
+          "label_zh": null,
+          "sort": 3
+        },
+        {
+          "slug": "five-to-six",
+          "label_en": "5-6",
+          "label_zh": null,
+          "sort": 4
+        },
+        {
+          "slug": "monthly-drops",
+          "label_en": "Monthly drops",
+          "label_zh": null,
+          "sort": 5
+        }
+      ]
+    },
+    {
+      "kind": "reorder_cadence",
+      "note": "Brand onboarding 'Share your sourcing volume' step, field 'Typical reorder cadence' (src/prototype/main.jsx, ~line 867), single source.",
+      "terms": [
+        {
+          "slug": "one-time-seasonal-buys",
+          "label_en": "One-time seasonal buys",
+          "label_zh": null,
+          "sort": 1
+        },
+        {
+          "slug": "monthly-reorders",
+          "label_en": "Monthly reorders",
+          "label_zh": null,
+          "sort": 2
+        },
+        {
+          "slug": "quarterly-reorders",
+          "label_en": "Quarterly reorders",
+          "label_zh": null,
+          "sort": 3
+        },
+        {
+          "slug": "repeat-best-sellers-as-needed",
+          "label_en": "Repeat best sellers as needed",
+          "label_zh": null,
+          "sort": 4
+        }
+      ]
+    },
+    {
+      "kind": "sourcing_stage",
+      "note": "Brand onboarding 'Share your sourcing volume' step, field 'Current sourcing stage' (src/prototype/main.jsx, ~line 868), single source.",
+      "terms": [
+        {
+          "slug": "exploring-factories",
+          "label_en": "Exploring factories",
+          "label_zh": null,
+          "sort": 1
+        },
+        {
+          "slug": "sampling-soon",
+          "label_en": "Sampling soon",
+          "label_zh": null,
+          "sort": 2
+        },
+        {
+          "slug": "ready-for-production",
+          "label_en": "Ready for production",
+          "label_zh": null,
+          "sort": 3
+        },
+        {
+          "slug": "replacing-current-supplier",
+          "label_en": "Replacing current supplier",
+          "label_zh": null,
+          "sort": 4
+        }
+      ]
+    },
+    {
+      "kind": "client_trust_band",
+      "note": "Factory-side 'Client trust' filter used when factories browse brand RFQs (src/factory-prototype/main.jsx, ~line 3704), single source. label_zh for '$10k+ spent' was not found anywhere in the file and was left null rather than invented.",
+      "terms": [
+        {
+          "slug": "payment-verified",
+          "label_en": "Payment verified",
+          "label_zh": "付款已验证",
+          "sort": 1
+        },
+        {
+          "slug": "5k-plus-spent",
+          "label_en": "$5k+ spent",
+          "label_zh": "已消费 $5k+",
+          "sort": 2
+        },
+        {
+          "slug": "10k-plus-spent",
+          "label_en": "$10k+ spent",
+          "label_zh": null,
+          "sort": 3
+        },
+        {
+          "slug": "25k-plus-spent",
+          "label_en": "$25k+ spent",
+          "label_zh": "已消费 $25k+",
+          "sort": 4
+        }
+      ]
+    },
+    {
+      "kind": "timeline_band",
+      "note": "Factory-side 'Timeline' filter used when factories browse brand RFQs (src/factory-prototype/main.jsx, ~line 3711), single source.",
+      "terms": [
+        {
+          "slug": "sample-in-30-days",
+          "label_en": "Sample in 30 days",
+          "label_zh": "30 天内打样",
+          "sort": 1
+        },
+        {
+          "slug": "bulk-in-60-days",
+          "label_en": "Bulk in 60 days",
+          "label_zh": "60 天内大货",
+          "sort": 2
+        },
+        {
+          "slug": "flexible",
+          "label_en": "Flexible",
+          "label_zh": "灵活",
+          "sort": 3
+        }
+      ]
+    },
+    {
+      "kind": "quantity_band",
+      "note": "Factory-side directory/marketplace 'Quantity' filter (3 items: Under 300, 300-500, 500+) reconciled against the brand-side 'Available quantity' select (2 items: 300-500 units, 500+ units, no 'Under 300' option). Canonical uses the fuller 3-item list; the unit-suffixed phrasing is recorded as aliases.",
+      "terms": [
+        {
+          "slug": "under-300",
+          "label_en": "Under 300",
+          "label_zh": "300 件以下",
+          "sort": 1
+        },
+        {
+          "slug": "300-500",
+          "label_en": "300-500",
+          "label_zh": null,
+          "sort": 2,
+          "aliases": [
+            "300-500 units"
+          ]
+        },
+        {
+          "slug": "500-plus",
+          "label_en": "500+",
+          "label_zh": null,
+          "sort": 3,
+          "aliases": [
+            "500+ units"
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "trust_standard",
+      "note": "Additional vocabulary found beyond the 25 known kinds: the brand-side 'Club Standard' filter used to rate factory trust/verification tier in the factory directory and marketplace screens (src/prototype/main.jsx, ~lines 3746 and similar). Brand-side only; no zh translation exists.",
+      "terms": [
+        {
+          "slug": "trusted",
+          "label_en": "Trusted",
+          "label_zh": null,
+          "sort": 1
+        },
+        {
+          "slug": "verified",
+          "label_en": "Verified",
+          "label_zh": null,
+          "sort": 2
+        },
+        {
+          "slug": "basic",
+          "label_en": "Basic",
+          "label_zh": null,
+          "sort": 3
+        }
+      ]
+    },
+    {
+      "kind": "booking_level",
+      "note": "Additional vocabulary found beyond the 25 known kinds: factory monthly booking-level bands used in the capacity drawer (src/factory-prototype/main.jsx levelRanges, ~line 3838). Percentage ranges: Mostly open = 60-100% open, Partly booked = 25-60% open, Mostly full = 0-25% open. The percentage-labeled phrasing (e.g. '60-100% open') is recorded as an alias rather than a structured field, since the output rules reserve `extra` for capacity_category only.",
+      "terms": [
+        {
+          "slug": "open",
+          "label_en": "Mostly open",
+          "label_zh": "较空",
+          "sort": 1,
+          "aliases": [
+            "60-100% open"
+          ]
+        },
+        {
+          "slug": "partial",
+          "label_en": "Partly booked",
+          "label_zh": "部分已订",
+          "sort": 2,
+          "aliases": [
+            "25-60% open"
+          ]
+        },
+        {
+          "slug": "full",
+          "label_en": "Mostly full",
+          "label_zh": "较满",
+          "sort": 3,
+          "aliases": [
+            "0-25% open"
+          ]
+        }
+      ]
+    }
+  ],
+  "conflicts": [
+    {
+      "kind": "region",
+      "issue": "'United States' (brand onboarding/profile chip list) vs 'USA' (directory/marketplace filter panels)",
+      "resolution": "Single slug united-states, label_en 'United States', alias 'USA'. Also merged in 'Europe', which only appears in the 7-item filter-panel list, not the 6-item onboarding list."
+    },
+    {
+      "kind": "certification",
+      "issue": "Four divergent lists: brand onboarding/profile-editor (6: GOTS, OEKO-TEX, BSCI, GRS, WRAP, No preference), directory/marketplace filters in both files (5: GOTS, OEKO-TEX, BSCI, WRAP, Fair Trade -- no GRS/No preference), factory onboarding's held-certs list (3: GOTS, OEKO-TEX Standard 100, BSCI)",
+      "resolution": "Union of 7 terms. Canonical label 'OEKO-TEX Standard 100' (fuller), alias 'OEKO-TEX'. 'Business registration' excluded as a legal-verification item, not a certification."
+    },
+    {
+      "kind": "market_level",
+      "issue": "'Luxury ($500+)' (brand onboarding) vs 'Luxury' (brandProfileEditorOptions) vs 'Luxury / high-end' (factory-side); same pattern for Premium/Mid/Mass",
+      "resolution": "Canonical label_en keeps the fullest $-range wording from brand onboarding; bare and '/high-end' spellings recorded as aliases on each of the 4 terms."
+    },
+    {
+      "kind": "product_category",
+      "issue": "11-item garment-type list (factory-side + both onboarding chip groups) vs brandProfileEditorOptions.productCategories, a 6-item demographic-segment list (Womenswear, Menswear, Childrenswear, Activewear, Swimwear, Accessories)",
+      "resolution": "Merged into the 11-item list. Activewear/Swimwear/Accessories were exact duplicates (no new term); Childrenswear aliased to 'Childrenswear / baby'; Womenswear and Menswear added as new terms since no other term captures that segmentation axis."
+    },
+    {
+      "kind": "production_type",
+      "issue": "8-item canonical list (factory-side + both onboarding chip groups) vs brandProfileEditorOptions.garmentFocus, a 6-item variant (Wovens, Cut & sew knits, Knitwear, Denim, Outerwear, Intimates)",
+      "resolution": "Wovens/Cut & sew knits/Denim were exact duplicates. 'Knitwear' aliased to 'Sweaters / knitwear'; 'Intimates' aliased to 'Intimates / delicate garments'. 'Outerwear' was NOT added here -- it is a product_category value; garmentFocus conflates production type and product category."
+    },
+    {
+      "kind": "production_type / product_category",
+      "issue": "The zh onboarding step groups (src/factory-prototype/main.jsx ~lines 1123-1124) include an extra '其他' (Other) item at the end of both the production-type and product-category chip groups that the English chip-group arrays (~lines 1006-1007) omit",
+      "resolution": "Added an 'Other' term (label_en 'Other', label_zh '其他', sourced from factoryMainZhText) to both kinds."
+    },
+    {
+      "kind": "service / design_service",
+      "issue": "Brand-side 'Services needed' (5: Full package, CMT, Pattern making, Sample development, Fabric sourcing) and factory-side 'Design Services' (6: Pattern making, Grading, Sample development, Tech pack support, Full package (FPP), CMT only) overlap substantially but use different exact labels and each has unique items",
+      "resolution": "Kept as two separate kinds (they come from genuinely distinct fields in each file), with aliases cross-referencing the shared concepts (e.g. design_service's 'Full package (FPP)' aliases 'Full package'; 'CMT only' aliases 'CMT')."
+    },
+    {
+      "kind": "specialty",
+      "issue": "Factory onboarding/profile-editor list (10 items) vs brand-side marketplace filter's 'Specializes in' list (5 items: Small-batch production, Fit sample support, Wash development, Yarn sourcing, Embroidery / print)",
+      "resolution": "Merged; only 'Wash development' was an exact duplicate. The other brand-filter items were kept as distinct new terms rather than aliased onto similarly-worded factory items ('Small-batch production' vs 'Small-batch export', 'Fit sample support' vs 'Fit sample + PP sample') because their precise meaning differs -- flagged for product-owner review."
+    },
+    {
+      "kind": "quantity_band",
+      "issue": "Factory-side filter panel (3 items: Under 300, 300-500, 500+) vs brand-side 'Available quantity' select (2 items: 300-500 units, 500+ units, missing an 'Under 300' option)",
+      "resolution": "Canonical uses the fuller 3-item list; unit-suffixed phrasing recorded as aliases on the matching terms."
+    },
+    {
+      "kind": "moq_band",
+      "issue": "No discrete controlled vocabulary found in either file for MOQ",
+      "resolution": "Omitted from the seed. MOQ only appears as free text (e.g. factory profile 'MOQ: 100 units / style') or as a continuous slider (150 to 500+ in the directory/marketplace filter panels) with no fixed set of labeled bands to seed."
+    },
+    {
+      "kind": "delivery_term",
+      "issue": "No discrete controlled vocabulary found in either file for delivery terms / incoterms",
+      "resolution": "Omitted from the seed. Delivery terms only appear as free text (e.g. 'EXW quoted; shipping TBD', 'FOB quoted') on quotes, never as a selectable option list."
+    }
+  ]
+}

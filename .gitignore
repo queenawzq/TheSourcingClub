@@ -6,3 +6,7 @@ dist/
 # Local Netlify folder
 .netlify
 .vercel
+
+# Supabase local secrets
+supabase/.env
+.env.local
