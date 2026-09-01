@@ -3009,7 +3009,8 @@
 }
 
 .factory-profile-performance {
-  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  gap: 20px;
   align-items: center;
 }
 
@@ -3033,6 +3034,8 @@
 
 .factory-profile-performance > div:first-child > p {
   margin-top: 5px;
+  max-width: 210px;
+  overflow-wrap: normal;
 }
 
 .factory-profile-score-grid,
@@ -8101,6 +8104,9 @@ a.secondary-btn,
     margin-right: 0 !important;
   }
 
+}
+
+@media (min-width: 1181px) and (max-width: 1220px) {
   .app-shell:not(.nav-collapsed) > .factory-dashboard-page,
   .app-shell:not(.nav-collapsed) > .rfqs-page,
   .app-shell:not(.nav-collapsed) > .directory-page,
@@ -8121,6 +8127,33 @@ a.secondary-btn,
 }
 
 @media (max-width: 1180px) {
+  .factory-profile-performance {
+    grid-template-columns: minmax(0, 190px) minmax(0, 1fr);
+    gap: 18px;
+    align-items: center;
+  }
+
+  .factory-profile-performance > div:first-child > p {
+    max-width: 180px;
+  }
+
+  .factory-profile-score-grid {
+    grid-template-columns: minmax(72px, 0.8fr) minmax(94px, 0.9fr) minmax(138px, 1.25fr);
+  }
+
+  .factory-profile-score-grid .metric,
+  .factory-profile-score-grid .metric strong,
+  .factory-profile-score-grid .metric span {
+    min-width: 0;
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  .factory-profile-score-grid .metric strong {
+    font-size: 18px;
+    line-height: 23px;
+  }
+
   .factory-browse-marketplace-page .factory-request-card-top {
     grid-template-columns: 1fr !important;
     gap: 14px !important;
@@ -8201,23 +8234,6 @@ a.secondary-btn,
     max-width: 100%;
   }
 
-  .app-shell:not(.nav-collapsed) > .factory-dashboard-page,
-  .app-shell:not(.nav-collapsed) > .rfqs-page,
-  .app-shell:not(.nav-collapsed) > .directory-page,
-  .app-shell:not(.nav-collapsed) > .messages-page,
-  .app-shell:not(.nav-collapsed) > .factory-detail-page,
-  .app-shell:not(.nav-collapsed) > .factory-profile-page,
-  .app-shell:not(.nav-collapsed) > .factory-submit-page,
-  .side-nav:not(.collapsed) + .factory-dashboard-page,
-  .side-nav:not(.collapsed) + .rfqs-page,
-  .side-nav:not(.collapsed) + .directory-page,
-  .side-nav:not(.collapsed) + .messages-page,
-  .side-nav:not(.collapsed) + .factory-detail-page,
-  .side-nav:not(.collapsed) + .factory-profile-page,
-  .side-nav:not(.collapsed) + .factory-submit-page {
-    width: calc(100vw - 276px) !important;
-    margin-left: 276px !important;
-  }
 }
 
 @media (max-width: 760px) {
@@ -8277,23 +8293,6 @@ a.secondary-btn,
     max-width: 100%;
   }
 
-  .app-shell:not(.nav-collapsed) > .factory-dashboard-page,
-  .app-shell:not(.nav-collapsed) > .rfqs-page,
-  .app-shell:not(.nav-collapsed) > .directory-page,
-  .app-shell:not(.nav-collapsed) > .messages-page,
-  .app-shell:not(.nav-collapsed) > .factory-detail-page,
-  .app-shell:not(.nav-collapsed) > .factory-profile-page,
-  .app-shell:not(.nav-collapsed) > .factory-submit-page,
-  .side-nav:not(.collapsed) + .factory-dashboard-page,
-  .side-nav:not(.collapsed) + .rfqs-page,
-  .side-nav:not(.collapsed) + .directory-page,
-  .side-nav:not(.collapsed) + .messages-page,
-  .side-nav:not(.collapsed) + .factory-detail-page,
-  .side-nav:not(.collapsed) + .factory-profile-page,
-  .side-nav:not(.collapsed) + .factory-submit-page {
-    width: calc(100vw - 276px) !important;
-    margin-left: 276px !important;
-  }
 }
 
 /* Keep expanded-sidebar page spacing consistent across factory screens. */
