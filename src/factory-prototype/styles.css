@@ -7582,9 +7582,12 @@
     margin-top: 0;
   }
 
-  .factory-dashboard-metrics,
   .factory-dashboard-row-facts {
     grid-template-columns: 1fr;
+  }
+
+  .factory-dashboard-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .factory-dashboard-rfq-row {
@@ -8051,9 +8054,10 @@ a.secondary-btn,
 .side-nav.collapsed + .factory-profile-page,
 .side-nav.collapsed + .factory-submit-page {
   box-sizing: border-box !important;
-  width: calc(100vw - 78px) !important;
+  width: auto !important;
   max-width: none !important;
   margin-left: 78px !important;
+  margin-right: 0 !important;
   padding-left: 28px !important;
   padding-right: 28px !important;
 }
@@ -8090,9 +8094,10 @@ a.secondary-btn,
   .nav-collapsed .factory-profile-page,
   .nav-collapsed .factory-submit-page {
     box-sizing: border-box !important;
-    width: calc(100vw - 78px) !important;
+    width: auto !important;
     max-width: none !important;
     margin-left: 78px !important;
+    margin-right: 0 !important;
     padding-left: 28px !important;
     padding-right: 28px !important;
   }
@@ -8127,6 +8132,68 @@ a.secondary-btn,
 }
 
 @media (max-width: 1180px) {
+  .factory-dashboard-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+  }
+
+  .factory-dashboard-metrics,
+  .factory-dashboard-main-stack,
+  .factory-dashboard-side-stack,
+  .factory-dashboard-capacity,
+  .factory-dashboard-credit-card,
+  .factory-rfq-invites-panel,
+  .factory-brand-messages-panel,
+  .factory-active-projects-panel {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .factory-brand-messages-panel,
+  .factory-rfq-invites-panel {
+    margin-top: 0;
+  }
+
+  .factory-dashboard-row-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .factory-dashboard-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .factory-dashboard-rfq-row {
+    grid-template-columns: 1fr;
+  }
+
+  .factory-project-dashboard-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .factory-dashboard-row .factory-project-fit,
+  .factory-project-view-btn {
+    justify-self: stretch;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-meta {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    justify-self: end;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-progress {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-self: stretch;
+    width: 100%;
+  }
+
   .factory-profile-performance {
     grid-template-columns: minmax(0, 190px) minmax(0, 1fr);
     gap: 18px;
@@ -8258,8 +8325,9 @@ a.secondary-btn,
   .nav-collapsed .factory-detail-page,
   .nav-collapsed .factory-profile-page,
   .nav-collapsed .factory-submit-page {
-    width: calc(100vw - 78px) !important;
+    width: auto !important;
     margin-left: 78px !important;
+    margin-right: 0 !important;
     padding-left: 16px !important;
     padding-right: 16px !important;
   }
@@ -8364,4 +8432,403 @@ a.secondary-btn,
 .factory-active-project-card .factory-request-title h2 {
   font-size: 18px !important;
   line-height: 24px !important;
+}
+
+@media (max-width: 1180px) {
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-top,
+  .factory-saved-rfq-card .factory-request-card-top,
+  .factory-active-project-card .factory-request-card-top,
+  .factory-rfq-card .factory-request-card-top,
+  .factory-detail-hero-card .factory-request-card-top {
+    min-width: 0;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-top,
+  .factory-active-project-card .factory-request-card-top,
+  .factory-rfq-card .factory-request-card-top,
+  .factory-detail-hero-card .factory-request-card-top,
+  .factory-submit-project-card .factory-request-card-top,
+  .factory-saved-rfq-card .factory-request-card-top {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-title,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-title > div,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-title > div:last-child,
+  .directory-factory-intro,
+  .factory-saved-rfq-card .factory-request-title,
+  .factory-active-project-card .factory-request-title {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-title h1,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-title h2,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-title p,
+  .directory-factory-intro h2,
+  .directory-factory-intro p,
+  .directory-factory-intro strong {
+    display: block !important;
+    max-width: 100%;
+    overflow: hidden !important;
+    text-overflow: ellipsis;
+    white-space: nowrap !important;
+    word-break: normal;
+    overflow-wrap: normal;
+    -webkit-line-clamp: initial !important;
+    -webkit-box-orient: initial !important;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-actions,
+  .factory-dashboard-mini-card .factory-request-card-actions,
+  .factory-project-dashboard-actions,
+  .factory-rfq-card-actions,
+  .factory-project-card-actions,
+  .factory-saved-card-actions,
+  .directory-factory-actions,
+  .factory-side-actions {
+    flex-wrap: nowrap !important;
+    min-width: 0;
+    max-width: none;
+    overflow: visible;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-actions > *,
+  .factory-rfq-card-actions > *,
+  .factory-project-card-actions > *,
+  .factory-saved-card-actions > *,
+  .directory-factory-actions > *,
+  .factory-side-actions > * {
+    flex: 0 0 auto;
+    min-width: max-content !important;
+    max-width: none;
+    overflow: visible;
+    white-space: nowrap;
+  }
+
+  .rfq-more {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .rfq-status,
+  .factory-request-card:not(.factory-dashboard-mini-card) .project-status,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-project-fit,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-actions .secondary-btn,
+  .factory-project-card-actions .secondary-btn {
+    flex: 0 0 auto;
+    min-width: max-content !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .factory-rfq-card,
+  .factory-active-project-card,
+  .factory-saved-rfq-card,
+  .factory-detail-hero-card {
+    gap: 14px;
+    padding: 18px;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-top,
+  .factory-rfq-card .factory-request-card-top,
+  .factory-active-project-card .factory-request-card-top,
+  .factory-saved-rfq-card .factory-request-card-top,
+  .factory-detail-hero-card .factory-request-card-top {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+    align-items: start;
+  }
+
+  .factory-rfq-card .factory-request-title,
+  .factory-active-project-card .factory-request-title,
+  .factory-saved-rfq-card .factory-request-title,
+  .factory-detail-hero-card .factory-request-title {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .factory-rfq-card .factory-avatar,
+  .factory-active-project-card .factory-avatar,
+  .factory-saved-rfq-card .factory-avatar,
+  .factory-detail-hero-card .factory-avatar {
+    display: none !important;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-actions,
+  .factory-rfq-card-actions,
+  .factory-project-card-actions,
+  .factory-saved-card-actions,
+  .directory-factory-actions,
+  .factory-side-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap !important;
+    max-width: none;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-actions .primary-btn,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-actions .secondary-btn,
+  .factory-dashboard-mini-card .factory-request-card-actions .primary-btn,
+  .factory-dashboard-mini-card .factory-request-card-actions .secondary-btn,
+  .factory-project-dashboard-actions .primary-btn,
+  .factory-project-dashboard-actions .secondary-btn,
+  .factory-rfq-card-actions .primary-btn,
+  .factory-rfq-card-actions .secondary-btn,
+  .factory-project-card-actions .primary-btn,
+  .factory-project-card-actions .secondary-btn,
+  .factory-saved-card-actions .primary-btn,
+  .factory-saved-card-actions .secondary-btn,
+  .directory-factory-actions .primary-btn,
+  .directory-factory-actions .secondary-btn,
+  .factory-side-actions .primary-btn,
+  .factory-side-actions .secondary-btn {
+    order: 1;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-actions .rfq-more,
+  .factory-dashboard-mini-card .factory-request-card-actions .rfq-more,
+  .factory-project-dashboard-actions .rfq-more,
+  .factory-rfq-card-actions .rfq-more,
+  .factory-project-card-actions .rfq-more {
+    order: 1;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-actions .rfq-status,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-actions .project-status,
+  .factory-dashboard-mini-card .factory-request-card-actions .rfq-status,
+  .factory-dashboard-mini-card .factory-request-card-actions .project-status,
+  .factory-dashboard-mini-card .factory-project-fit,
+  .factory-project-dashboard-actions .project-status,
+  .factory-project-dashboard-actions .factory-project-fit,
+  .factory-rfq-card-actions .rfq-status,
+  .factory-project-card-actions .project-status,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-project-fit,
+  .factory-saved-card-actions .factory-project-fit,
+  .directory-factory-actions .factory-project-fit,
+  .factory-side-actions .factory-project-fit {
+    order: 2;
+    flex-basis: 100%;
+    justify-content: flex-start !important;
+    justify-self: start;
+    align-self: stretch;
+    width: 100% !important;
+    margin-left: 0;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-top,
+  .factory-dashboard-mini-card .factory-request-card-top,
+  .factory-rfq-card .factory-request-card-top,
+  .factory-active-project-card .factory-request-card-top,
+  .factory-saved-rfq-card .factory-request-card-top,
+  .factory-detail-hero-card .factory-request-card-top {
+    grid-template-columns: minmax(0, 1fr) max-content max-content !important;
+    gap: 0 8px !important;
+  }
+
+  .factory-request-card-top > .factory-request-title {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .factory-request-card-top > .factory-request-card-actions,
+  .factory-request-card-top > .factory-rfq-card-actions,
+  .factory-request-card-top > .factory-project-card-actions,
+  .factory-request-card-top > .factory-project-dashboard-actions {
+    display: contents !important;
+  }
+
+  .factory-request-card-top > .factory-request-card-actions .primary-btn,
+  .factory-request-card-top > .factory-request-card-actions .secondary-btn,
+  .factory-request-card-top > .factory-rfq-card-actions .primary-btn,
+  .factory-request-card-top > .factory-rfq-card-actions .secondary-btn,
+  .factory-request-card-top > .factory-project-card-actions .primary-btn,
+  .factory-request-card-top > .factory-project-card-actions .secondary-btn,
+  .factory-request-card-top > .factory-project-dashboard-actions .primary-btn,
+  .factory-request-card-top > .factory-project-dashboard-actions .secondary-btn {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .factory-request-card-top > .factory-request-card-actions .rfq-more,
+  .factory-request-card-top > .factory-rfq-card-actions .rfq-more,
+  .factory-request-card-top > .factory-project-card-actions .rfq-more,
+  .factory-request-card-top > .factory-project-dashboard-actions .rfq-more {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .factory-request-card-top > .factory-request-card-actions .rfq-status,
+  .factory-request-card-top > .factory-request-card-actions .project-status,
+  .factory-request-card-top > .factory-request-card-actions .factory-project-fit,
+  .factory-request-card-top > .factory-rfq-card-actions .rfq-status,
+  .factory-request-card-top > .factory-project-card-actions .project-status,
+  .factory-request-card-top > .factory-project-dashboard-actions .project-status,
+  .factory-request-card-top > .factory-project-dashboard-actions .factory-project-fit {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    box-sizing: border-box;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    justify-self: stretch !important;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-top > .factory-request-card-actions .rfq-status,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-top > .factory-request-card-actions .project-status,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-top > .factory-request-card-actions .factory-project-fit,
+  .factory-rfq-card .factory-request-card-top > .factory-rfq-card-actions .rfq-status,
+  .factory-active-project-card .factory-request-card-top > .factory-project-card-actions .project-status,
+  .factory-saved-rfq-card .factory-request-card-top > .factory-request-card-actions .rfq-status,
+  .factory-detail-hero-card .factory-request-card-top > .factory-request-card-actions .factory-project-fit {
+    margin-top: -3px;
+    margin-bottom: -1px;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-top .factory-request-title h1,
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-top .factory-request-title h2,
+  .factory-rfq-card .factory-request-card-top .factory-request-title h2,
+  .factory-active-project-card .factory-request-card-top .factory-request-title h2 {
+    line-height: 25px !important;
+  }
+
+  .factory-request-card:not(.factory-dashboard-mini-card) .factory-request-card-top .factory-request-title p,
+  .factory-rfq-card .factory-request-card-top .factory-request-title p,
+  .factory-active-project-card .factory-request-card-top .factory-request-title p {
+    margin-top: 1px !important;
+    line-height: 17px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .factory-rfq-card:not(.factory-dashboard-mini-card),
+  .factory-active-project-card:not(.factory-dashboard-mini-card),
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card),
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) {
+    gap: 14px !important;
+    padding: 18px !important;
+  }
+
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) max-content max-content !important;
+    align-items: start !important;
+    gap: 0 8px !important;
+    min-width: 0 !important;
+  }
+
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-title,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-title,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-title,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-title {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-avatar,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-avatar,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-avatar,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-avatar {
+    display: none !important;
+  }
+
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title > div,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title > div,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title > div,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title > div {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title h1,
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title h2,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title h1,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title h2,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title h1,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title h2,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title h1,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title h2 {
+    display: block !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 18px !important;
+    line-height: 25px !important;
+  }
+
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title p,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title p,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title p,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-request-title p {
+    display: block !important;
+    margin: 1px 0 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 13px !important;
+    line-height: 17px !important;
+  }
+
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-rfq-card-actions,
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-card-actions,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-project-card-actions,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-card-actions,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-card-actions,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-card-actions {
+    display: contents !important;
+  }
+
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .primary-btn,
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .secondary-btn,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .primary-btn,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .secondary-btn,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .primary-btn,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .secondary-btn,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .primary-btn,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .secondary-btn {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-more,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-more,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-more,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-more {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-status,
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .project-status,
+  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-project-fit,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-status,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .project-status,
+  .factory-active-project-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-project-fit,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-status,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .project-status,
+  .factory-saved-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-project-fit,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-status,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .project-status,
+  .factory-detail-hero-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-project-fit {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    justify-self: stretch !important;
+    justify-content: flex-start !important;
+    margin-top: 6px !important;
+    margin-bottom: -1px !important;
+  }
 }

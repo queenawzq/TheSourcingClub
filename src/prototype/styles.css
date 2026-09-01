@@ -548,6 +548,8 @@ button {
   display: grid;
   gap: 28px;
   max-width: 1048px;
+  width: 100%;
+  min-width: 0;
 }
 
 .home-header {
@@ -788,6 +790,10 @@ button {
 .home-search-card {
   display: grid;
   gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 16px;
   border-radius: 8px;
 }
@@ -828,6 +834,7 @@ button {
 }
 
 .home-suggestion-row .pill {
+  max-width: 100%;
   min-height: 30px;
   padding: 0 10px;
   border-color: #d6e0ec;
@@ -837,6 +844,7 @@ button {
   font-size: 11px;
   font-weight: 500;
   line-height: 14px;
+  white-space: nowrap;
 }
 
 .home-attention {
@@ -1481,6 +1489,7 @@ button {
 .home-rfq-list {
   display: grid;
   gap: 12px;
+  min-width: 0;
 }
 
 .home-rfq-card {
@@ -1488,6 +1497,10 @@ button {
   grid-template-columns: minmax(0, 1fr) 240px;
   gap: 7px 14px;
   align-items: start;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 12px 14px 13px;
   border: 1px solid #d6e0ec;
   border-radius: 8px;
@@ -1517,9 +1530,9 @@ button {
 .home-rfq-card .home-production-title h3 {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 18px;
+  line-height: 20px;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -1642,9 +1655,9 @@ button {
 .home-production-card .home-production-title h3 {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 18px;
+  line-height: 20px;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -12901,9 +12914,10 @@ a.secondary-btn,
 .side-nav.collapsed + .billing-page-shell,
 .side-nav.collapsed + .factory-profile-page {
   box-sizing: border-box !important;
-  width: calc(100vw - 78px) !important;
+  width: auto !important;
   max-width: none !important;
   margin-left: 78px !important;
+  margin-right: 0 !important;
   padding-left: 28px !important;
   padding-right: 28px !important;
 }
@@ -12945,9 +12959,10 @@ a.secondary-btn,
   .nav-collapsed .billing-page-shell,
   .nav-collapsed .factory-profile-page {
     box-sizing: border-box !important;
-    width: calc(100vw - 78px) !important;
+    width: auto !important;
     max-width: none !important;
     margin-left: 78px !important;
+    margin-right: 0 !important;
     padding-left: 28px !important;
     padding-right: 28px !important;
   }
@@ -12999,8 +13014,9 @@ a.secondary-btn,
 
 @media (max-width: 1180px) {
   .home-dashboard-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
-    gap: 20px;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    gap: 24px;
   }
 
   .home-dashboard-grid,
@@ -13015,6 +13031,39 @@ a.secondary-btn,
   .brand-discount-card-body,
   .brand-discount-card-body > div {
     min-width: 0;
+  }
+
+  .home-dashboard-grid .home-active-rfqs,
+  .home-dashboard-grid .home-attention {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .home-stack,
+  .home-search-card,
+  .home-dashboard-grid,
+  .home-rfq-list,
+  .home-projects-list,
+  .home-active-orders {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .home-rfq-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .home-rfq-side {
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .home-production-facts.home-rfq-facts,
+  .home-rfq-description {
+    width: 100%;
+    max-width: 100%;
   }
 
   .brand-discount-card-topline,
@@ -13190,8 +13239,9 @@ a.secondary-btn,
   .nav-collapsed .settings-page-shell,
   .nav-collapsed .billing-page-shell,
   .nav-collapsed .factory-profile-page {
-    width: calc(100vw - 78px) !important;
+    width: auto !important;
     margin-left: 78px !important;
+    margin-right: 0 !important;
     padding-left: 16px !important;
     padding-right: 16px !important;
   }
@@ -13214,9 +13264,10 @@ a.secondary-btn,
   .side-nav:not(.collapsed) + .brand-projects-page,
   .nav-collapsed .brand-projects-page {
     box-sizing: border-box !important;
-    width: calc(100vw - 78px) !important;
+    width: auto !important;
     max-width: none !important;
     margin-left: 78px !important;
+    margin-right: 0 !important;
     padding-left: 16px !important;
     padding-right: 16px !important;
   }
@@ -13348,5 +13399,417 @@ a.secondary-btn,
     justify-self: end;
     width: 100%;
     max-width: 420px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .rfq-card-top,
+  .project-card-top,
+  .factory-card,
+  .quote-card,
+  .directory-factory-card,
+  .marketplace-factory-card,
+  .saved-factory-card-top,
+  .invite-factory-top,
+  .quote-factory-top {
+    min-width: 0;
+  }
+
+  .rfq-card-top,
+  .project-card-top {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+  }
+
+  .rfq-title-row,
+  .rfq-main,
+  .project-main,
+  .factory-main,
+  .factory-info,
+  .directory-factory-intro,
+  .marketplace-factory-copy,
+  .saved-factory-info {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .rfq-main h2,
+  .rfq-date,
+  .project-main h2,
+  .project-meta,
+  .factory-main h2,
+  .factory-main p,
+  .factory-info h2,
+  .factory-info p,
+  .directory-factory-intro h2,
+  .directory-factory-intro p,
+  .directory-factory-intro strong,
+  .marketplace-factory-copy h2,
+  .marketplace-factory-copy p,
+  .saved-factory-info h2,
+  .saved-factory-info p {
+    display: block !important;
+    max-width: 100%;
+    overflow: hidden !important;
+    text-overflow: ellipsis;
+    white-space: nowrap !important;
+    word-break: normal;
+    overflow-wrap: normal;
+    -webkit-line-clamp: initial !important;
+    -webkit-box-orient: initial !important;
+  }
+
+  .rfq-card-actions,
+  .project-actions,
+  .home-rfq-side,
+  .home-production-actions,
+  .factory-actions,
+  .quote-actions,
+  .directory-factory-actions,
+  .marketplace-factory-actions,
+  .saved-factory-actions {
+    flex-wrap: nowrap !important;
+    min-width: 0;
+    max-width: none;
+    overflow: visible;
+  }
+
+  .rfq-card-actions > *,
+  .project-actions > *,
+  .factory-actions > *,
+  .quote-actions > *,
+  .directory-factory-actions > *,
+  .marketplace-factory-actions > *,
+  .saved-factory-actions > * {
+    flex: 0 0 auto;
+    min-width: max-content !important;
+    max-width: none;
+    overflow: visible;
+    white-space: nowrap;
+  }
+
+  .rfq-more,
+  .project-overflow {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+
+  .rfq-card-actions .rfq-status,
+  .project-actions .project-status,
+  .factory-actions strong,
+  .quote-actions strong,
+  .save-pill {
+    flex: 0 0 auto;
+    min-width: max-content !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .rfq-card-top,
+  .project-card-top {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+    align-items: start;
+  }
+
+  .rfq-title-row,
+  .project-card-top .project-main,
+  .factory-card .factory-main,
+  .quote-card .factory-main,
+  .invite-factory-top,
+  .quote-factory-top {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .rfq-title-row .factory-avatar,
+  .project-card-top .factory-avatar,
+  .factory-card .factory-avatar,
+  .quote-card .factory-avatar,
+  .invite-factory-top .factory-avatar,
+  .quote-factory-top .factory-avatar {
+    display: none !important;
+  }
+
+  .rfq-card-actions,
+  .project-actions,
+  .factory-actions,
+  .quote-actions,
+  .directory-factory-actions,
+  .marketplace-factory-actions,
+  .saved-factory-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap !important;
+    max-width: none;
+  }
+
+  .rfq-card-actions .primary-btn,
+  .rfq-card-actions .secondary-btn,
+  .project-actions .primary-btn,
+  .project-actions .secondary-btn,
+  .home-rfq-side .primary-btn,
+  .home-production-actions .primary-btn,
+  .factory-actions .primary-btn,
+  .factory-actions .secondary-btn,
+  .quote-actions .primary-btn,
+  .quote-actions .secondary-btn,
+  .directory-factory-actions .primary-btn,
+  .directory-factory-actions .secondary-btn,
+  .marketplace-factory-actions .primary-btn,
+  .marketplace-factory-actions .secondary-btn,
+  .saved-factory-actions .primary-btn,
+  .saved-factory-actions .secondary-btn {
+    order: 1;
+  }
+
+  .rfq-card-actions .rfq-more,
+  .project-actions .project-overflow {
+    order: 1;
+  }
+
+  .rfq-card-actions .rfq-status,
+  .project-actions .project-status,
+  .home-rfq-side .rfq-status,
+  .home-production-actions .project-status,
+  .factory-actions strong,
+  .quote-actions strong,
+  .directory-factory-actions .save-pill,
+  .marketplace-factory-actions .save-pill,
+  .saved-factory-actions .save-pill {
+    order: 2;
+    flex-basis: 100%;
+    justify-content: flex-start !important;
+    justify-self: start;
+    align-self: stretch;
+    width: 100% !important;
+    margin-left: 0;
+  }
+
+  .rfq-card-top,
+  .project-card-top {
+    grid-template-columns: minmax(0, 1fr) max-content max-content !important;
+    gap: 0 8px !important;
+  }
+
+  .home-rfq-card,
+  .home-production-card {
+    gap: 7px 14px;
+  }
+
+  .rfq-card-top > .rfq-title-row,
+  .project-card-top > .project-main,
+  .home-rfq-card > .home-production-title,
+  .home-production-card > .home-production-title {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .rfq-card-top > .rfq-card-actions,
+  .project-card-top > .project-actions,
+  .home-rfq-card > .home-rfq-side,
+  .home-production-card > .home-production-actions {
+    display: contents;
+  }
+
+  .rfq-card-top > .rfq-card-actions .primary-btn,
+  .rfq-card-top > .rfq-card-actions .secondary-btn,
+  .project-card-top > .project-actions .primary-btn,
+  .project-card-top > .project-actions .secondary-btn,
+  .home-rfq-card > .home-rfq-side .primary-btn,
+  .home-production-card > .home-production-actions .primary-btn {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .rfq-card-top > .rfq-card-actions .rfq-more,
+  .rfq-card-top > .rfq-card-actions .project-overflow,
+  .project-card-top > .project-actions .project-overflow {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .rfq-card-top > .rfq-card-actions .rfq-status,
+  .project-card-top > .project-actions .project-status {
+    grid-column: 1 / 4;
+    grid-row: 2;
+    margin-top: -3px;
+    margin-bottom: -1px;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    justify-self: stretch !important;
+  }
+
+  .rfq-card-top .rfq-main h2,
+  .project-card-top .project-main h2 {
+    line-height: 25px !important;
+  }
+
+  .rfq-card-top .rfq-date,
+  .project-card-top .project-meta {
+    margin-top: 1px !important;
+    line-height: 17px !important;
+  }
+
+  .home-rfq-card > .home-rfq-side .rfq-status,
+  .home-production-card > .home-production-actions .project-status {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    justify-self: stretch !important;
+  }
+
+  .home-rfq-card > .home-production-facts,
+  .home-production-card > .home-production-facts {
+    grid-row: 3;
+  }
+
+  .home-rfq-card > .home-rfq-description,
+  .home-production-card > .home-production-progress {
+    grid-row: 4;
+  }
+}
+
+@media (max-width: 760px) {
+  .rfq-card:not(.home-rfq-card),
+  .brand-project-card {
+    gap: 14px !important;
+    padding: 18px !important;
+  }
+
+  .rfq-card:not(.home-rfq-card) > .rfq-card-top,
+  .brand-project-card > .project-card-top {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) max-content max-content !important;
+    align-items: start !important;
+    gap: 0 8px !important;
+    min-width: 0 !important;
+  }
+
+  .rfq-card:not(.home-rfq-card) > .rfq-card-top > .rfq-title-row,
+  .brand-project-card > .project-card-top > .project-main {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .rfq-card:not(.home-rfq-card) > .rfq-card-top .factory-avatar,
+  .brand-project-card > .project-card-top .factory-avatar {
+    display: none !important;
+  }
+
+  .rfq-card:not(.home-rfq-card) > .rfq-card-top .rfq-main,
+  .brand-project-card > .project-card-top .project-main {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .rfq-card:not(.home-rfq-card) > .rfq-card-top .rfq-main h2,
+  .brand-project-card > .project-card-top .project-main h2 {
+    display: block !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 18px !important;
+    line-height: 25px !important;
+  }
+
+  .rfq-card:not(.home-rfq-card) > .rfq-card-top .rfq-date,
+  .brand-project-card > .project-card-top .project-meta {
+    display: block !important;
+    margin: 1px 0 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 13px !important;
+    line-height: 17px !important;
+  }
+
+  .rfq-card:not(.home-rfq-card) > .rfq-card-top > .rfq-card-actions,
+  .brand-project-card > .project-card-top > .project-actions {
+    display: contents !important;
+  }
+
+  .rfq-card:not(.home-rfq-card) > .rfq-card-top > .rfq-card-actions .primary-btn,
+  .rfq-card:not(.home-rfq-card) > .rfq-card-top > .rfq-card-actions .secondary-btn,
+  .brand-project-card > .project-card-top > .project-actions .primary-btn,
+  .brand-project-card > .project-card-top > .project-actions .secondary-btn {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .rfq-card:not(.home-rfq-card) > .rfq-card-top > .rfq-card-actions .rfq-more,
+  .brand-project-card > .project-card-top > .project-actions .project-overflow {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .rfq-card:not(.home-rfq-card) > .rfq-card-top > .rfq-card-actions .rfq-status,
+  .brand-project-card > .project-card-top > .project-actions .project-status {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    justify-self: stretch !important;
+    justify-content: flex-start !important;
+    margin-top: 6px !important;
+    margin-bottom: -1px !important;
+  }
+}
+
+@media (max-width: 1320px) {
+  .brand-projects-page .brand-project-card > .project-card-top {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) max-content max-content !important;
+    align-items: start !important;
+    gap: 0 8px !important;
+    min-width: 0 !important;
+  }
+
+  .brand-projects-page .brand-project-card > .project-card-top > .project-main {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .brand-projects-page .brand-project-card > .project-card-top > .project-actions {
+    display: contents !important;
+  }
+
+  .brand-projects-page .brand-project-card > .project-card-top > .project-actions .primary-btn,
+  .brand-projects-page .brand-project-card > .project-card-top > .project-actions .secondary-btn {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .brand-projects-page .brand-project-card > .project-card-top > .project-actions .project-overflow {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .brand-projects-page .brand-project-card > .project-card-top > .project-actions .project-status {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    justify-self: stretch !important;
+    justify-content: flex-start !important;
+    margin-top: 6px !important;
+    margin-bottom: -1px !important;
   }
 }
