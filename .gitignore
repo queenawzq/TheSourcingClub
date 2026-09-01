@@ -10,3 +10,6 @@ dist/
 # Supabase local secrets
 supabase/.env
 .env.local
+
+# Provisioning credentials - move to a password manager
+.supabase-credentials
