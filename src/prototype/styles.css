@@ -12949,6 +12949,24 @@ a.secondary-btn,
     margin-right: 0 !important;
   }
 
+  .app-shell:not(.nav-collapsed) > .home-page,
+  .app-shell:not(.nav-collapsed) > .rfqs-page,
+  .app-shell:not(.nav-collapsed) > .directory-page,
+  .app-shell:not(.nav-collapsed) > .messages-page,
+  .app-shell:not(.nav-collapsed) > .settings-page-shell,
+  .app-shell:not(.nav-collapsed) > .billing-page-shell,
+  .app-shell:not(.nav-collapsed) > .factory-profile-page,
+  .side-nav:not(.collapsed) + .home-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .side-nav:not(.collapsed) + .directory-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .side-nav:not(.collapsed) + .settings-page-shell,
+  .side-nav:not(.collapsed) + .billing-page-shell,
+  .side-nav:not(.collapsed) + .factory-profile-page {
+    width: calc(100vw - 276px) !important;
+    margin-left: 276px !important;
+  }
+
   .brand-rfqs-page .rfqs-shell,
   .brand-rfqs-page .rfq-list,
   .brand-rfqs-page .rfq-card {
@@ -13128,6 +13146,24 @@ a.secondary-btn,
     box-sizing: border-box;
     min-width: 0;
     max-width: 100%;
+  }
+
+  .app-shell:not(.nav-collapsed) > .home-page,
+  .app-shell:not(.nav-collapsed) > .rfqs-page,
+  .app-shell:not(.nav-collapsed) > .directory-page,
+  .app-shell:not(.nav-collapsed) > .messages-page,
+  .app-shell:not(.nav-collapsed) > .settings-page-shell,
+  .app-shell:not(.nav-collapsed) > .billing-page-shell,
+  .app-shell:not(.nav-collapsed) > .factory-profile-page,
+  .side-nav:not(.collapsed) + .home-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .side-nav:not(.collapsed) + .directory-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .side-nav:not(.collapsed) + .settings-page-shell,
+  .side-nav:not(.collapsed) + .billing-page-shell,
+  .side-nav:not(.collapsed) + .factory-profile-page {
+    width: calc(100vw - 276px) !important;
+    margin-left: 276px !important;
   }
 }
 

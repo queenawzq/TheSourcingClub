@@ -8100,6 +8100,24 @@ a.secondary-btn,
     margin-left: 0 !important;
     margin-right: 0 !important;
   }
+
+  .app-shell:not(.nav-collapsed) > .factory-dashboard-page,
+  .app-shell:not(.nav-collapsed) > .rfqs-page,
+  .app-shell:not(.nav-collapsed) > .directory-page,
+  .app-shell:not(.nav-collapsed) > .messages-page,
+  .app-shell:not(.nav-collapsed) > .factory-detail-page,
+  .app-shell:not(.nav-collapsed) > .factory-profile-page,
+  .app-shell:not(.nav-collapsed) > .factory-submit-page,
+  .side-nav:not(.collapsed) + .factory-dashboard-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .side-nav:not(.collapsed) + .directory-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .side-nav:not(.collapsed) + .factory-detail-page,
+  .side-nav:not(.collapsed) + .factory-profile-page,
+  .side-nav:not(.collapsed) + .factory-submit-page {
+    width: calc(100vw - 276px) !important;
+    margin-left: 276px !important;
+  }
 }
 
 @media (max-width: 1180px) {
@@ -8182,6 +8200,24 @@ a.secondary-btn,
     min-width: 0;
     max-width: 100%;
   }
+
+  .app-shell:not(.nav-collapsed) > .factory-dashboard-page,
+  .app-shell:not(.nav-collapsed) > .rfqs-page,
+  .app-shell:not(.nav-collapsed) > .directory-page,
+  .app-shell:not(.nav-collapsed) > .messages-page,
+  .app-shell:not(.nav-collapsed) > .factory-detail-page,
+  .app-shell:not(.nav-collapsed) > .factory-profile-page,
+  .app-shell:not(.nav-collapsed) > .factory-submit-page,
+  .side-nav:not(.collapsed) + .factory-dashboard-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .side-nav:not(.collapsed) + .directory-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .side-nav:not(.collapsed) + .factory-detail-page,
+  .side-nav:not(.collapsed) + .factory-profile-page,
+  .side-nav:not(.collapsed) + .factory-submit-page {
+    width: calc(100vw - 276px) !important;
+    margin-left: 276px !important;
+  }
 }
 
 @media (max-width: 760px) {
@@ -8239,6 +8275,24 @@ a.secondary-btn,
     box-sizing: border-box;
     min-width: 0;
     max-width: 100%;
+  }
+
+  .app-shell:not(.nav-collapsed) > .factory-dashboard-page,
+  .app-shell:not(.nav-collapsed) > .rfqs-page,
+  .app-shell:not(.nav-collapsed) > .directory-page,
+  .app-shell:not(.nav-collapsed) > .messages-page,
+  .app-shell:not(.nav-collapsed) > .factory-detail-page,
+  .app-shell:not(.nav-collapsed) > .factory-profile-page,
+  .app-shell:not(.nav-collapsed) > .factory-submit-page,
+  .side-nav:not(.collapsed) + .factory-dashboard-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .side-nav:not(.collapsed) + .directory-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .side-nav:not(.collapsed) + .factory-detail-page,
+  .side-nav:not(.collapsed) + .factory-profile-page,
+  .side-nav:not(.collapsed) + .factory-submit-page {
+    width: calc(100vw - 276px) !important;
+    margin-left: 276px !important;
   }
 }
 
