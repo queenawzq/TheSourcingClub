@@ -1910,10 +1910,13 @@
 }
 
 .factory-project-dashboard-heading {
+  grid-column: 1;
+  grid-row: 1;
   display: grid;
   grid-template-columns: 46px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
+  min-width: 0;
 }
 
 .factory-project-dashboard-thumb-image {
@@ -1932,7 +1935,7 @@
 }
 
 .factory-project-dashboard-heading strong {
-  display: block;
+  display: -webkit-box;
   color: #0b1020;
   overflow: hidden;
   margin: 0;
@@ -1941,19 +1944,18 @@
   line-height: 19px !important;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .factory-project-dashboard-heading p {
+  display: -webkit-box;
   margin: 4px 0 0;
   color: #5c7298;
   overflow: hidden;
   font-size: 12px !important;
   font-weight: var(--weight-medium) !important;
   line-height: 17px !important;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .factory-dashboard-panel .factory-project-dashboard-heading .project-meta {
@@ -1967,6 +1969,9 @@
 }
 
 .factory-project-dashboard-actions {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -2009,6 +2014,8 @@
 }
 
 .factory-project-dashboard-progress {
+  grid-column: 2;
+  grid-row: 2;
   justify-self: end;
   width: min(100%, 430px);
   min-width: 0;
@@ -2049,6 +2056,8 @@
 }
 
 .factory-project-dashboard-meta {
+  grid-column: 1;
+  grid-row: 2;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
@@ -4260,9 +4269,9 @@
 .factory-saved-rfq-card h2 {
   margin: 0;
   color: #0b1020;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  line-height: 27px;
+  line-height: 24px;
 }
 
 .factory-saved-brand-card p,
@@ -4502,13 +4511,13 @@
 }
 
 .factory-active-project-card .factory-request-card-body {
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 38%);
+  grid-template-columns: minmax(560px, 1fr) 420px;
 }
 
 .factory-order-visuals {
   justify-self: end;
-  width: 100%;
-  max-width: 420px;
+  width: 420px;
+  max-width: none;
 }
 
 .factory-project-card {
@@ -4534,8 +4543,8 @@
 }
 
 .factory-project-card .directory-factory-intro h2 {
-  font-size: 20px;
-  line-height: 30px;
+  font-size: 18px;
+  line-height: 24px;
 }
 
 .factory-project-card .directory-factory-intro p {
@@ -4826,9 +4835,9 @@
 .factory-request-title h2 {
   margin: 0;
   color: #0b1223;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  line-height: 28px;
+  line-height: 24px;
 }
 
 .factory-request-title p {
@@ -5197,9 +5206,9 @@
 .factory-side-card h2 {
   margin: 0;
   color: #0b1223;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  line-height: 30px;
+  line-height: 24px;
 }
 
 .factory-detail-card p {
@@ -7026,9 +7035,9 @@
 .factory-review-card-header h2 {
   margin: 0;
   color: #0b1223;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  line-height: 30px;
+  line-height: 24px;
 }
 
 .factory-review-card-header p {
@@ -7373,6 +7382,24 @@
 }
 
 @media (max-width: 1180px) {
+  .factory-browse-marketplace-page .directory-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .factory-browse-marketplace-page .directory-filter-panel {
+    display: none;
+  }
+
+  .factory-browse-marketplace-page .directory-hero {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .factory-browse-marketplace-page .directory-search {
+    width: 100%;
+  }
+
   .factory-dashboard-page,
   .side-nav:not(.collapsed) + .factory-dashboard-page,
   .nav-collapsed .factory-dashboard-page {
@@ -7466,8 +7493,7 @@
     display: grid;
     grid-template-columns: auto auto auto;
     grid-template-areas:
-      "message primary more"
-      "status status status";
+      "status primary more";
     justify-content: end;
     align-items: center;
     gap: 10px;
@@ -7476,10 +7502,6 @@
   .factory-active-project-card .factory-project-card-actions .project-status {
     grid-area: status;
     justify-self: start;
-  }
-
-  .factory-active-project-card .factory-project-card-actions .secondary-btn {
-    grid-area: message;
   }
 
   .factory-active-project-card .factory-project-card-actions .primary-btn {
@@ -7562,14 +7584,36 @@
     grid-template-columns: 1fr;
   }
 
-  .factory-dashboard-rfq-row,
-  .factory-project-dashboard-row {
+  .factory-dashboard-rfq-row {
     grid-template-columns: 1fr;
+  }
+
+  .factory-project-dashboard-row {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .factory-dashboard-row .factory-project-fit,
   .factory-project-view-btn {
     justify-self: stretch;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-meta {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    justify-self: end;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-progress {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-self: stretch;
+    width: 100%;
   }
 
   .factory-onboarding-page {
@@ -7950,4 +7994,321 @@ a.secondary-btn,
   border-color: #f2b253 !important;
   background: #fff7e8 !important;
   color: #a65f00 !important;
+}
+
+.factory-request-card:not(.factory-dashboard-mini-card) .factory-request-title h1,
+.factory-request-card:not(.factory-dashboard-mini-card) .factory-request-title h2,
+.factory-rfq-card:not(.factory-dashboard-mini-card) .factory-request-title h2,
+.factory-submit-card .factory-request-title h2,
+.factory-active-project-card .factory-request-title h2 {
+  font-size: 18px !important;
+  line-height: 24px !important;
+}
+
+@media (max-width: 900px) {
+  .factory-messages-shell,
+  .factory-messages-shell:not(.has-side-panel) {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1220px) {
+  .message-room-actions .message-call-drawer-button {
+    box-sizing: border-box !important;
+    flex: 0 0 34px !important;
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    max-height: 34px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+  }
+
+  .message-room-actions .message-call-drawer-icon {
+    width: 15px !important;
+    height: 17px !important;
+  }
+}
+
+/* Keep collapsed-sidebar page spacing consistent across factory screens. */
+.nav-collapsed .factory-dashboard-page,
+.nav-collapsed .rfqs-page,
+.nav-collapsed .directory-page,
+.nav-collapsed .messages-page,
+.nav-collapsed .factory-detail-page,
+.nav-collapsed .factory-profile-page,
+.nav-collapsed .factory-submit-page,
+.side-nav.collapsed + .factory-dashboard-page,
+.side-nav.collapsed + .rfqs-page,
+.side-nav.collapsed + .directory-page,
+.side-nav.collapsed + .messages-page,
+.side-nav.collapsed + .factory-detail-page,
+.side-nav.collapsed + .factory-profile-page,
+.side-nav.collapsed + .factory-submit-page {
+  box-sizing: border-box !important;
+  width: calc(100vw - 78px) !important;
+  max-width: none !important;
+  margin-left: 78px !important;
+  padding-left: 28px !important;
+  padding-right: 28px !important;
+}
+
+.nav-collapsed .factory-dashboard-shell,
+.side-nav.collapsed + .factory-dashboard-page .factory-dashboard-shell,
+.nav-collapsed .messages-shell,
+.side-nav.collapsed + .messages-page .messages-shell {
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+@media (max-width: 1220px) {
+  .factory-dashboard-page,
+  .rfqs-page,
+  .directory-page,
+  .messages-page,
+  .factory-detail-page,
+  .factory-profile-page,
+  .factory-submit-page,
+  .side-nav:not(.collapsed) + .factory-dashboard-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .side-nav:not(.collapsed) + .directory-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .side-nav:not(.collapsed) + .factory-detail-page,
+  .side-nav:not(.collapsed) + .factory-profile-page,
+  .side-nav:not(.collapsed) + .factory-submit-page,
+  .nav-collapsed .factory-dashboard-page,
+  .nav-collapsed .rfqs-page,
+  .nav-collapsed .directory-page,
+  .nav-collapsed .messages-page,
+  .nav-collapsed .factory-detail-page,
+  .nav-collapsed .factory-profile-page,
+  .nav-collapsed .factory-submit-page {
+    box-sizing: border-box !important;
+    width: calc(100vw - 78px) !important;
+    max-width: none !important;
+    margin-left: 78px !important;
+    padding-left: 28px !important;
+    padding-right: 28px !important;
+  }
+
+  .factory-dashboard-shell,
+  .messages-shell {
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .factory-browse-marketplace-page .factory-request-card-top {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .factory-browse-marketplace-page .factory-request-card-actions {
+    justify-content: flex-end !important;
+    justify-self: end !important;
+    width: 100%;
+  }
+
+  .factory-browse-marketplace-page .factory-request-card-body {
+    grid-template-columns: 1fr !important;
+  }
+
+  .factory-browse-marketplace-page .factory-request-brief,
+  .factory-browse-marketplace-page .factory-request-visuals {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .factory-browse-marketplace-page .factory-request-visuals.has-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .factory-browse-marketplace-page .factory-request-visuals.has-gallery .factory-request-visual-main {
+    grid-column: auto;
+  }
+
+  .factory-browse-marketplace-page .factory-request-visuals.has-gallery .factory-request-visual-main img,
+  .factory-browse-marketplace-page .factory-request-visuals.has-gallery figure:not(.factory-request-visual-main) img {
+    height: 132px;
+    aspect-ratio: auto;
+  }
+
+  .factory-active-project-card .factory-request-card-top {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 18px !important;
+  }
+
+  .factory-active-project-card .factory-project-card-actions {
+    justify-content: flex-end !important;
+    justify-self: end !important;
+    width: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  .factory-rfq-card .factory-request-card-top {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .factory-rfq-card .factory-rfq-card-actions {
+    justify-content: flex-end !important;
+    justify-self: end !important;
+    width: 100%;
+  }
+
+  .factory-projects-page .projects-controls {
+    box-sizing: border-box;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 18px 14px !important;
+    overflow: visible;
+  }
+
+  .factory-projects-page .projects-controls .rfqs-search {
+    grid-column: 1 / -1;
+  }
+
+  .factory-projects-page .projects-controls .rfqs-search > div,
+  .factory-projects-page .projects-controls .rfqs-sort select {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .factory-dashboard-page,
+  .rfqs-page,
+  .directory-page,
+  .messages-page,
+  .factory-detail-page,
+  .factory-profile-page,
+  .factory-submit-page,
+  .side-nav:not(.collapsed) + .factory-dashboard-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .side-nav:not(.collapsed) + .directory-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .side-nav:not(.collapsed) + .factory-detail-page,
+  .side-nav:not(.collapsed) + .factory-profile-page,
+  .side-nav:not(.collapsed) + .factory-submit-page,
+  .nav-collapsed .factory-dashboard-page,
+  .nav-collapsed .rfqs-page,
+  .nav-collapsed .directory-page,
+  .nav-collapsed .messages-page,
+  .nav-collapsed .factory-detail-page,
+  .nav-collapsed .factory-profile-page,
+  .nav-collapsed .factory-submit-page {
+    width: calc(100vw - 78px) !important;
+    margin-left: 78px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .factory-active-project-card .factory-request-card-top {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .factory-active-project-card .factory-project-card-actions {
+    justify-content: flex-end !important;
+    justify-self: end !important;
+  }
+
+  .factory-projects-page .projects-controls {
+    box-sizing: border-box;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 18px 14px !important;
+    overflow: visible;
+  }
+
+  .factory-projects-page .projects-controls .rfqs-search {
+    grid-column: 1 / -1;
+  }
+
+  .factory-projects-page .projects-controls .rfqs-search > div,
+  .factory-projects-page .projects-controls .rfqs-sort select {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* Keep expanded-sidebar page spacing consistent across factory screens. */
+@media (min-width: 1221px) {
+  .app-shell:not(.nav-collapsed) > .factory-dashboard-page,
+  .app-shell:not(.nav-collapsed) > .rfqs-page,
+  .app-shell:not(.nav-collapsed) > .directory-page,
+  .app-shell:not(.nav-collapsed) > .messages-page,
+  .app-shell:not(.nav-collapsed) > .factory-detail-page,
+  .app-shell:not(.nav-collapsed) > .factory-profile-page,
+  .app-shell:not(.nav-collapsed) > .factory-submit-page,
+  .side-nav:not(.collapsed) + .factory-dashboard-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .side-nav:not(.collapsed) + .directory-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .side-nav:not(.collapsed) + .factory-detail-page,
+  .side-nav:not(.collapsed) + .factory-profile-page,
+  .side-nav:not(.collapsed) + .factory-submit-page {
+    box-sizing: border-box !important;
+    width: calc(100vw - 276px) !important;
+    max-width: none !important;
+    margin-left: 276px !important;
+    padding-left: 28px !important;
+    padding-right: 28px !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .factory-dashboard-page,
+  .side-nav:not(.collapsed) + .factory-dashboard-page,
+  .app-shell:not(.nav-collapsed) > .factory-profile-page,
+  .side-nav:not(.collapsed) + .factory-profile-page,
+  .app-shell:not(.nav-collapsed) > .factory-detail-page,
+  .side-nav:not(.collapsed) + .factory-detail-page {
+    padding-top: 72px !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .rfqs-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .app-shell:not(.nav-collapsed) > .factory-submit-page,
+  .side-nav:not(.collapsed) + .factory-submit-page {
+    padding-top: 72px !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .directory-page,
+  .side-nav:not(.collapsed) + .directory-page {
+    padding-top: 32px !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .messages-page,
+  .side-nav:not(.collapsed) + .messages-page {
+    padding-top: 36px !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .factory-dashboard-page .factory-dashboard-shell,
+  .side-nav:not(.collapsed) + .factory-dashboard-page .factory-dashboard-shell,
+  .app-shell:not(.nav-collapsed) > .messages-page .messages-shell,
+  .side-nav:not(.collapsed) + .messages-page .messages-shell {
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}
+
+.factory-detail-hero-card .factory-request-title h1,
+.factory-detail-hero-card .factory-request-title h2,
+.factory-request-card:not(.factory-dashboard-mini-card) .factory-request-title h1,
+.factory-request-card:not(.factory-dashboard-mini-card) .factory-request-title h2,
+.factory-rfq-card:not(.factory-dashboard-mini-card) .factory-request-title h2,
+.factory-submit-card .factory-request-title h2,
+.factory-active-project-card .factory-request-title h2 {
+  font-size: 18px !important;
+  line-height: 24px !important;
 }

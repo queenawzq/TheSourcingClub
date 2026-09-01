@@ -3220,8 +3220,7 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
 
   return (
     <article className="factory-project-dashboard-row">
-      <div className="factory-project-dashboard-main">
-        <header className="factory-project-dashboard-heading">
+      <header className="factory-project-dashboard-heading">
           <img
             className="factory-project-dashboard-thumb-image"
             src={imageSrc}
@@ -3234,25 +3233,22 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
               {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : `${project.brand} · ${project.location} · ${project.started}`}
             </p>
           </div>
-        </header>
-        <div className="factory-project-dashboard-meta">
+      </header>
+      <div className="factory-project-dashboard-meta">
           {productionFacts.map(([label, value]) => (
             <div className="factory-project-mini-metric" key={label}>
               <span>{label}</span>
               <strong>{value}</strong>
             </div>
           ))}
-        </div>
       </div>
 
-      <div className="factory-project-dashboard-side">
-        <div className="factory-project-dashboard-actions">
+      <div className="factory-project-dashboard-actions">
           <span className={`project-status ${project.statusTone}`}>{statusLabel}</span>
           <button className="primary-btn factory-project-view-btn" type="button" onClick={onView}>View order</button>
-        </div>
-        <div className="factory-project-dashboard-progress">
+      </div>
+      <div className="factory-project-dashboard-progress">
           <ProjectProgress progress={project.progress} />
-        </div>
       </div>
     </article>
   );
@@ -3362,56 +3358,58 @@ function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote })
         </section>
 
         <nav className="rfqs-tabs projects-tabs" aria-label="RFQ status">
-          {rfqTabs.map((tab) => (
-            !tab.locked ? (
-              <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+          <div className="project-tabs-scroll">
+            {rfqTabs.map((tab) => (
+              !tab.locked ? (
+                <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+                  <button
+                    className={activeTab === tab.key ? "active" : ""}
+                    type="button"
+                    aria-current={activeTab === tab.key ? "page" : undefined}
+                    onClick={() => setActiveTab(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                </div>
+              ) : (
                 <button
                   className={activeTab === tab.key ? "active" : ""}
                   type="button"
                   aria-current={activeTab === tab.key ? "page" : undefined}
                   onClick={() => setActiveTab(tab.key)}
+                  key={tab.key}
                 >
                   {tab.label}
                 </button>
-              </div>
+              )
+            ))}
+            {isAddingTab ? (
+              <form className="project-tab-add-form" onSubmit={addCustomTab}>
+                <input
+                  value={newTabName}
+                  onChange={(event) => setNewTabName(event.target.value)}
+                  placeholder="Tab name"
+                  autoFocus
+                />
+                <button type="submit">Add</button>
+                <button
+                  className="project-tab-add-cancel"
+                  type="button"
+                  aria-label="Cancel adding tab"
+                  onClick={() => {
+                    setNewTabName("");
+                    setIsAddingTab(false);
+                  }}
+                >
+                  ×
+                </button>
+              </form>
             ) : (
-              <button
-                className={activeTab === tab.key ? "active" : ""}
-                type="button"
-                aria-current={activeTab === tab.key ? "page" : undefined}
-                onClick={() => setActiveTab(tab.key)}
-                key={tab.key}
-              >
-                {tab.label}
+              <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+                + Add tab
               </button>
-            )
-          ))}
-          {isAddingTab ? (
-            <form className="project-tab-add-form" onSubmit={addCustomTab}>
-              <input
-                value={newTabName}
-                onChange={(event) => setNewTabName(event.target.value)}
-                placeholder="Tab name"
-                autoFocus
-              />
-              <button type="submit">Add</button>
-              <button
-                className="project-tab-add-cancel"
-                type="button"
-                aria-label="Cancel adding tab"
-                onClick={() => {
-                  setNewTabName("");
-                  setIsAddingTab(false);
-                }}
-              >
-                ×
-              </button>
-            </form>
-          ) : (
-            <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
-              + Add tab
-            </button>
-          )}
+            )}
+          </div>
           <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
             Manage tabs
           </button>
@@ -3709,6 +3707,7 @@ function FactoryMessagesScreen({ language = "en" }) {
   const [activeThreadId, setActiveThreadId] = useState(factoryMessageThreads[0].id);
   const [composer, setComposer] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
+  const [isCallPanelOpen, setIsCallPanelOpen] = useState(false);
   const [translatedMessages, setTranslatedMessages] = useState({});
   const [scheduledCalls, setScheduledCalls] = useState({});
   const activeThread = factoryMessageThreads.find((thread) => thread.id === activeThreadId) || factoryMessageThreads[0];
@@ -3754,6 +3753,7 @@ function FactoryMessagesScreen({ language = "en" }) {
               onClick={() => {
                 setActiveThreadId(thread.id);
                 setShowSchedule(false);
+                setIsCallPanelOpen(false);
               }}
               key={thread.id}
             >
@@ -3779,6 +3779,11 @@ function FactoryMessagesScreen({ language = "en" }) {
             </div>
           </div>
           <div className="message-room-actions">
+            {activeScheduledCall && !isCallPanelOpen && (
+              <button className="message-call-drawer-button" type="button" aria-label={isZh ? "显示预约通话" : "Show scheduled call"} onClick={() => setIsCallPanelOpen(true)}>
+                <img className="message-call-drawer-icon" src="/assets/prototype-icons/scheduled-call.svg" alt="" />
+              </button>
+            )}
             <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>{tx("Schedule call")}</button>
             <button className="primary-btn compact-btn" type="button">{tx("Live video chat")}</button>
           </div>
@@ -3818,9 +3823,20 @@ function FactoryMessagesScreen({ language = "en" }) {
       </section>
 
       {activeScheduledCall && (
-        <aside className="message-side-panel">
-          <FactoryUpcomingCallCard call={activeScheduledCall} language={language} />
-        </aside>
+        <>
+          {isCallPanelOpen && (
+            <button className="message-side-panel-scrim" type="button" aria-label={isZh ? "隐藏预约通话" : "Hide scheduled call"} onClick={() => setIsCallPanelOpen(false)} />
+          )}
+          <aside className={isCallPanelOpen ? "message-side-panel open" : "message-side-panel"}>
+            <header className="message-side-panel-header">
+              <h2>{tx("Scheduled call")}</h2>
+              <button className="settings-drawer-close message-side-panel-close" type="button" aria-label={isZh ? "隐藏预约通话" : "Hide scheduled call"} onClick={() => setIsCallPanelOpen(false)}>
+                <img src="/assets/prototype-icons/close.svg" alt="" />
+              </button>
+            </header>
+            <FactoryUpcomingCallCard call={activeScheduledCall} language={language} />
+          </aside>
+        </>
       )}
       {showSchedule && createPortal((
         <div className="message-schedule-modal-layer" role="presentation">
@@ -3901,16 +3917,16 @@ function FactoryUpcomingCallCard({ call, language = "en" }) {
   const isZh = language === "zh";
   const tx = (value) => (isZh ? getFactoryMessageCopy(value) : value);
   return (
-    <section className="upcoming-call-card">
-      <div className="upcoming-call-label">{tx("Scheduled call")}</div>
-      <h3>{isZh ? getFactoryThreadScheduleCopy(call.title) : call.title}</h3>
-      <div className="upcoming-call-time">
+    <section className="upcoming-call-card home-upcoming-call-time">
+      <div className="home-upcoming-call-heading">
+        <div>
+          <h3>{isZh ? getFactoryThreadScheduleCopy(call.title) : call.title}</h3>
+          <span>{isZh ? getFactoryThreadScheduleCopy(call.brandTime) : call.brandTime}</span>
+        </div>
         <strong>{isZh ? getFactoryThreadScheduleCopy(call.factoryTime) : call.factoryTime}</strong>
-        <span>{isZh ? getFactoryThreadScheduleCopy(call.brandTime) : call.brandTime}</span>
       </div>
-      <p>{isZh ? getFactoryThreadScheduleCopy(call.agenda) : call.agenda}</p>
-      <div className="upcoming-call-actions">
-        {call.hasVideo && <span>{tx("Video link added")}</span>}
+      <div className="home-upcoming-call-actions">
+        <p className="home-upcoming-call-description">{isZh ? getFactoryThreadScheduleCopy(call.agenda) : call.agenda}</p>
         <button className="secondary-btn compact-btn" type="button">{tx("Join call")}</button>
       </div>
     </section>
@@ -4251,56 +4267,58 @@ function FactoryProjectsPage({ language, onViewProject }) {
         </section>
 
         <nav className="rfqs-tabs projects-tabs" aria-label="Production order status">
-          {projectTabs.map((tab) => (
-            !tab.locked ? (
-              <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+          <div className="project-tabs-scroll">
+            {projectTabs.map((tab) => (
+              !tab.locked ? (
+                <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+                  <button
+                    className={activeTab === tab.key ? "active" : ""}
+                    type="button"
+                    aria-current={activeTab === tab.key ? "page" : undefined}
+                    onClick={() => setActiveTab(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                </div>
+              ) : (
                 <button
                   className={activeTab === tab.key ? "active" : ""}
                   type="button"
                   aria-current={activeTab === tab.key ? "page" : undefined}
                   onClick={() => setActiveTab(tab.key)}
+                  key={tab.key}
                 >
                   {tab.label}
                 </button>
-              </div>
+              )
+            ))}
+            {isAddingTab ? (
+              <form className="project-tab-add-form" onSubmit={addCustomTab}>
+                <input
+                  value={newTabName}
+                  onChange={(event) => setNewTabName(event.target.value)}
+                  placeholder="Tab name"
+                  autoFocus
+                />
+                <button type="submit">Add</button>
+                <button
+                  className="project-tab-add-cancel"
+                  type="button"
+                  aria-label="Cancel adding tab"
+                  onClick={() => {
+                    setNewTabName("");
+                    setIsAddingTab(false);
+                  }}
+                >
+                  ×
+                </button>
+              </form>
             ) : (
-              <button
-                className={activeTab === tab.key ? "active" : ""}
-                type="button"
-                aria-current={activeTab === tab.key ? "page" : undefined}
-                onClick={() => setActiveTab(tab.key)}
-                key={tab.key}
-              >
-                {tab.label}
+              <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+                + Add tab
               </button>
-            )
-          ))}
-          {isAddingTab ? (
-            <form className="project-tab-add-form" onSubmit={addCustomTab}>
-              <input
-                value={newTabName}
-                onChange={(event) => setNewTabName(event.target.value)}
-                placeholder="Tab name"
-                autoFocus
-              />
-              <button type="submit">Add</button>
-              <button
-                className="project-tab-add-cancel"
-                type="button"
-                aria-label="Cancel adding tab"
-                onClick={() => {
-                  setNewTabName("");
-                  setIsAddingTab(false);
-                }}
-              >
-                ×
-              </button>
-            </form>
-          ) : (
-            <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
-              + Add tab
-            </button>
-          )}
+            )}
+          </div>
           <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
             Manage tabs
           </button>
@@ -4378,7 +4396,6 @@ function FactoryProjectListCard({ project, language, onViewProject }) {
         </div>
         <div className="factory-request-card-actions factory-project-card-actions">
           <span className={`project-status ${project.statusTone}`}>{project.status}</span>
-          <button className="secondary-btn" type="button">Message</button>
           <button className="primary-btn" type="button" onClick={onViewProject}>View order</button>
           <button className="rfq-more" type="button" aria-label="More order actions">...</button>
         </div>
@@ -4539,7 +4556,10 @@ function FactoryBrowsePage({ language, onViewDetails }) {
               <strong>24 open requests</strong>
               <span>matching wovens, low MOQ, GOTS, and available August capacity</span>
             </div>
-            <button className="filter-button sort-button" type="button">Sort: Best fit</button>
+            <div className="directory-summary-actions">
+              <button className="filter-button compact-filter-button" type="button">Filters</button>
+              <button className="filter-button sort-button" type="button">Sort: Best fit</button>
+            </div>
           </div>
           <div className="directory-card-list">
             {brandProjects.map((project) => (

@@ -1517,9 +1517,9 @@ button {
 .home-rfq-card .home-production-title h3 {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
-  line-height: 19px;
+  line-height: 18px;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -1598,6 +1598,11 @@ button {
   background: #fff;
 }
 
+.home-production-card > .home-production-title {
+  grid-column: 1;
+  grid-row: 1;
+}
+
 .home-production-main {
   display: grid;
   gap: 12px;
@@ -1609,6 +1614,7 @@ button {
   grid-template-columns: 46px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
+  min-width: 0;
 }
 
 .home-rfq-card .home-production-title > div,
@@ -1634,20 +1640,30 @@ button {
 }
 
 .home-production-card .home-production-title h3 {
-  font-size: 15px;
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: 14px;
   font-weight: 600;
-  line-height: 19px;
+  line-height: 18px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .home-production-title p {
+  display: -webkit-box;
+  overflow: hidden;
   margin: 3px 0 0;
   color: #5c7298;
   font-size: 12px;
   font-weight: var(--weight-medium);
   line-height: 17px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .home-production-facts {
+  grid-column: 1;
+  grid-row: 2;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
@@ -1689,6 +1705,9 @@ button {
 }
 
 .home-production-actions {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -1711,6 +1730,8 @@ button {
 }
 
 .home-production-progress {
+  grid-column: 2;
+  grid-row: 2;
   justify-self: end;
   width: min(100%, 430px);
 }
@@ -4159,6 +4180,10 @@ textarea {
   justify-self: end;
 }
 
+.compact-filter-button {
+  display: none;
+}
+
 .filter-strip {
   display: grid;
   gap: 10px;
@@ -4385,8 +4410,8 @@ textarea {
 .factory-name-row h3 {
   margin: 0;
   color: #0b1223;
-  font-size: 20px;
-  line-height: 30px;
+  font-size: 18px;
+  line-height: 26px;
 }
 
 .trust-icon {
@@ -4519,8 +4544,8 @@ textarea {
 }
 
 .invite-factory-top .factory-name-row h3 {
-  font-size: 20px;
-  line-height: 28px;
+  font-size: 18px;
+  line-height: 24px;
 }
 
 .invite-factory-top .marketplace-factory-title p {
@@ -4663,8 +4688,8 @@ textarea {
 }
 
 .quote-factory-top .factory-name-row h3 {
-  font-size: 20px;
-  line-height: 28px;
+  font-size: 18px;
+  line-height: 26px;
 }
 
 .quote-factory-top .marketplace-factory-title p {
@@ -6597,6 +6622,7 @@ select {
   gap: 32px;
   align-items: center;
   margin-top: -8px;
+  min-width: 0;
 }
 
 .rfqs-tabs button {
@@ -6617,23 +6643,45 @@ select {
 }
 
 .projects-tabs {
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  flex-wrap: nowrap;
   gap: 24px;
+  overflow: visible;
+}
+
+.project-tabs-scroll {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.project-tabs-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .projects-tabs .project-tab-add {
+  flex: 0 0 auto;
   min-height: 30px;
   padding: 0 0 6px;
   border-bottom: 0;
   color: #60769b;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .projects-tabs .project-tab-manage {
+  flex: 0 0 auto;
   margin-left: auto;
+  justify-self: end;
 }
 
 .project-custom-tab {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -6805,7 +6853,20 @@ select {
 
 .rfq-title-row {
   display: flex;
+  gap: 14px;
   min-width: 0;
+}
+
+.rfq-title-row .factory-avatar,
+.factory-rfq-card .factory-avatar,
+.factory-browse-marketplace-page .factory-request-title .factory-avatar {
+  align-self: flex-start;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  min-height: 48px;
+  aspect-ratio: 1 / 1;
 }
 
 .rfq-main {
@@ -6815,8 +6876,8 @@ select {
 .rfq-main h2 {
   margin: 0;
   color: #0b1223;
-  font-size: 20px;
-  line-height: 28px;
+  font-size: 18px;
+  line-height: 25px;
   font-weight: 700;
 }
 
@@ -7045,9 +7106,9 @@ select {
 .saved-factory-card h2 {
   margin: 0;
   color: #0b1020;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
-  line-height: 27px;
+  line-height: 24px;
 }
 
 .saved-factory-card p {
@@ -7272,6 +7333,15 @@ select {
   align-items: end;
 }
 
+.brand-projects-page .rfqs-shell {
+  width: 100%;
+  max-width: min(1048px, 100%);
+}
+
+.brand-projects-page .projects-controls {
+  grid-template-columns: minmax(0, 1fr) repeat(3, 186px);
+}
+
 .projects-tabs {
   margin-top: -4px;
 }
@@ -7315,8 +7385,8 @@ select {
 .project-main h2 {
   margin: 0;
   color: #0b1020;
-  font-size: 20px;
-  line-height: 27px;
+  font-size: 18px;
+  line-height: 25px;
   font-weight: 700;
 }
 
@@ -8772,8 +8842,8 @@ select {
 .directory-factory-intro h2 {
   margin: 0;
   color: #0b1223;
-  font-size: 20px;
-  line-height: 28px;
+  font-size: 18px;
+  line-height: 26px;
 }
 
 .directory-factory-intro p {
@@ -8980,8 +9050,8 @@ select {
 .marketplace-factory-title h2 {
   margin: 0;
   color: #0b1223;
-  font-size: 20px;
-  line-height: 28px;
+  font-size: 18px;
+  line-height: 26px;
 }
 
 .marketplace-factory-title p {
@@ -9329,6 +9399,15 @@ select {
     padding-right: 24px;
   }
 
+  .messages-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .nav-collapsed .messages-page {
+    width: calc(100vw - 118px);
+    max-width: 1320px;
+    margin-left: 118px;
+    padding-right: 24px;
+  }
+
   .journey-rail,
   .right-rail {
     display: none;
@@ -9406,8 +9485,7 @@ select {
     display: grid;
     grid-template-columns: auto auto auto;
     grid-template-areas:
-      "message primary more"
-      "status status status";
+      "status primary more";
     justify-content: end;
     align-items: center;
     gap: 10px;
@@ -9417,10 +9495,6 @@ select {
   .project-actions .project-status {
     grid-area: status;
     justify-self: start;
-  }
-
-  .project-actions .secondary-btn {
-    grid-area: message;
   }
 
   .project-actions .primary-btn {
@@ -9465,8 +9539,15 @@ select {
     grid-template-columns: 1fr;
   }
 
-  .marketplace-filter-panel {
-    position: static;
+  .marketplace-filter-panel,
+  .directory-filter-panel {
+    display: none;
+  }
+
+  .compact-filter-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .marketplace-factory-top {
@@ -9475,11 +9556,7 @@ select {
 
   .marketplace-factory-metrics,
   .marketplace-factory-actions {
-    justify-content: flex-start;
-  }
-
-  .directory-filter-panel {
-    position: static;
+    justify-content: flex-end;
   }
 
   .directory-factory-card {
@@ -9489,7 +9566,7 @@ select {
 
   .directory-factory-metrics,
   .directory-factory-actions {
-    justify-content: flex-start;
+    justify-content: flex-end;
   }
 
   .directory-tags,
@@ -9534,6 +9611,15 @@ select {
     overflow-x: auto;
   }
 
+  .projects-tabs {
+    overflow: visible;
+  }
+
+  .projects-tabs .project-tabs-scroll {
+    gap: 20px;
+    overflow-x: auto;
+  }
+
   .rfqs-tabs button {
     white-space: nowrap;
   }
@@ -9549,12 +9635,12 @@ select {
   }
 
   .rfq-card-actions {
-    justify-content: flex-start;
+    justify-content: flex-end;
     flex-wrap: wrap;
   }
 
   .rfq-facts {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .brand-project-card {
@@ -9563,9 +9649,16 @@ select {
   }
 
   .home-dashboard-grid,
-  .home-rfq-card,
   .home-production-card {
     grid-template-columns: 1fr;
+  }
+
+  .home-production-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .home-rfq-card {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .home-attention-grid {
@@ -9573,21 +9666,36 @@ select {
   }
 
   .home-production-facts.home-rfq-facts {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .home-production-card > .home-production-facts {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .home-rfq-side,
   .home-production-actions {
-    justify-content: flex-start;
     flex-wrap: wrap;
   }
 
+  .home-production-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    justify-self: end;
+  }
+
   .home-rfq-side {
-    grid-column: auto;
-    grid-row: auto;
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+    justify-self: end;
   }
 
   .home-production-progress {
+    grid-column: 1 / -1;
+    grid-row: 3;
     justify-self: stretch;
     width: 100%;
   }
@@ -9608,8 +9716,7 @@ select {
     display: grid;
     grid-template-columns: auto auto auto;
     grid-template-areas:
-      "message primary more"
-      "status status status";
+      "status primary more";
     justify-content: end;
     align-items: center;
     gap: 10px;
@@ -9619,10 +9726,6 @@ select {
   .project-actions .project-status {
     grid-area: status;
     justify-self: start;
-  }
-
-  .project-actions .secondary-btn {
-    grid-area: message;
   }
 
   .project-actions .primary-btn {
@@ -9818,12 +9921,18 @@ select {
   }
 
   .marketplace-factory-actions {
+    box-sizing: border-box;
     flex-wrap: wrap;
+    justify-self: stretch;
+    justify-content: flex-end;
+    width: 100%;
+    padding-right: 6px;
   }
 
   .marketplace-factory-actions .primary-btn,
   .marketplace-factory-actions .secondary-btn {
-    flex: 1;
+    flex: 0 0 auto;
+    min-width: 0;
   }
 }
 
@@ -9952,6 +10061,11 @@ a.secondary-btn {
 .invite-factory-top .factory-actions strong {
   min-width: 96px !important;
   transform: translateY(3px);
+}
+
+.invite-factory-top .factory-name-row h3 {
+  font-size: 18px !important;
+  line-height: 24px !important;
 }
 
 .quote-factory-top .save-pill,
@@ -10804,6 +10918,7 @@ a.secondary-btn {
 }
 
 .messages-page {
+  box-sizing: border-box;
   min-height: 100vh;
   margin-left: 78px;
   padding: 36px 28px 36px;
@@ -11916,6 +12031,47 @@ a.secondary-btn {
   font-size: 13px;
 }
 
+.message-call-drawer-button,
+.message-side-panel-close,
+.message-side-panel-scrim {
+  display: none;
+}
+
+.message-call-drawer-button {
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  min-width: 34px;
+  max-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  max-height: 34px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: #fff;
+  color: #60769b;
+  appearance: none;
+  line-height: 1;
+}
+
+.message-call-drawer-icon {
+  display: block;
+  width: 15px;
+  height: 17px;
+}
+
+.message-side-panel-close svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .video-call-panel {
   display: flex;
   align-items: center;
@@ -12145,8 +12301,26 @@ a.secondary-btn {
 .message-side-panel {
   display: grid;
   align-content: start;
-  gap: 16px;
+  gap: 8px;
   min-width: 0;
+}
+
+.message-side-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 30px;
+  margin-bottom: 0;
+}
+
+.message-side-panel-header h2 {
+  margin: 0;
+  color: #0b1020;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 30px;
 }
 
 .schedule-card,
@@ -12202,21 +12376,7 @@ a.secondary-btn {
 }
 
 .upcoming-call-card {
-  border-color: #c4d5ff !important;
-  background: #f2f7fd !important;
-}
-
-.upcoming-call-label {
-  justify-self: start;
-  min-height: 28px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: #fff;
-  color: #1a4df2;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 16px;
-  text-transform: uppercase;
+  gap: 10px;
 }
 
 .upcoming-call-card h3 {
@@ -12227,28 +12387,29 @@ a.secondary-btn {
   line-height: 26px;
 }
 
-.upcoming-call-time {
-  display: grid;
-  gap: 3px;
-  padding: 11px 12px;
-  border: 1px solid #d7e0ea;
-  border-radius: 6px;
-  background: #fff;
+.upcoming-call-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
 }
 
-.upcoming-call-time strong,
-.upcoming-call-time span {
+.upcoming-call-heading strong,
+.upcoming-call-heading span {
   display: block;
 }
 
-.upcoming-call-time strong {
+.upcoming-call-heading strong {
+  flex: 0 0 auto;
   color: #0b1020;
   font-size: 14px;
   font-weight: 700;
   line-height: 18px;
+  text-align: right;
 }
 
-.upcoming-call-time span {
+.upcoming-call-heading span {
+  margin-top: 6px;
   color: #60769b;
   font-size: 12px;
   font-weight: 600;
@@ -12273,7 +12434,13 @@ a.secondary-btn {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 14px;
+}
+
+.upcoming-call-actions p {
+  min-width: 0;
+  padding-left: 10px;
+  border-left: 3px solid #2454f4;
 }
 
 .upcoming-call-actions span {
@@ -12288,6 +12455,25 @@ a.secondary-btn {
   height: 38px;
   padding: 0 16px;
   font-size: 13px;
+}
+
+.upcoming-call-card.home-upcoming-call-time .home-upcoming-call-heading h3 {
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.upcoming-call-card.home-upcoming-call-time .home-upcoming-call-heading strong {
+  font-size: 13px;
+  line-height: 17px;
+}
+
+.upcoming-call-card.home-upcoming-call-time .home-upcoming-call-heading span {
+  color: #60769b;
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 15px;
+  white-space: nowrap;
 }
 
 .schedule-card header {
@@ -12390,20 +12576,128 @@ a.secondary-btn {
 }
 
 @media (max-width: 1220px) {
+  .messages-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .nav-collapsed .messages-page {
+    width: calc(100vw - 118px);
+    max-width: 1320px;
+    margin-left: 118px;
+    padding: 36px 24px;
+  }
+
   .messages-shell {
-    grid-template-columns: 280px minmax(0, 1fr);
+    width: 100%;
+    max-width: none;
+    grid-template-columns: 300px minmax(0, 1fr);
   }
 
   .message-side-panel {
-    grid-column: 1 / -1;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 121;
+    width: min(560px, calc(100vw - 78px));
+    padding: 46px 44px;
+    overflow: auto;
+    border-left: 1px solid #dbe3ed;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: -18px 0 36px rgba(11, 16, 32, 0.12);
+    transform: translateX(calc(100% + 32px));
+    transition: transform 180ms ease;
   }
+
+  .message-side-panel-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: block;
+    border: 0;
+    background: rgba(7, 11, 16, 0.18);
+  }
+
+  .message-side-panel.open {
+    transform: translateX(0);
+  }
+
+  .message-call-drawer-button,
+  .message-side-panel-close {
+    display: inline-flex;
+  }
+
+  .message-room-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .message-room-identity,
+  .message-room-identity > div {
+    width: 100%;
+  }
+
+  .message-room-header p {
+    max-width: 100%;
+  }
+
+  .message-room-actions {
+    flex-wrap: nowrap;
+  }
+
+  .message-call-drawer-button {
+    box-sizing: border-box !important;
+    flex: 0 0 34px !important;
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    max-height: 34px !important;
+    padding: 0 !important;
+    border-radius: 50% !important;
+  }
+
+  .message-call-drawer-button span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .message-call-drawer-icon {
+    display: block;
+    width: 15px !important;
+    height: 17px !important;
+  }
+
+  .message-side-panel-close {
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: #fff;
+  }
+
+  .message-side-panel-close img {
+    width: 24px;
+    height: 24px;
+  }
+
+  .message-side-panel .upcoming-call-card {
+    border: 1px solid var(--border) !important;
+    border-radius: 8px;
+    background: #fff !important;
+  }
+
 }
 
 @media (max-width: 900px) {
   .messages-page,
-  .side-nav:not(.collapsed) + .messages-page {
-    margin-left: 78px;
+  .side-nav:not(.collapsed) + .messages-page,
+  .nav-collapsed .messages-page {
+    width: calc(100vw - 118px);
+    margin-left: 118px;
     padding: 28px 18px;
   }
 
@@ -12412,7 +12706,6 @@ a.secondary-btn {
     grid-template-columns: 1fr;
   }
 
-  .message-room-header,
   .video-call-panel {
     align-items: flex-start;
     flex-direction: column;
@@ -12580,4 +12873,295 @@ a.secondary-btn,
   border-color: #f2b253 !important;
   background: #fff7e8 !important;
   color: #a65f00 !important;
+}
+
+/* Keep collapsed-sidebar page spacing consistent across brand screens. */
+.nav-collapsed .home-page,
+.nav-collapsed .rfqs-page,
+.nav-collapsed .directory-page,
+.nav-collapsed .messages-page,
+.nav-collapsed .settings-page-shell,
+.nav-collapsed .billing-page-shell,
+.nav-collapsed .factory-profile-page,
+.side-nav.collapsed + .home-page,
+.side-nav.collapsed + .rfqs-page,
+.side-nav.collapsed + .directory-page,
+.side-nav.collapsed + .messages-page,
+.side-nav.collapsed + .settings-page-shell,
+.side-nav.collapsed + .billing-page-shell,
+.side-nav.collapsed + .factory-profile-page {
+  box-sizing: border-box !important;
+  width: calc(100vw - 78px) !important;
+  max-width: none !important;
+  margin-left: 78px !important;
+  padding-left: 28px !important;
+  padding-right: 28px !important;
+}
+
+.nav-collapsed .home-page,
+.side-nav.collapsed + .home-page,
+.nav-collapsed .factory-profile-page,
+.side-nav.collapsed + .factory-profile-page {
+  padding-top: 72px !important;
+}
+
+.nav-collapsed .messages-shell,
+.side-nav.collapsed + .messages-page .messages-shell {
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+@media (max-width: 1220px) {
+  .home-page,
+  .rfqs-page,
+  .directory-page,
+  .messages-page,
+  .settings-page-shell,
+  .billing-page-shell,
+  .factory-profile-page,
+  .side-nav:not(.collapsed) + .home-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .side-nav:not(.collapsed) + .directory-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .side-nav:not(.collapsed) + .settings-page-shell,
+  .side-nav:not(.collapsed) + .billing-page-shell,
+  .side-nav:not(.collapsed) + .factory-profile-page,
+  .nav-collapsed .home-page,
+  .nav-collapsed .rfqs-page,
+  .nav-collapsed .directory-page,
+  .nav-collapsed .messages-page,
+  .nav-collapsed .settings-page-shell,
+  .nav-collapsed .billing-page-shell,
+  .nav-collapsed .factory-profile-page {
+    box-sizing: border-box !important;
+    width: calc(100vw - 78px) !important;
+    max-width: none !important;
+    margin-left: 78px !important;
+    padding-left: 28px !important;
+    padding-right: 28px !important;
+  }
+
+  .messages-shell {
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .brand-project-card .project-card-top {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 18px !important;
+  }
+
+  .brand-project-card .project-actions {
+    justify-content: flex-end !important;
+    justify-self: end !important;
+    width: auto;
+  }
+
+  .brand-project-card .project-main h2,
+  .brand-project-card .project-meta {
+    max-width: none !important;
+  }
+}
+
+@media (max-width: 1320px) {
+  .brand-projects-page .brand-project-card .project-card-top {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .brand-projects-page .brand-project-card .project-actions {
+    justify-content: flex-end !important;
+    justify-self: end !important;
+    width: auto;
+  }
+
+  .brand-projects-page .brand-project-card .project-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-projects-page .brand-project-card .project-visuals {
+    justify-self: start;
+    width: min(100%, 420px);
+    max-width: 420px;
+  }
+
+  .brand-projects-page .brand-project-card .project-facts {
+    width: 100%;
+  }
+
+  .brand-projects-page .brand-project-card .project-progress {
+    width: 100%;
+    max-width: 504px;
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .rfq-card .rfq-card-top {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .rfq-card .rfq-card-actions {
+    justify-content: flex-end !important;
+    justify-self: end !important;
+    width: 100%;
+  }
+
+  .brand-projects-page .projects-controls {
+    box-sizing: border-box;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 18px 14px !important;
+    overflow: visible;
+  }
+
+  .brand-projects-page .projects-controls .rfqs-search {
+    grid-column: 1 / -1;
+  }
+
+  .brand-projects-page .projects-controls .rfqs-search > div,
+  .brand-projects-page .projects-controls .rfqs-sort select {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .home-page,
+  .rfqs-page,
+  .directory-page,
+  .messages-page,
+  .settings-page-shell,
+  .billing-page-shell,
+  .factory-profile-page,
+  .side-nav:not(.collapsed) + .home-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .side-nav:not(.collapsed) + .directory-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .side-nav:not(.collapsed) + .settings-page-shell,
+  .side-nav:not(.collapsed) + .billing-page-shell,
+  .side-nav:not(.collapsed) + .factory-profile-page,
+  .nav-collapsed .home-page,
+  .nav-collapsed .rfqs-page,
+  .nav-collapsed .directory-page,
+  .nav-collapsed .messages-page,
+  .nav-collapsed .settings-page-shell,
+  .nav-collapsed .billing-page-shell,
+  .nav-collapsed .factory-profile-page {
+    width: calc(100vw - 78px) !important;
+    margin-left: 78px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .project-card-top {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .project-actions {
+    justify-content: flex-end !important;
+    justify-self: end !important;
+  }
+
+  .project-main h2 {
+    max-width: none !important;
+  }
+
+  .brand-projects-page,
+  .side-nav:not(.collapsed) + .brand-projects-page,
+  .nav-collapsed .brand-projects-page {
+    box-sizing: border-box !important;
+    width: calc(100vw - 78px) !important;
+    max-width: none !important;
+    margin-left: 78px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .brand-projects-page .rfqs-shell,
+  .brand-projects-page .projects-list,
+  .brand-projects-page .brand-project-card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .brand-projects-page .projects-controls {
+    box-sizing: border-box;
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 18px 14px !important;
+    overflow: visible;
+  }
+
+  .brand-projects-page .projects-controls .rfqs-search {
+    grid-column: 1 / -1;
+  }
+
+  .brand-projects-page .projects-controls .rfqs-search > div,
+  .brand-projects-page .projects-controls .rfqs-sort select {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* Keep expanded-sidebar page spacing consistent across brand screens. */
+@media (min-width: 1221px) {
+  .app-shell:not(.nav-collapsed) > .home-page,
+  .app-shell:not(.nav-collapsed) > .rfqs-page,
+  .app-shell:not(.nav-collapsed) > .directory-page,
+  .app-shell:not(.nav-collapsed) > .messages-page,
+  .app-shell:not(.nav-collapsed) > .settings-page-shell,
+  .app-shell:not(.nav-collapsed) > .billing-page-shell,
+  .app-shell:not(.nav-collapsed) > .factory-profile-page,
+  .side-nav:not(.collapsed) + .home-page,
+  .side-nav:not(.collapsed) + .rfqs-page,
+  .side-nav:not(.collapsed) + .directory-page,
+  .side-nav:not(.collapsed) + .messages-page,
+  .side-nav:not(.collapsed) + .settings-page-shell,
+  .side-nav:not(.collapsed) + .billing-page-shell,
+  .side-nav:not(.collapsed) + .factory-profile-page {
+    box-sizing: border-box !important;
+    width: calc(100vw - 276px) !important;
+    max-width: none !important;
+    margin-left: 276px !important;
+    padding-left: 28px !important;
+    padding-right: 28px !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .home-page,
+  .side-nav:not(.collapsed) + .home-page,
+  .app-shell:not(.nav-collapsed) > .factory-profile-page,
+  .side-nav:not(.collapsed) + .factory-profile-page {
+    padding-top: 72px !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .rfqs-page,
+  .side-nav:not(.collapsed) + .rfqs-page {
+    padding-top: 72px !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .messages-page,
+  .side-nav:not(.collapsed) + .messages-page {
+    padding-top: 36px !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .directory-page,
+  .side-nav:not(.collapsed) + .directory-page {
+    padding-top: 32px !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .messages-page .messages-shell,
+  .side-nav:not(.collapsed) + .messages-page .messages-shell {
+    max-width: none !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+  }
 }

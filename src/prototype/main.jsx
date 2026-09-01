@@ -1106,7 +1106,7 @@ function App() {
         }}
         onProfile={() => goTo("profile")}
       />
-      <main key={screen} className={screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" ? "rfqs-page brand-rfqs-page" : screen === "projects" || screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page"}>
+      <main key={screen} className={screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" ? "rfqs-page brand-rfqs-page" : screen === "projects" ? "rfqs-page brand-projects-page" : screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page"}>
         {!isStandalone && <JourneyRail current={activeMeta.step} isMilestoneFunding={Boolean(fundingMilestone)} />}
         <section className="flow-content">
           {!isStandalone && screen !== "quoteDetail" && (
@@ -1350,6 +1350,7 @@ function MessagesScreen() {
   const [activeThreadId, setActiveThreadId] = useState(messageThreads[0].id);
   const [composer, setComposer] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
+  const [isCallPanelOpen, setIsCallPanelOpen] = useState(false);
   const [callMode, setCallMode] = useState("idle");
   const [translatedMessages, setTranslatedMessages] = useState({});
   const [scheduledCalls, setScheduledCalls] = useState({
@@ -1404,6 +1405,7 @@ function MessagesScreen() {
               onClick={() => {
                 setActiveThreadId(thread.id);
                 setShowSchedule(false);
+                setIsCallPanelOpen(false);
                 setCallMode("idle");
               }}
               key={thread.id}
@@ -1424,13 +1426,17 @@ function MessagesScreen() {
       <section className="message-workspace">
         <header className="message-room-header">
           <div className="message-room-identity">
-            <span className="message-avatar large">{activeThread.initials}</span>
             <div>
               <h2>{activeThread.name}</h2>
               <p>{activeThread.localTime} · {activeThread.project}</p>
             </div>
           </div>
           <div className="message-room-actions">
+            {activeScheduledCall && !isCallPanelOpen && (
+              <button className="message-call-drawer-button" type="button" aria-label="Show scheduled call" onClick={() => setIsCallPanelOpen(true)}>
+                <img className="message-call-drawer-icon" src="/assets/prototype-icons/scheduled-call.svg" alt="" />
+              </button>
+            )}
             <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>Schedule call</button>
             <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>
           </div>
@@ -1472,7 +1478,16 @@ function MessagesScreen() {
         </footer>
       </section>
 
-      <aside className="message-side-panel">
+      {isCallPanelOpen && (
+        <button className="message-side-panel-scrim" type="button" aria-label="Hide scheduled call" onClick={() => setIsCallPanelOpen(false)} />
+      )}
+      <aside className={isCallPanelOpen ? "message-side-panel open" : "message-side-panel"}>
+        <header className="message-side-panel-header">
+          <h2>Scheduled call</h2>
+          <button className="settings-drawer-close message-side-panel-close" type="button" aria-label="Hide scheduled call" onClick={() => setIsCallPanelOpen(false)}>
+            <img src="/assets/prototype-icons/close.svg" alt="" />
+          </button>
+        </header>
         {activeScheduledCall && <UpcomingCallCard call={activeScheduledCall} thread={activeThread} />}
       </aside>
       {showSchedule && createPortal((
@@ -1554,16 +1569,16 @@ function VideoCallPanel({ thread, mode, setMode }) {
 
 function UpcomingCallCard({ call, thread }) {
   return (
-    <section className="upcoming-call-card">
-      <div className="upcoming-call-label">Scheduled call</div>
-      <h3>{call.title}</h3>
-      <div className="upcoming-call-time">
+    <section className="upcoming-call-card home-upcoming-call-time">
+      <div className="home-upcoming-call-heading">
+        <div>
+          <h3>{call.title}</h3>
+          <span>{call.factoryTime}</span>
+        </div>
         <strong>{call.brandTime}</strong>
-        <span>{call.factoryTime}</span>
       </div>
-      <p>{call.agenda}</p>
-      <div className="upcoming-call-actions">
-        {call.hasVideo && <span>Video link added</span>}
+      <div className="home-upcoming-call-actions">
+        <p className="home-upcoming-call-description">{call.agenda}</p>
         <button className="secondary-btn compact-btn" type="button">Join call</button>
       </div>
     </section>
@@ -3023,33 +3038,29 @@ function HomeProjectMiniCard({ project, goTo }) {
 
   return (
     <article className="home-production-card">
-      <div className="home-production-main">
-        <header className="home-production-title">
-          {project.image && <img src={project.image.src} alt={`${project.title} reference`} />}
-          <div>
-            <h3>{project.title}</h3>
-            <p>{project.factory} · {project.location} · {project.started}</p>
-          </div>
-        </header>
-        <div className="home-production-facts">
-          <div>
-            <span>Production step</span>
-            <strong>{project.currentStep}</strong>
-          </div>
-          <div>
-            <span>Next due</span>
-            <strong>{project.nextDue}</strong>
-          </div>
+      <header className="home-production-title">
+        {project.image && <img src={project.image.src} alt={`${project.title} reference`} />}
+        <div>
+          <h3>{project.title}</h3>
+          <p>{project.factory} · {project.location} · {project.started}</p>
+        </div>
+      </header>
+      <div className="home-production-actions">
+        <span className={`project-status ${project.statusTone}`}>{compactStatus}</span>
+        <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>View order</button>
+      </div>
+      <div className="home-production-facts">
+        <div>
+          <span>Production step</span>
+          <strong>{project.currentStep}</strong>
+        </div>
+        <div>
+          <span>Next due</span>
+          <strong>{project.nextDue}</strong>
         </div>
       </div>
-      <div className="home-production-side">
-        <div className="home-production-actions">
-          <span className={`project-status ${project.statusTone}`}>{compactStatus}</span>
-          <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>View order</button>
-        </div>
-        <div className="home-production-progress">
-          <ProjectProgress progress={project.progress} />
-        </div>
+      <div className="home-production-progress">
+        <ProjectProgress progress={project.progress} />
       </div>
     </article>
   );
@@ -4479,6 +4490,7 @@ function FactoryMarketplaceScreen({ goTo }) {
             <span>showing larger samples, exact garment tags, specialties, and verified capability notes</span>
           </div>
           <div className="directory-summary-actions">
+            <button className="filter-button compact-filter-button" type="button">Filters</button>
             <button className="filter-button sort-button" type="button">Sort: Best fit</button>
           </div>
         </div>
@@ -4850,56 +4862,58 @@ function RfqsScreen({ goTo }) {
       </section>
 
       <nav className="rfqs-tabs projects-tabs" aria-label="Quote status">
-        {rfqTabs.map((tab) => (
-          !tab.locked ? (
-            <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+        <div className="project-tabs-scroll">
+          {rfqTabs.map((tab) => (
+            !tab.locked ? (
+              <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+                <button
+                  className={activeTab === tab.key ? "active" : ""}
+                  type="button"
+                  aria-current={activeTab === tab.key ? "page" : undefined}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              </div>
+            ) : (
               <button
                 className={activeTab === tab.key ? "active" : ""}
                 type="button"
                 aria-current={activeTab === tab.key ? "page" : undefined}
                 onClick={() => setActiveTab(tab.key)}
+                key={tab.key}
               >
                 {tab.label}
               </button>
-            </div>
+            )
+          ))}
+          {isAddingTab ? (
+            <form className="project-tab-add-form" onSubmit={addCustomTab}>
+              <input
+                value={newTabName}
+                onChange={(event) => setNewTabName(event.target.value)}
+                placeholder="Tab name"
+                autoFocus
+              />
+              <button type="submit">Add</button>
+              <button
+                className="project-tab-add-cancel"
+                type="button"
+                aria-label="Cancel adding tab"
+                onClick={() => {
+                  setNewTabName("");
+                  setIsAddingTab(false);
+                }}
+              >
+                ×
+              </button>
+            </form>
           ) : (
-            <button
-              className={activeTab === tab.key ? "active" : ""}
-              type="button"
-              aria-current={activeTab === tab.key ? "page" : undefined}
-              onClick={() => setActiveTab(tab.key)}
-              key={tab.key}
-            >
-              {tab.label}
+            <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+              + Add tab
             </button>
-          )
-        ))}
-        {isAddingTab ? (
-          <form className="project-tab-add-form" onSubmit={addCustomTab}>
-            <input
-              value={newTabName}
-              onChange={(event) => setNewTabName(event.target.value)}
-              placeholder="Tab name"
-              autoFocus
-            />
-            <button type="submit">Add</button>
-            <button
-              className="project-tab-add-cancel"
-              type="button"
-              aria-label="Cancel adding tab"
-              onClick={() => {
-                setNewTabName("");
-                setIsAddingTab(false);
-              }}
-            >
-              ×
-            </button>
-          </form>
-        ) : (
-          <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
-            + Add tab
-          </button>
-        )}
+          )}
+        </div>
         <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
           Manage tabs
         </button>
@@ -5165,56 +5179,58 @@ function ProjectsScreen({ goTo, setSelectedReorderProject }) {
       </section>
 
       <nav className="rfqs-tabs projects-tabs" aria-label="Project status">
-        {projectTabs.map((tab) => (
-          !tab.locked ? (
-            <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+        <div className="project-tabs-scroll">
+          {projectTabs.map((tab) => (
+            !tab.locked ? (
+              <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+                <button
+                  className={activeTab === tab.key ? "active" : ""}
+                  type="button"
+                  aria-current={activeTab === tab.key ? "page" : undefined}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              </div>
+            ) : (
               <button
                 className={activeTab === tab.key ? "active" : ""}
                 type="button"
                 aria-current={activeTab === tab.key ? "page" : undefined}
                 onClick={() => setActiveTab(tab.key)}
+                key={tab.key}
               >
                 {tab.label}
               </button>
-            </div>
+            )
+          ))}
+          {isAddingTab ? (
+            <form className="project-tab-add-form" onSubmit={addCustomTab}>
+              <input
+                value={newTabName}
+                onChange={(event) => setNewTabName(event.target.value)}
+                placeholder="Tab name"
+                autoFocus
+              />
+              <button type="submit">Add</button>
+              <button
+                className="project-tab-add-cancel"
+                type="button"
+                aria-label="Cancel adding tab"
+                onClick={() => {
+                  setNewTabName("");
+                  setIsAddingTab(false);
+                }}
+              >
+                ×
+              </button>
+            </form>
           ) : (
-            <button
-              className={activeTab === tab.key ? "active" : ""}
-              type="button"
-              aria-current={activeTab === tab.key ? "page" : undefined}
-              onClick={() => setActiveTab(tab.key)}
-              key={tab.key}
-            >
-              {tab.label}
+            <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+              + Add tab
             </button>
-          )
-        ))}
-        {isAddingTab ? (
-          <form className="project-tab-add-form" onSubmit={addCustomTab}>
-            <input
-              value={newTabName}
-              onChange={(event) => setNewTabName(event.target.value)}
-              placeholder="Tab name"
-              autoFocus
-            />
-            <button type="submit">Add</button>
-            <button
-              className="project-tab-add-cancel"
-              type="button"
-              aria-label="Cancel adding tab"
-              onClick={() => {
-                setNewTabName("");
-                setIsAddingTab(false);
-              }}
-            >
-              ×
-            </button>
-          </form>
-        ) : (
-          <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
-            + Add tab
-          </button>
-        )}
+          )}
+        </div>
         <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
           Manage tabs
         </button>
@@ -5299,7 +5315,6 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
         </div>
         <div className="project-actions">
           <span className={`project-status ${project.statusTone}`}>{project.status}</span>
-          <button className="secondary-btn" type="button">Message</button>
           <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>{actionLabel}</button>
           <div className="project-overflow" ref={menuRef}>
             <button className="rfq-more" type="button" aria-label="More order actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
