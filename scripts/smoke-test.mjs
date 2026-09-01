@@ -10,18 +10,46 @@
  * one real bug — service_role having no data privileges, which would have
  * broken every server-side path while every SQL test still passed.
  *
- * Keys default to the well-known local development values, which are identical
- * on every machine and are not secrets.
+ * Keys are read from the running local stack rather than hardcoded. The local
+ * development keys are identical on every machine and are not real secrets, but
+ * a literal starting with sb_secret_ trips GitHub's secret scanner and teaches
+ * the wrong habit, so there is none in this repository.
+ *
+ * Point at something else with SUPABASE_URL / SUPABASE_ANON_KEY /
+ * SUPABASE_SERVICE_KEY.
  */
+import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 
-const URL = process.env.SUPABASE_URL ?? "http://127.0.0.1:54321";
-const ANON =
-  process.env.SUPABASE_ANON_KEY ?? "";
-const SERVICE = process.env.SUPABASE_SERVICE_KEY ?? "";
+/** Ask the CLI for the running stack's URL and keys. */
+function localStack() {
+  try {
+    return JSON.parse(execFileSync("supabase", ["status", "-o", "json"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }));
+  } catch {
+    return {};
+  }
+}
+
+const stack = localStack();
+
+const URL = process.env.SUPABASE_URL ?? stack.API_URL;
+const ANON = process.env.SUPABASE_ANON_KEY ?? stack.PUBLISHABLE_KEY ?? stack.ANON_KEY;
+const SERVICE = process.env.SUPABASE_SERVICE_KEY ?? stack.SECRET_KEY ?? stack.SERVICE_ROLE_KEY;
+
+if (!URL || !ANON || !SERVICE) {
+  console.error(
+    "No Supabase connection details.\n" +
+      "Start the local stack with `supabase start`, or set SUPABASE_URL, " +
+      "SUPABASE_ANON_KEY and SUPABASE_SERVICE_KEY.",
+  );
+  process.exit(1);
+}
 // Local mail catcher. Absent when pointing at a hosted project, in which case
 // the sign-in round trip is skipped rather than failed.
-const MAIL = process.env.SUPABASE_MAIL_URL ?? "http://127.0.0.1:54324";
+const MAIL = process.env.SUPABASE_MAIL_URL ?? stack.MAILPIT_URL ?? stack.INBUCKET_URL ?? "";
 
 const admin = createClient(URL, SERVICE, {
   auth: { autoRefreshToken: false, persistSession: false },

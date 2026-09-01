@@ -104,6 +104,10 @@ Migrations are numbered and immutable once pushed. `007` is generated from `supa
 
 Option lists come from `taxonomy_terms` — nothing in the flow hardcodes a vocabulary. Kinds flagged `allows_custom` get "add your own"; the database rejects a custom term on any other kind, so the UI check is a convenience, not the guard.
 
+### No key literals, not even local ones
+
+`scripts/smoke-test.mjs` reads the stack's URL and keys from `supabase status -o json`, or from `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY`. The local development keys are identical on every machine and are not real secrets, but a literal beginning `sb_secret_` trips GitHub's push protection and teaches the wrong habit. There is no key literal anywhere in this repository.
+
 ### Tests must not depend on each other
 
 Both suites run against the same local database with no reset between them, so **every assertion is scoped to its own fixtures**. pgTAP org slugs are `pgtap-` prefixed and every `count(*)` filters on the fixture ids; the smoke test stamps its org names with the run timestamp. A bare `count(*)` passes alone and fails the moment the other suite has run first — which is exactly how this broke the first time.
