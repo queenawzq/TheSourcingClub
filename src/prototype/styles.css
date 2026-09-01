@@ -12819,7 +12819,8 @@ a.secondary-btn,
 
 .brand-rfqs-page .rfqs-shell {
   gap: 26px !important;
-  max-width: 1048px !important;
+  width: 100% !important;
+  max-width: min(1048px, 100%) !important;
 }
 
 .brand-rfqs-page .rfqs-controls {
@@ -12946,6 +12947,24 @@ a.secondary-btn,
     max-width: none !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
+  }
+
+  .brand-rfqs-page .rfqs-shell,
+  .brand-rfqs-page .rfq-list,
+  .brand-rfqs-page .rfq-card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .brand-rfqs-page .rfq-card-body {
+    grid-template-columns: 1fr !important;
+  }
+
+  .brand-rfqs-page .rfq-visuals {
+    justify-self: start;
+    width: min(100%, 420px);
+    max-width: 420px;
   }
 }
 
@@ -13163,5 +13182,52 @@ a.secondary-btn,
     max-width: none !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .rfqs-shell,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .rfqs-shell,
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .rfq-list,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .rfq-list,
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .rfq-card,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .rfq-card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .rfqs-header,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .rfqs-header,
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .rfqs-controls,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .rfqs-controls {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .rfqs-header > div,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .rfqs-header > div,
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .rfq-card-top,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .rfq-card-top,
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .rfq-title-row,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .rfq-title-row,
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .rfq-main,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .rfq-main,
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .projects-tabs,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .projects-tabs,
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .project-tabs-scroll,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .project-tabs-scroll {
+    min-width: 0;
+  }
+
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .rfq-card-body,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .rfq-card-body {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 34%) !important;
+  }
+
+  .app-shell:not(.nav-collapsed) > .brand-rfqs-page .rfq-visuals,
+  .side-nav:not(.collapsed) + .brand-rfqs-page .rfq-visuals {
+    justify-self: end;
+    width: 100%;
+    max-width: 420px;
   }
 }
