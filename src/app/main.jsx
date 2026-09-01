@@ -6,10 +6,12 @@
  * prototypes are wired in behind this gate phase by phase; until a phase
  * lands, its screens still run on their own mock data at their original URLs.
  */
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { createOrg } from "../lib/domain/org.js";
+import { getBrandProfile, getFactoryProfile } from "../lib/domain/profile.js";
+import BrandOnboarding from "./onboarding/BrandOnboarding.jsx";
 import { isConfigured } from "../lib/supabase.js";
 import "./shell.css";
 
@@ -150,13 +152,67 @@ function ChooseOrgType() {
 }
 
 /**
- * Routed by org type. Each side's real screens land here as their phase is
- * wired up; right now this confirms the whole chain works end to end —
- * Google session, org membership, and an RLS-scoped read.
+ * Routed by org type, and gated on onboarding.
+ *
+ * A profile that has not finished onboarding cannot be browsed or quoted
+ * against, so there is nothing useful to show until it is done.
  */
 function Shell() {
   const { activeOrg, orgs, selectOrg, signOut, user } = useAuth();
   const isFactory = activeOrg.type === "factory";
+
+  const [profile, setProfile] = useState(undefined);
+  const [profileError, setProfileError] = useState(null);
+
+  const loadProfile = useCallback(() => {
+    const load = isFactory ? getFactoryProfile : getBrandProfile;
+    load(activeOrg.id)
+      .then(setProfile)
+      .catch(setProfileError);
+  }, [activeOrg.id, isFactory]);
+
+  useEffect(() => {
+    setProfile(undefined);
+    setProfileError(null);
+    loadProfile();
+  }, [loadProfile]);
+
+  if (profileError) {
+    return (
+      <div className="gate">
+        <div className="gate-card">
+          <h1>Could not load {activeOrg.name}</h1>
+          <p className="gate-error">{profileError.message}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (profile === undefined) return <Loading label={`Loading ${activeOrg.name}…`} />;
+
+  if (!profile?.onboarding_completed_at) {
+    if (isFactory) {
+      // Factory onboarding is the next phase; until then the designed
+      // prototype remains the only version of this flow.
+      return (
+        <div className="gate">
+          <div className="gate-card">
+            <p className="gate-eyebrow">{activeOrg.name}</p>
+            <h1>Factory setup is not wired up yet</h1>
+            <p className="gate-note">
+              Brand onboarding is live against the database. The factory flow is next; for now it
+              runs on mock data at <a href="/factory-prototype.html">its original address</a>.
+            </p>
+            <button type="button" className="quiet-btn" onClick={signOut}>
+              Sign out
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return <BrandOnboarding org={activeOrg} user={user} onComplete={loadProfile} />;
+  }
 
   return (
     <div className="shell">
@@ -189,27 +245,33 @@ function Shell() {
         </span>
         <h1>{activeOrg.name}</h1>
         <p className="shell-note">
-          Signed in as {user?.email}. You are the {activeOrg.role} of this organisation.
+          Onboarding complete. Signed in as {user?.email}, {activeOrg.role} of this organisation.
         </p>
 
         <dl className="fact-grid">
           <div>
+            <dt>Verification</dt>
+            <dd>{profile.verification_status}</dd>
+          </div>
+          <div>
+            <dt>Completed</dt>
+            <dd>{new Date(profile.onboarding_completed_at).toLocaleDateString()}</dd>
+          </div>
+          <div>
             <dt>Org id</dt>
             <dd>{activeOrg.id}</dd>
-          </div>
-          <div>
-            <dt>Slug</dt>
-            <dd>{activeOrg.slug}</dd>
-          </div>
-          <div>
-            <dt>Type</dt>
-            <dd>{activeOrg.type}</dd>
           </div>
         </dl>
 
         <p className="shell-note">
-          Auth, tenancy and access rules are live. The {isFactory ? "factory" : "brand"} screens
-          are wired to this shell phase by phase; until then they run on mock data at{" "}
+          {profile.verification_status === "verified"
+            ? "Your business registration has been verified."
+            : "Your business registration is with our review team. Everything else works while you wait."}
+        </p>
+
+        <p className="shell-note">
+          The remaining {isFactory ? "factory" : "brand"} screens are wired to this shell phase by
+          phase; until then they run on mock data at{" "}
           <a href={isFactory ? "/factory-prototype.html" : "/prototype.html"}>
             their original address
           </a>

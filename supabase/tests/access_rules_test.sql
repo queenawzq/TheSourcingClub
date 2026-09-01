@@ -21,6 +21,10 @@ select plan(25);
 -- ---------------------------------------------------------------------------
 -- Two competing brands and two competing factories, so every cross-org
 -- assertion has a real counterparty rather than a hypothetical one.
+--
+-- Slugs are prefixed and every count is scoped to these fixture ids. A bare
+-- count(*) silently depends on whatever else is in the database, which is how
+-- this suite broke the first time `npm run smoke` ran before it.
 -- ---------------------------------------------------------------------------
 
 insert into auth.users (id, email, raw_user_meta_data)
@@ -32,10 +36,10 @@ values
   ('55555555-5555-5555-5555-555555555555', 'admin@example.com',   '{"name":"Platform Admin"}');
 
 insert into public.orgs (id, type, name, slug) values
-  ('aaaaaaaa-0000-0000-0000-000000000001', 'brand',   'Maison Rue',    'maison-rue'),
-  ('aaaaaaaa-0000-0000-0000-000000000002', 'brand',   'Elara Studio',  'elara-studio'),
-  ('bbbbbbbb-0000-0000-0000-000000000001', 'factory', 'Atelier Minho', 'atelier-minho'),
-  ('bbbbbbbb-0000-0000-0000-000000000002', 'factory', 'Hanshu Studio', 'hanshu-studio');
+  ('aaaaaaaa-0000-0000-0000-000000000001', 'brand',   'Maison Rue',    'pgtap-maison-rue'),
+  ('aaaaaaaa-0000-0000-0000-000000000002', 'brand',   'Elara Studio',  'pgtap-elara-studio'),
+  ('bbbbbbbb-0000-0000-0000-000000000001', 'factory', 'Atelier Minho', 'pgtap-atelier-minho'),
+  ('bbbbbbbb-0000-0000-0000-000000000002', 'factory', 'Hanshu Studio', 'pgtap-hanshu-studio');
 
 insert into public.org_members (org_id, user_id, role) values
   ('aaaaaaaa-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'owner'),
@@ -72,7 +76,7 @@ set local request.jwt.claims = '{"sub":"11111111-1111-1111-1111-111111111111","e
 set local role authenticated;
 
 select is(
-  (select count(*)::int from public.brand_profiles),
+  (select count(*)::int from public.brand_profiles where org_id in ('aaaaaaaa-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-000000000002')),
   1,
   'a brand sees exactly one brand profile: its own'
 );
@@ -85,7 +89,7 @@ select is(
 );
 
 select is(
-  (select count(*)::int from public.orgs),
+  (select count(*)::int from public.orgs where id in ('aaaaaaaa-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-000000000002','bbbbbbbb-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000002')),
   1,
   'a brand sees only the org it belongs to'
 );
@@ -102,7 +106,7 @@ select is(
 -- ---------------------------------------------------------------------------
 
 select is(
-  (select count(*)::int from public.factory_profiles),
+  (select count(*)::int from public.factory_profiles where org_id in ('bbbbbbbb-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000002')),
   1,
   'a brand browsing sees only PUBLISHED factory profiles'
 );
@@ -122,7 +126,7 @@ select is(
 -- ---------------------------------------------------------------------------
 
 select is(
-  (select count(*)::int from public.documents),
+  (select count(*)::int from public.documents where org_id in ('bbbbbbbb-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000002')),
   0,
   'a brand CANNOT read a factory''s private documents, published or not'
 );
@@ -132,7 +136,7 @@ set local request.jwt.claims = '{"sub":"44444444-4444-4444-4444-444444444444","e
 set local role authenticated;
 
 select is(
-  (select count(*)::int from public.documents),
+  (select count(*)::int from public.documents where org_id in ('bbbbbbbb-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000002')),
   0,
   'a factory CANNOT read a COMPETING factory''s private documents'
 );
@@ -153,13 +157,13 @@ set local request.jwt.claims = '{"sub":"33333333-3333-3333-3333-333333333333","e
 set local role authenticated;
 
 select is(
-  (select count(*)::int from public.documents),
+  (select count(*)::int from public.documents where org_id in ('bbbbbbbb-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000002')),
   1,
   'a factory reads its own private documents'
 );
 
 select is(
-  (select count(*)::int from public.brand_profiles),
+  (select count(*)::int from public.brand_profiles where org_id in ('aaaaaaaa-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-000000000002')),
   0,
   'a factory CANNOT browse brand profiles at all'
 );
@@ -173,19 +177,19 @@ set local request.jwt.claims = '{"sub":"55555555-5555-5555-5555-555555555555","e
 set local role authenticated;
 
 select is(
-  (select count(*)::int from public.documents),
+  (select count(*)::int from public.documents where org_id in ('bbbbbbbb-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000002')),
   1,
   'a platform admin reads documents for review'
 );
 
 select is(
-  (select count(*)::int from public.factory_profiles),
+  (select count(*)::int from public.factory_profiles where org_id in ('bbbbbbbb-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000002')),
   2,
   'a platform admin sees unpublished factories too'
 );
 
 select is(
-  (select count(*)::int from public.brand_profiles),
+  (select count(*)::int from public.brand_profiles where org_id in ('aaaaaaaa-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-000000000002')),
   2,
   'a platform admin sees every brand profile'
 );

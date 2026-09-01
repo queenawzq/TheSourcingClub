@@ -79,8 +79,14 @@ const brand = await signedInUser(`brand-${stamp}@example.com`);
 }
 
 console.log("\norgs");
+// Names carry the run stamp so the suite is repeatable without a db reset —
+// otherwise the second run's "duplicate" is really the fourth and the expected
+// slug suffix drifts.
+const ORG_NAME = `Maison Rue ${stamp}`;
+const ORG_SLUG = ORG_NAME.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
 const { data: org, error: orgError } = await brand.client.rpc("create_org", {
-  org_name: "Maison Rue",
+  org_name: ORG_NAME,
   org_kind: "brand",
 });
 if (orgError) fail("create_org RPC", orgError);
@@ -88,12 +94,12 @@ else ok(`created ${org.name} (${org.slug}), type ${org.type}`);
 
 const factory = await signedInUser(`factory-${stamp}@example.com`);
 const { data: dupe } = await brand.client.rpc("create_org", {
-  org_name: "Maison Rue",
+  org_name: ORG_NAME,
   org_kind: "brand",
 });
-dupe?.slug === "maison-rue-2"
+dupe?.slug === `${ORG_SLUG}-2`
   ? ok("a duplicate name gets a numbered slug")
-  : fail(`expected slug maison-rue-2, got ${dupe?.slug}`);
+  : fail(`expected slug ${ORG_SLUG}-2, got ${dupe?.slug}`);
 
 {
   const { data, error } = await brand.client
@@ -185,6 +191,136 @@ console.log("\ncapacity maths");
   if (unitsError) fail("capacity_monthly_units", unitsError);
   else if (units === 3429) ok("2,400 sweater hours = 3,429 pieces (UI shows 8,000)");
   else fail(`expected 3429 pieces, got ${units}`);
+}
+
+console.log("\nonboarding write path");
+{
+  // Step-by-step saving: onboarding upserts a few columns at a time rather
+  // than writing one whole object at the end.
+  const { error: e1 } = await brand.client
+    .from("brand_profiles")
+    .upsert({ org_id: org.id, legal_name: ORG_NAME, hq_location: "New York, USA" },
+            { onConflict: "org_id" });
+  if (e1) fail("first partial save creates the row", e1);
+  else ok("first partial save creates the profile row");
+
+  const { data: after, error: e2 } = await brand.client
+    .from("brand_profiles")
+    .upsert({ org_id: org.id, intro: "Womenswear, small batch." }, { onConflict: "org_id" })
+    .select("legal_name, hq_location, intro")
+    .single();
+  if (e2) fail("second partial save", e2);
+  else if (after.legal_name === ORG_NAME && after.intro)
+    ok("a later partial save does not clobber earlier steps");
+  else fail(`partial save lost data: ${JSON.stringify(after)}`);
+
+  const { error: e3 } = await brand.client
+    .from("brand_profiles")
+    .upsert({ org_id: org.id, brand_category: "fashion-brand" }, { onConflict: "org_id" });
+  e3 ? fail("brand_category column", e3) : ok("brand_category persists");
+}
+
+console.log("\ntaxonomy links");
+{
+  const { data: wovens } = await brand.client
+    .from("taxonomy_terms").select("id").eq("kind", "production_type").eq("slug", "wovens").single();
+  const { data: gots } = await brand.client
+    .from("taxonomy_terms").select("id").eq("kind", "certification").eq("slug", "gots").single();
+
+  const { error } = await brand.client.from("taxonomy_links").insert([
+    { subject_type: "brand_profile", subject_id: org.id, term_id: wovens.id, org_id: org.id },
+    { subject_type: "brand_profile", subject_id: org.id, term_id: gots.id, org_id: org.id },
+  ]);
+  if (error) fail("link taxonomy terms", error);
+  else ok("brand profile links to production type and certification");
+
+  // The kind-scoped read that setLinks() uses to diff selections.
+  const { data: scoped, error: scopedError } = await brand.client
+    .from("taxonomy_links")
+    .select("term_id, taxonomy_terms!inner (kind)")
+    .eq("subject_type", "brand_profile")
+    .eq("subject_id", org.id)
+    .eq("taxonomy_terms.kind", "production_type");
+  if (scopedError) fail("kind-scoped link read", scopedError);
+  else if (scoped.length === 1)
+    ok("kind-scoped read returns only that group, so saving one chip group cannot wipe another");
+  else fail(`expected 1 production_type link, got ${scoped.length}`);
+}
+
+console.log("\nmatch score against a real profile");
+{
+  const factoryOrgRow = await factory.client.rpc("create_org", {
+    org_name: `Atelier ${stamp}`, org_kind: "factory",
+  });
+  const factoryOrg = factoryOrgRow.data;
+
+  await admin.from("factory_profiles").insert({
+    org_id: factoryOrg.id, country_code: "PT", moq: 150, published_at: new Date().toISOString(),
+  });
+  const { data: wovens } = await admin
+    .from("taxonomy_terms").select("id").eq("kind", "production_type").eq("slug", "wovens").single();
+  await admin.from("taxonomy_links").insert({
+    subject_type: "factory_profile", subject_id: factoryOrg.id,
+    term_id: wovens.id, org_id: factoryOrg.id,
+  });
+
+  const { data: score, error } = await admin.rpc("match_score", {
+    brand_org: org.id, factory_org: factoryOrg.id,
+  });
+  if (error) fail("match_score", error);
+  else if (Number(score) > 0 && Number(score) < 1)
+    ok(`scores ${(score * 100).toFixed(0)}% — production type matches, required GOTS is unverified`);
+  else fail(`expected a partial score, got ${score}`);
+
+  const { data: tier } = await admin.rpc("match_tier", { score });
+  ok(`tier: ${tier}`);
+}
+
+console.log("\nterms acceptance");
+{
+  const { error } = await brand.client.from("terms_acceptances").insert({
+    org_id: org.id, terms_version: "2026-09-01", signature: "John Maheswaran",
+    accepted_by: brand.id,
+  });
+  error ? fail("record a signature", error) : ok("signature recorded");
+
+  const { error: forgeError } = await brand.client.from("terms_acceptances").insert({
+    org_id: org.id, terms_version: "2026-09-01", signature: "Someone Else",
+    accepted_by: factory.id,
+  });
+  forgeError
+    ? ok("cannot record a signature in someone else's name")
+    : fail("LEAK: signed on behalf of another user");
+
+  const { error: updateError } = await brand.client
+    .from("terms_acceptances").update({ signature: "Changed" }).eq("org_id", org.id);
+  updateError
+    ? ok("a recorded signature cannot be edited afterwards")
+    : fail("LEAK: signature was editable after the fact");
+}
+
+console.log("\nprivate documents");
+{
+  const { error } = await brand.client.from("documents").insert({
+    org_id: org.id, kind: "business_registration", bucket: "org-private",
+    storage_path: `${org.id}/business_registration/${stamp}.pdf`,
+    file_name: "registration.pdf", status: "pending",
+  });
+  if (error) fail("record a private document", error);
+  else ok("private document recorded as pending review");
+
+  const { data: seen } = await factory.client.from("documents").select("id").eq("org_id", org.id);
+  seen?.length === 0
+    ? ok("another org cannot see it")
+    : fail("LEAK: private document visible to another org");
+
+  const { error: reviewError } = await brand.client.rpc("review_document", {
+    document_id: (await admin.from("documents").select("id").eq("org_id", org.id).single()).data.id,
+    decision: "verified",
+  });
+  reviewError
+    ? ok("a brand cannot verify its own registration")
+    : fail("LEAK: self-verification succeeded");
 }
 
 console.log(

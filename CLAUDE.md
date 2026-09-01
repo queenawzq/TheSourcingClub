@@ -95,6 +95,19 @@ Migrations are numbered and immutable once pushed. `007` is generated from `supa
 - **Every amount is minor units plus a currency code.** Only USD is offered, but RMB is coming and adding currency to a populated payments table later is invasive.
 - **Two storage buckets, and the split is effectively irreversible.** Logos and product shots go in `org-public`; business registrations and certificates go in `org-private` and are reachable only by signed URL. A private document that lands in the public bucket may be cached or indexed long after the mistake is noticed.
 
+### Brand onboarding
+
+`src/app/onboarding/` is the first flow wired to the database. Two properties worth keeping:
+
+- **It saves per step, not at the end.** Closing the tab mid-flow loses nothing, and reopening resumes at the first step with a gap. Saves are partial upserts, so a later step cannot clobber an earlier one.
+- **`setLinks()` is scoped to a single taxonomy kind.** A profile screen edits one chip group at a time; a blanket delete of an entity's links would wipe the groups that screen never showed.
+
+Option lists come from `taxonomy_terms` — nothing in the flow hardcodes a vocabulary. Kinds flagged `allows_custom` get "add your own"; the database rejects a custom term on any other kind, so the UI check is a convenience, not the guard.
+
+### Tests must not depend on each other
+
+Both suites run against the same local database with no reset between them, so **every assertion is scoped to its own fixtures**. pgTAP org slugs are `pgtap-` prefixed and every `count(*)` filters on the fixture ids; the smoke test stamps its org names with the run timestamp. A bare `count(*)` passes alone and fails the moment the other suite has run first — which is exactly how this broke the first time.
+
 ### Auth
 
 Google OAuth only — email/password signup is disabled in `config.toml` and no passwords exist anywhere in the system. Local development needs a Google Cloud OAuth client with `http://127.0.0.1:54321/auth/v1/callback` as an authorised redirect, and its id/secret in `supabase/.env` (git-ignored; see `supabase/.env.example`).
