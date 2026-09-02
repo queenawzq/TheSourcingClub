@@ -6,6 +6,79 @@
   --weight-strong: 600;
   --weight-heading: 700;
   --weight-display: 800;
+  --card-radius: 8px;
+  --card-padding: 24px;
+  --card-row-padding: 20px 24px;
+  --card-compact-padding: 16px;
+  --card-mobile-padding: 12px 14px 13px;
+  --card-section-gap: 16px;
+  --card-row-gap: 10px;
+  --card-column-gap: 26px;
+  --card-title-media: 46px;
+  --card-title-gap: 12px;
+  --card-title-size: 15px;
+  --card-title-line: 19px;
+  --card-subtitle-offset: 3px;
+  --card-subtitle-size: 12px;
+  --card-subtitle-line: 17px;
+  --card-metric-padding: 8px 10px;
+  --card-metric-min-height: 48px;
+  --card-metric-label-size: 10px;
+  --card-metric-label-line: 14px;
+  --card-metric-value-size: 14px;
+  --card-metric-value-line: 19px;
+  --production-card-detail-row-height: 56px;
+  --production-card-progress-bottom-clearance: 0px;
+  --button-height: 34px;
+  --button-radius: 34px;
+  --button-padding: 0 14px;
+  --button-font-size: 12px;
+  --button-line: 18px;
+  --pill-height: 28px;
+  --pill-radius: 5px;
+  --pill-padding: 0 10px;
+  --pill-font-size: 12px;
+  --pill-line: 16px;
+  --compact-control-height: 34px;
+  --compact-control-padding: 0 14px;
+  --compact-control-font-size: 12px;
+  --brand-action-height: 34px;
+  --brand-action-padding: 0 14px;
+  --brand-action-font-size: 12px;
+  --brand-action-line: 18px;
+  --dashboard-action-height: 34px;
+  --dashboard-action-padding: 0 14px;
+  --dashboard-action-font-size: 12px;
+  --dashboard-action-line: 18px;
+  --status-pill-height: 26px;
+  --status-pill-padding: 0 10px;
+  --status-pill-radius: 5px;
+  --status-pill-font-size: 11px;
+  --status-pill-line: 24px;
+  --pill-tab-gap: 32px;
+  --pill-tab-cluster-gap: 24px;
+  --pill-tab-offset-before: -8px;
+  --pill-tab-offset-after: 0;
+  --pill-tab-height: 30px;
+  --pill-tab-padding: 0 0 6px;
+  --pill-tab-font-size: 14px;
+  --nav-expanded-width: 276px;
+  --nav-expanded-page-offset: 276px;
+  --nav-collapsed-page-offset: 78px;
+  --page-max-width: none;
+  --page-padding-inline: 28px;
+  --page-padding-inline-mobile: 16px;
+  --page-top-standard: 72px;
+  --page-top-compact: 36px;
+  --page-top-directory: 32px;
+  --page-shell-max: 1048px;
+  --page-shell-gap: 26px;
+  --page-grid-gap: 24px;
+  --page-controls-gap: 24px;
+  --page-controls-responsive-gap: 18px 14px;
+  --responsive-card-top-gap: 14px;
+  --responsive-card-action-gap: 18px;
+  --responsive-media-max: 420px;
 }
 
 .factory-flow .directory-filter-panel {
@@ -591,7 +664,7 @@
 
 .onboarding-chip-add-row .compact-btn {
   min-height: 34px;
-  padding: 0 16px;
+  padding: var(--button-padding);
 }
 
 .certification-upload-list {
@@ -1167,18 +1240,18 @@
 
 .factory-onboarding-actions .primary-btn,
 .factory-onboarding-actions .secondary-btn {
-  height: 40px;
-  min-height: 40px;
+  height: var(--button-height);
+  min-height: var(--button-height);
   min-width: 116px;
-  padding: 0 24px;
+  padding: var(--button-padding);
 }
 
 .factory-onboarding-card.step-11 .factory-onboarding-actions .primary-btn {
-  height: 40px;
-  min-height: 40px;
+  height: var(--button-height);
+  min-height: var(--button-height);
   min-width: 244px;
-  padding: 0 48px;
-  border-radius: 999px;
+  padding: var(--button-padding);
+  border-radius: var(--button-radius);
 }
 
 .factory-onboarding-progress {
@@ -1215,27 +1288,27 @@
 }
 
 .factory-dashboard-page {
-  width: min(1280px, calc(100vw - 316px));
+  width: min(1280px, calc(100vw - (var(--nav-expanded-page-offset) + 40px)));
   box-sizing: border-box;
   min-height: 100vh;
-  margin-left: 316px;
-  padding: 72px 48px 70px 0;
+  margin-left: calc(var(--nav-expanded-page-offset) + 40px);
+  padding: var(--page-top-standard) 48px 70px 0;
   background: #fbfaf8;
   transition: margin-left 180ms ease, width 180ms ease;
 }
 
 .side-nav:not(.collapsed) + .factory-dashboard-page {
-  margin-left: 316px;
+  margin-left: calc(var(--nav-expanded-page-offset) + 40px);
 }
 
 .nav-collapsed .factory-dashboard-page {
-  width: min(1280px, calc(100vw - 118px));
-  margin-left: 118px;
+  width: min(1280px, calc(100vw - (var(--nav-collapsed-page-offset) + 40px)));
+  margin-left: calc(var(--nav-collapsed-page-offset) + 40px);
   padding-left: 0;
 }
 
 .factory-dashboard-shell {
-  max-width: 1048px;
+  max-width: var(--page-shell-max);
   width: 100%;
 }
 
@@ -1269,7 +1342,7 @@
 .factory-dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
-  gap: 26px;
+  gap: var(--page-shell-gap);
   align-items: start;
 }
 
@@ -1390,11 +1463,13 @@
 
 .factory-dashboard-capacity .primary-btn {
   width: 132px;
-  height: 30px;
+  height: var(--dashboard-action-height) !important;
+  min-height: var(--dashboard-action-height) !important;
   margin-top: 2px;
-  padding: 0 14px;
-  border-radius: 30px;
-  font-size: 11px;
+  padding: var(--dashboard-action-padding) !important;
+  border-radius: var(--dashboard-action-height) !important;
+  font-size: var(--dashboard-action-font-size) !important;
+  line-height: var(--dashboard-action-line) !important;
 }
 
 .factory-dashboard-credit-card {
@@ -1445,13 +1520,16 @@
 
 .factory-dashboard-credit-actions .compact-btn {
   width: 118px;
-  height: 28px;
-  border-radius: 28px;
-  font-size: 11px;
+  height: var(--dashboard-action-height) !important;
+  min-height: var(--dashboard-action-height) !important;
+  padding: var(--dashboard-action-padding) !important;
+  border-radius: var(--dashboard-action-height) !important;
+  font-size: var(--dashboard-action-font-size) !important;
+  line-height: var(--dashboard-action-line) !important;
 }
 
 .factory-dashboard-credit-actions .primary-btn {
-  min-height: 28px;
+  min-height: var(--dashboard-action-height) !important;
 }
 
 .factory-dashboard-panel {
@@ -1543,11 +1621,12 @@
 .factory-project-dashboard-row {
   display: grid;
   grid-template-columns: minmax(420px, 1fr) minmax(360px, 500px);
-  gap: 26px;
+  grid-template-rows: var(--card-title-media) var(--production-card-detail-row-height);
+  gap: var(--card-row-gap) var(--card-column-gap);
   align-items: start;
-  padding: 16px;
+  padding: var(--card-compact-padding);
   border: 1px solid #d6e0ec;
-  border-radius: 8px;
+  border-radius: var(--card-radius);
   background: #fff;
 }
 
@@ -1776,9 +1855,12 @@
 .factory-upcoming-call-actions .compact-btn {
   flex: 0 0 auto;
   min-width: 86px;
-  min-height: 30px;
-  padding: 0 12px;
-  font-size: 12px;
+  height: var(--dashboard-action-height) !important;
+  min-height: var(--dashboard-action-height) !important;
+  padding: var(--dashboard-action-padding) !important;
+  border-radius: var(--dashboard-action-height) !important;
+  font-size: var(--dashboard-action-font-size) !important;
+  line-height: var(--dashboard-action-line) !important;
 }
 
 .factory-attention-type {
@@ -1857,9 +1939,12 @@
   justify-self: end;
   align-self: center;
   min-width: 88px;
-  min-height: 30px;
-  padding: 0 12px;
-  font-size: 12px;
+  height: var(--dashboard-action-height) !important;
+  min-height: var(--dashboard-action-height) !important;
+  padding: var(--dashboard-action-padding) !important;
+  border-radius: var(--dashboard-action-height) !important;
+  font-size: var(--dashboard-action-font-size) !important;
+  line-height: var(--dashboard-action-line) !important;
 }
 
 .factory-project-mini-metric {
@@ -1976,17 +2061,17 @@
   align-items: center;
   justify-content: flex-end;
   flex-wrap: nowrap;
-  gap: 10px;
+  gap: var(--card-row-gap);
 }
 
 .factory-project-dashboard-actions .project-status {
-  min-width: 126px !important;
-  height: 34px !important;
-  min-height: 34px !important;
-  padding: 0 14px !important;
-  border-radius: 6px !important;
-  font-size: 13px !important;
-  line-height: 32px !important;
+  min-width: 0 !important;
+  height: var(--status-pill-height) !important;
+  min-height: var(--status-pill-height) !important;
+  padding: var(--status-pill-padding) !important;
+  border-radius: var(--status-pill-radius) !important;
+  font-size: var(--status-pill-font-size) !important;
+  line-height: var(--status-pill-line) !important;
 }
 
 .factory-project-dashboard-side {
@@ -2177,9 +2262,9 @@
 .factory-dashboard-mini-card {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 14px;
+  gap: var(--card-section-gap);
   padding: 18px;
-  border-radius: 8px;
+  border-radius: var(--card-radius);
 }
 
 .factory-dashboard-mini-card.factory-dashboard-rfq-row {
@@ -2189,7 +2274,7 @@
 .factory-dashboard-mini-card.factory-project-dashboard-row {
   grid-template-columns: 1fr;
   gap: 2px;
-  padding: 14px 16px;
+  padding: var(--card-compact-padding);
 }
 
 .factory-dashboard-mini-card .factory-request-card-top {
@@ -2219,16 +2304,16 @@
 }
 
 .factory-dashboard-mini-card .factory-request-card-actions {
-  gap: 10px;
+  gap: var(--card-row-gap);
 }
 
 .factory-dashboard-mini-card .factory-request-card-actions .primary-btn,
 .factory-dashboard-mini-card .factory-request-card-actions .secondary-btn {
-  height: 34px;
-  min-height: 34px;
-  padding: 0 14px;
-  border-radius: 34px;
-  font-size: 13px;
+  height: var(--compact-control-height);
+  min-height: var(--compact-control-height);
+  padding: var(--compact-control-padding);
+  border-radius: var(--compact-control-height);
+  font-size: var(--compact-control-font-size);
 }
 
 .factory-dashboard-mini-card .factory-request-card-body {
@@ -2292,12 +2377,12 @@
 }
 
 .factory-dashboard-mini-card .project-status {
-  height: 26px;
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 5px;
-  font-size: 11px;
-  line-height: 24px;
+  height: var(--status-pill-height);
+  min-height: var(--status-pill-height);
+  padding: var(--status-pill-padding);
+  border-radius: var(--status-pill-radius);
+  font-size: var(--status-pill-font-size);
+  line-height: var(--status-pill-line);
 }
 
 .factory-dashboard-mini-card.factory-project-dashboard-row .factory-project-dashboard-actions .project-status {
@@ -2305,19 +2390,19 @@
   align-items: center;
   justify-content: center;
   width: auto;
-  height: 26px;
-  min-height: 26px;
-  padding: 0 10px;
-  border-radius: 5px;
-  font-size: 11px !important;
-  line-height: 24px;
+  height: var(--status-pill-height);
+  min-height: var(--status-pill-height);
+  padding: var(--status-pill-padding);
+  border-radius: var(--status-pill-radius);
+  font-size: var(--status-pill-font-size) !important;
+  line-height: var(--status-pill-line);
   white-space: nowrap;
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card {
   position: relative;
-  gap: 8px;
-  padding: 12px 14px 13px;
+  gap: var(--card-row-gap);
+  padding: var(--card-mobile-padding);
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-card-top {
@@ -2329,8 +2414,8 @@
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-title {
   display: grid;
-  grid-template-columns: 46px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: var(--card-title-media) minmax(0, 1fr);
+  gap: var(--card-title-gap);
   align-items: center;
 }
 
@@ -2339,8 +2424,8 @@
 }
 
 .factory-dashboard-rfq-image {
-  width: 46px;
-  height: 46px;
+  width: var(--card-title-media);
+  height: var(--card-title-media);
   border: 1px solid #d7e0ea;
   border-radius: 7px;
   background: #ecf1f6;
@@ -2350,18 +2435,18 @@
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-title h2 {
   display: -webkit-box;
   overflow: hidden;
-  font-size: 15px !important;
+  font-size: var(--card-title-size) !important;
   font-weight: 600;
-  line-height: 19px !important;
+  line-height: var(--card-title-line) !important;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-title p {
-  margin-top: 2px;
-  font-size: 12px !important;
+  margin-top: var(--card-subtitle-offset);
+  font-size: var(--card-subtitle-size) !important;
   font-weight: var(--weight-medium) !important;
-  line-height: 17px !important;
+  line-height: var(--card-subtitle-line) !important;
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-card-actions {
@@ -2373,23 +2458,23 @@
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-project-fit {
   align-self: center;
-  height: 26px;
-  min-height: 26px;
+  height: var(--status-pill-height);
+  min-height: var(--status-pill-height);
   margin-top: 3px;
-  padding: 0 10px;
-  border-radius: 5px;
-  font-size: 11px !important;
-  line-height: 24px;
+  padding: var(--status-pill-padding);
+  border-radius: var(--status-pill-radius);
+  font-size: var(--status-pill-font-size) !important;
+  line-height: var(--status-pill-line);
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-card-actions .primary-btn {
-  height: 32px;
-  min-height: 32px;
+  height: var(--compact-control-height);
+  min-height: var(--compact-control-height);
   min-width: 82px;
-  padding: 0 12px;
-  border-radius: 32px;
-  font-size: 12px !important;
-  line-height: 32px;
+  padding: var(--compact-control-padding);
+  border-radius: var(--compact-control-height);
+  font-size: var(--compact-control-font-size) !important;
+  line-height: var(--compact-control-height);
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-brief {
@@ -2398,36 +2483,36 @@
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-facts div {
-  min-height: 40px;
-  padding: 6px 10px;
+  min-height: var(--card-metric-min-height);
+  padding: var(--card-metric-padding);
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-facts span {
-  font-size: 10px;
-  line-height: 13px;
+  font-size: var(--card-metric-label-size);
+  line-height: var(--card-metric-label-line);
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-facts strong {
-  font-size: 13px;
-  line-height: 17px;
+  font-size: var(--card-metric-value-size);
+  line-height: var(--card-metric-value-line);
 }
 
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-brief p {
-  font-size: 12px;
-  line-height: 17px;
+  font-size: var(--card-subtitle-size);
+  line-height: var(--card-subtitle-line);
 }
 
 .factory-profile-page {
   min-height: 100vh;
-  width: min(1280px, calc(100vw - 316px));
-  margin-left: 316px;
-  padding: 72px 48px 72px 0;
+  width: min(1280px, calc(100vw - (var(--nav-expanded-page-offset) + 40px)));
+  margin-left: calc(var(--nav-expanded-page-offset) + 40px);
+  padding: var(--page-top-standard) 48px var(--page-top-standard) 0;
   background: #fbfaf8;
   transition: margin-left 180ms ease, width 180ms ease;
 }
 
 .nav-collapsed .factory-profile-page {
-  width: min(1280px, calc(100vw - 118px));
+  width: min(1280px, calc(100vw - (var(--nav-collapsed-page-offset) + 40px)));
   margin-left: 170px;
 }
 
@@ -2519,15 +2604,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
-  padding: 0 10px;
+  height: var(--button-height);
+  min-height: var(--button-height);
+  padding: var(--button-padding);
   border: 1px solid #cbd6e5;
-  border-radius: 999px;
+  border-radius: var(--button-radius);
   background: rgba(255, 255, 255, 0.9);
   color: #0b1020;
-  font-size: 11px;
+  font-size: var(--button-font-size);
   font-weight: var(--weight-strong);
-  line-height: 1;
+  line-height: var(--button-line);
+  white-space: nowrap;
 }
 
 .factory-profile-banner-edit:hover {
@@ -2568,15 +2655,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 24px;
-  padding: 0 8px;
+  height: var(--button-height);
+  min-height: var(--button-height);
+  padding: var(--button-padding);
   border: 1px solid #cbd6e5;
-  border-radius: 999px;
+  border-radius: var(--button-radius);
   background: #fff;
   color: #0b1020;
-  font-size: 10px;
+  font-size: var(--button-font-size);
   font-weight: var(--weight-strong);
-  line-height: 1;
+  line-height: var(--button-line);
+  white-space: nowrap;
 }
 
 .factory-profile-logo-edit:hover {
@@ -2680,14 +2769,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 0 12px;
+  height: var(--button-height);
+  min-height: var(--button-height);
+  padding: var(--button-padding);
   border: 1px solid #cbd6e5;
-  border-radius: 999px;
+  border-radius: var(--button-radius);
   background: #fff;
   color: #0b1020;
-  font-size: 12px;
+  font-size: var(--button-font-size);
   font-weight: var(--weight-strong);
+  line-height: var(--button-line);
   white-space: nowrap;
 }
 
@@ -3192,20 +3283,21 @@
 
 .factory-profile-project-tabs {
   display: flex;
-  gap: 32px;
+  gap: var(--pill-tab-gap);
   align-items: center;
-  margin-top: -4px;
+  margin-top: var(--pill-tab-offset-before);
+  margin-bottom: var(--pill-tab-offset-after);
 }
 
 .factory-profile-project-tabs button {
-  min-height: 30px;
-  padding: 0 0 6px;
+  min-height: var(--pill-tab-height);
+  padding: var(--pill-tab-padding);
   border: 0;
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
   color: #536b94;
-  font-size: 14px;
+  font-size: var(--pill-tab-font-size);
   font-weight: 500;
 }
 
@@ -3307,7 +3399,7 @@
 
 .factory-profile-owner-actions .primary-btn,
 .factory-profile-owner-actions .secondary-btn {
-  width: min(100%, 220px);
+  width: min(100%, 156px);
 }
 
 .factory-profile-status-meter {
@@ -3699,10 +3791,10 @@
 
 .factory-capacity-summary .primary-btn {
   flex: 0 0 auto;
-  height: 48px;
+  height: var(--button-height);
   min-width: 160px;
-  padding: 0 22px;
-  font-size: 15px;
+  padding: var(--button-padding);
+  font-size: var(--button-font-size);
 }
 
 .factory-capacity-drawer-layer {
@@ -3974,7 +4066,7 @@
   display: grid;
   place-items: center;
   gap: 2px;
-  min-height: 42px;
+  min-height: var(--button-height);
   padding: 8px 10px;
   border: 1px solid #cdd9e6;
   border-radius: 8px;
@@ -4043,8 +4135,8 @@
 
 .capacity-drawer-footer .primary-btn {
   width: 100%;
-  height: 54px;
-  font-size: 17px;
+  height: var(--button-height);
+  font-size: var(--button-font-size);
 }
 
 .capacity-month-nav {
@@ -4086,9 +4178,9 @@
 }
 
 .factory-rfqs-page .rfqs-shell {
-  gap: 26px;
+  gap: var(--page-shell-gap);
   width: 100%;
-  max-width: 1048px;
+  max-width: var(--page-shell-max);
 }
 
 .factory-rfqs-page .rfqs-header h1 {
@@ -4102,14 +4194,15 @@
 
 .factory-rfqs-page .rfqs-controls {
   grid-template-columns: minmax(0, 1fr) 186px;
-  gap: 24px;
+  gap: var(--page-controls-gap);
   margin-top: 0;
 }
 
 .factory-rfqs-page .rfqs-tabs {
   align-items: center;
-  gap: 24px;
-  margin-top: -8px;
+  gap: var(--pill-tab-cluster-gap);
+  margin-top: var(--pill-tab-offset-before);
+  margin-bottom: var(--pill-tab-offset-after);
 }
 
 .factory-project-card {
@@ -4164,11 +4257,11 @@
 .factory-rfq-card .primary-btn {
   flex: 0 0 auto;
   min-width: 118px;
-  height: 42px;
-  min-height: 42px;
-  padding: 0 20px;
-  border-radius: 42px;
-  font-size: 14px;
+  height: var(--button-height);
+  min-height: var(--button-height);
+  padding: var(--button-padding);
+  border-radius: var(--button-radius);
+  font-size: var(--button-font-size);
 }
 
 .factory-rfq-card .factory-request-card-body {
@@ -4396,9 +4489,9 @@
 .factory-saved-card-actions .primary-btn,
 .factory-saved-card-actions .secondary-btn {
   min-width: 112px;
-  height: 38px;
-  padding: 0 16px;
-  font-size: 13px;
+  height: var(--button-height);
+  padding: var(--button-padding);
+  font-size: var(--button-font-size);
 }
 
 .factory-projects-page .rfqs-shell {
@@ -4448,11 +4541,11 @@
 .factory-project-card-actions .secondary-btn,
 .factory-project-card-actions .primary-btn {
   min-width: 104px;
-  height: 42px;
-  min-height: 42px;
-  padding: 0 20px;
-  border-radius: 42px;
-  font-size: 14px;
+  height: var(--button-height);
+  min-height: var(--button-height);
+  padding: var(--button-padding);
+  border-radius: var(--button-radius);
+  font-size: var(--button-font-size);
 }
 
 .factory-project-card-actions .primary-btn {
@@ -4616,7 +4709,7 @@
 
 .factory-project-card .directory-factory-actions .primary-btn {
   min-width: 112px;
-  padding: 0 18px;
+  padding: var(--button-padding);
 }
 
 .factory-project-card .directory-factory-actions {
@@ -4799,8 +4892,8 @@
 }
 
 .factory-browse-marketplace-page .directory-summary .sort-button {
-  min-height: 38px;
-  padding: 0 18px;
+  min-height: var(--button-height);
+  padding: var(--button-padding);
 }
 
 .factory-browse-marketplace-page .directory-card-list {
@@ -5085,14 +5178,14 @@
 
 .factory-detail-page {
   min-height: 100vh;
-  margin-left: 78px;
-  padding: 72px 48px 84px;
+  margin-left: var(--nav-collapsed-page-offset);
+  padding: var(--page-top-standard) 48px 84px;
   background: #fbfaf7;
   transition: margin-left 180ms ease;
 }
 
 .side-nav:not(.collapsed) + .factory-detail-page {
-  margin-left: 276px;
+  margin-left: var(--nav-expanded-page-offset);
 }
 
 .nav-collapsed .factory-detail-page {
@@ -5645,9 +5738,9 @@
 
 .factory-credit-billing-action .compact-btn {
   min-width: 170px;
-  height: 38px;
-  border-radius: 38px;
-  font-size: 13px;
+  height: var(--button-height);
+  border-radius: var(--button-radius);
+  font-size: var(--button-font-size);
 }
 
 .factory-credit-purchase-modal {
@@ -6059,7 +6152,7 @@
 }
 
 .factory-posted-file-row > button {
-  min-height: 38px;
+  min-height: var(--button-height);
   padding: 0 12px;
   border: 1px solid #dbe3ed;
   border-radius: 5px;
@@ -6218,8 +6311,8 @@
 
 .factory-update-modal footer .secondary-btn,
 .factory-update-modal footer .primary-btn {
-  min-height: 42px;
-  padding: 0 30px;
+  min-height: var(--button-height);
+  padding: var(--button-padding);
 }
 
 .factory-invite-modal {
@@ -6264,8 +6357,8 @@
 }
 
 .factory-submit-page {
-  margin-left: 276px;
-  padding: 72px 48px 128px;
+  margin-left: var(--nav-expanded-page-offset);
+  padding: var(--page-top-standard) 48px 128px;
   background: #fbfaf7;
   animation: none;
   transform: none;
@@ -6277,7 +6370,7 @@
 }
 
 .side-nav.collapsed + .factory-submit-page {
-  margin-left: 78px;
+  margin-left: var(--nav-collapsed-page-offset);
 }
 
 .nav-collapsed .factory-submit-page {
@@ -6654,11 +6747,11 @@
 
 .factory-add-stage {
   justify-self: start;
-  min-height: 42px;
+  min-height: var(--button-height);
   margin-top: 2px;
-  padding: 0 20px;
+  padding: var(--button-padding);
   border: 1px solid #e2e8f0;
-  border-radius: 42px;
+  border-radius: var(--button-radius);
   background: #fff;
   color: #0d1429;
   font-size: 14px;
@@ -6826,8 +6919,8 @@
 
 .factory-submit-bottom-bar .primary-btn,
 .factory-submit-bottom-bar .secondary-btn {
-  min-height: 42px;
-  padding: 0 30px;
+  min-height: var(--button-height);
+  padding: var(--button-padding);
 }
 
 .factory-review-page {
@@ -6865,8 +6958,8 @@
 
 .factory-rfq-read-header .factory-rfq-edit-btn {
   grid-area: edit;
-  min-height: 42px;
-  padding: 0 24px;
+  min-height: var(--button-height);
+  padding: var(--button-padding);
 }
 
 .factory-review-header-top {
@@ -6877,8 +6970,8 @@
 }
 
 .factory-review-edit-btn {
-  min-height: 42px;
-  padding: 0 30px;
+  min-height: var(--button-height);
+  padding: var(--button-padding);
 }
 
 .factory-review-page .factory-quote-field,
@@ -7331,9 +7424,9 @@
 
 .factory-sent-card .success-actions .primary-btn,
 .factory-sent-card .success-actions .secondary-btn {
-  min-height: 42px;
+  min-height: var(--button-height);
   min-width: 164px;
-  font-size: 15px;
+  font-size: var(--button-font-size);
 }
 
 .factory-sent-side {
@@ -7849,14 +7942,14 @@ a.secondary-btn {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  height: 34px !important;
-  min-height: 34px !important;
+  height: var(--button-height) !important;
+  min-height: var(--button-height) !important;
   min-width: 0 !important;
-  padding: 0 14px !important;
-  border-radius: 34px !important;
-  font-size: 13px !important;
+  padding: var(--button-padding) !important;
+  border-radius: var(--button-radius) !important;
+  font-size: var(--button-font-size) !important;
   font-weight: var(--weight-strong, 600) !important;
-  line-height: 1 !important;
+  line-height: var(--button-line) !important;
 }
 
 .secondary-btn:hover,
@@ -7871,20 +7964,22 @@ button.secondary-btn:hover {
 .factory-submit-bottom-bar .secondary-btn,
 .factory-sent-card .success-actions .primary-btn,
 .factory-sent-card .success-actions .secondary-btn {
-  height: 40px !important;
-  min-height: 40px !important;
-  padding: 0 24px !important;
-  border-radius: 40px !important;
-  font-size: 14px !important;
+  height: var(--button-height) !important;
+  min-height: var(--button-height) !important;
+  padding: var(--button-padding) !important;
+  border-radius: var(--button-radius) !important;
+  font-size: var(--button-font-size) !important;
+  line-height: var(--button-line) !important;
 }
 
 .factory-onboarding-actions .primary-btn,
 .factory-onboarding-actions .secondary-btn {
-  height: 40px !important;
-  min-height: 40px !important;
-  padding: 0 24px !important;
-  border-radius: 40px !important;
-  font-size: 14px !important;
+  height: var(--button-height) !important;
+  min-height: var(--button-height) !important;
+  padding: var(--button-padding) !important;
+  border-radius: var(--button-radius) !important;
+  font-size: var(--button-font-size) !important;
+  line-height: var(--button-line) !important;
 }
 
 .rfq-status,
@@ -7894,14 +7989,14 @@ button.secondary-btn:hover {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  height: 26px !important;
-  min-height: 26px !important;
+  height: var(--status-pill-height) !important;
+  min-height: var(--status-pill-height) !important;
   min-width: 0 !important;
-  padding: 0 10px !important;
-  border-radius: 5px !important;
-  font-size: 11px !important;
+  padding: var(--status-pill-padding) !important;
+  border-radius: var(--status-pill-radius) !important;
+  font-size: var(--status-pill-font-size) !important;
   font-weight: 700 !important;
-  line-height: 24px !important;
+  line-height: var(--status-pill-line) !important;
   white-space: nowrap !important;
 }
 
@@ -7909,8 +8004,8 @@ button.secondary-btn:hover {
 .factory-dashboard-mini-card .factory-request-facts div,
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-facts div {
   box-sizing: border-box !important;
-  min-height: 48px !important;
-  padding: 8px 10px !important;
+  min-height: var(--card-metric-min-height) !important;
+  padding: var(--card-metric-padding) !important;
   border: 1px solid #e2e8f0 !important;
   border-radius: 6px !important;
   background: #fff !important;
@@ -7919,15 +8014,15 @@ button.secondary-btn:hover {
 .factory-request-facts span,
 .factory-dashboard-mini-card .factory-request-facts span,
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-facts span {
-  font-size: 10px !important;
-  line-height: 14px !important;
+  font-size: var(--card-metric-label-size) !important;
+  line-height: var(--card-metric-label-line) !important;
 }
 
 .factory-request-facts strong,
 .factory-dashboard-mini-card .factory-request-facts strong,
 .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-request-facts strong {
-  font-size: 14px !important;
-  line-height: 19px !important;
+  font-size: var(--card-metric-value-size) !important;
+  line-height: var(--card-metric-value-line) !important;
 }
 
 button.primary-btn,
@@ -7936,31 +8031,63 @@ a.primary-btn {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  height: 34px !important;
-  min-height: 34px !important;
-  padding: 0 14px !important;
-  border-radius: 34px !important;
-  font-size: 13px !important;
+  height: var(--button-height) !important;
+  min-height: var(--button-height) !important;
+  padding: var(--button-padding) !important;
+  border-radius: var(--button-radius) !important;
+  font-size: var(--button-font-size) !important;
   font-weight: var(--weight-strong, 600) !important;
-  line-height: 1 !important;
+  line-height: var(--button-line) !important;
   white-space: nowrap !important;
 }
 
 button.secondary-btn,
-a.secondary-btn,
-.sort-button {
+a.secondary-btn {
   box-sizing: border-box !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  height: 34px !important;
-  min-height: 34px !important;
+  height: var(--button-height) !important;
+  min-height: var(--button-height) !important;
   min-width: 0 !important;
-  padding: 0 14px !important;
-  border-radius: 34px !important;
-  font-size: 13px !important;
+  padding: var(--button-padding) !important;
+  border-radius: var(--button-radius) !important;
+  font-size: var(--button-font-size) !important;
   font-weight: var(--weight-strong, 600) !important;
-  line-height: 1 !important;
+  line-height: var(--button-line) !important;
+  white-space: nowrap !important;
+}
+
+.save-pill {
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: var(--pill-height) !important;
+  min-height: var(--pill-height) !important;
+  min-width: 0 !important;
+  padding: var(--pill-padding) !important;
+  border-radius: var(--pill-radius) !important;
+  font-size: var(--pill-font-size) !important;
+  font-weight: var(--weight-strong, 600) !important;
+  line-height: var(--pill-line) !important;
+  white-space: nowrap !important;
+}
+
+button.filter-button,
+button.sort-button {
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: var(--button-height) !important;
+  min-height: var(--button-height) !important;
+  min-width: 0 !important;
+  padding: var(--button-padding) !important;
+  border-radius: var(--button-radius) !important;
+  font-size: var(--button-font-size) !important;
+  font-weight: var(--weight-strong, 600) !important;
+  line-height: var(--button-line) !important;
   white-space: nowrap !important;
 }
 
@@ -7970,24 +8097,24 @@ a.secondary-btn,
 .factory-project-card-actions button.primary-btn,
 .factory-project-view-btn {
   min-width: 0 !important;
-  height: 34px !important;
-  min-height: 34px !important;
-  padding: 0 14px !important;
-  border-radius: 34px !important;
-  font-size: 13px !important;
+  height: var(--compact-control-height) !important;
+  min-height: var(--compact-control-height) !important;
+  padding: var(--compact-control-padding) !important;
+  border-radius: var(--compact-control-height) !important;
+  font-size: var(--compact-control-font-size) !important;
 }
 
 .factory-project-dashboard-actions .project-status,
 .factory-project-card-actions .project-status,
 .factory-rfq-card-actions .rfq-status,
 .factory-dashboard-rfq-row .factory-project-fit {
-  height: 26px !important;
-  min-height: 26px !important;
+  height: var(--status-pill-height) !important;
+  min-height: var(--status-pill-height) !important;
   min-width: 0 !important;
-  padding: 0 10px !important;
-  border-radius: 5px !important;
-  font-size: 11px !important;
-  line-height: 24px !important;
+  padding: var(--status-pill-padding) !important;
+  border-radius: var(--status-pill-radius) !important;
+  font-size: var(--status-pill-font-size) !important;
+  line-height: var(--status-pill-line) !important;
 }
 
 .rfq-status.warning,
@@ -8055,15 +8182,13 @@ a.secondary-btn,
 .side-nav.collapsed + .factory-submit-page {
   box-sizing: border-box !important;
   width: auto !important;
-  max-width: none !important;
-  margin-left: 78px !important;
+  max-width: var(--page-max-width) !important;
+  margin-left: var(--nav-collapsed-page-offset) !important;
   margin-right: 0 !important;
-  padding-left: 28px !important;
-  padding-right: 28px !important;
+  padding-left: var(--page-padding-inline) !important;
+  padding-right: var(--page-padding-inline) !important;
 }
 
-.nav-collapsed .factory-dashboard-shell,
-.side-nav.collapsed + .factory-dashboard-page .factory-dashboard-shell,
 .nav-collapsed .messages-shell,
 .side-nav.collapsed + .messages-page .messages-shell {
   max-width: none !important;
@@ -8095,11 +8220,11 @@ a.secondary-btn,
   .nav-collapsed .factory-submit-page {
     box-sizing: border-box !important;
     width: auto !important;
-    max-width: none !important;
-    margin-left: 78px !important;
+    max-width: var(--page-max-width) !important;
+    margin-left: var(--nav-collapsed-page-offset) !important;
     margin-right: 0 !important;
-    padding-left: 28px !important;
-    padding-right: 28px !important;
+    padding-left: var(--page-padding-inline) !important;
+    padding-right: var(--page-padding-inline) !important;
   }
 
   .factory-dashboard-shell,
@@ -8126,8 +8251,8 @@ a.secondary-btn,
   .side-nav:not(.collapsed) + .factory-detail-page,
   .side-nav:not(.collapsed) + .factory-profile-page,
   .side-nav:not(.collapsed) + .factory-submit-page {
-    width: calc(100vw - 276px) !important;
-    margin-left: 276px !important;
+    width: calc(100vw - var(--nav-expanded-width)) !important;
+    margin-left: var(--nav-expanded-page-offset) !important;
   }
 }
 
@@ -8196,7 +8321,7 @@ a.secondary-btn,
 
   .factory-profile-performance {
     grid-template-columns: minmax(0, 190px) minmax(0, 1fr);
-    gap: 18px;
+    gap: var(--responsive-card-action-gap);
     align-items: center;
   }
 
@@ -8223,7 +8348,7 @@ a.secondary-btn,
 
   .factory-browse-marketplace-page .factory-request-card-top {
     grid-template-columns: 1fr !important;
-    gap: 14px !important;
+    gap: var(--responsive-card-top-gap) !important;
   }
 
   .factory-browse-marketplace-page .factory-request-card-actions {
@@ -8260,7 +8385,7 @@ a.secondary-btn,
 
   .factory-active-project-card .factory-request-card-top {
     grid-template-columns: minmax(0, 1fr) auto !important;
-    gap: 18px !important;
+    gap: var(--responsive-card-action-gap) !important;
   }
 
   .factory-active-project-card .factory-project-card-actions {
@@ -8273,7 +8398,7 @@ a.secondary-btn,
 @media (max-width: 900px) {
   .factory-rfq-card .factory-request-card-top {
     grid-template-columns: 1fr !important;
-    gap: 14px !important;
+    gap: var(--responsive-card-top-gap) !important;
   }
 
   .factory-rfq-card .factory-rfq-card-actions {
@@ -8286,7 +8411,7 @@ a.secondary-btn,
     box-sizing: border-box;
     width: 100%;
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 18px 14px !important;
+    gap: var(--page-controls-responsive-gap) !important;
     overflow: visible;
   }
 
@@ -8326,15 +8451,15 @@ a.secondary-btn,
   .nav-collapsed .factory-profile-page,
   .nav-collapsed .factory-submit-page {
     width: auto !important;
-    margin-left: 78px !important;
+    margin-left: var(--nav-collapsed-page-offset) !important;
     margin-right: 0 !important;
-    padding-left: 16px !important;
-    padding-right: 16px !important;
+    padding-left: var(--page-padding-inline-mobile) !important;
+    padding-right: var(--page-padding-inline-mobile) !important;
   }
 
   .factory-active-project-card .factory-request-card-top {
     grid-template-columns: 1fr !important;
-    gap: 14px !important;
+    gap: var(--responsive-card-top-gap) !important;
   }
 
   .factory-active-project-card .factory-project-card-actions {
@@ -8346,7 +8471,7 @@ a.secondary-btn,
     box-sizing: border-box;
     width: 100%;
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
-    gap: 18px 14px !important;
+    gap: var(--page-controls-responsive-gap) !important;
     overflow: visible;
   }
 
@@ -8380,11 +8505,11 @@ a.secondary-btn,
   .side-nav:not(.collapsed) + .factory-profile-page,
   .side-nav:not(.collapsed) + .factory-submit-page {
     box-sizing: border-box !important;
-    width: calc(100vw - 276px) !important;
-    max-width: none !important;
-    margin-left: 276px !important;
-    padding-left: 28px !important;
-    padding-right: 28px !important;
+    width: calc(100vw - var(--nav-expanded-width)) !important;
+    max-width: var(--page-max-width) !important;
+    margin-left: var(--nav-expanded-page-offset) !important;
+    padding-left: var(--page-padding-inline) !important;
+    padding-right: var(--page-padding-inline) !important;
   }
 
   .app-shell:not(.nav-collapsed) > .factory-dashboard-page,
@@ -8393,28 +8518,26 @@ a.secondary-btn,
   .side-nav:not(.collapsed) + .factory-profile-page,
   .app-shell:not(.nav-collapsed) > .factory-detail-page,
   .side-nav:not(.collapsed) + .factory-detail-page {
-    padding-top: 72px !important;
+    padding-top: var(--page-top-standard) !important;
   }
 
   .app-shell:not(.nav-collapsed) > .rfqs-page,
   .side-nav:not(.collapsed) + .rfqs-page,
   .app-shell:not(.nav-collapsed) > .factory-submit-page,
   .side-nav:not(.collapsed) + .factory-submit-page {
-    padding-top: 72px !important;
+    padding-top: var(--page-top-standard) !important;
   }
 
   .app-shell:not(.nav-collapsed) > .directory-page,
   .side-nav:not(.collapsed) + .directory-page {
-    padding-top: 32px !important;
+    padding-top: var(--page-top-directory) !important;
   }
 
   .app-shell:not(.nav-collapsed) > .messages-page,
   .side-nav:not(.collapsed) + .messages-page {
-    padding-top: 36px !important;
+    padding-top: var(--page-top-compact) !important;
   }
 
-  .app-shell:not(.nav-collapsed) > .factory-dashboard-page .factory-dashboard-shell,
-  .side-nav:not(.collapsed) + .factory-dashboard-page .factory-dashboard-shell,
   .app-shell:not(.nav-collapsed) > .messages-page .messages-shell,
   .side-nav:not(.collapsed) + .messages-page .messages-shell {
     max-width: none !important;
@@ -8698,7 +8821,7 @@ a.secondary-btn,
   .factory-rfq-card .factory-request-card-top .factory-request-title p,
   .factory-active-project-card .factory-request-card-top .factory-request-title p {
     margin-top: 1px !important;
-    line-height: 17px !important;
+    line-height: 18px !important;
   }
 }
 
@@ -8831,4 +8954,203 @@ a.secondary-btn,
     margin-top: 6px !important;
     margin-bottom: -1px !important;
   }
+}
+
+/* Dashboard production cards: keep brand/factory internals visually identical. */
+.factory-project-dashboard-row {
+  grid-template-columns: minmax(420px, 1fr) minmax(360px, 500px) !important;
+  grid-template-rows: var(--card-title-media) var(--production-card-detail-row-height) !important;
+  gap: var(--card-row-gap) var(--card-column-gap) !important;
+  align-items: start !important;
+  padding: var(--card-compact-padding) !important;
+}
+
+.factory-project-dashboard-row > .factory-project-dashboard-heading {
+  grid-column: 1 !important;
+  grid-row: 1 !important;
+  grid-template-columns: var(--card-title-media) minmax(0, 1fr) !important;
+  gap: var(--card-title-gap) !important;
+  align-items: center !important;
+}
+
+.factory-project-dashboard-row .factory-project-dashboard-heading > div {
+  min-width: 0 !important;
+}
+
+.factory-project-dashboard-row .factory-project-dashboard-thumb-image {
+  width: var(--card-title-media) !important;
+  height: var(--card-title-media) !important;
+}
+
+.factory-project-dashboard-row .factory-project-dashboard-heading strong {
+  margin: 0 !important;
+  font-size: var(--card-title-size) !important;
+  font-weight: 600 !important;
+  line-height: var(--card-title-line) !important;
+}
+
+.factory-project-dashboard-row .factory-project-dashboard-heading p,
+.factory-dashboard-panel .factory-project-dashboard-row .factory-project-dashboard-heading .project-meta {
+  margin: var(--card-subtitle-offset) 0 0 !important;
+  font-size: var(--card-subtitle-size) !important;
+  line-height: var(--card-subtitle-line) !important;
+}
+
+.factory-project-dashboard-row > .factory-project-dashboard-actions {
+  grid-column: 2 !important;
+  grid-row: 1 !important;
+  gap: var(--card-row-gap) !important;
+  align-items: center !important;
+  justify-self: end !important;
+}
+
+.factory-project-dashboard-row > .factory-project-dashboard-actions .project-status {
+  min-width: 0 !important;
+  height: var(--status-pill-height) !important;
+  min-height: var(--status-pill-height) !important;
+  padding: var(--status-pill-padding) !important;
+  border-radius: var(--status-pill-radius) !important;
+  font-size: var(--status-pill-font-size) !important;
+  line-height: var(--status-pill-line) !important;
+}
+
+.factory-project-dashboard-row > .factory-project-dashboard-actions .primary-btn {
+  min-width: 98px !important;
+  height: var(--compact-control-height) !important;
+  min-height: var(--compact-control-height) !important;
+  padding: var(--compact-control-padding) !important;
+  font-size: var(--compact-control-font-size) !important;
+}
+
+.factory-project-dashboard-row > .factory-project-dashboard-meta {
+  grid-column: 1 !important;
+  grid-row: 2 !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: var(--card-row-gap) !important;
+  align-items: start !important;
+  align-self: start !important;
+  width: 100% !important;
+}
+
+.factory-project-dashboard-row > .factory-project-dashboard-meta .factory-project-mini-metric {
+  box-sizing: border-box !important;
+  height: var(--production-card-detail-row-height) !important;
+  min-height: var(--production-card-detail-row-height) !important;
+  padding: var(--card-metric-padding) !important;
+}
+
+.factory-project-dashboard-row > .factory-project-dashboard-meta .factory-project-mini-metric span {
+  font-size: var(--card-metric-label-size) !important;
+  line-height: var(--card-metric-label-line) !important;
+}
+
+.factory-project-dashboard-row > .factory-project-dashboard-meta .factory-project-mini-metric strong {
+  font-size: var(--card-metric-value-size) !important;
+  line-height: var(--card-metric-value-line) !important;
+}
+
+.factory-project-dashboard-row > .factory-project-dashboard-progress {
+  grid-column: 2 !important;
+  grid-row: 2 !important;
+  align-self: start !important;
+  justify-self: end !important;
+  width: min(100%, 430px) !important;
+}
+
+.factory-project-dashboard-row > .factory-project-dashboard-progress .project-progress {
+  grid-template-columns: repeat(5, 1fr) !important;
+  gap: 0 !important;
+  min-height: var(--production-card-detail-row-height) !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding-top: 8px !important;
+  padding-bottom: var(--production-card-progress-bottom-clearance) !important;
+  overflow: visible !important;
+}
+
+@media (max-width: 1180px) {
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card {
+    gap: var(--card-section-gap) !important;
+  }
+
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-project-fit {
+    margin-top: 6px !important;
+    margin-bottom: -1px !important;
+  }
+
+  .factory-project-dashboard-row {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+    grid-template-rows: auto !important;
+    gap: var(--card-row-gap) !important;
+    padding: var(--card-mobile-padding) !important;
+    overflow: hidden !important;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-heading {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-actions {
+    display: contents !important;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-actions .project-status {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    box-sizing: border-box !important;
+    height: var(--status-pill-height) !important;
+    min-height: var(--status-pill-height) !important;
+    padding: var(--status-pill-padding) !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    justify-self: start !important;
+    justify-content: flex-start !important;
+    border-radius: var(--status-pill-radius) !important;
+    font-size: var(--status-pill-font-size) !important;
+    line-height: var(--status-pill-line) !important;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-actions .primary-btn {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-meta {
+    grid-column: 1 / -1 !important;
+    grid-row: 3 !important;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-progress {
+    grid-column: 1 !important;
+    grid-row: 4 !important;
+    justify-self: stretch !important;
+    width: 100% !important;
+  }
+}
+
+.factory-dashboard-panel > header button.primary-btn,
+.factory-dashboard-panel > header button.secondary-btn,
+.factory-dashboard-mini-card .factory-request-card-actions button.primary-btn,
+.factory-dashboard-mini-card .factory-request-card-actions button.secondary-btn,
+.factory-project-dashboard-actions button.primary-btn,
+.factory-project-dashboard-actions button.secondary-btn,
+.factory-request-card-actions button.primary-btn,
+.factory-request-card-actions button.secondary-btn,
+.factory-rfq-card-actions button.primary-btn,
+.factory-rfq-card-actions button.secondary-btn,
+.factory-project-card-actions button.primary-btn,
+.factory-project-card-actions button.secondary-btn,
+.factory-saved-card-actions button.primary-btn,
+.factory-saved-card-actions button.secondary-btn,
+.directory-factory-actions button.primary-btn,
+.directory-factory-actions button.secondary-btn {
+  height: var(--brand-action-height) !important;
+  min-height: var(--brand-action-height) !important;
+  padding: var(--brand-action-padding) !important;
+  border-radius: var(--brand-action-height) !important;
+  font-size: var(--brand-action-font-size) !important;
+  line-height: var(--brand-action-line) !important;
 }

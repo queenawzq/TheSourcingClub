@@ -2092,11 +2092,10 @@ function FactoryProfilePage({ language, onViewCompletion }) {
         </section>
 
         <section className="factory-profile-hero">
-          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit banner</button>}
+          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
               <div className="factory-profile-logo">AM</div>
-              {isOwnerView && <button className="factory-profile-logo-edit" type="button" onClick={() => openEditor("overview")}>Edit</button>}
             </div>
             <div>
               <div className="factory-profile-title-row">
@@ -2489,7 +2488,7 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
     production: ["Edit production fit", "Update the production tags brands use to find and evaluate this factory."],
     capacity: ["Edit capacity and terms", "Keep MOQ, lead time, booking level, and capacity estimates current."],
     references: ["Edit client references", "Add or update the brand references shown on the public profile."],
-    banner: ["Edit banner", "Upload or replace the banner image used on this profile."],
+    banner: ["Edit profile images", "Upload or replace the profile image and banner image used on this profile."],
     walkthrough: ["Manage walkthrough", "Update the verified production-floor walkthrough and covered areas."],
     samples: ["Update sample images", "Add images of sample garments, development examples, and finished pieces that represent the factory's strongest production fit."],
     projects: ["Manage projects", "Update completed and in-production project proof for brands."],
@@ -2756,7 +2755,10 @@ function getFactoryProfileMediaAssets(editor, data) {
   if (editor === "samples") return data.products;
 
   if (editor === "banner") {
-    return [{ title: "Profile banner", meta: "Current factory profile image", src: "/assets/factory-header.png" }];
+    return [
+      { title: "Profile image", meta: "Current factory profile image", src: "/assets/factory-label.png" },
+      { title: "Profile banner", meta: "Current profile header image", src: "/assets/factory-header.png" }
+    ];
   }
 
   if (editor === "walkthrough") {

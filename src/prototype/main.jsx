@@ -606,7 +606,7 @@ const activeProjects = [
   }
 ];
 
-const projectSteps = ["1st step funded", "Samples", "Fit / lab dip", "Production", "Shipped"];
+const projectSteps = ["1st step funded", "Fit sample", "Fit / lab dip", "Production", "Shipped"];
 
 const projectDetailMilestones = [
   {
@@ -982,6 +982,9 @@ function App() {
     : meta;
   const isStandalone = screen === "home" || screen === "profile" || screen === "profileCompletion" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "messages" || screen === "saved" || screen === "settings" || screen === "billing";
   const isWideFlow = screen === "invite" || screen === "quotes" || screen === "quoteDetail";
+  const hasBottomBar = !isStandalone && screen !== "describe";
+  const baseMainClassName = screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" ? "rfqs-page brand-rfqs-page" : screen === "projects" ? "rfqs-page brand-projects-page" : screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : screen === "quotes" ? "flow-page wide-flow quote-review-flow" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page";
+  const mainClassName = `${baseMainClassName}${hasBottomBar ? " rfq-bottom-nav-flow" : ""}`;
 
   const goTo = (next) => {
     if (next !== "fund") setFundingMilestone(null);
@@ -1106,7 +1109,7 @@ function App() {
         }}
         onProfile={() => goTo("profile")}
       />
-      <main key={screen} className={screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" ? "rfqs-page brand-rfqs-page" : screen === "projects" ? "rfqs-page brand-projects-page" : screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page"}>
+      <main key={screen} className={mainClassName}>
         {!isStandalone && <JourneyRail current={activeMeta.step} isMilestoneFunding={Boolean(fundingMilestone)} />}
         <section className="flow-content">
           {!isStandalone && screen !== "quoteDetail" && (
@@ -3215,11 +3218,10 @@ function BrandProfileScreen({ onViewCompletion }) {
         </section>
 
         <section className="factory-profile-hero brand-profile-hero">
-          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit banner</button>}
+          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
               <div className="factory-profile-logo">MR</div>
-              {isOwnerView && <button className="factory-profile-logo-edit" type="button" onClick={() => openEditor("overview")}>Edit</button>}
             </div>
             <div>
               <div className="factory-profile-title-row">
@@ -3576,7 +3578,7 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
     overview: ["Edit overview", "Update the brand details factories see on this profile."],
     sourcing: ["Edit sourcing fit", "Update the tags factories use to understand what this brand is looking for."],
     sourcingVolume: ["Edit sourcing volume", "Update order size, cadence, target pricing, and sourcing stage."],
-    banner: ["Edit banner", "Upload or replace the banner image used on this profile."],
+    banner: ["Edit profile images", "Upload or replace the profile image and banner image used on this profile."],
     assets: ["Manage brand assets", "Upload logos, product photos, direction files, and brand references."],
     projects: ["Manage projects", "Update completed or active TSC work shown to factories."],
     verification: ["Edit verification", "Add or update the onboarding verification details shown on this brand profile."],
@@ -3936,7 +3938,10 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
 
 function getBrandProfileMediaAssets(editor, data) {
   if (editor === "banner") {
-    return [{ title: "Profile banner", meta: "Current profile header image", src: data.heroImage || "/assets/header-images.png" }];
+    return [
+      { title: "Profile image", meta: "Current brand profile image", src: "/assets/prototype-icons/brand.svg" },
+      { title: "Profile banner", meta: "Current profile header image", src: data.heroImage || "/assets/header-images.png" }
+    ];
   }
 
   if (editor === "projects") {
@@ -5938,8 +5943,8 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
             <span className="orders-count">{factory.name === "Atelier Minho" ? "12" : factory.name === "Hanshu Studio" ? "8" : "19"} Club orders</span>
           </div>
           <div className="factory-actions">
-            <span className="save-pill">Message</span>
-            <strong>{isSelected ? "Selected" : "Invite"}</strong>
+            <span className="save-pill button-like-action">Message</span>
+            <strong className="button-like-action">{isSelected ? "Selected" : "Invite"}</strong>
           </div>
         </div>
 
@@ -6147,7 +6152,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                 </div>
                 <div className="factory-actions quote-actions">
                   <span
-                    className="save-pill"
+                    className="save-pill button-like-action"
                     onClick={(event) => {
                       event.stopPropagation();
                       goTo("messages");
@@ -6156,7 +6161,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                     Message
                   </span>
                   <span
-                    className="save-pill"
+                    className="save-pill button-like-action"
                     onClick={(event) => {
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
@@ -6166,6 +6171,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                     Review quote
                   </span>
                   <strong
+                    className="button-like-action"
                     onClick={(event) => {
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
@@ -6300,8 +6306,9 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
                 </div>
               </div>
               <div className="factory-actions quote-actions">
-                <span className="save-pill">Message</span>
+                <span className="save-pill button-like-action">Message</span>
                 <strong
+                  className="button-like-action"
                   onClick={() => {
                     setSelectedReorderProject?.(null);
                     goTo("contract");
