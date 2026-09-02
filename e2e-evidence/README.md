@@ -1,6 +1,6 @@
 # End-to-end evidence
 
-Recorded 2026-09-02T12:54:47.085Z against `http://127.0.0.1:5173/app.html`.
+Recorded 2026-09-02T21:00:16.006Z against `http://127.0.0.1:5173/app.html`.
 
 **28 steps, 14 assertions, 0 failed.**
 
@@ -13,9 +13,9 @@ out of Postgres to confirm the screen and the database agree.
 | # | Step | What it shows | Screenshot |
 |---|---|---|---|
 | 1 | Factory sign-in | cold start, no session | [01-factory-sign-in.png](01-factory-sign-in.png) |
-| 2 | Factory code requested | e2e-factory-1788353665351@example.com | [02-factory-code-requested.png](02-factory-code-requested.png) |
-| 3 | Factory signed in | code 746429 accepted — no password anywhere | [03-factory-signed-in.png](03-factory-signed-in.png) |
-| 4 | Factory organisation | factory: Atelier E2E 1788353665351 | [04-factory-organisation.png](04-factory-organisation.png) |
+| 2 | Factory code requested | e2e-factory-1788382798328@example.com | [02-factory-code-requested.png](02-factory-code-requested.png) |
+| 3 | Factory signed in | code 457813 accepted — no password anywhere | [03-factory-signed-in.png](03-factory-signed-in.png) |
+| 4 | Factory organisation | factory: Atelier E2E 1788382798328 | [04-factory-organisation.png](04-factory-organisation.png) |
 | 5 | Factory basics | country is stored as an ISO code, which is what matching compares | [05-factory-basics.png](05-factory-basics.png) |
 | 6 | Factory company details |  | [06-factory-company-details.png](06-factory-company-details.png) |
 | 7 | Factory what you make | from taxonomy_terms: Cut & sew knits, Tops, Bottoms | [07-factory-what-you-make.png](07-factory-what-you-make.png) |
@@ -27,9 +27,9 @@ out of Postgres to confirm the screen and the database agree.
 | 13 | Factory terms | signature is recorded against a terms version, and cannot be edited later | [13-factory-terms.png](13-factory-terms.png) |
 | 14 | Factory published | live and findable, but not yet verified | [14-factory-published.png](14-factory-published.png) |
 | 15 | Brand sign-in | cold start, no session | [15-brand-sign-in.png](15-brand-sign-in.png) |
-| 16 | Brand code requested | e2e-brand-1788353665351@example.com | [16-brand-code-requested.png](16-brand-code-requested.png) |
-| 17 | Brand signed in | code 210567 accepted — no password anywhere | [17-brand-signed-in.png](17-brand-signed-in.png) |
-| 18 | Brand organisation | brand: Maison E2E 1788353665351 | [18-brand-organisation.png](18-brand-organisation.png) |
+| 16 | Brand code requested | e2e-brand-1788382798328@example.com | [16-brand-code-requested.png](16-brand-code-requested.png) |
+| 17 | Brand signed in | code 849758 accepted — no password anywhere | [17-brand-signed-in.png](17-brand-signed-in.png) |
+| 18 | Brand organisation | brand: Maison E2E 1788382798328 | [18-brand-organisation.png](18-brand-organisation.png) |
 | 19 | Brand basics |  | [19-brand-basics.png](19-brand-basics.png) |
 | 20 | Brand about | logo and product imagery upload here, to the public bucket | [20-brand-about.png](20-brand-about.png) |
 | 21 | Brand what you make | same vocabulary the factory picked from: Cut & sew knits | [21-brand-what-you-make.png](21-brand-what-you-make.png) |
