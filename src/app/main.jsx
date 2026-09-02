@@ -14,6 +14,9 @@ import { getBrandProfile, getFactoryProfile } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/BrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/FactoryOnboarding.jsx";
 import { isConfigured } from "../lib/supabase.js";
+import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
+import { isPlatformAdmin } from "../lib/domain/admin.js";
+import AdminVerifications from "./admin/AdminVerifications.jsx";
 import "./shell.css";
 
 function Loading({ label }) {
@@ -327,6 +330,50 @@ function Shell() {
         </button>
       </header>
 
+      <ShellRoutes activeOrg={activeOrg} profile={profile} user={user} isFactory={isFactory} />
+    </div>
+  );
+}
+
+/**
+ * What the signed-in user is looking at. Each Phase 2 screen lands here as it
+ * is built; until then this is the dashboard plus the admin queue.
+ */
+function ShellRoutes({ activeOrg, profile, user, isFactory }) {
+  const [admin, setAdmin] = useState(false);
+
+  useEffect(() => {
+    isPlatformAdmin().then(setAdmin);
+  }, [user?.id]);
+
+  return useRoute([
+    {
+      path: "/admin/verifications",
+      render: () =>
+        admin ? (
+          <AdminVerifications />
+        ) : (
+          <main className="shell-body">
+            <h1>Not your page</h1>
+            <p className="shell-note">
+              Verification review is limited to platform staff. If that should include you,
+              someone with database access has to add you.
+            </p>
+          </main>
+        ),
+    },
+    {
+      render: () => (
+        <Dashboard activeOrg={activeOrg} profile={profile} isFactory={isFactory} user={user} admin={admin} />
+      ),
+    },
+  ]);
+}
+
+function Dashboard({ activeOrg, profile, isFactory, user, admin }) {
+  const { navigate } = useRouter();
+
+  return (
       <main className="shell-body">
         <span className={`side-chip side-chip--${activeOrg.type}`}>
           {isFactory ? "Factory" : "Brand"}
@@ -365,8 +412,15 @@ function Shell() {
           </a>
           .
         </p>
+
+        {admin ? (
+          <p className="shell-note">
+            <button type="button" className="quiet-btn" onClick={() => navigate("/admin/verifications")}>
+              Verification review →
+            </button>
+          </p>
+        ) : null}
       </main>
-    </div>
   );
 }
 
@@ -396,7 +450,9 @@ function App() {
 }
 
 createRoot(document.getElementById("root")).render(
-  <AuthProvider>
-    <App />
-  </AuthProvider>,
+  <RouterProvider>
+    <AuthProvider>
+      <App />
+    </AuthProvider>
+  </RouterProvider>,
 );

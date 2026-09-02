@@ -3,5 +3,11 @@
   "outputDirectory": "dist",
   "framework": null,
   "cleanUrls": false,
-  "trailingSlash": false
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/app.html/(.*)",
+      "destination": "/app.html"
+    }
+  ]
 }

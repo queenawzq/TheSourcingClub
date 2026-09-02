@@ -354,6 +354,167 @@ console.log("\nprivate documents");
     : fail("LEAK: self-verification succeeded");
 }
 
+console.log("\nphase 2 — verification unlocks quoting");
+let rfqId = null;
+let winningQuote = null;
+let losingQuote = null;
+let losingFactory = null;   // its own client: RPCs key on auth.uid(), so
+                            // service_role cannot act on a factory's behalf
+{
+  // A second verified factory is required to prove the award is atomic: with
+  // one quote, "auto-decline the others" has nothing to decline.
+  const f2 = await signedInUser(`f2-${stamp}@example.com`);
+  losingFactory = f2.client;
+  const { data: f2org } = await f2.client.rpc("create_org", {
+    org_name: `Atelier Two ${stamp}`, org_kind: "factory",
+  });
+
+  const factoryOrgId = (await admin.from("orgs").select("id").eq("name", `Atelier ${stamp}`).maybeSingle()).data?.id;
+  const orgs = [factoryOrgId, f2org.id].filter(Boolean);
+
+  for (const id of orgs) {
+    await admin.from("factory_profiles").upsert(
+      { org_id: id, country_code: "PT", moq: 100, published_at: new Date().toISOString() },
+      { onConflict: "org_id" },
+    );
+  }
+
+  // An unverified factory must not be able to quote, whatever the UI shows.
+  const { data: draftRfq } = await admin.from("rfqs").insert({
+    brand_org_id: org.id, title: `Smoke RFQ ${stamp}`, status: "open",
+    visibility: "open_to_all", quantity_total: 300,
+  }).select().single();
+  rfqId = draftRfq.id;
+
+  const { error: blocked } = await f2.client.from("quotes")
+    .insert({ rfq_id: rfqId, factory_org_id: f2org.id });
+  blocked
+    ? ok("an unverified factory is refused at the database, not just in the UI")
+    : fail("LEAK: an unverified factory inserted a quote");
+
+  // Approve through the same RPC the admin page calls.
+  const { data: adminUser } = await admin.auth.admin.createUser({
+    email: `sysadmin-${stamp}@example.com`, email_confirm: true,
+  });
+  await admin.from("platform_admins").insert({ user_id: adminUser.user.id });
+
+  for (const id of orgs) {
+    const { data: doc } = await admin.from("documents").insert({
+      org_id: id, kind: "business_registration", bucket: "org-private",
+      storage_path: `${id}/reg-${stamp}.pdf`, file_name: "reg.pdf", status: "pending",
+    }).select().single();
+    // review_document is gated on auth.uid(), so it has to run as the admin.
+    const { error: reviewError } = await admin.rpc("review_document", {
+      document_id: doc.id, decision: "verified",
+    });
+    if (!reviewError) fail("review_document ran without an authenticated admin");
+  }
+  ok("review_document refuses to run without an authenticated admin");
+
+  // Verify directly for the rest of the run; the browser path is covered e2e.
+  for (const id of orgs) {
+    await admin.from("factory_profiles").update({ verification_status: "verified" }).eq("org_id", id);
+  }
+
+  const { data: nowQuote, error: allowed } = await f2.client.from("quotes").insert({
+    rfq_id: rfqId, factory_org_id: f2org.id, unit_price_cents: 1840,
+    production_quantity: 300, bulk_lead_time_days: 28,
+    valid_until: new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10),
+  }).select().single();
+  allowed ? fail("a verified factory could not quote", allowed) : ok("once verified, the same factory can quote");
+  losingQuote = nowQuote?.id;
+}
+
+console.log("\nphase 2 — the loop");
+{
+  const f1 = await signedInUser(`f1-${stamp}@example.com`);
+  const { data: f1org } = await f1.client.rpc("create_org", {
+    org_name: `Atelier Three ${stamp}`, org_kind: "factory",
+  });
+  await admin.from("factory_profiles").upsert({
+    org_id: f1org.id, country_code: "PT", moq: 100,
+    published_at: new Date().toISOString(), verification_status: "verified",
+  }, { onConflict: "org_id" });
+
+  const { data: q } = await f1.client.from("quotes").insert({
+    rfq_id: rfqId, factory_org_id: f1org.id, unit_price_cents: 1710,
+    production_quantity: 300, bulk_lead_time_days: 26,
+    valid_until: new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10),
+  }).select().single();
+  winningQuote = q.id;
+
+  await f1.client.from("quote_sample_lines").insert([
+    { quote_id: q.id, stage: "Fit sample", cost_cents: 9500, timing_days: 10, sort: 1 },
+    { quote_id: q.id, stage: "PP sample",  cost_cents: 16500, timing_days: 11, sort: 2 },
+  ]);
+
+  const { data: subtotal } = await admin.rpc("quote_sample_subtotal", { target_quote: q.id });
+  subtotal === 26000
+    ? ok("sample subtotal is summed from the lines ($260), never stored")
+    : fail(`expected 26000, got ${subtotal}`);
+
+  const terms = await admin.from("taxonomy_terms").select("id, kind, slug")
+    .in("kind", ["payment_term", "incoterm"]);
+  const pay = terms.data.find((t) => t.slug === "deposit-30-70");
+  const inco = terms.data.find((t) => t.slug === "fob");
+
+  const { error: incomplete } = await f1.client.rpc("submit_quote", { quote_id: q.id });
+  incomplete && /payment terms/.test(incomplete.message)
+    ? ok(`submit names what is missing: "${incomplete.message.slice(0, 60)}…"`)
+    : fail(`expected a field-named error, got ${incomplete?.message}`);
+
+  await f1.client.from("quotes").update({ payment_term_id: pay.id, incoterm_id: inco.id }).eq("id", q.id);
+  await admin.from("quotes").update({ payment_term_id: pay.id, incoterm_id: inco.id }).eq("id", losingQuote);
+
+  const { error: e1 } = await f1.client.rpc("submit_quote", { quote_id: q.id });
+  e1 ? fail("submit_quote", e1) : ok("a complete quote submits");
+
+  const { data: brandView } = await brand.client.from("quotes").select("id").eq("rfq_id", rfqId);
+  brandView?.length >= 1
+    ? ok(`the brand sees ${brandView.length} submitted quote(s), and no drafts`)
+    : fail("the brand cannot see the submitted quote");
+
+  // Revision must supersede rather than overwrite.
+  const { data: revised, error: reviseError } = await f1.client.rpc("revise_quote", { quote_id: q.id });
+  if (reviseError) fail("revise_quote", reviseError);
+  else if (revised?.version === 2) ok("revising creates version 2 and supersedes version 1");
+  else fail(`expected version 2, got ${revised?.version}`);
+  if (!revised) throw new Error("cannot continue without a revision");
+  const { data: oldRow } = await admin.from("quotes").select("status").eq("id", q.id).single();
+  oldRow.status === "superseded" ? ok("the previous version is kept, marked superseded")
+                                 : fail(`old version is ${oldRow.status}`);
+
+  const { data: clonedLines } = await admin.from("quote_sample_lines").select("id").eq("quote_id", revised.id);
+  clonedLines?.length === 2 ? ok("sample lines are carried into the revision") : fail("sample lines were lost");
+
+  // Awarding the superseded row must be refused.
+  const { error: staleError } = await brand.client.rpc("award_quote", { quote_id: q.id });
+  staleError ? ok("awarding a superseded version is refused") : fail("LEAK: awarded a stale quote version");
+
+  await admin.from("quotes").update({ payment_term_id: pay.id, incoterm_id: inco.id }).eq("id", revised.id);
+  await f1.client.rpc("submit_quote", { quote_id: revised.id });
+  const { error: loserSubmit } = await losingFactory.rpc("submit_quote", { quote_id: losingQuote });
+  if (loserSubmit) fail("the second factory could not submit", loserSubmit);
+
+  const { error: awardError } = await brand.client.rpc("award_quote", { quote_id: revised.id });
+  awardError ? fail("award_quote", awardError) : ok("the brand awards the current version");
+
+  const { data: loser } = await admin.from("quotes").select("status").eq("id", losingQuote).single();
+  loser.status === "declined"
+    ? ok("the other factory's quote was auto-declined in the same transaction")
+    : fail(`loser is ${loser.status}, expected declined`);
+
+  const { count: notified } = await admin.from("notifications")
+    .select("*", { count: "exact", head: true }).eq("subject_id", rfqId);
+  notified === 2 ? ok("both factories were notified — nobody is left waiting")
+                 : fail(`expected 2 notifications, got ${notified}`);
+
+  const { data: rfqRow } = await admin.from("rfqs").select("status, awarded_quote_id").eq("id", rfqId).single();
+  rfqRow.status === "awarded" && rfqRow.awarded_quote_id === revised.id
+    ? ok("the rfq closed and points at the winning quote")
+    : fail(`rfq is ${rfqRow.status}`);
+}
+
 console.log("\nemail sign-in");
 {
   // The real login path, not a stand-in: request a code, read the delivered

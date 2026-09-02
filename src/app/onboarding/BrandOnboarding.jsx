@@ -20,6 +20,7 @@ import {
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import { inviteMember } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
+import { fromCents, toCents } from "../../lib/money.js";
 import { ChipGroup, TermSelect, TextArea, TextField, UploadField } from "./fields.jsx";
 import "./onboarding.css";
 
@@ -52,13 +53,6 @@ const STEPS = [
   { key: "review", title: "Review", blurb: "Check it over before we publish." },
   { key: "terms", title: "Terms", blurb: "The agreement between you and the Club." },
 ];
-
-/** Dollars in the interface, minor units in the database. */
-const toCents = (value) => {
-  const parsed = Number.parseFloat(String(value).replace(/[^0-9.]/g, ""));
-  return Number.isFinite(parsed) ? Math.round(parsed * 100) : null;
-};
-const fromCents = (cents) => (cents == null ? "" : String(cents / 100));
 
 export default function BrandOnboarding({ org, user, onComplete }) {
   const [terms, setTerms] = useState(null);
