@@ -8,9 +8,21 @@
 import React, { useState } from "react";
 import { CUSTOM_KINDS, addCustomTerm, termLabel } from "../../lib/domain/taxonomy.js";
 
+/**
+ * A stable hook for tests, derived from the label so it cannot drift out of
+ * sync with what the user sees. Selecting on CSS class or DOM position breaks
+ * on any layout change; selecting on visible text breaks on any copy edit.
+ */
+export function fieldKey(label) {
+  return String(label)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export function Field({ label, hint, children }) {
   return (
-    <label className="ob-field">
+    <label className="ob-field" data-field={fieldKey(label)}>
       <span className="ob-label">{label}</span>
       {children}
       {hint ? <span className="ob-hint">{hint}</span> : null}
@@ -104,7 +116,7 @@ export function ChipGroup({ label, hint, kind, terms, selectedIds, onChange, org
   }
 
   return (
-    <div className="ob-field">
+    <div className="ob-field" data-field={fieldKey(label)}>
       <span className="ob-label">{label}</span>
       {hint ? <span className="ob-hint ob-hint--above">{hint}</span> : null}
 
@@ -188,7 +200,7 @@ export function UploadField({ label, hint, accept, isPrivate, existing, onUpload
   }
 
   return (
-    <div className="ob-field">
+    <div className="ob-field" data-field={fieldKey(label)}>
       <span className="ob-label">
         {label}
         {isPrivate ? <span className="private-tag">Private</span> : null}

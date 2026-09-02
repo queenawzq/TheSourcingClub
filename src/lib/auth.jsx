@@ -154,10 +154,15 @@ export function AuthProvider({ children }) {
       },
 
       async signOut() {
-        await supabase.auth.signOut();
-        window.localStorage.removeItem("tscActiveOrg");
+        // Set the status here rather than waiting for the auth listener to
+        // fire. Clearing orgs while the status is still "ready" leaves the
+        // shell rendering with no active org, which crashes it to a blank
+        // page — the state this ordering exists to prevent.
+        setStatus("signed-out");
         setOrgs([]);
         setActiveOrgId(null);
+        window.localStorage.removeItem("tscActiveOrg");
+        await supabase.auth.signOut();
       },
 
       async refreshOrgs() {

@@ -12,6 +12,7 @@ import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { createOrg } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/BrandOnboarding.jsx";
+import FactoryOnboarding from "./onboarding/FactoryOnboarding.jsx";
 import { isConfigured } from "../lib/supabase.js";
 import "./shell.css";
 
@@ -297,27 +298,8 @@ function Shell() {
   if (profile === undefined) return <Loading label={`Loading ${activeOrg.name}…`} />;
 
   if (!profile?.onboarding_completed_at) {
-    if (isFactory) {
-      // Factory onboarding is the next phase; until then the designed
-      // prototype remains the only version of this flow.
-      return (
-        <div className="gate">
-          <div className="gate-card">
-            <p className="gate-eyebrow">{activeOrg.name}</p>
-            <h1>Factory setup is not wired up yet</h1>
-            <p className="gate-note">
-              Brand onboarding is live against the database. The factory flow is next; for now it
-              runs on mock data at <a href="/factory-prototype.html">its original address</a>.
-            </p>
-            <button type="button" className="quiet-btn" onClick={signOut}>
-              Sign out
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return <BrandOnboarding org={activeOrg} user={user} onComplete={loadProfile} />;
+    const Onboarding = isFactory ? FactoryOnboarding : BrandOnboarding;
+    return <Onboarding org={activeOrg} user={user} onComplete={loadProfile} />;
   }
 
   return (
@@ -389,7 +371,7 @@ function Shell() {
 }
 
 function App() {
-  const { status, error } = useAuth();
+  const { status, error, activeOrg } = useAuth();
 
   if (status === "unconfigured") return <SetupNeeded />;
   if (status === "loading") return <Loading label="Checking your session…" />;
@@ -405,6 +387,11 @@ function App() {
       </div>
     );
   }
+  // Belt and braces: "ready" with no active org should be unreachable, but
+  // rendering the shell in that state is a blank page rather than an error, so
+  // it is worth one line to make it impossible.
+  if (!activeOrg) return <Loading label="Loading your account…" />;
+
   return <Shell />;
 }
 

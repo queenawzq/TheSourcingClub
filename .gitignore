@@ -13,3 +13,6 @@ supabase/.env
 
 # Provisioning credentials - move to a password manager
 .supabase-credentials
+
+# E2E screenshots are regenerated; the report is committed
+e2e-evidence/*.png
