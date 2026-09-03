@@ -1,15 +1,28 @@
-.brand-project-card .project-actions .production-order-status,
-.factory-active-project-card .factory-project-card-actions .production-order-status {
-  flex: 0 0 auto !important;
-  width: max-content !important;
-  min-width: max-content !important;
-  max-width: none !important;
-  justify-content: center !important;
-  white-space: nowrap !important;
+.shared-responsive-card {
+  --shared-card-column-gap: 18px;
+  --shared-card-action-gap: 10px;
+  --shared-card-pill-gap: 10px;
 }
 
-.brand-project-card .project-main h2,
-.factory-active-project-card .factory-request-title h2 {
+.shared-responsive-card.shared-responsive-card {
+  gap: 8px !important;
+}
+
+.shared-responsive-card > .shared-card-header {
+  display: grid !important;
+  grid-template-columns: minmax(320px, 1fr) auto !important;
+  gap: 0 var(--shared-card-column-gap) !important;
+  align-items: start !important;
+  min-width: 0 !important;
+}
+
+.shared-responsive-card .shared-card-heading {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading h1,
+.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading h2 {
   margin: 0 !important;
   color: #0b1223 !important;
   font-size: 18px !important;
@@ -17,8 +30,9 @@
   line-height: 25px !important;
 }
 
-.brand-project-card .project-meta,
-.factory-active-project-card .project-meta {
+.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading .rfq-date,
+.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading .project-meta,
+.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading p {
   margin: 1px 0 0 !important;
   color: #5c7298 !important;
   font-size: 12px !important;
@@ -26,519 +40,300 @@
   line-height: 17px !important;
 }
 
-.factory-rfq-card .factory-rfq-card-actions .rfq-status {
-  margin-top: 6px !important;
-  margin-bottom: -1px !important;
-}
-
-.factory-request-card .factory-request-card-actions .factory-project-fit,
-.factory-dashboard-rfq-row.factory-dashboard-mini-card .factory-project-fit {
-  margin-top: 6px !important;
-  margin-bottom: -1px !important;
-}
-
-.factory-dashboard-rfq-row.factory-dashboard-mini-card {
-  grid-template-columns: minmax(0, 1fr) max-content !important;
-  grid-template-rows: auto !important;
-  gap: var(--card-row-gap) !important;
-  padding: var(--card-mobile-padding) !important;
-  overflow: hidden !important;
-}
-
-.factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top {
-  display: contents !important;
-}
-
-.factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top > .factory-request-title {
-  grid-column: 1 !important;
-  grid-row: 1 !important;
-  min-width: 0 !important;
-  max-width: 100% !important;
-}
-
-.factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top > .factory-request-card-actions {
-  display: contents !important;
-}
-
-.factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top .factory-project-fit {
-  grid-column: 1 / -1 !important;
-  grid-row: 2 !important;
-  box-sizing: border-box !important;
-  width: 100% !important;
+.shared-responsive-card .shared-card-actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  flex-wrap: nowrap !important;
+  gap: var(--shared-card-action-gap) !important;
+  align-self: start !important;
+  justify-self: end !important;
+  width: auto !important;
   min-width: 0 !important;
   max-width: none !important;
-  justify-self: stretch !important;
-  justify-content: flex-start !important;
-  margin-top: 6px !important;
-  margin-bottom: -1px !important;
+  white-space: nowrap !important;
 }
 
-.factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top .primary-btn {
-  grid-column: 2 !important;
-  grid-row: 1 !important;
-  justify-self: end !important;
+.shared-responsive-card .shared-card-actions > * {
+  flex: 0 0 auto !important;
 }
 
-.factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-brief {
-  grid-column: 1 / -1 !important;
-  grid-row: 3 !important;
-  margin-top: 0 !important;
-}
-
-.factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-project-fit {
+.shared-responsive-card .shared-card-status {
+  box-sizing: border-box !important;
+  flex: 0 0 auto !important;
   align-self: center !important;
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
+  width: max-content !important;
+  min-width: max-content !important;
+  max-width: none !important;
+  margin: 0 !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
 }
 
-.factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-status {
+.shared-responsive-card .shared-card-actions .primary-btn,
+.shared-responsive-card .shared-card-actions .secondary-btn,
+.shared-responsive-card .shared-card-actions .rfq-more,
+.shared-responsive-card .shared-card-actions .project-overflow {
   align-self: center !important;
+}
+
+.shared-responsive-card > .shared-card-body {
   margin-top: 0 !important;
-  margin-bottom: 0 !important;
-}
-
-@media (max-width: 1180px) {
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) {
-    grid-template-columns: minmax(0, 1fr) max-content !important;
-    grid-template-rows: auto !important;
-    gap: var(--card-row-gap) !important;
-    padding: var(--card-mobile-padding) !important;
-    overflow: hidden !important;
-  }
-
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top {
-    display: contents !important;
-  }
-
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-title {
-    grid-column: 1 !important;
-    grid-row: 1 !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-  }
-
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-card-actions {
-    display: contents !important;
-  }
-
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-project-fit {
-    grid-column: 1 / -1 !important;
-    grid-row: 2 !important;
-    box-sizing: border-box !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    justify-self: stretch !important;
-    justify-content: flex-start !important;
-    margin-top: 0 !important;
-    margin-bottom: 5px !important;
-  }
-
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .secondary-btn {
-    display: none !important;
-  }
-
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .primary-btn {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-    justify-self: end !important;
-  }
-
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-body {
-    grid-column: 1 / -1 !important;
-    grid-row: 3 !important;
-    margin-top: 0 !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card {
-    grid-template-columns: minmax(0, 1fr) max-content !important;
-    grid-template-rows: auto !important;
-    gap: var(--card-row-gap) !important;
-    padding: var(--card-mobile-padding) !important;
-    overflow: hidden !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top {
-    display: contents !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top > .factory-request-title {
-    grid-column: 1 !important;
-    grid-row: 1 !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top > .factory-request-card-actions {
-    display: contents !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top .factory-project-fit {
-    grid-column: 1 / -1 !important;
-    grid-row: 2 !important;
-    box-sizing: border-box !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    justify-self: stretch !important;
-    justify-content: flex-start !important;
-    margin-top: 0 !important;
-    margin-bottom: 5px !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top .primary-btn {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-    justify-self: end !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-brief {
-    grid-column: 1 / -1 !important;
-    grid-row: 3 !important;
-    margin-top: 0 !important;
-  }
-}
-
-@media (max-width: 760px) {
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-project-fit {
-    margin-top: 0 !important;
-    margin-bottom: 5px !important;
-  }
-
-  .rfq-card:not(.home-rfq-card) > .rfq-card-top,
-  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) max-content max-content !important;
-    align-items: start !important;
-    gap: 0 8px !important;
-    min-width: 0 !important;
-  }
-
-  .rfq-card:not(.home-rfq-card) > .rfq-card-top > .rfq-title-row,
-  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-title {
-    grid-column: 1 !important;
-    grid-row: 1 !important;
-    min-width: 0 !important;
-    max-width: 100% !important;
-  }
-
-  .rfq-card:not(.home-rfq-card) > .rfq-card-top .factory-avatar,
-  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-avatar {
-    display: none !important;
-  }
-
-  .rfq-card:not(.home-rfq-card) > .rfq-card-top > .rfq-card-actions,
-  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-rfq-card-actions {
-    display: contents !important;
-  }
-
-  .rfq-card:not(.home-rfq-card) > .rfq-card-top .primary-btn,
-  .rfq-card:not(.home-rfq-card) > .rfq-card-top .secondary-btn,
-  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .primary-btn,
-  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .secondary-btn {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-    justify-self: end !important;
-  }
-
-  .rfq-card:not(.home-rfq-card) > .rfq-card-top .rfq-more,
-  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-more {
-    grid-column: 3 !important;
-    grid-row: 1 !important;
-    justify-self: end !important;
-  }
-
-  .rfq-card:not(.home-rfq-card) > .rfq-card-top .rfq-status,
-  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-status,
-  .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-project-fit,
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top .factory-project-fit {
-    grid-column: 1 / -1 !important;
-    grid-row: 2 !important;
-    box-sizing: border-box !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: none !important;
-    justify-self: stretch !important;
-    justify-content: flex-start !important;
-    margin-top: 0 !important;
-    margin-bottom: 5px !important;
-  }
-
-  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-body {
-    margin-top: 0 !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-brief {
-    margin-top: 0 !important;
-  }
 }
 
 @media (min-width: 761px) {
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) {
+  .shared-responsive-card > .shared-card-header > .shared-card-heading {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  .shared-responsive-card > .shared-card-header > .shared-card-actions {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+  }
+
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-header {
+    display: grid !important;
+    grid-template-columns: minmax(320px, 1fr) auto !important;
+    gap: 0 var(--shared-card-column-gap) !important;
+  }
+
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-header > .shared-card-actions {
+    display: flex !important;
+  }
+
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card .shared-card-status,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card .shared-card-status {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    justify-self: auto !important;
+    align-self: center !important;
+    margin: 0 !important;
+  }
+
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card {
     display: grid !important;
     grid-template-columns: 1fr !important;
     gap: 8px !important;
     padding: 16px !important;
   }
 
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top {
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-header {
     display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    gap: 18px !important;
+    grid-template-columns: minmax(320px, 1fr) auto !important;
+    gap: 0 var(--shared-card-column-gap) !important;
+  }
+
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions {
+    display: flex !important;
+  }
+
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card .shared-card-actions .secondary-btn {
+    display: inline-flex !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .rfq-card-top.shared-card-header,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .project-card-top.shared-card-header,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .factory-request-card-top.shared-card-header,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .factory-request-card-top.shared-card-header {
+    display: grid !important;
+    grid-template-columns: minmax(320px, 1fr) auto !important;
+    grid-template-rows: auto !important;
+    gap: 0 var(--shared-card-column-gap) !important;
     align-items: start !important;
   }
 
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-title {
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header > .shared-card-actions {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: var(--shared-card-action-gap) !important;
+    width: auto !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header .shared-card-status {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    margin: 0 !important;
+    align-self: center !important;
+    justify-self: auto !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .rfq-card:not(.home-rfq-card).shared-responsive-card,
+  .brand-project-card.shared-responsive-card,
+  .factory-request-card.shared-responsive-card,
+  .factory-project-dashboard-row.shared-responsive-card,
+  .home-rfq-card.shared-responsive-card,
+  .home-production-card.shared-responsive-card {
+    gap: var(--shared-card-pill-gap) !important;
+  }
+
+  .shared-responsive-card > .shared-card-header,
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-header,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) max-content max-content !important;
+    grid-template-rows: auto auto !important;
+    align-items: start !important;
+    gap: var(--shared-card-pill-gap) 8px !important;
+    min-width: 0 !important;
+  }
+
+  .shared-responsive-card > .shared-card-header > .shared-card-heading {
     grid-column: 1 !important;
     grid-row: 1 !important;
   }
 
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top > .factory-request-card-actions {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-end !important;
-    flex-wrap: nowrap !important;
-    gap: 10px !important;
-    justify-self: end !important;
-    width: auto !important;
-  }
-
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-project-fit {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    width: max-content !important;
-    min-width: max-content !important;
-    justify-self: auto !important;
-    align-self: center !important;
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
-  }
-
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .secondary-btn {
-    display: inline-flex !important;
-  }
-
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .primary-btn {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    justify-self: auto !important;
-    align-self: center !important;
-  }
-
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-body {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    margin-top: 0 !important;
-  }
-}
-
-@media (max-width: 760px) {
-  .rfq-card:not(.home-rfq-card),
-  .brand-project-card,
-  .factory-rfq-card:not(.factory-dashboard-mini-card),
-  .factory-active-project-card,
-  .factory-saved-rfq-card,
-  .factory-detail-hero-card,
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card,
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) {
-    gap: var(--card-row-gap) !important;
-  }
-
-  .rfq-card:not(.home-rfq-card) > .rfq-card-top,
-  .brand-project-card > .project-card-top,
-  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top,
-  .factory-active-project-card > .factory-request-card-top,
-  .factory-saved-rfq-card > .factory-request-card-top,
-  .factory-detail-hero-card > .factory-request-card-top {
-    gap: var(--card-row-gap) 8px !important;
-  }
-
-  .rfq-card:not(.home-rfq-card) > .rfq-card-top .rfq-status,
-  .brand-project-card > .project-card-top > .project-actions .production-order-status,
-  .brand-project-card > .project-card-top > .project-actions .project-status,
-  .factory-rfq-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .rfq-status,
-  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .production-order-status,
-  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .project-status,
-  .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-project-fit,
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top .factory-project-fit,
-  .factory-browse-marketplace-page .directory-card-list > .factory-request-card:not(.factory-dashboard-mini-card) > .factory-request-card-top .factory-project-fit {
-    margin-top: 0 !important;
-    margin-bottom: 5px !important;
-  }
-}
-
-@media (min-width: 761px) {
-  .brand-project-card > .project-card-top,
-  .factory-active-project-card > .factory-request-card-top {
-    grid-template-columns: minmax(320px, 1fr) auto !important;
-    gap: 18px !important;
-    align-items: start !important;
-  }
-
-  .brand-project-card > .project-card-top > .project-actions,
-  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-end !important;
-    gap: 10px !important;
-    align-self: start !important;
-    justify-self: end !important;
-    width: auto !important;
-    white-space: nowrap !important;
-  }
-
-  .brand-project-card > .project-card-top > .project-actions .production-order-status,
-  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .production-order-status {
-    align-self: center !important;
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
-  }
-
-  .brand-project-card > .project-card-top > .project-actions .primary-btn,
-  .brand-project-card > .project-card-top > .project-actions .secondary-btn,
-  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .primary-btn,
-  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .secondary-btn {
-    align-self: center !important;
-  }
-
-  .brand-project-card > .project-card-top > .project-actions .project-overflow,
-  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .rfq-more {
-    align-self: center !important;
-  }
-}
-
-@media (min-width: 761px) {
-  .brand-projects-page .brand-project-card > .project-card-top,
-  .factory-projects-page .factory-active-project-card > .factory-request-card-top {
-    grid-template-columns: minmax(320px, 1fr) auto !important;
-    gap: 18px !important;
-    align-items: start !important;
-  }
-
-  .brand-projects-page .brand-project-card > .project-card-top > .project-actions.project-actions,
-  .factory-projects-page .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions.factory-project-card-actions {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-end !important;
-    gap: 10px !important;
-    align-self: start !important;
-    justify-self: end !important;
-    width: auto !important;
-    white-space: nowrap !important;
-  }
-
-  .brand-projects-page .brand-project-card > .project-card-top > .project-actions.project-actions .project-status.production-order-status,
-  .factory-projects-page .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions.factory-project-card-actions .project-status.production-order-status {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    align-self: center !important;
-    justify-self: auto !important;
-    width: max-content !important;
-    min-width: max-content !important;
-    max-width: none !important;
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
-  }
-}
-
-@media (max-width: 760px) {
-  .brand-project-card > .project-card-top > .project-actions,
-  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions,
-  .brand-projects-page .brand-project-card > .project-card-top > .project-actions.project-actions,
-  .factory-projects-page .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions.factory-project-card-actions {
+  .shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions {
     display: contents !important;
   }
 
-  .brand-project-card > .project-card-top > .project-actions .primary-btn,
-  .brand-project-card > .project-card-top > .project-actions .secondary-btn,
-  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .primary-btn,
-  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .secondary-btn {
+  .shared-responsive-card > .shared-card-header .shared-card-actions .primary-btn,
+  .shared-responsive-card > .shared-card-header .shared-card-actions .secondary-btn {
     grid-column: 2 !important;
     grid-row: 1 !important;
     justify-self: end !important;
   }
 
-  .brand-project-card > .project-card-top > .project-actions .project-overflow,
-  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .rfq-more {
+  .shared-responsive-card > .shared-card-header .shared-card-actions .rfq-more,
+  .shared-responsive-card > .shared-card-header .shared-card-actions .project-overflow {
     grid-column: 3 !important;
     grid-row: 1 !important;
     justify-self: end !important;
   }
 
-  .brand-projects-page .brand-project-card > .project-card-top > .project-actions .production-order-status,
-  .factory-projects-page .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .production-order-status,
-  .brand-projects-page .brand-project-card > .project-card-top > .project-actions .project-status.production-order-status,
-  .factory-projects-page .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .project-status.production-order-status,
-  .brand-project-card .project-actions .production-order-status,
-  .factory-active-project-card .factory-project-card-actions .production-order-status {
+  .shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-header .shared-card-status {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    justify-self: stretch !important;
+    justify-content: flex-start !important;
+  }
+
+  .shared-responsive-card > .shared-card-body,
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-body,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-body {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    margin-top: 0 !important;
+  }
+
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-body,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-body {
+    grid-column: 1 / -1 !important;
+  }
+
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card .shared-card-actions .secondary-btn {
+    display: none !important;
+  }
+
+  .shared-dashboard-card.shared-responsive-card {
+    row-gap: var(--shared-card-pill-gap) !important;
+  }
+
+  .shared-dashboard-card.shared-responsive-card > .shared-card-actions {
+    display: contents !important;
+  }
+
+  .shared-dashboard-card.shared-responsive-card > .shared-card-actions .primary-btn {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .shared-dashboard-card.shared-responsive-card > .shared-card-actions .shared-card-status {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    justify-self: stretch !important;
+    justify-content: flex-start !important;
+  }
+
+  .shared-dashboard-card.shared-responsive-card > .shared-card-body {
+    grid-column: 1 / -1 !important;
+    grid-row: 3 !important;
+    margin-top: 0 !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .rfq-card-top.shared-card-header,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .project-card-top.shared-card-header,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .factory-request-card-top.shared-card-header,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .factory-request-card-top.shared-card-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) max-content max-content !important;
+    grid-template-rows: auto auto !important;
+    gap: var(--shared-card-pill-gap) 8px !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header > .shared-card-actions {
+    display: contents !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header .shared-card-actions .primary-btn,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-actions .primary-btn,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header .shared-card-actions .primary-btn,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header .shared-card-actions .primary-btn {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header .shared-card-actions .rfq-more,
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header .shared-card-actions .project-overflow,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-actions .rfq-more,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-actions .project-overflow,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header .shared-card-actions .rfq-more,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header .shared-card-actions .rfq-more {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header .shared-card-status {
     grid-column: 1 / -1 !important;
     grid-row: 2 !important;
     width: 100% !important;
     min-width: 0 !important;
     max-width: none !important;
+    margin: 0 !important;
     justify-self: stretch !important;
     justify-content: flex-start !important;
-    margin-top: 0 !important;
-    margin-bottom: 5px !important;
-  }
-}
-
-@media (min-width: 761px) {
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card {
-    grid-template-columns: 1fr !important;
-    gap: var(--card-row-gap) !important;
-    padding: var(--card-mobile-padding) !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    gap: 18px !important;
-    align-items: start !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top > .factory-request-title {
-    grid-column: 1 !important;
-    grid-row: 1 !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top > .factory-request-card-actions {
-    grid-column: 2 !important;
-    grid-row: 1 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: flex-end !important;
-    flex-wrap: nowrap !important;
-    gap: 10px !important;
-    justify-self: end !important;
-    width: auto !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top .factory-project-fit {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    width: max-content !important;
-    min-width: max-content !important;
-    justify-self: auto !important;
-    align-self: center !important;
-    margin-top: 0 !important;
-    margin-bottom: 0 !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-card-top .primary-btn {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    justify-self: auto !important;
-    align-self: center !important;
-  }
-
-  .factory-dashboard-rfq-row.factory-dashboard-mini-card > .factory-request-brief {
-    grid-column: auto !important;
-    grid-row: auto !important;
-    margin-top: 0 !important;
   }
 }

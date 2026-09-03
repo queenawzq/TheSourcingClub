@@ -120,10 +120,11 @@ export function ProjectCardActions({
   statusClassName = "",
   statusTone
 }) {
-  const statusClasses = ["project-status", "production-order-status", statusTone, statusClassName].filter(Boolean).join(" ");
+  const statusClasses = ["project-status", "production-order-status", "shared-card-status", statusTone, statusClassName].filter(Boolean).join(" ");
+  const actionClasses = ["shared-card-actions", actionsClassName].filter(Boolean).join(" ");
 
   return (
-    <div className={actionsClassName}>
+    <div className={actionClasses}>
       <span className={statusClasses}>{status}</span>
       <button className="primary-btn" type="button" onClick={onAction}>{actionLabel}</button>
       {children}

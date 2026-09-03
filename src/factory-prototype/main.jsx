@@ -3026,9 +3026,9 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
   const fitTone = rfq.statusTone === "warning" ? "good" : rfq.statusTone === "danger" ? "warn" : "strong";
 
   return (
-    <article className="factory-request-card factory-dashboard-mini-card factory-dashboard-rfq-row">
-      <header className="factory-request-card-top">
-        <div className="factory-request-title">
+    <article className="factory-request-card factory-dashboard-mini-card factory-dashboard-rfq-row shared-responsive-card">
+      <header className="factory-request-card-top shared-card-header">
+        <div className="factory-request-title shared-card-heading">
           {dashboardPhoto || primaryImage ? (
             <img
               className="factory-dashboard-rfq-image"
@@ -3046,13 +3046,13 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
             </p>
           </div>
         </div>
-        <div className="factory-request-card-actions">
-          <span className={`factory-project-fit ${fitTone}`}>{tx(fit)}</span>
+        <div className="factory-request-card-actions shared-card-actions">
+          <span className={`factory-project-fit shared-card-status ${fitTone}`}>{tx(fit)}</span>
           <button className="primary-btn" type="button" onClick={onView}>{tx("View RFQ")}</button>
         </div>
       </header>
 
-      <div className="factory-request-brief">
+      <div className="factory-request-brief shared-card-body">
         <div className="factory-request-facts">
           {inviteFacts.map(([label, value]) => (
             <div key={label}>
@@ -3150,8 +3150,8 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
   const imagePosition = dashboardPhoto?.position;
 
   return (
-    <article className="factory-project-dashboard-row">
-      <header className="factory-project-dashboard-heading">
+    <article className="factory-project-dashboard-row shared-responsive-card shared-dashboard-card">
+      <header className="factory-project-dashboard-heading shared-card-heading">
           <img
             className="factory-project-dashboard-thumb-image"
             src={imageSrc}
@@ -3165,7 +3165,7 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
             </p>
           </div>
       </header>
-      <div className="factory-project-dashboard-meta">
+      <div className="factory-project-dashboard-meta shared-card-body">
           {productionFacts.map(([label, value]) => (
             <div className="factory-project-mini-metric" key={label}>
               <span>{label}</span>
@@ -3174,8 +3174,8 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
           ))}
       </div>
 
-      <div className="factory-project-dashboard-actions">
-          <span className={`project-status ${project.statusTone}`}>{statusLabel}</span>
+      <div className="factory-project-dashboard-actions shared-card-actions">
+          <span className={`project-status shared-card-status ${project.statusTone}`}>{statusLabel}</span>
           <button className="primary-btn factory-project-view-btn" type="button" onClick={onView}>View order</button>
       </div>
       <div className="factory-project-dashboard-progress">
@@ -3945,17 +3945,17 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   ].filter(Boolean);
 
   return (
-    <article className={rfq.featured ? "factory-request-card featured factory-rfq-card" : "factory-request-card factory-rfq-card"}>
-      <header className="factory-request-card-top">
-        <div className="factory-request-title">
+    <article className={rfq.featured ? "factory-request-card featured factory-rfq-card shared-responsive-card" : "factory-request-card factory-rfq-card shared-responsive-card"}>
+      <header className="factory-request-card-top shared-card-header">
+        <div className="factory-request-title shared-card-heading">
           <div className="factory-avatar">{rfq.initials}</div>
           <div className="rfq-main">
             <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(rfq.title) : rfq.title}</h2>
             <p className="rfq-date" data-no-translate>{isZh ? getTranslatedListMeta(meta) : meta}</p>
           </div>
         </div>
-        <div className="factory-request-card-actions factory-rfq-card-actions">
-          {rfq.status && <span className={`tag rfq-status ${rfq.statusTone}`}>{tx(rfq.status)}</span>}
+        <div className="factory-request-card-actions factory-rfq-card-actions shared-card-actions">
+          {rfq.status && <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{tx(rfq.status)}</span>}
           <button
             className="primary-btn"
             type="button"
@@ -3967,7 +3967,7 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
         </div>
       </header>
 
-      <div className="factory-request-card-body">
+      <div className="factory-request-card-body shared-card-body">
         <aside className="factory-request-brief">
           <div className="factory-request-facts">
             {rfqFacts.map(([label, value]) => (
@@ -4314,9 +4314,9 @@ function FactoryProjectListCard({ project, language, onViewProject }) {
   ];
 
   return (
-    <article className={project.featured ? "factory-request-card featured factory-active-project-card" : "factory-request-card factory-active-project-card"}>
-      <header className="factory-request-card-top">
-        <div className="factory-request-title">
+    <article className={project.featured ? "factory-request-card featured factory-active-project-card shared-responsive-card" : "factory-request-card factory-active-project-card shared-responsive-card"}>
+      <header className="factory-request-card-top shared-card-header">
+        <div className="factory-request-title shared-card-heading">
           <div className="factory-avatar">{project.initials}</div>
           <div>
             <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</h2>
@@ -4336,7 +4336,7 @@ function FactoryProjectListCard({ project, language, onViewProject }) {
         </ProjectCardActions>
       </header>
 
-      <div className="factory-request-card-body">
+      <div className="factory-request-card-body shared-card-body">
         <aside className="factory-request-brief factory-order-brief">
           <div className="factory-request-facts">
             {productionFacts.map(([label, value]) => (
@@ -5883,9 +5883,9 @@ function BrandProjectCard({ project, language, onViewDetails }) {
   ];
 
   return (
-    <article className={project.featured ? "factory-request-card featured" : "factory-request-card"}>
-      <header className="factory-request-card-top">
-        <div className="factory-request-title">
+    <article className={project.featured ? "factory-request-card featured shared-responsive-card shared-browse-rfq-card" : "factory-request-card shared-responsive-card shared-browse-rfq-card"}>
+      <header className="factory-request-card-top shared-card-header">
+        <div className="factory-request-title shared-card-heading">
           <div className="factory-avatar">{project.initials}</div>
           <div>
             <h2 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h2>
@@ -5894,14 +5894,14 @@ function BrandProjectCard({ project, language, onViewDetails }) {
             </p>
           </div>
         </div>
-        <div className="factory-request-card-actions">
-          <span className={`factory-project-fit ${project.fitTone}`}>{project.capacity[0]}</span>
+        <div className="factory-request-card-actions shared-card-actions">
+          <span className={`factory-project-fit shared-card-status ${project.fitTone}`}>{project.capacity[0]}</span>
           <button className="secondary-btn" type="button">Save</button>
           <button className="primary-btn" type="button" onClick={onViewDetails}>View RFQ</button>
         </div>
       </header>
 
-      <div className="factory-request-card-body">
+      <div className="factory-request-card-body shared-card-body">
         <aside className="factory-request-brief">
           <div className="factory-request-facts">
             {requestFacts.map(([label, value]) => (

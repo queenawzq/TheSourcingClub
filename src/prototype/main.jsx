@@ -2989,19 +2989,19 @@ function HomeRfqMiniCard({ rfq, goTo }) {
   const [primaryImage] = rfq.images || [];
 
   return (
-    <article className="home-rfq-card">
-      <header className="home-production-title">
+    <article className="home-rfq-card shared-responsive-card shared-dashboard-card">
+      <header className="home-production-title shared-card-heading">
         {primaryImage && <img src={primaryImage.src} alt={`${rfq.title} reference`} />}
         <div>
           <h3>{rfq.title}</h3>
           <p>{rfq.date}</p>
         </div>
       </header>
-      <div className="home-rfq-side">
-        <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>
+      <div className="home-rfq-side shared-card-actions">
+        <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{rfq.status}</span>
         <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View quote</button>
       </div>
-      <div className="home-production-facts home-rfq-facts">
+      <div className="home-production-facts home-rfq-facts shared-card-body">
         <div>
           <span>Quotes received</span>
           <strong>{quotesReceived[0]}</strong>
@@ -3024,19 +3024,19 @@ function HomeProjectMiniCard({ project, goTo }) {
   const compactStatus = project.statusTone === "warning" ? "Lab dip review" : project.statusTone === "ready" ? "Sample approval" : project.status;
 
   return (
-    <article className="home-production-card">
-      <header className="home-production-title">
+    <article className="home-production-card shared-responsive-card shared-dashboard-card">
+      <header className="home-production-title shared-card-heading">
         {project.image && <img src={project.image.src} alt={`${project.title} reference`} />}
         <div>
           <h3>{project.title}</h3>
           <p>{project.factory} · {project.location} · {project.started}</p>
         </div>
       </header>
-      <div className="home-production-actions">
-        <span className={`project-status ${project.statusTone}`}>{compactStatus}</span>
+      <div className="home-production-actions shared-card-actions">
+        <span className={`project-status shared-card-status ${project.statusTone}`}>{compactStatus}</span>
         <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>View order</button>
       </div>
-      <div className="home-production-facts">
+      <div className="home-production-facts shared-card-body">
         <div>
           <span>Production step</span>
           <strong>{project.currentStep}</strong>
@@ -4920,16 +4920,16 @@ function RfqCard({ rfq, goTo, customTabs = [] }) {
   }, [menuOpen]);
 
   return (
-    <article className={rfq.featured ? "rfq-card featured" : "rfq-card"}>
-      <header className="rfq-card-top">
-        <div className="rfq-title-row">
+    <article className={rfq.featured ? "rfq-card featured shared-responsive-card" : "rfq-card shared-responsive-card"}>
+      <header className="rfq-card-top shared-card-header">
+        <div className="rfq-title-row shared-card-heading">
           <div className="rfq-main">
             <h2>{rfq.title}</h2>
             <p className="rfq-date">{rfq.date}</p>
           </div>
         </div>
-        <div className="rfq-card-actions">
-          <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>
+        <div className="rfq-card-actions shared-card-actions">
+          <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{rfq.status}</span>
           <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View quote</button>
           <div className="project-overflow" ref={menuRef}>
             <button
@@ -4965,7 +4965,7 @@ function RfqCard({ rfq, goTo, customTabs = [] }) {
         </div>
       </header>
 
-      <div className="rfq-card-body">
+      <div className="rfq-card-body shared-card-body">
         <aside className="rfq-brief">
           <div className="rfq-facts">
             {facts.map(([label, value]) => (
@@ -5238,9 +5238,9 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
   }, [menuOpen]);
 
   return (
-    <article className={project.featured ? "brand-project-card featured" : "brand-project-card"}>
-      <header className="project-card-top">
-        <div className="project-main">
+    <article className={project.featured ? "brand-project-card featured shared-responsive-card" : "brand-project-card shared-responsive-card"}>
+      <header className="project-card-top shared-card-header">
+        <div className="project-main shared-card-heading">
           <h2>{project.title}</h2>
           <p className="project-meta">{project.factory} · {project.location} · {project.started}</p>
         </div>
@@ -5282,7 +5282,7 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
         </ProjectCardActions>
       </header>
 
-      <div className="project-card-body">
+      <div className="project-card-body shared-card-body">
         <aside className="project-card-brief">
           <div className="project-facts">
             {projectFacts.map(([label, value]) => (
