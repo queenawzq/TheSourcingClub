@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import "../prototype/styles.css";
 import "./styles.css";
+import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
 
 const factorySamplePhotos = [
