@@ -11,8 +11,28 @@ const deployTarget = process.env.NETLIFY
     ? "vercel"
     : "local";
 
+/**
+ * Deep links live under /app.html/... . Production handles this with a rewrite
+ * in vercel.json; the dev server needs the same, or a hard refresh on
+ * /app.html/rfqs/:id falls through to the marketing page — which is exactly
+ * what happened the first time the e2e run reloaded a deep link.
+ */
+function appDeepLinks() {
+  return {
+    name: "app-deep-links",
+    configureServer(server) {
+      server.middlewares.use((req, _res, next) => {
+        if (req.url && /^\/app\.html\/.+/.test(req.url.split("?")[0])) {
+          req.url = "/app.html";
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), appDeepLinks()],
   define: {
     __DEPLOY_TARGET__: JSON.stringify(deployTarget)
   },

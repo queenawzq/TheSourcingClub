@@ -17,6 +17,8 @@ import { isConfigured } from "../lib/supabase.js";
 import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
 import { isPlatformAdmin } from "../lib/domain/admin.js";
 import AdminVerifications from "./admin/AdminVerifications.jsx";
+import RfqList from "./rfq/RfqList.jsx";
+import RfqCreate from "./rfq/RfqCreate.jsx";
 import "./shell.css";
 
 function Loading({ label }) {
@@ -362,12 +364,45 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
           </main>
         ),
     },
+    // Brand-only for now; the factory side of the loop lands next.
+    {
+      path: "/rfqs",
+      render: () =>
+        isFactory ? <NotForThisSide isFactory /> : <RfqList org={activeOrg} />,
+    },
+    {
+      path: "/rfqs/new",
+      render: () =>
+        isFactory ? <NotForThisSide isFactory /> : <RfqCreate org={activeOrg} />,
+    },
+    {
+      path: "/rfqs/:id/edit",
+      render: (params) =>
+        isFactory ? <NotForThisSide isFactory /> : <RfqCreate org={activeOrg} rfqId={params.id} />,
+    },
     {
       render: () => (
         <Dashboard activeOrg={activeOrg} profile={profile} isFactory={isFactory} user={user} admin={admin} />
       ),
     },
   ]);
+}
+
+function NotForThisSide({ isFactory }) {
+  const { navigate } = useRouter();
+  return (
+    <main className="shell-body">
+      <h1>Not your side of the marketplace</h1>
+      <p className="shell-note">
+        {isFactory
+          ? "Requests are written by brands. You will find open requests to quote on under Browse, once that lands."
+          : "This page belongs to factories."}
+      </p>
+      <p className="shell-note">
+        <button type="button" className="quiet-btn" onClick={() => navigate("/")}>← Back</button>
+      </p>
+    </main>
+  );
 }
 
 function Dashboard({ activeOrg, profile, isFactory, user, admin }) {
@@ -412,6 +447,14 @@ function Dashboard({ activeOrg, profile, isFactory, user, admin }) {
           </a>
           .
         </p>
+
+        {!isFactory ? (
+          <p className="shell-note">
+            <button type="button" className="primary-btn" onClick={() => navigate("/rfqs")}>
+              Requests for quotes
+            </button>
+          </p>
+        ) : null}
 
         {admin ? (
           <p className="shell-note">

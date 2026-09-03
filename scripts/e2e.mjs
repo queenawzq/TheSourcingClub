@@ -381,6 +381,93 @@ async function main() {
     check(score !== null, `match score computed between the two orgs just created: ${(score * 100).toFixed(0)}% (${tier})`);
     await record(page, "Brand dashboard", `matches the new factory at ${(score * 100).toFixed(0)}% — ${tier}`);
 
+
+    // ================= RFQ =================
+    console.log("\nREQUEST FOR QUOTES");
+    await clickButton(page, "requests for quotes");
+    await waitForHeading(page, "requests");
+    await record(page, "Brand requests", "empty until the first one is written");
+
+    await clickButton(page, "write your first one");
+    await waitForHeading(page, "what do you need made");
+    // The draft row exists before a single field is filled, so nothing typed
+    // is ever held only in component state.
+    const draftUrl = String(await page.url());
+    check(/\/rfqs\/[0-9a-f-]{36}\/edit/.test(draftUrl), "a draft is created on entry and its id is in the url");
+
+    const rfqTitle = `E2E woven shirts ${stamp}`;
+    await field(page, "give-it-a-name").fill(rfqTitle);
+    await field(page, "describe-what-you-need-made").fill(
+      "300 women's woven shirts in organic cotton poplin, three colours.",
+    );
+    const cats = await chooseChips(page, "product-category", 1);
+    await record(page, "RFQ describe", `category: ${cats.join(", ")}`);
+    await advance(page, "quantity and materials");
+
+    await field(page, "total-quantity").fill("300");
+    await page.locator('[data-field="colour-breakdown"] input').nth(0).fill("Ecru");
+    await page.locator('[data-field="colour-breakdown"] input').nth(1).fill("100");
+    await field(page, "materials-and-quality").fill("Organic cotton poplin, mid weight.");
+    await select(page, "who-buys-the-materials").selectOption("factory-sources");
+    await chooseChips(page, "certifications-you-require", 1);
+    await record(page, "RFQ specifics", "sourcing responsibility is stored — full package and CMT are not comparable prices");
+    await advance(page, "timeline and budget");
+
+    // The picker offers the next nine months, so index 2 is three months out.
+    // Mirrors deliveryMonths() in RfqCreate.jsx.
+    const now = new Date();
+    const deliveryMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 3, 1))
+      .toISOString().slice(0, 10);
+    await select(page, "delivery-month").selectOption(deliveryMonth);
+    await field(page, "target-unit-price-from").fill("18");
+    await field(page, "to").fill("24");
+    await record(page, "RFQ timeline", "delivery month drives the capacity factor in matching");
+    await advance(page, "questions for factories");
+
+    await clickButton(page, "add a question");
+    await page.locator('[data-field="factory-questions"] input[type="text"]').first()
+      .fill("Can you quote fit and PP samples separately?");
+    await record(page, "RFQ questions", "answers are shared with every factory quoting, unless marked private");
+    await advance(page, "review and publish");
+
+    await record(page, "RFQ review", "visibility decides who can see it; verification decides who can bid");
+    await clickButton(page, "publish request");
+    await page.waitForTimeout(2500);
+    await record(page, "RFQ published");
+
+    const { data: publishedRfq } = await db
+      .from("rfqs")
+      .select("id, status, visibility, quantity_total, target_unit_price_min_cents, sourcing_responsibility_term_id")
+      .eq("title", rfqTitle)
+      .single();
+
+    check(publishedRfq.status === "open", "the request is open and accepting quotes");
+    check(publishedRfq.visibility === "open_to_all", "published to every factory, per the choice on screen");
+    check(publishedRfq.quantity_total === 300, "quantity persisted as a number");
+    check(publishedRfq.target_unit_price_min_cents === 1800, `"$18" stored as 1800 minor units (got ${publishedRfq.target_unit_price_min_cents})`);
+    check(publishedRfq.sourcing_responsibility_term_id !== null, "who buys the materials is recorded, so quotes are comparable");
+
+    const { count: rfqLinks } = await db
+      .from("taxonomy_links").select("*", { count: "exact", head: true })
+      .eq("subject_type", "rfq").eq("subject_id", publishedRfq.id);
+    check(rfqLinks >= 2, `requirements saved as ${rfqLinks} taxonomy links, not free text`);
+    check(publishedRfq.target_delivery_month !== null, "a delivery month is set, so capacity counts toward matching");
+
+    const { count: questionCount } = await db
+      .from("rfq_questions").select("*", { count: "exact", head: true }).eq("rfq_id", publishedRfq.id);
+    check(questionCount === 1, "the question was saved against the request");
+
+    const { count: colourCount } = await db
+      .from("rfq_colour_splits").select("*", { count: "exact", head: true }).eq("rfq_id", publishedRfq.id);
+    check(colourCount === 1, "the colour breakdown is rows, not a display string");
+
+    // The whole reason migration 014 exists: this score must be about THIS
+    // request, not the union of everything the brand has ever posted.
+    const { data: rfqScore } = await db.rpc("match_score_rfq", {
+      rfq_id: publishedRfq.id, factory_org: factoryOrg.id,
+    });
+    check(rfqScore !== null, `the factory scores ${(rfqScore * 100).toFixed(0)}% against this specific request`);
+
     // ================= RESUME =================
     console.log("\nSESSION");
     await page.reload();
