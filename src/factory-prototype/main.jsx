@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
+import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import "../prototype/styles.css";
 import "./styles.css";
+import "../shared/production-order-cards.css";
 
 const factorySamplePhotos = [
   "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=600",
@@ -1439,50 +1441,25 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed factory-flow" : "app-shell factory-flow"}>
       <FactoryMainLanguageLayer language={onboardingLanguage} />
-      <aside className={sidebarCollapsed ? "side-nav collapsed" : "side-nav"}>
-        <button
-          className="collapse-toggle"
-          type="button"
-          onClick={() => setSidebarCollapsed((value) => !value)}
-          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          <img src={`/assets/prototype-icons/${sidebarCollapsed ? "expand" : "collapse"}.svg`} alt="" />
-        </button>
-        {!sidebarCollapsed && <img src="/assets/logo.svg" alt="The Sourcing Club" className="side-logo" />}
-        <button className={sidebarCollapsed ? "account-card collapsed-account" : "account-card"} type="button" aria-label="Factory account" onClick={() => setScreen("profile")}>
-          <span>AM</span>
-          <div>
-            <strong>Atelier Minho</strong>
-            <small>Factory account</small>
-          </div>
-        </button>
-        <nav>
-          {nav.map((item, index) => (
-            <React.Fragment key={item.label}>
-              {index === 3 || index === 6 ? <span className="nav-divider" /> : null}
-              <button
-                className={item.label === activeNav ? "active" : ""}
-                type="button"
-                onClick={() => {
-                  if (item.label === "Dashboard") setScreen("dashboard");
-                  if (item.label === "RFQs") setScreen("rfqs");
-                  if (item.label === "Production orders") setScreen("projects");
-                  if (item.label === "Browse RFQs") setScreen("browse");
-                  if (item.label === "Conversations") setScreen("messages");
-                  if (item.label === "Saved") setScreen("saved");
-                  if (item.label === "Payments") setScreen("billing");
-                  if (item.label === "Settings") setScreen("settings");
-                }}
-                aria-label={item.label}
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                <img className="nav-icon" src={`/assets/prototype-icons/${item.icon}.svg`} alt="" />
-                <span className="nav-label">{item.label}</span>
-              </button>
-            </React.Fragment>
-          ))}
-        </nav>
-      </aside>
+      <PrototypeSideNav
+        account={{ initials: "AM", name: "Atelier Minho", type: "Factory account" }}
+        active={activeNav}
+        ariaLabel="Factory account"
+        collapsed={sidebarCollapsed}
+        navItems={nav}
+        onNav={(label) => {
+          if (label === "Dashboard") setScreen("dashboard");
+          if (label === "RFQs") setScreen("rfqs");
+          if (label === "Production orders") setScreen("projects");
+          if (label === "Browse RFQs") setScreen("browse");
+          if (label === "Conversations") setScreen("messages");
+          if (label === "Saved") setScreen("saved");
+          if (label === "Payments") setScreen("billing");
+          if (label === "Settings") setScreen("settings");
+        }}
+        onProfile={() => setScreen("profile")}
+        onToggle={() => setSidebarCollapsed((value) => !value)}
+      />
 
       {screen === "dashboard" && (
         <FactoryDashboardPage
@@ -2064,32 +2041,14 @@ function FactoryProfilePage({ language, onViewCompletion }) {
   return (
     <main className="factory-profile-page">
       <div className="factory-profile-shell">
-        <section className="factory-profile-owner-bar">
-          <div>
-            <span>Factory profile</span>
-            <strong>{isOwnerView ? "Edit what brands see" : "Public preview"}</strong>
-          </div>
-          <div className="factory-profile-view-toggle" role="tablist" aria-label="Profile view mode">
-            <button
-              className={isOwnerView ? "active" : ""}
-              type="button"
-              onClick={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
-              role="tab"
-              aria-selected={isOwnerView}
-            >
-              Edit profile
-            </button>
-            <button
-              className={!isOwnerView ? "active" : ""}
-              type="button"
-              onClick={() => setProfileMode("public")}
-              role="tab"
-              aria-selected={!isOwnerView}
-            >
-              View as public
-            </button>
-          </div>
-        </section>
+        <ProfileOwnerBar
+          ariaLabel="Profile view mode"
+          isOwnerView={isOwnerView}
+          onEdit={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
+          onPublic={() => setProfileMode("public")}
+          ownerText="Edit what brands see"
+          profileLabel="Factory profile"
+        />
 
         <section className="factory-profile-hero">
           {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
@@ -2123,46 +2082,44 @@ function FactoryProfilePage({ language, onViewCompletion }) {
 
         <div className="factory-profile-layout">
           <section className="factory-profile-main">
-            <section className="factory-profile-card factory-profile-performance">
-              <div>
-                <span>Factory performance</span>
-                <strong>{data.rating}</strong>
-                <p>{data.reviews} reviews · {data.responseTime} avg. response</p>
-              </div>
-              <div className="factory-profile-score-grid">
-                <Metric label="Club orders" value={data.clubOrders} />
-                <Metric label="Repeat brands" value={data.repeatBrands} />
-                <Metric label="Lead time" value={data.leadTime} />
-              </div>
-            </section>
+            <ProfilePerformanceCard
+              eyebrow="Factory performance"
+              primary={data.rating}
+              primaryLabel={`${data.reviews} reviews · ${data.responseTime} avg. response`}
+              metrics={[
+                { label: "Club orders", value: data.clubOrders },
+                { label: "Repeat brands", value: data.repeatBrands },
+                { label: "Lead time", value: data.leadTime }
+              ]}
+            />
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
+              <ProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
               <p>{data.intro}</p>
               <div className="factory-profile-detail-grid">
-                {overviewRows.map(([label, value]) => <DetailPair label={label} value={value} key={label} />)}
+                {overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Production fit" editable={isOwnerView} onEdit={() => openEditor("production")} />
-              <FactoryProfileChipSection label="Production type" items={data.productionTypes} />
-              <FactoryProfileChipSection label="Product categories" items={data.categories} />
-              <FactoryProfileChipSection label="Makes" items={data.makes} />
-              <FactoryProfileChipSection label="Services" items={data.services} />
-              <FactoryProfileChipSection label="Specialties" items={data.specialties} />
-              <FactoryProfileChipSection label="Digital tools" items={data.tools} />
+              <ProfileCardHeader title="Production fit" editable={isOwnerView} onEdit={() => openEditor("production")} />
+              <ProfileChipSection label="Production type" items={data.productionTypes} />
+              <ProfileChipSection label="Product categories" items={data.categories} />
+              <ProfileChipSection label="Makes" items={data.makes} />
+              <ProfileChipSection label="Services" items={data.services} />
+              <ProfileChipSection label="Specialties" items={data.specialties} />
+              <ProfileChipSection label="Digital tools" items={data.tools} />
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Capacity and terms" editable={isOwnerView} onEdit={() => openEditor("capacity")} />
+              <ProfileCardHeader title="Capacity and terms" editable={isOwnerView} onEdit={() => openEditor("capacity")} />
               <div className="factory-profile-detail-grid">
-                {capacityRows.map(([label, value]) => <DetailPair label={label} value={value} key={label} />)}
+                {capacityRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Factory walkthrough" editable={isOwnerView} actionLabel="Manage video" onEdit={() => openEditor("walkthrough")} />
+              <ProfileCardHeader title="Factory walkthrough" editable={isOwnerView} actionLabel="Manage video" onEdit={() => openEditor("walkthrough")} />
               <div className="factory-profile-video-card">
                 <div className="factory-profile-video-preview">
                   <img src="/assets/factory-header.png" alt="Factory walkthrough preview" />
@@ -2179,7 +2136,7 @@ function FactoryProfilePage({ language, onViewCompletion }) {
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Samples developed" editable={isOwnerView} actionLabel="Manage images" onEdit={() => openEditor("samples")} />
+              <ProfileCardHeader title="Samples developed" editable={isOwnerView} actionLabel="Manage images" onEdit={() => openEditor("samples")} />
               <div className="factory-profile-product-grid">
                 {data.products.map((product) => (
                   <article className="factory-profile-product" key={product.title}>
@@ -2283,7 +2240,7 @@ function FactoryProfilePage({ language, onViewCompletion }) {
             )}
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Manage docs" onEdit={() => openEditor("verification")} />
+              <ProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Manage docs" onEdit={() => openEditor("verification")} />
               <div className="factory-profile-cert-list">
                 {data.certifications.map((cert) => (
                   <div className="factory-profile-cert" key={cert.name}>
@@ -2295,7 +2252,7 @@ function FactoryProfilePage({ language, onViewCompletion }) {
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Client references" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("references")} />
+              <ProfileCardHeader title="Client references" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("references")} />
               <div className="factory-profile-reference-list">
                 {data.references.map((reference) => (
                   <div key={reference}>
@@ -2449,35 +2406,6 @@ function FactoryProfileCompletionPage({ onBack }) {
         </section>
       </div>
     </main>
-  );
-}
-
-function ProfileCompletionSummaryRow({ label, value }) {
-  return (
-    <div className="profile-completion-summary-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function FactoryProfileCardHeader({ title, editable = false, actionLabel = "Edit", onEdit }) {
-  return (
-    <div className="factory-profile-card-header">
-      <h2>{title}</h2>
-      {editable && <button className="factory-profile-edit-button" type="button" onClick={onEdit}>{actionLabel}</button>}
-    </div>
-  );
-}
-
-function FactoryProfileChipSection({ label, items }) {
-  return (
-    <div className="factory-profile-chip-section">
-      <span>{label}</span>
-      <div className="tag-row compact-tags">
-        {items.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
-      </div>
-    </div>
   );
 }
 
@@ -4113,9 +4041,9 @@ function FactoryReadOnlyRfqPage({ project, language, onBack, onEdit }) {
               <h2>RFQ status</h2>
               <p>Your quote was submitted and is visible to Maison Rue.</p>
               <div className="factory-status-facts">
-                <DetailPair label="Your quote" value="$18.40" />
-                <DetailPair label="Quote sent" value="Jul 24" />
-                <DetailPair label="Status" value="Quote submitted" />
+                <ProfileDetailPair label="Your quote" value="$18.40" />
+                <ProfileDetailPair label="Quote sent" value="Jul 24" />
+                <ProfileDetailPair label="Status" value="Quote submitted" />
               </div>
             </section>
           </aside>
@@ -4396,11 +4324,15 @@ function FactoryProjectListCard({ project, language, onViewProject }) {
             </p>
           </div>
         </div>
-        <div className="factory-request-card-actions factory-project-card-actions">
-          <span className={`project-status ${project.statusTone}`}>{project.status}</span>
-          <button className="primary-btn" type="button" onClick={onViewProject}>View order</button>
+        <ProjectCardActions
+          actionLabel="View order"
+          actionsClassName="factory-request-card-actions factory-project-card-actions"
+          onAction={onViewProject}
+          status={project.status}
+          statusTone={project.statusTone}
+        >
           <button className="rfq-more" type="button" aria-label="More order actions">...</button>
-        </div>
+        </ProjectCardActions>
       </header>
 
       <div className="factory-request-card-body">
@@ -5526,7 +5458,7 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
             </div>
             <div className="factory-onboarding-review-rows">
               {rows.map(([label, value]) => (
-                <DetailPair label={label} value={value} key={label} />
+                <ProfileDetailPair label={label} value={value} key={label} />
               ))}
             </div>
           </section>
@@ -6213,18 +6145,18 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
 
           <DetailCard title="Quote-ready details">
             <div className="factory-detail-grid">
-              <DetailPair label="Target unit price" value={project.budget} />
-              <DetailPair label="Quantity" value={project.quantity} />
-              <DetailPair label="Color split" value="3 colors · 100 each" />
-              <DetailPair label="Sample plan" value={project.samples} />
-              <DetailPair label="Bulk timeline" value="Late September" />
+              <ProfileDetailPair label="Target unit price" value={project.budget} />
+              <ProfileDetailPair label="Quantity" value={project.quantity} />
+              <ProfileDetailPair label="Color split" value="3 colors · 100 each" />
+              <ProfileDetailPair label="Sample plan" value={project.samples} />
+              <ProfileDetailPair label="Bulk timeline" value="Late September" />
             </div>
           </DetailCard>
 
           <DetailCard title="Materials and requirements">
             <div className="factory-materials-summary">
-              <DetailPair label="Main material" value="Organic cotton poplin, mid-weight" />
-              <DetailPair label="Quality preference" value="GOTS preferred; brand can confirm certification path" />
+              <ProfileDetailPair label="Main material" value="Organic cotton poplin, mid-weight" />
+              <ProfileDetailPair label="Quality preference" value="GOTS preferred; brand can confirm certification path" />
             </div>
             <section className="factory-sourcing-responsibility">
               <h3>Material sourcing responsibility</h3>
@@ -6295,10 +6227,10 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
               </div>
             </div>
             <div className="factory-client-facts">
-              <DetailPair label="Verified brand" value="Yes" />
-              <DetailPair label="Club orders" value="4" />
-              <DetailPair label="Avg. response" value="1 day" />
-              <DetailPair label="Payment status" value="Verified" />
+              <ProfileDetailPair label="Verified brand" value="Yes" />
+              <ProfileDetailPair label="Club orders" value="4" />
+              <ProfileDetailPair label="Avg. response" value="1 day" />
+              <ProfileDetailPair label="Payment status" value="Verified" />
             </div>
           </section>
 
@@ -6963,9 +6895,9 @@ function FactoryQuoteSent({ project, language = "en", onBack, onDashboard }) {
                 your factory notes and assumptions.
               </p>
               <div className="factory-status-facts">
-                <DetailPair label="Brand" value={project.brand} />
-                <DetailPair label="Quote due" value="Jul 24" />
-                <DetailPair label="Shown total" value="$5,780" />
+                <ProfileDetailPair label="Brand" value={project.brand} />
+                <ProfileDetailPair label="Quote due" value="Jul 24" />
+                <ProfileDetailPair label="Shown total" value="$5,780" />
               </div>
             </section>
 
@@ -7040,15 +6972,6 @@ function DetailCard({ title, children }) {
       <h2>{title}</h2>
       {children}
     </article>
-  );
-}
-
-function DetailPair({ label, value }) {
-  return (
-    <div className="factory-detail-pair">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 

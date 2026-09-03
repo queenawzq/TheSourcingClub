@@ -1,0 +1,147 @@
+.brand-project-card .project-actions .production-order-status,
+.factory-active-project-card .factory-project-card-actions .production-order-status {
+  flex: 0 0 auto !important;
+  width: max-content !important;
+  min-width: max-content !important;
+  max-width: none !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+}
+
+.brand-project-card .project-main h2,
+.factory-active-project-card .factory-request-title h2 {
+  margin: 0 !important;
+  color: #0b1223 !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  line-height: 25px !important;
+}
+
+.brand-project-card .project-meta,
+.factory-active-project-card .project-meta {
+  margin: 1px 0 0 !important;
+  color: #5c7298 !important;
+  font-size: 12px !important;
+  font-weight: var(--weight-medium) !important;
+  line-height: 17px !important;
+}
+
+@media (min-width: 761px) {
+  .brand-project-card > .project-card-top,
+  .factory-active-project-card > .factory-request-card-top {
+    grid-template-columns: minmax(320px, 1fr) auto !important;
+    gap: 18px !important;
+    align-items: start !important;
+  }
+
+  .brand-project-card > .project-card-top > .project-actions,
+  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
+    align-self: start !important;
+    justify-self: end !important;
+    width: auto !important;
+    white-space: nowrap !important;
+  }
+
+  .brand-project-card > .project-card-top > .project-actions .production-order-status,
+  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .production-order-status {
+    align-self: center !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+
+  .brand-project-card > .project-card-top > .project-actions .primary-btn,
+  .brand-project-card > .project-card-top > .project-actions .secondary-btn,
+  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .primary-btn,
+  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .secondary-btn {
+    align-self: center !important;
+  }
+
+  .brand-project-card > .project-card-top > .project-actions .project-overflow,
+  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .rfq-more {
+    align-self: center !important;
+  }
+}
+
+@media (min-width: 761px) {
+  .brand-projects-page .brand-project-card > .project-card-top,
+  .factory-projects-page .factory-active-project-card > .factory-request-card-top {
+    grid-template-columns: minmax(320px, 1fr) auto !important;
+    gap: 18px !important;
+    align-items: start !important;
+  }
+
+  .brand-projects-page .brand-project-card > .project-card-top > .project-actions.project-actions,
+  .factory-projects-page .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions.factory-project-card-actions {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
+    align-self: start !important;
+    justify-self: end !important;
+    width: auto !important;
+    white-space: nowrap !important;
+  }
+
+  .brand-projects-page .brand-project-card > .project-card-top > .project-actions.project-actions .project-status.production-order-status,
+  .factory-projects-page .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions.factory-project-card-actions .project-status.production-order-status {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    align-self: center !important;
+    justify-self: auto !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    max-width: none !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .brand-project-card > .project-card-top > .project-actions,
+  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions,
+  .brand-projects-page .brand-project-card > .project-card-top > .project-actions.project-actions,
+  .factory-projects-page .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions.factory-project-card-actions {
+    display: contents !important;
+  }
+
+  .brand-project-card > .project-card-top > .project-actions .primary-btn,
+  .brand-project-card > .project-card-top > .project-actions .secondary-btn,
+  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .primary-btn,
+  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .secondary-btn {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .brand-project-card > .project-card-top > .project-actions .project-overflow,
+  .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .rfq-more {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .brand-projects-page .brand-project-card > .project-card-top > .project-actions .production-order-status,
+  .factory-projects-page .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .production-order-status,
+  .brand-projects-page .brand-project-card > .project-card-top > .project-actions .project-status.production-order-status,
+  .factory-projects-page .factory-active-project-card > .factory-request-card-top > .factory-project-card-actions .project-status.production-order-status,
+  .brand-project-card .project-actions .production-order-status,
+  .factory-active-project-card .factory-project-card-actions .production-order-status {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    justify-self: stretch !important;
+    justify-content: flex-start !important;
+    margin-top: 6px !important;
+    margin-bottom: -1px !important;
+  }
+}

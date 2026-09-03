@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
+import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import "./styles.css";
+import "../shared/production-order-cards.css";
 
 const samplePhotos = [
   "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=600",
@@ -983,7 +985,7 @@ function App() {
   const isStandalone = screen === "home" || screen === "profile" || screen === "profileCompletion" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "messages" || screen === "saved" || screen === "settings" || screen === "billing";
   const isWideFlow = screen === "invite" || screen === "quotes" || screen === "quoteDetail";
   const hasBottomBar = !isStandalone && screen !== "describe";
-  const baseMainClassName = screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" ? "rfqs-page brand-rfqs-page" : screen === "projects" ? "rfqs-page brand-projects-page" : screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : screen === "quotes" ? "flow-page wide-flow quote-review-flow" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page";
+  const baseMainClassName = screen === "profile" ? "factory-profile-page brand-profile-page" : screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" ? "rfqs-page brand-rfqs-page" : screen === "projects" ? "rfqs-page brand-projects-page" : screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : screen === "quotes" ? "flow-page wide-flow quote-review-flow" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page";
   const mainClassName = `${baseMainClassName}${hasBottomBar ? " rfq-bottom-nav-flow" : ""}`;
 
   const goTo = (next) => {
@@ -1170,35 +1172,16 @@ function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
   ];
 
   return (
-    <aside className={collapsed ? "side-nav collapsed" : "side-nav"}>
-      <button className="collapse-toggle" type="button" onClick={onToggle} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
-        <img src={`/assets/prototype-icons/${collapsed ? "expand" : "collapse"}.svg`} alt="" />
-      </button>
-      {!collapsed && <img src="/assets/logo.svg" alt="The Sourcing Club" className="side-logo" />}
-      <button className={collapsed ? "account-card collapsed-account" : "account-card"} type="button" onClick={onProfile}>
-        <span>MR</span>
-        <div>
-          <strong>Maison Rue</strong>
-          <small>Brand account</small>
-        </div>
-      </button>
-      <nav>
-        {nav.map((item, index) => (
-          <React.Fragment key={item.label}>
-            {(index === 3 || index === 6) && <span className="nav-divider" />}
-            <button
-              className={item.label === active ? "active" : ""}
-              type="button"
-              onClick={() => onNav?.(item.label)}
-              title={collapsed ? item.label : undefined}
-            >
-              <img className="nav-icon" src={`/assets/prototype-icons/${item.icon}.svg`} alt="" />
-              <span className="nav-label">{item.label}</span>
-            </button>
-          </React.Fragment>
-        ))}
-      </nav>
-    </aside>
+    <PrototypeSideNav
+      account={{ initials: "MR", name: "Maison Rue", type: "Brand account" }}
+      active={active}
+      ariaLabel="Brand account"
+      collapsed={collapsed}
+      navItems={nav}
+      onNav={onNav}
+      onProfile={onProfile}
+      onToggle={onToggle}
+    />
   );
 }
 
@@ -3105,9 +3088,9 @@ function BrandProfileScreen({ onViewCompletion }) {
       sourcingStage: "Sampling soon"
     },
     assets: [
-      { title: "Logo", meta: "SVG, PNG, JPG uploaded", src: "/assets/logo.svg" },
-      { title: "Product photos", meta: "Organic poplin shirt references", src: "/assets/dashboard-rfq-shirt.jpg" },
-      { title: "Brand direction", meta: "Lookbook and material moodboard", src: "/assets/moodboard-warm-clay.jpg" }
+      { title: "Organic cotton poplin shirt", meta: "Wovens · MOQ 100", src: "/assets/dashboard-rfq-shirt.jpg" },
+      { title: "Fine-gauge knit capsule", meta: "Knitwear · sample room", src: "/assets/dashboard-rfq-knit.jpg" },
+      { title: "Denim jacket development", meta: "Denim · wash sample", src: "/assets/dashboard-rfq-denim.jpg" }
     ],
     verification: [
       { name: "Business registration", status: "Uploaded" },
@@ -3190,32 +3173,14 @@ function BrandProfileScreen({ onViewCompletion }) {
   return (
     <div className="brand-profile brand-profile-redesign">
       <div className="factory-profile-shell">
-        <section className="factory-profile-owner-bar">
-          <div>
-            <span>Brand profile</span>
-            <strong>{isOwnerView ? "Edit what factories see" : "Public preview"}</strong>
-          </div>
-          <div className="factory-profile-view-toggle" role="tablist" aria-label="Brand profile view">
-            <button
-              className={isOwnerView ? "active" : ""}
-              type="button"
-              onClick={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
-              role="tab"
-              aria-selected={isOwnerView}
-            >
-              Edit profile
-            </button>
-            <button
-              className={!isOwnerView ? "active" : ""}
-              type="button"
-              onClick={() => setProfileMode("public")}
-              role="tab"
-              aria-selected={!isOwnerView}
-            >
-              View as public
-            </button>
-          </div>
-        </section>
+        <ProfileOwnerBar
+          ariaLabel="Brand profile view"
+          isOwnerView={isOwnerView}
+          onEdit={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
+          onPublic={() => setProfileMode("public")}
+          ownerText="Edit what factories see"
+          profileLabel="Brand profile"
+        />
 
         <section className="factory-profile-hero brand-profile-hero">
           {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
@@ -3245,46 +3210,44 @@ function BrandProfileScreen({ onViewCompletion }) {
 
         <div className="factory-profile-layout">
           <main className="factory-profile-main">
-            <section className="factory-profile-card factory-profile-performance">
-              <div>
-                <span>Brand activity</span>
-                <strong>{data.clubOrders}</strong>
-                <p>Club orders · {data.responseTime} avg. response</p>
-              </div>
-              <div className="factory-profile-score-grid">
-                <Metric label="Active quotes" value={data.activeRfqs} />
-                <Metric label="Repeat factories" value={data.repeatFactories} />
-                <Metric label="Payment status" value={data.paymentStatus} />
-              </div>
-            </section>
+            <ProfilePerformanceCard
+              eyebrow="Brand activity"
+              primary={data.clubOrders}
+              primaryLabel={`Club orders · ${data.responseTime} avg. response`}
+              metrics={[
+                { label: "Active quotes", value: data.activeRfqs },
+                { label: "Repeat factories", value: data.repeatFactories },
+                { label: "Payment status", value: data.paymentStatus }
+              ]}
+            />
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
+              <ProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
               <p>{data.intro}</p>
               <div className="factory-profile-detail-grid">
-                {overviewRows.map(([label, value]) => <BrandProfileDetailPair label={label} value={value} key={label} />)}
+                {overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Sourcing fit" editable={isOwnerView} onEdit={() => openEditor("sourcing")} />
-              <BrandProfileChipSection label="Product categories" items={data.productCategories} />
-              <BrandProfileChipSection label="Production type" items={data.productionTypes} />
-              <BrandProfileChipSection label="Market level" items={data.marketLevel} />
-              <BrandProfileChipSection label="Preferred regions" items={data.preferredRegions} />
-              <BrandProfileChipSection label="Certifications requested" items={data.certifications} />
-              <BrandProfileChipSection label="Services needed" items={data.services} />
+              <ProfileCardHeader title="Sourcing fit" editable={isOwnerView} onEdit={() => openEditor("sourcing")} />
+              <ProfileChipSection label="Product categories" items={data.productCategories} />
+              <ProfileChipSection label="Production type" items={data.productionTypes} />
+              <ProfileChipSection label="Market level" items={data.marketLevel} />
+              <ProfileChipSection label="Preferred regions" items={data.preferredRegions} />
+              <ProfileChipSection label="Certifications requested" items={data.certifications} />
+              <ProfileChipSection label="Services needed" items={data.services} />
             </section>
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Sourcing volume" editable={isOwnerView} onEdit={() => openEditor("sourcingVolume")} />
+              <ProfileCardHeader title="Sourcing volume" editable={isOwnerView} onEdit={() => openEditor("sourcingVolume")} />
               <div className="factory-profile-detail-grid">
-                {sourcingVolumeRows.map(([label, value]) => <BrandProfileDetailPair label={label} value={value} key={label} />)}
+                {sourcingVolumeRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Brand assets" editable={isOwnerView} actionLabel="Manage assets" onEdit={() => openEditor("assets")} />
+              <ProfileCardHeader title="Brand assets" editable={isOwnerView} actionLabel="Manage assets" onEdit={() => openEditor("assets")} />
               <div className="factory-profile-product-grid">
                 {data.assets.map((asset) => (
                   <article className="factory-profile-product brand-profile-asset" key={asset.title}>
@@ -3387,7 +3350,7 @@ function BrandProfileScreen({ onViewCompletion }) {
             )}
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("verification")} />
+              <ProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("verification")} />
               <div className="factory-profile-cert-list">
                 {data.verification.map((item) => (
                   <div className="factory-profile-cert" key={item.name}>
@@ -3399,7 +3362,7 @@ function BrandProfileScreen({ onViewCompletion }) {
             </section>
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Decision makers" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("stakeholders")} />
+              <ProfileCardHeader title="Decision makers" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("stakeholders")} />
               <div className="factory-profile-reference-list">
                 {data.stakeholders.map((stakeholder) => (
                   <div key={typeof stakeholder === "string" ? stakeholder : stakeholder.email || stakeholder.name}>
@@ -3421,15 +3384,6 @@ function BrandProfileScreen({ onViewCompletion }) {
           onSave={saveProfileSection}
         />
       ), document.body)}
-    </div>
-  );
-}
-
-function BrandProfileCardHeader({ title, editable = false, actionLabel = "Edit", onEdit }) {
-  return (
-    <div className="factory-profile-card-header">
-      <h2>{title}</h2>
-      {editable && <button className="factory-profile-edit-button" type="button" onClick={onEdit}>{actionLabel}</button>}
     </div>
   );
 }
@@ -3560,15 +3514,6 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
         </section>
       </div>
     </main>
-  );
-}
-
-function ProfileCompletionSummaryRow({ label, value }) {
-  return (
-    <div className="profile-completion-summary-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 
@@ -4119,26 +4064,6 @@ function BrandProfileChipEditor({ label, options, selected, onChange, singleSele
         ))}
       </div>
     </section>
-  );
-}
-
-function BrandProfileChipSection({ label, items }) {
-  return (
-    <div className="factory-profile-chip-section">
-      <span>{label}</span>
-      <div className="tag-row compact-tags">
-        {items.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
-      </div>
-    </div>
-  );
-}
-
-function BrandProfileDetailPair({ label, value }) {
-  return (
-    <div className="factory-detail-pair">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 
@@ -5318,9 +5243,12 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
           <h2>{project.title}</h2>
           <p className="project-meta">{project.factory} · {project.location} · {project.started}</p>
         </div>
-        <div className="project-actions">
-          <span className={`project-status ${project.statusTone}`}>{project.status}</span>
-          <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>{actionLabel}</button>
+        <ProjectCardActions
+          actionLabel={actionLabel}
+          onAction={() => goTo("projectDetail")}
+          status={project.status}
+          statusTone={project.statusTone}
+        >
           <div className="project-overflow" ref={menuRef}>
             <button className="rfq-more" type="button" aria-label="More order actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
             {menuOpen && (
@@ -5350,7 +5278,7 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
               </div>
             )}
           </div>
-        </div>
+        </ProjectCardActions>
       </header>
 
       <div className="project-card-body">

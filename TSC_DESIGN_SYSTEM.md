@@ -251,11 +251,15 @@ These token names exist in the prototype stylesheets and should be used instead 
 - Compact title text uses `--card-title-size` / `--card-title-line`; compact subtitles and metadata use `--card-subtitle-size` / `--card-subtitle-line`.
 - The subtitle starts `--card-subtitle-offset` below the title. Do not use one-off `translateY()` nudges for matching title stacks.
 - Compact metric cells use `--card-metric-min-height` and `--card-metric-padding`; matching metric labels and values use the metric tokens.
+- Brand profile asset cards use the same responsive image-card settings as factory profile sample cards: images sit next to each other in a three-column grid at larger breakpoints, then stack to one column at the small mobile breakpoint.
 
 ### Page Spacing Contract
 
 - Product pages with side navigation use the same left offset model: expanded pages use `--nav-expanded-page-offset`; collapsed pages use `--nav-collapsed-page-offset`.
 - Dashboard/profile pages that intentionally breathe away from the nav add `40px` to the sidebar offset with `calc(...)`; do not replace this with a new literal offset.
+- Brand and factory profile pages must share the same `factory-profile-page` outer shell, offset, top padding, and `factory-profile-shell` max width. Do not render one side inside the generic dashboard/home page wrapper.
+- Brand and factory profile pages must keep the same responsive profile contract: owner toggle position, hero identity collapse, overview/detail grids, section headers, image-card grids, side cards, and history cards use the same breakpoints and layout rules. Brand-specific profile selectors may change copy/data only; they must not introduce one-off spacing, width, or stacking behavior unless the factory side gets the matching rule too.
+- Profile value sections stay horizontal until the small mobile breakpoint, then stack together on both sides. Do not let brand-only metric overrides force earlier stacking.
 - Standard product pages use `--page-padding-inline` at desktop/tablet widths and `--page-padding-inline-mobile` at mobile widths.
 - Dashboard, RFQ, project, detail, and submit pages use `--page-top-standard`.
 - Messages and settings-style dense workspaces use `--page-top-compact`.
@@ -264,6 +268,9 @@ These token names exist in the prototype stylesheets and should be used instead 
 - Page-level grids use `--page-grid-gap`. Search/filter/sort rows use `--page-controls-gap` on desktop and `--page-controls-responsive-gap` when controls wrap.
 - RFQ flow pages with the fixed bottom navigation use the `rfq-bottom-nav-flow` shell rule and must not keep extra bottom page padding above the footer. The quote request sent page is the reference: the footer border should sit directly at the bottom edge of the content area with no white gap.
 - When card bodies collapse, image/visual columns use `--responsive-media-max` and align to the same side across brand/factory screens.
+- Production-order card status pills stay in the top action cluster beside the primary action and overflow menu at desktop/tablet breakpoints. At the smaller `1180px` card breakpoint and below, the status pill moves to a full-width second row under the title/action row; use the factory-side production-orders card as the reference.
+- Brand/factory profile value sections use the same performance-card layout: one large lead metric in the left column and three supporting metrics in a horizontal right grid. Do not collapse these supporting metrics at `900px` or `760px`; keep the factory-side profile performance card as the reference and only move to a single-column stack at `560px` and below.
+- Brand/factory profile view toggles use the same owner-bar responsive layout: at `1180px` and below, the owner bar stacks vertically, the segmented toggle becomes full width, and both toggle buttons split the available width equally.
 
 ### Responsive Breakpoint Contract
 
@@ -305,7 +312,7 @@ CSS variables cannot be used directly in media query conditions, so these breakp
 - Small dashboard CTAs use `--compact-control-height`, `--compact-control-padding`, and `--compact-control-font-size`.
 - Brand/factory page-header and card action buttons use `--brand-action-height`, `--brand-action-padding`, `--brand-action-font-size`, and `--brand-action-line`; this includes `View all`, `Invite brand`, `Request new quote`, `Save`, `Message`, `Request quote`, and `View RFQ` actions in dashboard panels, RFQ rows, directory, marketplace, saved lists, and profile screens.
 - Profile edit controls use the same `34px` rounded secondary setting as profile detail actions. The profile hero has one visible top-right `Edit` control, and that editor manages both the profile image and banner image; do not place a second edit control on top of the profile image.
-- Profile owner-card stacked actions are `34px` tall and capped at `156px` wide; do not stretch `Publish changes` / `View as public` to the full side-card width.
+- Profile owner-card stacked actions are `34px` tall and capped at `220px` wide; do not stretch `Publish changes` / `View as public` to the full side-card width.
 - Brand-side compact actions must use the same `34px` button height as default primary/secondary buttons.
 - Dashboard side-card and attention-card action buttons use `--dashboard-action-height`, `--dashboard-action-padding`, `--dashboard-action-font-size`, and `--dashboard-action-line`; this applies to both white and blue buttons inside dashboard cards.
 - Dashboard card actions must use the same `34px` button height as default primary/secondary buttons.
