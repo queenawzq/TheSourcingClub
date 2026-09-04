@@ -1,14 +1,23 @@
 {
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build && cp script.js dist/script.js && cp -R assets/* dist/assets/"
+    "build": "vite build && cp script.js dist/script.js && cp -R assets/* dist/assets/",
+    "smoke": "node scripts/smoke-test.mjs",
+    "db:reset": "supabase db reset",
+    "db:test": "supabase test db",
+    "taxonomy": "python3 scripts/build-taxonomy.py",
+    "e2e": "node scripts/e2e.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.4",
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.7",
-    "typescript": "^5.7.2",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@browserbasehq/stagehand": "^4.0.2",
+    "zod": "^4.5.4"
+  }
 }

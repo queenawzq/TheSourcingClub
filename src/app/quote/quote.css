@@ -1,0 +1,144 @@
+/* Quote form and comparison. */
+
+.quote-form { max-width: 780px; }
+.quote-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.quote-fieldset:disabled { opacity: .72; }
+.quote-fieldset .detail-card { display: flex; flex-direction: column; gap: 16px; }
+.quote-fieldset .detail-card h2 { margin: 0; }
+
+.sample-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 90px 80px minmax(0, 1.4fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+.sample-row input {
+  height: 38px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  width: 100%;
+}
+@media (max-width: 720px) {
+  .sample-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+
+.quote-fieldset textarea {
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--text);
+  resize: vertical;
+}
+
+.quote-total { background: var(--soft-blue-fill); border-color: var(--soft-blue-stroke); }
+.quote-total dd { font-size: 20px; font-variant-numeric: tabular-nums; }
+
+.quote-actions { position: static; border-top: 0; padding: 0; height: auto; margin-top: 16px; }
+
+/* ---- Comparison ------------------------------------------------------ */
+
+.compare-page { max-width: 1200px; }
+
+/* Wide content scrolls in its own container; the page body never does. */
+.compare-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.compare-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.compare-table th, .compare-table td {
+  text-align: left;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  min-width: 180px;
+}
+.compare-table thead th {
+  background: var(--bg-page);
+  border-bottom: 1px solid var(--border-strong);
+  vertical-align: bottom;
+}
+.compare-table tbody th {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: var(--bg-page);
+  position: sticky;
+  left: 0;
+  min-width: 160px;
+  z-index: 1;
+}
+.compare-table td.num { font-variant-numeric: tabular-nums; }
+.compare-table tbody tr:last-child td, .compare-table tbody tr:last-child th { border-bottom: 0; }
+
+.compare-factory { display: block; font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+.compare-version, .compare-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.compare-won, .compare-lost {
+  display: inline-block;
+  margin-top: 6px;
+  height: 22px;
+  line-height: 20px;
+  padding: 0 8px;
+  border-radius: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid;
+}
+.compare-won  { background: #eaf4ff; border-color: #8db7ff; color: #1a4df2; }
+.compare-lost { background: #f3f4f8; border-color: var(--border); color: var(--text-muted); }
+
+.compare-total-row td { background: var(--soft-blue-fill); font-size: 15px; }
+.compare-cheapest {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-top: 2px;
+}
+
+.compare-samples { margin: 0; padding-left: 16px; }
+.compare-samples li { margin-bottom: 2px; }
+
+.compare-award { height: 36px; padding: 0 14px; font-size: 13px; }
+
+/* ---- Confirm --------------------------------------------------------- */
+
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 16, 32, .45);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  z-index: 50;
+}
+.confirm-card {
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 28px;
+  max-width: 440px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.confirm-card h2 { margin: 0; font-size: 20px; font-weight: 700; }
+.confirm-card p { margin: 0; font-size: 14px; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 8px; }
