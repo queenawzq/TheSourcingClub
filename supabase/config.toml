@@ -204,8 +204,16 @@ password_requirements = ""
 # rp_origins = ["http://127.0.0.1:3000"]
 
 [auth.rate_limit]
-# Number of emails that can be sent per hour. Requires auth.email.smtp to be enabled.
-email_sent = 2
+# Number of emails that can be sent per hour.
+#
+# Two is far too few for development: the e2e walkthrough alone signs in as a
+# factory, a brand, an admin and back again. Local mail goes to Mailpit and
+# never leaves the machine, so there is nothing to abuse.
+#
+# On the hosted project this number is not the binding constraint — the free
+# tier's built-in sender caps sending regardless. Custom SMTP is what actually
+# lifts it there.
+email_sent = 200
 # Number of SMS messages that can be sent per hour. Requires auth.sms to be enabled.
 sms_sent = 30
 # Number of anonymous sign-ins that can be made per hour per IP address. Requires enable_anonymous_sign_ins = true.

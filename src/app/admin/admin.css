@@ -87,3 +87,16 @@
 }
 .admin-pill--verified { background: #eaf4ff; border-color: #8db7ff; color: #1a4df2; }
 .admin-pill--rejected { background: #fff1ea; border-color: #f2a48a; color: #b33416; }
+
+/* This page renders outside the app shell, so it carries its own header —
+   otherwise an admin lands here with no way back out. */
+.admin-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.admin-bar .shell-mark { font-weight: 900; margin-right: auto; }
+.admin-bar .admin-sub { display: inline; }

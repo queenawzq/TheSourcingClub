@@ -16,3 +16,4 @@ supabase/.env
 
 # E2E screenshots are regenerated; the report is committed
 e2e-evidence/*.png
+e2e-fixture-registration.pdf

@@ -21,6 +21,9 @@ import RfqList from "./rfq/RfqList.jsx";
 import RfqCreate from "./rfq/RfqCreate.jsx";
 import RfqDetail from "./rfq/RfqDetail.jsx";
 import BrowseRfqs from "./rfq/BrowseRfqs.jsx";
+import QuoteForm from "./quote/QuoteForm.jsx";
+import QuoteSent from "./quote/QuoteSent.jsx";
+import QuoteCompare from "./quote/QuoteCompare.jsx";
 import "./shell.css";
 
 function Loading({ label }) {
@@ -351,21 +354,6 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
   }, [user?.id]);
 
   return useRoute([
-    {
-      path: "/admin/verifications",
-      render: () =>
-        admin ? (
-          <AdminVerifications />
-        ) : (
-          <main className="shell-body">
-            <h1>Not your page</h1>
-            <p className="shell-note">
-              Verification review is limited to platform staff. If that should include you,
-              someone with database access has to add you.
-            </p>
-          </main>
-        ),
-    },
     // Brand-only for now; the factory side of the loop lands next.
     {
       path: "/rfqs",
@@ -393,6 +381,21 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/browse",
       render: () =>
         isFactory ? <BrowseRfqs org={activeOrg} profile={profile} /> : <NotForThisSide isFactory={false} />,
+    },
+    {
+      path: "/rfqs/:id/quotes",
+      render: (params) =>
+        isFactory ? <NotForThisSide isFactory /> : <QuoteCompare org={activeOrg} rfqId={params.id} />,
+    },
+    {
+      path: "/browse/:id/quote",
+      render: (params) =>
+        isFactory ? <QuoteForm org={activeOrg} rfqId={params.id} profile={profile} /> : <NotForThisSide isFactory={false} />,
+    },
+    {
+      path: "/browse/:id/quote/sent",
+      render: (params) =>
+        isFactory ? <QuoteSent rfqId={params.id} /> : <NotForThisSide isFactory={false} />,
     },
     {
       path: "/browse/:id",
@@ -492,13 +495,45 @@ function Dashboard({ activeOrg, profile, isFactory, user, admin }) {
   );
 }
 
+/**
+ * Platform staff have no brand or factory org, so the admin tool cannot live
+ * behind the org gate — requiring one locked the only people who can use it
+ * out of it. Checked here, above everything except being signed in.
+ */
+function AdminGate({ children }) {
+  const { path } = useRouter();
+  const [admin, setAdmin] = useState(null);
+
+  useEffect(() => {
+    isPlatformAdmin().then(setAdmin);
+  }, []);
+
+  if (!path.startsWith("/admin")) return children;
+  if (admin === null) return <Loading label="Checking your access…" />;
+  if (!admin) {
+    return (
+      <div className="gate">
+        <div className="gate-card">
+          <h1>Not your page</h1>
+          <p className="gate-note">
+            Verification review is limited to platform staff. If that should include you, someone
+            with database access has to add you.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return <AdminVerifications />;
+}
+
 function App() {
   const { status, error, activeOrg } = useAuth();
 
   if (status === "unconfigured") return <SetupNeeded />;
   if (status === "loading") return <Loading label="Checking your session…" />;
   if (status === "signed-out") return <SignIn />;
-  if (status === "no-org") return <ChooseOrgType />;
+  // Reachable before an org exists, and deliberately so.
+  if (status === "no-org") return <AdminGate><ChooseOrgType /></AdminGate>;
   if (status === "error") {
     return (
       <div className="gate">
@@ -514,7 +549,11 @@ function App() {
   // it is worth one line to make it impossible.
   if (!activeOrg) return <Loading label="Loading your account…" />;
 
-  return <Shell />;
+  return (
+    <AdminGate>
+      <Shell />
+    </AdminGate>
+  );
 }
 
 createRoot(document.getElementById("root")).render(

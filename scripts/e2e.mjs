@@ -50,6 +50,8 @@ const db = createClient(
   { auth: { persistSession: false } },
 );
 
+const FIXTURE = path.join(OUT, "..", "e2e-fixture-registration.pdf");
+
 const steps = [];
 let shot = 0;
 let failures = 0;
@@ -166,7 +168,23 @@ async function signIn(page, email, who) {
 
   await page.locator('input[type="email"]').first().fill(email);
   await clickButton(page, "email me a sign-in link");
-  await waitFor(page, 'input[placeholder="000000"]');
+
+  // Supabase throttles repeat requests per address (max_frequency). The screen
+  // says exactly how long to wait, so wait that long and ask again — which is
+  // what a real person does, and worth exercising.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      await waitFor(page, 'input[placeholder="000000"]', 6000);
+      break;
+    } catch {
+      const message = await page.locator(".gate-error").innerText().catch(() => "");
+      const seconds = Number((message.match(/after (\d+) seconds?/) ?? [])[1] ?? 0);
+      if (!seconds && !/security purposes/i.test(message)) throw new Error(`sign-in stalled: ${message || "no code field"}`);
+      await page.waitForTimeout((seconds + 2) * 1000);
+      await clickButton(page, "email me a sign-in link");
+    }
+  }
+  await waitFor(page, 'input[placeholder="000000"]', 20000);
   await record(page, `${who} code requested`, email);
 
   const { code, link } = await signInEmail(email);
@@ -219,6 +237,16 @@ async function advance(page, nextHeading) {
 async function main() {
   await fs.rm(OUT, { recursive: true, force: true });
   await fs.mkdir(OUT, { recursive: true });
+  // A minimal but genuine PDF: the private bucket's allowed_mime_types has no
+  // text/plain, so a .txt fixture is rejected before it reaches the queue.
+  await fs.writeFile(
+    FIXTURE,
+    "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n" +
+      "2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n" +
+      "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 200 200]>>endobj\n" +
+      "trailer<</Root 1 0 R>>\n%%EOF\n",
+    "latin1",
+  );
 
   const browser = await localBrowser.launch({ headless: true });
   const stagehand = await Stagehand.create({ browser });
@@ -290,7 +318,13 @@ async function main() {
     await advance(page, "verification");
 
     await chooseChips(page, "certifications-you-hold", 1);
-    await record(page, "Factory verification", "registration is private; unverified certs do not count towards matching");
+    await page.locator('[data-field="business-registration"] input[type="file"]').setInputFiles({
+      name: "registration.pdf",
+      mimeType: "application/pdf",
+      buffer: await fs.readFile(FIXTURE),
+    });
+    await page.waitForTimeout(2500);
+    await record(page, "Factory verification", "registration goes to the private bucket and enters the review queue");
     await advance(page, "show your floor");
 
     await record(page, "Factory showcase");
@@ -517,15 +551,179 @@ async function main() {
     check(/Can you quote fit and PP samples separately/.test(detail), "the brand's question reaches the factory");
     check(!/business_email|hq_location.*private/i.test(detail), "no brand contact details leak into the factory's view");
 
-    const quoteButton = await page.locator("button").filter?.({ hasText: /verification needed/i })?.count?.() ?? 0;
-    check(true, "quoting is gated behind verification, not hidden");
+    const detailButtons = await page.locator(".rfq-page-head button").innerText().catch(() => "");
+    check(
+      /verification needed/i.test(detailButtons),
+      "the quote button is present but refused — the gate is explained, not hidden",
+    );
+
+
+    // ================= VERIFICATION =================
+    console.log("\nADMIN VERIFIES");
+    const adminEmail = `e2e-admin-${stamp}@example.com`;
+    const { data: adminUser } = await db.auth.admin.createUser({
+      email: adminEmail, email_confirm: true,
+    });
+    await db.from("platform_admins").insert({ user_id: adminUser.user.id });
+
+    await clickButton(page, "sign out");
+    await page.waitForTimeout(1500);
+    await waitFor(page, 'input[type="email"]', 30000);
+    await signIn(page, adminEmail, "Admin");
+
+    // Platform staff have no brand or factory org; the admin tool must be
+    // reachable anyway.
+    await page.goto(`${APP}/admin/verifications`);
+    await waitForHeading(page, "verification review");
+    await record(page, "Verification queue", "an admin with no org of their own can still work");
+
+    const queueText = await page.locator(".admin").first().innerText();
+    check(queueText.includes(factoryName), "the factory's registration is waiting for a decision");
+
+    const rows = page.locator(".admin tbody tr");
+    let approved = false;
+    for (let index = 0; index < (await rows.count()); index += 1) {
+      if ((await rows.nth(index).innerText()).includes(factoryName)) {
+        await page
+          .locator(`.admin tbody tr:nth-child(${index + 1}) button.admin-approve`)
+          .click();
+        approved = true;
+        break;
+      }
+    }
+    check(approved, "the queue row for this factory was found and approved");
+    await page.waitForTimeout(3000);
+    await record(page, "Factory approved", "approving the registration verifies the org, which unlocks quoting");
+
+    const { data: verified } = await db
+      .from("factory_profiles").select("verification_status").eq("org_id", factoryOrg.id).single();
+    check(verified.verification_status === "verified", "the factory is now verified in the database");
+
+    // ================= THE QUOTE =================
+    console.log("\nFACTORY QUOTES");
+    await clickButton(page, "sign out");
+    await page.waitForTimeout(1500);
+    await waitFor(page, 'input[type="email"]', 30000);
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory quoting");
+
+    await page.goto(`${APP}/browse/${publishedRfq.id}`);
+    await waitForHeading(page, rfqTitle.slice(0, 20));
+    await record(page, "Factory can now bid", "the verification notice is gone and the quote button is live");
+
+    await clickButton(page, "send a quote");
+    await waitForHeading(page, "your quote");
+
+    await field(page, "unit-price").fill("17.10");
+    await field(page, "production-quantity").fill("300");
+    await field(page, "bulk-lead-time-days").fill("26");
+    await select(page, "payment-terms").selectOption(
+      (await db.from("taxonomy_terms").select("id").eq("kind", "payment_term").eq("slug", "deposit-30-70").single()).data.id,
+    );
+    await select(page, "shipping-terms").selectOption(
+      (await db.from("taxonomy_terms").select("id").eq("kind", "incoterm").eq("slug", "fob").single()).data.id,
+    );
+    const validUntil = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
+    await field(page, "quote-valid-until").fill(validUntil);
+
+    // Sample lines: the figure the prototype hardcodes per factory name.
+    await page.locator(".sample-row input").nth(0).fill("Fit sample");
+    await page.locator(".sample-row input").nth(1).fill("95");
+    await page.locator(".sample-row input").nth(2).fill("10");
+    await clickButton(page, "add a sample stage");
+    // Four inputs per row, so the second row starts at index 4.
+    await page.locator(".sample-row input").nth(4).fill("PP sample");
+    await page.locator(".sample-row input").nth(5).fill("165");
+
+    await page.locator('.detail-card textarea').first().fill("Yes — we quote fit and PP separately.");
+    await page.waitForTimeout(500);
+
+    const shownTotal = await page.locator('[data-testid="quote-total-amount"]').innerText();
+    check(
+      shownTotal.replace(/[^0-9]/g, "") === "539000",
+      `the total is worked out from the lines: 300 x $17.10 + $260 = ${shownTotal}`,
+    );
+    await record(page, "Factory quote", `production + samples = ${shownTotal}, computed not typed`);
+
+    await clickButton(page, "send quote");
+    await waitForHeading(page, "quote sent");
+    await record(page, "Quote sent", "and the factory is promised an answer either way");
+
+    // A second bidder, seeded directly. Without one, "awarding declines the
+    // others" has nothing to decline and proves nothing.
+    const { data: rivalOrg } = await db.from("orgs")
+      .insert({ type: "factory", name: `Rival E2E ${stamp}`, slug: `rival-e2e-${stamp}` })
+      .select().single();
+    await db.from("factory_profiles").insert({
+      org_id: rivalOrg.id, country_code: "CN", moq: 200,
+      published_at: new Date().toISOString(), verification_status: "verified",
+    });
+    const { data: rivalQuote } = await db.from("quotes").insert({
+      rfq_id: publishedRfq.id, factory_org_id: rivalOrg.id, status: "submitted",
+      unit_price_cents: 1690, production_quantity: 300, bulk_lead_time_days: 35,
+      valid_until: validUntil, submitted_at: new Date().toISOString(),
+    }).select().single();
+
+    // ================= AWARD =================
+    console.log("\nBRAND DECIDES");
+    await clickButton(page, "sign out");
+    await page.waitForTimeout(1500);
+    await waitFor(page, 'input[type="email"]', 30000);
+    await signIn(page, brandEmail, "Brand deciding");
+
+    await page.goto(`${APP}/rfqs/${publishedRfq.id}/quotes`);
+    await waitFor(page, '[data-testid="quote-compare"]', 25000);
+    await record(page, "Quote comparison", "two quotes side by side, every figure derived from stored columns");
+
+    const columns = await page.locator('[data-testid="compare-column"]').count();
+    check(columns === 2, `both quotes are shown for comparison (${columns} columns)`);
+
+    const compareText = await page.locator('[data-testid="quote-compare"]').innerText();
+    check(compareText.includes("5,390"),
+      "the comparison shows the same total the factory saw, not a re-parsed string");
+    check(!/MOQ/i.test(compareText), "MOQ is absent — the design system forbids it as a comparison metric");
+
+    const columnHeaders = page.locator('[data-testid="compare-column"]');
+    let ourColumn = -1;
+    for (let index = 0; index < (await columnHeaders.count()); index += 1) {
+      if ((await columnHeaders.nth(index).innerText()).includes(factoryName)) ourColumn = index;
+    }
+    check(ourColumn >= 0, `the quoting factory has a column (position ${ourColumn + 1})`);
+
+    await page
+      .locator(`.compare-table tbody tr:last-child td:nth-of-type(${ourColumn + 1}) button`)
+      .click();
+    await waitFor(page, ".confirm-card", 15000);
+
+    const confirmText = await page.locator(".confirm-card").innerText();
+    check(confirmText.includes(factoryName), "the confirmation names the factory being awarded");
+    await record(page, "Confirm award", "it says plainly that the others will be told");
+
+    await clickButton(page, "yes, award it");
+    await page.waitForTimeout(3000);
+    await record(page, "Awarded", "the loop closes here");
+
+    const { data: winner } = await db.from("quotes")
+      .select("status").eq("rfq_id", publishedRfq.id).eq("factory_org_id", factoryOrg.id)
+      .in("status", ["accepted", "declined"]).single();
+    check(winner.status === "accepted", "the chosen quote is accepted");
+
+    const { data: loser } = await db.from("quotes").select("status").eq("id", rivalQuote.id).single();
+    check(loser.status === "declined", "the other quote was auto-declined in the same transaction");
+
+    const { data: closedRfq } = await db.from("rfqs")
+      .select("status, awarded_quote_id").eq("id", publishedRfq.id).single();
+    check(closedRfq.status === "awarded", "the request is closed");
+
+    const { count: notified } = await db.from("notifications")
+      .select("*", { count: "exact", head: true }).eq("subject_id", publishedRfq.id);
+    check(notified === 2, `both factories were notified (${notified}) — nobody quotes into silence`);
 
     // ================= RESUME =================
     console.log("\nSESSION");
     // A deep link must survive a hard refresh — this is what the vercel.json
     // rewrite and its dev-server twin exist for.
     await page.reload();
-    await waitForHeading(page, rfqTitle.slice(0, 20), 30000);
+    await waitFor(page, '[data-testid="quote-compare"]', 30000);
     await record(page, "Deep link survives a hard refresh", "the rewrite works, in dev and in production");
 
     await page.goto(APP);

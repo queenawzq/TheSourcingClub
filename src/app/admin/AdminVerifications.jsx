@@ -10,6 +10,7 @@
  * is_platform_admin() in the database. This page cannot grant itself access.
  */
 import React, { useCallback, useEffect, useState } from "react";
+import { useAuth } from "../../lib/auth.jsx";
 import { pendingReviews, recentlyReviewed, reviewDocument } from "../../lib/domain/admin.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import "./admin.css";
@@ -82,6 +83,9 @@ function Row({ doc, onDecide, busy }) {
 }
 
 export default function AdminVerifications() {
+  // This page renders outside the app shell, because platform staff have no
+  // org of their own — so it has to carry its own way out.
+  const { user, signOut } = useAuth();
   const [queue, setQueue] = useState(null);
   const [history, setHistory] = useState([]);
   const [busyId, setBusyId] = useState(null);
@@ -118,6 +122,10 @@ export default function AdminVerifications() {
   if (error && !queue) {
     return (
       <div className="admin">
+        <header className="admin-bar">
+          <span className="shell-mark">The Sourcing Club</span>
+          <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
+        </header>
         <h1>Verification review</h1>
         <p className="admin-error">{error.message}</p>
       </div>
@@ -135,6 +143,12 @@ export default function AdminVerifications() {
 
   return (
     <div className="admin">
+      <header className="admin-bar">
+        <span className="shell-mark">The Sourcing Club</span>
+        <span className="admin-sub">{user?.email}</span>
+        <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
+      </header>
+
       <h1>Verification review</h1>
       <p className="admin-intro">
         Approving a business registration verifies that organisation. For a factory that is

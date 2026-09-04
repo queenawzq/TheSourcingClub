@@ -30,6 +30,35 @@ export function bucketFor(kind) {
   return PRIVATE_KINDS.has(kind) ? "org-private" : "org-public";
 }
 
+/**
+ * Browsers do not always know a file's type. Depending on the OS and how the
+ * file was picked, a perfectly ordinary PDF can arrive as
+ * `application/octet-stream`, which the bucket's allowlist then rejects — the
+ * user sees their real PDF refused for no reason they can act on.
+ *
+ * Fall back to the extension in that case. This does not weaken the allowlist:
+ * the bucket still refuses anything whose resolved type is not permitted.
+ */
+const EXTENSION_TYPES = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  zip: "application/zip",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  xls: "application/vnd.ms-excel",
+};
+
+function resolveContentType(file) {
+  if (file.type && file.type !== "application/octet-stream") return file.type;
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return EXTENSION_TYPES[extension] ?? file.type ?? "application/octet-stream";
+}
+
 /** Strip anything that would make a storage key awkward or ambiguous. */
 function safeName(fileName) {
   return fileName
@@ -50,9 +79,11 @@ export async function uploadDocument({ orgId, kind, file }) {
   const bucket = bucketFor(kind);
   const path = `${orgId}/${kind}/${crypto.randomUUID()}-${safeName(file.name)}`;
 
+  const contentType = resolveContentType(file);
+
   const { error: uploadError } = await supabase.storage
     .from(bucket)
-    .upload(path, file, { cacheControl: "3600", upsert: false });
+    .upload(path, file, { cacheControl: "3600", upsert: false, contentType });
 
   if (uploadError) {
     throw new Error(`upload ${file.name}: ${uploadError.message}`);
@@ -68,7 +99,7 @@ export async function uploadDocument({ orgId, kind, file }) {
           bucket,
           storage_path: path,
           file_name: file.name,
-          mime_type: file.type || null,
+          mime_type: contentType,
           size_bytes: file.size,
           // Documents that get reviewed enter the queue immediately; the rest
           // are never looked at and stay unverified.
