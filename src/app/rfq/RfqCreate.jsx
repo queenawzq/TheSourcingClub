@@ -28,6 +28,7 @@ import {
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import { fromCents, toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import { briefGenerationEnabled, generateBrief, idsForSlugs } from "../../lib/domain/brief.js";
 import { ChipGroup, TermSelect, TextArea, TextField, UploadField } from "../onboarding/fields.jsx";
 import "../onboarding/onboarding.css";
 import "./rfq.css";
@@ -71,6 +72,8 @@ export default function RfqCreate({ org, rfqId: existingId }) {
   const [error, setError] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [form, setForm] = useState({});
+  const [generating, setGenerating] = useState(false);
+  const [generated, setGenerated] = useState(null);
 
   const setField = (key) => (value) => setForm((current) => ({ ...current, [key]: value }));
   const setTermIds = (kind) => (ids) => setSelected((current) => ({ ...current, [kind]: ids }));
@@ -144,6 +147,91 @@ export default function RfqCreate({ org, rfqId: existingId }) {
     // offered every tech pack it has ever uploaded on each of them.
     await attachDocumentToRfq(doc.id, rfqId);
     await refreshDocuments();
+  }
+
+  /**
+   * Prefill from the free text. It fills a form; it never submits one — every
+   * value stays editable, so a wrong guess costs a correction rather than a
+   * bad request going out to factories.
+   */
+  async function draftFromDescription() {
+    if (generating || !form.brief?.trim()) return;
+    setGenerating(true);
+    setGenerated(null);
+
+    const { fields, error: aiError } = await generateBrief({ freeText: form.brief, terms });
+    setGenerating(false);
+
+    if (!fields) {
+      setGenerated({ ok: false, message: aiError ?? "that did not work" });
+      return;
+    }
+
+    // Fill blanks only. The button says "the rest", and overwriting something
+    // the brand deliberately typed — a title they chose, a price they meant —
+    // is the fastest way to make a helpful feature feel presumptuous. It cost
+    // us a broken test the first time, which is the mild version of a brand
+    // publishing a request they did not write.
+    const blank = (value) => value === undefined || value === null || value === "";
+    const keep = (current, suggested) => (blank(current) && suggested != null ? suggested : current);
+    let filled = 0;
+    const count = (before, after) => {
+      if (before !== after) filled += 1;
+      return after;
+    };
+
+    setForm((current) => ({
+      ...current,
+      title: count(current.title, keep(current.title, fields.title)),
+      brief: count(current.brief, keep(current.brief, fields.brief)),
+      quantity_total: count(current.quantity_total, keep(current.quantity_total, fields.quantity_total)),
+      material_notes: count(current.material_notes, keep(current.material_notes, fields.material_notes)),
+      sample_notes: count(current.sample_notes, keep(current.sample_notes, fields.sample_notes)),
+      requires_sample: current.requires_sample ?? fields.requires_sample ?? true,
+      price_min: count(current.price_min, keep(current.price_min,
+        fields.target_unit_price_min != null ? String(fields.target_unit_price_min) : null)),
+      price_max: count(current.price_max, keep(current.price_max,
+        fields.target_unit_price_max != null ? String(fields.target_unit_price_max) : null)),
+      sourcing: keep(
+        current.sourcing,
+        (terms.sourcing_responsibility ?? []).find((t) => t.slug === fields.sourcing_responsibility_slug)?.id,
+      ),
+    }));
+
+    setSelected((current) => {
+      const next = { ...current };
+      for (const [kind, slugs] of [
+        ["product_category", fields.product_category_slugs],
+        ["certification", fields.certification_slugs],
+        ["region", fields.region_slugs],
+      ]) {
+        // Only where the brand has chosen nothing yet.
+        if ((current[kind]?.length ?? 0) === 0) {
+          const ids = idsForSlugs(terms, kind, slugs);
+          if (ids.length) {
+            next[kind] = ids;
+            filled += 1;
+          }
+        }
+      }
+      return next;
+    });
+
+    if (fields.colour_splits?.length && !colours.some((c) => c.colour?.trim())) {
+      setColours(fields.colour_splits.map((split) => ({ colour: split.colour, quantity: String(split.quantity) })));
+      filled += 1;
+    }
+    if (fields.questions?.length && questions.length === 0) {
+      setQuestionList(fields.questions.map((prompt) => ({ prompt, is_sensitive: false })));
+      filled += 1;
+    }
+
+    setGenerated({
+      ok: true,
+      message: filled
+        ? `Filled in ${filled} thing${filled === 1 ? "" : "s"} you had not written yet. Nothing you typed was changed, and nothing is sent until you publish.`
+        : "You had already filled everything in — nothing to add.",
+    });
   }
 
   async function saveStep() {
@@ -298,6 +386,27 @@ export default function RfqCreate({ org, rfqId: existingId }) {
                 onChange={setField("brief")}
                 rows={7}
               />
+              {briefGenerationEnabled ? (
+                <div className="ai-draft">
+                  <button
+                    type="button"
+                    className="secondary-btn"
+                    onClick={draftFromDescription}
+                    disabled={generating || !form.brief?.trim()}
+                  >
+                    {generating ? "Reading it…" : "Fill in the rest from this"}
+                  </button>
+                  <span className="ob-hint">
+                    Reads your description and fills in what you have not written yet — quantity,
+                    price, category, questions to ask. It never changes anything you typed, and
+                    nothing is sent until you publish.
+                  </span>
+                  {generated ? (
+                    <span className={generated.ok ? "ai-ok" : "ob-error"}>{generated.message}</span>
+                  ) : null}
+                </div>
+              ) : null}
+
               <ChipGroup
                 label="Product category"
                 kind="product_category"

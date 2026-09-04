@@ -254,14 +254,32 @@ otp_length = 6
 otp_expiry = 3600
 
 # Use a production-ready SMTP server
+# Custom SMTP, via Resend. NOT ENABLED YET, on purpose.
+#
+# Resend will only deliver to the account owner's own address until a domain is
+# verified at resend.com/domains. Turning this on before then would be a
+# regression, not a fix: sign-in would work for that one address and fail with
+# a 403 for everyone else, where today the built-in sender reaches everybody —
+# just slowly, at roughly two emails an hour.
+#
+# To enable, once a domain is verified:
+#   1. set `from` to an address on that domain
+#   2. uncomment this block
+#   3. drop the template-stripping in scripts/push-config.sh — custom SMTP is
+#      exactly what lifts the free tier's refusal of custom email templates, so
+#      hosted sign-in emails get the six-digit code back
+#   4. ./scripts/push-config.sh --project-ref <ref>
+#
+# The key already lives in supabase/.env (git-ignored).
+#
 # [auth.email.smtp]
 # enabled = true
-# host = "smtp.sendgrid.net"
-# port = 587
-# user = "apikey"
-# pass = "env(SENDGRID_API_KEY)"
-# admin_email = "admin@email.com"
-# sender_name = "Admin"
+# host = "smtp.resend.com"
+# port = 465
+# user = "resend"
+# pass = "env(RESEND_API_KEY)"
+# admin_email = "noreply@<your-verified-domain>"
+# sender_name = "The Sourcing Club"
 
 # Local only. Supabase rejects template changes on a free-tier project using the
 # default email provider, so scripts/push-config.sh strips this block before

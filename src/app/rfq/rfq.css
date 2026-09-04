@@ -216,3 +216,17 @@
   white-space: nowrap;
 }
 .invite-toggle.is-on { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+/* ---- Draft from description ----------------------------------------- */
+
+.ai-draft {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-page);
+}
+.ai-ok { font-size: 13px; color: var(--primary); font-weight: 500; }

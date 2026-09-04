@@ -448,6 +448,24 @@ async function main() {
     await field(page, "describe-what-you-need-made").fill(
       "300 women's woven shirts in organic cotton poplin, three colours.",
     );
+    // The AI draft, when a key is configured. Skipped silently otherwise, so
+    // the run does not depend on a credential.
+    const draftButton = await page.locator(".ai-draft button").count();
+    if (draftButton) {
+      await clickButton(page, "fill in the rest from this");
+      await page.waitForTimeout(30000);
+      const outcome = await page.locator(".ai-draft").innerText();
+      const drafted = /Filled in \d+ thing|already filled everything/.test(outcome);
+      check(drafted, `drafting from the description: ${outcome.split("\n").pop()?.slice(0, 70)}`);
+      if (drafted) {
+        // The title the test typed must survive: the feature fills blanks, it
+        // does not rewrite deliberate input.
+        const titleAfter = await field(page, "give-it-a-name").inputValue();
+        check(titleAfter === rfqTitle, "the title the brand typed was left alone");
+        await record(page, "Drafted from the description", "fills only what was blank, and nothing is sent until publish");
+      }
+    }
+
     const cats = await chooseChips(page, "product-category", 1);
     await record(page, "RFQ describe", `category: ${cats.join(", ")}`);
     await advance(page, "quantity and materials");
@@ -501,9 +519,14 @@ async function main() {
     check(rfqLinks >= 2, `requirements saved as ${rfqLinks} taxonomy links, not free text`);
     check(publishedRfq.target_delivery_month !== null, "a delivery month is set, so capacity counts toward matching");
 
-    const { count: questionCount } = await db
-      .from("rfq_questions").select("*", { count: "exact", head: true }).eq("rfq_id", publishedRfq.id);
-    check(questionCount === 1, "the question was saved against the request");
+    // The AI may have suggested questions of its own, so assert on the one the
+    // brand actually typed rather than a fixed count.
+    const { data: savedQuestions } = await db
+      .from("rfq_questions").select("prompt").eq("rfq_id", publishedRfq.id);
+    check(
+      (savedQuestions ?? []).some((q) => /fit and PP samples separately/.test(q.prompt)),
+      `the brand's own question is saved (${savedQuestions?.length ?? 0} question(s) in total)`,
+    );
 
     const { count: colourCount } = await db
       .from("rfq_colour_splits").select("*", { count: "exact", head: true }).eq("rfq_id", publishedRfq.id);

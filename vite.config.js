@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
 // Netlify sets NETLIFY=true and Vercel sets VERCEL=1 during their builds, so the
@@ -31,8 +31,56 @@ function appDeepLinks() {
   };
 }
 
+/**
+ * Vercel runs api/*.js as serverless functions in production. The dev server
+ * knows nothing about them, so /api would 404 locally — including in the e2e
+ * run. This mounts the same handler files, so local and deployed behaviour
+ * come from one implementation rather than two.
+ */
+function apiRoutes() {
+  return {
+    name: "api-routes",
+    configureServer(server) {
+      // Vite only exposes VITE_-prefixed vars, and only to the client bundle.
+      // A serverless handler reads process.env, so load the rest in for dev —
+      // on Vercel the platform already provides them.
+      const env = loadEnv(server.config.mode, process.cwd(), "");
+      for (const [key, value] of Object.entries(env)) {
+        if (!key.startsWith("VITE_") && !(key in process.env)) process.env[key] = value;
+      }
+
+      server.middlewares.use(async (req, res, next) => {
+        const path = (req.url ?? "").split("?")[0];
+        if (!path.startsWith("/api/")) return next();
+
+        try {
+          const module = await server.ssrLoadModule(`.${path}.js`);
+          const chunks = [];
+          for await (const chunk of req) chunks.push(chunk);
+          req.body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
+
+          // The shape Vercel's runtime gives a handler.
+          res.status = (code) => { res.statusCode = code; return res; };
+          res.json = (payload) => {
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify(payload));
+            return res;
+          };
+
+          await module.default(req, res);
+        } catch (error) {
+          server.config.logger.error(`api ${path}: ${error.message}`);
+          res.statusCode = 200;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ fields: null, error: error.message }));
+        }
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), appDeepLinks()],
+  plugins: [react(), appDeepLinks(), apiRoutes()],
   define: {
     __DEPLOY_TARGET__: JSON.stringify(deployTarget)
   },
