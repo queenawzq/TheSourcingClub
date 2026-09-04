@@ -16,7 +16,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(33);
+select plan(35);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures
@@ -421,6 +421,32 @@ select is(
   public.match_score_rfq('e0000000-0000-0000-0000-000000000002', 'd0000000-0000-0000-0000-0000000000f1'),
   1.0000::numeric,
   'a factory that makes exactly what one rfq asks for scores it 100%'
+);
+
+-- ---------------------------------------------------------------------------
+-- Admin allowlist (migration 024)
+-- ---------------------------------------------------------------------------
+
+reset role;
+
+insert into auth.users (id, email) values
+  ('c0000000-0000-0000-0000-0000000000a1', 'john@hexagontechnologies.io');
+
+select is(
+  (select count(*)::int from public.platform_admins
+     where user_id = 'c0000000-0000-0000-0000-0000000000a1'),
+  1,
+  'an allowlisted address becomes a platform admin on first sign-in'
+);
+
+insert into auth.users (id, email) values
+  ('c0000000-0000-0000-0000-0000000000a2', 'someone-else@example.com');
+
+select is(
+  (select count(*)::int from public.platform_admins
+     where user_id = 'c0000000-0000-0000-0000-0000000000a2'),
+  0,
+  'an address NOT on the allowlist does not become an admin'
 );
 
 select * from finish();
