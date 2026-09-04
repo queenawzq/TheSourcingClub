@@ -9740,6 +9740,7 @@ button.sort-button {
 @media (max-width: 480px) {
   .factory-rfqs-page .rfqs-controls {
     grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px !important;
   }
 
   .factory-rfqs-page .rfqs-controls .rfqs-search,
@@ -9748,6 +9749,14 @@ button.sort-button {
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
+  }
+
+  .factory-rfqs-page .rfqs-controls .rfqs-search {
+    grid-row: 1;
+  }
+
+  .factory-rfqs-page .rfqs-controls .rfqs-sort {
+    grid-row: 2;
   }
 
   .factory-rfqs-page .rfqs-controls .rfqs-search > div,
@@ -10039,6 +10048,17 @@ button.sort-button {
 }
 
 @media (max-width: 480px) {
+  .factory-billing-summary-strip {
+    column-gap: 4px;
+    row-gap: 14px;
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .factory-billing-summary-strip .metric {
+    min-width: 0;
+  }
+
   .factory-material-cost-row,
   .factory-material-cost-row.read-only {
     position: relative;
@@ -10057,5 +10077,30 @@ button.sort-button {
     position: absolute;
     top: 24px;
     right: 12px;
+  }
+}
+
+@media (max-width: 760px) {
+  .factory-project-dashboard-row > .factory-project-dashboard-progress {
+    grid-column: 1 / -1 !important;
+    justify-self: start !important;
+    width: 100% !important;
+    max-width: 504px !important;
+  }
+
+  .factory-project-dashboard-row > .factory-project-dashboard-progress .project-progress-step small {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 0 2px;
+    line-height: 13px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 400px) {
+  .factory-project-dashboard-row > .factory-project-dashboard-progress {
+    display: none !important;
   }
 }

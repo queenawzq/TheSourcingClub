@@ -3610,11 +3610,9 @@ function getFactoryMessageCopy(value) {
     "Show original": "查看原文",
     "Scheduled call": "已预约通话",
     "Join call": "加入通话",
-    "Video link added": "已添加视频链接",
     "Open": "打开",
     "Title": "标题",
     "Description": "说明",
-    "Add video link": "添加视频链接",
     "Send invite": "发送邀请",
     "Ready to call": "准备呼叫",
     "Live with": "正在通话",
@@ -3904,7 +3902,6 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, language
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
   const [callTitle, setCallTitle] = useState(isZh ? "样品费用确认" : "Sample cost review");
   const [callDescription, setCallDescription] = useState(isZh ? `和 ${thread.name} 确认待处理问题和下一步。` : `Review open questions with ${thread.name} and confirm next actions.`);
-  const [hasVideo, setHasVideo] = useState(true);
   const selectedSlot = timeSlots[selectedSlotIndex] || timeSlots[0];
 
   return (
@@ -3935,10 +3932,6 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, language
             ))}
           </div>
           <div className="schedule-footer">
-            <label>
-              <input type="checkbox" checked={hasVideo} onChange={(event) => setHasVideo(event.target.checked)} />
-              {tx("Add video link")}
-            </label>
             <button
               className="primary-btn compact-btn"
               type="button"
@@ -3947,7 +3940,7 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, language
                 factoryTime: selectedSlot.factory,
                 brandTime: selectedSlot.brand,
                 agenda: callDescription,
-                hasVideo
+                hasVideo: true
               })}
             >
               {tx("Send invite")}

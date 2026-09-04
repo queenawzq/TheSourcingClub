@@ -1623,7 +1623,6 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
   const [callTitle, setCallTitle] = useState("Sample review call");
   const [callDescription, setCallDescription] = useState(`Review open questions with ${thread.name} and confirm next actions.`);
-  const [hasVideo, setHasVideo] = useState(true);
   const selectedSlot = timeSlots[selectedSlotIndex] || timeSlots[0];
 
   return (
@@ -1654,10 +1653,6 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
             ))}
           </div>
           <div className="schedule-footer">
-            <label>
-              <input type="checkbox" checked={hasVideo} onChange={(event) => setHasVideo(event.target.checked)} />
-              Add video link
-            </label>
             <button
               className="primary-btn compact-btn"
               type="button"
@@ -1666,7 +1661,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
                 brandTime: selectedSlot.brand,
                 factoryTime: selectedSlot.factory,
                 agenda: callDescription,
-                hasVideo
+                hasVideo: true
               })}
             >
               Send invite
@@ -5697,17 +5692,16 @@ function MilestoneCommentModal({ milestone, onClose, onPost }) {
           <img src="/assets/prototype-icons/close.svg" alt="" />
         </button>
         <header>
-          <p>Milestone comment</p>
-          <h2 id="milestone-comment-title">Add a comment for {milestone.title.toLowerCase()}</h2>
+          <h2 id="milestone-comment-title">Add {milestone.title.toLowerCase()} comment</h2>
           <span>Share feedback, questions, or files with Atelier Minho for this production step.</span>
         </header>
         <label className="approve-fund-note">
           <span>Comment</span>
-          <textarea rows={4} placeholder="Write a comment for Atelier Minho..." autoFocus />
+          <textarea rows={3} placeholder="Write a comment for Atelier Minho..." autoFocus />
         </label>
         <button className="milestone-comment-upload" type="button">
-          <strong>+ Attach files</strong>
-          <span>JPG, PNG, or PDF · up to 10 files</span>
+          <strong>+ Upload photos</strong>
+          <span>JPG or PNG, up to 10 files</span>
         </button>
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
