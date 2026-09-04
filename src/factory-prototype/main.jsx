@@ -1393,7 +1393,7 @@ function App() {
   const [onboardingComplete, setOnboardingComplete] = useState(shouldOpenPrototypeScreen);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingLanguage, setOnboardingLanguage] = useState("en");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [screen, setScreen] = useState(shouldOpenPrototypeScreen ? restoredScreen : "dashboard");
   const [detailBackTarget, setDetailBackTarget] = useState("browse");
   const [quoteBackTarget, setQuoteBackTarget] = useState("detail");
@@ -1405,6 +1405,27 @@ function App() {
   const [creditPurchaseOpen, setCreditPurchaseOpen] = useState(false);
   const selectedProject = brandProjects[0];
   const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Payments" : screen === "settings" ? "Settings" : screen === "profile" || screen === "profileCompletion" ? "" : "Browse RFQs";
+
+  useEffect(() => {
+    const mobileNav = window.matchMedia("(max-width: 760px)");
+    const syncSidebar = () => setSidebarCollapsed(mobileNav.matches);
+    mobileNav.addEventListener("change", syncSidebar);
+    return () => mobileNav.removeEventListener("change", syncSidebar);
+  }, []);
+
+  useEffect(() => {
+    if (sidebarCollapsed || !window.matchMedia("(max-width: 760px)").matches) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setSidebarCollapsed(true);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (!onboardingComplete || !factoryScreens.includes(screen)) return;
@@ -1461,6 +1482,14 @@ function App() {
         onProfile={() => setScreen("profile")}
         onToggle={() => setSidebarCollapsed((value) => !value)}
       />
+      {!sidebarCollapsed && (
+        <button
+          className="mobile-nav-backdrop"
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setSidebarCollapsed(true)}
+        />
+      )}
 
       {screen === "dashboard" && (
         <FactoryDashboardPage
@@ -4389,13 +4418,46 @@ function ProjectProgress({ progress }) {
 }
 
 function FactoryBrowsePage({ language, onViewDetails }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  useEffect(() => {
+    if (!filtersOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [filtersOpen]);
+
   return (
     <main className="directory-page factory-browse-marketplace-page">
       <div className="directory-shell">
-        <section className="directory-filter-panel" aria-label="Project filters">
+        {filtersOpen && (
+          <button
+            className="marketplace-filter-backdrop"
+            type="button"
+            aria-label="Close filters"
+            onClick={() => setFiltersOpen(false)}
+          />
+        )}
+        <section
+          className={filtersOpen ? "directory-filter-panel marketplace-filter-panel is-mobile-open" : "directory-filter-panel marketplace-filter-panel"}
+          id="factory-browse-filter-panel"
+          role={filtersOpen ? "dialog" : undefined}
+          aria-modal={filtersOpen ? "true" : undefined}
+          aria-label="Project filters"
+        >
           <div className="directory-filter-header">
             <strong>Filters</strong>
-            <button type="button">Reset</button>
+            <div className="marketplace-filter-header-actions">
+              <button type="button">Reset</button>
+              <button className="marketplace-filter-close" type="button" onClick={() => setFiltersOpen(false)}>Close</button>
+            </div>
           </div>
           <FilterGroup title="Production type">
             <FilterCheck label="Cut & sew knits" />
@@ -4492,7 +4554,16 @@ function FactoryBrowsePage({ language, onViewDetails }) {
               <span>matching wovens, low MOQ, GOTS, and available August capacity</span>
             </div>
             <div className="directory-summary-actions">
-              <button className="filter-button compact-filter-button" type="button">Filters</button>
+              <button
+                className="filter-button compact-filter-button"
+                type="button"
+                aria-controls="factory-browse-filter-panel"
+                aria-expanded={filtersOpen}
+                aria-haspopup="dialog"
+                onClick={() => setFiltersOpen(true)}
+              >
+                Filters
+              </button>
               <button className="filter-button sort-button" type="button">Sort: Best fit</button>
             </div>
           </div>

@@ -959,7 +959,7 @@ function App() {
         : "projects";
   const [screen, setScreen] = useState(initialScreen);
   const [brandOnboardingStep, setBrandOnboardingStep] = useState(0);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [selectedFactories, setSelectedFactories] = useState(["Atelier Minho", "Hanshu Studio"]);
   const [selectedQuote, setSelectedQuote] = useState("Atelier Minho");
   const [selectedQuotesForCompare, setSelectedQuotesForCompare] = useState(["Atelier Minho", "Hanshu Studio"]);
@@ -972,6 +972,27 @@ function App() {
   const [toast, setToast] = useState("");
   const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
   const [transitionKey, setTransitionKey] = useState(0);
+
+  useEffect(() => {
+    const mobileNav = window.matchMedia("(max-width: 760px)");
+    const syncSidebar = () => setSidebarCollapsed(mobileNav.matches);
+    mobileNav.addEventListener("change", syncSidebar);
+    return () => mobileNav.removeEventListener("change", syncSidebar);
+  }, []);
+
+  useEffect(() => {
+    if (sidebarCollapsed || !window.matchMedia("(max-width: 760px)").matches) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setSidebarCollapsed(true);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [sidebarCollapsed]);
 
   const index = screenOrder.indexOf(screen);
   const meta = screenMeta[screen];
@@ -1112,6 +1133,14 @@ function App() {
         }}
         onProfile={() => goTo("profile")}
       />
+      {!sidebarCollapsed && (
+        <button
+          className="mobile-nav-backdrop"
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setSidebarCollapsed(true)}
+        />
+      )}
       <main key={screen} className={mainClassName}>
         {!isStandalone && <JourneyRail current={activeMeta.step} isMilestoneFunding={Boolean(fundingMilestone)} />}
         <section className="flow-content">
@@ -4294,12 +4323,45 @@ function DirectoryFactoryCard({ factory, onQuote }) {
 }
 
 function FactoryMarketplaceScreen({ goTo }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  useEffect(() => {
+    if (!filtersOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [filtersOpen]);
+
   return (
     <div className="marketplace-shell">
-      <aside className="marketplace-filter-panel" aria-label="Marketplace filters">
+      {filtersOpen && (
+        <button
+          className="marketplace-filter-backdrop"
+          type="button"
+          aria-label="Close filters"
+          onClick={() => setFiltersOpen(false)}
+        />
+      )}
+      <aside
+        className={filtersOpen ? "marketplace-filter-panel is-mobile-open" : "marketplace-filter-panel"}
+        id="marketplace-filter-panel"
+        role={filtersOpen ? "dialog" : undefined}
+        aria-modal={filtersOpen ? "true" : undefined}
+        aria-label="Marketplace filters"
+      >
         <div className="directory-filter-header">
           <strong>Filters</strong>
-          <button type="button">Reset</button>
+          <div className="marketplace-filter-header-actions">
+            <button type="button">Reset</button>
+            <button className="marketplace-filter-close" type="button" onClick={() => setFiltersOpen(false)}>Close</button>
+          </div>
         </div>
         <FilterGroup title="Production type">
           <FilterCheck label="Cut & sew knits" />
@@ -4422,7 +4484,16 @@ function FactoryMarketplaceScreen({ goTo }) {
             <span>showing larger samples, exact garment tags, specialties, and verified capability notes</span>
           </div>
           <div className="directory-summary-actions">
-            <button className="filter-button compact-filter-button" type="button">Filters</button>
+            <button
+              className="filter-button compact-filter-button"
+              type="button"
+              aria-controls="marketplace-filter-panel"
+              aria-expanded={filtersOpen}
+              aria-haspopup="dialog"
+              onClick={() => setFiltersOpen(true)}
+            >
+              Filters
+            </button>
             <button className="filter-button sort-button" type="button">Sort: Best fit</button>
           </div>
         </div>
@@ -4467,7 +4538,7 @@ function MarketplaceFactoryCard({ factory, onQuote }) {
         </div>
         <div className="marketplace-factory-actions">
           <button className="secondary-btn" type="button">Save</button>
-          <button className="secondary-btn" type="button">Message</button>
+          <button className="secondary-btn marketplace-message-action" type="button">Message</button>
           <button className="primary-btn" type="button" onClick={onQuote}>Request quote</button>
         </div>
       </div>
