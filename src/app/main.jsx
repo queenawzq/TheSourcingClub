@@ -25,6 +25,7 @@ import QuoteForm from "./quote/QuoteForm.jsx";
 import QuoteSent from "./quote/QuoteSent.jsx";
 import QuoteCompare from "./quote/QuoteCompare.jsx";
 import InviteFactories from "./rfq/InviteFactories.jsx";
+import NotificationList from "./NotificationList.jsx";
 import "./shell.css";
 
 function Loading({ label }) {
@@ -447,6 +448,8 @@ function Dashboard({ activeOrg, profile, isFactory, user, admin }) {
         <p className="shell-note">
           Onboarding complete. Signed in as {user?.email}, {activeOrg.role} of this organisation.
         </p>
+
+        <NotificationList org={activeOrg} isFactory={isFactory} />
 
         <dl className="fact-grid">
           <div>

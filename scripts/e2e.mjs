@@ -719,9 +719,27 @@ async function main() {
     check(notified === 2, `both factories were notified (${notified}) — nobody quotes into silence`);
 
 
+
+    // ================= THE LOSER HEARS =================
+    console.log("\nTHE LOSER HEARS");
+    await clickButton(page, "sign out");
+    await page.waitForTimeout(1500);
+    await waitFor(page, 'input[type="email"]', 30000);
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Winning factory");
+    await waitFor(page, ".fact-grid", 30000);
+
+    await waitFor(page, '[data-testid="notifications"]', 20000);
+    const notifText = await page.locator('[data-testid="notifications"]').innerText();
+    check(/accepted/i.test(notifText), "the winning factory is told on its dashboard, without asking");
+    await record(page, "Factory hears the outcome", "award_quote wrote this row; now something shows it");
+
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
     console.log("\nINVITE ONLY");
+    await clickButton(page, "sign out");
+    await page.waitForTimeout(1500);
+    await waitFor(page, 'input[type="email"]', 30000);
+    await signIn(page, brandEmail, "Brand again");
     await page.goto(`${APP}/rfqs/new`);
     await waitForHeading(page, "what do you need made");
     const privateTitle = `E2E private request ${stamp}`;
