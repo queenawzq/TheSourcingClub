@@ -1866,8 +1866,8 @@ function InviteFactoryModal({ language = "en", onClose }) {
         cancel: "Cancel",
         send: "Send invite"
       };
-  return (
-    <div className="factory-update-modal-layer" role="presentation">
+  return createPortal((
+    <div className="factory-update-modal-layer factory-invite-modal-layer" role="presentation">
       <div className="factory-update-modal factory-invite-modal" role="dialog" aria-modal="true" aria-labelledby="factory-invite-title">
         <CloseIconButton className="factory-update-close" label={copy.close} onClick={onClose} />
         <header>
@@ -1891,7 +1891,7 @@ function InviteFactoryModal({ language = "en", onClose }) {
         </footer>
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 function FactoryActivityDrawer({ language = "en", onClose }) {
@@ -6860,6 +6860,51 @@ function FactoryQuoteRequestCard({ project, language }) {
 }
 
 function FactoryQuoteSections({ readOnly = false }) {
+  const [materialCosts, setMaterialCosts] = useState([
+    {
+      id: "poplin",
+      material: "Organic cotton poplin",
+      costPerUnit: 8.64,
+      included: true
+    },
+    {
+      id: "components",
+      material: "Standard buttons + interfacing",
+      costPerUnit: 1.15,
+      included: true
+    },
+    {
+      id: "labels",
+      material: "Custom woven labels (optional)",
+      costPerUnit: 0.35,
+      included: false
+    }
+  ]);
+  const includedMaterialCost = materialCosts.reduce((total, item) => total + (item.included ? item.costPerUnit : 0), 0);
+  const additionalMaterialCost = materialCosts.reduce((total, item) => total + (item.included ? 0 : item.costPerUnit), 0);
+
+  const addMaterialCost = () => {
+    setMaterialCosts((current) => [
+      ...current,
+      {
+        id: `material-${Date.now()}`,
+        material: "New material or component",
+        costPerUnit: 0,
+        included: false
+      }
+    ]);
+  };
+
+  const removeMaterialCost = (id) => {
+    setMaterialCosts((current) => current.filter((item) => item.id !== id));
+  };
+
+  const updateMaterialCost = (id, updates) => {
+    setMaterialCosts((current) => current.map((item) => (
+      item.id === id ? { ...item, ...updates } : item
+    )));
+  };
+
   return (
     <>
       <SubmitSection title="Quote terms" description="Enter exact commercial terms for this request.">
@@ -6874,7 +6919,7 @@ function FactoryQuoteSections({ readOnly = false }) {
         </div>
       </SubmitSection>
 
-      <SubmitSection title="Material sourcing responsibility" description="Keep sourcing responsibility simple and clear for the brand.">
+      <SubmitSection title="Material sourcing and cost breakdown" description="Show who supplies each material, what it costs, and whether it is included in the unit price.">
         <section className="factory-sourcing-brand-provided">
           <div>
             <span>Brand provides separately</span>
@@ -6884,6 +6929,33 @@ function FactoryQuoteSections({ readOnly = false }) {
         <div className="factory-sourcing-input-grid">
           <QuoteField label="Factory includes" value="Main production materials and standard components from approved direction, included in unit price" />
         </div>
+        <div className="factory-material-cost-heading">
+          <div>
+            <h3>Material cost breakdown</h3>
+            <p>List each material or component separately. Costs marked not included are added on top of the quoted unit price.</p>
+          </div>
+        </div>
+        <div className="factory-material-cost-rows">
+          {materialCosts.map((item) => (
+            <MaterialCostRow
+              item={item}
+              readOnly={readOnly}
+              onRemove={() => removeMaterialCost(item.id)}
+              onCostChange={(costPerUnit) => updateMaterialCost(item.id, { costPerUnit })}
+              onTreatmentChange={(included) => updateMaterialCost(item.id, { included })}
+              key={item.id}
+            />
+          ))}
+        </div>
+        <div className="factory-material-cost-summary">
+          <QuoteField label="Materials included in unit price" value={`$${includedMaterialCost.toFixed(2)} / unit`} />
+          <QuoteField
+            label="Additional material charges"
+            value={`$${additionalMaterialCost.toFixed(2)} / unit · $${(additionalMaterialCost * 300).toFixed(2)} order total`}
+            helper="Charged separately from the quoted unit price"
+          />
+        </div>
+        {!readOnly && <button className="factory-add-stage" type="button" onClick={addMaterialCost}>+ Add material cost</button>}
       </SubmitSection>
 
       <SubmitSection title="Sample plan" description="Break out sample stages so the brand can compare quotes clearly.">
@@ -7025,6 +7097,41 @@ function SamplePlanRow({ stage, cost, timing, includes, readOnly = false }) {
       <QuoteField label="Timing" value={timing} />
       <QuoteField label="Includes" value={includes} />
       {!readOnly && <CloseIconButton label={`Remove ${stage}`} />}
+    </div>
+  );
+}
+
+function MaterialCostRow({ item, readOnly = false, onRemove, onCostChange, onTreatmentChange }) {
+  return (
+    <div className={readOnly ? "factory-material-cost-row read-only" : "factory-material-cost-row"}>
+      <QuoteField label="Material / component" value={item.material} />
+      {readOnly ? (
+        <QuoteField label="Cost per finished unit" value={`$${item.costPerUnit.toFixed(2)}`} />
+      ) : (
+        <label className="factory-material-cost-input">
+          <span>Cost per finished unit</span>
+          <div><b aria-hidden="true">$</b><input type="number" min="0" step="0.01" value={item.costPerUnit} onChange={(event) => onCostChange(Number(event.target.value) || 0)} /></div>
+        </label>
+      )}
+      {readOnly ? (
+        <QuoteField
+          label="Unit price treatment"
+          value={item.included ? "Included in unit price" : "Added separately"}
+        />
+      ) : (
+        <label className="factory-material-treatment-field">
+          <span>Unit price treatment</span>
+          <select
+            className={item.included ? "included" : "additional"}
+            value={item.included ? "included" : "additional"}
+            onChange={(event) => onTreatmentChange(event.target.value === "included")}
+          >
+            <option value="included">Included in unit price</option>
+            <option value="additional">Added separately</option>
+          </select>
+        </label>
+      )}
+      {!readOnly && <CloseIconButton label={`Remove ${item.material}`} onClick={onRemove} />}
     </div>
   );
 }

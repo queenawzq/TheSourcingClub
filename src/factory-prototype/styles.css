@@ -5514,6 +5514,155 @@
   min-height: 88px;
 }
 
+.factory-material-cost-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.factory-material-cost-heading h3,
+.factory-material-cost-heading p {
+  margin: 0;
+}
+
+.factory-material-cost-heading h3 {
+  color: #0b1223;
+  font-size: 15px;
+  line-height: 21px;
+}
+
+.factory-material-cost-heading p {
+  margin-top: 3px;
+  color: #5c749c;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+.factory-material-cost-rows {
+  display: grid;
+  gap: 10px;
+}
+
+.factory-material-cost-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(150px, 0.8fr) minmax(190px, 1fr) 24px;
+  gap: 10px;
+  align-items: center;
+}
+
+.factory-material-cost-row.read-only {
+  grid-template-columns: minmax(0, 1.7fr) minmax(150px, 0.8fr) minmax(190px, 1fr);
+}
+
+.factory-material-cost-row .factory-quote-field,
+.factory-material-cost-input,
+.factory-material-treatment-field {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 72px;
+  padding-right: 12px;
+  padding-left: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.factory-material-cost-input,
+.factory-material-treatment-field {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+}
+
+.factory-material-cost-input > span,
+.factory-material-treatment-field > span {
+  color: #576f96;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.factory-material-cost-input > div {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.factory-material-cost-input b {
+  color: #0b101e;
+  font-size: 13px;
+}
+
+.factory-material-cost-input input,
+.factory-material-treatment-field select {
+  min-width: 0;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0b101e;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.factory-material-cost-input input {
+  appearance: textfield;
+}
+
+.factory-material-cost-input input::-webkit-inner-spin-button,
+.factory-material-cost-input input::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.factory-material-treatment-field select {
+  height: 34px;
+  padding: 0 34px 0 10px;
+  border: 1px solid #cdd9e6;
+  border-radius: 8px;
+  appearance: none;
+  background: #fff url("/assets/prototype-icons/dropdown.svg") no-repeat calc(100% - 10px) center / 16px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.factory-material-treatment-field select.included {
+  color: #174df2;
+}
+
+.factory-material-treatment-field select:focus {
+  border-color: #8db7ff;
+  box-shadow: 0 0 0 2px rgba(141, 183, 255, 0.24);
+}
+
+.factory-material-cost-row > button {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.factory-material-cost-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.factory-material-cost-summary .factory-quote-field {
+  min-height: 72px;
+  background: #f3f7fc;
+}
+
 .factory-card-header-row {
   display: flex;
   align-items: start;
@@ -6342,8 +6491,15 @@
 }
 
 .factory-invite-modal {
+  box-sizing: border-box;
   width: 460px;
-  transform: translateY(-96px);
+  max-width: 100%;
+}
+
+.factory-update-modal-layer.factory-invite-modal-layer {
+  box-sizing: border-box;
+  place-items: center;
+  padding: 16px;
 }
 
 .factory-invite-field {
@@ -6933,6 +7089,10 @@
 
 .side-nav.collapsed + .factory-submit-page .factory-submit-bottom-bar,
 .nav-collapsed .factory-submit-page .factory-submit-bottom-bar {
+  left: 77px;
+}
+
+.factory-flow .factory-submit-bottom-bar {
   left: 77px;
 }
 
@@ -8102,7 +8262,8 @@
   }
 
   .factory-capacity-drawer {
-    width: 100vw;
+    left: 16px;
+    width: auto;
   }
 
   .factory-capacity-drawer-header,
@@ -9661,5 +9822,134 @@ button.sort-button {
   #root > .app-shell.factory-flow > main {
     padding-right: var(--page-padding-inline-mobile) !important;
     padding-left: var(--page-padding-inline-mobile) !important;
+  }
+
+  .factory-detail-top-side .factory-side-actions {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 1180px) {
+  .factory-rfq-read-page .factory-submit-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .factory-rfq-read-page .factory-submit-main,
+  .factory-rfq-read-page .factory-submit-side {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 760px) {
+  .factory-submit-field-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .factory-submit-field-grid .factory-quote-field:nth-child(n) {
+    grid-column: auto;
+  }
+
+  .factory-submit-field-grid .factory-quote-field:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .factory-submit-sample-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) 24px;
+    gap: 10px;
+    align-items: stretch;
+  }
+
+  .factory-submit-sample-row.read-only {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .factory-submit-sample-row .factory-quote-field {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-height: 78px;
+  }
+
+  .factory-submit-sample-row > button {
+    grid-column: 3;
+    grid-row: 1;
+    align-self: center;
+  }
+
+  .factory-material-cost-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) 24px;
+  }
+
+  .factory-material-cost-row.read-only {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .factory-material-cost-row .factory-quote-field:first-child {
+    grid-column: 1 / 3;
+  }
+
+  .factory-material-cost-row > button {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .factory-material-cost-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .factory-submit-project-card .factory-request-card-actions .factory-project-fit {
+    margin-top: 10px !important;
+  }
+
+  .factory-submit-project-card .factory-request-card-body,
+  .factory-rfq-read-page .factory-submit-project-card .factory-request-card-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .factory-submit-project-card .factory-request-visuals,
+  .factory-submit-project-card .factory-request-visuals.has-gallery,
+  .factory-rfq-read-page .factory-submit-project-card .factory-request-visuals,
+  .factory-rfq-read-page .factory-submit-project-card .factory-request-visuals.has-gallery {
+    justify-self: stretch;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .factory-update-modal-layer {
+    box-sizing: border-box;
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .factory-update-modal.factory-credit-purchase-modal {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 430px;
+  }
+}
+
+@media (max-width: 480px) {
+  .factory-material-cost-row,
+  .factory-material-cost-row.read-only {
+    position: relative;
+    grid-template-columns: 1fr;
+  }
+
+  .factory-material-cost-row .factory-quote-field:first-child {
+    grid-column: 1;
+  }
+
+  .factory-material-cost-row:not(.read-only) .factory-quote-field:first-child {
+    padding-right: 44px;
+  }
+
+  .factory-material-cost-row > button {
+    position: absolute;
+    top: 24px;
+    right: 12px;
   }
 }

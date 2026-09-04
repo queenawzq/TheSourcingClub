@@ -1180,7 +1180,6 @@ function App() {
           onNext={screen === "success" ? () => goTo("describe") : screen === "inviteSuccess" ? () => goTo("quotes") : next}
           primaryLabel={screen === "quotes" || screen === "success" ? "" : activeMeta.cta}
           centerText={screen === "invite" ? `${selectedFactories.length} factories selected · 5 recommended` : ""}
-          secondaryLabel={screen === "invite" ? "Save draft" : ""}
         />
       )}
       {toast && <Toast message={toast} onDone={() => setToast("")} />}
@@ -5860,11 +5859,6 @@ function InviteScreen({ selectedFactories, setSelectedFactories }) {
 
   return (
     <div className="stack">
-      <div className="invite-tabs">
-        <button className="active" type="button">Search</button>
-        <button type="button">Selected ({selectedFactories.length})</button>
-        <button type="button">Saved (4)</button>
-      </div>
       <div className="invite-toolbar">
         <label className="search-field">
           <SearchIcon />
@@ -5883,12 +5877,14 @@ function InviteScreen({ selectedFactories, setSelectedFactories }) {
         <button className="filter-button" type="button">≡ Filter</button>
       </div>
       <div className="filter-strip">
-        <span>Filters preselected from your request</span>
-        <div>
+        <div className="filter-strip-header">
+          <span>Filters preselected from your request</span>
+          <button className="clear-filters" type="button">Clear filters</button>
+        </div>
+        <div className="filter-chip-row">
           {["Cut & sew", "MOQ ≤ 500", "GOTS preferred", "China / Portugal / Korea"].map((filter) => (
             <button className="filter-chip" key={filter} type="button">{filter}</button>
           ))}
-          <button className="clear-filters" type="button">Clear filters</button>
         </div>
       </div>
       <Card className="invite-results">
@@ -6107,10 +6103,6 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
 
   return (
     <div className="stack quote-review-stack">
-      <div className="invite-tabs">
-        <button className="active" type="button">All quotes (3)</button>
-        <button type="button">Messages (2)</button>
-      </div>
       <div className="quote-compare-topbar">
         <div>
           <strong>Compare quotes</strong>
@@ -6760,7 +6752,7 @@ function AcceptedQuoteField({ label, value }) {
   );
 }
 
-function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null, secondaryLabel = "" }) {
+function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null }) {
   return (
     <footer className={canBack ? "bottom-bar has-back" : "bottom-bar no-back"}>
       {canBack && (
@@ -6779,7 +6771,6 @@ function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", cen
         </div>
       )}
       <div className="bottom-actions">
-        {secondaryLabel && <button className="secondary-btn" type="button">{secondaryLabel}</button>}
         {primaryLabel && (
           <button className="primary-btn" type="button" onClick={onNext}>
             {primaryLabel}
