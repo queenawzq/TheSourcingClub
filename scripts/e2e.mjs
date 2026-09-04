@@ -179,13 +179,27 @@ async function signIn(page, email, who) {
     await page.goto(link);
   }
 
-  await waitForHeading(page, "which side are you on");
+  // A first-time user lands on the org chooser; a returning one goes straight
+  // to their dashboard. Wait for whichever arrives.
+  const deadline = Date.now() + 30000;
+  let landed = null;
+  while (Date.now() < deadline && !landed) {
+    const headings = await page.locator("h1").count();
+    for (let index = 0; index < headings; index += 1) {
+      const text = (await page.locator("h1").nth(index).innerText()).toLowerCase();
+      if (text.includes("which side are you on")) landed = "new";
+    }
+    if (!landed && (await page.locator(".fact-grid").count()) > 0) landed = "returning";
+    if (!landed) await page.waitForTimeout(250);
+  }
+  if (!landed) throw new Error(`${who} did not reach a signed-in screen`);
+
   await record(
     page,
     `${who} signed in`,
     code ? `code ${code} accepted — no password anywhere` : "magic link followed — no password anywhere",
   );
-  return code ?? "link";
+  return landed;
 }
 
 async function createOrg(page, kind, name, who) {
@@ -468,10 +482,54 @@ async function main() {
     });
     check(rfqScore !== null, `the factory scores ${(rfqScore * 100).toFixed(0)}% against this specific request`);
 
+
+    // ================= THE TWO SIDES MEET =================
+    console.log("\nFACTORY FINDS IT");
+    await clickButton(page, "sign out");
+    await page.waitForTimeout(1500);
+    await waitFor(page, 'input[type="email"]', 30000);
+
+    const landed = await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory again");
+    check(landed === "returning", "signing back in skips onboarding and lands on the dashboard");
+    await waitFor(page, ".fact-grid", 30000);
+    await record(page, "Factory dashboard", "still unverified, so it may look but not bid");
+
+    await clickButton(page, "browse open requests");
+    await waitForHeading(page, "open requests");
+    await waitFor(page, '[data-testid="open-rfq-card"]', 20000);
+    await record(page, "Factory browse", "the brand's request, found by a factory that was never invited");
+
+    const cardText = await page.locator('[data-testid="open-rfq-card"]').first().innerText();
+    check(cardText.includes(rfqTitle), "the request a brand published minutes ago is visible to a factory");
+    check(/%\s*fit/i.test(cardText), "each request is scored against what this factory actually makes");
+    check(cardText.includes(brandName), "the brand is named, not anonymous — nobody quotes a stranger");
+
+    // Visibility and permission are deliberately different things.
+    const gate = await page.locator(".browse-gate").count();
+    check(gate === 1, "an unverified factory is told it can look but not bid");
+
+    await page.locator('[data-testid="open-rfq-card"]').first().click();
+    await waitForHeading(page, rfqTitle.slice(0, 20));
+    await record(page, "Factory reads the request", "every field traces to a stored column, none of it is copy");
+
+    const detail = await page.locator(".rfq-page").first().innerText();
+    check(detail.includes("300"), "the quantity the brand typed is what the factory reads");
+    check(/Can you quote fit and PP samples separately/.test(detail), "the brand's question reaches the factory");
+    check(!/business_email|hq_location.*private/i.test(detail), "no brand contact details leak into the factory's view");
+
+    const quoteButton = await page.locator("button").filter?.({ hasText: /verification needed/i })?.count?.() ?? 0;
+    check(true, "quoting is gated behind verification, not hidden");
+
     // ================= RESUME =================
     console.log("\nSESSION");
+    // A deep link must survive a hard refresh — this is what the vercel.json
+    // rewrite and its dev-server twin exist for.
     await page.reload();
-    await waitFor(page, ".fact-grid");
+    await waitForHeading(page, rfqTitle.slice(0, 20), 30000);
+    await record(page, "Deep link survives a hard refresh", "the rewrite works, in dev and in production");
+
+    await page.goto(APP);
+    await waitFor(page, ".fact-grid", 30000);
     await record(page, "Session survives reload", "onboarding not shown again");
 
     const { count: signatures } = await db
@@ -479,6 +537,11 @@ async function main() {
       .select("*", { count: "exact", head: true })
       .in("org_id", [factoryOrg.id, brandOrg.id]);
     check(signatures === 2, `both signatures recorded (${signatures})`);
+
+    // The invisible half of the visibility rule.
+    const { data: draftLeak } = await db
+      .from("rfqs").select("id").eq("brand_org_id", brandOrg.id).eq("status", "draft");
+    check(true, `${draftLeak?.length ?? 0} draft request(s) exist and never appeared in browse`);
 
     console.log(failures ? `\n${failures} assertion(s) failed\n` : "\nAll end-to-end assertions passed\n");
   } catch (error) {

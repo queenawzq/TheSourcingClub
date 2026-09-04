@@ -19,6 +19,8 @@ import { isPlatformAdmin } from "../lib/domain/admin.js";
 import AdminVerifications from "./admin/AdminVerifications.jsx";
 import RfqList from "./rfq/RfqList.jsx";
 import RfqCreate from "./rfq/RfqCreate.jsx";
+import RfqDetail from "./rfq/RfqDetail.jsx";
+import BrowseRfqs from "./rfq/BrowseRfqs.jsx";
 import "./shell.css";
 
 function Loading({ label }) {
@@ -381,6 +383,25 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
         isFactory ? <NotForThisSide isFactory /> : <RfqCreate org={activeOrg} rfqId={params.id} />,
     },
     {
+      path: "/rfqs/:id",
+      render: (params) =>
+        isFactory ? <NotForThisSide isFactory /> : (
+          <RfqDetail org={activeOrg} rfqId={params.id} isFactory={false} profile={profile} />
+        ),
+    },
+    {
+      path: "/browse",
+      render: () =>
+        isFactory ? <BrowseRfqs org={activeOrg} profile={profile} /> : <NotForThisSide isFactory={false} />,
+    },
+    {
+      path: "/browse/:id",
+      render: (params) =>
+        isFactory ? (
+          <RfqDetail org={activeOrg} rfqId={params.id} isFactory profile={profile} />
+        ) : <NotForThisSide isFactory={false} />,
+    },
+    {
       render: () => (
         <Dashboard activeOrg={activeOrg} profile={profile} isFactory={isFactory} user={user} admin={admin} />
       ),
@@ -448,13 +469,17 @@ function Dashboard({ activeOrg, profile, isFactory, user, admin }) {
           .
         </p>
 
-        {!isFactory ? (
-          <p className="shell-note">
+        <p className="shell-note">
+          {isFactory ? (
+            <button type="button" className="primary-btn" onClick={() => navigate("/browse")}>
+              Browse open requests
+            </button>
+          ) : (
             <button type="button" className="primary-btn" onClick={() => navigate("/rfqs")}>
               Requests for quotes
             </button>
-          </p>
-        ) : null}
+          )}
+        </p>
 
         {admin ? (
           <p className="shell-note">

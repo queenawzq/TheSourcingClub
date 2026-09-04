@@ -16,7 +16,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(31);
+select plan(33);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures
@@ -367,6 +367,26 @@ select throws_ok(
   '22023',
   null,
   'a losing factory CANNOT revise its quote after the rfq is awarded'
+);
+
+-- ---------------------------------------------------------------------------
+-- Counterparty org names (migration 023)
+-- ---------------------------------------------------------------------------
+
+reset role;
+set local request.jwt.claims = '{"sub":"c0000000-0000-0000-0000-000000000003","email":"p2-f1@example.com","role":"authenticated"}';
+set local role authenticated;
+
+select is(
+  (select count(*)::int from public.orgs where id = 'd0000000-0000-0000-0000-00000000000b'),
+  1,
+  'a factory CAN read the name of a brand whose open request it can see'
+);
+
+select is(
+  (select count(*)::int from public.orgs where id = 'd0000000-0000-0000-0000-0000000000f2'),
+  0,
+  'a factory still CANNOT read a competing factory''s org row'
 );
 
 -- ---------------------------------------------------------------------------

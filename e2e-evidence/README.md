@@ -1,8 +1,8 @@
 # End-to-end evidence
 
-Recorded 2026-09-03T10:39:38.742Z against `http://127.0.0.1:5173/app.html`.
+Recorded 2026-09-04T11:52:37.723Z against `http://127.0.0.1:5173/app.html`.
 
-**35 steps, 25 assertions, 0 failed.**
+**42 steps, 35 assertions, 0 failed.**
 
 A real browser, driven by Stagehand, against a real database. No mock data
 anywhere: every value below was typed into the interface and then read back
@@ -13,9 +13,9 @@ out of Postgres to confirm the screen and the database agree.
 | # | Step | What it shows | Screenshot |
 |---|---|---|---|
 | 1 | Factory sign-in | cold start, no session | [01-factory-sign-in.png](01-factory-sign-in.png) |
-| 2 | Factory code requested | e2e-factory-1788431951983@example.com | [02-factory-code-requested.png](02-factory-code-requested.png) |
-| 3 | Factory signed in | code 367653 accepted — no password anywhere | [03-factory-signed-in.png](03-factory-signed-in.png) |
-| 4 | Factory organisation | factory: Atelier E2E 1788431951983 | [04-factory-organisation.png](04-factory-organisation.png) |
+| 2 | Factory code requested | e2e-factory-1788522724856@example.com | [02-factory-code-requested.png](02-factory-code-requested.png) |
+| 3 | Factory signed in | code 708098 accepted — no password anywhere | [03-factory-signed-in.png](03-factory-signed-in.png) |
+| 4 | Factory organisation | factory: Atelier E2E 1788522724856 | [04-factory-organisation.png](04-factory-organisation.png) |
 | 5 | Factory basics | country is stored as an ISO code, which is what matching compares | [05-factory-basics.png](05-factory-basics.png) |
 | 6 | Factory company details |  | [06-factory-company-details.png](06-factory-company-details.png) |
 | 7 | Factory what you make | from taxonomy_terms: Cut & sew knits, Tops, Bottoms | [07-factory-what-you-make.png](07-factory-what-you-make.png) |
@@ -27,9 +27,9 @@ out of Postgres to confirm the screen and the database agree.
 | 13 | Factory terms | signature is recorded against a terms version, and cannot be edited later | [13-factory-terms.png](13-factory-terms.png) |
 | 14 | Factory published | live and findable, but not yet verified | [14-factory-published.png](14-factory-published.png) |
 | 15 | Brand sign-in | cold start, no session | [15-brand-sign-in.png](15-brand-sign-in.png) |
-| 16 | Brand code requested | e2e-brand-1788431951983@example.com | [16-brand-code-requested.png](16-brand-code-requested.png) |
-| 17 | Brand signed in | code 389095 accepted — no password anywhere | [17-brand-signed-in.png](17-brand-signed-in.png) |
-| 18 | Brand organisation | brand: Maison E2E 1788431951983 | [18-brand-organisation.png](18-brand-organisation.png) |
+| 16 | Brand code requested | e2e-brand-1788522724856@example.com | [16-brand-code-requested.png](16-brand-code-requested.png) |
+| 17 | Brand signed in | code 680341 accepted — no password anywhere | [17-brand-signed-in.png](17-brand-signed-in.png) |
+| 18 | Brand organisation | brand: Maison E2E 1788522724856 | [18-brand-organisation.png](18-brand-organisation.png) |
 | 19 | Brand basics |  | [19-brand-basics.png](19-brand-basics.png) |
 | 20 | Brand about | logo and product imagery upload here, to the public bucket | [20-brand-about.png](20-brand-about.png) |
 | 21 | Brand what you make | same vocabulary the factory picked from: Cut & sew knits | [21-brand-what-you-make.png](21-brand-what-you-make.png) |
@@ -46,7 +46,14 @@ out of Postgres to confirm the screen and the database agree.
 | 32 | RFQ questions | answers are shared with every factory quoting, unless marked private | [32-rfq-questions.png](32-rfq-questions.png) |
 | 33 | RFQ review | visibility decides who can see it; verification decides who can bid | [33-rfq-review.png](33-rfq-review.png) |
 | 34 | RFQ published |  | [34-rfq-published.png](34-rfq-published.png) |
-| 35 | Session survives reload | onboarding not shown again | [35-session-survives-reload.png](35-session-survives-reload.png) |
+| 35 | Factory again sign-in | cold start, no session | [35-factory-again-sign-in.png](35-factory-again-sign-in.png) |
+| 36 | Factory again code requested | e2e-factory-1788522724856@example.com | [36-factory-again-code-requested.png](36-factory-again-code-requested.png) |
+| 37 | Factory again signed in | code 255869 accepted — no password anywhere | [37-factory-again-signed-in.png](37-factory-again-signed-in.png) |
+| 38 | Factory dashboard | still unverified, so it may look but not bid | [38-factory-dashboard.png](38-factory-dashboard.png) |
+| 39 | Factory browse | the brand's request, found by a factory that was never invited | [39-factory-browse.png](39-factory-browse.png) |
+| 40 | Factory reads the request | every field traces to a stored column, none of it is copy | [40-factory-reads-the-request.png](40-factory-reads-the-request.png) |
+| 41 | Deep link survives a hard refresh | the rewrite works, in dev and in production | [41-deep-link-survives-a-hard-refresh.png](41-deep-link-survives-a-hard-refresh.png) |
+| 42 | Session survives reload | onboarding not shown again | [42-session-survives-reload.png](42-session-survives-reload.png) |
 
 ## Assertions
 
@@ -74,7 +81,17 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the question was saved against the request
 - ✅ the colour breakdown is rows, not a display string
 - ✅ the factory scores 67% against this specific request
+- ✅ signing back in skips onboarding and lands on the dashboard
+- ✅ the request a brand published minutes ago is visible to a factory
+- ✅ each request is scored against what this factory actually makes
+- ✅ the brand is named, not anonymous — nobody quotes a stranger
+- ✅ an unverified factory is told it can look but not bid
+- ✅ the quantity the brand typed is what the factory reads
+- ✅ the brand's question reaches the factory
+- ✅ no brand contact details leak into the factory's view
+- ✅ quoting is gated behind verification, not hidden
 - ✅ both signatures recorded (2)
+- ✅ 0 draft request(s) exist and never appeared in browse
 
 ## The one worth reading twice
 

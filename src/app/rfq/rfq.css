@@ -120,3 +120,80 @@
   .rfq-card-metrics div { text-align: left; }
   .rfq-page-head { flex-direction: column; align-items: flex-start; }
 }
+
+/* ---- Browse --------------------------------------------------------- */
+
+.browse-gate {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #fff7e8;
+  border: 1px solid #f2b253;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #6b4200;
+}
+.browse-gate strong { font-size: 14px; }
+
+.browse-filters { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.browse-filters select {
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.fit-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid;
+  margin-bottom: 6px;
+}
+.fit-chip--strong    { background: #eaf4ff; border-color: #8db7ff; color: #1a4df2; }
+.fit-chip--good      { background: #eafbff; border-color: #9ddce9; color: #087e96; }
+.fit-chip--potential { background: #fff7e8; border-color: #f2b253; color: #a76500; }
+.fit-chip--weak      { background: #f3f4f8; border-color: var(--border); color: var(--text-muted); }
+
+.rfq-card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0; }
+
+/* ---- Detail --------------------------------------------------------- */
+
+.rfq-detail { max-width: 780px; }
+
+.detail-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 12px;
+}
+.detail-card h2 { margin: 0 0 12px; font-size: 17px; font-weight: 700; }
+.detail-card h3 { margin: 20px 0 8px; font-size: 13px; font-weight: 700; }
+
+.detail-body { margin: 0; color: var(--text); font-size: 14px; line-height: 20px; white-space: pre-wrap; }
+
+.fact-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin: 16px 0 0;
+}
+.fact dt { font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 2px; }
+.fact dd { margin: 0; font-size: 14px; font-weight: 700; }
+
+.detail-terms { margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+
+.detail-questions { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
+.detail-questions li { font-size: 14px; line-height: 20px; }
+.detail-questions .private-tag { margin-left: 8px; }
