@@ -197,3 +197,22 @@
 .detail-questions { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px; }
 .detail-questions li { font-size: 14px; line-height: 20px; }
 .detail-questions .private-tag { margin-left: 8px; }
+
+/* ---- Invite --------------------------------------------------------- */
+
+.invite-card.is-selected { border-color: var(--soft-blue-stroke); background: var(--soft-blue-fill); }
+
+.invite-toggle {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.invite-toggle.is-on { background: var(--primary); border-color: var(--primary); color: #fff; }

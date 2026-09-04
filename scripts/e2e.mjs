@@ -718,12 +718,51 @@ async function main() {
       .select("*", { count: "exact", head: true }).eq("subject_id", publishedRfq.id);
     check(notified === 2, `both factories were notified (${notified}) — nobody quotes into silence`);
 
+
+    // ================= INVITE ONLY =================
+    // The path that used to publish a request nobody could see.
+    console.log("\nINVITE ONLY");
+    await page.goto(`${APP}/rfqs/new`);
+    await waitForHeading(page, "what do you need made");
+    const privateTitle = `E2E private request ${stamp}`;
+    await field(page, "give-it-a-name").fill(privateTitle);
+    await field(page, "describe-what-you-need-made").fill("A quieter request, for invited factories only.");
+    await chooseChips(page, "product-category", 1);
+    await advance(page, "quantity and materials");
+    await field(page, "total-quantity").fill("120");
+    await advance(page, "timeline and budget");
+    await advance(page, "questions for factories");
+    await advance(page, "review and publish");
+
+    await clickButton(page, "only factories i invite");
+    await record(page, "Invite-only chosen", "publishing this without inviting anyone used to strand it");
+    await clickButton(page, "publish request");
+
+    // Publishing an invite-only request now leads straight here, rather than
+    // to a request nobody can see.
+    await waitForHeading(page, "invite factories", 30000);
+    await waitFor(page, '[data-testid="invite-factory"]', 20000);
+    await record(page, "Choose who sees it", "ranked by fit against this request, same score the factory sees");
+
+    await page.locator('[data-testid="invite-factory"]').first().click();
+    await clickButton(page, "save invitations");
+    await page.waitForTimeout(2500);
+    await record(page, "Invitations saved");
+
+    const { data: privateRfq } = await db.from("rfqs")
+      .select("id, visibility, status").eq("title", privateTitle).single();
+    check(privateRfq.visibility === "invited_only", "the request is invite-only");
+
+    const { count: inviteCount } = await db.from("rfq_invitations")
+      .select("*", { count: "exact", head: true }).eq("rfq_id", privateRfq.id);
+    check(inviteCount === 1, `one factory was invited (${inviteCount})`);
+
     // ================= RESUME =================
     console.log("\nSESSION");
     // A deep link must survive a hard refresh — this is what the vercel.json
     // rewrite and its dev-server twin exist for.
     await page.reload();
-    await waitFor(page, '[data-testid="quote-compare"]', 30000);
+    await waitForHeading(page, privateTitle.slice(0, 20), 30000);
     await record(page, "Deep link survives a hard refresh", "the rewrite works, in dev and in production");
 
     await page.goto(APP);

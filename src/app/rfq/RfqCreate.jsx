@@ -219,7 +219,9 @@ export default function RfqCreate({ org, rfqId: existingId }) {
     try {
       await saveStep();
       await publishRfq(rfqId, visibility);
-      navigate(`/rfqs/${rfqId}`);
+      // An invite-only request nobody has been invited to is invisible, so go
+      // straight to choosing who sees it rather than leaving it stranded.
+      navigate(visibility === "invited_only" ? `/rfqs/${rfqId}/invite` : `/rfqs/${rfqId}`);
     } catch (publishError) {
       setError(publishError);
       setSaving(false);

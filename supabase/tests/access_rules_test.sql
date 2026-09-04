@@ -88,10 +88,13 @@ select is(
   'a brand CANNOT read a competing brand profile'
 );
 
+-- A brand sees its own org plus any PUBLISHED factory, which is what makes
+-- choosing who to invite possible. It must not see the other brand, and must
+-- not see the factory that has not published.
 select is(
   (select count(*)::int from public.orgs where id in ('aaaaaaaa-0000-0000-0000-000000000001','aaaaaaaa-0000-0000-0000-000000000002','bbbbbbbb-0000-0000-0000-000000000001','bbbbbbbb-0000-0000-0000-000000000002')),
-  1,
-  'a brand sees only the org it belongs to'
+  2,
+  'a brand sees its own org and the published factory, but not the other brand or the unpublished factory'
 );
 
 select is(

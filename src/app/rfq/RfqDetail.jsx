@@ -275,6 +275,27 @@ export default function RfqDetail({ org, rfqId, isFactory, profile }) {
         </section>
       ) : null}
 
+      {!isFactory && rfq.status === "open" ? (
+        <section className="detail-card">
+          <h2>Who can see this</h2>
+          <p className="ob-hint">
+            {rfq.visibility === "open_to_all"
+              ? "Every factory on the Club can see this request. Only verified ones can quote."
+              : state.invitations.length
+                ? `${state.invitations.length} factor${state.invitations.length === 1 ? "y has" : "ies have"} been invited. Nobody else can see it.`
+                : "Nobody has been invited yet, so nobody can see this request."}
+          </p>
+          <button
+            type="button"
+            className={state.invitations.length || rfq.visibility === "open_to_all" ? "secondary-btn" : "primary-btn"}
+            style={{ alignSelf: "flex-start" }}
+            onClick={() => navigate(`/rfqs/${rfq.id}/invite`)}
+          >
+            {state.invitations.length ? "Change who is invited" : "Invite factories"}
+          </button>
+        </section>
+      ) : null}
+
       {!isFactory ? (
         <section className="detail-card">
           <h2>Quotes ({quotes.length})</h2>

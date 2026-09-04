@@ -1,8 +1,8 @@
 # End-to-end evidence
 
-Recorded 2026-09-04T17:22:04.979Z against `http://127.0.0.1:5173/app.html`.
+Recorded 2026-09-04T22:42:26.733Z against `http://127.0.0.1:5173/app.html`.
 
-**59 steps, 48 assertions, 0 failed.**
+**62 steps, 50 assertions, 0 failed.**
 
 A real browser, driven by Stagehand, against a real database. No mock data
 anywhere: every value below was typed into the interface and then read back
@@ -13,9 +13,9 @@ out of Postgres to confirm the screen and the database agree.
 | # | Step | What it shows | Screenshot |
 |---|---|---|---|
 | 1 | Factory sign-in | cold start, no session | [01-factory-sign-in.png](01-factory-sign-in.png) |
-| 2 | Factory code requested | e2e-factory-1788542459350@example.com | [02-factory-code-requested.png](02-factory-code-requested.png) |
-| 3 | Factory signed in | code 548785 accepted — no password anywhere | [03-factory-signed-in.png](03-factory-signed-in.png) |
-| 4 | Factory organisation | factory: Atelier E2E 1788542459350 | [04-factory-organisation.png](04-factory-organisation.png) |
+| 2 | Factory code requested | e2e-factory-1788561671845@example.com | [02-factory-code-requested.png](02-factory-code-requested.png) |
+| 3 | Factory signed in | code 057005 accepted — no password anywhere | [03-factory-signed-in.png](03-factory-signed-in.png) |
+| 4 | Factory organisation | factory: Atelier E2E 1788561671845 | [04-factory-organisation.png](04-factory-organisation.png) |
 | 5 | Factory basics | country is stored as an ISO code, which is what matching compares | [05-factory-basics.png](05-factory-basics.png) |
 | 6 | Factory company details |  | [06-factory-company-details.png](06-factory-company-details.png) |
 | 7 | Factory what you make | from taxonomy_terms: Cut & sew knits, Tops, Bottoms | [07-factory-what-you-make.png](07-factory-what-you-make.png) |
@@ -27,9 +27,9 @@ out of Postgres to confirm the screen and the database agree.
 | 13 | Factory terms | signature is recorded against a terms version, and cannot be edited later | [13-factory-terms.png](13-factory-terms.png) |
 | 14 | Factory published | live and findable, but not yet verified | [14-factory-published.png](14-factory-published.png) |
 | 15 | Brand sign-in | cold start, no session | [15-brand-sign-in.png](15-brand-sign-in.png) |
-| 16 | Brand code requested | e2e-brand-1788542459350@example.com | [16-brand-code-requested.png](16-brand-code-requested.png) |
-| 17 | Brand signed in | code 874583 accepted — no password anywhere | [17-brand-signed-in.png](17-brand-signed-in.png) |
-| 18 | Brand organisation | brand: Maison E2E 1788542459350 | [18-brand-organisation.png](18-brand-organisation.png) |
+| 16 | Brand code requested | e2e-brand-1788561671845@example.com | [16-brand-code-requested.png](16-brand-code-requested.png) |
+| 17 | Brand signed in | code 463993 accepted — no password anywhere | [17-brand-signed-in.png](17-brand-signed-in.png) |
+| 18 | Brand organisation | brand: Maison E2E 1788561671845 | [18-brand-organisation.png](18-brand-organisation.png) |
 | 19 | Brand basics |  | [19-brand-basics.png](19-brand-basics.png) |
 | 20 | Brand about | logo and product imagery upload here, to the public bucket | [20-brand-about.png](20-brand-about.png) |
 | 21 | Brand what you make | same vocabulary the factory picked from: Cut & sew knits | [21-brand-what-you-make.png](21-brand-what-you-make.png) |
@@ -47,30 +47,33 @@ out of Postgres to confirm the screen and the database agree.
 | 33 | RFQ review | visibility decides who can see it; verification decides who can bid | [33-rfq-review.png](33-rfq-review.png) |
 | 34 | RFQ published |  | [34-rfq-published.png](34-rfq-published.png) |
 | 35 | Factory again sign-in | cold start, no session | [35-factory-again-sign-in.png](35-factory-again-sign-in.png) |
-| 36 | Factory again code requested | e2e-factory-1788542459350@example.com | [36-factory-again-code-requested.png](36-factory-again-code-requested.png) |
-| 37 | Factory again signed in | code 825676 accepted — no password anywhere | [37-factory-again-signed-in.png](37-factory-again-signed-in.png) |
+| 36 | Factory again code requested | e2e-factory-1788561671845@example.com | [36-factory-again-code-requested.png](36-factory-again-code-requested.png) |
+| 37 | Factory again signed in | code 150473 accepted — no password anywhere | [37-factory-again-signed-in.png](37-factory-again-signed-in.png) |
 | 38 | Factory dashboard | still unverified, so it may look but not bid | [38-factory-dashboard.png](38-factory-dashboard.png) |
 | 39 | Factory browse | the brand's request, found by a factory that was never invited | [39-factory-browse.png](39-factory-browse.png) |
 | 40 | Factory reads the request | every field traces to a stored column, none of it is copy | [40-factory-reads-the-request.png](40-factory-reads-the-request.png) |
 | 41 | Admin sign-in | cold start, no session | [41-admin-sign-in.png](41-admin-sign-in.png) |
-| 42 | Admin code requested | e2e-admin-1788542459350@example.com | [42-admin-code-requested.png](42-admin-code-requested.png) |
-| 43 | Admin signed in | code 314136 accepted — no password anywhere | [43-admin-signed-in.png](43-admin-signed-in.png) |
+| 42 | Admin code requested | e2e-admin-1788561671845@example.com | [42-admin-code-requested.png](42-admin-code-requested.png) |
+| 43 | Admin signed in | code 521889 accepted — no password anywhere | [43-admin-signed-in.png](43-admin-signed-in.png) |
 | 44 | Verification queue | an admin with no org of their own can still work | [44-verification-queue.png](44-verification-queue.png) |
 | 45 | Factory approved | approving the registration verifies the org, which unlocks quoting | [45-factory-approved.png](45-factory-approved.png) |
 | 46 | Factory quoting sign-in | cold start, no session | [46-factory-quoting-sign-in.png](46-factory-quoting-sign-in.png) |
-| 47 | Factory quoting code requested | e2e-factory-1788542459350@example.com | [47-factory-quoting-code-requested.png](47-factory-quoting-code-requested.png) |
-| 48 | Factory quoting signed in | code 337938 accepted — no password anywhere | [48-factory-quoting-signed-in.png](48-factory-quoting-signed-in.png) |
+| 47 | Factory quoting code requested | e2e-factory-1788561671845@example.com | [47-factory-quoting-code-requested.png](47-factory-quoting-code-requested.png) |
+| 48 | Factory quoting signed in | code 932396 accepted — no password anywhere | [48-factory-quoting-signed-in.png](48-factory-quoting-signed-in.png) |
 | 49 | Factory can now bid | the verification notice is gone and the quote button is live | [49-factory-can-now-bid.png](49-factory-can-now-bid.png) |
 | 50 | Factory quote | production + samples = $5,390.00, computed not typed | [50-factory-quote.png](50-factory-quote.png) |
 | 51 | Quote sent | and the factory is promised an answer either way | [51-quote-sent.png](51-quote-sent.png) |
 | 52 | Brand deciding sign-in | cold start, no session | [52-brand-deciding-sign-in.png](52-brand-deciding-sign-in.png) |
-| 53 | Brand deciding code requested | e2e-brand-1788542459350@example.com | [53-brand-deciding-code-requested.png](53-brand-deciding-code-requested.png) |
-| 54 | Brand deciding signed in | code 166084 accepted — no password anywhere | [54-brand-deciding-signed-in.png](54-brand-deciding-signed-in.png) |
+| 53 | Brand deciding code requested | e2e-brand-1788561671845@example.com | [53-brand-deciding-code-requested.png](53-brand-deciding-code-requested.png) |
+| 54 | Brand deciding signed in | code 638414 accepted — no password anywhere | [54-brand-deciding-signed-in.png](54-brand-deciding-signed-in.png) |
 | 55 | Quote comparison | two quotes side by side, every figure derived from stored columns | [55-quote-comparison.png](55-quote-comparison.png) |
 | 56 | Confirm award | it says plainly that the others will be told | [56-confirm-award.png](56-confirm-award.png) |
 | 57 | Awarded | the loop closes here | [57-awarded.png](57-awarded.png) |
-| 58 | Deep link survives a hard refresh | the rewrite works, in dev and in production | [58-deep-link-survives-a-hard-refresh.png](58-deep-link-survives-a-hard-refresh.png) |
-| 59 | Session survives reload | onboarding not shown again | [59-session-survives-reload.png](59-session-survives-reload.png) |
+| 58 | Invite-only chosen | publishing this without inviting anyone used to strand it | [58-invite-only-chosen.png](58-invite-only-chosen.png) |
+| 59 | Choose who sees it | ranked by fit against this request, same score the factory sees | [59-choose-who-sees-it.png](59-choose-who-sees-it.png) |
+| 60 | Invitations saved |  | [60-invitations-saved.png](60-invitations-saved.png) |
+| 61 | Deep link survives a hard refresh | the rewrite works, in dev and in production | [61-deep-link-survives-a-hard-refresh.png](61-deep-link-survives-a-hard-refresh.png) |
+| 62 | Session survives reload | onboarding not shown again | [62-session-survives-reload.png](62-session-survives-reload.png) |
 
 ## Assertions
 
@@ -120,6 +123,8 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the other quote was auto-declined in the same transaction
 - ✅ the request is closed
 - ✅ both factories were notified (2) — nobody quotes into silence
+- ✅ the request is invite-only
+- ✅ one factory was invited (1)
 - ✅ both signatures recorded (2)
 - ✅ 0 draft request(s) exist and never appeared in browse
 

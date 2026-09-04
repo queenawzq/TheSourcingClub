@@ -24,6 +24,7 @@ import BrowseRfqs from "./rfq/BrowseRfqs.jsx";
 import QuoteForm from "./quote/QuoteForm.jsx";
 import QuoteSent from "./quote/QuoteSent.jsx";
 import QuoteCompare from "./quote/QuoteCompare.jsx";
+import InviteFactories from "./rfq/InviteFactories.jsx";
 import "./shell.css";
 
 function Loading({ label }) {
@@ -381,6 +382,11 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/browse",
       render: () =>
         isFactory ? <BrowseRfqs org={activeOrg} profile={profile} /> : <NotForThisSide isFactory={false} />,
+    },
+    {
+      path: "/rfqs/:id/invite",
+      render: (params) =>
+        isFactory ? <NotForThisSide isFactory /> : <InviteFactories org={activeOrg} rfqId={params.id} />,
     },
     {
       path: "/rfqs/:id/quotes",
