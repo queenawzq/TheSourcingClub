@@ -3055,7 +3055,7 @@ function HomeProjectMiniCard({ project, goTo }) {
 
 function BrandProfileScreen({ onViewCompletion }) {
   const [projectTab, setProjectTab] = useState("completed");
-  const [profileMode, setProfileMode] = useState("edit");
+  const [profileMode, setProfileMode] = useState(new URLSearchParams(window.location.search).get("view") === "public" ? "public" : "edit");
   const isOwnerView = profileMode === "edit";
   const [activeEditor, setActiveEditor] = useState(null);
   const [profileData, setProfileData] = useState({
@@ -3170,9 +3170,39 @@ function BrandProfileScreen({ onViewCompletion }) {
     ["Reorder cadence", data.sourcingVolume.reorderCadence],
     ["Current sourcing stage", data.sourcingVolume.sourcingStage]
   ];
+  const renderProfileStatusCard = (responsiveClass) => (
+    <section className={`factory-profile-card factory-profile-owner-card ${responsiveClass}`}>
+      <div className="factory-profile-card-header">
+        <h2>Profile status</h2>
+        <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>View details</button>
+      </div>
+      <div className="factory-profile-status-meter">
+        <strong>88%</strong>
+        <span>Profile complete</span>
+      </div>
+      <div className="factory-profile-status-track"><span /></div>
+      <p>Review what is complete, what is in progress, and what would strengthen this profile.</p>
+      <div className="factory-profile-owner-actions">
+        <button className="primary-btn" type="button">Publish changes</button>
+      </div>
+    </section>
+  );
+  const renderContactCard = (responsiveClass) => (
+    <section className={`factory-profile-card factory-profile-contact-card ${responsiveClass}`}>
+      <h2>Brand contact</h2>
+      <div className="factory-profile-contact-row">
+        <div className="factory-avatar">MR</div>
+        <div>
+          <strong>{data.name}</strong>
+          <span>{data.location}</span>
+        </div>
+      </div>
+      <button className="primary-btn" type="button">Contact brand</button>
+    </section>
+  );
 
   return (
-    <div className="brand-profile brand-profile-redesign">
+    <div className={`brand-profile brand-profile-redesign ${isOwnerView ? "is-owner-view" : "is-public-view"}`}>
       <div className="factory-profile-shell">
         <ProfileOwnerBar
           ariaLabel="Brand profile view"
@@ -3183,8 +3213,12 @@ function BrandProfileScreen({ onViewCompletion }) {
           profileLabel="Brand profile"
         />
 
+        {isOwnerView && renderProfileStatusCard("brand-profile-compact-status-card")}
+        {!isOwnerView && renderContactCard("brand-profile-compact-contact-card")}
+
         <section className="factory-profile-hero brand-profile-hero">
           {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
+          {!isOwnerView && <button className="factory-profile-banner-edit" type="button">Save brand</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
               <div className="factory-profile-logo">MR</div>
@@ -3201,12 +3235,6 @@ function BrandProfileScreen({ onViewCompletion }) {
               </div>
             </div>
           </div>
-          {!isOwnerView && (
-            <div className="factory-profile-actions">
-              <button className="secondary-btn" type="button">Save brand</button>
-              <button className="primary-btn" type="button">Contact brand</button>
-            </div>
-          )}
         </section>
 
         <div className="factory-profile-layout">
@@ -3318,36 +3346,9 @@ function BrandProfileScreen({ onViewCompletion }) {
 
           <aside className="factory-profile-side">
             {isOwnerView ? (
-              <>
-                <section className="factory-profile-card factory-profile-owner-card">
-                  <div className="factory-profile-card-header">
-                    <h2>Profile status</h2>
-                    <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>View details</button>
-                  </div>
-                  <div className="factory-profile-status-meter">
-                    <strong>88%</strong>
-                    <span>Profile complete</span>
-                  </div>
-                  <div className="factory-profile-status-track"><span /></div>
-                  <p>Review what is complete, what is in progress, and what would strengthen this profile.</p>
-                  <div className="factory-profile-owner-actions">
-                    <button className="primary-btn" type="button">Publish changes</button>
-                    <button className="secondary-btn" type="button" onClick={() => setProfileMode("public")}>View as public</button>
-                  </div>
-                </section>
-              </>
+              renderProfileStatusCard("brand-profile-sidebar-status-card")
             ) : (
-              <section className="factory-profile-card factory-profile-contact-card">
-                <h2>Brand contact</h2>
-                <div className="factory-profile-contact-row">
-                  <div className="factory-avatar">MR</div>
-                  <div>
-                    <strong>{data.name}</strong>
-                    <span>{data.location}</span>
-                  </div>
-                </div>
-                <button className="primary-btn" type="button">Contact brand</button>
-              </section>
+              renderContactCard("brand-profile-sidebar-contact-card")
             )}
 
             <section className="factory-profile-card">

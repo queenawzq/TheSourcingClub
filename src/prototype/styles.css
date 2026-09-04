@@ -2292,6 +2292,11 @@ button {
   line-height: 26px;
 }
 
+.brand-profile-redesign .brand-profile-compact-status-card,
+.brand-profile-redesign .brand-profile-compact-contact-card {
+  display: none;
+}
+
 .brand-profile-redesign .factory-profile-card-header {
   display: flex;
   justify-content: space-between;
@@ -7842,8 +7847,8 @@ select {
 .project-detail-header h1 {
   margin: 0;
   color: #101828;
-  font-size: 34px;
-  line-height: 40px;
+  font-size: 38px;
+  line-height: 1.1;
   font-weight: 950;
 }
 
@@ -9141,6 +9146,12 @@ select {
   line-height: 18px;
 }
 
+.marketplace-summary .directory-summary-actions {
+  flex-wrap: nowrap;
+  align-items: center;
+  min-width: max-content;
+}
+
 .marketplace-card-list {
   display: grid;
   gap: 14px;
@@ -9895,7 +9906,10 @@ select {
     font-size: 10px;
   }
 
-  .project-summary-strip,
+  .project-summary-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .project-detail-side {
     grid-template-columns: 1fr;
   }
@@ -9911,11 +9925,14 @@ select {
   }
 
   .milestone-title-line {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    gap: 12px;
   }
 
-  .milestone-title-line > strong {
-    text-align: left;
+  .milestone-amount-cell {
+    align-self: start;
+    align-items: flex-start;
+    min-width: 0;
   }
 
   .project-update-header {
@@ -13251,6 +13268,40 @@ button.sort-button {
 }
 
 @media (max-width: 1180px) {
+  .factory-profile-completion-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-profile-redesign .brand-profile-compact-status-card {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding: 16px;
+  }
+
+  .brand-profile-redesign .brand-profile-sidebar-status-card {
+    display: none;
+  }
+
+  .brand-profile-redesign .brand-profile-compact-contact-card {
+    display: grid;
+    align-content: start;
+    gap: 10px;
+    padding: 16px;
+  }
+
+  .brand-profile-redesign .brand-profile-sidebar-contact-card {
+    display: none;
+  }
+
+  .brand-profile-redesign .brand-profile-compact-status-card > p {
+    display: none;
+  }
+
+  .brand-profile-redesign .brand-profile-compact-status-card .factory-profile-owner-actions {
+    padding-top: 0;
+  }
+
   .brand-profile-redesign .factory-profile-edit-button {
     align-self: flex-start;
   }
@@ -13345,7 +13396,7 @@ button.sort-button {
 
   .brand-profile-redesign .factory-profile-side {
     position: static;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: 1fr;
   }
 
   .brand-profile-redesign .factory-profile-score-grid {
@@ -13383,7 +13434,56 @@ button.sort-button {
   }
 }
 
+@media (min-width: 761px) and (max-width: 1180px) {
+  .brand-profile-redesign.is-owner-view .factory-profile-shell,
+  .brand-profile-redesign.is-public-view .factory-profile-shell {
+    grid-template-columns: minmax(0, 0.6fr) minmax(260px, 0.4fr);
+    grid-template-areas:
+      "owner owner"
+      "profile status"
+      "layout layout";
+    align-items: stretch;
+  }
+
+  .brand-profile-redesign.is-owner-view .factory-profile-owner-bar {
+    grid-area: owner;
+  }
+
+  .brand-profile-redesign.is-owner-view .brand-profile-compact-status-card {
+    grid-area: status;
+  }
+
+  .brand-profile-redesign.is-owner-view .brand-profile-hero {
+    grid-area: profile;
+  }
+
+  .brand-profile-redesign.is-owner-view .factory-profile-layout {
+    grid-area: layout;
+  }
+
+  .brand-profile-redesign.is-public-view .factory-profile-owner-bar {
+    grid-area: owner;
+  }
+
+  .brand-profile-redesign.is-public-view .brand-profile-hero {
+    grid-area: profile;
+  }
+
+  .brand-profile-redesign.is-public-view .brand-profile-compact-contact-card {
+    grid-area: status;
+  }
+
+  .brand-profile-redesign.is-public-view .factory-profile-layout {
+    grid-area: layout;
+  }
+}
+
 @media (max-width: 1320px) {
+  .factory-profile-completion-hero,
+  .factory-profile-completion-layout {
+    grid-template-columns: 1fr;
+  }
+
   .brand-projects-page .brand-project-card .project-card-top {
     grid-template-columns: minmax(0, 1fr) auto !important;
   }
@@ -13452,6 +13552,75 @@ button.sort-button {
 }
 
 @media (max-width: 760px) {
+  .factory-profile-completion-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .brand-profile-redesign.is-owner-view .factory-profile-shell,
+  .brand-profile-redesign.is-public-view .factory-profile-shell {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "owner"
+      "profile"
+      "status"
+      "layout";
+  }
+
+  .brand-profile-redesign.is-owner-view .factory-profile-owner-bar {
+    grid-area: owner;
+  }
+
+  .brand-profile-redesign.is-owner-view .brand-profile-hero {
+    grid-area: profile;
+  }
+
+  .brand-profile-redesign.is-owner-view .brand-profile-compact-status-card {
+    grid-area: status;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px 14px;
+    padding: 14px 16px;
+  }
+
+  .brand-profile-redesign.is-owner-view .brand-profile-compact-status-card .factory-profile-card-header,
+  .brand-profile-redesign.is-owner-view .brand-profile-compact-status-card .factory-profile-owner-actions {
+    grid-column: 1 / -1;
+  }
+
+  .brand-profile-redesign.is-owner-view .brand-profile-compact-status-card .factory-profile-status-meter {
+    display: block;
+    grid-column: 1;
+    align-self: center;
+  }
+
+  .brand-profile-redesign.is-owner-view .brand-profile-compact-status-card .factory-profile-status-meter span {
+    display: none;
+  }
+
+  .brand-profile-redesign.is-owner-view .brand-profile-compact-status-card .factory-profile-status-track {
+    grid-column: 2;
+    align-self: center;
+  }
+
+  .brand-profile-redesign.is-owner-view .factory-profile-layout {
+    grid-area: layout;
+  }
+
+  .brand-profile-redesign.is-public-view .factory-profile-owner-bar {
+    grid-area: owner;
+  }
+
+  .brand-profile-redesign.is-public-view .brand-profile-hero {
+    grid-area: profile;
+  }
+
+  .brand-profile-redesign.is-public-view .brand-profile-compact-contact-card {
+    grid-area: status;
+  }
+
+  .brand-profile-redesign.is-public-view .factory-profile-layout {
+    grid-area: layout;
+  }
+
   .brand-profile-redesign .factory-profile-owner-bar {
     align-items: stretch;
     flex-direction: column;
@@ -13510,10 +13679,17 @@ button.sort-button {
     grid-template-columns: 1fr;
   }
 
-  .brand-profile-redesign .factory-profile-section-header,
   .brand-profile-redesign .factory-profile-history-card header,
   .brand-profile-redesign .factory-profile-history-footer {
     display: grid;
+  }
+
+  .brand-profile-redesign .factory-profile-section-header > div {
+    min-width: 0;
+  }
+
+  .brand-profile-redesign .factory-profile-section-header > span {
+    flex: 0 0 auto;
   }
 
   .home-page,
@@ -14333,5 +14509,31 @@ button.sort-button {
 
   .brand-profile-redesign .factory-profile-view-toggle button {
     flex: 0 0 auto !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .rfqs-header h1,
+  .directory-hero h1,
+  .marketplace-header h1,
+  .project-detail-header h1 {
+    font-size: 30px;
+    line-height: 1.1;
+  }
+
+  .rfqs-header p:last-child,
+  .project-detail-header > p {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .directory-hero .eyebrow,
+  .marketplace-header .eyebrow,
+  .flow-header .eyebrow,
+  .project-back-link,
+  .quote-back-link,
+  .factory-profile-completion-back {
+    font-size: 12px;
+    line-height: 16px;
   }
 }

@@ -1513,6 +1513,9 @@ function App() {
       {screen === "saved" && (
         <FactorySavedPage
           language={onboardingLanguage}
+          onViewBrand={() => {
+            window.location.href = "/prototype.html?screen=profile&view=public";
+          }}
           onViewRfq={() => {
             setDetailBackTarget("saved");
             setScreen("detail");
@@ -2038,9 +2041,39 @@ function FactoryProfilePage({ language, onViewCompletion }) {
     ["Booking level", data.booking],
     ["Reference style", data.referenceStyle]
   ];
+  const renderProfileStatusCard = (responsiveClass) => (
+    <section className={`factory-profile-card factory-profile-owner-card ${responsiveClass}`}>
+      <div className="factory-profile-card-header">
+        <h2>Profile status</h2>
+        <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>See details</button>
+      </div>
+      <div className="factory-profile-status-meter">
+        <strong>88%</strong>
+        <span>Profile complete</span>
+      </div>
+      <div className="factory-profile-status-track"><span /></div>
+      <p>Add the remaining certifications and keep monthly capacity current to strengthen this profile.</p>
+      <div className="factory-profile-owner-actions">
+        <button className="primary-btn" type="button">Publish changes</button>
+      </div>
+    </section>
+  );
+  const renderContactCard = (responsiveClass) => (
+    <section className={`factory-profile-card factory-profile-contact-card ${responsiveClass}`}>
+      <h2>Contact supplier</h2>
+      <div className="factory-profile-contact-row">
+        <div className="factory-avatar">AM</div>
+        <div>
+          <strong data-no-translate>{data.name}</strong>
+          <span data-no-translate>{data.location}</span>
+        </div>
+      </div>
+      <button className="primary-btn" type="button">Contact factory</button>
+    </section>
+  );
 
   return (
-    <main className="factory-profile-page">
+    <main className={`factory-profile-page ${isOwnerView ? "is-owner-view" : "is-public-view"}`}>
       <div className="factory-profile-shell">
         <ProfileOwnerBar
           ariaLabel="Profile view mode"
@@ -2051,8 +2084,12 @@ function FactoryProfilePage({ language, onViewCompletion }) {
           profileLabel="Factory profile"
         />
 
+        {isOwnerView && renderProfileStatusCard("factory-profile-compact-status-card")}
+        {!isOwnerView && renderContactCard("factory-profile-compact-contact-card")}
+
         <section className="factory-profile-hero">
           {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
+          {!isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => setProfileMode("edit")}>Save factory</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
               <div className="factory-profile-logo">AM</div>
@@ -2070,14 +2107,6 @@ function FactoryProfilePage({ language, onViewCompletion }) {
                 <span className="tag garment-tag">{data.marketLevel}</span>
               </div>
             </div>
-          </div>
-          <div className="factory-profile-actions">
-            {!isOwnerView && (
-              <>
-                <button className="secondary-btn" type="button" onClick={() => setProfileMode("edit")}>Save factory</button>
-                <button className="primary-btn" type="button">Contact factory</button>
-              </>
-            )}
           </div>
         </section>
 
@@ -2207,37 +2236,9 @@ function FactoryProfilePage({ language, onViewCompletion }) {
 
           <aside className="factory-profile-side">
             {isOwnerView ? (
-              <>
-                <section className="factory-profile-card factory-profile-owner-card">
-                  <div className="factory-profile-card-header">
-                    <h2>Profile status</h2>
-                    <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>See details</button>
-                  </div>
-                  <div className="factory-profile-status-meter">
-                    <strong>88%</strong>
-                    <span>Profile complete</span>
-                  </div>
-                  <div className="factory-profile-status-track"><span /></div>
-                  <p>Add the remaining certifications and keep monthly capacity current to strengthen this profile.</p>
-                  <div className="factory-profile-owner-actions">
-                    <button className="primary-btn" type="button">Publish changes</button>
-                    <button className="secondary-btn" type="button" onClick={() => setProfileMode("public")}>View as public</button>
-                  </div>
-                </section>
-              </>
+              renderProfileStatusCard("factory-profile-sidebar-status-card")
             ) : (
-              <section className="factory-profile-card factory-profile-contact-card">
-                <h2>Contact supplier</h2>
-                <div className="factory-profile-contact-row">
-                  <div className="factory-avatar">AM</div>
-                  <div>
-                    <strong data-no-translate>{data.name}</strong>
-                    <span data-no-translate>{data.location}</span>
-                  </div>
-                </div>
-                <button className="primary-btn" type="button">Contact factory</button>
-                <button className="secondary-btn" type="button">Invite to RFQ</button>
-              </section>
+              renderContactCard("factory-profile-sidebar-contact-card")
             )}
 
             <section className="factory-profile-card">
@@ -3397,7 +3398,7 @@ function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote })
   );
 }
 
-function FactorySavedPage({ language, onViewRfq }) {
+function FactorySavedPage({ language, onViewBrand, onViewRfq }) {
   const [tab, setTab] = useState("brands");
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
@@ -3454,7 +3455,7 @@ function FactorySavedPage({ language, onViewRfq }) {
         {tab === "brands" ? (
           <section className="factory-saved-brand-grid" aria-label="Saved brands">
             {savedBrands.map((brand) => (
-              <FactorySavedBrandCard brand={brand} language={language} key={brand.name} />
+              <FactorySavedBrandCard brand={brand} language={language} onViewBrand={onViewBrand} key={brand.name} />
             ))}
           </section>
         ) : (
@@ -3469,7 +3470,7 @@ function FactorySavedPage({ language, onViewRfq }) {
   );
 }
 
-function FactorySavedBrandCard({ brand, language = "en" }) {
+function FactorySavedBrandCard({ brand, language = "en", onViewBrand }) {
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const fitTone = brand.fit === "Good fit" ? "good" : brand.fit === "Potential fit" ? "warn" : "strong";
@@ -3477,20 +3478,19 @@ function FactorySavedBrandCard({ brand, language = "en" }) {
   return (
     <article className="factory-saved-brand-card">
       <header>
-        <div className="factory-saved-brand-identity">
+        <button className="factory-saved-brand-identity factory-saved-brand-link" type="button" onClick={onViewBrand}>
           <div className="factory-avatar">{brand.initials}</div>
           <div>
             <h2>{brand.name}</h2>
             <p>{tx(brand.location)}</p>
           </div>
-        </div>
+        </button>
         <div className="factory-saved-card-actions">
+          <span className={`factory-project-fit ${fitTone}`}>{tx(brand.fit)}</span>
           <button className="secondary-btn" type="button">{tx("Contact brand")}</button>
-          <button className="primary-btn" type="button">{tx("View brand")}</button>
         </div>
       </header>
       <div className="factory-saved-brand-fit">
-        <span className={`factory-project-fit ${fitTone}`}>{tx(brand.fit)}</span>
         <strong>{isZh ? getTranslatedProjectTitle(brand.focus) : brand.focus}</strong>
       </div>
       <div className="factory-request-trust factory-saved-brand-trust">
