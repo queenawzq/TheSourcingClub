@@ -7855,6 +7855,21 @@
   }
 }
 
+@media (max-width: 1180px) {
+  .factory-dashboard-header h1,
+  .factory-rfqs-page .rfqs-header h1,
+  .factory-browse-marketplace-page .directory-hero h1,
+  .factory-project-detail-header h1,
+  .factory-detail-header > h1,
+  .factory-submit-header h1,
+  .factory-rfq-read-header h1,
+  .billing-history-header h1,
+  .settings-nav-panel h1 {
+    font-size: 30px;
+    line-height: 1.1;
+  }
+}
+
 @media (max-width: 1320px) {
   .factory-profile-completion-hero,
   .factory-profile-completion-layout {
@@ -7918,9 +7933,23 @@
   }
 }
 
+@media (min-width: 1321px) and (max-width: 1400px) {
+  .factory-rfq-card .factory-request-card-body,
+  .factory-active-project-card .factory-request-card-body {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  }
+
+  .factory-rfq-card .factory-request-visuals,
+  .factory-active-project-card .factory-order-visuals {
+    width: 100%;
+    max-width: 420px;
+  }
+}
+
 @media (max-width: 1540px) {
+  .app-shell:not(.nav-collapsed) > .factory-browse-marketplace-page .factory-request-card-body,
   .side-nav:not(.collapsed) + .factory-browse-marketplace-page .factory-request-card-body {
-    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
+    grid-template-columns: minmax(0, 1fr) minmax(240px, 48%);
   }
 }
 
@@ -9062,6 +9091,36 @@ button.sort-button {
   }
 }
 
+@media (min-width: 901px) and (max-width: 1180px) {
+  .factory-browse-marketplace-page .factory-request-card-body {
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 0.72fr) !important;
+    align-items: start;
+  }
+
+  .factory-browse-marketplace-page .factory-request-brief,
+  .factory-browse-marketplace-page .factory-request-visuals {
+    min-width: 0;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .factory-browse-marketplace-page .factory-request-visuals.has-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .factory-browse-marketplace-page .factory-request-visuals.has-gallery .factory-request-visual-main {
+    grid-column: 1 / -1;
+  }
+
+  .factory-browse-marketplace-page .factory-request-visuals.has-gallery .factory-request-visual-main img {
+    height: 140px;
+  }
+
+  .factory-browse-marketplace-page .factory-request-visuals.has-gallery figure:not(.factory-request-visual-main) img {
+    height: 76px;
+  }
+}
+
 @media (max-width: 760px) {
   .factory-rfq-card,
   .factory-active-project-card,
@@ -9739,6 +9798,20 @@ button.sort-button {
   }
 }
 
+@media (min-width: 761px) and (max-width: 1180px) {
+  .factory-rfqs-page .factory-rfq-card .factory-request-card-body,
+  .factory-projects-page .factory-active-project-card .factory-request-card-body {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 38%) !important;
+  }
+
+  .factory-rfqs-page .factory-rfq-card .factory-request-visuals,
+  .factory-projects-page .factory-active-project-card .factory-order-visuals {
+    justify-self: end;
+    width: 100%;
+    max-width: 420px;
+  }
+}
+
 @media (max-width: 1180px) {
   .factory-project-detail-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -9797,10 +9870,43 @@ button.sort-button {
 
 @media (max-width: 760px) {
   .factory-rfqs-page .rfqs-header h1,
-  .factory-browse-marketplace-page .directory-hero h1,
-  .factory-project-detail-header h1 {
+  .factory-browse-marketplace-page .directory-hero h1 {
     font-size: 30px;
     line-height: 1.1;
+  }
+
+  .factory-project-detail-header h1 {
+    font-size: 26px;
+    line-height: 1.15;
+  }
+
+  .factory-order-brief .project-progress {
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .factory-order-brief .project-progress-step small {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 0 2px;
+    line-height: 13px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .factory-update-modal-layer {
+    box-sizing: border-box;
+    place-items: center;
+    padding: 16px;
+  }
+
+  .factory-update-modal {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 500px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
   }
 
   .factory-rfqs-page .rfqs-header p:last-child,

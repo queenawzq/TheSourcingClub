@@ -151,6 +151,11 @@ const factories = [
     price: "$18.40",
     quoteQuantity: "300 units",
     lead: "28 days",
+    materialCosts: [
+      { material: "Organic cotton poplin", costPerUnit: 8.64, included: true },
+      { material: "Standard buttons + interfacing", costPerUnit: 1.15, included: true },
+      { material: "Custom woven labels (optional)", costPerUnit: 0.35, included: false }
+    ],
     note: "Best match for organic cotton woven shirts with sample-first production.",
     stats: [
       ["MOQ", "150/style"],
@@ -178,6 +183,11 @@ const factories = [
     price: "$21.10",
     quoteQuantity: "300 units",
     lead: "32 days",
+    materialCosts: [
+      { material: "Premium cotton poplin", costPerUnit: 9.45, included: true },
+      { material: "Shell buttons + interfacing", costPerUnit: 1.4, included: true },
+      { material: "Custom woven labels", costPerUnit: 0.4, included: false }
+    ],
     note: "Strong construction and finishing, slightly higher sample cost.",
     stats: [
       ["MOQ", "150/style"],
@@ -205,6 +215,11 @@ const factories = [
     price: "$16.90",
     quoteQuantity: "500 units",
     lead: "35 days",
+    materialCosts: [
+      { material: "Cotton poplin", costPerUnit: 7.1, included: true },
+      { material: "Standard buttons + interfacing", costPerUnit: 0.95, included: true },
+      { material: "Certification documentation", costPerUnit: 0.25, included: false }
+    ],
     note: "Competitive bulk pricing, needs closer sample approval before production.",
     stats: [
       ["MOQ", "500/style"],
@@ -1253,7 +1268,6 @@ function BillingScreen({ accountType = "brand" }) {
     <section className="billing-history-page">
       <header className="billing-history-header">
         <div>
-          <p>{isFactory ? "Factory payments" : "Brand payments"}</p>
           <h1>Payments</h1>
         </div>
       </header>
@@ -4889,32 +4903,34 @@ function RfqsScreen({ goTo }) {
               </button>
             )
           ))}
-          {isAddingTab ? (
-            <form className="project-tab-add-form" onSubmit={addCustomTab}>
-              <input
-                value={newTabName}
-                onChange={(event) => setNewTabName(event.target.value)}
-                placeholder="Tab name"
-                autoFocus
-              />
-              <button type="submit">Add</button>
-              <button
-                className="project-tab-add-cancel"
-                type="button"
-                aria-label="Cancel adding tab"
-                onClick={() => {
-                  setNewTabName("");
-                  setIsAddingTab(false);
-                }}
-              >
-                ×
+          <div className={isAddingTab ? "project-tab-add-slot editing" : "project-tab-add-slot"}>
+            {isAddingTab ? (
+              <form className="project-tab-add-form" onSubmit={addCustomTab}>
+                <input
+                  value={newTabName}
+                  onChange={(event) => setNewTabName(event.target.value)}
+                  placeholder="Tab name"
+                  autoFocus
+                />
+                <button type="submit">Add</button>
+                <button
+                  className="project-tab-add-cancel"
+                  type="button"
+                  aria-label="Cancel adding tab"
+                  onClick={() => {
+                    setNewTabName("");
+                    setIsAddingTab(false);
+                  }}
+                >
+                  ×
+                </button>
+              </form>
+            ) : (
+              <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+                + Add tab
               </button>
-            </form>
-          ) : (
-            <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
-              + Add tab
-            </button>
-          )}
+            )}
+          </div>
         </div>
         <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
           Manage tabs
@@ -5206,32 +5222,34 @@ function ProjectsScreen({ goTo, setSelectedReorderProject }) {
               </button>
             )
           ))}
-          {isAddingTab ? (
-            <form className="project-tab-add-form" onSubmit={addCustomTab}>
-              <input
-                value={newTabName}
-                onChange={(event) => setNewTabName(event.target.value)}
-                placeholder="Tab name"
-                autoFocus
-              />
-              <button type="submit">Add</button>
-              <button
-                className="project-tab-add-cancel"
-                type="button"
-                aria-label="Cancel adding tab"
-                onClick={() => {
-                  setNewTabName("");
-                  setIsAddingTab(false);
-                }}
-              >
-                ×
+          <div className={isAddingTab ? "project-tab-add-slot editing" : "project-tab-add-slot"}>
+            {isAddingTab ? (
+              <form className="project-tab-add-form" onSubmit={addCustomTab}>
+                <input
+                  value={newTabName}
+                  onChange={(event) => setNewTabName(event.target.value)}
+                  placeholder="Tab name"
+                  autoFocus
+                />
+                <button type="submit">Add</button>
+                <button
+                  className="project-tab-add-cancel"
+                  type="button"
+                  aria-label="Cancel adding tab"
+                  onClick={() => {
+                    setNewTabName("");
+                    setIsAddingTab(false);
+                  }}
+                >
+                  ×
+                </button>
+              </form>
+            ) : (
+              <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+                + Add tab
               </button>
-            </form>
-          ) : (
-            <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
-              + Add tab
-            </button>
-          )}
+            )}
+          </div>
         </div>
         <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
           Manage tabs
@@ -5410,6 +5428,7 @@ function ProjectDetailScreen({ goTo, goToFundingMilestone }) {
   const [paidMilestones, setPaidMilestones] = useState([]);
   const [approvalMilestone, setApprovalMilestone] = useState(null);
   const [approvedMilestones, setApprovedMilestones] = useState([]);
+  const [commentMilestone, setCommentMilestone] = useState(null);
   const detailTabs = [
     ["overview", "Overview"],
     ["files", "Files"],
@@ -5460,6 +5479,7 @@ function ProjectDetailScreen({ goTo, goToFundingMilestone }) {
                     onApproveFund={setApproveFundMilestone}
                     onFundMilestone={goToFundingMilestone}
                     onApprove={setApprovalMilestone}
+                    onComment={setCommentMilestone}
                     key={milestone.title}
                   />
                 ))}
@@ -5511,6 +5531,13 @@ function ProjectDetailScreen({ goTo, goToFundingMilestone }) {
             setApprovedMilestones((current) => current.includes(approvalMilestone.title) ? current : [...current, approvalMilestone.title]);
             setApprovalMilestone(null);
           }}
+        />
+      ), document.body)}
+      {commentMilestone && createPortal((
+        <MilestoneCommentModal
+          milestone={commentMilestone}
+          onClose={() => setCommentMilestone(null)}
+          onPost={() => setCommentMilestone(null)}
         />
       ), document.body)}
     </div>
@@ -5621,7 +5648,7 @@ function ProjectContractDetailsPanel({ goTo }) {
   );
 }
 
-function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = false, onApproveFund, onFundMilestone, onApprove }) {
+function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = false, onApproveFund, onFundMilestone, onApprove, onComment }) {
   const handleAction = () => {
     if (milestone.action === "Approve fund") onApproveFund?.(milestone);
     if (milestone.action === "Fund milestone") onFundMilestone?.(milestone);
@@ -5644,7 +5671,7 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
         <p className="milestone-description">{milestone.description}</p>
         {milestone.update && <ProjectUpdateCard />}
       </div>
-      <button className="milestone-comment" type="button" aria-label={`Add update for ${milestone.title}`}>
+      <button className="milestone-comment" type="button" aria-label={`Add update for ${milestone.title}`} onClick={() => onComment?.(milestone)}>
         <img src="/assets/prototype-icons/add-update.svg" alt="" />
       </button>
       {(isPaid || isApproved) && (
@@ -5658,6 +5685,36 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
         </button>
       )}
     </article>
+  );
+}
+
+function MilestoneCommentModal({ milestone, onClose, onPost }) {
+  return (
+    <div className="approve-fund-modal-layer" role="presentation">
+      <button className="approve-fund-modal-scrim" type="button" aria-label="Close comment" onClick={onClose} />
+      <section className="approve-fund-modal milestone-comment-modal" role="dialog" aria-modal="true" aria-labelledby="milestone-comment-title">
+        <button className="settings-drawer-close" type="button" aria-label="Close comment" onClick={onClose}>
+          <img src="/assets/prototype-icons/close.svg" alt="" />
+        </button>
+        <header>
+          <p>Milestone comment</p>
+          <h2 id="milestone-comment-title">Add a comment for {milestone.title.toLowerCase()}</h2>
+          <span>Share feedback, questions, or files with Atelier Minho for this production step.</span>
+        </header>
+        <label className="approve-fund-note">
+          <span>Comment</span>
+          <textarea rows={4} placeholder="Write a comment for Atelier Minho..." autoFocus />
+        </label>
+        <button className="milestone-comment-upload" type="button">
+          <strong>+ Attach files</strong>
+          <span>JPG, PNG, or PDF · up to 10 files</span>
+        </button>
+        <footer>
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onPost}>Post comment</button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
@@ -6078,11 +6135,19 @@ function formatQuoteCurrency(value) {
 
 function getQuoteComparisonDetails(factory) {
   const sampleSubtotal = factory.name === "Ningbo Woven Co" ? 220 : 260;
-  const productionSubtotal = parseQuoteCurrency(factory.price) * parseQuoteUnits(factory.quoteQuantity);
+  const quantity = parseQuoteUnits(factory.quoteQuantity);
+  const productionSubtotal = parseQuoteCurrency(factory.price) * quantity;
+  const materialCosts = factory.materialCosts || [];
+  const includedMaterialPerUnit = materialCosts.reduce((total, item) => total + (item.included ? item.costPerUnit : 0), 0);
+  const additionalMaterialPerUnit = materialCosts.reduce((total, item) => total + (item.included ? 0 : item.costPerUnit), 0);
+  const additionalMaterialSubtotal = additionalMaterialPerUnit * quantity;
   return {
     productionSubtotal: formatQuoteCurrency(productionSubtotal),
     sampleSubtotal: formatQuoteCurrency(sampleSubtotal),
-    total: formatQuoteCurrency(productionSubtotal + sampleSubtotal),
+    includedMaterialPerUnit: `$${includedMaterialPerUnit.toFixed(2)} / unit`,
+    additionalMaterialPerUnit: `$${additionalMaterialPerUnit.toFixed(2)} / unit`,
+    additionalMaterialSubtotal: formatQuoteCurrency(additionalMaterialSubtotal),
+    total: formatQuoteCurrency(productionSubtotal + sampleSubtotal + additionalMaterialSubtotal),
     paymentTerms: factory.name === "Ningbo Woven Co" ? "40% deposit · 60% before shipment" : "30% deposit · 70% before shipment",
     samplePlan: factory.name === "Ningbo Woven Co" ? "Fit + PP · 24 days" : "Fit + PP · 21 days",
     shipping: factory.name === "Atelier Minho" ? "FOB quoted · freight not included" : "EXW quoted · freight not included",
@@ -6228,6 +6293,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                     <th>Bulk lead</th>
                     <th>Production subtotal</th>
                     <th>Sample subtotal</th>
+                    <th>Additional materials</th>
                     <th>Payment terms</th>
                     <th>Sample plan</th>
                     <th>Shipping</th>
@@ -6251,6 +6317,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                         <td>{factory.lead}</td>
                         <td>{details.productionSubtotal}</td>
                         <td>{details.sampleSubtotal}</td>
+                        <td>{details.additionalMaterialSubtotal}</td>
                         <td>{details.paymentTerms}</td>
                         <td>{details.samplePlan}</td>
                         <td>{details.shipping}</td>
@@ -6277,6 +6344,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
 
 function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
   const factory = factories.find((item) => item.name === selectedQuote) || factories[0];
+  const quoteDetails = getQuoteComparisonDetails(factory);
   return (
     <div className="quote-detail-layout">
       <button className="text-link quote-back-link" type="button" onClick={() => goTo("quotes")}>‹ Back to factory quotes</button>
@@ -6353,20 +6421,32 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
                 ["Factory includes", "Main production materials and standard components from approved direction, included in unit price."]
               ]}
             />
+            <div className="quote-material-cost-details">
+              <h4>Material cost details</h4>
+              <DetailRows
+                rows={(factory.materialCosts || []).map((item) => [
+                  item.material,
+                  `$${item.costPerUnit.toFixed(2)} / unit`,
+                  item.included ? "Included in unit price" : "Added separately"
+                ])}
+              />
+            </div>
           </section>
 
           <section className="price-breakdown">
             <h3>Price breakdown</h3>
             <DetailRows
               rows={[
-                ["Production subtotal", `${factory.quoteQuantity} × ${factory.price}`, "$5,520"],
-                ["Sample subtotal", "Fit + PP samples", "$260"],
+                ["Production subtotal", `${factory.quoteQuantity} × ${factory.price}`, quoteDetails.productionSubtotal],
+                ["Materials included in unit price", quoteDetails.includedMaterialPerUnit, "Included above"],
+                ["Additional material cost", `${quoteDetails.additionalMaterialPerUnit} × ${factory.quoteQuantity}`, quoteDetails.additionalMaterialSubtotal],
+                ["Sample subtotal", "Fit + PP samples", quoteDetails.sampleSubtotal],
                 ["Shipping", "TBD by brand", "Not included"]
               ]}
             />
             <div className="quote-total">
               <strong>Quote total shown to brand</strong>
-              <span>$5,780</span>
+              <span>{quoteDetails.total}</span>
             </div>
           </section>
 

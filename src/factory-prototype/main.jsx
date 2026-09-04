@@ -4905,7 +4905,6 @@ function BillingScreen({ language = "en", creditBalance = factoryCreditStartingB
     <section className="billing-history-page">
       <header className="billing-history-header">
         <div>
-          <p>{tx("Factory payments")}</p>
           <h1>{tx("Payments")}</h1>
         </div>
       </header>
