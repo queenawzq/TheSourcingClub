@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
+import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import "../prototype/styles.css";
 import "./styles.css";
+import "../shared/profile-shell.css";
+import "../shared/production-order-cards.css";
 
 const factorySamplePhotos = [
   "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=600",
@@ -213,9 +216,8 @@ const nav = [
   { label: "Browse RFQs", icon: "explore" },
   { label: "Conversations", icon: "messages" },
   { label: "Saved", icon: "bookmarks" },
-  { label: "Billing", icon: "billing" },
-  { label: "Settings", icon: "settings" },
-  { label: "Notifications", icon: "notification" }
+  { label: "Payments", icon: "billing" },
+  { label: "Settings", icon: "settings" }
 ];
 
 const factoryMainZhText = {
@@ -235,6 +237,7 @@ const factoryMainZhText = {
   "Open RFQs": "待处理询价",
   "+3 invited this week": "本周新增 3 个邀请",
   "Quotes sent": "已发送报价",
+  "Quotes sent this month": "本月已发送报价",
   "4 awaiting brand review": "4 个等待品牌审核",
   "Active production orders": "进行中生产订单",
   "2 need sample updates": "2 个需要样品更新",
@@ -245,6 +248,8 @@ const factoryMainZhText = {
   "RFQ invites": "询价邀请",
   "Prioritized requests that match your capacity and capabilities.": "优先显示与你的产能和能力匹配的需求。",
   "View all": "查看全部",
+  "Add your own": "添加自定义选项",
+  "Add": "添加",
   "Brand messages": "品牌消息",
   "Needs your attention": "需要你处理",
   "Priority RFQs, messages, and production steps.": "优先处理的询价、消息和生产步骤。",
@@ -260,6 +265,7 @@ const factoryMainZhText = {
   "Sample": "样品",
   "Upload sample update": "上传样品更新",
   "Add fit-sample notes for the active Maison Rue order.": "为进行中的 Maison Rue 订单添加试衣样备注。",
+  "Track current orders and next action dates.": "跟踪当前订单和下一步截止日期。",
   "Organic shirts - due today": "有机棉衬衫 - 今天截止",
   "Quote for": "报价：",
   "Stretch jersey capsule - 2 questions": "弹力针织系列 - 2 个问题",
@@ -269,9 +275,12 @@ const factoryMainZhText = {
   "Next due": "下个截止日",
   "PRODUCTION STEP": "生产阶段",
   "NEXT DUE": "下个截止日",
+  "Sample approval": "样品审批",
+  "Lab dip review": "色样审核",
   "unit target": "单价目标",
   "quantity": "数量",
   "samples": "样品",
+  "bulk lead": "大货交期",
   "Strong fit": "高度匹配",
   "Good fit": "匹配",
   "Potential fit": "可能匹配",
@@ -300,6 +309,8 @@ const factoryMainZhText = {
   "Quote submitted": "报价已提交",
   "Due soon": "即将截止",
   "Due today": "今天截止",
+  "Accepted": "已接受",
+  "Closed": "已关闭",
   "your quote": "你的报价",
   "quote sent": "报价已发送",
   "quote due": "报价截止",
@@ -324,10 +335,28 @@ const factoryMainZhText = {
   "All factories": "所有工厂",
   "Client": "客户",
   "All clients": "所有客户",
-  "Factory billing": "工厂账单",
+  "Factory payments": "工厂付款",
   "Billing": "账单",
   "Earnings": "收入",
   "Payments": "付款",
+  "Credits": "额度",
+  "Credit balance": "额度余额",
+  "Used": "已使用",
+  "Earned": "已获得",
+  "Pending": "待确认",
+  "Verified onboarding bonus": "验证通过奖励",
+  "Referral bonus available": "邀请奖励待获得",
+  "Profile verified - Aug 10, 2026": "资料已验证 - 2026 年 8 月 10 日",
+  "Invite a factory; both accounts earn after onboarding": "邀请工厂；对方完成入驻后双方获得奖励",
+  "500 credits = $50 value. Credits are used when a quote is sent.": "500 额度 = $50 价值。发送报价时会使用额度。",
+  "Get more credits": "购买更多额度",
+  "Choose a credit pack to keep sending quotes. 500 credits = $50 value.": "选择额度套餐以继续发送报价。500 额度 = $50 价值。",
+  "Quote credits": "报价额度",
+  "Credits are charged only when you send this quote.": "只有发送报价时才会扣除额度。",
+  "Required to send": "发送所需",
+  "Quote type": "报价类型",
+  "Production run": "生产订单",
+  "Purchase more credits": "购买更多额度",
   "Filter by client": "按客户筛选",
   "total earned": "累计收入",
   "received this month": "本月已到账",
@@ -453,6 +482,46 @@ const factoryMainZhText = {
   "Your August capacity and low-MOQ woven experience match the brand request.": "你的 8 月产能和低 MOQ 梭织经验符合品牌需求。",
   "Send quote": "发送报价",
   "Save request": "保存需求",
+  "Keep track of brands you want to work with and RFQs you may quote later.": "管理你想合作的品牌，以及之后可能报价的询价。",
+  "Saved brands": "收藏品牌",
+  "Saved RFQs": "收藏询价",
+  "Saved brands (3)": "收藏品牌 (3)",
+  "Saved RFQs (3)": "收藏询价 (3)",
+  "Search saved brands": "搜索收藏品牌",
+  "Search saved RFQs": "搜索收藏询价",
+  "Brand name, category, location...": "品牌名称、品类、地区...",
+  "Recently saved": "最近收藏",
+  "Best fit": "最匹配",
+  "Contact brand": "联系品牌",
+  "View brand": "查看品牌",
+  "Remove": "移除",
+  "Unit target": "单价目标",
+  "Quote due": "报价截止",
+  "Request tags": "需求标签",
+  "No reference image uploaded": "未上传参考图片",
+  "Review the written brief, request tags, and attached tech pack in details.": "请在详情中查看文字简介、需求标签和附件 tech pack。",
+  "Fashion brand": "时尚品牌",
+  "Contemporary brand": "当代品牌",
+  "Outerwear brand": "外套品牌",
+  "$1M-$5M revenue": "$1M-$5M 营收",
+  "$5M-$10M revenue": "$5M-$10M 营收",
+  "4 Club orders": "4 个 Club 订单",
+  "2 repeat factories": "2 家复购工厂",
+  "Toronto market": "多伦多市场",
+  "1 day avg. response": "平均 1 天回复",
+  "Denim jacket reference": "牛仔夹克参考图",
+  "$5k+ spent": "已消费 5k+ 美元",
+  "$25k+ spent": "已消费 25k+ 美元",
+  "Cut & sew": "裁剪缝制",
+  "GOTS preferred": "优先 GOTS",
+  "3 colors": "3 个颜色",
+  "China / Portugal / Korea": "中国 / 葡萄牙 / 韩国",
+  "OEKO-TEX": "OEKO-TEX",
+  "Yarn sourcing": "纱线采购",
+  "Poplin shirt reference": "府绸衬衫参考图",
+  "Material direction": "材料方向",
+  "Fit detail": "版型细节",
+  "Cardigan reference": "开衫参考图",
   "Verified brand": "已验证品牌",
   "Yes": "是",
   "Settings sections": "设置分区",
@@ -566,6 +635,18 @@ const factoryMainZhText = {
   "Payment terms": "付款条款",
   "Shipping / incoterms": "运输 / 贸易条款",
   "Quote valid until": "报价有效期至",
+  "Material sourcing and component costs": "材料采购和辅料成本",
+  "Specify what is included in your quote and what the brand must provide.": "说明报价中包含哪些项目，以及品牌需要提供什么。",
+  "Factory includes": "工厂报价包含",
+  "Main production materials and standard components from the approved direction.": "按确认方向采购的主要生产材料和标准辅料。",
+  "Main production materials and standard components from approved direction, included in unit price": "按确认方向采购的主要生产材料和标准辅料，已包含在单价中",
+  "Brand provides separately": "品牌另行提供",
+  "Labels, packaging, final color standards, and special branded trims.": "商标、包装、最终颜色标准和特殊品牌辅料。",
+  "Brand will provide or approve before sampling": "品牌将在打样前提供或确认",
+  "Assumptions to confirm": "待确认假设",
+  "Fabric GSM, trim spec, MOQ surcharge, certification path, and lead-time impact": "面料 GSM、辅料规格、MOQ 附加费、认证路径和交期影响",
+  "Confirm in quote": "报价中确认",
+  "Which fabric, trim, or component costs are included, plus any MOQ or lead-time assumptions.": "哪些面料、辅料或组件成本已包含，以及任何 MOQ 或交期假设。",
   "Break out sample stages so the brand can compare quotes clearly.": "拆分样品阶段，方便品牌清楚比较报价。",
   "Stage": "阶段",
   "Cost": "费用",
@@ -664,6 +745,7 @@ const factoryMainZhReplacements = [
   [/Started Jul 10/g, "7 月 10 日开始"],
   [/Started Jul 8/g, "7 月 8 日开始"],
   [/Payment verified/g, "付款已验证"],
+  [/(\d+) units/g, "$1 件"],
   [/\$(\d+)k\+ spent/g, "已消费 $1k+ 美元"],
   [/Cut & sew/g, "裁剪缝制"],
   [/Knitwear/g, "针织成衣"],
@@ -976,7 +1058,7 @@ const onboardingCopy = {
         intro: "Let's set up your factory profile so brands can find you. It takes about 5 minutes, and you can edit everything later.",
         meta: "11 steps · 5 minutes",
         languageLabel: "Language",
-        languageHelp: "You can change this anytime.",
+        languageHelp: "",
         cta: "Get started"
       },
       {
@@ -986,18 +1068,22 @@ const onboardingCopy = {
           ["Year Founded", "YYYY"],
           ["Website URL", "www.example.com"],
           ["Factory Location", "City, Country"],
-          ["Nearest Port", "e.g. Port of Shanghai"]
+          ["Nearest Port", "e.g. Port of Shanghai"],
+          ["Total Employees", "e.g. 120"]
         ],
         helper: "The seaport or airport you ship from most often."
       },
       {
-        title: "A little about your company",
-        fields: [
-          ["Company Registration Date", "MM/YYYY"],
-          ["Registered capital (optional)", "Amount"],
-          ["Total Employees", "e.g. 120"]
-        ],
-        helper: "Use your business registration details where applicable."
+        title: "Add factory context",
+        intro: "Share the details that help brands understand your factory, production strengths, and working style.",
+        brandLabel: "About the factory",
+        brandPlaceholder: "A short overview of your factory, production strengths, typical customers, quality standards, and what brands should understand before they send an RFQ.",
+        logoTitle: "Factory logo",
+        logoHelper: "Upload your factory logo, wordmark, or icon mark.",
+        logoAccept: "SVG, PNG, or JPG",
+        imagesTitle: "Samples developed",
+        imagesHelper: "Upload sample garments, product development examples, construction details, or finished pieces your factory has made.",
+        imagesAccept: "PNG, JPG, or PDF"
       },
       {
         title: "What type of production does your factory specialize in?",
@@ -1103,18 +1189,25 @@ const onboardingCopy = {
         intro: "我们将帮你建立工厂资料，让品牌更容易找到你。大约需要 5 分钟，之后可以随时修改。",
         meta: "11 步 · 约 5 分钟",
         languageLabel: "语言",
-        languageHelp: "你可以随时更改。",
+        languageHelp: "",
         cta: "开始设置"
       },
       {
         title: "告诉我们你的工厂信息",
-        fields: [["工厂名称", "例如：金线服装制造"], ["成立年份", "YYYY"], ["官网", "www.example.com"], ["工厂所在地", "城市，国家/地区"], ["最近港口", "例如：深圳港"]],
+        fields: [["工厂名称", "例如：金线服装制造"], ["成立年份", "YYYY"], ["官网", "www.example.com"], ["工厂所在地", "城市，国家/地区"], ["最近港口", "例如：深圳港"], ["员工总数", "例如：120"]],
         helper: "你最常使用的海港或机场。"
       },
       {
-        title: "公司基本信息",
-        fields: [["公司注册日期", "MM/YYYY"], ["注册资本（选填）", "金额"], ["员工总数", "例如：120"]],
-        helper: "如适用，请按营业执照或注册资料填写。"
+        title: "添加工厂背景",
+        intro: "补充工厂介绍、生产优势和合作方式，帮助品牌更快判断是否匹配。",
+        brandLabel: "工厂介绍",
+        brandPlaceholder: "简要说明工厂情况、生产优势、常合作客户、质量标准，以及品牌发送 RFQ 前需要了解的信息。",
+        logoTitle: "工厂 Logo",
+        logoHelper: "上传工厂 logo、字标或图标。",
+        logoAccept: "SVG、PNG 或 JPG",
+        imagesTitle: "已开发样品",
+        imagesHelper: "上传工厂开发过的样衣、产品开发案例、结构细节或成品图片。",
+        imagesAccept: "PNG、JPG 或 PDF"
       },
       {
         title: "你的工厂擅长哪类生产？",
@@ -1300,14 +1393,39 @@ function App() {
   const [onboardingComplete, setOnboardingComplete] = useState(shouldOpenPrototypeScreen);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingLanguage, setOnboardingLanguage] = useState("en");
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [screen, setScreen] = useState(shouldOpenPrototypeScreen ? restoredScreen : "dashboard");
   const [detailBackTarget, setDetailBackTarget] = useState("browse");
   const [quoteBackTarget, setQuoteBackTarget] = useState("detail");
   const [capacityDrawerOpen, setCapacityDrawerOpen] = useState(false);
+  const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
   const [dashboardCapacity, setDashboardCapacity] = useState("2400");
+  const [creditBalance, setCreditBalance] = useState(factoryCreditStartingBalance);
+  const [quoteSentUsesCredit, setQuoteSentUsesCredit] = useState(false);
+  const [creditPurchaseOpen, setCreditPurchaseOpen] = useState(false);
   const selectedProject = brandProjects[0];
-  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "profile" || screen === "profileCompletion" ? "" : "Browse RFQs";
+  const activeNav = screen === "dashboard" ? "Dashboard" : screen === "rfqs" || screen === "rfqReadOnly" ? "RFQs" : screen === "projects" || screen === "projectDetail" || screen === "projectPostedUpdate" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Payments" : screen === "settings" ? "Settings" : screen === "profile" || screen === "profileCompletion" ? "" : "Browse RFQs";
+
+  useEffect(() => {
+    const mobileNav = window.matchMedia("(max-width: 760px)");
+    const syncSidebar = () => setSidebarCollapsed(mobileNav.matches);
+    mobileNav.addEventListener("change", syncSidebar);
+    return () => mobileNav.removeEventListener("change", syncSidebar);
+  }, []);
+
+  useEffect(() => {
+    if (sidebarCollapsed || !window.matchMedia("(max-width: 760px)").matches) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setSidebarCollapsed(true);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [sidebarCollapsed]);
 
   useEffect(() => {
     if (!onboardingComplete || !factoryScreens.includes(screen)) return;
@@ -1325,6 +1443,10 @@ function App() {
         language={onboardingLanguage}
         step={onboardingStep}
         onLanguageChange={setOnboardingLanguage}
+        onEditSection={(targetStep) => {
+          setOnboardingStep(targetStep);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
         onBack={() => setOnboardingStep((value) => Math.max(0, value - 1))}
         onNext={() => {
           if (onboardingStep >= factoryOnboardingSteps.length - 1) {
@@ -1341,62 +1463,48 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed factory-flow" : "app-shell factory-flow"}>
       <FactoryMainLanguageLayer language={onboardingLanguage} />
-      <aside className={sidebarCollapsed ? "side-nav collapsed" : "side-nav"}>
+      <PrototypeSideNav
+        account={{ initials: "AM", name: "Atelier Minho", type: "Factory account" }}
+        active={activeNav}
+        ariaLabel="Factory account"
+        collapsed={sidebarCollapsed}
+        navItems={nav}
+        onNav={(label) => {
+          if (label === "Dashboard") setScreen("dashboard");
+          if (label === "RFQs") setScreen("rfqs");
+          if (label === "Production orders") setScreen("projects");
+          if (label === "Browse RFQs") setScreen("browse");
+          if (label === "Conversations") setScreen("messages");
+          if (label === "Saved") setScreen("saved");
+          if (label === "Payments") setScreen("billing");
+          if (label === "Settings") setScreen("settings");
+        }}
+        onProfile={() => setScreen("profile")}
+        onToggle={() => setSidebarCollapsed((value) => !value)}
+      />
+      {!sidebarCollapsed && (
         <button
-          className="collapse-toggle"
+          className="mobile-nav-backdrop"
           type="button"
-          onClick={() => setSidebarCollapsed((value) => !value)}
-          aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          <img src={`/assets/prototype-icons/${sidebarCollapsed ? "expand" : "collapse"}.svg`} alt="" />
-        </button>
-        {!sidebarCollapsed && <img src="/assets/logo.svg" alt="The Sourcing Club" className="side-logo" />}
-        <button className={sidebarCollapsed ? "account-card collapsed-account" : "account-card"} type="button" aria-label="Factory account" onClick={() => setScreen("profile")}>
-          <span>AM</span>
-          <div>
-            <strong>Atelier Minho</strong>
-            <small>Factory account</small>
-          </div>
-        </button>
-        <nav>
-          {nav.map((item, index) => (
-            <React.Fragment key={item.label}>
-              {index === 3 || index === 6 ? <span className="nav-divider" /> : null}
-              <button
-                className={item.label === activeNav ? "active" : ""}
-                type="button"
-                onClick={() => {
-                  if (item.label === "Dashboard") setScreen("dashboard");
-                  if (item.label === "RFQs") setScreen("rfqs");
-                  if (item.label === "Production orders") setScreen("projects");
-                  if (item.label === "Browse RFQs") setScreen("browse");
-                  if (item.label === "Conversations") setScreen("messages");
-                  if (item.label === "Saved") setScreen("saved");
-                  if (item.label === "Billing") setScreen("billing");
-                  if (item.label === "Settings") setScreen("settings");
-                }}
-                aria-label={item.label}
-                title={sidebarCollapsed ? item.label : undefined}
-              >
-                <img className="nav-icon" src={`/assets/prototype-icons/${item.icon}.svg`} alt="" />
-                <span className="nav-label">{item.label}</span>
-              </button>
-            </React.Fragment>
-          ))}
-        </nav>
-      </aside>
+          aria-label="Close navigation"
+          onClick={() => setSidebarCollapsed(true)}
+        />
+      )}
 
       {screen === "dashboard" && (
         <FactoryDashboardPage
           language={onboardingLanguage}
           capacityValue={dashboardCapacity}
+          creditBalance={creditBalance}
           onUpdateCapacity={() => setCapacityDrawerOpen(true)}
+          onPurchaseCredits={() => setCreditPurchaseOpen(true)}
           onViewRfqs={() => setScreen("rfqs")}
           onViewRfqDetail={() => {
             setDetailBackTarget("browse");
             setScreen("detail");
           }}
           onViewProjects={() => setScreen("projects")}
+          onOpenActivity={() => setActivityDrawerOpen(true)}
         />
       )}
       {screen === "profile" && (
@@ -1423,6 +1531,7 @@ function App() {
       {screen === "rfqs" && (
         <FactoryRfqsPage
           language={onboardingLanguage}
+          onBrowseRfqs={() => setScreen("browse")}
           onViewRequest={() => setScreen("rfqReadOnly")}
           onEditQuote={() => {
             setQuoteBackTarget("rfqs");
@@ -1433,6 +1542,9 @@ function App() {
       {screen === "saved" && (
         <FactorySavedPage
           language={onboardingLanguage}
+          onViewBrand={() => {
+            window.location.href = "/prototype.html?screen=profile&view=public";
+          }}
           onViewRfq={() => {
             setDetailBackTarget("saved");
             setScreen("detail");
@@ -1441,7 +1553,7 @@ function App() {
       )}
       {screen === "messages" && (
         <main className="messages-page factory-messages-page">
-          <FactoryMessagesScreen />
+          <FactoryMessagesScreen language={onboardingLanguage} />
         </main>
       )}
       {screen === "settings" && (
@@ -1451,7 +1563,7 @@ function App() {
       )}
       {screen === "billing" && (
         <main className="billing-page-shell factory-billing-page">
-          <BillingScreen language={onboardingLanguage} />
+          <BillingScreen language={onboardingLanguage} creditBalance={creditBalance} quoteSent={quoteSentUsesCredit} />
         </main>
       )}
       {screen === "rfqReadOnly" && (
@@ -1506,12 +1618,22 @@ function App() {
           language={onboardingLanguage}
           onBack={() => setScreen("quote")}
           onEdit={() => setScreen("quote")}
-          onSendQuote={() => setScreen("quoteSent")}
+          creditBalance={creditBalance}
+          onPurchaseCredits={() => setCreditPurchaseOpen(true)}
+          onSendQuote={() => {
+            if (!quoteSentUsesCredit) {
+              setCreditBalance((current) => Math.max(0, current - factoryQuoteCreditCost.credits));
+              setQuoteSentUsesCredit(true);
+            }
+            setScreen("quoteSent");
+          }}
         />
       )}
       {screen === "quoteSent" && (
         <FactoryQuoteSent
           project={selectedProject}
+          language={onboardingLanguage}
+          creditBalance={creditBalance}
           onBack={() => setScreen("quote")}
           onDashboard={goToDashboard}
         />
@@ -1527,86 +1649,127 @@ function App() {
           }}
         />
       )}
+      {activityDrawerOpen && <FactoryActivityDrawer language={onboardingLanguage} onClose={() => setActivityDrawerOpen(false)} />}
+      {creditPurchaseOpen && (
+        <CreditPurchaseModal language={onboardingLanguage} onClose={() => setCreditPurchaseOpen(false)} />
+      )}
     </div>
   );
 }
 
-function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onViewRfqs, onViewRfqDetail, onViewProjects }) {
+function FactoryDashboardPage({ language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onViewRfqs, onViewRfqDetail, onViewProjects, onOpenActivity }) {
   const capacityUnits = getCapacityUnitRange(capacityValue);
+  const [inviteFactoryOpen, setInviteFactoryOpen] = useState(false);
+  const tx = (value) => (language === "zh" ? translateFactoryMainText(value) : value);
+  const creditCardCopy = language === "zh"
+    ? {
+        label: "剩余额度",
+        value: `${creditBalance} 额度`,
+        description: "500 额度 = $50 价值。邀请已验证工厂可再获得 500 额度。",
+        purchase: "购买额度",
+        invite: "邀请工厂"
+      }
+    : {
+        label: "Remaining credits",
+        value: `${creditBalance} credits`,
+        description: "500 credits = $50 value. Invite a verified factory to earn 500 more.",
+        purchase: "Purchase credits",
+        invite: "Invite factory"
+      };
 
   return (
     <main className="factory-dashboard-page">
       <div className="factory-dashboard-shell">
         <header className="factory-dashboard-header">
-          <h1>Hi Atelier Minho</h1>
+          <h1>{language === "zh" ? "你好，Atelier Minho" : "Hi Atelier Minho"}</h1>
+          <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">
+            <img src="/assets/prototype-icons/notification.svg" alt="" />
+            <b aria-hidden="true">4</b>
+          </button>
         </header>
 
         <section className="factory-dashboard-grid" aria-label="Factory dashboard overview">
-          <div className="factory-dashboard-metrics">
-            <FactoryMetricCard label="Open RFQs" value="7" note="+3 invited this week" tone="blue" />
-            <FactoryMetricCard label="Quotes sent this month" value="14" note="4 awaiting brand review" tone="green" />
-            <FactoryMetricCard label="Active production orders" value="5" note="2 need sample updates" tone="amber" />
+          <div className="factory-dashboard-main-stack">
+            <div className="factory-dashboard-metrics">
+              <FactoryMetricCard label={tx("Open RFQs")} value="7" note={tx("+3 invited this week")} tone="blue" />
+              <FactoryMetricCard label={tx("Quotes sent this month")} value="14" note={tx("4 awaiting brand review")} tone="green" />
+              <FactoryMetricCard label={tx("Active production orders")} value="5" note={tx("2 need sample updates")} tone="amber" />
+            </div>
+
+            <FactoryDashboardPanel
+              className="factory-rfq-invites-panel"
+              title={tx("RFQ invites")}
+              subtitle={tx("Prioritized requests that match your capacity and capabilities.")}
+              action={tx("View all")}
+              onAction={onViewRfqs}
+            >
+              {factoryRfqs.slice(0, 4).map((rfq) => (
+                <FactoryDashboardRfqRow rfq={rfq} language={language} onView={onViewRfqDetail} key={rfq.title} />
+              ))}
+            </FactoryDashboardPanel>
           </div>
 
-          <section className="factory-dashboard-capacity">
-            <span>August capacity</span>
-            <strong>Mostly open</strong>
-            <div className="capacity-chip-row">
-              <span>Open August</span>
-              <span>Capacity {capacityUnits} units</span>
-            </div>
-            <button className="primary-btn" type="button" onClick={onUpdateCapacity}>Update capacity</button>
-          </section>
+          <div className="factory-dashboard-side-stack">
+            <section className="factory-dashboard-capacity">
+              <span>{tx("August capacity")}</span>
+              <strong>{tx("Mostly open")}</strong>
+              <div className="capacity-chip-row">
+                <span>{tx("Open August")}</span>
+                <span>{language === "zh" ? `产能 ${capacityUnits} 件` : `Capacity ${capacityUnits} units`}</span>
+              </div>
+              <button className="primary-btn" type="button" onClick={onUpdateCapacity}>{tx("Update capacity")}</button>
+            </section>
 
-          <FactoryDashboardPanel
-            className="factory-rfq-invites-panel"
-            title="RFQ invites"
-            subtitle="Prioritized requests that match your capacity and capabilities."
-            action="View all"
-            onAction={onViewRfqs}
-          >
-            {factoryRfqs.slice(0, 4).map((rfq) => (
-              <FactoryDashboardRfqRow rfq={rfq} language={language} onView={onViewRfqDetail} key={rfq.title} />
-            ))}
-          </FactoryDashboardPanel>
+            <section className="factory-dashboard-credit-card">
+              <div>
+                <span>{creditCardCopy.label}</span>
+                <strong>{creditCardCopy.value}</strong>
+                <p>{creditCardCopy.description}</p>
+              </div>
+              <div className="factory-dashboard-credit-actions">
+                <button className="primary-btn compact-btn" type="button" onClick={onPurchaseCredits}>{creditCardCopy.purchase}</button>
+                <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteFactoryOpen(true)}>{creditCardCopy.invite}</button>
+              </div>
+            </section>
 
-          <FactoryDashboardPanel
-            className="factory-brand-messages-panel"
-            title="Needs your attention"
-            subtitle="Priority RFQs, messages, and production steps."
-            preHeader={<FactoryDashboardCallCard language={language} />}
-          >
-            <FactoryAttentionCard
-              type="Question"
-              tone="info"
-              title="Maison Rue asked about sample costs"
-              meta="Split fit and PP sample cost before quote review."
-              action="Reply"
-            />
-            <FactoryAttentionCard
-              type="Capacity"
-              tone="danger"
-              title="Update August capacity"
-              meta="Your capacity is marked mostly open for new RFQ matches."
-              action="Update"
-              onAction={onUpdateCapacity}
-            />
-            <FactoryAttentionCard
-              type="Verification"
-              tone="success"
-              title="Review verification renewal"
-              meta="TSC ops needs updated documents this month."
-              action="Review"
-            />
-            <FactoryAttentionCard
-              type="Sample"
-              tone="warning"
-              title="Upload sample update"
-              meta="Add fit-sample notes for the active Maison Rue order."
-              action="Update"
-              onAction={onViewProjects}
-            />
-          </FactoryDashboardPanel>
+            <FactoryDashboardPanel
+              className="factory-brand-messages-panel"
+              title="Needs your attention"
+              subtitle="Priority RFQs, messages, and production steps."
+              preHeader={<FactoryDashboardCallCard language={language} />}
+            >
+              <FactoryAttentionCard
+                type="Question"
+                tone="info"
+                title="Maison Rue asked about sample costs"
+                meta="Split fit and PP sample cost before quote review."
+                action="Reply"
+              />
+              <FactoryAttentionCard
+                type="Capacity"
+                tone="danger"
+                title="Update August capacity"
+                meta="Your capacity is marked mostly open for new RFQ matches."
+                action="Update"
+                onAction={onUpdateCapacity}
+              />
+              <FactoryAttentionCard
+                type="Verification"
+                tone="success"
+                title="Review verification renewal"
+                meta="TSC ops needs updated documents this month."
+                action="Review"
+              />
+              <FactoryAttentionCard
+                type="Sample"
+                tone="warning"
+                title="Upload sample update"
+                meta="Add fit-sample notes for the active Maison Rue order."
+                action="Update"
+                onAction={onViewProjects}
+              />
+            </FactoryDashboardPanel>
+          </div>
 
           <FactoryDashboardPanel
             className="factory-active-projects-panel"
@@ -1621,8 +1784,150 @@ function FactoryDashboardPage({ language, capacityValue, onUpdateCapacity, onVie
           </FactoryDashboardPanel>
         </section>
       </div>
+      {inviteFactoryOpen && (
+        <InviteFactoryModal language={language} onClose={() => setInviteFactoryOpen(false)} />
+      )}
     </main>
   );
+}
+
+const factoryPassiveActivityItems = [
+  {
+    type: "RFQ",
+    title: "New RFQ match added to your invite list",
+    meta: "Premium knit capsule for resort drop",
+    time: "18 min ago",
+    unread: true
+  },
+  {
+    type: "File",
+    title: "Maison Rue downloaded your sample cost sheet",
+    meta: "Organic cotton woven shirt production",
+    time: "1 hr ago",
+    unread: true
+  },
+  {
+    type: "Status",
+    title: "Fit sample milestone moved to brand review",
+    meta: "Washed denim overshirt reorder",
+    time: "Yesterday"
+  },
+  {
+    type: "Profile",
+    title: "Your GOTS certificate was viewed 6 times",
+    meta: "Factory profile activity",
+    time: "Jul 22"
+  }
+];
+
+function getFactoryActivityCopy(value) {
+  const copy = {
+    "Activity": "动态",
+    "Passive updates from RFQs, files, brands, and production.": "来自询价、文件、品牌和生产订单的被动更新。",
+    "Close activity": "关闭动态",
+    "RFQ": "询价",
+    "File": "文件",
+    "Status": "状态",
+    "Profile": "资料",
+    "18 min ago": "18 分钟前",
+    "1 hr ago": "1 小时前",
+    "Yesterday": "昨天",
+    "Jul 22": "7 月 22 日",
+    "New RFQ match added to your invite list": "新的询价匹配已加入你的邀请列表",
+    "Maison Rue downloaded your sample cost sheet": "Maison Rue 下载了你的样品费用表",
+    "Fit sample milestone moved to brand review": "试身样里程碑已进入品牌审核",
+    "Your GOTS certificate was viewed 6 times": "你的 GOTS 证书已被查看 6 次",
+    "Washed denim overshirt reorder": "水洗牛仔衬衫外套复单",
+    "Factory profile activity": "工厂资料动态"
+  };
+
+  return copy[value] || getTranslatedProjectTitle(value);
+}
+
+function InviteFactoryModal({ language = "en", onClose }) {
+  const copy = language === "zh"
+    ? {
+        close: "关闭邀请工厂弹窗",
+        title: "邀请工厂",
+        intro: "发送邀请链接给你信任的工厂。对方完成入驻并通过验证后，双方都会获得 500 额度。",
+        email: "工厂邮箱",
+        message: "留言",
+        defaultMessage: "我觉得 The Sourcing Club 可能适合你的工厂。如果你加入并通过验证，我们双方都可以获得 500 报价额度。",
+        cancel: "取消",
+        send: "发送邀请"
+      }
+    : {
+        close: "Close invite factory",
+        title: "Invite a factory",
+        intro: "Send an invite link to a factory you trust. When they onboard and get verified, both accounts earn 500 credits.",
+        email: "Factory email",
+        message: "Message",
+        defaultMessage: "I thought The Sourcing Club could be useful for your factory. If you join and get verified, we both earn 500 quote credits.",
+        cancel: "Cancel",
+        send: "Send invite"
+      };
+  return createPortal((
+    <div className="factory-update-modal-layer factory-invite-modal-layer" role="presentation">
+      <div className="factory-update-modal factory-invite-modal" role="dialog" aria-modal="true" aria-labelledby="factory-invite-title">
+        <CloseIconButton className="factory-update-close" label={copy.close} onClick={onClose} />
+        <header>
+          <h2 id="factory-invite-title">{copy.title}</h2>
+          <p>{copy.intro}</p>
+        </header>
+
+        <label className="factory-invite-field">
+          <span>{copy.email}</span>
+          <input type="email" placeholder="name@factory.com" />
+        </label>
+
+        <label className="factory-invite-field">
+          <span>{copy.message}</span>
+          <textarea defaultValue={copy.defaultMessage} />
+        </label>
+
+        <footer>
+          <button className="secondary-btn" type="button" onClick={onClose}>{copy.cancel}</button>
+          <button className="primary-btn" type="button" onClick={onClose}>{copy.send}</button>
+        </footer>
+      </div>
+    </div>
+  ), document.body);
+}
+
+function FactoryActivityDrawer({ language = "en", onClose }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? getFactoryActivityCopy(value) : value);
+
+  return createPortal((
+    <div className="activity-drawer-layer" role="presentation">
+      <button className="activity-drawer-scrim" type="button" aria-label={tx("Close activity")} onClick={onClose} />
+      <aside className="activity-drawer" role="dialog" aria-modal="true" aria-labelledby="factory-activity-drawer-title">
+        <header className="activity-drawer-header">
+          <div>
+            <h2 id="factory-activity-drawer-title">{tx("Activity")}</h2>
+            <p>{tx("Passive updates from RFQs, files, brands, and production.")}</p>
+          </div>
+          <button className="activity-close-btn" type="button" aria-label={tx("Close activity")} onClick={onClose}>
+            <img src="/assets/prototype-icons/close.svg" alt="" />
+          </button>
+        </header>
+        <div className="activity-drawer-list">
+          {factoryPassiveActivityItems.map((item) => (
+            <article className={item.unread ? "activity-drawer-item unread" : "activity-drawer-item"} key={item.title}>
+              <div>
+                <div className="activity-drawer-meta">
+                  <span>{tx(item.type)}</span>
+                  <time>{tx(item.time)}</time>
+                </div>
+                <h3>{tx(item.title)}</h3>
+                <p>{tx(item.meta)}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </aside>
+    </div>
+  ), document.body);
 }
 
 const factoryProfileData = {
@@ -1630,6 +1935,7 @@ const factoryProfileData = {
   location: "Porto, Portugal",
   nearestPort: "Port of Leixoes",
   founded: "2016",
+  website: "www.atelierminho.pt",
   registrationDate: "Feb 2016",
   employees: "120",
   registeredCapital: "€500k",
@@ -1749,12 +2055,12 @@ function FactoryProfilePage({ language, onViewCompletion }) {
     setActiveEditor(null);
   };
   const overviewRows = [
+    ["Factory name", data.name],
     ["Year founded", data.founded],
-    ["Registration date", data.registrationDate],
-    ["Total employees", data.employees],
-    ["Registered capital", data.registeredCapital],
+    ["Website URL", data.website],
+    ["Factory location", data.location],
     ["Nearest port", data.nearestPort],
-    ["Market level", data.marketLevel]
+    ["Total employees", data.employees]
   ];
   const capacityRows = [
     ["MOQ", data.moq],
@@ -1764,43 +2070,58 @@ function FactoryProfilePage({ language, onViewCompletion }) {
     ["Booking level", data.booking],
     ["Reference style", data.referenceStyle]
   ];
+  const renderProfileStatusCard = (responsiveClass) => (
+    <section className={`factory-profile-card factory-profile-owner-card ${responsiveClass}`}>
+      <div className="factory-profile-card-header">
+        <h2>Profile status</h2>
+        <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>See details</button>
+      </div>
+      <div className="factory-profile-status-meter">
+        <strong>88%</strong>
+        <span>Profile complete</span>
+      </div>
+      <div className="factory-profile-status-track"><span /></div>
+      <p>Add the remaining certifications and keep monthly capacity current to strengthen this profile.</p>
+      <div className="factory-profile-owner-actions">
+        <button className="primary-btn" type="button">Publish changes</button>
+      </div>
+    </section>
+  );
+  const renderContactCard = (responsiveClass) => (
+    <section className={`factory-profile-card factory-profile-contact-card ${responsiveClass}`}>
+      <h2>Contact supplier</h2>
+      <div className="factory-profile-contact-row">
+        <div className="factory-avatar">AM</div>
+        <div>
+          <strong data-no-translate>{data.name}</strong>
+          <span data-no-translate>{data.location}</span>
+        </div>
+      </div>
+      <button className="primary-btn" type="button">Contact factory</button>
+    </section>
+  );
 
   return (
-    <main className="factory-profile-page">
+    <main className={`factory-profile-page ${isOwnerView ? "is-owner-view" : "is-public-view"}`}>
       <div className="factory-profile-shell">
-        <section className="factory-profile-owner-bar">
-          <div>
-            <span>Factory profile</span>
-            <strong>{isOwnerView ? "Edit what brands see" : "Public preview"}</strong>
-          </div>
-          <div className="factory-profile-view-toggle" role="tablist" aria-label="Profile view mode">
-            <button
-              className={isOwnerView ? "active" : ""}
-              type="button"
-              onClick={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
-              role="tab"
-              aria-selected={isOwnerView}
-            >
-              Edit profile
-            </button>
-            <button
-              className={!isOwnerView ? "active" : ""}
-              type="button"
-              onClick={() => setProfileMode("public")}
-              role="tab"
-              aria-selected={!isOwnerView}
-            >
-              View as public
-            </button>
-          </div>
-        </section>
+        <ProfileOwnerBar
+          ariaLabel="Profile view mode"
+          isOwnerView={isOwnerView}
+          onEdit={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
+          onPublic={() => setProfileMode("public")}
+          ownerText="Edit what brands see"
+          profileLabel="Factory profile"
+        />
+
+        {isOwnerView && renderProfileStatusCard("factory-profile-compact-status-card")}
+        {!isOwnerView && renderContactCard("factory-profile-compact-contact-card")}
 
         <section className="factory-profile-hero">
-          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit banner</button>}
+          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
+          {!isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => setProfileMode("edit")}>Save factory</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
               <div className="factory-profile-logo">AM</div>
-              {isOwnerView && <button className="factory-profile-logo-edit" type="button" onClick={() => openEditor("overview")}>Edit</button>}
             </div>
             <div>
               <div className="factory-profile-title-row">
@@ -1816,58 +2137,48 @@ function FactoryProfilePage({ language, onViewCompletion }) {
               </div>
             </div>
           </div>
-          <div className="factory-profile-actions">
-            {!isOwnerView && (
-              <>
-                <button className="secondary-btn" type="button" onClick={() => setProfileMode("edit")}>Save factory</button>
-                <button className="primary-btn" type="button">Contact factory</button>
-              </>
-            )}
-          </div>
         </section>
 
         <div className="factory-profile-layout">
           <section className="factory-profile-main">
-            <section className="factory-profile-card factory-profile-performance">
-              <div>
-                <span>Factory performance</span>
-                <strong>{data.rating}</strong>
-                <p>{data.reviews} reviews · {data.responseTime} avg. response</p>
-              </div>
-              <div className="factory-profile-score-grid">
-                <Metric label="Club orders" value={data.clubOrders} />
-                <Metric label="Repeat brands" value={data.repeatBrands} />
-                <Metric label="Lead time" value={data.leadTime} />
-              </div>
-            </section>
+            <ProfilePerformanceCard
+              eyebrow="Factory performance"
+              primary={data.rating}
+              primaryLabel={`${data.reviews} reviews · ${data.responseTime} avg. response`}
+              metrics={[
+                { label: "Club orders", value: data.clubOrders },
+                { label: "Repeat brands", value: data.repeatBrands },
+                { label: "Lead time", value: data.leadTime }
+              ]}
+            />
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
+              <ProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
               <p>{data.intro}</p>
               <div className="factory-profile-detail-grid">
-                {overviewRows.map(([label, value]) => <DetailPair label={label} value={value} key={label} />)}
+                {overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Production fit" editable={isOwnerView} onEdit={() => openEditor("production")} />
-              <FactoryProfileChipSection label="Production type" items={data.productionTypes} />
-              <FactoryProfileChipSection label="Product categories" items={data.categories} />
-              <FactoryProfileChipSection label="Makes" items={data.makes} />
-              <FactoryProfileChipSection label="Services" items={data.services} />
-              <FactoryProfileChipSection label="Specialties" items={data.specialties} />
-              <FactoryProfileChipSection label="Digital tools" items={data.tools} />
+              <ProfileCardHeader title="Production fit" editable={isOwnerView} onEdit={() => openEditor("production")} />
+              <ProfileChipSection label="Production type" items={data.productionTypes} />
+              <ProfileChipSection label="Product categories" items={data.categories} />
+              <ProfileChipSection label="Makes" items={data.makes} />
+              <ProfileChipSection label="Services" items={data.services} />
+              <ProfileChipSection label="Specialties" items={data.specialties} />
+              <ProfileChipSection label="Digital tools" items={data.tools} />
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Capacity and terms" editable={isOwnerView} onEdit={() => openEditor("capacity")} />
+              <ProfileCardHeader title="Capacity and terms" editable={isOwnerView} onEdit={() => openEditor("capacity")} />
               <div className="factory-profile-detail-grid">
-                {capacityRows.map(([label, value]) => <DetailPair label={label} value={value} key={label} />)}
+                {capacityRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Factory walkthrough" editable={isOwnerView} actionLabel="Manage video" onEdit={() => openEditor("walkthrough")} />
+              <ProfileCardHeader title="Factory walkthrough" editable={isOwnerView} actionLabel="Manage video" onEdit={() => openEditor("walkthrough")} />
               <div className="factory-profile-video-card">
                 <div className="factory-profile-video-preview">
                   <img src="/assets/factory-header.png" alt="Factory walkthrough preview" />
@@ -1884,7 +2195,7 @@ function FactoryProfilePage({ language, onViewCompletion }) {
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Sample work" editable={isOwnerView} actionLabel="Manage samples" onEdit={() => openEditor("samples")} />
+              <ProfileCardHeader title="Samples developed" editable={isOwnerView} actionLabel="Manage images" onEdit={() => openEditor("samples")} />
               <div className="factory-profile-product-grid">
                 {data.products.map((product) => (
                   <article className="factory-profile-product" key={product.title}>
@@ -1902,7 +2213,7 @@ function FactoryProfilePage({ language, onViewCompletion }) {
                   <h2>Past projects</h2>
                   <p>Completed TSC orders with brand feedback, project scope, and production strengths.</p>
                 </div>
-                {isOwnerView && <button className="factory-profile-edit-button" type="button" onClick={() => openEditor("projects")}>Manage projects</button>}
+                {isOwnerView && <span className="factory-profile-sync-pill">Auto-added</span>}
               </div>
               <div className="factory-profile-project-tabs" role="tablist" aria-label="Past project status">
                 <button
@@ -1954,41 +2265,13 @@ function FactoryProfilePage({ language, onViewCompletion }) {
 
           <aside className="factory-profile-side">
             {isOwnerView ? (
-              <>
-                <section className="factory-profile-card factory-profile-owner-card">
-                  <div className="factory-profile-card-header">
-                    <h2>Profile status</h2>
-                    <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>See details</button>
-                  </div>
-                  <div className="factory-profile-status-meter">
-                    <strong>88%</strong>
-                    <span>Profile complete</span>
-                  </div>
-                  <div className="factory-profile-status-track"><span /></div>
-                  <p>Add the remaining certifications and keep monthly capacity current to strengthen this profile.</p>
-                  <div className="factory-profile-owner-actions">
-                    <button className="primary-btn" type="button">Publish changes</button>
-                    <button className="secondary-btn" type="button" onClick={() => setProfileMode("public")}>View as public</button>
-                  </div>
-                </section>
-              </>
+              renderProfileStatusCard("factory-profile-sidebar-status-card")
             ) : (
-              <section className="factory-profile-card factory-profile-contact-card">
-                <h2>Contact supplier</h2>
-                <div className="factory-profile-contact-row">
-                  <div className="factory-avatar">AM</div>
-                  <div>
-                    <strong data-no-translate>{data.name}</strong>
-                    <span data-no-translate>{data.location}</span>
-                  </div>
-                </div>
-                <button className="primary-btn" type="button">Contact factory</button>
-                <button className="secondary-btn" type="button">Invite to RFQ</button>
-              </section>
+              renderContactCard("factory-profile-sidebar-contact-card")
             )}
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Manage docs" onEdit={() => openEditor("verification")} />
+              <ProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Manage docs" onEdit={() => openEditor("verification")} />
               <div className="factory-profile-cert-list">
                 {data.certifications.map((cert) => (
                   <div className="factory-profile-cert" key={cert.name}>
@@ -2000,7 +2283,7 @@ function FactoryProfilePage({ language, onViewCompletion }) {
             </section>
 
             <section className="factory-profile-card">
-              <FactoryProfileCardHeader title="Client references" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("references")} />
+              <ProfileCardHeader title="Client references" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("references")} />
               <div className="factory-profile-reference-list">
                 {data.references.map((reference) => (
                   <div key={reference}>
@@ -2157,35 +2440,6 @@ function FactoryProfileCompletionPage({ onBack }) {
   );
 }
 
-function ProfileCompletionSummaryRow({ label, value }) {
-  return (
-    <div className="profile-completion-summary-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function FactoryProfileCardHeader({ title, editable = false, actionLabel = "Edit", onEdit }) {
-  return (
-    <div className="factory-profile-card-header">
-      <h2>{title}</h2>
-      {editable && <button className="factory-profile-edit-button" type="button" onClick={onEdit}>{actionLabel}</button>}
-    </div>
-  );
-}
-
-function FactoryProfileChipSection({ label, items }) {
-  return (
-    <div className="factory-profile-chip-section">
-      <span>{label}</span>
-      <div className="tag-row compact-tags">
-        {items.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
-      </div>
-    </div>
-  );
-}
-
 function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
   const isSimpleMediaEditor = ["banner", "walkthrough", "samples", "projects"].includes(editor);
   const editorTitles = {
@@ -2193,9 +2447,9 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
     production: ["Edit production fit", "Update the production tags brands use to find and evaluate this factory."],
     capacity: ["Edit capacity and terms", "Keep MOQ, lead time, booking level, and capacity estimates current."],
     references: ["Edit client references", "Add or update the brand references shown on the public profile."],
-    banner: ["Edit banner", "Upload or replace the banner image used on this profile."],
+    banner: ["Edit profile images", "Upload or replace the profile image and banner image used on this profile."],
     walkthrough: ["Manage walkthrough", "Update the verified production-floor walkthrough and covered areas."],
-    samples: ["Manage samples", "Add sample work that represents the factory's strongest production fit."],
+    samples: ["Update sample images", "Add images of sample garments, development examples, and finished pieces that represent the factory's strongest production fit."],
     projects: ["Manage projects", "Update completed and in-production project proof for brands."],
     verification: ["Manage verification documents", "Upload certificates and registration documents for profile review."]
   };
@@ -2205,6 +2459,7 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
     location: data.location,
     nearestPort: data.nearestPort,
     founded: data.founded,
+    website: data.website,
     registrationDate: data.registrationDate,
     employees: data.employees,
     registeredCapital: data.registeredCapital,
@@ -2238,9 +2493,8 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
         location: form.location,
         nearestPort: form.nearestPort,
         founded: form.founded,
-        registrationDate: form.registrationDate,
+        website: form.website,
         employees: form.employees,
-        registeredCapital: form.registeredCapital,
         intro: form.intro
       });
       return;
@@ -2324,17 +2578,16 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
 
         {editor === "overview" && (
           <div className="factory-onboarding-form-grid">
-            <ProfileEditField label="Factory name" value={form.name} onChange={(value) => updateField("name", value)} />
-            <ProfileEditField label="Factory location" value={form.location} onChange={(value) => updateField("location", value)} />
-            <ProfileEditField label="Nearest port" value={form.nearestPort} onChange={(value) => updateField("nearestPort", value)} />
-            <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
-            <ProfileEditField label="Registration date" value={form.registrationDate} onChange={(value) => updateField("registrationDate", value)} />
-            <ProfileEditField label="Total employees" value={form.employees} onChange={(value) => updateField("employees", value)} />
-            <ProfileEditField label="Registered capital" value={form.registeredCapital} onChange={(value) => updateField("registeredCapital", value)} />
             <label className="factory-onboarding-field full-width">
               <span>Profile overview</span>
               <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
             </label>
+            <ProfileEditField label="Factory name" value={form.name} onChange={(value) => updateField("name", value)} />
+            <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
+            <ProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
+            <ProfileEditField label="Factory location" value={form.location} onChange={(value) => updateField("location", value)} />
+            <ProfileEditField label="Nearest port" value={form.nearestPort} onChange={(value) => updateField("nearestPort", value)} />
+            <ProfileEditField label="Total employees" value={form.employees} onChange={(value) => updateField("employees", value)} />
           </div>
         )}
 
@@ -2367,10 +2620,11 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
         )}
 
         {isSimpleMediaEditor && (
-          <div className="factory-profile-modal-placeholder">
-            <button className="onboarding-file-upload" type="button">Click or drag files to upload</button>
-            <p>Uploads are mocked in this prototype, but this is the same update window pattern brands and factories use during onboarding.</p>
-          </div>
+          <FactoryProfileMediaEditor
+            assets={getFactoryProfileMediaAssets(editor, data)}
+            uploadHelper={editor === "projects" ? "Add completed work, in-production orders, or project proof that helps brands understand your reliability." : editor === "samples" ? "Add sample garments, development examples, construction details, or finished pieces." : "Add another image or file."}
+            itemType={editor === "projects" ? "project" : "image"}
+          />
         )}
 
         <footer className="factory-onboarding-actions">
@@ -2452,6 +2706,146 @@ function ProfileVerificationEditor({ certifications, onChange }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function getFactoryProfileMediaAssets(editor, data) {
+  if (editor === "samples") return data.products;
+
+  if (editor === "banner") {
+    return [
+      { title: "Profile image", meta: "Current factory profile image", src: "/assets/factory-label.png" },
+      { title: "Profile banner", meta: "Current profile header image", src: "/assets/factory-header.png" }
+    ];
+  }
+
+  if (editor === "walkthrough") {
+    return [{ title: "Factory walkthrough", meta: "2:48 verified production-floor video", src: "/assets/factory-header.png" }];
+  }
+
+  if (editor === "projects") {
+    return [...data.pastProjects, ...data.inProductionProjects].map((project, index) => ({
+      title: project.title,
+      meta: `${project.brand} · ${project.result}`,
+      src: ["/assets/dashboard-rfq-shirt.jpg", "/assets/dashboard-rfq-knit.jpg", "/assets/dashboard-rfq-denim.jpg"][index % 3]
+    }));
+  }
+
+  return [];
+}
+
+function FactoryProfileMediaEditor({ assets, uploadHelper, itemType = "image" }) {
+  const [items, setItems] = useState(assets);
+  const [addImageOpen, setAddImageOpen] = useState(false);
+  const [openAssetMenu, setOpenAssetMenu] = useState("");
+  const [editingAsset, setEditingAsset] = useState(null);
+  const isProject = itemType === "project";
+
+  return (
+    <div className="factory-profile-modal-placeholder">
+      {items.length > 0 && (
+        <div className="profile-asset-manager-grid">
+          {items.map((asset) => (
+            <article className="profile-asset-manager-card" key={asset.title}>
+              <div className="profile-asset-card-menu">
+                <button
+                  className="settings-menu-btn"
+                  type="button"
+                  aria-label={`More options for ${asset.title}`}
+                  aria-expanded={openAssetMenu === asset.title}
+                  onClick={() => setOpenAssetMenu((current) => current === asset.title ? "" : asset.title)}
+                />
+                {openAssetMenu === asset.title && (
+                  <div className="profile-asset-overflow-menu" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setEditingAsset(asset);
+                        setOpenAssetMenu("");
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="danger"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setItems((current) => current.filter((item) => item.title !== asset.title));
+                        setOpenAssetMenu("");
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+              <img src={asset.src} alt={`${asset.title} preview`} />
+              <div>
+                <strong>{asset.title}</strong>
+                <span>{asset.meta}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      <button className="secondary-btn profile-asset-add-button" type="button" onClick={() => setAddImageOpen(true)}>{isProject ? "+ Add project" : "+ Add image"}</button>
+      {addImageOpen && (
+        <FactoryProfileAssetUploadDialog
+          helper={uploadHelper}
+          itemType={itemType}
+          onClose={() => setAddImageOpen(false)}
+        />
+      )}
+      {editingAsset && (
+        <FactoryProfileAssetUploadDialog
+          asset={editingAsset}
+          helper={isProject ? "Update the project image, title, or summary shown on this card." : "Update the image, name, or description shown on this card."}
+          itemType={itemType}
+          mode="edit"
+          onClose={() => setEditingAsset(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function FactoryProfileAssetUploadDialog({ asset = null, helper, itemType = "image", mode = "add", onClose }) {
+  const isEdit = mode === "edit";
+  const isProject = itemType === "project";
+
+  return (
+    <div className="profile-asset-upload-layer" role="presentation">
+      <button className="profile-asset-upload-scrim" type="button" aria-label={isEdit ? "Close edit image dialog" : "Close add image dialog"} onClick={onClose} />
+      <section className="profile-asset-upload-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-asset-upload-title">
+        <CloseIconButton className="factory-update-close profile-asset-upload-close" label={isEdit ? "Close edit image dialog" : "Close add image dialog"} onClick={onClose} />
+        <header>
+          <h2 id="profile-asset-upload-title">{isEdit ? (isProject ? "Edit project" : "Edit image") : (isProject ? "Add project" : "Add image")}</h2>
+          <p>{helper}</p>
+        </header>
+        {isEdit && asset?.src && (
+          <div className="profile-asset-edit-preview">
+            <img src={asset.src} alt={`${asset.title} preview`} />
+          </div>
+        )}
+        <button className="onboarding-file-upload" type="button">{isEdit ? (isProject ? "Click or drag files to replace project image" : "Click or drag files to replace image") : "Click or drag files to upload"}</button>
+        <div className="profile-asset-metadata-grid">
+          <label className="factory-onboarding-field">
+            <span>{isProject ? "Project title" : "Image name"}</span>
+            <input defaultValue={asset?.title || ""} placeholder={isProject ? "e.g. Organic cotton woven shirt production" : "e.g. Organic poplin fit sample"} />
+          </label>
+          <label className="factory-onboarding-field">
+            <span>{isProject ? "Project summary" : "Description"}</span>
+            <input defaultValue={asset?.meta || ""} placeholder={isProject ? "e.g. Maison Rue · Completed on time" : "e.g. Wovens · sample development"} />
+          </label>
+        </div>
+        <footer className="profile-asset-upload-actions">
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onClose}>{isEdit ? "Save changes" : (isProject ? "Add project" : "Add image")}</button>
+        </footer>
+      </section>
     </div>
   );
 }
@@ -2651,6 +3045,7 @@ function FactoryDashboardPanel({ title, subtitle, action, onAction, className = 
 
 function FactoryDashboardRfqRow({ rfq, language, onView }) {
   const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const [primaryImage] = rfq.images || [];
   const dashboardPhoto = dashboardRfqPhotos[rfq.initials];
   const inviteFacts = [
@@ -2661,9 +3056,9 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
   const fitTone = rfq.statusTone === "warning" ? "good" : rfq.statusTone === "danger" ? "warn" : "strong";
 
   return (
-    <article className="factory-request-card factory-dashboard-mini-card factory-dashboard-rfq-row">
-      <header className="factory-request-card-top">
-        <div className="factory-request-title">
+    <article className="factory-request-card factory-dashboard-mini-card factory-dashboard-rfq-row shared-responsive-card">
+      <header className="factory-request-card-top shared-card-header">
+        <div className="factory-request-title shared-card-heading">
           {dashboardPhoto || primaryImage ? (
             <img
               className="factory-dashboard-rfq-image"
@@ -2681,18 +3076,18 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
             </p>
           </div>
         </div>
-        <div className="factory-request-card-actions">
-          <span className={`factory-project-fit ${fitTone}`}>{fit}</span>
-          <button className="primary-btn" type="button" onClick={onView}>View RFQ</button>
+        <div className="factory-request-card-actions shared-card-actions">
+          <span className={`factory-project-fit shared-card-status ${fitTone}`}>{tx(fit)}</span>
+          <button className="primary-btn" type="button" onClick={onView}>{tx("View RFQ")}</button>
         </div>
       </header>
 
-      <div className="factory-request-brief">
+      <div className="factory-request-brief shared-card-body">
         <div className="factory-request-facts">
           {inviteFacts.map(([label, value]) => (
             <div key={label}>
-              <span>{label}</span>
-              <strong>{value}</strong>
+              <span>{tx(label)}</span>
+              <strong>{isZh ? translateFactoryMainText(value) : value}</strong>
             </div>
           ))}
         </div>
@@ -2722,19 +3117,21 @@ function FactoryDashboardCallCard({ language }) {
   return (
     <article className="factory-upcoming-call-card">
       <h2 className="factory-upcoming-call-label">{isZh ? "已安排通话" : "Scheduled calls"}</h2>
-      {calls.slice(0, 1).map((call) => (
-        <section className="factory-upcoming-call-time" key={call.title}>
-          <div className="factory-upcoming-call-heading">
-            <h3>{call.title}</h3>
-            <strong>{call.time}</strong>
-          </div>
-          <span>{call.counterpartTime}</span>
-          <div className="factory-upcoming-call-actions">
-            <p className="factory-upcoming-call-description">{call.description}</p>
-            <button className="secondary-btn compact-btn" type="button">{isZh ? "加入通话" : "Join call"}</button>
-          </div>
-        </section>
-      ))}
+      <div className="factory-upcoming-call-list">
+        {calls.map((call) => (
+          <section className="factory-upcoming-call-time" key={call.title}>
+            <div className="factory-upcoming-call-heading">
+              <h3>{call.title}</h3>
+              <strong>{call.time}</strong>
+            </div>
+            <span>{call.counterpartTime}</span>
+            <div className="factory-upcoming-call-actions">
+              <p className="factory-upcoming-call-description">{call.description}</p>
+              <button className="secondary-btn compact-btn" type="button">{isZh ? "加入通话" : "Join call"}</button>
+            </div>
+          </section>
+        ))}
+      </div>
     </article>
   );
 }
@@ -2783,9 +3180,8 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
   const imagePosition = dashboardPhoto?.position;
 
   return (
-    <article className="factory-request-card factory-dashboard-mini-card factory-project-dashboard-row">
-      <header className="factory-project-dashboard-top">
-        <div className="factory-project-dashboard-heading">
+    <article className="factory-project-dashboard-row shared-responsive-card shared-dashboard-card">
+      <header className="factory-project-dashboard-heading shared-card-heading">
           <img
             className="factory-project-dashboard-thumb-image"
             src={imageSrc}
@@ -2798,42 +3194,100 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
               {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : `${project.brand} · ${project.location} · ${project.started}`}
             </p>
           </div>
-        </div>
-        <div className="factory-project-dashboard-actions">
-          <span className={`project-status ${project.statusTone}`}>{statusLabel}</span>
-          <button className="primary-btn factory-project-view-btn" type="button" onClick={onView}>View order</button>
-        </div>
       </header>
+      <div className="factory-project-dashboard-meta shared-card-body">
+          {productionFacts.map(([label, value]) => (
+            <div className="factory-project-mini-metric" key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          ))}
+      </div>
 
-      <div className="factory-project-dashboard-body">
-        <div className="factory-project-dashboard-left">
-          <div className="factory-project-dashboard-meta">
-            {productionFacts.map(([label, value]) => (
-              <div className="factory-project-mini-metric" key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
-              </div>
-            ))}
-          </div>
-
-          <div className="factory-project-dashboard-progress">
-            <ProjectProgress progress={project.progress} />
-          </div>
-        </div>
+      <div className="factory-project-dashboard-actions shared-card-actions">
+          <span className={`project-status shared-card-status ${project.statusTone}`}>{statusLabel}</span>
+          <button className="primary-btn factory-project-view-btn" type="button" onClick={onView}>View order</button>
+      </div>
+      <div className="factory-project-dashboard-progress">
+          <ProjectProgress progress={project.progress} />
       </div>
     </article>
   );
 }
 
-function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
+function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote }) {
   const [activeTab, setActiveTab] = useState("active");
-  const tabs = [
-    ["active", "Active RFQs (4)", factoryRfqs],
-    ["drafts", "Drafts (3)", factoryDraftRfqs],
-    ["invited", "Invited (2)", factoryInvitedRfqs],
-    ["closed", "Closed (6)", factoryClosedRfqs]
-  ];
-  const activeRfqs = tabs.find(([key]) => key === activeTab)?.[2] || factoryRfqs;
+  const [rfqTabs, setRfqTabs] = useState([
+    { key: "active", label: "Active RFQs (4)", locked: true },
+    { key: "drafts", label: "Drafts (3)", locked: true },
+    { key: "invited", label: "Invited (2)", locked: true },
+    { key: "closed", label: "Closed (6)", locked: true }
+  ]);
+  const [isAddingTab, setIsAddingTab] = useState(false);
+  const [newTabName, setNewTabName] = useState("");
+  const [manageTabsOpen, setManageTabsOpen] = useState(false);
+  const [draftTabs, setDraftTabs] = useState(rfqTabs);
+  const rfqDataByTab = {
+    active: factoryRfqs,
+    drafts: factoryDraftRfqs,
+    invited: factoryInvitedRfqs,
+    closed: factoryClosedRfqs
+  };
+  const activeRfqs = rfqDataByTab[activeTab] || factoryRfqs;
+
+  function openManageTabs() {
+    setDraftTabs(rfqTabs);
+    setIsAddingTab(false);
+    setManageTabsOpen(true);
+  }
+
+  function addCustomTab(event) {
+    event.preventDefault();
+    const trimmedName = newTabName.trim();
+    if (!trimmedName || rfqTabs.some((tab) => tab.label === trimmedName)) return;
+    const nextTab = { key: `custom-${trimmedName}`, label: trimmedName, locked: false };
+    setRfqTabs((tabs) => [...tabs, nextTab]);
+    setActiveTab(nextTab.key);
+    setNewTabName("");
+    setIsAddingTab(false);
+  }
+
+  function updateDraftTab(index, value) {
+    setDraftTabs((tabs) => tabs.map((tab, tabIndex) => (tabIndex === index ? { ...tab, label: value } : tab)));
+  }
+
+  function removeDraftTab(index) {
+    setDraftTabs((tabs) => tabs.filter((tab, tabIndex) => tabIndex !== index || tab.locked));
+  }
+
+  function moveDraftTab(index, direction) {
+    setDraftTabs((tabs) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= tabs.length) return tabs;
+      const reorderedTabs = [...tabs];
+      [reorderedTabs[index], reorderedTabs[nextIndex]] = [reorderedTabs[nextIndex], reorderedTabs[index]];
+      return reorderedTabs;
+    });
+  }
+
+  function saveManagedTabs() {
+    const cleanedTabs = [];
+    const seenKeys = new Set();
+    draftTabs.forEach((tab) => {
+      const label = tab.label.trim();
+      if (!label) return;
+      const key = tab.locked ? tab.key : `custom-${label}`;
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+      cleanedTabs.push({ key, label, locked: tab.locked });
+    });
+    const nextTabs = cleanedTabs.length ? cleanedTabs : rfqTabs;
+    setRfqTabs(nextTabs);
+    if (!nextTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(nextTabs[0]?.key || "active");
+    }
+    setManageTabsOpen(false);
+  }
 
   return (
     <main className="rfqs-page factory-rfqs-page">
@@ -2843,6 +3297,7 @@ function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
             <h1>RFQs</h1>
             <p>Track active requests you were invited to, quotes you already sent, and brand questions that need an answer.</p>
           </div>
+          <button className="primary-btn" type="button" onClick={onBrowseRfqs}>Browse RFQs</button>
         </header>
 
         <section className="rfqs-controls" aria-label="RFQ filters">
@@ -2863,19 +3318,98 @@ function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
           </label>
         </section>
 
-        <nav className="rfqs-tabs" aria-label="RFQ status">
-          {tabs.map(([key, label]) => (
-            <button
-              className={activeTab === key ? "active" : ""}
-              type="button"
-              aria-current={activeTab === key ? "page" : undefined}
-              onClick={() => setActiveTab(key)}
-              key={key}
-            >
-              {label}
-            </button>
-          ))}
+        <nav className="rfqs-tabs projects-tabs" aria-label="RFQ status">
+          <div className="project-tabs-scroll">
+            {rfqTabs.map((tab) => (
+              !tab.locked ? (
+                <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+                  <button
+                    className={activeTab === tab.key ? "active" : ""}
+                    type="button"
+                    aria-current={activeTab === tab.key ? "page" : undefined}
+                    onClick={() => setActiveTab(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className={activeTab === tab.key ? "active" : ""}
+                  type="button"
+                  aria-current={activeTab === tab.key ? "page" : undefined}
+                  onClick={() => setActiveTab(tab.key)}
+                  key={tab.key}
+                >
+                  {tab.label}
+                </button>
+              )
+            ))}
+            {isAddingTab ? (
+              <form className="project-tab-add-form" onSubmit={addCustomTab}>
+                <input
+                  value={newTabName}
+                  onChange={(event) => setNewTabName(event.target.value)}
+                  placeholder="Tab name"
+                  autoFocus
+                />
+                <button type="submit">Add</button>
+                <button
+                  className="project-tab-add-cancel"
+                  type="button"
+                  aria-label="Cancel adding tab"
+                  onClick={() => {
+                    setNewTabName("");
+                    setIsAddingTab(false);
+                  }}
+                >
+                  ×
+                </button>
+              </form>
+            ) : (
+              <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+                + Add tab
+              </button>
+            )}
+          </div>
+          <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
+            Manage tabs
+          </button>
         </nav>
+
+        {manageTabsOpen && createPortal(
+          <div className="brand-profile-modal-layer">
+            <button className="brand-profile-modal-scrim" type="button" aria-label="Close tab manager" onClick={() => setManageTabsOpen(false)} />
+            <section className="brand-profile-modal project-tabs-modal" role="dialog" aria-modal="true" aria-labelledby="factory-rfq-tabs-title">
+              <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setManageTabsOpen(false)}>×</button>
+              <header className="brand-profile-modal-header">
+                <h1 id="factory-rfq-tabs-title">Manage tabs</h1>
+                <p>Create RFQ tabs for categories, seasons, brand groups, or any request grouping your team uses.</p>
+              </header>
+
+              <div className="project-tabs-manager">
+                {draftTabs.map((tab, index) => (
+                  <div className="project-tabs-manager-row" key={`${tab.key}-${index}`}>
+                    <label>
+                      <span>Tab name {tab.locked ? <small>Default</small> : null}</span>
+                      <input value={tab.label} onChange={(event) => updateDraftTab(index, event.target.value)} />
+                    </label>
+                    <div className="project-tabs-manager-actions">
+                      <button type="button" disabled={index === 0} onClick={() => moveDraftTab(index, -1)}>Up</button>
+                      <button type="button" disabled={index === draftTabs.length - 1} onClick={() => moveDraftTab(index, 1)}>Down</button>
+                      <button type="button" disabled={tab.locked} onClick={() => removeDraftTab(index)}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <footer className="brand-profile-modal-actions">
+                <button className="secondary-btn" type="button" onClick={() => setManageTabsOpen(false)}>Cancel</button>
+                <button className="primary-btn" type="button" onClick={saveManagedTabs}>Save changes</button>
+              </footer>
+            </section>
+          </div>,
+          document.body
+        )}
 
         <section className="rfq-list" aria-label="Factory RFQs">
           {activeRfqs.map((rfq) => (
@@ -2893,8 +3427,10 @@ function FactoryRfqsPage({ language, onViewRequest, onEditQuote }) {
   );
 }
 
-function FactorySavedPage({ language, onViewRfq }) {
+function FactorySavedPage({ language, onViewBrand, onViewRfq }) {
   const [tab, setTab] = useState("brands");
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const savedBrandProfiles = {
     "Maison Rue": ["Fashion brand", "$1M-$5M revenue", "4 Club orders"],
     "Elara Studio": ["Contemporary brand", "$5M-$10M revenue", "2 repeat factories"],
@@ -2918,29 +3454,29 @@ function FactorySavedPage({ language, onViewRfq }) {
         <header className="rfqs-header saved-header">
           <div>
             <h1>Saved</h1>
-            <p>Keep track of brands you want to work with and RFQs you may quote later.</p>
+            <p>{tx("Keep track of brands you want to work with and RFQs you may quote later.")}</p>
           </div>
         </header>
 
         <nav className="rfqs-tabs saved-tabs" aria-label="Saved lists">
-          <button className={tab === "brands" ? "active" : ""} type="button" onClick={() => setTab("brands")}>Saved brands ({savedBrands.length})</button>
-          <button className={tab === "rfqs" ? "active" : ""} type="button" onClick={() => setTab("rfqs")}>Saved RFQs ({savedRfqs.length})</button>
+          <button className={tab === "brands" ? "active" : ""} type="button" onClick={() => setTab("brands")}>{tx(`Saved brands (${savedBrands.length})`)}</button>
+          <button className={tab === "rfqs" ? "active" : ""} type="button" onClick={() => setTab("rfqs")}>{tx(`Saved RFQs (${savedRfqs.length})`)}</button>
         </nav>
 
         <section className="rfqs-controls saved-controls" aria-label="Saved filters">
           <label className="rfqs-search">
-            <span>{tab === "brands" ? "Search saved brands" : "Search saved RFQs"}</span>
+            <span>{tab === "brands" ? tx("Search saved brands") : tx("Search saved RFQs")}</span>
             <div>
               <SearchIcon />
-              <input placeholder={tab === "brands" ? "Brand name, category, location..." : "RFQ name, product, brand..."} />
+              <input placeholder={tab === "brands" ? tx("Brand name, category, location...") : tx("RFQ name, product, brand...")} />
             </div>
           </label>
           <label className="rfqs-sort">
-            <span>Sort By</span>
+            <span>{tx("Sort By")}</span>
             <select defaultValue="recent">
-              <option value="recent">Recently saved</option>
-              <option value="fit">Best fit</option>
-              <option value="due">Due soon</option>
+              <option value="recent">{tx("Recently saved")}</option>
+              <option value="fit">{tx("Best fit")}</option>
+              <option value="due">{tx("Due soon")}</option>
             </select>
           </label>
         </section>
@@ -2948,7 +3484,7 @@ function FactorySavedPage({ language, onViewRfq }) {
         {tab === "brands" ? (
           <section className="factory-saved-brand-grid" aria-label="Saved brands">
             {savedBrands.map((brand) => (
-              <FactorySavedBrandCard brand={brand} key={brand.name} />
+              <FactorySavedBrandCard brand={brand} language={language} onViewBrand={onViewBrand} key={brand.name} />
             ))}
           </section>
         ) : (
@@ -2963,36 +3499,37 @@ function FactorySavedPage({ language, onViewRfq }) {
   );
 }
 
-function FactorySavedBrandCard({ brand }) {
+function FactorySavedBrandCard({ brand, language = "en", onViewBrand }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const fitTone = brand.fit === "Good fit" ? "good" : brand.fit === "Potential fit" ? "warn" : "strong";
 
   return (
     <article className="factory-saved-brand-card">
       <header>
-        <div className="factory-saved-brand-identity">
+        <button className="factory-saved-brand-identity factory-saved-brand-link" type="button" onClick={onViewBrand}>
           <div className="factory-avatar">{brand.initials}</div>
           <div>
             <h2>{brand.name}</h2>
-            <p>{brand.location}</p>
+            <p>{tx(brand.location)}</p>
           </div>
-        </div>
+        </button>
         <div className="factory-saved-card-actions">
-          <button className="secondary-btn" type="button">Contact brand</button>
-          <button className="primary-btn" type="button">View brand</button>
+          <span className={`factory-project-fit ${fitTone}`}>{tx(brand.fit)}</span>
+          <button className="secondary-btn" type="button">{tx("Contact brand")}</button>
         </div>
       </header>
       <div className="factory-saved-brand-fit">
-        <span className={`factory-project-fit ${fitTone}`}>{brand.fit}</span>
-        <strong>{brand.focus}</strong>
+        <strong>{isZh ? getTranslatedProjectTitle(brand.focus) : brand.focus}</strong>
       </div>
       <div className="factory-request-trust factory-saved-brand-trust">
         <span className="factory-request-trust-icon" aria-hidden="true">$</span>
-        <strong>Payment verified</strong>
-        <span>{brand.trust}</span>
+        <strong>{tx("Payment verified")}</strong>
+        <span>{tx(brand.trust)}</span>
       </div>
       <div className="tag-row compact-tags">
         {brand.tags.map((tag) => (
-          <span className="tag garment-tag" key={tag}>{tag}</span>
+          <span className="tag garment-tag" key={tag}>{tx(tag)}</span>
         ))}
       </div>
     </article>
@@ -3016,8 +3553,8 @@ function FactorySavedRfqCard({ project, language, onViewRfq }) {
           </div>
         </div>
         <div className="factory-saved-card-actions">
-          <button className="secondary-btn" type="button">Remove</button>
-          <button className="primary-btn" type="button" onClick={onViewRfq}>View RFQ</button>
+          <button className="secondary-btn" type="button">{isZh ? translateFactoryMainText("Remove") : "Remove"}</button>
+          <button className="primary-btn" type="button" onClick={onViewRfq}>{isZh ? translateFactoryMainText("View RFQ") : "View RFQ"}</button>
         </div>
       </header>
 
@@ -3025,24 +3562,24 @@ function FactorySavedRfqCard({ project, language, onViewRfq }) {
         <div className="factory-saved-rfq-copy">
           <div className="factory-request-facts">
             <div>
-              <span>Unit target</span>
+              <span>{isZh ? translateFactoryMainText("Unit target") : "Unit target"}</span>
               <strong>{project.budget}</strong>
             </div>
             <div>
-              <span>Quantity</span>
+              <span>{isZh ? translateFactoryMainText("Quantity") : "Quantity"}</span>
               <strong>{project.quantity}</strong>
             </div>
             <div>
-              <span>Quote due</span>
+              <span>{isZh ? translateFactoryMainText("Quote due") : "Quote due"}</span>
               <strong>{project.quoteDue}</strong>
             </div>
           </div>
           <p className="rfq-description" data-no-translate>{isZh ? getTranslatedListDescription(project) : project.specialty}</p>
           <div className="factory-request-tags">
-            <span className="marketplace-tag-label">Request tags</span>
+            <span className="marketplace-tag-label">{isZh ? translateFactoryMainText("Request tags") : "Request tags"}</span>
             <div className="tag-row compact-tags rfq-tags">
               {project.tags.slice(0, 4).map((tag) => (
-                <span className="tag" key={tag}>{tag}</span>
+                <span className="tag" key={tag}>{isZh ? translateFactoryMainText(tag) : tag}</span>
               ))}
             </div>
           </div>
@@ -3050,7 +3587,7 @@ function FactorySavedRfqCard({ project, language, onViewRfq }) {
         {primaryImage && (
           <figure className="factory-saved-rfq-visual">
             <img src={primaryImage.src} alt={`${project.title} ${primaryImage.label}`} />
-            <figcaption>{primaryImage.label}</figcaption>
+            <figcaption>{isZh ? translateFactoryMainText(primaryImage.label) : primaryImage.label}</figcaption>
           </figure>
         )}
       </div>
@@ -3058,11 +3595,77 @@ function FactorySavedRfqCard({ project, language, onViewRfq }) {
   );
 }
 
-function FactoryMessagesScreen() {
+function getFactoryMessageCopy(value) {
+  const copy = {
+    "Messages": "对话",
+    "Search conversations...": "搜索对话...",
+    "All": "全部",
+    "Unread": "未读",
+    "Schedule call": "预约通话",
+    "Live video chat": "视频通话",
+    "Attach file": "上传文件",
+    "Send": "发送",
+    "Brand": "品牌",
+    "Translate to English": "翻译成中文",
+    "Show original": "查看原文",
+    "Scheduled call": "已预约通话",
+    "Join call": "加入通话",
+    "Open": "打开",
+    "Title": "标题",
+    "Description": "说明",
+    "Send invite": "发送邀请",
+    "Ready to call": "准备呼叫",
+    "Live with": "正在通话",
+    "Start call": "开始通话",
+    "End call": "结束通话",
+    "Cam": "摄像头",
+    "Mic": "麦克风",
+    "Share": "共享",
+    "Organic cotton woven shi...": "有机棉梭织衬衫...",
+    "Premium knit capsule for re...": "高级针织度假系列...",
+    "牛仔 jacket wash developm...": "牛仔夹克洗水开发...",
+    "Can you split fit and PP sample cost?": "可以拆分试身样和 PP 样费用吗？",
+    "Uploaded updated colorway sheet.": "已上传更新后的配色表。",
+    "Can you confirm wash sample lead time?": "可以确认洗水样周期吗？",
+    "12 min": "12 分钟",
+    "1 hr": "1 小时",
+    "Today": "今天",
+    "4:18 PM local time": "当地时间 4:18 PM",
+    "1:18 PM local time": "当地时间 1:18 PM",
+    "Organic cotton woven shirt production": "有机棉梭织衬衫生产订单",
+    "Premium knit capsule for resort drop": "高级针织度假系列生产订单",
+    "Denim jacket wash development and small bulk": "牛仔夹克洗水开发与小批量生产",
+    "Can you split fit and PP sample cost in the quote? We want to approve the first fit sample before locking PP timing.": "报价里可以把试身样和 PP 样费用拆开吗？我们想先确认第一版试身样，再锁定 PP 样时间。",
+    "Yes. We can separate fit sample, PP sample, and bulk unit pricing. I will update the assumptions in the quote.": "可以。我们可以把试身样、PP 样和大货单价分开列。我会更新报价里的假设条件。",
+    "We can send quality control photos before the final balance.": "我们可以在支付尾款前发送质检照片。",
+    "We uploaded the updated colorway sheet. Please quote the lab dip review as a separate line.": "我们已上传更新后的配色表。请把色样审核作为单独项目报价。",
+    "Received. We can quote yarn sourcing and lab dip review separately.": "已收到。我们可以把纱线采购和色样审核分别报价。",
+    "Can you confirm wash sample lead time before we invite the full denim RFQ group?": "在邀请完整牛仔报价组之前，可以先确认洗水样周期吗？"
+  };
+
+  return copy[value] || getTranslatedProjectTitle(value);
+}
+
+function getFactoryThreadScheduleCopy(value) {
+  return value
+    .replace("Your time: Porto time", "你的时间：波尔图时间")
+    .replace("local time shown after invite", "邀请后显示当地时间")
+    .replace("Tue", "周二")
+    .replace("Wed", "周三")
+    .replace("Thu", "周四")
+    .replace("Fri", "周五")
+    .replace("Sample cost review", "样品费用确认")
+    .replace("Review open questions with", "和")
+    .replace("and confirm next actions.", "确认待处理问题和下一步。");
+}
+
+function FactoryMessagesScreen({ language = "en" }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? getFactoryMessageCopy(value) : value);
   const [activeThreadId, setActiveThreadId] = useState(factoryMessageThreads[0].id);
   const [composer, setComposer] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
-  const [callMode, setCallMode] = useState("idle");
+  const [isCallPanelOpen, setIsCallPanelOpen] = useState(false);
   const [translatedMessages, setTranslatedMessages] = useState({});
   const [scheduledCalls, setScheduledCalls] = useState({});
   const activeThread = factoryMessageThreads.find((thread) => thread.id === activeThreadId) || factoryMessageThreads[0];
@@ -3087,18 +3690,18 @@ function FactoryMessagesScreen() {
       <aside className="messages-list-panel">
         <header className="messages-list-header">
           <div>
-            <h1>Messages</h1>
+            <h1>{tx("Messages")}</h1>
           </div>
         </header>
         <label className="rfqs-search message-search-field">
           <div>
             <SearchIcon />
-            <input placeholder="Search conversations..." />
+            <input placeholder={tx("Search conversations...")} />
           </div>
         </label>
         <div className="message-filter-row">
-          <button className="pill active" type="button">All</button>
-          <button className="pill" type="button">Unread</button>
+          <button className="pill active" type="button">{tx("All")}</button>
+          <button className="pill" type="button">{tx("Unread")}</button>
         </div>
         <div className="message-thread-list">
           {factoryMessageThreads.map((thread) => (
@@ -3108,17 +3711,17 @@ function FactoryMessagesScreen() {
               onClick={() => {
                 setActiveThreadId(thread.id);
                 setShowSchedule(false);
-                setCallMode("idle");
+                setIsCallPanelOpen(false);
               }}
               key={thread.id}
             >
               <span className="message-avatar">{thread.initials}</span>
               <span>
                 <strong>{thread.name}</strong>
-                <small>{thread.project}</small>
-                <em>{thread.lastPreview}</em>
+                <small>{tx(thread.project)}</small>
+                <em>{tx(thread.lastPreview)}</em>
               </span>
-              <time>{thread.lastDate}</time>
+              <time>{tx(thread.lastDate)}</time>
               {thread.unread > 0 && <b>{thread.unread}</b>}
             </button>
           ))}
@@ -3130,18 +3733,19 @@ function FactoryMessagesScreen() {
           <div className="message-room-identity">
             <div>
               <h2>{activeThread.primaryContact}</h2>
-              <p>{activeThread.name} - {activeThread.localTime} - {activeThread.project}</p>
+              <p>{activeThread.name} - {tx(activeThread.localTime)} - {tx(activeThread.project)}</p>
             </div>
           </div>
           <div className="message-room-actions">
-            <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>Schedule call</button>
-            <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>
+            {activeScheduledCall && !isCallPanelOpen && (
+              <button className="message-call-drawer-button" type="button" aria-label={isZh ? "显示预约通话" : "Show scheduled call"} onClick={() => setIsCallPanelOpen(true)}>
+                <img className="message-call-drawer-icon" src="/assets/prototype-icons/scheduled-call.svg" alt="" />
+              </button>
+            )}
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>{tx("Schedule call")}</button>
+            <button className="primary-btn compact-btn" type="button">{tx("Live video chat")}</button>
           </div>
         </header>
-
-        {callMode !== "idle" && (
-          <FactoryVideoCallPanel thread={activeThread} mode={callMode} setMode={setCallMode} />
-        )}
 
         <div className="message-timeline">
           {activeThread.messages.map((message, index) => {
@@ -3152,6 +3756,7 @@ function FactoryMessagesScreen() {
                 message={message}
                 showTranslation={showTranslation}
                 onToggleTranslation={() => toggleTranslation(activeThread.id, index)}
+                language={language}
                 key={`${message.time}-${index}`}
               />
             );
@@ -3162,35 +3767,47 @@ function FactoryMessagesScreen() {
           <textarea
             value={composer}
             onChange={(event) => setComposer(event.target.value)}
-            placeholder={`Message ${activeThread.primaryContact}...`}
+            placeholder={isZh ? `发送消息给 ${activeThread.primaryContact}...` : `Message ${activeThread.primaryContact}...`}
             rows={3}
           />
           <div className="message-send-actions">
             <button className="message-upload-btn" type="button">
               <img src="/assets/prototype-icons/upload.svg" alt="" />
-              <span>Attach file</span>
+              <span>{tx("Attach file")}</span>
             </button>
-            <button className="primary-btn compact-btn" type="button" onClick={() => setComposer("")}>Send</button>
+            <button className="primary-btn compact-btn" type="button" onClick={() => setComposer("")}>{tx("Send")}</button>
           </div>
         </footer>
       </section>
 
       {activeScheduledCall && (
-        <aside className="message-side-panel">
-          <FactoryUpcomingCallCard call={activeScheduledCall} />
-        </aside>
+        <>
+          {isCallPanelOpen && (
+            <button className="message-side-panel-scrim" type="button" aria-label={isZh ? "隐藏预约通话" : "Hide scheduled call"} onClick={() => setIsCallPanelOpen(false)} />
+          )}
+          <aside className={isCallPanelOpen ? "message-side-panel open" : "message-side-panel"}>
+            <header className="message-side-panel-header">
+              <h2>{tx("Scheduled call")}</h2>
+              <button className="settings-drawer-close message-side-panel-close" type="button" aria-label={isZh ? "隐藏预约通话" : "Hide scheduled call"} onClick={() => setIsCallPanelOpen(false)}>
+                <img src="/assets/prototype-icons/close.svg" alt="" />
+              </button>
+            </header>
+            <FactoryUpcomingCallCard call={activeScheduledCall} language={language} />
+          </aside>
+        </>
       )}
       {showSchedule && createPortal((
         <div className="message-schedule-modal-layer" role="presentation">
-          <button className="message-schedule-modal-scrim" type="button" aria-label="Close schedule call" onClick={() => setShowSchedule(false)} />
-          <div className="message-schedule-modal" role="dialog" aria-label="Schedule call">
-            <button className="settings-drawer-close" type="button" aria-label="Close schedule call" onClick={() => setShowSchedule(false)}>
+          <button className="message-schedule-modal-scrim" type="button" aria-label={isZh ? "关闭预约通话" : "Close schedule call"} onClick={() => setShowSchedule(false)} />
+          <div className="message-schedule-modal" role="dialog" aria-label={tx("Schedule call")}>
+            <button className="settings-drawer-close" type="button" aria-label={isZh ? "关闭预约通话" : "Close schedule call"} onClick={() => setShowSchedule(false)}>
               <img src="/assets/prototype-icons/close.svg" alt="" />
             </button>
             <FactoryScheduleCallPanel
               key={activeThread.id}
               thread={activeThread}
               isOpen
+              language={language}
               onSchedule={(call) => {
                 setScheduledCalls((current) => ({ ...current, [activeThread.id]: call }));
                 setShowSchedule(false);
@@ -3203,21 +3820,40 @@ function FactoryMessagesScreen() {
   );
 }
 
-function FactoryMessageBubble({ message, showTranslation, onToggleTranslation }) {
+function FactoryMessageBubble({ message, showTranslation, onToggleTranslation, language = "en" }) {
   const isFactory = message.from === "factory";
-  const hasTranslation = Boolean(message.translation);
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? getFactoryMessageCopy(value) : value);
+  const sourceBody = message.body || message.original;
+  const sourceLanguage = message.language || "en";
+  const targetLanguage = isZh ? "zh" : "en";
+  const canTranslateBrandMessage = !isFactory && sourceLanguage !== targetLanguage;
+  const translatedBody = (() => {
+    if (isFactory) {
+      const factoryDisplayBody = message.translation || sourceBody;
+      return isZh ? tx(factoryDisplayBody) : factoryDisplayBody;
+    }
+
+    if (!canTranslateBrandMessage || !showTranslation) {
+      return sourceBody;
+    }
+
+    return isZh ? tx(sourceBody) : (message.translation || sourceBody);
+  })();
 
   return (
     <article className={isFactory ? "message-bubble own" : "message-bubble"}>
       <div>
-        <span>{isFactory ? "Atelier Minho" : "Brand"}</span>
+        <span>{isFactory ? "Atelier Minho" : tx("Brand")}</span>
         <time>{message.time}</time>
       </div>
-      <p>{showTranslation && hasTranslation ? message.translation : message.body || message.original}</p>
-      {hasTranslation && (
+      <p data-no-translate>{translatedBody}</p>
+      {canTranslateBrandMessage && (
         <div className="message-translation-card">
           <button type="button" onClick={onToggleTranslation}>
-            {showTranslation ? "Show original" : "Translate to English"}
+            {isZh
+              ? (showTranslation ? "查看原文" : "翻译成中文")
+              : (showTranslation ? "Show original" : "Translate to English")}
           </button>
         </div>
       )}
@@ -3235,90 +3871,67 @@ function FactoryMessageBubble({ message, showTranslation, onToggleTranslation })
   );
 }
 
-function FactoryVideoCallPanel({ thread, mode, setMode }) {
-  const inCall = mode === "active";
-
+function FactoryUpcomingCallCard({ call, language = "en" }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? getFactoryMessageCopy(value) : value);
   return (
-    <section className={inCall ? "video-call-panel active" : "video-call-panel"}>
-      <div className="video-call-stage">
-        <span className="message-avatar xl">{thread.initials}</span>
+    <section className="upcoming-call-card home-upcoming-call-time">
+      <div className="home-upcoming-call-heading">
         <div>
-          <h3>{inCall ? `Live with ${thread.primaryContact}` : `Ready to call ${thread.primaryContact}`}</h3>
-          <p>{inCall ? "Video preview - screen share available - call notes stay in this thread" : "Start a prototype call room. This is not connected to a live video provider yet."}</p>
+          <h3>{isZh ? getFactoryThreadScheduleCopy(call.title) : call.title}</h3>
+          <span>{isZh ? getFactoryThreadScheduleCopy(call.brandTime) : call.brandTime}</span>
         </div>
+        <strong>{isZh ? getFactoryThreadScheduleCopy(call.factoryTime) : call.factoryTime}</strong>
       </div>
-      <div className="video-call-controls">
-        <button type="button" aria-label="Toggle camera">Cam</button>
-        <button type="button" aria-label="Toggle microphone">Mic</button>
-        <button type="button" aria-label="Share screen">Share</button>
-        <button className={inCall ? "danger" : ""} type="button" onClick={() => setMode(inCall ? "idle" : "active")}>{inCall ? "End call" : "Start call"}</button>
-      </div>
-    </section>
-  );
-}
-
-function FactoryUpcomingCallCard({ call }) {
-  return (
-    <section className="upcoming-call-card">
-      <div className="upcoming-call-label">Scheduled call</div>
-      <h3>{call.title}</h3>
-      <div className="upcoming-call-time">
-        <strong>{call.factoryTime}</strong>
-        <span>{call.brandTime}</span>
-      </div>
-      <p>{call.agenda}</p>
-      <div className="upcoming-call-actions">
-        {call.hasVideo && <span>Video link added</span>}
-        <button className="secondary-btn compact-btn" type="button">Join call</button>
+      <div className="home-upcoming-call-actions">
+        <p className="home-upcoming-call-description">{isZh ? getFactoryThreadScheduleCopy(call.agenda) : call.agenda}</p>
+        <button className="secondary-btn compact-btn" type="button">{tx("Join call")}</button>
       </div>
     </section>
   );
 }
 
-function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
+function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, language = "en" }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? getFactoryMessageCopy(value) : value);
   const timeSlots = thread.scheduleSlots || [
     { factory: "Tue 3:00 PM Porto", brand: `${thread.name}: local time shown after invite` },
     { factory: "Tue 5:30 PM Porto", brand: `${thread.name}: local time shown after invite` },
     { factory: "Wed 2:30 PM Porto", brand: `${thread.name}: local time shown after invite` }
   ];
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
-  const [callTitle, setCallTitle] = useState("Sample cost review");
-  const [callDescription, setCallDescription] = useState(`Review open questions with ${thread.name} and confirm next actions.`);
-  const [hasVideo, setHasVideo] = useState(true);
+  const [callTitle, setCallTitle] = useState(isZh ? "样品费用确认" : "Sample cost review");
+  const [callDescription, setCallDescription] = useState(isZh ? `和 ${thread.name} 确认待处理问题和下一步。` : `Review open questions with ${thread.name} and confirm next actions.`);
   const selectedSlot = timeSlots[selectedSlotIndex] || timeSlots[0];
 
   return (
     <section className={isOpen ? "schedule-card open" : "schedule-card"}>
       <header>
         <div>
-          <h3>Schedule call</h3>
-          <p>{thread.scheduleNote}</p>
+          <h3>{tx("Schedule call")}</h3>
+          <p>{isZh ? getFactoryThreadScheduleCopy(thread.scheduleNote) : thread.scheduleNote}</p>
         </div>
-        {!isOpen && <button className="secondary-btn compact-btn" type="button" onClick={onOpen}>Open</button>}
+        {!isOpen && <button className="secondary-btn compact-btn" type="button" onClick={onOpen}>{tx("Open")}</button>}
       </header>
       {isOpen && (
         <>
           <label className="schedule-field">
-            <span>Title</span>
+            <span>{tx("Title")}</span>
             <input value={callTitle} onChange={(event) => setCallTitle(event.target.value)} />
           </label>
           <label className="schedule-field">
-            <span>Description</span>
+            <span>{tx("Description")}</span>
             <textarea rows={3} value={callDescription} onChange={(event) => setCallDescription(event.target.value)} />
           </label>
           <div className="schedule-slot-grid">
             {timeSlots.map((slot, index) => (
               <button className={index === selectedSlotIndex ? "selected" : ""} type="button" onClick={() => setSelectedSlotIndex(index)} key={slot.factory}>
-                <strong>{slot.factory}</strong>
-                <span>{slot.brand}</span>
+                <strong>{isZh ? getFactoryThreadScheduleCopy(slot.factory) : slot.factory}</strong>
+                <span>{isZh ? getFactoryThreadScheduleCopy(slot.brand) : slot.brand}</span>
               </button>
             ))}
           </div>
           <div className="schedule-footer">
-            <label>
-              <input type="checkbox" checked={hasVideo} onChange={(event) => setHasVideo(event.target.checked)} />
-              Add video link
-            </label>
             <button
               className="primary-btn compact-btn"
               type="button"
@@ -3327,10 +3940,10 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
                 factoryTime: selectedSlot.factory,
                 brandTime: selectedSlot.brand,
                 agenda: callDescription,
-                hasVideo
+                hasVideo: true
               })}
             >
-              Send invite
+              {tx("Send invite")}
             </button>
           </div>
         </>
@@ -3341,6 +3954,7 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
 
 function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const meta = `${rfq.brand} · ${rfq.location} · Payment verified · ${rfq.trust}`;
   const visibleTags = rfq.tags.slice(0, 4);
   const [primaryImage, ...supportImages] = rfq.images || [];
@@ -3353,35 +3967,35 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   ].filter(Boolean);
 
   return (
-    <article className={rfq.featured ? "factory-request-card featured factory-rfq-card" : "factory-request-card factory-rfq-card"}>
-      <header className="factory-request-card-top">
-        <div className="factory-request-title">
+    <article className={rfq.featured ? "factory-request-card featured factory-rfq-card shared-responsive-card" : "factory-request-card factory-rfq-card shared-responsive-card"}>
+      <header className="factory-request-card-top shared-card-header">
+        <div className="factory-request-title shared-card-heading">
           <div className="factory-avatar">{rfq.initials}</div>
           <div className="rfq-main">
             <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(rfq.title) : rfq.title}</h2>
             <p className="rfq-date" data-no-translate>{isZh ? getTranslatedListMeta(meta) : meta}</p>
           </div>
         </div>
-        <div className="factory-request-card-actions factory-rfq-card-actions">
-          {rfq.status && <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>}
+        <div className="factory-request-card-actions factory-rfq-card-actions shared-card-actions">
+          {rfq.status && <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{tx(rfq.status)}</span>}
           <button
             className="primary-btn"
             type="button"
             onClick={rfq.status === "Quote submitted" ? onViewRequest : onEditQuote}
           >
-            View RFQ
+            {tx("View RFQ")}
           </button>
-          <button className="rfq-more" type="button" aria-label={`More options for ${rfq.title}`}>...</button>
+          <button className="rfq-more" type="button" aria-label={isZh ? `${getTranslatedProjectTitle(rfq.title)} 的更多操作` : `More options for ${rfq.title}`}>...</button>
         </div>
       </header>
 
-      <div className="factory-request-card-body">
+      <div className="factory-request-card-body shared-card-body">
         <aside className="factory-request-brief">
           <div className="factory-request-facts">
             {rfqFacts.map(([label, value]) => (
               <div key={label}>
-                <span>{label}</span>
-                <strong>{value}</strong>
+                <span>{tx(label)}</span>
+                <strong>{tx(value)}</strong>
               </div>
             ))}
           </div>
@@ -3389,14 +4003,14 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
           {isZh && <ListTranslationMeta />}
           <div className="factory-request-trust">
             <span className="factory-request-trust-icon" aria-hidden="true">$</span>
-            <strong>Payment verified</strong>
-            <span>{rfq.trust}</span>
+            <strong>{tx("Payment verified")}</strong>
+            <span>{tx(rfq.trust)}</span>
           </div>
           <div className="factory-request-tags">
-            <span className="marketplace-tag-label">Request tags</span>
+            <span className="marketplace-tag-label">{tx("Request tags")}</span>
             <div className="tag-row compact-tags rfq-tags">
               {visibleTags.map((tag) => (
-                <span className="tag" key={tag}>{tag}</span>
+                <span className="tag" key={tag}>{tx(tag)}</span>
               ))}
             </div>
           </div>
@@ -3406,18 +4020,18 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
           {primaryImage ? (
             <figure className="factory-request-visual-main">
               <img src={primaryImage.src} alt={`${rfq.title} ${primaryImage.label}`} />
-              <figcaption>{primaryImage.label}</figcaption>
+              <figcaption>{tx(primaryImage.label)}</figcaption>
             </figure>
           ) : (
             <div className="factory-request-visual-placeholder">
-              <strong>No reference image uploaded</strong>
-              <span>Review the written brief, request tags, and attached tech pack in details.</span>
+              <strong>{tx("No reference image uploaded")}</strong>
+              <span>{tx("Review the written brief, request tags, and attached tech pack in details.")}</span>
             </div>
           )}
           {hasGallery && supportImages.slice(0, 2).map((image) => (
             <figure key={image.label}>
               <img src={image.src} alt={`${rfq.title} ${image.label}`} />
-              <figcaption>{image.label}</figcaption>
+              <figcaption>{tx(image.label)}</figcaption>
             </figure>
           ))}
         </div>
@@ -3450,9 +4064,9 @@ function FactoryReadOnlyRfqPage({ project, language, onBack, onEdit }) {
               <h2>RFQ status</h2>
               <p>Your quote was submitted and is visible to Maison Rue.</p>
               <div className="factory-status-facts">
-                <DetailPair label="Your quote" value="$18.40" />
-                <DetailPair label="Quote sent" value="Jul 24" />
-                <DetailPair label="Status" value="Quote submitted" />
+                <ProfileDetailPair label="Your quote" value="$18.40" />
+                <ProfileDetailPair label="Quote sent" value="Jul 24" />
+                <ProfileDetailPair label="Status" value="Quote submitted" />
               </div>
             </section>
           </aside>
@@ -3497,6 +4111,70 @@ function FactoryPriceTotalCard({ project }) {
 }
 
 function FactoryProjectsPage({ language, onViewProject }) {
+  const [activeTab, setActiveTab] = useState("active");
+  const [projectTabs, setProjectTabs] = useState([
+    { key: "active", label: "Active orders (4)", locked: true },
+    { key: "closed", label: "Closed (6)", locked: true }
+  ]);
+  const [isAddingTab, setIsAddingTab] = useState(false);
+  const [newTabName, setNewTabName] = useState("");
+  const [manageTabsOpen, setManageTabsOpen] = useState(false);
+  const [draftTabs, setDraftTabs] = useState(projectTabs);
+
+  function openManageTabs() {
+    setDraftTabs(projectTabs);
+    setIsAddingTab(false);
+    setManageTabsOpen(true);
+  }
+
+  function addCustomTab(event) {
+    event.preventDefault();
+    const trimmedName = newTabName.trim();
+    if (!trimmedName || projectTabs.some((tab) => tab.label === trimmedName)) return;
+    const nextTab = { key: `custom-${trimmedName}`, label: trimmedName, locked: false };
+    setProjectTabs((tabs) => [...tabs, nextTab]);
+    setActiveTab(nextTab.key);
+    setNewTabName("");
+    setIsAddingTab(false);
+  }
+
+  function updateDraftTab(index, value) {
+    setDraftTabs((tabs) => tabs.map((tab, tabIndex) => (tabIndex === index ? { ...tab, label: value } : tab)));
+  }
+
+  function removeDraftTab(index) {
+    setDraftTabs((tabs) => tabs.filter((tab, tabIndex) => tabIndex !== index || tab.locked));
+  }
+
+  function moveDraftTab(index, direction) {
+    setDraftTabs((tabs) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= tabs.length) return tabs;
+      const reorderedTabs = [...tabs];
+      [reorderedTabs[index], reorderedTabs[nextIndex]] = [reorderedTabs[nextIndex], reorderedTabs[index]];
+      return reorderedTabs;
+    });
+  }
+
+  function saveManagedTabs() {
+    const cleanedTabs = [];
+    const seenKeys = new Set();
+    draftTabs.forEach((tab) => {
+      const label = tab.label.trim();
+      if (!label) return;
+      const key = tab.locked ? tab.key : `custom-${label}`;
+      if (seenKeys.has(key)) return;
+      seenKeys.add(key);
+      cleanedTabs.push({ key, label, locked: tab.locked });
+    });
+    const nextTabs = cleanedTabs.length ? cleanedTabs : projectTabs;
+    setProjectTabs(nextTabs);
+    if (!nextTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(nextTabs[0]?.key || "active");
+    }
+    setManageTabsOpen(false);
+  }
+
   return (
     <main className="rfqs-page factory-projects-page">
       <div className="rfqs-shell projects-shell">
@@ -3542,9 +4220,97 @@ function FactoryProjectsPage({ language, onViewProject }) {
         </section>
 
         <nav className="rfqs-tabs projects-tabs" aria-label="Production order status">
-          <button className="active" type="button">Active orders (4)</button>
-          <button type="button">Closed (6)</button>
+          <div className="project-tabs-scroll">
+            {projectTabs.map((tab) => (
+              !tab.locked ? (
+                <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+                  <button
+                    className={activeTab === tab.key ? "active" : ""}
+                    type="button"
+                    aria-current={activeTab === tab.key ? "page" : undefined}
+                    onClick={() => setActiveTab(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  className={activeTab === tab.key ? "active" : ""}
+                  type="button"
+                  aria-current={activeTab === tab.key ? "page" : undefined}
+                  onClick={() => setActiveTab(tab.key)}
+                  key={tab.key}
+                >
+                  {tab.label}
+                </button>
+              )
+            ))}
+            {isAddingTab ? (
+              <form className="project-tab-add-form" onSubmit={addCustomTab}>
+                <input
+                  value={newTabName}
+                  onChange={(event) => setNewTabName(event.target.value)}
+                  placeholder="Tab name"
+                  autoFocus
+                />
+                <button type="submit">Add</button>
+                <button
+                  className="project-tab-add-cancel"
+                  type="button"
+                  aria-label="Cancel adding tab"
+                  onClick={() => {
+                    setNewTabName("");
+                    setIsAddingTab(false);
+                  }}
+                >
+                  ×
+                </button>
+              </form>
+            ) : (
+              <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+                + Add tab
+              </button>
+            )}
+          </div>
+          <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
+            Manage tabs
+          </button>
         </nav>
+
+        {manageTabsOpen && createPortal(
+          <div className="brand-profile-modal-layer">
+            <button className="brand-profile-modal-scrim" type="button" aria-label="Close tab manager" onClick={() => setManageTabsOpen(false)} />
+            <section className="brand-profile-modal project-tabs-modal" role="dialog" aria-modal="true" aria-labelledby="factory-project-tabs-title">
+              <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setManageTabsOpen(false)}>×</button>
+              <header className="brand-profile-modal-header">
+                <h1 id="factory-project-tabs-title">Manage tabs</h1>
+                <p>Create tabs for collections, seasons, brands, or any order grouping your team uses.</p>
+              </header>
+
+              <div className="project-tabs-manager">
+                {draftTabs.map((tab, index) => (
+                  <div className="project-tabs-manager-row" key={`${tab.key}-${index}`}>
+                    <label>
+                      <span>Tab name {tab.locked ? <small>Default</small> : null}</span>
+                      <input value={tab.label} onChange={(event) => updateDraftTab(index, event.target.value)} />
+                    </label>
+                    <div className="project-tabs-manager-actions">
+                      <button type="button" disabled={index === 0} onClick={() => moveDraftTab(index, -1)}>Up</button>
+                      <button type="button" disabled={index === draftTabs.length - 1} onClick={() => moveDraftTab(index, 1)}>Down</button>
+                      <button type="button" disabled={tab.locked} onClick={() => removeDraftTab(index)}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <footer className="brand-profile-modal-actions">
+                <button className="secondary-btn" type="button" onClick={() => setManageTabsOpen(false)}>Cancel</button>
+                <button className="primary-btn" type="button" onClick={saveManagedTabs}>Save changes</button>
+              </footer>
+            </section>
+          </div>,
+          document.body
+        )}
 
         <section className="projects-list" aria-label="Active factory production orders">
           {factoryProjects.map((project) => (
@@ -3570,9 +4336,9 @@ function FactoryProjectListCard({ project, language, onViewProject }) {
   ];
 
   return (
-    <article className={project.featured ? "factory-request-card featured factory-active-project-card" : "factory-request-card factory-active-project-card"}>
-      <header className="factory-request-card-top">
-        <div className="factory-request-title">
+    <article className={project.featured ? "factory-request-card featured factory-active-project-card shared-responsive-card" : "factory-request-card factory-active-project-card shared-responsive-card"}>
+      <header className="factory-request-card-top shared-card-header">
+        <div className="factory-request-title shared-card-heading">
           <div className="factory-avatar">{project.initials}</div>
           <div>
             <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</h2>
@@ -3581,14 +4347,18 @@ function FactoryProjectListCard({ project, language, onViewProject }) {
             </p>
           </div>
         </div>
-        <div className="factory-request-card-actions factory-project-card-actions">
-          <span className={`project-status ${project.statusTone}`}>{project.status}</span>
-          <button className="secondary-btn" type="button">Message</button>
-          <button className="primary-btn" type="button" onClick={onViewProject}>View order</button>
-        </div>
+        <ProjectCardActions
+          actionLabel="View order"
+          actionsClassName="factory-request-card-actions factory-project-card-actions"
+          onAction={onViewProject}
+          status={project.status}
+          statusTone={project.statusTone}
+        >
+          <button className="rfq-more" type="button" aria-label="More order actions">...</button>
+        </ProjectCardActions>
       </header>
 
-      <div className="factory-request-card-body">
+      <div className="factory-request-card-body shared-card-body">
         <aside className="factory-request-brief factory-order-brief">
           <div className="factory-request-facts">
             {productionFacts.map(([label, value]) => (
@@ -3641,13 +4411,46 @@ function ProjectProgress({ progress }) {
 }
 
 function FactoryBrowsePage({ language, onViewDetails }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  useEffect(() => {
+    if (!filtersOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [filtersOpen]);
+
   return (
     <main className="directory-page factory-browse-marketplace-page">
       <div className="directory-shell">
-        <section className="directory-filter-panel" aria-label="Project filters">
+        {filtersOpen && (
+          <button
+            className="marketplace-filter-backdrop"
+            type="button"
+            aria-label="Close filters"
+            onClick={() => setFiltersOpen(false)}
+          />
+        )}
+        <section
+          className={filtersOpen ? "directory-filter-panel marketplace-filter-panel is-mobile-open" : "directory-filter-panel marketplace-filter-panel"}
+          id="factory-browse-filter-panel"
+          role={filtersOpen ? "dialog" : undefined}
+          aria-modal={filtersOpen ? "true" : undefined}
+          aria-label="Project filters"
+        >
           <div className="directory-filter-header">
             <strong>Filters</strong>
-            <button type="button">Reset</button>
+            <div className="marketplace-filter-header-actions">
+              <button type="button">Reset</button>
+              <button className="marketplace-filter-close" type="button" onClick={() => setFiltersOpen(false)}>Close</button>
+            </div>
           </div>
           <FilterGroup title="Production type">
             <FilterCheck label="Cut & sew knits" />
@@ -3731,7 +4534,7 @@ function FactoryBrowsePage({ language, onViewDetails }) {
           <header className="directory-hero">
             <div>
               <p className="eyebrow">SOURCING MARKETPLACE</p>
-              <h1>BROWSE BRAND REQUESTS</h1>
+              <h1>Browse RFQs</h1>
             </div>
             <label className="directory-search">
               <SearchIcon />
@@ -3743,7 +4546,19 @@ function FactoryBrowsePage({ language, onViewDetails }) {
               <strong>24 open requests</strong>
               <span>matching wovens, low MOQ, GOTS, and available August capacity</span>
             </div>
-            <button className="filter-button sort-button" type="button">Sort: Best fit</button>
+            <div className="directory-summary-actions">
+              <button
+                className="filter-button compact-filter-button"
+                type="button"
+                aria-controls="factory-browse-filter-panel"
+                aria-expanded={filtersOpen}
+                aria-haspopup="dialog"
+                onClick={() => setFiltersOpen(true)}
+              >
+                Filters
+              </button>
+              <button className="filter-button sort-button" type="button">Sort: Best fit</button>
+            </div>
           </div>
           <div className="directory-card-list">
             {brandProjects.map((project) => (
@@ -4020,6 +4835,19 @@ const factorySettingsPermissionLabels = [
   { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
 ];
 
+const factoryCreditStartingBalance = 500;
+const factoryQuoteCreditCost = {
+  label: "Production run",
+  range: "$2k-$10k quote",
+  credits: 25,
+  quoteTotal: "$5,780"
+};
+const factoryCreditPackages = [
+  { label: "500 credits", value: "$50" },
+  { label: "1,000 credits", value: "$100" },
+  { label: "2,500 credits", value: "$250" }
+];
+
 const factoryPageBillingHistory = {
   earnings: [
     { title: "Sample milestone released", client: "Maison Rue", meta: "Maison Rue - Jul 29, 2026", status: "Received", amount: "$620.00" },
@@ -4029,20 +4857,31 @@ const factoryPageBillingHistory = {
   payments: [
     { title: "Platform service fee", client: "The Sourcing Club", meta: "Monthly billing - Aug 1, 2026", status: "Paid", amount: "$49.00" },
     { title: "Verified profile review", client: "The Sourcing Club", meta: "Account service - Jul 12, 2026", status: "Paid", amount: "$95.00" }
+  ],
+  credits: [
+    { title: "Verified onboarding bonus", client: "The Sourcing Club", meta: "Profile verified - Aug 10, 2026", status: "Earned", amount: "+500 credits" },
+    { title: "Referral bonus available", client: "The Sourcing Club", meta: "Invite a factory; both accounts earn after onboarding", status: "Pending", amount: "+500 credits" }
   ]
 };
 
-function BillingScreen({ language = "en" }) {
+function BillingScreen({ language = "en", creditBalance = factoryCreditStartingBalance, quoteSent = false }) {
   const [tab, setTab] = useState("earnings");
   const [client, setClient] = useState("All clients");
+  const [creditPurchaseOpen, setCreditPurchaseOpen] = useState(false);
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
+  const formatCreditAmount = (value) => (isZh ? value.replace(/credits/g, "额度") : value);
   const formatBillingMeta = (row) => `${row.client} - ${tx(row.meta)}`;
-  const allRows = factoryPageBillingHistory[tab];
+  const allRows = quoteSent && tab === "credits"
+    ? [
+        { title: "Quote submitted", client: "Maison Rue", meta: `${factoryQuoteCreditCost.range} - ${factoryQuoteCreditCost.quoteTotal}`, status: "Used", amount: `-${factoryQuoteCreditCost.credits} credits` },
+        ...factoryPageBillingHistory.credits
+      ]
+    : factoryPageBillingHistory[tab];
   const clients = ["All clients", ...Array.from(new Set(allRows.map((row) => row.client)))];
   const selectedClient = clients.includes(client) ? client : "All clients";
-  const rows = tab === "payments" || selectedClient === "All clients" ? allRows : allRows.filter((row) => row.client === selectedClient);
-  const total = rows.reduce((sum, row) => sum + Number(row.amount.replace(/[$,]/g, "")), 0);
+  const rows = tab !== "earnings" || selectedClient === "All clients" ? allRows : allRows.filter((row) => row.client === selectedClient);
+  const total = rows.reduce((sum, row) => row.amount.startsWith("$") ? sum + Number(row.amount.replace(/[$,]/g, "")) : sum, 0);
   const formattedTotal = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const summaryMetrics = [
     ["total earned", formattedTotal],
@@ -4059,14 +4898,14 @@ function BillingScreen({ language = "en" }) {
     <section className="billing-history-page">
       <header className="billing-history-header">
         <div>
-          <p>{tx("Factory billing")}</p>
-          <h1>{tx("Billing")}</h1>
+          <h1>{tx("Payments")}</h1>
         </div>
       </header>
       <div className="billing-controls">
         <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Billing history type">
           <button className={tab === "earnings" ? "active" : ""} type="button" role="tab" aria-selected={tab === "earnings"} onClick={() => changeTab("earnings")}>{tx("Earnings")}</button>
           <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => changeTab("payments")}>{tx("Payments")}</button>
+          <button className={tab === "credits" ? "active" : ""} type="button" role="tab" aria-selected={tab === "credits"} onClick={() => changeTab("credits")}>{tx("Credits")}</button>
         </div>
         {tab === "earnings" && (
           <label>
@@ -4078,7 +4917,7 @@ function BillingScreen({ language = "en" }) {
             </select>
           </label>
         )}
-        {tab === "payments" && (
+        {tab !== "earnings" && (
           <label className="billing-filter-placeholder" aria-hidden="true">
             <span>{tx("Filter by client")}</span>
             <select tabIndex={-1} value="All clients" readOnly>
@@ -4094,6 +4933,18 @@ function BillingScreen({ language = "en" }) {
           ))}
         </div>
       )}
+      {tab === "credits" && (
+        <section className="factory-credit-billing-card">
+          <div>
+            <span>{tx("Credit balance")}</span>
+            <strong>{creditBalance} {isZh ? "额度" : "credits"}</strong>
+            <p>{tx("500 credits = $50 value. Credits are used when a quote is sent.")}</p>
+          </div>
+          <div className="factory-credit-billing-action">
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setCreditPurchaseOpen(true)}>{tx("Get more credits")}</button>
+          </div>
+        </section>
+      )}
       <div className="billing-history-list">
         {rows.map((row) => (
           <article className="billing-history-row" key={`${row.title}-${row.meta}`}>
@@ -4102,11 +4953,44 @@ function BillingScreen({ language = "en" }) {
               <span>{formatBillingMeta(row)}</span>
             </div>
             <span className="billing-status">{tx(row.status)}</span>
-            <strong>{row.amount}</strong>
+            <strong>{formatCreditAmount(row.amount)}</strong>
           </article>
         ))}
       </div>
+      {creditPurchaseOpen && (
+        <CreditPurchaseModal language={language} onClose={() => setCreditPurchaseOpen(false)} />
+      )}
     </section>
+  );
+}
+
+function CreditPurchaseModal({ language = "en", onClose }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
+  return (
+    <div className="factory-update-modal-layer" role="presentation">
+      <div className="factory-update-modal factory-credit-purchase-modal" role="dialog" aria-modal="true" aria-labelledby="factory-credit-purchase-title">
+        <CloseIconButton className="factory-update-close" label={isZh ? "关闭购买额度弹窗" : "Close credit purchase"} onClick={onClose} />
+        <header>
+          <h2 id="factory-credit-purchase-title">{tx("Get more credits")}</h2>
+          <p>{tx("Choose a credit pack to keep sending quotes. 500 credits = $50 value.")}</p>
+        </header>
+
+        <div className="factory-credit-purchase-options">
+          {factoryCreditPackages.map((pack) => (
+            <button type="button" key={pack.label}>
+              <span>{isZh ? pack.label.replace(/credits/g, "额度") : pack.label}</span>
+              <strong>{pack.value}</strong>
+            </button>
+          ))}
+        </div>
+
+        <footer>
+          <button className="secondary-btn" type="button" onClick={onClose}>{tx("Cancel")}</button>
+          <button className="primary-btn" type="button" onClick={onClose}>{isZh ? "继续" : "Continue"}</button>
+        </footer>
+      </div>
+    </div>
   );
 }
 
@@ -4418,7 +5302,7 @@ function FactorySettingsScreen({ language = "en" }) {
   );
 }
 
-function FactoryOnboarding({ language, step, onLanguageChange, onBack, onNext }) {
+function FactoryOnboarding({ language, step, onLanguageChange, onEditSection, onBack, onNext }) {
   const copy = onboardingCopy[language];
   const current = copy.steps[step];
   const isFirst = step === 0;
@@ -4440,7 +5324,13 @@ function FactoryOnboarding({ language, step, onLanguageChange, onBack, onNext })
           </div>
         )}
 
-        <FactoryOnboardingStep step={step} content={current} language={language} onLanguageChange={onLanguageChange} />
+        <FactoryOnboardingStep
+          step={step}
+          content={current}
+          language={language}
+          onLanguageChange={onLanguageChange}
+          onEditSection={onEditSection}
+        />
 
         <footer className="factory-onboarding-actions">
           {!isFirst && !isLast && (
@@ -4463,7 +5353,7 @@ function FactoryOnboarding({ language, step, onLanguageChange, onBack, onNext })
   );
 }
 
-function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
+function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEditSection }) {
   if (step === 0) {
     return (
       <div className="factory-onboarding-section welcome-section">
@@ -4474,13 +5364,13 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
             <option value="en">English</option>
             <option value="zh">中文</option>
           </select>
-          <small>{content.languageHelp}</small>
+          {content.languageHelp && <small>{content.languageHelp}</small>}
         </label>
       </div>
     );
   }
 
-  if ([1, 2].includes(step)) {
+  if (step === 1) {
     return (
       <div className="factory-onboarding-form-grid">
         {content.fields.map(([label, placeholder]) => (
@@ -4492,6 +5382,10 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
     );
   }
 
+  if (step === 2) {
+    return <OnboardingBrandContext content={content} language={language} />;
+  }
+
   if (step === 5) {
     return <OnboardingCapacitySetup content={content} language={language} />;
   }
@@ -4500,7 +5394,7 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
     return (
       <div className="factory-onboarding-section production-fit-section">
         {content.groups.map(([label, options, selected]) => (
-          <OnboardingChipGroup label={label} options={options} selected={selected} balanced key={label} />
+          <OnboardingChipGroup label={label} options={options} selected={selected} balanced language={language} key={label} />
         ))}
       </div>
     );
@@ -4510,7 +5404,7 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
     return (
       <div className="factory-onboarding-section production-fit-section">
         {content.groups.map(([label, options, selected]) => (
-          <OnboardingChipGroup label={label} options={options} selected={selected} key={label} />
+          <OnboardingChipGroup label={label} options={options} selected={selected} language={language} key={label} />
         ))}
         <OnboardingField label={content.equipmentLabel} placeholder={content.equipmentPlaceholder} />
       </div>
@@ -4608,14 +5502,27 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
   }
 
   if (step === 8) {
+    const reviewEditSteps = [1, 3, 5];
+    const editLabel = language === "zh" ? "编辑" : "Edit";
+
     return (
       <div className="factory-review-grid">
-        {content.sections.map(([title, rows]) => (
+        {content.sections.map(([title, rows], index) => (
           <section className="factory-review-section" key={title}>
-            <h2>{title}</h2>
+            <div className="factory-review-section-header">
+              <h2>{title}</h2>
+              <button
+                className="factory-review-section-edit"
+                type="button"
+                aria-label={`${editLabel} ${title}`}
+                onClick={() => onEditSection?.(reviewEditSteps[index] || 1)}
+              >
+                {editLabel}
+              </button>
+            </div>
             <div className="factory-onboarding-review-rows">
               {rows.map(([label, value]) => (
-                <DetailPair label={label} value={value} key={label} />
+                <ProfileDetailPair label={label} value={value} key={label} />
               ))}
             </div>
           </section>
@@ -4647,8 +5554,51 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange }) {
       <img className="factory-onboarding-success-icon" src="/assets/prototype-icons/success.svg" alt="" />
       <h1>{content.title}</h1>
       <p>{content.intro}</p>
-      <img className="factory-onboarding-success-preview" src="/assets/prototype-icons/container-margin.svg" alt="" />
+      <section className="factory-onboarding-credit-reward">
+        <span>{language === "zh" ? "验证奖励" : "Verification reward"}</span>
+        <strong>{language === "zh" ? "500 额度" : "500 credits"}</strong>
+        <p>{language === "zh" ? "资料通过验证后可用于发送报价。500 额度 = $50 价值。" : "Available after your profile is verified. 500 credits = $50 value."}</p>
+      </section>
     </div>
+  );
+}
+
+function OnboardingBrandContext({ content, language }) {
+  return (
+    <div className="factory-brand-context-step">
+      <label className="factory-onboarding-field full-width">
+        <span>{content.brandLabel}</span>
+        <textarea placeholder={content.brandPlaceholder} />
+      </label>
+
+      <div className="factory-brand-context-upload-grid">
+        <OnboardingAssetUploadCard
+          title={content.logoTitle}
+          helper={content.logoHelper}
+          accept={content.logoAccept}
+          uploadLabel={language === "zh" ? "点击或拖拽文件上传" : "Click or drag files to upload"}
+        />
+        <OnboardingAssetUploadCard
+          title={content.imagesTitle}
+          helper={content.imagesHelper}
+          accept={content.imagesAccept}
+          uploadLabel={language === "zh" ? "点击或拖拽文件上传" : "Click or drag files to upload"}
+        />
+      </div>
+    </div>
+  );
+}
+
+function OnboardingAssetUploadCard({ title, helper, accept, uploadLabel }) {
+  return (
+    <section className="factory-brand-asset-card">
+      <div>
+        <strong>{title}</strong>
+        <span>{helper}</span>
+      </div>
+      <button className="onboarding-file-upload factory-brand-asset-upload" type="button">{uploadLabel}</button>
+      <small>{accept}</small>
+    </section>
   );
 }
 
@@ -4815,7 +5765,7 @@ function OnboardingCapacitySetup({ content, language }) {
   );
 }
 
-function OnboardingChipGroup({ label, options, selected = [], balanced = false }) {
+function OnboardingChipGroup({ label, options, selected = [], balanced = false, language = "en" }) {
   const [selectedOptions, setSelectedOptions] = useState(selected);
   const [customOptions, setCustomOptions] = useState([]);
   const [customValue, setCustomValue] = useState("");
@@ -4838,7 +5788,7 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false }
     },
     "Product categories": {
       title: "Product categories",
-      helper: "Select the broad categories brands can match you with."
+      helper: "Choose the garment categories your factory can produce."
     },
     "Market level": {
       title: "Market level",
@@ -4866,7 +5816,7 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false }
     },
     "产品品类": {
       title: "产品品类",
-      helper: "选择品牌可以用来匹配你的大类。"
+      helper: "选择你的工厂可以生产的成衣品类。"
     },
     "市场层级": {
       title: "市场层级",
@@ -4883,6 +5833,7 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false }
   };
   const copy = groupCopy[label] || { title: label, helper: "" };
   const visibleOptions = [...options, ...customOptions];
+  const isZh = language === "zh";
 
   const toggleOption = (option) => {
     setSelectedOptions((current) => {
@@ -4928,9 +5879,9 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false }
           <input
             value={customValue}
             onChange={(event) => setCustomValue(event.target.value)}
-            placeholder={label.includes("可") || label.includes("专") ? "输入自定义选项" : "Add your own"}
+            placeholder={isZh ? "添加自定义选项" : "Add your own"}
           />
-          <button className="secondary-btn compact-btn" type="submit">Add</button>
+          <button className="secondary-btn compact-btn" type="submit">{isZh ? "添加" : "Add"}</button>
         </form>
       )}
     </section>
@@ -4957,8 +5908,9 @@ function FilterCheck({ checked = false, label }) {
 
 function SearchIcon() {
   return (
-    <svg className="search-icon" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M10.8 18.1a7.3 7.3 0 1 1 0-14.6 7.3 7.3 0 0 1 0 14.6Zm5.2-2.1 4.5 4.5" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" />
+    <svg className="search-icon" viewBox="0 0 20 20" aria-hidden="true">
+      <circle cx="8.75" cy="8.75" r="5.25" fill="none" stroke="currentColor" strokeWidth="2.4" />
+      <path d="M12.6 12.6L16.25 16.25" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
     </svg>
   );
 }
@@ -4994,9 +5946,9 @@ function BrandProjectCard({ project, language, onViewDetails }) {
   ];
 
   return (
-    <article className={project.featured ? "factory-request-card featured" : "factory-request-card"}>
-      <header className="factory-request-card-top">
-        <div className="factory-request-title">
+    <article className={project.featured ? "factory-request-card featured shared-responsive-card shared-browse-rfq-card" : "factory-request-card shared-responsive-card shared-browse-rfq-card"}>
+      <header className="factory-request-card-top shared-card-header">
+        <div className="factory-request-title shared-card-heading">
           <div className="factory-avatar">{project.initials}</div>
           <div>
             <h2 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h2>
@@ -5005,14 +5957,14 @@ function BrandProjectCard({ project, language, onViewDetails }) {
             </p>
           </div>
         </div>
-        <div className="factory-request-card-actions">
-          <span className={`factory-project-fit ${project.fitTone}`}>{project.capacity[0]}</span>
+        <div className="factory-request-card-actions shared-card-actions">
+          <span className={`factory-project-fit shared-card-status ${project.fitTone}`}>{project.capacity[0]}</span>
           <button className="secondary-btn" type="button">Save</button>
           <button className="primary-btn" type="button" onClick={onViewDetails}>View RFQ</button>
         </div>
       </header>
 
-      <div className="factory-request-card-body">
+      <div className="factory-request-card-body shared-card-body">
         <aside className="factory-request-brief">
           <div className="factory-request-facts">
             {requestFacts.map(([label, value]) => (
@@ -5257,19 +6209,34 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
 
           <DetailCard title="Quote-ready details">
             <div className="factory-detail-grid">
-              <DetailPair label="Target unit price" value={project.budget} />
-              <DetailPair label="Quantity" value={project.quantity} />
-              <DetailPair label="Color split" value="3 colors · 100 each" />
-              <DetailPair label="Sample plan" value={project.samples} />
-              <DetailPair label="Bulk timeline" value="Late September" />
+              <ProfileDetailPair label="Target unit price" value={project.budget} />
+              <ProfileDetailPair label="Quantity" value={project.quantity} />
+              <ProfileDetailPair label="Color split" value="3 colors · 100 each" />
+              <ProfileDetailPair label="Sample plan" value={project.samples} />
+              <ProfileDetailPair label="Bulk timeline" value="Late September" />
             </div>
           </DetailCard>
 
           <DetailCard title="Materials and requirements">
-            <ul className="factory-detail-list">
-              <li>Organic cotton poplin, mid-weight</li>
-              <li>GOTS preferred, but brand can confirm certification path</li>
-            </ul>
+            <div className="factory-materials-summary">
+              <ProfileDetailPair label="Main material" value="Organic cotton poplin, mid-weight" />
+              <ProfileDetailPair label="Quality preference" value="GOTS preferred; brand can confirm certification path" />
+            </div>
+            <section className="factory-sourcing-responsibility">
+              <h3>Material sourcing responsibility</h3>
+              <div>
+                <span>Factory should source</span>
+                <p>Organic cotton poplin and button trims from the brand-approved direction.</p>
+              </div>
+              <div>
+                <span>Brand will provide</span>
+                <p>Labels, packaging, final color standards, and approval on material direction.</p>
+              </div>
+              <div>
+                <span>Confirm in quote</span>
+                <p>Which fabric, trim, or component costs are included, plus any MOQ or lead-time assumptions.</p>
+              </div>
+            </section>
           </DetailCard>
 
           <DetailCard title="Brand attachments">
@@ -5291,7 +6258,7 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
             <ol className="factory-detail-list" data-no-translate>
               <li>Can you quote fit sample and PP sample separately?</li>
               <li>Can you support 3 colors at 100 units each?</li>
-              <li>What fabric GSM or trim details do you need before final sample cost?</li>
+              <li>Which materials or components can you source, and what do you need the brand to provide?</li>
             </ol>
           </DetailCard>
 
@@ -5324,10 +6291,10 @@ function FactoryProjectDetail({ project, language, onBack, onSendQuote }) {
               </div>
             </div>
             <div className="factory-client-facts">
-              <DetailPair label="Verified brand" value="Yes" />
-              <DetailPair label="Club orders" value="4" />
-              <DetailPair label="Avg. response" value="1 day" />
-              <DetailPair label="Payment status" value="Verified" />
+              <ProfileDetailPair label="Verified brand" value="Yes" />
+              <ProfileDetailPair label="Club orders" value="4" />
+              <ProfileDetailPair label="Avg. response" value="1 day" />
+              <ProfileDetailPair label="Payment status" value="Verified" />
             </div>
           </section>
 
@@ -5692,7 +6659,11 @@ function FactorySubmitQuote({ project, language, backLabel = "‹ Back to view r
   );
 }
 
-function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) {
+function FactoryReviewTotal({ project, language, creditBalance, onBack, onEdit, onPurchaseCredits, onSendQuote }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
+  const creditUnit = isZh ? "额度" : "credits";
+  const sendForCredits = isZh ? `发送报价，使用 ${factoryQuoteCreditCost.credits} 额度` : `Send for ${factoryQuoteCreditCost.credits} credits`;
   return (
     <main className="factory-detail-page factory-submit-page factory-review-page">
       <div className="factory-submit-content">
@@ -5711,13 +6682,34 @@ function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) 
           <aside className="factory-review-side">
             <FactoryPriceTotalCard project={project} />
 
+            <section className="factory-submit-card factory-credit-cost-card">
+              <div className="factory-credit-card-header">
+                <h2>{tx("Quote credits")}</h2>
+                <p>{tx("Credits are charged only when you send this quote.")}</p>
+              </div>
+              <div className="factory-credit-required">
+                <span>{tx("Required to send")}</span>
+                <strong>{factoryQuoteCreditCost.credits} {creditUnit}</strong>
+              </div>
+              <div className="factory-credit-summary">
+                <div>
+                  <span>{tx("Quote type")}</span>
+                  <strong>{tx(factoryQuoteCreditCost.label)}</strong>
+                </div>
+              </div>
+              <div className="factory-credit-balance-strip">
+                {isZh ? "剩余额度：" : "Remaining balance:"} {creditBalance} {creditUnit}
+              </div>
+              <button className="secondary-btn compact-btn" type="button" onClick={onPurchaseCredits}>{tx("Purchase more credits")}</button>
+            </section>
+
             <section className="factory-submit-card factory-ready-card">
-              <div>
+              <div className="factory-ready-card-header">
                 <h2>Ready to send?</h2>
                 <p>Confirm the quote is complete before it appears in the brand comparison page.</p>
               </div>
               <div className="factory-ready-actions">
-                <button className="primary-btn" type="button" onClick={onSendQuote}>Send quote</button>
+                <button className="primary-btn" type="button" onClick={onSendQuote}>{sendForCredits}</button>
                 <button className="secondary-btn" type="button">Save draft</button>
               </div>
             </section>
@@ -5728,7 +6720,7 @@ function FactoryReviewTotal({ project, language, onBack, onEdit, onSendQuote }) 
         <button className="secondary-btn" type="button" onClick={onBack}>Back</button>
         <div className="factory-submit-bottom-actions">
           <button className="secondary-btn" type="button">Save draft</button>
-          <button className="primary-btn" type="button" onClick={onSendQuote}>Send quote</button>
+          <button className="primary-btn" type="button" onClick={onSendQuote}>{sendForCredits}</button>
         </div>
       </footer>
     </main>
@@ -5860,6 +6852,51 @@ function FactoryQuoteRequestCard({ project, language }) {
 }
 
 function FactoryQuoteSections({ readOnly = false }) {
+  const [materialCosts, setMaterialCosts] = useState([
+    {
+      id: "poplin",
+      material: "Organic cotton poplin",
+      costPerUnit: 8.64,
+      included: true
+    },
+    {
+      id: "components",
+      material: "Standard buttons + interfacing",
+      costPerUnit: 1.15,
+      included: true
+    },
+    {
+      id: "labels",
+      material: "Custom woven labels (optional)",
+      costPerUnit: 0.35,
+      included: false
+    }
+  ]);
+  const includedMaterialCost = materialCosts.reduce((total, item) => total + (item.included ? item.costPerUnit : 0), 0);
+  const additionalMaterialCost = materialCosts.reduce((total, item) => total + (item.included ? 0 : item.costPerUnit), 0);
+
+  const addMaterialCost = () => {
+    setMaterialCosts((current) => [
+      ...current,
+      {
+        id: `material-${Date.now()}`,
+        material: "New material or component",
+        costPerUnit: 0,
+        included: false
+      }
+    ]);
+  };
+
+  const removeMaterialCost = (id) => {
+    setMaterialCosts((current) => current.filter((item) => item.id !== id));
+  };
+
+  const updateMaterialCost = (id, updates) => {
+    setMaterialCosts((current) => current.map((item) => (
+      item.id === id ? { ...item, ...updates } : item
+    )));
+  };
+
   return (
     <>
       <SubmitSection title="Quote terms" description="Enter exact commercial terms for this request.">
@@ -5874,6 +6911,45 @@ function FactoryQuoteSections({ readOnly = false }) {
         </div>
       </SubmitSection>
 
+      <SubmitSection title="Material sourcing and cost breakdown" description="Show who supplies each material, what it costs, and whether it is included in the unit price.">
+        <section className="factory-sourcing-brand-provided">
+          <div>
+            <span>Brand provides separately</span>
+            <p>Labels, packaging, final color standards, and special branded trims.</p>
+          </div>
+        </section>
+        <div className="factory-sourcing-input-grid">
+          <QuoteField label="Factory includes" value="Main production materials and standard components from approved direction, included in unit price" />
+        </div>
+        <div className="factory-material-cost-heading">
+          <div>
+            <h3>Material cost breakdown</h3>
+            <p>List each material or component separately. Costs marked not included are added on top of the quoted unit price.</p>
+          </div>
+        </div>
+        <div className="factory-material-cost-rows">
+          {materialCosts.map((item) => (
+            <MaterialCostRow
+              item={item}
+              readOnly={readOnly}
+              onRemove={() => removeMaterialCost(item.id)}
+              onCostChange={(costPerUnit) => updateMaterialCost(item.id, { costPerUnit })}
+              onTreatmentChange={(included) => updateMaterialCost(item.id, { included })}
+              key={item.id}
+            />
+          ))}
+        </div>
+        <div className="factory-material-cost-summary">
+          <QuoteField label="Materials included in unit price" value={`$${includedMaterialCost.toFixed(2)} / unit`} />
+          <QuoteField
+            label="Additional material charges"
+            value={`$${additionalMaterialCost.toFixed(2)} / unit · $${(additionalMaterialCost * 300).toFixed(2)} order total`}
+            helper="Charged separately from the quoted unit price"
+          />
+        </div>
+        {!readOnly && <button className="factory-add-stage" type="button" onClick={addMaterialCost}>+ Add material cost</button>}
+      </SubmitSection>
+
       <SubmitSection title="Sample plan" description="Break out sample stages so the brand can compare quotes clearly.">
         <div className="factory-submit-sample-rows">
           <SamplePlanRow stage="Fit sample" cost="$95" timing="10 days" includes="1 revision round" readOnly={readOnly} />
@@ -5882,8 +6958,8 @@ function FactoryQuoteSections({ readOnly = false }) {
         {!readOnly && <button className="factory-add-stage" type="button">+ Add sample stage</button>}
       </SubmitSection>
 
-      <SubmitSection title="Brand questions and factory notes" description="Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM or trim details do you need before final sample cost?" descriptionNoTranslate>
-        <QuoteTextarea value="Yes. We can quote fit and PP samples separately, support 3 colors at 100 units each, and need confirmed GSM, button trim, and final size spec before final sample cost." label="Factory response" />
+      <SubmitSection title="Brand questions and factory notes" description="Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM, trim, MOQ, or certification details do you need before final cost?" descriptionNoTranslate>
+        <QuoteTextarea value="Yes. We can quote fit and PP samples separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec." label="Factory response" />
       </SubmitSection>
 
       <SubmitSection title="Additional details and questions" description="Add supporting files or questions regarding the quote.">
@@ -5907,7 +6983,10 @@ function FactoryQuoteReminder() {
   );
 }
 
-function FactoryQuoteSent({ project, onBack, onDashboard }) {
+function FactoryQuoteSent({ project, language = "en", onBack, onDashboard }) {
+  const isZh = language === "zh";
+  const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
+
   return (
     <main className="factory-detail-page factory-submit-page factory-sent-page">
       <div className="factory-submit-content">
@@ -5932,10 +7011,10 @@ function FactoryQuoteSent({ project, onBack, onDashboard }) {
             </div>
 
             <section className="success-next-panel factory-sent-metrics">
-              <Metric label="unit price" value="$18.40" />
-              <Metric label="quantity" value="300 units" />
-              <Metric label="bulk lead" value="28 days" />
-              <Metric label="quote total" value="$5,780" />
+              <Metric label={tx("unit price")} value="$18.40" />
+              <Metric label={tx("quantity")} value={isZh ? "300 件" : "300 units"} />
+              <Metric label={tx("bulk lead")} value={isZh ? "28 天" : "28 days"} />
+              <Metric label={tx("quote total")} value="$5,780" />
             </section>
 
             <div className="success-actions">
@@ -5952,9 +7031,9 @@ function FactoryQuoteSent({ project, onBack, onDashboard }) {
                 your factory notes and assumptions.
               </p>
               <div className="factory-status-facts">
-                <DetailPair label="Brand" value={project.brand} />
-                <DetailPair label="Quote due" value="Jul 24" />
-                <DetailPair label="Shown total" value="$5,780" />
+                <ProfileDetailPair label="Brand" value={project.brand} />
+                <ProfileDetailPair label="Quote due" value="Jul 24" />
+                <ProfileDetailPair label="Shown total" value="$5,780" />
               </div>
             </section>
 
@@ -5996,8 +7075,8 @@ function QuoteField({ label, value, helper }) {
 function QuoteTextarea({ value, label }) {
   return (
     <div className="factory-quote-textarea">
-      {label && <span>{label}</span>}
-      <span data-no-translate>{value}</span>
+      {label && <span className="factory-quote-textarea-label">{label}</span>}
+      <strong data-no-translate>{value}</strong>
     </div>
   );
 }
@@ -6010,6 +7089,41 @@ function SamplePlanRow({ stage, cost, timing, includes, readOnly = false }) {
       <QuoteField label="Timing" value={timing} />
       <QuoteField label="Includes" value={includes} />
       {!readOnly && <CloseIconButton label={`Remove ${stage}`} />}
+    </div>
+  );
+}
+
+function MaterialCostRow({ item, readOnly = false, onRemove, onCostChange, onTreatmentChange }) {
+  return (
+    <div className={readOnly ? "factory-material-cost-row read-only" : "factory-material-cost-row"}>
+      <QuoteField label="Material / component" value={item.material} />
+      {readOnly ? (
+        <QuoteField label="Cost per finished unit" value={`$${item.costPerUnit.toFixed(2)}`} />
+      ) : (
+        <label className="factory-material-cost-input">
+          <span>Cost per finished unit</span>
+          <div><b aria-hidden="true">$</b><input type="number" min="0" step="0.01" value={item.costPerUnit} onChange={(event) => onCostChange(Number(event.target.value) || 0)} /></div>
+        </label>
+      )}
+      {readOnly ? (
+        <QuoteField
+          label="Unit price treatment"
+          value={item.included ? "Included in unit price" : "Added separately"}
+        />
+      ) : (
+        <label className="factory-material-treatment-field">
+          <span>Unit price treatment</span>
+          <select
+            className={item.included ? "included" : "additional"}
+            value={item.included ? "included" : "additional"}
+            onChange={(event) => onTreatmentChange(event.target.value === "included")}
+          >
+            <option value="included">Included in unit price</option>
+            <option value="additional">Added separately</option>
+          </select>
+        </label>
+      )}
+      {!readOnly && <CloseIconButton label={`Remove ${item.material}`} onClick={onRemove} />}
     </div>
   );
 }
@@ -6029,15 +7143,6 @@ function DetailCard({ title, children }) {
       <h2>{title}</h2>
       {children}
     </article>
-  );
-}
-
-function DetailPair({ label, value }) {
-  return (
-    <div className="factory-detail-pair">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 

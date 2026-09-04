@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
+import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import "./styles.css";
+import "../shared/profile-shell.css";
+import "../shared/production-order-cards.css";
 
 const samplePhotos = [
   "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=600",
@@ -14,8 +17,7 @@ const steps = [
   { title: "Review brief", meta: "Quote-ready basics" },
   { title: "Invite factories", meta: "Choose who can quote" },
   { title: "Review quotes", meta: "Compare responses" },
-  { title: "Contract terms", meta: "Scope and revisions" },
-  { title: "Payment terms", meta: "Fixed price setup" },
+  { title: "Contract terms", meta: "Scope + delivery" },
   { title: "Production steps", meta: "Payment + approvals" },
   { title: "Fund first payment", meta: "Start sample work" }
 ];
@@ -24,10 +26,10 @@ const screenOrder = [
   "describe",
   "review",
   "invite",
+  "inviteSuccess",
   "quotes",
   "quoteDetail",
   "contract",
-  "payment",
   "milestones",
   "fund",
   "success"
@@ -70,29 +72,64 @@ const screenMeta = {
     description: "",
     cta: ""
   },
-  describe: { step: 0, title: "Describe what you need made.", cta: "Generate brief" },
-  review: { step: 1, title: "Review your quote brief.", cta: "Invite factories" },
-  invite: { step: 2, title: "Invite factories to quote.", cta: "Invite factories" },
-  quotes: { step: 3, title: "Review factory quotes.", cta: "Review quote" },
-  quoteDetail: { step: 3, title: "Review Atelier Minho quote.", cta: "Choose quote" },
-  contract: { step: 4, title: "Set contract terms.", cta: "Continue to payment" },
-  payment: { step: 5, title: "Choose payment terms.", cta: "Add production steps" },
+  describe: {
+    step: 0,
+    title: "Describe what you need made.",
+    description: "Start with the product, quantity, timeline, sample needs, target price, and any quality requirements factories should price against.",
+    cta: "Generate brief"
+  },
+  review: {
+    step: 1,
+    title: "Review your quote brief.",
+    description: "Check the structured request before it goes to factories, so every partner sees the same product details and expectations.",
+    cta: "Invite factories"
+  },
+  invite: {
+    step: 2,
+    title: "Invite factories to quote.",
+    description: "Choose matched factories and send the quote request to partners with the right category, MOQ, region, and service fit.",
+    cta: "Invite factories"
+  },
+  inviteSuccess: {
+    step: 2,
+    title: "Quote request sent.",
+    description: "Factories have the brief, attachments, and questions they need to decide whether to quote.",
+    cta: "Review quotes"
+  },
+  quotes: {
+    step: 3,
+    title: "Review factory quotes.",
+    description: "Compare pricing, timelines, sample plans, open questions, and factory fit before selecting who should move forward.",
+    cta: "Review quote"
+  },
+  quoteDetail: {
+    step: 3,
+    title: "Review Atelier Minho quote.",
+    description: "Inspect one factory response in detail, including unit pricing, lead time, sample terms, assumptions, and included revisions.",
+    cta: "Choose quote"
+  },
+  contract: {
+    step: 4,
+    title: "Set contract terms.",
+    description: "Confirm the selected quote, production scope, delivery term, revisions, and approval expectations before building the payment schedule.",
+    cta: "Add production steps"
+  },
   milestones: {
-    step: 6,
+    step: 5,
     title: "Add production steps",
     description:
-      "Create the full production schedule: paid steps, approval steps, and update-only checkpoints that match how this order will move.",
+      "Build your own production schedule with as many steps as needed. Each step can be update-only, approval-only, or a paid release.",
     cta: "Continue to funding"
   },
   fund: {
-    step: 7,
+    step: 6,
     title: "Fund first payment",
     description:
       "The brand funds the sample payment now. Bulk production stays locked until sample approval.",
     cta: "Fund payment & start"
   },
   success: {
-    step: 7,
+    step: 6,
     title: "First payment funded",
     description:
       "Your sample payment is funded. The factory can start work, and funds are only released after you approve the sample.",
@@ -114,6 +151,11 @@ const factories = [
     price: "$18.40",
     quoteQuantity: "300 units",
     lead: "28 days",
+    materialCosts: [
+      { material: "Organic cotton poplin", costPerUnit: 8.64, included: true },
+      { material: "Standard buttons + interfacing", costPerUnit: 1.15, included: true },
+      { material: "Custom woven labels (optional)", costPerUnit: 0.35, included: false }
+    ],
     note: "Best match for organic cotton woven shirts with sample-first production.",
     stats: [
       ["MOQ", "150/style"],
@@ -141,6 +183,11 @@ const factories = [
     price: "$21.10",
     quoteQuantity: "300 units",
     lead: "32 days",
+    materialCosts: [
+      { material: "Premium cotton poplin", costPerUnit: 9.45, included: true },
+      { material: "Shell buttons + interfacing", costPerUnit: 1.4, included: true },
+      { material: "Custom woven labels", costPerUnit: 0.4, included: false }
+    ],
     note: "Strong construction and finishing, slightly higher sample cost.",
     stats: [
       ["MOQ", "150/style"],
@@ -168,6 +215,11 @@ const factories = [
     price: "$16.90",
     quoteQuantity: "500 units",
     lead: "35 days",
+    materialCosts: [
+      { material: "Cotton poplin", costPerUnit: 7.1, included: true },
+      { material: "Standard buttons + interfacing", costPerUnit: 0.95, included: true },
+      { material: "Certification documentation", costPerUnit: 0.25, included: false }
+    ],
     note: "Competitive bulk pricing, needs closer sample approval before production.",
     stats: [
       ["MOQ", "500/style"],
@@ -572,7 +624,7 @@ const activeProjects = [
   }
 ];
 
-const projectSteps = ["1st step funded", "Samples", "Fit / lab dip", "Production", "Shipped"];
+const projectSteps = ["1st step funded", "Fit sample", "Fit / lab dip", "Production", "Shipped"];
 
 const projectDetailMilestones = [
   {
@@ -763,7 +815,7 @@ const messageThreads = [
     status: "Online",
     localTime: "4:18 PM local time",
     project: "Denim jacket wash development and small bulk",
-    kind: "RFQ",
+    kind: "Quote",
     lastDate: "Mon",
     lastPreview: "Can you confirm target wash sample lead time?",
     unread: 0,
@@ -863,7 +915,7 @@ const brandOnboardingSteps = [
       ["Average pieces ordered per year", ["Under 1,000", "1,000-5,000", "5,000-20,000", "20,000-100,000", "100,000+"], "5,000-20,000"],
       ["Typical order size per style", ["Under 100", "100-300", "300-1,000", "1,000-5,000", "5,000+"], "300-1,000"],
       ["Collections per year", ["1", "2", "3-4", "5-6", "Monthly drops"], "3-4"],
-      ["Target sourcing price range", "e.g. $12-$28 FOB per unit"],
+      ["Typical price range for core styles", "e.g. $12-$28 FOB per unit"],
       ["Typical reorder cadence", ["One-time seasonal buys", "Monthly reorders", "Quarterly reorders", "Repeat best sellers as needed"], "Quarterly reorders"],
       ["Current sourcing stage", ["Exploring factories", "Sampling soon", "Ready for production", "Replacing current supplier"], "Sampling soon"]
     ]
@@ -922,7 +974,7 @@ function App() {
         : "projects";
   const [screen, setScreen] = useState(initialScreen);
   const [brandOnboardingStep, setBrandOnboardingStep] = useState(0);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [selectedFactories, setSelectedFactories] = useState(["Atelier Minho", "Hanshu Studio"]);
   const [selectedQuote, setSelectedQuote] = useState("Atelier Minho");
   const [selectedQuotesForCompare, setSelectedQuotesForCompare] = useState(["Atelier Minho", "Hanshu Studio"]);
@@ -933,7 +985,29 @@ function App() {
     Object.fromEntries(milestones.map((milestone) => [milestone.name, milestone.type]))
   );
   const [toast, setToast] = useState("");
+  const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
   const [transitionKey, setTransitionKey] = useState(0);
+
+  useEffect(() => {
+    const mobileNav = window.matchMedia("(max-width: 760px)");
+    const syncSidebar = () => setSidebarCollapsed(mobileNav.matches);
+    mobileNav.addEventListener("change", syncSidebar);
+    return () => mobileNav.removeEventListener("change", syncSidebar);
+  }, []);
+
+  useEffect(() => {
+    if (sidebarCollapsed || !window.matchMedia("(max-width: 760px)").matches) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setSidebarCollapsed(true);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [sidebarCollapsed]);
 
   const index = screenOrder.indexOf(screen);
   const meta = screenMeta[screen];
@@ -947,6 +1021,9 @@ function App() {
     : meta;
   const isStandalone = screen === "home" || screen === "profile" || screen === "profileCompletion" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "messages" || screen === "saved" || screen === "settings" || screen === "billing";
   const isWideFlow = screen === "invite" || screen === "quotes" || screen === "quoteDetail";
+  const hasBottomBar = !isStandalone && screen !== "describe";
+  const baseMainClassName = screen === "profile" ? "factory-profile-page brand-profile-page" : screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" ? "rfqs-page brand-rfqs-page" : screen === "projects" ? "rfqs-page brand-projects-page" : screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : screen === "quotes" ? "flow-page wide-flow quote-review-flow" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page";
+  const mainClassName = `${baseMainClassName}${hasBottomBar ? " rfq-bottom-nav-flow" : ""}`;
 
   const goTo = (next) => {
     if (next !== "fund") setFundingMilestone(null);
@@ -961,7 +1038,7 @@ function App() {
   };
 
   const next = () => {
-    if (screen === "invite") setToast("RFQ sent to 2 selected factories");
+    if (screen === "invite") setToast("Quote request sent to 2 selected factories");
     if (screen === "quoteDetail") setSelectedQuote("Atelier Minho");
     if (screen === "fund") setToast(fundingMilestone ? `${fundingMilestone.title} funded` : "Sample payment funded");
     goTo(screenOrder[Math.min(index + 1, screenOrder.length - 1)]);
@@ -987,7 +1064,7 @@ function App() {
 
     switch (screen) {
       case "home":
-        return <HomeScreen goTo={goTo} />;
+        return <HomeScreen goTo={goTo} onOpenActivity={() => setActivityDrawerOpen(true)} />;
       case "profile":
         return <BrandProfileScreen onViewCompletion={() => goTo("profileCompletion")} />;
       case "profileCompletion":
@@ -1016,6 +1093,8 @@ function App() {
         return <ReviewScreen />;
       case "invite":
         return <InviteScreen {...props} />;
+      case "inviteSuccess":
+        return <InviteSuccessScreen goTo={goTo} selectedFactories={selectedFactories} />;
       case "quotes":
         return <QuotesScreen {...props} />;
       case "quoteDetail":
@@ -1054,22 +1133,30 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <SideNav
-        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" || screen === "profileCompletion" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Billing" : screen === "settings" ? "Settings" : screen === "rfqs" ? "RFQs" : "RFQs"}
+        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" || screen === "profileCompletion" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Payments" : screen === "settings" ? "Settings" : screen === "rfqs" ? "Quotes" : "Quotes"}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onNav={(label) => {
           if (label === "Dashboard") goTo("home");
-          if (label === "RFQs") goTo("rfqs");
+          if (label === "Quotes") goTo("rfqs");
           if (label === "Production orders") goTo("projects");
           if (label === "Browse factories") goTo("factoryMarketplace");
           if (label === "Conversations") goTo("messages");
           if (label === "Saved") goTo("saved");
-          if (label === "Billing") goTo("billing");
+          if (label === "Payments") goTo("billing");
           if (label === "Settings") goTo("settings");
         }}
         onProfile={() => goTo("profile")}
       />
-      <main className={screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : isWideFlow ? "flow-page wide-flow" : "flow-page"}>
+      {!sidebarCollapsed && (
+        <button
+          className="mobile-nav-backdrop"
+          type="button"
+          aria-label="Close navigation"
+          onClick={() => setSidebarCollapsed(true)}
+        />
+      )}
+      <main key={screen} className={mainClassName}>
         {!isStandalone && <JourneyRail current={activeMeta.step} isMilestoneFunding={Boolean(fundingMilestone)} />}
         <section className="flow-content">
           {!isStandalone && screen !== "quoteDetail" && (
@@ -1091,7 +1178,7 @@ function App() {
               <h1>{activeMeta.title}</h1>
               <p>
                 {activeMeta.description ||
-                  "Organic cotton woven shirts, 300 units, fit sample and PP sample before bulk approval."}
+                  "Move this quote request forward with the next project detail."}
               </p>
             </header>
           )}
@@ -1105,13 +1192,13 @@ function App() {
         <BottomBar
           canBack={index > 0}
           onBack={back}
-          onNext={screen === "success" ? () => goTo("describe") : next}
+          onNext={screen === "success" ? () => goTo("describe") : screen === "inviteSuccess" ? () => goTo("quotes") : next}
           primaryLabel={screen === "quotes" || screen === "success" ? "" : activeMeta.cta}
           centerText={screen === "invite" ? `${selectedFactories.length} factories selected · 5 recommended` : ""}
-          secondaryLabel={screen === "invite" ? "Save draft" : ""}
         />
       )}
       {toast && <Toast message={toast} onDone={() => setToast("")} />}
+      {activityDrawerOpen && <ActivityDrawer onClose={() => setActivityDrawerOpen(false)} />}
     </div>
   );
 }
@@ -1119,46 +1206,26 @@ function App() {
 function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
   const nav = [
     { label: "Dashboard", icon: "home" },
-    { label: "RFQs", icon: "rfq" },
+    { label: "Quotes", icon: "rfq" },
     { label: "Production orders", icon: "projects" },
     { label: "Browse factories", icon: "explore" },
     { label: "Conversations", icon: "messages" },
     { label: "Saved", icon: "bookmarks" },
-    { label: "Billing", icon: "billing" },
-    { label: "Settings", icon: "settings" },
-    { label: "Notifications", icon: "notification" }
+    { label: "Payments", icon: "billing" },
+    { label: "Settings", icon: "settings" }
   ];
 
   return (
-    <aside className={collapsed ? "side-nav collapsed" : "side-nav"}>
-      <button className="collapse-toggle" type="button" onClick={onToggle} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
-        <img src={`/assets/prototype-icons/${collapsed ? "expand" : "collapse"}.svg`} alt="" />
-      </button>
-      {!collapsed && <img src="/assets/logo.svg" alt="The Sourcing Club" className="side-logo" />}
-      <button className={collapsed ? "account-card collapsed-account" : "account-card"} type="button" onClick={onProfile}>
-        <span>MR</span>
-        <div>
-          <strong>Maison Rue</strong>
-          <small>Brand account</small>
-        </div>
-      </button>
-      <nav>
-        {nav.map((item, index) => (
-          <React.Fragment key={item.label}>
-            {(index === 3 || index === 6) && <span className="nav-divider" />}
-            <button
-              className={item.label === active ? "active" : ""}
-              type="button"
-              onClick={() => onNav?.(item.label)}
-              title={collapsed ? item.label : undefined}
-            >
-              <img className="nav-icon" src={`/assets/prototype-icons/${item.icon}.svg`} alt="" />
-              <span className="nav-label">{item.label}</span>
-            </button>
-          </React.Fragment>
-        ))}
-      </nav>
-    </aside>
+    <PrototypeSideNav
+      account={{ initials: "MR", name: "Maison Rue", type: "Brand account" }}
+      active={active}
+      ariaLabel="Brand account"
+      collapsed={collapsed}
+      navItems={nav}
+      onNav={onNav}
+      onProfile={onProfile}
+      onToggle={onToggle}
+    />
   );
 }
 
@@ -1181,10 +1248,10 @@ function CloseIconButton({ label }) {
 
 function BillingScreen({ accountType = "brand" }) {
   const isFactory = accountType === "factory";
-  const [tab, setTab] = useState("earnings");
+  const [tab, setTab] = useState(isFactory ? "earnings" : "payments");
   const defaultFilter = isFactory ? "All clients" : "All factories";
   const [client, setClient] = useState(defaultFilter);
-  const allRows = isFactory ? factoryBillingHistory[tab] : brandBillingHistory;
+  const allRows = isFactory ? factoryBillingHistory[tab] : tab === "discounts" ? [] : brandBillingHistory;
   const clients = [defaultFilter, ...Array.from(new Set(allRows.map((row) => row.client)))];
   const selectedClient = clients.includes(client) ? client : defaultFilter;
   const rows = selectedClient === defaultFilter ? allRows : allRows.filter((row) => row.client === selectedClient);
@@ -1201,8 +1268,7 @@ function BillingScreen({ accountType = "brand" }) {
     <section className="billing-history-page">
       <header className="billing-history-header">
         <div>
-          <p>{isFactory ? "Factory billing" : "Brand billing"}</p>
-          <h1>Billing</h1>
+          <h1>Payments</h1>
         </div>
       </header>
       <div className="billing-controls">
@@ -1212,21 +1278,68 @@ function BillingScreen({ accountType = "brand" }) {
             <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => setTab("payments")}>Payments</button>
           </div>
         )}
-        <label>
-          <span>{isFactory && tab === "payments" ? "Filter by source" : isFactory ? "Filter by client" : "Filter by factory"}</span>
-          <select value={selectedClient} onChange={(event) => setClient(event.target.value)}>
-            {clients.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-        </label>
+        {!isFactory && (
+          <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Brand payment type">
+            <button className={tab === "payments" ? "active" : ""} type="button" role="tab" aria-selected={tab === "payments"} onClick={() => setTab("payments")}>Payments</button>
+            <button className={tab === "discounts" ? "active" : ""} type="button" role="tab" aria-selected={tab === "discounts"} onClick={() => setTab("discounts")}>Discounts</button>
+          </div>
+        )}
+        {(isFactory || tab === "payments") && (
+          <label>
+            <span>{isFactory && tab === "payments" ? "Filter by source" : isFactory ? "Filter by client" : "Filter by factory"}</span>
+            <select value={selectedClient} onChange={(event) => setClient(event.target.value)}>
+              {clients.map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+          </label>
+        )}
+        {!isFactory && tab === "discounts" && (
+          <label className="billing-filter-placeholder" aria-hidden="true">
+            <span>Filter by factory</span>
+            <select tabIndex={-1} value="All factories" readOnly>
+              <option>All factories</option>
+            </select>
+          </label>
+        )}
       </div>
-      {!isFactory && (
+      {!isFactory && tab === "payments" && (
         <div className="project-summary-strip billing-payment-strip" aria-label="Billing payment summary">
           {brandSummaryMetrics.map(([label, value, tone]) => (
             <Metric label={label} value={value} className={tone || ""} key={label} />
           ))}
         </div>
+      )}
+      {!isFactory && tab === "discounts" && (
+        <section className="brand-discounts-tab">
+          <section className="brand-discount-summary-card">
+            <div>
+              <span>Available discount</span>
+              <strong>$50</strong>
+            </div>
+            <p>For eligible orders. Invite a brand to earn another $50 discount.</p>
+          </section>
+          <header>
+            <h2>Discount codes</h2>
+            <p>Use an unused code at payment. Used codes stay here so finance can track order discounts.</p>
+          </header>
+          <div className="brand-discount-code-list">
+            {brandDiscountCodes.map((item) => (
+              <article className={item.status === "Used" ? "brand-discount-code-row used" : "brand-discount-code-row"} key={item.code}>
+                <div>
+                  <span>{item.source}</span>
+                  <strong>{item.code}</strong>
+                  {item.usedOn && <p>Used on {item.usedOn}</p>}
+                  {item.status === "Unused" && <button className="brand-copy-code-btn" type="button">Copy code</button>}
+                </div>
+                <div>
+                  <b>{item.value}</b>
+                  <em>{item.status}</em>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       )}
       {isFactory && (
         <div className="billing-summary-grid">
@@ -1244,18 +1357,20 @@ function BillingScreen({ accountType = "brand" }) {
           </div>
         </div>
       )}
-      <div className="billing-history-list">
-        {rows.map((row) => (
-          <article className="billing-history-row" key={`${row.title}-${row.meta}`}>
-            <div>
-              <strong>{row.title}</strong>
-              <span>{row.client} - {row.meta}</span>
-            </div>
-            <span className="billing-status">{row.status}</span>
-            <strong>{row.amount}</strong>
-          </article>
-        ))}
-      </div>
+      {(isFactory || tab === "payments") && (
+        <div className="billing-history-list">
+          {rows.map((row) => (
+            <article className="billing-history-row" key={`${row.title}-${row.meta}`}>
+              <div>
+                <strong>{row.title}</strong>
+                <span>{row.client} - {row.meta}</span>
+              </div>
+              <span className="billing-status">{row.status}</span>
+              <strong>{row.amount}</strong>
+            </article>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
@@ -1264,6 +1379,7 @@ function MessagesScreen() {
   const [activeThreadId, setActiveThreadId] = useState(messageThreads[0].id);
   const [composer, setComposer] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
+  const [isCallPanelOpen, setIsCallPanelOpen] = useState(false);
   const [callMode, setCallMode] = useState("idle");
   const [translatedMessages, setTranslatedMessages] = useState({});
   const [scheduledCalls, setScheduledCalls] = useState({
@@ -1318,6 +1434,7 @@ function MessagesScreen() {
               onClick={() => {
                 setActiveThreadId(thread.id);
                 setShowSchedule(false);
+                setIsCallPanelOpen(false);
                 setCallMode("idle");
               }}
               key={thread.id}
@@ -1338,13 +1455,17 @@ function MessagesScreen() {
       <section className="message-workspace">
         <header className="message-room-header">
           <div className="message-room-identity">
-            <span className="message-avatar large">{activeThread.initials}</span>
             <div>
               <h2>{activeThread.name}</h2>
               <p>{activeThread.localTime} · {activeThread.project}</p>
             </div>
           </div>
           <div className="message-room-actions">
+            {activeScheduledCall && !isCallPanelOpen && (
+              <button className="message-call-drawer-button" type="button" aria-label="Show scheduled call" onClick={() => setIsCallPanelOpen(true)}>
+                <img className="message-call-drawer-icon" src="/assets/prototype-icons/scheduled-call.svg" alt="" />
+              </button>
+            )}
             <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>Schedule call</button>
             <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>
           </div>
@@ -1386,7 +1507,16 @@ function MessagesScreen() {
         </footer>
       </section>
 
-      <aside className="message-side-panel">
+      {isCallPanelOpen && (
+        <button className="message-side-panel-scrim" type="button" aria-label="Hide scheduled call" onClick={() => setIsCallPanelOpen(false)} />
+      )}
+      <aside className={isCallPanelOpen ? "message-side-panel open" : "message-side-panel"}>
+        <header className="message-side-panel-header">
+          <h2>Scheduled call</h2>
+          <button className="settings-drawer-close message-side-panel-close" type="button" aria-label="Hide scheduled call" onClick={() => setIsCallPanelOpen(false)}>
+            <img src="/assets/prototype-icons/close.svg" alt="" />
+          </button>
+        </header>
         {activeScheduledCall && <UpcomingCallCard call={activeScheduledCall} thread={activeThread} />}
       </aside>
       {showSchedule && createPortal((
@@ -1468,16 +1598,16 @@ function VideoCallPanel({ thread, mode, setMode }) {
 
 function UpcomingCallCard({ call, thread }) {
   return (
-    <section className="upcoming-call-card">
-      <div className="upcoming-call-label">Scheduled call</div>
-      <h3>{call.title}</h3>
-      <div className="upcoming-call-time">
+    <section className="upcoming-call-card home-upcoming-call-time">
+      <div className="home-upcoming-call-heading">
+        <div>
+          <h3>{call.title}</h3>
+          <span>{call.factoryTime}</span>
+        </div>
         <strong>{call.brandTime}</strong>
-        <span>{call.factoryTime}</span>
       </div>
-      <p>{call.agenda}</p>
-      <div className="upcoming-call-actions">
-        {call.hasVideo && <span>Video link added</span>}
+      <div className="home-upcoming-call-actions">
+        <p className="home-upcoming-call-description">{call.agenda}</p>
         <button className="secondary-btn compact-btn" type="button">Join call</button>
       </div>
     </section>
@@ -1493,7 +1623,6 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
   const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
   const [callTitle, setCallTitle] = useState("Sample review call");
   const [callDescription, setCallDescription] = useState(`Review open questions with ${thread.name} and confirm next actions.`);
-  const [hasVideo, setHasVideo] = useState(true);
   const selectedSlot = timeSlots[selectedSlotIndex] || timeSlots[0];
 
   return (
@@ -1524,10 +1653,6 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
             ))}
           </div>
           <div className="schedule-footer">
-            <label>
-              <input type="checkbox" checked={hasVideo} onChange={(event) => setHasVideo(event.target.checked)} />
-              Add video link
-            </label>
             <button
               className="primary-btn compact-btn"
               type="button"
@@ -1536,7 +1661,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
                 brandTime: selectedSlot.brand,
                 factoryTime: selectedSlot.factory,
                 agenda: callDescription,
-                hasVideo
+                hasVideo: true
               })}
             >
               Send invite
@@ -1549,7 +1674,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
 }
 
 const settingsPermissionLabels = [
-  { key: "rfqFlow", label: "RFQ flow", detail: "Create RFQ, choose quote, set terms and milestones", single: true },
+  { key: "rfqFlow", label: "Quote flow", detail: "Create quote request, choose quote, set terms and milestones", single: true },
   { key: "approve", label: "Approve samples", detail: "Lab dip, strike-off, sample, and more" },
   { key: "releaseFunds", label: "Release funds", detail: "Release approved payments from project funds" },
   { key: "primaryContact", label: "Primary contact", detail: "Main factory contact for messages and calls", single: true },
@@ -1557,7 +1682,7 @@ const settingsPermissionLabels = [
 ];
 
 const factoryAccountPermissionLabels = [
-  { key: "rfqFlow", label: "RFQ flow", detail: "Give quotes and submit RFQ details", single: true },
+  { key: "rfqFlow", label: "Quote flow", detail: "Give quotes and submit quote details", single: true },
   { key: "addUpdate", label: "Add update", detail: "Post production updates and files" },
   { key: "primaryContact", label: "Primary contact", detail: "Main contact for messages and calls", single: true },
   { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
@@ -1820,7 +1945,7 @@ function SettingsScreen({ accountType = "brand" }) {
             <div className="settings-section-header split">
               <div>
                 <h3>{isFactory ? "Manage team & stakeholders" : "Stakeholder authority"}</h3>
-                <p>{isFactory ? "Control who can quote RFQs, post updates, and act as the primary contact." : "Assign RFQ flow, sample approvals, fund release, and the primary factory contact."}</p>
+                <p>{isFactory ? "Control who can quote requests, post updates, and act as the primary contact." : "Assign quote flow, sample approvals, fund release, and the primary factory contact."}</p>
               </div>
               <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
             </div>
@@ -1958,7 +2083,7 @@ function SettingsScreen({ accountType = "brand" }) {
               <h3>Notifications</h3>
               <p>Choose which updates should reach your team by email.</p>
             </div>
-            {["New quote or RFQ activity", "Payment and approval requests", "Messages and call invites"].map((label) => (
+            {["New quote activity", "Payment and approval requests", "Messages and call invites"].map((label) => (
               <div className="settings-inline-row" key={label}>
                 <div>
                   <strong>{label}</strong>
@@ -1997,7 +2122,14 @@ function BrandOnboarding({ step, onBack, onNext }) {
           </header>
         )}
 
-        <BrandOnboardingStep content={current} step={step} />
+        <BrandOnboardingStep
+          content={current}
+          step={step}
+          onEditSection={(targetStep) => {
+            setBrandOnboardingStep(targetStep);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        />
 
         <footer className="brand-onboarding-actions">
           {!isFirst && !isLast && <button className="secondary-btn" type="button" onClick={onBack}>Previous</button>}
@@ -2014,7 +2146,7 @@ function BrandOnboarding({ step, onBack, onNext }) {
   );
 }
 
-function BrandOnboardingStep({ content, step }) {
+function BrandOnboardingStep({ content, step, onEditSection }) {
   const [onboardingStakeholders, setOnboardingStakeholders] = useState([
     { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder" },
     { name: "Maya Lee", email: "maya@maisonrue.com", role: "Production lead" }
@@ -2115,7 +2247,7 @@ function BrandOnboardingStep({ content, step }) {
 
         <div className="brand-context-upload-grid">
           <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" />
-          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, or construction details." accept="PNG, JPG, or PDF" />
+          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want factories to understand." accept="PNG, JPG, or PDF" />
         </div>
       </div>
     );
@@ -2202,19 +2334,29 @@ function BrandOnboardingStep({ content, step }) {
 
   if (content.type === "review") {
     const sections = [
-      ["Brand basics", [["Brand name", "Maison Rue"], ["Category", "Fashion brand"], ["Business email", "name@maisonrue.com"], ["Founded", "2021"], ["Website URL", "www.maisonrue.com"], ["HQ location", "New York, USA"]]],
-      ["Brand context", [["About the brand", "Premium wardrobe staples with clean silhouettes and natural fibers"], ["Logo", "Uploaded"], ["Product images", "Reference images added"]]],
-      ["Sourcing fit", [["Production type", "Cut & sew knits, wovens"], ["Product categories", "Tops, bottoms"], ["Market level", "Premium / contemporary ($100-$500)"]]],
-      ["Sourcing volume", [["Annual order volume", "5,000-20,000 pieces"], ["Typical order per style", "300-1,000 pieces"], ["Collections per year", "3-4"], ["Target sourcing price", "$12-$28 FOB per unit"], ["Reorder cadence", "Quarterly reorders"]]],
-      ["Factory preferences", [["Preferred regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services needed", "Full package, sample development"]]],
-      ["Trust", [["Annual revenue", "$1M-$5M"], ["Decision makers", "Founder / production lead added"], ["Business certificate", "Registration or resale certificate uploaded"]]]
+      { title: "Brand basics", step: 1, rows: [["Brand name", "Maison Rue"], ["Category", "Fashion brand"], ["Business email", "name@maisonrue.com"], ["Founded", "2021"], ["Website URL", "www.maisonrue.com"], ["HQ location", "New York, USA"]] },
+      { title: "Brand context", step: 2, rows: [["About the brand", "Premium wardrobe staples with clean silhouettes and natural fibers"], ["Logo", "Uploaded"], ["Product images", "Reference images added"]] },
+      { title: "Sourcing fit", step: 3, rows: [["Production type", "Cut & sew knits, wovens"], ["Product categories", "Tops, bottoms"], ["Market level", "Premium / contemporary ($100-$500)"]] },
+      { title: "Sourcing volume", step: 4, rows: [["Annual order volume", "5,000-20,000 pieces"], ["Typical order per style", "300-1,000 pieces"], ["Collections per year", "3-4"], ["Typical price range for core styles", "$12-$28 FOB per unit"], ["Reorder cadence", "Quarterly reorders"], ["Current sourcing stage", "Sampling soon"]] },
+      { title: "Factory preferences", step: 5, rows: [["Preferred regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services needed", "Full package, sample development"]] },
+      { title: "Trust", step: 6, rows: [["Annual revenue", "$1M-$5M"], ["Decision makers", "Founder / production lead added"], ["Business certificate", "Registration or resale certificate uploaded"]] }
     ];
 
     return (
       <div className="brand-onboarding-review-grid">
-        {sections.map(([title, rows]) => (
+        {sections.map(({ title, step: targetStep, rows }) => (
           <section key={title}>
-            <h2>{title}</h2>
+            <div className="brand-onboarding-review-section-header">
+              <h2>{title}</h2>
+              <button
+                className="brand-onboarding-review-edit"
+                type="button"
+                aria-label={`Edit ${title}`}
+                onClick={() => onEditSection?.(targetStep)}
+              >
+                Edit
+              </button>
+            </div>
             <div className="brand-onboarding-review-rows">
               {rows.map(([label, value]) => (
                 <div className="detail-pair" key={label}>
@@ -2255,7 +2397,11 @@ function BrandOnboardingStep({ content, step }) {
       <img className="brand-onboarding-success-icon" src="/assets/prototype-icons/success.svg" alt="" />
       <h1>{content.title}</h1>
       <p>{content.intro}</p>
-      <img className="brand-onboarding-success-preview" src="/assets/prototype-icons/container-margin.svg" alt="" />
+      <section className="brand-onboarding-discount-reward">
+        <span>Welcome discount</span>
+        <strong>$50 discount</strong>
+        <p>Available for eligible orders. Invite another brand to earn another $50 discount.</p>
+      </section>
     </div>
   );
 }
@@ -2389,6 +2535,7 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
             <li>Sample stages needed</li>
             <li>Timeline</li>
             <li>Material / quality level</li>
+            <li>Materials and components sourcing responsibility</li>
             <li>Target unit price range</li>
             <li>Preferred region</li>
           </ul>
@@ -2401,11 +2548,16 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
     return (
       <aside className="right-rail review-right-rail">
         <Card title="What factories need" tone="soft">
-          <p>
-            For an initial quote, the must-haves are product type, quantity, color breakdown,
-            material quality, sample stage, timeline, and quote questions. Packaging and shipping
-            can be clarified later.
-          </p>
+          <ul className="clean-list">
+            <li>Product type</li>
+            <li>Quantity and color breakdown</li>
+            <li>Sample stages needed</li>
+            <li>Timeline</li>
+            <li>Material / quality level</li>
+            <li>Materials and components sourcing responsibility</li>
+            <li>Target unit price range</li>
+            <li>Questions factories should answer</li>
+          </ul>
         </Card>
       </aside>
     );
@@ -2475,7 +2627,7 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
     );
   }
 
-  const isQuoteArea = ["quotes", "quoteDetail", "contract", "payment", "milestones"].includes(screen);
+  const isQuoteArea = ["quotes", "quoteDetail", "contract", "milestones"].includes(screen);
   if (isQuoteArea) {
     return (
       <aside className="right-rail">
@@ -2487,17 +2639,25 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
               <span>Porto, Portugal</span>
             </div>
           </div>
-          <div className="accepted-reminder">
+          <button className="secondary-btn accepted-message-btn" type="button">
+            Message factory
+          </button>
+        </section>
+        {screen !== "milestones" && (
+          <section className="accepted-reminder">
             <h3>TSC reminder</h3>
             <p>Message the factory to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
-          </div>
-        </section>
+          </section>
+        )}
         {screen === "milestones" && (
           <Card title="What should production steps cover?" tone="soft">
-            <p>
-              For factories, production steps usually map to sample, bulk deposit, QC approval, and final
-              shipment. Keep revisions and acceptance criteria explicit.
-            </p>
+            <ul className="production-step-guidance-list">
+              <li>Samples and revision approvals</li>
+              <li>Material, trim, or color confirmations</li>
+              <li>Bulk deposit and production start</li>
+              <li>In-line or final QC review</li>
+              <li>Shipment handoff and final balance</li>
+            </ul>
           </Card>
         )}
       </aside>
@@ -2505,28 +2665,61 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
   }
 
   return (
-    <aside className="right-rail">
+    <aside className={screen === "inviteSuccess" ? "right-rail invite-success-right-rail" : "right-rail"}>
       <Card title="Request summary">
         <Metric label="Product" value="Organic woven shirt" />
         <Metric label="Quantity" value="300 units" />
         <Metric label="Samples" value="Fit + PP" />
         <Metric label="Target" value="$18-$24" />
       </Card>
-      <Card title="TSC reminder" tone="soft">
-        <p>
-          Keep sample scope, revisions, approvals, QC, and delivery terms clear before funding.
-        </p>
-      </Card>
+      {screen !== "inviteSuccess" && (
+        <Card title="TSC reminder" tone="soft">
+          <p>
+            Keep sample scope, revisions, approvals, QC, and delivery terms clear before funding.
+          </p>
+        </Card>
+      )}
     </aside>
   );
 }
 
-function HomeScreen({ goTo }) {
+const passiveActivityItems = [
+  {
+    type: "Quote",
+    title: "Atelier Minho updated their quote",
+    meta: "Organic cotton woven shirt production",
+    time: "12 min ago",
+    unread: true
+  },
+  {
+    type: "File",
+    title: "Seoul Knit Works uploaded a yarn card",
+    meta: "Premium knit capsule for resort drop",
+    time: "48 min ago",
+    unread: true
+  },
+  {
+    type: "Status",
+    title: "PP sample milestone moved to in review",
+    meta: "Washed denim overshirt reorder",
+    time: "Yesterday"
+  },
+  {
+    type: "Factory",
+    title: "Two saved factories added summer capacity",
+    meta: "Portugal and South Korea partners",
+    time: "Jul 22"
+  }
+];
+
+function HomeScreen({ goTo, onOpenActivity }) {
+  const [inviteBrandOpen, setInviteBrandOpen] = useState(false);
+  const [discountCodesOpen, setDiscountCodesOpen] = useState(false);
   const attentionItems = [
     {
       type: "Draft",
       tone: "danger",
-      title: "Finish your RFQ draft",
+      title: "Finish your quote draft",
       meta: "Add target pricing and invite factories before sending.",
       facts: [],
       action: "Continue draft",
@@ -2562,8 +2755,14 @@ function HomeScreen({ goTo }) {
   return (
     <div className="home-stack">
       <header className="home-header">
-        <h1>Hi Maison Rue</h1>
-        <span />
+        <div>
+          <h1>Hi Maison Rue</h1>
+          <span />
+        </div>
+        <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">
+          <img src="/assets/prototype-icons/notification.svg" alt="" />
+          <b aria-hidden="true">4</b>
+        </button>
       </header>
       <section className="card home-search-card">
         <label className="search-field home-search-field">
@@ -2583,7 +2782,7 @@ function HomeScreen({ goTo }) {
         <section className="home-active-rfqs">
           <header className="home-panel-header">
             <div>
-              <h2>Active RFQs</h2>
+              <h2>Active quotes</h2>
               <p>Compare quote activity and open questions before choosing a factory.</p>
             </div>
             <button className="secondary-btn" type="button" onClick={() => goTo("rfqs")}>View all</button>
@@ -2595,6 +2794,13 @@ function HomeScreen({ goTo }) {
           </div>
         </section>
         <section className="home-attention">
+          <header className="home-panel-header compact">
+            <div>
+              <h2>Savings</h2>
+            </div>
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteBrandOpen(true)}>Invite brand</button>
+          </header>
+          <BrandDashboardDiscountCard onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
           <HomeUpcomingCallCard />
           <header className="home-panel-header compact">
             <div>
@@ -2623,8 +2829,132 @@ function HomeScreen({ goTo }) {
           ))}
         </div>
       </section>
+      {inviteBrandOpen && (
+        <InviteBrandModal onClose={() => setInviteBrandOpen(false)} />
+      )}
+      {discountCodesOpen && (
+        <DiscountCodesModal onClose={() => setDiscountCodesOpen(false)} />
+      )}
     </div>
   );
+}
+
+function BrandDashboardDiscountCard({ onInvite, onViewCodes }) {
+  return (
+    <section className="brand-dashboard-discount-card">
+      <div className="brand-discount-card-topline">
+        <span>Available discount</span>
+        <button className="brand-copy-code-btn" type="button" onClick={onViewCodes}>View discount codes</button>
+      </div>
+      <div className="brand-discount-card-body">
+        <div>
+          <strong>$50</strong>
+          <p>For eligible orders. Invite a brand to earn another $50 discount.</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const brandDiscountCodes = [
+  { code: "MRUE-50-AUG", status: "Unused", source: "Eligible order credit", value: "$50" },
+  { code: "REFER-MAYA-50", status: "Unused", source: "Brand referral", value: "$50" },
+  { code: "WELCOME-50", status: "Used", source: "First eligible order", value: "$50", usedOn: "Organic cotton woven shirt - Jul 18" }
+];
+
+function DiscountCodesModal({ onClose }) {
+  return createPortal((
+    <div className="brand-profile-modal-layer" role="presentation">
+      <button className="brand-profile-modal-scrim" type="button" aria-label="Close discount codes" onClick={onClose} />
+      <section className="brand-profile-modal brand-discount-codes-modal" role="dialog" aria-modal="true" aria-labelledby="brand-discount-codes-title">
+        <button className="brand-profile-modal-close brand-compact-modal-close" type="button" aria-label="Close discount codes" onClick={onClose}>
+          <img src="/assets/prototype-icons/close.svg" alt="" />
+        </button>
+        <header className="brand-profile-modal-header">
+          <h1 id="brand-discount-codes-title">Discount codes</h1>
+          <p>Use an unused code at payment. Used codes stay here so finance can track order discounts.</p>
+        </header>
+        <div className="brand-discount-code-list">
+          {brandDiscountCodes.map((item) => (
+            <article className={item.status === "Used" ? "brand-discount-code-row used" : "brand-discount-code-row"} key={item.code}>
+              <div>
+                <span>{item.source}</span>
+                <strong>{item.code}</strong>
+                {item.usedOn && <p>Used on {item.usedOn}</p>}
+                {item.status === "Unused" && <button className="brand-copy-code-btn" type="button">Copy code</button>}
+              </div>
+              <div>
+                <b>{item.value}</b>
+                <em>{item.status}</em>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  ), document.body);
+}
+
+function InviteBrandModal({ onClose }) {
+  return createPortal((
+    <div className="brand-profile-modal-layer brand-invite-modal-layer" role="presentation">
+      <button className="brand-profile-modal-scrim" type="button" aria-label="Close invite brand" onClick={onClose} />
+      <section className="brand-profile-modal brand-invite-modal" role="dialog" aria-modal="true" aria-labelledby="brand-invite-title">
+        <button className="brand-profile-modal-close brand-compact-modal-close" type="button" aria-label="Close invite brand" onClick={onClose}>
+          <img src="/assets/prototype-icons/close.svg" alt="" />
+        </button>
+        <header className="brand-profile-modal-header">
+          <h1 id="brand-invite-title">Invite a brand</h1>
+          <p>Send an invite link to another brand. When they place an eligible order, you earn a $50 discount and they get $50 too.</p>
+        </header>
+        <label className="brand-profile-edit-field full-width">
+          <span>Brand email</span>
+          <input type="email" placeholder="name@brand.com" />
+        </label>
+        <label className="brand-profile-edit-field full-width">
+          <span>Message</span>
+          <textarea defaultValue="I thought The Sourcing Club could be useful for your next production order. If you join and place an eligible order, we both get a $50 discount." />
+        </label>
+        <div className="brand-profile-modal-actions">
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onClose}>Send invite</button>
+        </div>
+      </section>
+    </div>
+  ), document.body);
+}
+
+function ActivityDrawer({ onClose }) {
+  return createPortal((
+    <div className="activity-drawer-layer" role="presentation">
+      <button className="activity-drawer-scrim" type="button" aria-label="Close activity" onClick={onClose} />
+      <aside className="activity-drawer" role="dialog" aria-modal="true" aria-labelledby="activity-drawer-title">
+        <header className="activity-drawer-header">
+          <div>
+            <h2 id="activity-drawer-title">Activity</h2>
+            <p>Passive updates from quotes, files, factories, and production.</p>
+          </div>
+          <button className="activity-close-btn" type="button" aria-label="Close activity" onClick={onClose}>
+            <img src="/assets/prototype-icons/close.svg" alt="" />
+          </button>
+        </header>
+        <div className="activity-drawer-list">
+          {passiveActivityItems.map((item) => (
+            <article className={item.unread ? "activity-drawer-item unread" : "activity-drawer-item"} key={item.title}>
+              <div>
+                <div className="activity-drawer-meta">
+                  <span>{item.type}</span>
+                  <time>{item.time}</time>
+                </div>
+                <h3>{item.title}</h3>
+                <p>{item.meta}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </aside>
+    </div>
+  ), document.body);
 }
 
 function HomeUpcomingCallCard() {
@@ -2646,19 +2976,21 @@ function HomeUpcomingCallCard() {
   return (
     <article className="home-upcoming-call-card">
       <h2 className="home-upcoming-call-label">Scheduled calls</h2>
-      {calls.map((call) => (
-        <section className="home-upcoming-call-time" key={call.title}>
-          <div className="home-upcoming-call-heading">
-            <h3>{call.title}</h3>
-            <strong>{call.time}</strong>
-          </div>
-          <span>{call.counterpartTime}</span>
-          <div className="home-upcoming-call-actions">
-            <p className="home-upcoming-call-description">{call.description}</p>
-            <button className="secondary-btn compact-btn" type="button">Join call</button>
-          </div>
-        </section>
-      ))}
+      <div className="home-upcoming-call-list">
+        {calls.map((call) => (
+          <section className="home-upcoming-call-time" key={call.title}>
+            <div className="home-upcoming-call-heading">
+              <h3>{call.title}</h3>
+              <strong>{call.time}</strong>
+            </div>
+            <span>{call.counterpartTime}</span>
+            <div className="home-upcoming-call-actions">
+              <p className="home-upcoming-call-description">{call.description}</p>
+              <button className="secondary-btn compact-btn" type="button">Join call</button>
+            </div>
+          </section>
+        ))}
+      </div>
     </article>
   );
 }
@@ -2694,19 +3026,19 @@ function HomeRfqMiniCard({ rfq, goTo }) {
   const [primaryImage] = rfq.images || [];
 
   return (
-    <article className="home-rfq-card">
-      <header className="home-production-title">
+    <article className="home-rfq-card shared-responsive-card shared-dashboard-card">
+      <header className="home-production-title shared-card-heading">
         {primaryImage && <img src={primaryImage.src} alt={`${rfq.title} reference`} />}
         <div>
           <h3>{rfq.title}</h3>
           <p>{rfq.date}</p>
         </div>
       </header>
-      <div className="home-rfq-side">
-        <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>
-        <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View RFQ</button>
+      <div className="home-rfq-side shared-card-actions">
+        <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{rfq.status}</span>
+        <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View quote</button>
       </div>
-      <div className="home-production-facts home-rfq-facts">
+      <div className="home-production-facts home-rfq-facts shared-card-body">
         <div>
           <span>Quotes received</span>
           <strong>{quotesReceived[0]}</strong>
@@ -2729,34 +3061,30 @@ function HomeProjectMiniCard({ project, goTo }) {
   const compactStatus = project.statusTone === "warning" ? "Lab dip review" : project.statusTone === "ready" ? "Sample approval" : project.status;
 
   return (
-    <article className="home-production-card">
-      <div className="home-production-main">
-        <header className="home-production-title">
-          {project.image && <img src={project.image.src} alt={`${project.title} reference`} />}
-          <div>
-            <h3>{project.title}</h3>
-            <p>{project.factory} · {project.location} · {project.started}</p>
-          </div>
-        </header>
-        <div className="home-production-facts">
-          <div>
-            <span>Production step</span>
-            <strong>{project.currentStep}</strong>
-          </div>
-          <div>
-            <span>Next due</span>
-            <strong>{project.nextDue}</strong>
-          </div>
+    <article className="home-production-card shared-responsive-card shared-dashboard-card">
+      <header className="home-production-title shared-card-heading">
+        {project.image && <img src={project.image.src} alt={`${project.title} reference`} />}
+        <div>
+          <h3>{project.title}</h3>
+          <p>{project.factory} · {project.location} · {project.started}</p>
+        </div>
+      </header>
+      <div className="home-production-actions shared-card-actions">
+        <span className={`project-status shared-card-status ${project.statusTone}`}>{compactStatus}</span>
+        <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>View order</button>
+      </div>
+      <div className="home-production-facts shared-card-body">
+        <div>
+          <span>Production step</span>
+          <strong>{project.currentStep}</strong>
+        </div>
+        <div>
+          <span>Next due</span>
+          <strong>{project.nextDue}</strong>
         </div>
       </div>
-      <div className="home-production-side">
-        <div className="home-production-actions">
-          <span className={`project-status ${project.statusTone}`}>{compactStatus}</span>
-          <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>View order</button>
-        </div>
-        <div className="home-production-progress">
-          <ProjectProgress progress={project.progress} />
-        </div>
+      <div className="home-production-progress">
+        <ProjectProgress progress={project.progress} />
       </div>
     </article>
   );
@@ -2764,7 +3092,7 @@ function HomeProjectMiniCard({ project, goTo }) {
 
 function BrandProfileScreen({ onViewCompletion }) {
   const [projectTab, setProjectTab] = useState("completed");
-  const [profileMode, setProfileMode] = useState("edit");
+  const [profileMode, setProfileMode] = useState(new URLSearchParams(window.location.search).get("view") === "public" ? "public" : "edit");
   const isOwnerView = profileMode === "edit";
   const [activeEditor, setActiveEditor] = useState(null);
   const [profileData, setProfileData] = useState({
@@ -2783,16 +3111,24 @@ function BrandProfileScreen({ onViewCompletion }) {
     repeatFactories: "2",
     intro:
       "Premium womenswear brand focused on organic cotton shirts, polished woven tops, and small-batch capsule production. Maison Rue shares clear product references, quick feedback, and defined sample approval paths so factories can quote confidently.",
-    productCategories: ["Womenswear"],
-    garmentFocus: ["Wovens", "Cut & sew knits"],
-    marketLevel: ["Premium / contemporary"],
+    productCategories: ["Tops", "Bottoms"],
+    productionTypes: ["Cut & sew knits", "Wovens"],
+    marketLevel: ["Premium / contemporary ($100-$500)"],
     preferredRegions: ["Portugal", "China", "Korea"],
     certifications: ["GOTS", "OEKO-TEX"],
     services: ["Full package", "Sample development", "Fabric sourcing"],
+    sourcingVolume: {
+      annualVolume: "5,000-20,000 pieces",
+      orderSize: "300-1,000 pieces per style",
+      collectionsPerYear: "3-4",
+      targetPrice: "$12-$28 FOB per unit",
+      reorderCadence: "Quarterly reorders",
+      sourcingStage: "Sampling soon"
+    },
     assets: [
-      { title: "Logo", meta: "SVG, PNG, JPG uploaded", src: "/assets/logo.svg" },
-      { title: "Product photos", meta: "Organic poplin shirt references", src: "/assets/dashboard-rfq-shirt.jpg" },
-      { title: "Brand direction", meta: "Lookbook and material moodboard", src: "/assets/moodboard-warm-clay.jpg" }
+      { title: "Organic cotton poplin shirt", meta: "Wovens · MOQ 100", src: "/assets/dashboard-rfq-shirt.jpg" },
+      { title: "Fine-gauge knit capsule", meta: "Knitwear · sample room", src: "/assets/dashboard-rfq-knit.jpg" },
+      { title: "Denim jacket development", meta: "Denim · wash sample", src: "/assets/dashboard-rfq-denim.jpg" }
     ],
     verification: [
       { name: "Business registration", status: "Uploaded" },
@@ -2828,7 +3164,7 @@ function BrandProfileScreen({ onViewCompletion }) {
     ],
     activeProjects: [
       {
-        title: "Poplin shirt restock RFQ",
+        title: "Poplin shirt restock quote",
         partner: "Atelier Minho",
         date: "Posted 18 minutes ago",
         result: "Quote due",
@@ -2839,7 +3175,7 @@ function BrandProfileScreen({ onViewCompletion }) {
         title: "Resort knit capsule",
         partner: "Luna Resort shortlist",
         date: "Drafting",
-        result: "Preparing RFQ",
+        result: "Preparing quote",
         summary: "Lightweight knit tops and cardigans with visible sample-room support and moodboard references.",
         tags: ["Knitwear", "Sample room", "Moodboard", "Premium"]
       }
@@ -2856,50 +3192,73 @@ function BrandProfileScreen({ onViewCompletion }) {
   };
   const visibleProjects = projectTab === "completed" ? data.completedProjects : data.activeProjects;
   const overviewRows = [
+    ["Brand name", data.name],
     ["Brand category", data.category],
-    ["Year founded", data.founded],
-    ["Website", data.website],
     ["Business email", data.businessEmail],
-    ["Annual revenue", data.annualRevenue],
-    ["Payment status", data.paymentStatus]
+    ["Year founded", data.founded],
+    ["Website URL", data.website],
+    ["HQ location", data.location],
   ];
+  const sourcingVolumeRows = [
+    ["Annual order volume", data.sourcingVolume.annualVolume],
+    ["Typical order size", data.sourcingVolume.orderSize],
+    ["Collections per year", data.sourcingVolume.collectionsPerYear],
+    ["Typical price range for core styles", data.sourcingVolume.targetPrice],
+    ["Reorder cadence", data.sourcingVolume.reorderCadence],
+    ["Current sourcing stage", data.sourcingVolume.sourcingStage]
+  ];
+  const renderProfileStatusCard = (responsiveClass) => (
+    <section className={`factory-profile-card factory-profile-owner-card ${responsiveClass}`}>
+      <div className="factory-profile-card-header">
+        <h2>Profile status</h2>
+        <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>View details</button>
+      </div>
+      <div className="factory-profile-status-meter">
+        <strong>88%</strong>
+        <span>Profile complete</span>
+      </div>
+      <div className="factory-profile-status-track"><span /></div>
+      <p>Review what is complete, what is in progress, and what would strengthen this profile.</p>
+      <div className="factory-profile-owner-actions">
+        <button className="primary-btn" type="button">Publish changes</button>
+      </div>
+    </section>
+  );
+  const renderContactCard = (responsiveClass) => (
+    <section className={`factory-profile-card factory-profile-contact-card ${responsiveClass}`}>
+      <h2>Brand contact</h2>
+      <div className="factory-profile-contact-row">
+        <div className="factory-avatar">MR</div>
+        <div>
+          <strong>{data.name}</strong>
+          <span>{data.location}</span>
+        </div>
+      </div>
+      <button className="primary-btn" type="button">Contact brand</button>
+    </section>
+  );
 
   return (
-    <div className="brand-profile brand-profile-redesign">
+    <div className={`brand-profile brand-profile-redesign ${isOwnerView ? "is-owner-view" : "is-public-view"}`}>
       <div className="factory-profile-shell">
-        <section className="factory-profile-owner-bar">
-          <div>
-            <span>Brand profile</span>
-            <strong>{isOwnerView ? "Edit what factories see" : "Public preview"}</strong>
-          </div>
-          <div className="factory-profile-view-toggle" role="tablist" aria-label="Brand profile view">
-            <button
-              className={isOwnerView ? "active" : ""}
-              type="button"
-              onClick={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
-              role="tab"
-              aria-selected={isOwnerView}
-            >
-              Edit profile
-            </button>
-            <button
-              className={!isOwnerView ? "active" : ""}
-              type="button"
-              onClick={() => setProfileMode("public")}
-              role="tab"
-              aria-selected={!isOwnerView}
-            >
-              View as public
-            </button>
-          </div>
-        </section>
+        <ProfileOwnerBar
+          ariaLabel="Brand profile view"
+          isOwnerView={isOwnerView}
+          onEdit={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
+          onPublic={() => setProfileMode("public")}
+          ownerText="Edit what factories see"
+          profileLabel="Brand profile"
+        />
+
+        {isOwnerView && renderProfileStatusCard("brand-profile-compact-status-card")}
+        {!isOwnerView && renderContactCard("brand-profile-compact-contact-card")}
 
         <section className="factory-profile-hero brand-profile-hero">
-          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit banner</button>}
+          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
+          {!isOwnerView && <button className="factory-profile-banner-edit" type="button">Save brand</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
               <div className="factory-profile-logo">MR</div>
-              {isOwnerView && <button className="factory-profile-logo-edit" type="button" onClick={() => openEditor("overview")}>Edit</button>}
             </div>
             <div>
               <div className="factory-profile-title-row">
@@ -2908,54 +3267,53 @@ function BrandProfileScreen({ onViewCompletion }) {
               <p>{data.location} · {data.category} · {data.annualRevenue} revenue</p>
               <div className="tag-row compact-tags factory-profile-hero-tags">
                 {data.productCategories.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
-                {data.garmentFocus.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                {data.productionTypes.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
                 {data.marketLevel.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
               </div>
             </div>
           </div>
-          {!isOwnerView && (
-            <div className="factory-profile-actions">
-              <button className="secondary-btn" type="button">Save brand</button>
-              <button className="primary-btn" type="button">Contact brand</button>
-            </div>
-          )}
         </section>
 
         <div className="factory-profile-layout">
           <main className="factory-profile-main">
-            <section className="factory-profile-card factory-profile-performance">
-              <div>
-                <span>Brand activity</span>
-                <strong>{data.clubOrders}</strong>
-                <p>Club orders · {data.responseTime} avg. response</p>
-              </div>
-              <div className="factory-profile-score-grid">
-                <Metric label="Active RFQs" value={data.activeRfqs} />
-                <Metric label="Repeat factories" value={data.repeatFactories} />
-                <Metric label="Payment status" value={data.paymentStatus} />
-              </div>
-            </section>
+            <ProfilePerformanceCard
+              eyebrow="Brand activity"
+              primary={data.clubOrders}
+              primaryLabel={`Club orders · ${data.responseTime} avg. response`}
+              metrics={[
+                { label: "Active quotes", value: data.activeRfqs },
+                { label: "Repeat factories", value: data.repeatFactories },
+                { label: "Payment status", value: data.paymentStatus }
+              ]}
+            />
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
+              <ProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
               <p>{data.intro}</p>
               <div className="factory-profile-detail-grid">
-                {overviewRows.map(([label, value]) => <BrandProfileDetailPair label={label} value={value} key={label} />)}
+                {overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Sourcing fit" editable={isOwnerView} onEdit={() => openEditor("sourcing")} />
-              <BrandProfileChipSection label="Product categories" items={data.productCategories} />
-              <BrandProfileChipSection label="Garment focus" items={data.garmentFocus} />
-              <BrandProfileChipSection label="Market level" items={data.marketLevel} />
-              <BrandProfileChipSection label="Preferred regions" items={data.preferredRegions} />
-              <BrandProfileChipSection label="Certifications requested" items={data.certifications} />
-              <BrandProfileChipSection label="Services needed" items={data.services} />
+              <ProfileCardHeader title="Sourcing fit" editable={isOwnerView} onEdit={() => openEditor("sourcing")} />
+              <ProfileChipSection label="Product categories" items={data.productCategories} />
+              <ProfileChipSection label="Production type" items={data.productionTypes} />
+              <ProfileChipSection label="Market level" items={data.marketLevel} />
+              <ProfileChipSection label="Preferred regions" items={data.preferredRegions} />
+              <ProfileChipSection label="Certifications requested" items={data.certifications} />
+              <ProfileChipSection label="Services needed" items={data.services} />
             </section>
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Brand assets" editable={isOwnerView} actionLabel="Manage assets" onEdit={() => openEditor("assets")} />
+              <ProfileCardHeader title="Sourcing volume" editable={isOwnerView} onEdit={() => openEditor("sourcingVolume")} />
+              <div className="factory-profile-detail-grid">
+                {sourcingVolumeRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <ProfileCardHeader title="Brand assets" editable={isOwnerView} actionLabel="Manage assets" onEdit={() => openEditor("assets")} />
               <div className="factory-profile-product-grid">
                 {data.assets.map((asset) => (
                   <article className="factory-profile-product brand-profile-asset" key={asset.title}>
@@ -2973,7 +3331,7 @@ function BrandProfileScreen({ onViewCompletion }) {
                   <h2>Past work with factories</h2>
                   <p>Completed and active TSC activity that helps factories understand how this brand works.</p>
                 </div>
-                {isOwnerView && <button className="factory-profile-edit-button" type="button" onClick={() => openEditor("projects")}>Manage projects</button>}
+                {isOwnerView && <span className="factory-profile-sync-pill">Auto-added</span>}
               </div>
               <div className="factory-profile-project-tabs" role="tablist" aria-label="Brand project status">
                 <button
@@ -3025,40 +3383,13 @@ function BrandProfileScreen({ onViewCompletion }) {
 
           <aside className="factory-profile-side">
             {isOwnerView ? (
-              <>
-                <section className="factory-profile-card factory-profile-owner-card">
-                  <div className="factory-profile-card-header">
-                    <h2>Profile status</h2>
-                    <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>View details</button>
-                  </div>
-                  <div className="factory-profile-status-meter">
-                    <strong>88%</strong>
-                    <span>Profile complete</span>
-                  </div>
-                  <div className="factory-profile-status-track"><span /></div>
-                  <p>Review what is complete, what is in progress, and what would strengthen this profile.</p>
-                  <div className="factory-profile-owner-actions">
-                    <button className="primary-btn" type="button">Publish changes</button>
-                    <button className="secondary-btn" type="button" onClick={() => setProfileMode("public")}>View as public</button>
-                  </div>
-                </section>
-              </>
+              renderProfileStatusCard("brand-profile-sidebar-status-card")
             ) : (
-              <section className="factory-profile-card factory-profile-contact-card">
-                <h2>Brand contact</h2>
-                <div className="factory-profile-contact-row">
-                  <div className="factory-avatar">MR</div>
-                  <div>
-                    <strong>{data.name}</strong>
-                    <span>{data.location}</span>
-                  </div>
-                </div>
-                <button className="primary-btn" type="button">Contact brand</button>
-              </section>
+              renderContactCard("brand-profile-sidebar-contact-card")
             )}
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("verification")} />
+              <ProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("verification")} />
               <div className="factory-profile-cert-list">
                 {data.verification.map((item) => (
                   <div className="factory-profile-cert" key={item.name}>
@@ -3070,7 +3401,7 @@ function BrandProfileScreen({ onViewCompletion }) {
             </section>
 
             <section className="factory-profile-card">
-              <BrandProfileCardHeader title="Decision makers" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("stakeholders")} />
+              <ProfileCardHeader title="Decision makers" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("stakeholders")} />
               <div className="factory-profile-reference-list">
                 {data.stakeholders.map((stakeholder) => (
                   <div key={typeof stakeholder === "string" ? stakeholder : stakeholder.email || stakeholder.name}>
@@ -3096,19 +3427,10 @@ function BrandProfileScreen({ onViewCompletion }) {
   );
 }
 
-function BrandProfileCardHeader({ title, editable = false, actionLabel = "Edit", onEdit }) {
-  return (
-    <div className="factory-profile-card-header">
-      <h2>{title}</h2>
-      {editable && <button className="factory-profile-edit-button" type="button" onClick={onEdit}>{actionLabel}</button>}
-    </div>
-  );
-}
-
 const brandProfileEditorOptions = {
-  productCategories: ["Womenswear", "Menswear", "Childrenswear", "Activewear", "Swimwear", "Accessories"],
-  garmentFocus: ["Wovens", "Cut & sew knits", "Knitwear", "Denim", "Outerwear", "Intimates"],
-  marketLevel: ["Luxury", "Premium / contemporary", "Mid range", "Mass market"],
+  productCategories: ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"],
+  productionTypes: ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"],
+  marketLevel: ["Luxury ($500+)", "Premium / contemporary ($100-$500)", "Mid range ($50-$100)", "Mass market (under $50)"],
   preferredRegions: ["Portugal", "China", "Korea", "India", "Turkey", "United States"],
   certifications: ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP", "No preference"],
   services: ["Full package", "CMT", "Pattern making", "Sample development", "Fabric sourcing"]
@@ -3143,7 +3465,7 @@ const brandProfileCompletionChecks = [
     title: "Payment method",
     status: "Not added",
     tone: "missing",
-    description: "Add a card or bank account now, or during the RFQ flow before confirming production.",
+    description: "Add a card or bank account now, or during the quote flow before confirming production.",
     action: "Add payment method"
   }
 ];
@@ -3168,7 +3490,7 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
           <div>
             <span>Profile verification</span>
             <h1>Profile completion summary</h1>
-            <p>You can browse factories and draft RFQs now. Complete the items below to improve trust signals and make the brand easier for factories to evaluate.</p>
+            <p>You can browse factories and draft quotes now. Complete the items below to improve trust signals and make the brand easier for factories to evaluate.</p>
           </div>
           <div className="factory-profile-completion-score">
             <strong>88%</strong>
@@ -3234,21 +3556,13 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
   );
 }
 
-function ProfileCompletionSummaryRow({ label, value }) {
-  return (
-    <div className="profile-completion-summary-row">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function BrandProfileEditModal({ editor, data, onClose, onSave }) {
   const isUploadEditor = ["banner", "assets", "projects"].includes(editor);
   const editorTitles = {
     overview: ["Edit overview", "Update the brand details factories see on this profile."],
     sourcing: ["Edit sourcing fit", "Update the tags factories use to understand what this brand is looking for."],
-    banner: ["Edit banner", "Upload or replace the banner image used on this profile."],
+    sourcingVolume: ["Edit sourcing volume", "Update order size, cadence, target pricing, and sourcing stage."],
+    banner: ["Edit profile images", "Upload or replace the profile image and banner image used on this profile."],
     assets: ["Manage brand assets", "Upload logos, product photos, direction files, and brand references."],
     projects: ["Manage projects", "Update completed or active TSC work shown to factories."],
     verification: ["Edit verification", "Add or update the onboarding verification details shown on this brand profile."],
@@ -3266,11 +3580,12 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
     annualRevenue: data.annualRevenue,
     intro: data.intro,
     productCategories: data.productCategories,
-    garmentFocus: data.garmentFocus,
+    productionTypes: data.productionTypes,
     marketLevel: data.marketLevel,
     preferredRegions: data.preferredRegions,
     certifications: data.certifications,
     services: data.services,
+    sourcingVolume: { ...data.sourcingVolume },
     stakeholders: data.stakeholders.map((stakeholder) => typeof stakeholder === "string"
       ? { name: stakeholder, email: "", role: "Stakeholder", permissions: ["approve"] }
       : { permissions: ["approve"], ...stakeholder }),
@@ -3354,11 +3669,18 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
     if (editor === "sourcing") {
       onSave({
         productCategories: form.productCategories,
-        garmentFocus: form.garmentFocus,
+        productionTypes: form.productionTypes,
         marketLevel: form.marketLevel,
         preferredRegions: form.preferredRegions,
         certifications: form.certifications,
         services: form.services
+      });
+      return;
+    }
+
+    if (editor === "sourcingVolume") {
+      onSave({
+        sourcingVolume: form.sourcingVolume
       });
       return;
     }
@@ -3415,17 +3737,22 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
 
         {editor === "overview" && (
           <div className="brand-profile-edit-grid">
-            <BrandProfileEditField label="Brand name" value={form.name} onChange={(value) => updateField("name", value)} />
-            <BrandProfileEditField label="Location" value={form.location} onChange={(value) => updateField("location", value)} />
-            <BrandProfileEditField label="Brand category" value={form.category} onChange={(value) => updateField("category", value)} />
-            <BrandProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
-            <BrandProfileEditField label="Website" value={form.website} onChange={(value) => updateField("website", value)} />
-            <BrandProfileEditField label="Business email" value={form.businessEmail} onChange={(value) => updateField("businessEmail", value)} />
-            <BrandProfileEditField label="Annual revenue" value={form.annualRevenue} onChange={(value) => updateField("annualRevenue", value)} />
             <label className="brand-profile-edit-field full-width">
               <span>Profile overview</span>
               <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
             </label>
+            <BrandProfileEditField label="Brand name" value={form.name} onChange={(value) => updateField("name", value)} />
+            <BrandProfileEditField
+              label="Brand category"
+              value={form.category}
+              onChange={(value) => updateField("category", value)}
+              type="select"
+              options={["Fashion brand", "Retailer", "Emerging designer", "Private label"]}
+            />
+            <BrandProfileEditField label="Business email" value={form.businessEmail} onChange={(value) => updateField("businessEmail", value)} />
+            <BrandProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
+            <BrandProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
+            <BrandProfileEditField label="HQ location" value={form.location} onChange={(value) => updateField("location", value)} />
           </div>
         )}
 
@@ -3434,7 +3761,7 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
             <section className="brand-profile-edit-section">
               <h2>What do you make?</h2>
               <BrandProfileChipEditor label="Product categories" options={brandProfileEditorOptions.productCategories} selected={form.productCategories} onChange={(items) => updateField("productCategories", items)} />
-              <BrandProfileChipEditor label="Garment focus" options={brandProfileEditorOptions.garmentFocus} selected={form.garmentFocus} onChange={(items) => updateField("garmentFocus", items)} />
+              <BrandProfileChipEditor label="Production type" options={brandProfileEditorOptions.productionTypes} selected={form.productionTypes} onChange={(items) => updateField("productionTypes", items)} />
               <BrandProfileChipEditor label="Market level" options={brandProfileEditorOptions.marketLevel} selected={form.marketLevel} onChange={(items) => updateField("marketLevel", items)} singleSelect />
             </section>
             <section className="brand-profile-edit-section">
@@ -3443,6 +3770,17 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
               <BrandProfileChipEditor label="Certifications" options={brandProfileEditorOptions.certifications} selected={form.certifications} onChange={(items) => updateField("certifications", items)} />
               <BrandProfileChipEditor label="Services needed" options={brandProfileEditorOptions.services} selected={form.services} onChange={(items) => updateField("services", items)} />
             </section>
+          </div>
+        )}
+
+        {editor === "sourcingVolume" && (
+          <div className="brand-profile-edit-grid">
+            <BrandProfileEditField label="Average pieces ordered per year" value={form.sourcingVolume.annualVolume} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, annualVolume: value })} />
+            <BrandProfileEditField label="Typical order size per style" value={form.sourcingVolume.orderSize} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, orderSize: value })} />
+            <BrandProfileEditField label="Collections per year" value={form.sourcingVolume.collectionsPerYear} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, collectionsPerYear: value })} />
+            <BrandProfileEditField label="Typical price range for core styles" value={form.sourcingVolume.targetPrice} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, targetPrice: value })} />
+            <BrandProfileEditField label="Typical reorder cadence" value={form.sourcingVolume.reorderCadence} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, reorderCadence: value })} />
+            <BrandProfileEditField label="Current sourcing stage" value={form.sourcingVolume.sourcingStage} onChange={(value) => updateField("sourcingVolume", { ...form.sourcingVolume, sourcingStage: value })} />
           </div>
         )}
 
@@ -3561,15 +3899,16 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
                 <BrandProfileEditField label="Account number" value={form.accountNumber} onChange={(value) => updateField("accountNumber", value)} />
               </div>
             )}
-            <p>RFQs can still be drafted. This verifies the profile payment signal and prepares the account for production milestones.</p>
+            <p>Quotes can still be drafted. This verifies the profile payment signal and prepares the account for production milestones.</p>
           </div>
         )}
 
         {isUploadEditor && (
-          <div className="brand-profile-upload-panel">
-            <button className="brand-profile-file-upload" type="button">Click or drag files to upload</button>
-            <p>Uploads are mocked in this prototype, using the same popup pattern as onboarding.</p>
-          </div>
+          <BrandProfileAssetEditor
+            assets={editor === "assets" ? data.assets : getBrandProfileMediaAssets(editor, data)}
+            uploadHelper={editor === "projects" ? "Add completed work, active production, or sampling proof that helps factories understand how this brand works." : editor === "assets" ? "Add logos, product photos, direction files, or brand references." : "Add another image or file."}
+            itemType={editor === "projects" ? "project" : "image"}
+          />
         )}
 
         <footer className="brand-profile-modal-actions">
@@ -3581,11 +3920,156 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
   );
 }
 
-function BrandProfileEditField({ label, value, onChange }) {
+function getBrandProfileMediaAssets(editor, data) {
+  if (editor === "banner") {
+    return [
+      { title: "Profile image", meta: "Current brand profile image", src: "/assets/prototype-icons/brand.svg" },
+      { title: "Profile banner", meta: "Current profile header image", src: data.heroImage || "/assets/header-images.png" }
+    ];
+  }
+
+  if (editor === "projects") {
+    const projects = [...(data.completedProjects || []), ...(data.activeProjects || [])];
+
+    return projects.map((project, index) => ({
+      title: project.title,
+      meta: `${project.partner || "Factory partner"} · ${project.result}`,
+      src: ["/assets/dashboard-rfq-shirt.jpg", "/assets/dashboard-rfq-denim.jpg", "/assets/dashboard-rfq-knit.jpg"][index % 3]
+    }));
+  }
+
+  return [];
+}
+
+function BrandProfileAssetEditor({ assets, uploadHelper, itemType = "image" }) {
+  const [items, setItems] = useState(assets);
+  const [addImageOpen, setAddImageOpen] = useState(false);
+  const [openAssetMenu, setOpenAssetMenu] = useState("");
+  const [editingAsset, setEditingAsset] = useState(null);
+  const isProject = itemType === "project";
+
+  return (
+    <div className="brand-profile-upload-panel">
+      {items.length > 0 && (
+        <div className="profile-asset-manager-grid">
+          {items.map((asset) => (
+            <article className="profile-asset-manager-card" key={asset.title}>
+              <div className="profile-asset-card-menu">
+                <button
+                  className="settings-menu-btn"
+                  type="button"
+                  aria-label={`More options for ${asset.title}`}
+                  aria-expanded={openAssetMenu === asset.title}
+                  onClick={() => setOpenAssetMenu((current) => current === asset.title ? "" : asset.title)}
+                />
+                {openAssetMenu === asset.title && (
+                  <div className="profile-asset-overflow-menu" role="menu">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setEditingAsset(asset);
+                        setOpenAssetMenu("");
+                      }}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      className="danger"
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setItems((current) => current.filter((item) => item.title !== asset.title));
+                        setOpenAssetMenu("");
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
+              <img src={asset.src} alt={`${asset.title} preview`} />
+              <div>
+                <strong>{asset.title}</strong>
+                <span>{asset.meta}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      <button className="secondary-btn profile-asset-add-button" type="button" onClick={() => setAddImageOpen(true)}>{isProject ? "+ Add project" : "+ Add image"}</button>
+      {addImageOpen && (
+        <ProfileAssetUploadDialog
+          helper={uploadHelper}
+          itemType={itemType}
+          onClose={() => setAddImageOpen(false)}
+        />
+      )}
+      {editingAsset && (
+        <ProfileAssetUploadDialog
+          asset={editingAsset}
+          helper={isProject ? "Update the project image, title, or summary shown on this card." : "Update the image, name, or description shown on this card."}
+          itemType={itemType}
+          mode="edit"
+          onClose={() => setEditingAsset(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProfileAssetUploadDialog({ asset = null, helper, itemType = "image", mode = "add", onClose }) {
+  const isEdit = mode === "edit";
+  const isProject = itemType === "project";
+
+  return (
+    <div className="profile-asset-upload-layer" role="presentation">
+      <button className="profile-asset-upload-scrim" type="button" aria-label={isEdit ? "Close edit image dialog" : "Close add image dialog"} onClick={onClose} />
+      <section className="profile-asset-upload-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-asset-upload-title">
+        <button className="brand-profile-modal-close profile-asset-upload-close" type="button" aria-label={isEdit ? "Close edit image dialog" : "Close add image dialog"} onClick={onClose}>×</button>
+        <header>
+          <h2 id="profile-asset-upload-title">{isEdit ? (isProject ? "Edit project" : "Edit image") : (isProject ? "Add project" : "Add image")}</h2>
+          <p>{helper}</p>
+        </header>
+        {isEdit && asset?.src && (
+          <div className="profile-asset-edit-preview">
+            <img src={asset.src} alt={`${asset.title} preview`} />
+          </div>
+        )}
+        <button className="brand-profile-file-upload" type="button">
+          <img src="/assets/prototype-icons/upload.svg" alt="" />
+          <strong>{isEdit ? (isProject ? "Click or drag files to replace project image" : "Click or drag files to replace image") : "Click or drag files to upload"}</strong>
+        </button>
+        <div className="profile-asset-metadata-grid">
+          <label>
+            <span>{isProject ? "Project title" : "Image name"}</span>
+            <input defaultValue={asset?.title || ""} placeholder={isProject ? "e.g. Organic cotton woven shirt production" : "e.g. Organic poplin fit sample"} />
+          </label>
+          <label>
+            <span>{isProject ? "Project summary" : "Description"}</span>
+            <input defaultValue={asset?.meta || ""} placeholder={isProject ? "e.g. Factory partner · Completed on time" : "e.g. Wovens · sample development"} />
+          </label>
+        </div>
+        <footer className="profile-asset-upload-actions">
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onClose}>{isEdit ? "Save changes" : (isProject ? "Add project" : "Add image")}</button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function BrandProfileEditField({ label, value, onChange, type = "text", options = [] }) {
   return (
     <label className="brand-profile-edit-field">
       <span>{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
+      {type === "select" ? (
+        <select value={value} onChange={(event) => onChange(event.target.value)}>
+          {options.map((option) => <option value={option} key={option}>{option}</option>)}
+        </select>
+      ) : (
+        <input value={value} onChange={(event) => onChange(event.target.value)} />
+      )}
     </label>
   );
 }
@@ -3619,26 +4103,6 @@ function BrandProfileChipEditor({ label, options, selected, onChange, singleSele
         ))}
       </div>
     </section>
-  );
-}
-
-function BrandProfileChipSection({ label, items }) {
-  return (
-    <div className="factory-profile-chip-section">
-      <span>{label}</span>
-      <div className="tag-row compact-tags">
-        {items.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
-      </div>
-    </div>
-  );
-}
-
-function BrandProfileDetailPair({ label, value }) {
-  return (
-    <div className="factory-detail-pair">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }
 
@@ -3867,12 +4331,45 @@ function DirectoryFactoryCard({ factory, onQuote }) {
 }
 
 function FactoryMarketplaceScreen({ goTo }) {
+  const [filtersOpen, setFiltersOpen] = useState(false);
+
+  useEffect(() => {
+    if (!filtersOpen) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setFiltersOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [filtersOpen]);
+
   return (
     <div className="marketplace-shell">
-      <aside className="marketplace-filter-panel" aria-label="Marketplace filters">
+      {filtersOpen && (
+        <button
+          className="marketplace-filter-backdrop"
+          type="button"
+          aria-label="Close filters"
+          onClick={() => setFiltersOpen(false)}
+        />
+      )}
+      <aside
+        className={filtersOpen ? "marketplace-filter-panel is-mobile-open" : "marketplace-filter-panel"}
+        id="marketplace-filter-panel"
+        role={filtersOpen ? "dialog" : undefined}
+        aria-modal={filtersOpen ? "true" : undefined}
+        aria-label="Marketplace filters"
+      >
         <div className="directory-filter-header">
           <strong>Filters</strong>
-          <button type="button">Reset</button>
+          <div className="marketplace-filter-header-actions">
+            <button type="button">Reset</button>
+            <button className="marketplace-filter-close" type="button" onClick={() => setFiltersOpen(false)}>Close</button>
+          </div>
         </div>
         <FilterGroup title="Production type">
           <FilterCheck label="Cut & sew knits" />
@@ -3982,7 +4479,7 @@ function FactoryMarketplaceScreen({ goTo }) {
         <header className="marketplace-header">
           <div>
             <p className="eyebrow">FACTORY DIRECTORY</p>
-            <h1>BROWSE FACTORIES</h1>
+              <h1>Browse factories</h1>
           </div>
           <label className="directory-search marketplace-search">
             <SearchIcon />
@@ -3995,6 +4492,16 @@ function FactoryMarketplaceScreen({ goTo }) {
             <span>showing larger samples, exact garment tags, specialties, and verified capability notes</span>
           </div>
           <div className="directory-summary-actions">
+            <button
+              className="filter-button compact-filter-button"
+              type="button"
+              aria-controls="marketplace-filter-panel"
+              aria-expanded={filtersOpen}
+              aria-haspopup="dialog"
+              onClick={() => setFiltersOpen(true)}
+            >
+              Filters
+            </button>
             <button className="filter-button sort-button" type="button">Sort: Best fit</button>
           </div>
         </div>
@@ -4039,7 +4546,7 @@ function MarketplaceFactoryCard({ factory, onQuote }) {
         </div>
         <div className="marketplace-factory-actions">
           <button className="secondary-btn" type="button">Save</button>
-          <button className="secondary-btn" type="button">Message</button>
+          <button className="secondary-btn marketplace-message-action" type="button">Message</button>
           <button className="primary-btn" type="button" onClick={onQuote}>Request quote</button>
         </div>
       </div>
@@ -4131,7 +4638,7 @@ function SavedFactoriesScreen({ goTo }) {
       <header className="rfqs-header saved-header">
         <div>
           <h1>Saved factories</h1>
-          <p>Factories Maison Rue saved for current RFQs, future sourcing, and production follow-up.</p>
+          <p>Factories Maison Rue saved for current quotes, future sourcing, and production follow-up.</p>
         </div>
         <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse factories</button>
       </header>
@@ -4164,12 +4671,21 @@ function SavedFactoriesScreen({ goTo }) {
 }
 
 function SavedFactoryCard({ factory, goTo }) {
-  const preview = factory.products?.[0];
+  const previews = factory.products || [];
+  const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
+  const updateSampleScroll = (element) => {
+    if (!element) return;
+    const remaining = element.scrollWidth - element.clientWidth - element.scrollLeft;
+    setSampleScroll({
+      left: element.scrollLeft > 4,
+      right: remaining > 4
+    });
+  };
 
   return (
     <article className="saved-factory-card">
       <header className="saved-factory-card-top">
-        <div className="saved-factory-identity">
+        <div className="marketplace-factory-title saved-factory-identity">
           <div className="factory-avatar">{factory.initials}</div>
           <div>
             <div className="factory-name-row">
@@ -4191,7 +4707,7 @@ function SavedFactoryCard({ factory, goTo }) {
       </header>
 
       <div className="saved-factory-card-body">
-        <aside className="saved-factory-profile-copy">
+        <aside className="marketplace-spec-panel saved-factory-profile-copy">
           <div className="saved-factory-stat-grid">
             {factory.stats.map(([label, value]) => (
               <div key={label}>
@@ -4210,11 +4726,45 @@ function SavedFactoryCard({ factory, goTo }) {
             </div>
           </div>
         </aside>
-        {preview && (
-          <figure className="saved-factory-visual">
-            <img src={preview.image} alt={`${factory.name} ${preview.name}`} />
-            <figcaption>{preview.name}</figcaption>
-          </figure>
+        {previews.length > 0 && (
+          <div className="saved-factory-samples-shell">
+            <button
+              className={sampleScroll.left ? "marketplace-samples-prev visible" : "marketplace-samples-prev"}
+              type="button"
+              aria-label="Scroll saved sample images back"
+              onClick={(event) => {
+                const scroller = event.currentTarget.nextElementSibling;
+                scroller?.scrollBy({ left: -220, behavior: "smooth" });
+                window.setTimeout(() => updateSampleScroll(scroller), 260);
+              }}
+            >
+              <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+            </button>
+            <div
+              className="saved-factory-samples"
+              aria-label={`${factory.name} saved sample products`}
+              onScroll={(event) => updateSampleScroll(event.currentTarget)}
+            >
+              {previews.map((preview) => (
+                <figure className={preview.factory ? "saved-factory-visual factory-media" : "saved-factory-visual"} key={preview.name}>
+                  <img src={preview.image} alt={`${factory.name} ${preview.name}`} />
+                  <figcaption>{preview.name}</figcaption>
+                </figure>
+              ))}
+            </div>
+            <button
+              className={sampleScroll.right ? "marketplace-samples-next visible" : "marketplace-samples-next"}
+              type="button"
+              aria-label="Scroll saved sample images"
+              onClick={(event) => {
+                const scroller = event.currentTarget.previousElementSibling;
+                scroller?.scrollBy({ left: 220, behavior: "smooth" });
+                window.setTimeout(() => updateSampleScroll(scroller), 260);
+              }}
+            >
+              <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+            </button>
+          </div>
         )}
       </div>
     </article>
@@ -4224,7 +4774,7 @@ function SavedFactoryCard({ factory, goTo }) {
 function RfqsScreen({ goTo }) {
   const [activeTab, setActiveTab] = useState("active");
   const [rfqTabs, setRfqTabs] = useState([
-    { key: "active", label: "Active RFQs (4)", locked: true },
+    { key: "active", label: "Active quotes (4)", locked: true },
     { key: "drafts", label: "Drafts (2)", locked: true },
     { key: "closed", label: "Closed (6)", locked: true }
   ]);
@@ -4238,6 +4788,7 @@ function RfqsScreen({ goTo }) {
     closed: closedRfqs
   };
   const activeRfqsForTab = rfqDataByTab[activeTab] || activeRfqs;
+  const customTabs = rfqTabs.filter((tab) => !tab.locked).map((tab) => tab.label);
 
   function openManageTabs() {
     setDraftTabs(rfqTabs);
@@ -4297,13 +4848,13 @@ function RfqsScreen({ goTo }) {
     <div className="rfqs-shell">
       <header className="rfqs-header">
         <div>
-          <h1>RFQs</h1>
+          <h1>Quotes</h1>
           <p>Track live factory quote requests, compare responses, and move selected quotes toward contract terms.</p>
         </div>
-        <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Post new RFQ</button>
+        <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Request new quote</button>
       </header>
 
-      <section className="rfqs-controls" aria-label="RFQ filters">
+      <section className="rfqs-controls" aria-label="Quote filters">
         <label className="rfqs-search">
           <span>Search Projects</span>
           <div>
@@ -4321,57 +4872,61 @@ function RfqsScreen({ goTo }) {
         </label>
       </section>
 
-      <nav className="rfqs-tabs projects-tabs" aria-label="RFQ status">
-        {rfqTabs.map((tab) => (
-          !tab.locked ? (
-            <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+      <nav className="rfqs-tabs projects-tabs" aria-label="Quote status">
+        <div className="project-tabs-scroll">
+          {rfqTabs.map((tab) => (
+            !tab.locked ? (
+              <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+                <button
+                  className={activeTab === tab.key ? "active" : ""}
+                  type="button"
+                  aria-current={activeTab === tab.key ? "page" : undefined}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              </div>
+            ) : (
               <button
                 className={activeTab === tab.key ? "active" : ""}
                 type="button"
                 aria-current={activeTab === tab.key ? "page" : undefined}
                 onClick={() => setActiveTab(tab.key)}
+                key={tab.key}
               >
                 {tab.label}
               </button>
-            </div>
-          ) : (
-            <button
-              className={activeTab === tab.key ? "active" : ""}
-              type="button"
-              aria-current={activeTab === tab.key ? "page" : undefined}
-              onClick={() => setActiveTab(tab.key)}
-              key={tab.key}
-            >
-              {tab.label}
-            </button>
-          )
-        ))}
-        {isAddingTab ? (
-          <form className="project-tab-add-form" onSubmit={addCustomTab}>
-            <input
-              value={newTabName}
-              onChange={(event) => setNewTabName(event.target.value)}
-              placeholder="Tab name"
-              autoFocus
-            />
-            <button type="submit">Add</button>
-            <button
-              className="project-tab-add-cancel"
-              type="button"
-              aria-label="Cancel adding tab"
-              onClick={() => {
-                setNewTabName("");
-                setIsAddingTab(false);
-              }}
-            >
-              ×
-            </button>
-          </form>
-        ) : (
-          <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
-            + Add tab
-          </button>
-        )}
+            )
+          ))}
+          <div className={isAddingTab ? "project-tab-add-slot editing" : "project-tab-add-slot"}>
+            {isAddingTab ? (
+              <form className="project-tab-add-form" onSubmit={addCustomTab}>
+                <input
+                  value={newTabName}
+                  onChange={(event) => setNewTabName(event.target.value)}
+                  placeholder="Tab name"
+                  autoFocus
+                />
+                <button type="submit">Add</button>
+                <button
+                  className="project-tab-add-cancel"
+                  type="button"
+                  aria-label="Cancel adding tab"
+                  onClick={() => {
+                    setNewTabName("");
+                    setIsAddingTab(false);
+                  }}
+                >
+                  ×
+                </button>
+              </form>
+            ) : (
+              <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+                + Add tab
+              </button>
+            )}
+          </div>
+        </div>
         <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
           Manage tabs
         </button>
@@ -4384,7 +4939,7 @@ function RfqsScreen({ goTo }) {
             <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setManageTabsOpen(false)}>×</button>
             <header className="brand-profile-modal-header">
               <h1 id="rfq-tabs-title">Manage tabs</h1>
-              <p>Create RFQ tabs for styles, seasons, collections, or any request grouping your team uses.</p>
+              <p>Create quote tabs for styles, seasons, collections, or any request grouping your team uses.</p>
             </header>
 
             <div className="project-tabs-manager">
@@ -4412,16 +4967,16 @@ function RfqsScreen({ goTo }) {
         document.body
       )}
 
-      <section className="rfq-list" aria-label={`${activeTab} RFQs`}>
+      <section className="rfq-list" aria-label={`${activeTab} quotes`}>
         {activeRfqsForTab.map((rfq) => (
-          <RfqCard rfq={rfq} goTo={goTo} key={rfq.title} />
+          <RfqCard rfq={rfq} goTo={goTo} customTabs={customTabs} key={rfq.title} />
         ))}
       </section>
     </div>
   );
 }
 
-function RfqCard({ rfq, goTo }) {
+function RfqCard({ rfq, goTo, customTabs = [] }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const [quotesReceived, invitedCount, messageCount] = rfq.metrics;
@@ -4447,17 +5002,17 @@ function RfqCard({ rfq, goTo }) {
   }, [menuOpen]);
 
   return (
-    <article className={rfq.featured ? "rfq-card featured" : "rfq-card"}>
-      <header className="rfq-card-top">
-        <div className="rfq-title-row">
+    <article className={rfq.featured ? "rfq-card featured shared-responsive-card" : "rfq-card shared-responsive-card"}>
+      <header className="rfq-card-top shared-card-header">
+        <div className="rfq-title-row shared-card-heading">
           <div className="rfq-main">
             <h2>{rfq.title}</h2>
             <p className="rfq-date">{rfq.date}</p>
           </div>
         </div>
-        <div className="rfq-card-actions">
-          <span className={`tag rfq-status ${rfq.statusTone}`}>{rfq.status}</span>
-          <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View RFQ</button>
+        <div className="rfq-card-actions shared-card-actions">
+          <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{rfq.status}</span>
+          <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View quote</button>
           <div className="project-overflow" ref={menuRef}>
             <button
               className="rfq-more"
@@ -4470,17 +5025,29 @@ function RfqCard({ rfq, goTo }) {
             </button>
             {menuOpen && (
               <div className="project-overflow-menu rfq-overflow-menu" role="menu">
-                <button type="button" role="menuitem" onClick={() => goTo("review")}>Edit RFQ</button>
-                <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate RFQ</button>
+                <div className="project-overflow-submenu">
+                  <button type="button" role="menuitem">Add to</button>
+                  {customTabs.length > 0 && (
+                    <div className="project-overflow-submenu-panel">
+                      {customTabs.map((tab) => (
+                        <button type="button" role="menuitem" key={tab} onClick={() => setMenuOpen(false)}>
+                          {tab}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button type="button" role="menuitem" onClick={() => goTo("review")}>Edit quote</button>
+                <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate quote</button>
                 <button type="button" role="menuitem" onClick={() => goTo("invite")}>Invite more factories</button>
-                <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive RFQ</button>
+                <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive quote</button>
               </div>
             )}
           </div>
         </div>
       </header>
 
-      <div className="rfq-card-body">
+      <div className="rfq-card-body shared-card-body">
         <aside className="rfq-brief">
           <div className="rfq-facts">
             {facts.map(([label, value]) => (
@@ -4625,56 +5192,60 @@ function ProjectsScreen({ goTo, setSelectedReorderProject }) {
       </section>
 
       <nav className="rfqs-tabs projects-tabs" aria-label="Project status">
-        {projectTabs.map((tab) => (
-          !tab.locked ? (
-            <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+        <div className="project-tabs-scroll">
+          {projectTabs.map((tab) => (
+            !tab.locked ? (
+              <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
+                <button
+                  className={activeTab === tab.key ? "active" : ""}
+                  type="button"
+                  aria-current={activeTab === tab.key ? "page" : undefined}
+                  onClick={() => setActiveTab(tab.key)}
+                >
+                  {tab.label}
+                </button>
+              </div>
+            ) : (
               <button
                 className={activeTab === tab.key ? "active" : ""}
                 type="button"
                 aria-current={activeTab === tab.key ? "page" : undefined}
                 onClick={() => setActiveTab(tab.key)}
+                key={tab.key}
               >
                 {tab.label}
               </button>
-            </div>
-          ) : (
-            <button
-              className={activeTab === tab.key ? "active" : ""}
-              type="button"
-              aria-current={activeTab === tab.key ? "page" : undefined}
-              onClick={() => setActiveTab(tab.key)}
-              key={tab.key}
-            >
-              {tab.label}
-            </button>
-          )
-        ))}
-        {isAddingTab ? (
-          <form className="project-tab-add-form" onSubmit={addCustomTab}>
-            <input
-              value={newTabName}
-              onChange={(event) => setNewTabName(event.target.value)}
-              placeholder="Tab name"
-              autoFocus
-            />
-            <button type="submit">Add</button>
-            <button
-              className="project-tab-add-cancel"
-              type="button"
-              aria-label="Cancel adding tab"
-              onClick={() => {
-                setNewTabName("");
-                setIsAddingTab(false);
-              }}
-            >
-              ×
-            </button>
-          </form>
-        ) : (
-          <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
-            + Add tab
-          </button>
-        )}
+            )
+          ))}
+          <div className={isAddingTab ? "project-tab-add-slot editing" : "project-tab-add-slot"}>
+            {isAddingTab ? (
+              <form className="project-tab-add-form" onSubmit={addCustomTab}>
+                <input
+                  value={newTabName}
+                  onChange={(event) => setNewTabName(event.target.value)}
+                  placeholder="Tab name"
+                  autoFocus
+                />
+                <button type="submit">Add</button>
+                <button
+                  className="project-tab-add-cancel"
+                  type="button"
+                  aria-label="Cancel adding tab"
+                  onClick={() => {
+                    setNewTabName("");
+                    setIsAddingTab(false);
+                  }}
+                >
+                  ×
+                </button>
+              </form>
+            ) : (
+              <button className="project-tab-add" type="button" onClick={() => setIsAddingTab(true)}>
+                + Add tab
+              </button>
+            )}
+          </div>
+        </div>
         <button className="project-tab-add project-tab-manage" type="button" onClick={openManageTabs}>
           Manage tabs
         </button>
@@ -4751,16 +5322,18 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
   }, [menuOpen]);
 
   return (
-    <article className={project.featured ? "brand-project-card featured" : "brand-project-card"}>
-      <header className="project-card-top">
-        <div className="project-main">
+    <article className={project.featured ? "brand-project-card featured shared-responsive-card" : "brand-project-card shared-responsive-card"}>
+      <header className="project-card-top shared-card-header">
+        <div className="project-main shared-card-heading">
           <h2>{project.title}</h2>
           <p className="project-meta">{project.factory} · {project.location} · {project.started}</p>
         </div>
-        <div className="project-actions">
-          <span className={`project-status ${project.statusTone}`}>{project.status}</span>
-          <button className="secondary-btn" type="button">Message</button>
-          <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>{actionLabel}</button>
+        <ProjectCardActions
+          actionLabel={actionLabel}
+          onAction={() => goTo("projectDetail")}
+          status={project.status}
+          statusTone={project.statusTone}
+        >
           <div className="project-overflow" ref={menuRef}>
             <button className="rfq-more" type="button" aria-label="More order actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
             {menuOpen && (
@@ -4790,10 +5363,10 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
               </div>
             )}
           </div>
-        </div>
+        </ProjectCardActions>
       </header>
 
-      <div className="project-card-body">
+      <div className="project-card-body shared-card-body">
         <aside className="project-card-brief">
           <div className="project-facts">
             {projectFacts.map(([label, value]) => (
@@ -4850,6 +5423,7 @@ function ProjectDetailScreen({ goTo, goToFundingMilestone }) {
   const [paidMilestones, setPaidMilestones] = useState([]);
   const [approvalMilestone, setApprovalMilestone] = useState(null);
   const [approvedMilestones, setApprovedMilestones] = useState([]);
+  const [commentMilestone, setCommentMilestone] = useState(null);
   const detailTabs = [
     ["overview", "Overview"],
     ["files", "Files"],
@@ -4900,6 +5474,7 @@ function ProjectDetailScreen({ goTo, goToFundingMilestone }) {
                     onApproveFund={setApproveFundMilestone}
                     onFundMilestone={goToFundingMilestone}
                     onApprove={setApprovalMilestone}
+                    onComment={setCommentMilestone}
                     key={milestone.title}
                   />
                 ))}
@@ -4951,6 +5526,13 @@ function ProjectDetailScreen({ goTo, goToFundingMilestone }) {
             setApprovedMilestones((current) => current.includes(approvalMilestone.title) ? current : [...current, approvalMilestone.title]);
             setApprovalMilestone(null);
           }}
+        />
+      ), document.body)}
+      {commentMilestone && createPortal((
+        <MilestoneCommentModal
+          milestone={commentMilestone}
+          onClose={() => setCommentMilestone(null)}
+          onPost={() => setCommentMilestone(null)}
         />
       ), document.body)}
     </div>
@@ -5061,7 +5643,7 @@ function ProjectContractDetailsPanel({ goTo }) {
   );
 }
 
-function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = false, onApproveFund, onFundMilestone, onApprove }) {
+function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = false, onApproveFund, onFundMilestone, onApprove, onComment }) {
   const handleAction = () => {
     if (milestone.action === "Approve fund") onApproveFund?.(milestone);
     if (milestone.action === "Fund milestone") onFundMilestone?.(milestone);
@@ -5084,7 +5666,7 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
         <p className="milestone-description">{milestone.description}</p>
         {milestone.update && <ProjectUpdateCard />}
       </div>
-      <button className="milestone-comment" type="button" aria-label={`Add update for ${milestone.title}`}>
+      <button className="milestone-comment" type="button" aria-label={`Add update for ${milestone.title}`} onClick={() => onComment?.(milestone)}>
         <img src="/assets/prototype-icons/add-update.svg" alt="" />
       </button>
       {(isPaid || isApproved) && (
@@ -5098,6 +5680,35 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
         </button>
       )}
     </article>
+  );
+}
+
+function MilestoneCommentModal({ milestone, onClose, onPost }) {
+  return (
+    <div className="approve-fund-modal-layer" role="presentation">
+      <button className="approve-fund-modal-scrim" type="button" aria-label="Close comment" onClick={onClose} />
+      <section className="approve-fund-modal milestone-comment-modal" role="dialog" aria-modal="true" aria-labelledby="milestone-comment-title">
+        <button className="settings-drawer-close" type="button" aria-label="Close comment" onClick={onClose}>
+          <img src="/assets/prototype-icons/close.svg" alt="" />
+        </button>
+        <header>
+          <h2 id="milestone-comment-title">Add {milestone.title.toLowerCase()} comment</h2>
+          <span>Share feedback, questions, or files with Atelier Minho for this production step.</span>
+        </header>
+        <label className="approve-fund-note">
+          <span>Comment</span>
+          <textarea rows={3} placeholder="Write a comment for Atelier Minho..." autoFocus />
+        </label>
+        <button className="milestone-comment-upload" type="button">
+          <strong>+ Upload photos</strong>
+          <span>JPG or PNG, up to 10 files</span>
+        </button>
+        <footer>
+          <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-btn" type="button" onClick={onPost}>Post comment</button>
+        </footer>
+      </section>
+    </div>
   );
 }
 
@@ -5240,10 +5851,31 @@ function ReviewScreen() {
           <Field label="Target unit price" value="Ideal $18-$24 per unit" />
           <Field label="Factory region preference" value="China, Portugal, Korea" />
           <Field label="Certifications" value="GOTS preferred" />
+          <Field label="Quote deadline" value="Jul 24, 2026 · 5 business days after publish" className="brief-grid-full" />
         </div>
-        <div className="single-field">
-          <Field label="Quote deadline" value="Jul 24, 2026 · 5 business days after publish" />
-        </div>
+        <section className="brief-sourcing-block">
+          <h3>Factory sourcing responsibility</h3>
+          <div className="brief-sourcing-section">
+            <div className="brief-sourcing-grid">
+            <label className="field-label" htmlFor="review-sourcing-support">
+              Sourcing support needed
+              <select id="review-sourcing-support" defaultValue="partial">
+                <option value="full">Factory should source all materials and components</option>
+                <option value="partial">Factory should source some materials or components</option>
+                <option value="brand-provided">Brand will provide all materials and components</option>
+                <option value="unsure">Not sure yet</option>
+              </select>
+            </label>
+            <label className="field-label" htmlFor="review-sourcing-details">
+              Details
+              <textarea
+                id="review-sourcing-details"
+                defaultValue="Factory should source organic cotton poplin and button trims from brand-approved direction. Brand will provide labels, packaging, and final color standards."
+              />
+            </label>
+            </div>
+          </div>
+        </section>
       </Card>
       <Card title="Additional details">
         <div className="note-field">
@@ -5261,7 +5893,7 @@ function ReviewScreen() {
           <ol>
             <li>Can you quote fit sample and PP sample separately?</li>
             <li>Can you support 3 colors at 100 units each?</li>
-            <li>What fabric GSM or trim details do you need before final sample cost?</li>
+            <li>Which materials or components can you source, and what do you need the brand to provide?</li>
           </ol>
         </div>
       </Card>
@@ -5278,11 +5910,6 @@ function InviteScreen({ selectedFactories, setSelectedFactories }) {
 
   return (
     <div className="stack">
-      <div className="invite-tabs">
-        <button className="active" type="button">Search</button>
-        <button type="button">Selected ({selectedFactories.length})</button>
-        <button type="button">Saved (4)</button>
-      </div>
       <div className="invite-toolbar">
         <label className="search-field">
           <SearchIcon />
@@ -5301,12 +5928,14 @@ function InviteScreen({ selectedFactories, setSelectedFactories }) {
         <button className="filter-button" type="button">≡ Filter</button>
       </div>
       <div className="filter-strip">
-        <span>Filters preselected from your request</span>
-        <div>
+        <div className="filter-strip-header">
+          <span>Filters preselected from your request</span>
+          <button className="clear-filters" type="button">Clear filters</button>
+        </div>
+        <div className="filter-chip-row">
           {["Cut & sew", "MOQ ≤ 500", "GOTS preferred", "China / Portugal / Korea"].map((filter) => (
             <button className="filter-chip" key={filter} type="button">{filter}</button>
           ))}
-          <button className="clear-filters" type="button">Clear filters</button>
         </div>
       </div>
       <Card className="invite-results">
@@ -5362,8 +5991,8 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
             <span className="orders-count">{factory.name === "Atelier Minho" ? "12" : factory.name === "Hanshu Studio" ? "8" : "19"} Club orders</span>
           </div>
           <div className="factory-actions">
-            <span className="save-pill">Message</span>
-            <strong>{isSelected ? "Selected" : "Invite"}</strong>
+            <span className="save-pill button-like-action">Message</span>
+            <strong className="button-like-action">{isSelected ? "Selected" : "Invite"}</strong>
           </div>
         </div>
 
@@ -5429,6 +6058,41 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
   );
 }
 
+function InviteSuccessScreen({ goTo, selectedFactories }) {
+  const factoryCount = selectedFactories.length;
+
+  return (
+    <div className="stack">
+      <section className="success-card invite-success-card">
+        <span className="success-mark">✓</span>
+        <div className="success-copy">
+          <h2>Your quote request is live</h2>
+          <p>
+            We sent the brief to {factoryCount} selected factories. They can review the request,
+            ask questions, and submit quotes before the deadline.
+          </p>
+        </div>
+        <section className="success-next-panel">
+          <h3>What happens next</h3>
+          <ul className="success-next-list">
+            <li>Factories review your brief, attachments, and sourcing responsibilities.</li>
+            <li>You will see responses, questions, and quote status updates on the quotes page.</li>
+            <li>When enough quotes are ready, compare pricing, timing, and sample plans before choosing one.</li>
+          </ul>
+        </section>
+        <div className="success-actions">
+          <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>
+            Review quotes
+          </button>
+          <button className="secondary-btn" type="button" onClick={() => goTo("home")}>
+            Go to dashboard
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function isBlueTag(tag) {
   return tag.startsWith("Open ") || tag.includes("units") || tag === "Best price" || tag === "split colorways";
 }
@@ -5465,11 +6129,19 @@ function formatQuoteCurrency(value) {
 
 function getQuoteComparisonDetails(factory) {
   const sampleSubtotal = factory.name === "Ningbo Woven Co" ? 220 : 260;
-  const productionSubtotal = parseQuoteCurrency(factory.price) * parseQuoteUnits(factory.quoteQuantity);
+  const quantity = parseQuoteUnits(factory.quoteQuantity);
+  const productionSubtotal = parseQuoteCurrency(factory.price) * quantity;
+  const materialCosts = factory.materialCosts || [];
+  const includedMaterialPerUnit = materialCosts.reduce((total, item) => total + (item.included ? item.costPerUnit : 0), 0);
+  const additionalMaterialPerUnit = materialCosts.reduce((total, item) => total + (item.included ? 0 : item.costPerUnit), 0);
+  const additionalMaterialSubtotal = additionalMaterialPerUnit * quantity;
   return {
     productionSubtotal: formatQuoteCurrency(productionSubtotal),
     sampleSubtotal: formatQuoteCurrency(sampleSubtotal),
-    total: formatQuoteCurrency(productionSubtotal + sampleSubtotal),
+    includedMaterialPerUnit: `$${includedMaterialPerUnit.toFixed(2)} / unit`,
+    additionalMaterialPerUnit: `$${additionalMaterialPerUnit.toFixed(2)} / unit`,
+    additionalMaterialSubtotal: formatQuoteCurrency(additionalMaterialSubtotal),
+    total: formatQuoteCurrency(productionSubtotal + sampleSubtotal + additionalMaterialSubtotal),
     paymentTerms: factory.name === "Ningbo Woven Co" ? "40% deposit · 60% before shipment" : "30% deposit · 70% before shipment",
     samplePlan: factory.name === "Ningbo Woven Co" ? "Fit + PP · 24 days" : "Fit + PP · 21 days",
     shipping: factory.name === "Atelier Minho" ? "FOB quoted · freight not included" : "EXW quoted · freight not included",
@@ -5490,10 +6162,6 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
 
   return (
     <div className="stack quote-review-stack">
-      <div className="invite-tabs">
-        <button className="active" type="button">All quotes (3)</button>
-        <button type="button">Messages (2)</button>
-      </div>
       <div className="quote-compare-topbar">
         <div>
           <strong>Compare quotes</strong>
@@ -5536,7 +6204,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                 </div>
                 <div className="factory-actions quote-actions">
                   <span
-                    className="save-pill"
+                    className="save-pill button-like-action"
                     onClick={(event) => {
                       event.stopPropagation();
                       goTo("messages");
@@ -5545,7 +6213,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                     Message
                   </span>
                   <span
-                    className="save-pill"
+                    className="save-pill button-like-action"
                     onClick={(event) => {
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
@@ -5555,6 +6223,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                     Review quote
                   </span>
                   <strong
+                    className="button-like-action"
                     onClick={(event) => {
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
@@ -5618,6 +6287,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                     <th>Bulk lead</th>
                     <th>Production subtotal</th>
                     <th>Sample subtotal</th>
+                    <th>Additional materials</th>
                     <th>Payment terms</th>
                     <th>Sample plan</th>
                     <th>Shipping</th>
@@ -5641,6 +6311,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                         <td>{factory.lead}</td>
                         <td>{details.productionSubtotal}</td>
                         <td>{details.sampleSubtotal}</td>
+                        <td>{details.additionalMaterialSubtotal}</td>
                         <td>{details.paymentTerms}</td>
                         <td>{details.samplePlan}</td>
                         <td>{details.shipping}</td>
@@ -5667,6 +6338,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
 
 function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
   const factory = factories.find((item) => item.name === selectedQuote) || factories[0];
+  const quoteDetails = getQuoteComparisonDetails(factory);
   return (
     <div className="quote-detail-layout">
       <button className="text-link quote-back-link" type="button" onClick={() => goTo("quotes")}>‹ Back to factory quotes</button>
@@ -5689,8 +6361,9 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
                 </div>
               </div>
               <div className="factory-actions quote-actions">
-                <span className="save-pill">Message</span>
+                <span className="save-pill button-like-action">Message</span>
                 <strong
+                  className="button-like-action"
                   onClick={() => {
                     setSelectedReorderProject?.(null);
                     goTo("contract");
@@ -5734,18 +6407,40 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
             />
           </section>
 
+          <section className="quote-detail-section quote-sourcing-section">
+            <h3>Material sourcing responsibility</h3>
+            <DetailPairs
+              rows={[
+                ["Brand provides separately", "Labels, packaging, final color standards, and special branded trims."],
+                ["Factory includes", "Main production materials and standard components from approved direction, included in unit price."]
+              ]}
+            />
+            <div className="quote-material-cost-details">
+              <h4>Material cost details</h4>
+              <DetailRows
+                rows={(factory.materialCosts || []).map((item) => [
+                  item.material,
+                  `$${item.costPerUnit.toFixed(2)} / unit`,
+                  item.included ? "Included in unit price" : "Added separately"
+                ])}
+              />
+            </div>
+          </section>
+
           <section className="price-breakdown">
             <h3>Price breakdown</h3>
             <DetailRows
               rows={[
-                ["Production subtotal", `${factory.quoteQuantity} × ${factory.price}`, "$5,520"],
-                ["Sample subtotal", "Fit + PP samples", "$260"],
+                ["Production subtotal", `${factory.quoteQuantity} × ${factory.price}`, quoteDetails.productionSubtotal],
+                ["Materials included in unit price", quoteDetails.includedMaterialPerUnit, "Included above"],
+                ["Additional material cost", `${quoteDetails.additionalMaterialPerUnit} × ${factory.quoteQuantity}`, quoteDetails.additionalMaterialSubtotal],
+                ["Sample subtotal", "Fit + PP samples", quoteDetails.sampleSubtotal],
                 ["Shipping", "TBD by brand", "Not included"]
               ]}
             />
             <div className="quote-total">
               <strong>Quote total shown to brand</strong>
-              <span>$5,780</span>
+              <span>{quoteDetails.total}</span>
             </div>
           </section>
 
@@ -5762,7 +6457,7 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
 
           <section className="quote-note-panel">
             <h3>Factory notes and open clarification</h3>
-            <p>Can quote fit and PP separately. Needs confirmed fabric GSM, button trim, and final size spec before final sample cost.</p>
+            <p>Can quote fit and PP separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec.</p>
           </section>
         </Card>
 
@@ -5810,6 +6505,12 @@ function DetailRows({ rows }) {
 
 function ContractScreen({ selectedQuote, reorderProject = null }) {
   const isReorder = Boolean(reorderProject);
+  const deliveryTerms = [
+    ["DDP", "Factory delivers to final destination, including duties"],
+    ["CIF", "Factory covers cost, insurance, and freight to port"],
+    ["FOB", "Factory delivers to export port; buyer handles freight"]
+  ];
+  const [deliveryTerm, setDeliveryTerm] = useState("DDP");
   const reorderStyleName = reorderProject?.title?.replace(/\s+production$/i, "") || "";
   const contractTitle = isReorder
     ? `${reorderStyleName} reorder with ${reorderProject.factory}`
@@ -5824,11 +6525,6 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
   return (
     <div className="stack contract-stack">
       <Card title="Confirm final terms" className="final-terms-card">
-        <p className="muted">
-          {isReorder
-            ? `Copied from ${reorderProject.title} with ${reorderProject.factory}. Update anything that changed before funding the reorder.`
-            : "Update these if anything changed after chatting with the factory. Confirm final pricing, samples, QC, delivery terms, and revisions in the conversation before funding."}
-        </p>
         <div className="final-terms-grid">
           <AcceptedQuoteField label="Unit price" value="$18.40" />
           <AcceptedQuoteField label="Quantity" value="300 units" />
@@ -5837,6 +6533,16 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
           <AcceptedQuoteField label="Capacity" value="Aug 12-30" />
           <AcceptedQuoteField label="Terms" value="30/70" />
         </div>
+        <section className="confirmed-trade-term">
+          <div>
+            <label htmlFor="contract-delivery-term">Delivery term from quote</label>
+            <select id="contract-delivery-term" value={deliveryTerm} onChange={(event) => setDeliveryTerm(event.target.value)}>
+              {deliveryTerms.map(([term, description]) => (
+                <option value={term} key={term}>{term} ({description})</option>
+              ))}
+            </select>
+          </div>
+        </section>
       </Card>
       <Card title="Work details" className="work-details-card">
         <Field
@@ -5876,41 +6582,35 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
 
 function PaymentScreen() {
   return (
-    <div className="stack">
-      <Card title="Payment terms">
-        <p className="muted">
-          TSC project funds hold money until the approved step is released.
-        </p>
-        <div className="field single-field payment-amount-field">
-          <span>Contract amount</span>
-          <strong>$5,520 estimated production value</strong>
-        </div>
+    <div className="stack payment-terms-stack">
+      <Card title="Delivery term" className="payment-terms-card">
         <section className="payment-section">
-          <h3>Payment schedule</h3>
-          <div className="payment-options">
-            <label className="payment-choice selected">
-              <input type="radio" name="payment" defaultChecked />
-              <span className="radio-mark" aria-hidden="true" />
-              <span className="payment-copy">
-                <strong>
-                  Pay by production steps <span className="recommended-pill">Recommended</span>
-                </strong>
-                <span>Only fund the first step today. Fund later steps after approvals.</span>
-              </span>
-            </label>
-            <label className="payment-choice">
-              <input type="radio" name="payment" />
-              <span className="radio-mark" aria-hidden="true" />
-              <span className="payment-copy">
-                <strong>Pay full contract</strong>
-                <span>Fund the full estimated contract today.</span>
-              </span>
-            </label>
+          <div className="payment-section-heading">
+            <p>Who handles freight, duties, and delivery to the final destination?</p>
+          </div>
+          <div className="trade-term-grid">
+            {[
+              ["DDP", "Factory delivers to the final destination, including duties.", "Preferred"],
+              ["CIF", "Factory covers cost, insurance, and freight to port."],
+              ["FOB", "Factory delivers to export port; buyer handles freight."]
+            ].map(([term, description, badge]) => (
+              <label className={`trade-term-card ${badge ? "selected" : ""}`} key={term}>
+                <input type="radio" name="price-term" defaultChecked={Boolean(badge)} />
+                <span>
+                  <strong>{term}</strong>
+                  {badge && <em>{badge}</em>}
+                </span>
+                <p>{description}</p>
+              </label>
+            ))}
           </div>
         </section>
         <section className="payment-note">
-          <h3>Production terms are estimates</h3>
-          <p>Bulk deposit and final balance can adjust after sample approval and confirmed size breakdown.</p>
+          <h3>Payment comes later</h3>
+          <p>
+            Next, define milestone releases. Then the brand pays by card through TSC checkout so
+            funds can be held before release.
+          </p>
         </section>
       </Card>
     </div>
@@ -5956,7 +6656,7 @@ function MilestonesScreen({ milestoneTypes, setMilestoneTypes }) {
   return (
     <div className="stack">
       <Card title="Production schedule">
-        <p className="muted">
+        <p className="muted production-schedule-helper">
           Select a step type for every production checkpoint. Use the helper text under the
           dropdown while deciding how that step should work.
         </p>
@@ -6029,6 +6729,14 @@ function FundScreen({ fundingMilestone, goTo, setFundingMilestone }) {
           </div>
         </div>
         <button className="billing-add-btn" type="button">+ Add a new billing method</button>
+        <label className="discount-code-field">
+          <span>Discount code</span>
+          <div>
+            <input type="text" placeholder="Enter code" />
+            <button className="secondary-btn compact-btn" type="button">Apply</button>
+          </div>
+          <small>$50 discounts can be applied to eligible orders.</small>
+        </label>
         <section className="before-funding">
           <h3>Before funding</h3>
           <label>
@@ -6091,9 +6799,9 @@ function Card({ title, children, className = "", tone = "" }) {
   );
 }
 
-function Field({ label, value, muted = false }) {
+function Field({ label, value, muted = false, className = "" }) {
   return (
-    <div className={muted ? "field muted-field" : "field"}>
+    <div className={`${muted ? "field muted-field" : "field"} ${className}`}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
@@ -6118,7 +6826,7 @@ function AcceptedQuoteField({ label, value }) {
   );
 }
 
-function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null, secondaryLabel = "" }) {
+function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null }) {
   return (
     <footer className={canBack ? "bottom-bar has-back" : "bottom-bar no-back"}>
       {canBack && (
@@ -6137,7 +6845,6 @@ function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", cen
         </div>
       )}
       <div className="bottom-actions">
-        {secondaryLabel && <button className="secondary-btn" type="button">{secondaryLabel}</button>}
         {primaryLabel && (
           <button className="primary-btn" type="button" onClick={onNext}>
             {primaryLabel}

@@ -1,0 +1,339 @@
+.shared-responsive-card {
+  --shared-card-column-gap: 18px;
+  --shared-card-action-gap: 10px;
+  --shared-card-pill-gap: 10px;
+}
+
+.shared-responsive-card.shared-responsive-card {
+  gap: 8px !important;
+}
+
+.shared-responsive-card > .shared-card-header {
+  display: grid !important;
+  grid-template-columns: minmax(320px, 1fr) auto !important;
+  gap: 0 var(--shared-card-column-gap) !important;
+  align-items: start !important;
+  min-width: 0 !important;
+}
+
+.shared-responsive-card .shared-card-heading {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading h1,
+.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading h2 {
+  margin: 0 !important;
+  color: #0b1223 !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  line-height: 25px !important;
+}
+
+.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading .rfq-date,
+.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading .project-meta,
+.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading p {
+  margin: 1px 0 0 !important;
+  color: #5c7298 !important;
+  font-size: 12px !important;
+  font-weight: var(--weight-medium) !important;
+  line-height: 17px !important;
+}
+
+.shared-responsive-card .shared-card-actions {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-end !important;
+  flex-wrap: nowrap !important;
+  gap: var(--shared-card-action-gap) !important;
+  align-self: start !important;
+  justify-self: end !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  white-space: nowrap !important;
+}
+
+.shared-responsive-card .shared-card-actions > * {
+  flex: 0 0 auto !important;
+}
+
+.shared-responsive-card .shared-card-status {
+  box-sizing: border-box !important;
+  flex: 0 0 auto !important;
+  align-self: center !important;
+  width: max-content !important;
+  min-width: max-content !important;
+  max-width: none !important;
+  margin: 0 !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+}
+
+.shared-responsive-card .shared-card-actions .primary-btn,
+.shared-responsive-card .shared-card-actions .secondary-btn,
+.shared-responsive-card .shared-card-actions .rfq-more,
+.shared-responsive-card .shared-card-actions .project-overflow {
+  align-self: center !important;
+}
+
+.shared-responsive-card > .shared-card-body {
+  margin-top: 0 !important;
+}
+
+@media (min-width: 761px) {
+  .shared-responsive-card > .shared-card-header > .shared-card-heading {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  .shared-responsive-card > .shared-card-header > .shared-card-actions {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+  }
+
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-header {
+    display: grid !important;
+    grid-template-columns: minmax(320px, 1fr) auto !important;
+    gap: 0 var(--shared-card-column-gap) !important;
+  }
+
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-header > .shared-card-actions {
+    display: flex !important;
+  }
+
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card .shared-card-status,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card .shared-card-status {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    justify-self: auto !important;
+    align-self: center !important;
+    margin: 0 !important;
+  }
+
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+    padding: 16px !important;
+  }
+
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-header {
+    display: grid !important;
+    grid-template-columns: minmax(320px, 1fr) auto !important;
+    gap: 0 var(--shared-card-column-gap) !important;
+  }
+
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions {
+    display: flex !important;
+  }
+
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card .shared-card-actions .secondary-btn {
+    display: inline-flex !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .rfq-card-top.shared-card-header,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .project-card-top.shared-card-header,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .factory-request-card-top.shared-card-header,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .factory-request-card-top.shared-card-header {
+    display: grid !important;
+    grid-template-columns: minmax(320px, 1fr) auto !important;
+    grid-template-rows: auto !important;
+    gap: 0 var(--shared-card-column-gap) !important;
+    align-items: start !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header > .shared-card-actions {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: var(--shared-card-action-gap) !important;
+    width: auto !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header .shared-card-status {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    width: max-content !important;
+    min-width: max-content !important;
+    margin: 0 !important;
+    align-self: center !important;
+    justify-self: auto !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .rfq-card:not(.home-rfq-card).shared-responsive-card,
+  .brand-project-card.shared-responsive-card,
+  .factory-request-card.shared-responsive-card,
+  .factory-project-dashboard-row.shared-responsive-card,
+  .home-rfq-card.shared-responsive-card,
+  .home-production-card.shared-responsive-card {
+    gap: var(--shared-card-pill-gap) !important;
+  }
+
+  .shared-responsive-card > .shared-card-header,
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-header,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) max-content max-content !important;
+    grid-template-rows: auto auto !important;
+    align-items: start !important;
+    gap: var(--shared-card-pill-gap) 8px !important;
+    min-width: 0 !important;
+  }
+
+  .shared-responsive-card > .shared-card-header > .shared-card-heading {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+  }
+
+  .shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions {
+    display: contents !important;
+  }
+
+  .shared-responsive-card > .shared-card-header .shared-card-actions .primary-btn,
+  .shared-responsive-card > .shared-card-header .shared-card-actions .secondary-btn {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .shared-responsive-card > .shared-card-header .shared-card-actions .rfq-more,
+  .shared-responsive-card > .shared-card-header .shared-card-actions .project-overflow {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-header .shared-card-status {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    justify-self: stretch !important;
+    justify-content: flex-start !important;
+  }
+
+  .shared-responsive-card > .shared-card-body,
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-body,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-body {
+    grid-column: auto !important;
+    grid-row: auto !important;
+    margin-top: 0 !important;
+  }
+
+  .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-body,
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card > .shared-card-body {
+    grid-column: 1 / -1 !important;
+  }
+
+  .factory-browse-marketplace-page .directory-card-list > .factory-request-card.shared-browse-rfq-card.shared-responsive-card .shared-card-actions .secondary-btn {
+    display: none !important;
+  }
+
+  .shared-dashboard-card.shared-responsive-card {
+    row-gap: var(--shared-card-pill-gap) !important;
+  }
+
+  .shared-dashboard-card.shared-responsive-card > .shared-card-actions {
+    display: contents !important;
+  }
+
+  .shared-dashboard-card.shared-responsive-card > .shared-card-actions .primary-btn {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .shared-dashboard-card.shared-responsive-card > .shared-card-actions .shared-card-status {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    box-sizing: border-box !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    justify-self: stretch !important;
+    justify-content: flex-start !important;
+  }
+
+  .shared-dashboard-card.shared-responsive-card > .shared-card-body {
+    grid-column: 1 / -1 !important;
+    grid-row: 3 !important;
+    margin-top: 0 !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .rfq-card-top.shared-card-header,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .project-card-top.shared-card-header,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .factory-request-card-top.shared-card-header,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .factory-request-card-top.shared-card-header {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) max-content max-content !important;
+    grid-template-rows: auto auto !important;
+    gap: var(--shared-card-pill-gap) 8px !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header > .shared-card-actions,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header > .shared-card-actions {
+    display: contents !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header .shared-card-actions .primary-btn,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-actions .primary-btn,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header .shared-card-actions .primary-btn,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header .shared-card-actions .primary-btn {
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header .shared-card-actions .rfq-more,
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header .shared-card-actions .project-overflow,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-actions .rfq-more,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-actions .project-overflow,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header .shared-card-actions .rfq-more,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header .shared-card-actions .rfq-more {
+    grid-column: 3 !important;
+    grid-row: 1 !important;
+    justify-self: end !important;
+  }
+
+  .brand-rfqs-page .rfq-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .brand-projects-page .brand-project-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-rfqs-page .factory-rfq-card.shared-responsive-card > .shared-card-header .shared-card-status,
+  .factory-projects-page .factory-active-project-card.shared-responsive-card > .shared-card-header .shared-card-status {
+    grid-column: 1 / -1 !important;
+    grid-row: 2 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    margin: 0 !important;
+    justify-self: stretch !important;
+    justify-content: flex-start !important;
+  }
+}
