@@ -213,3 +213,21 @@ export function quoteTotalCents(quote) {
   if (quote.productionSubtotalCents == null) return null;
   return quote.productionSubtotalCents + (quote.sampleSubtotalCents ?? 0);
 }
+
+/**
+ * The production order an accepted quote became.
+ *
+ * award_quote creates it in the same transaction, so this always resolves
+ * after a successful award — but it is written to tolerate null rather than
+ * assume, since a caller looking up a quote that lost would get nothing.
+ */
+export async function orderForQuote(quoteId) {
+  return unwrap(
+    await supabase
+      .from("production_orders")
+      .select("id, order_number")
+      .eq("quote_id", quoteId)
+      .maybeSingle(),
+    "find the production order",
+  );
+}

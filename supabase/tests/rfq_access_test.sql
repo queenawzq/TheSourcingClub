@@ -343,10 +343,17 @@ select throws_ok(
 );
 
 -- Both factories learn the outcome. Silence is the thing this prevents.
+-- Counted by kind rather than by subject_id: since Phase 3 the winner's
+-- notification points at the production order it just gained, and the loser's
+-- at the request, because those are the two different things worth opening.
 reset role;
 select is(
   (select count(*)::int from public.notifications
-     where subject_id = 'e0000000-0000-0000-0000-000000000003'),
+     where kind in ('quote_accepted', 'quote_declined')
+       and org_id in (
+         'd0000000-0000-0000-0000-0000000000f1',
+         'd0000000-0000-0000-0000-0000000000f2'
+       )),
   2,
   'every factory that quoted is notified, winner and loser alike'
 );

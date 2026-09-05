@@ -13,6 +13,7 @@
 import React, { useEffect, useState } from "react";
 import { getColourSplits, getInvitations, getQuestions, getRfq } from "../../lib/domain/rfq.js";
 import { listDocuments, urlFor } from "../../lib/domain/documents.js";
+import { orderForQuote } from "../../lib/domain/quote.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -82,6 +83,9 @@ export default function RfqDetail({ org, rfqId, isFactory, profile }) {
         brand: Array.isArray(brandRow?.data) ? brandRow.data[0] : brandRow?.data ?? null,
         invitations,
         quotes,
+        // Both sides get the link: the winning factory needs it as much as the
+        // brand does, and it is the same row for both.
+        order: rfq.awarded_quote_id ? await orderForQuote(rfq.awarded_quote_id).catch(() => null) : null,
       });
     }
 
@@ -292,6 +296,20 @@ export default function RfqDetail({ org, rfqId, isFactory, profile }) {
             onClick={() => navigate(`/rfqs/${rfq.id}/invite`)}
           >
             {state.invitations.length ? "Change who is invited" : "Invite factories"}
+          </button>
+        </section>
+      ) : null}
+
+      {rfq.status === "awarded" && state.order ? (
+        <section className="detail-card">
+          <h2>This became a production order</h2>
+          <p className="ob-hint">
+            {state.order.order_number} — the agreed terms, the schedule and the payments all live
+            there now.
+          </p>
+          <button type="button" className="primary-btn" style={{ alignSelf: "flex-start" }}
+                  onClick={() => navigate(`/orders/${state.order.id}`)}>
+            Open the production order
           </button>
         </section>
       ) : null}

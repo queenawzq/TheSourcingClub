@@ -14,7 +14,7 @@
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { getQuestions, getRfq } from "../../lib/domain/rfq.js";
-import { awardQuote, listQuotesForRfq, quoteTotalCents } from "../../lib/domain/quote.js";
+import { awardQuote, listQuotesForRfq, orderForQuote, quoteTotalCents } from "../../lib/domain/quote.js";
 import { listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -77,7 +77,12 @@ export default function QuoteCompare({ org, rfqId }) {
     try {
       await awardQuote(quote.id);
       setConfirming(null);
-      await load();
+      // Awarding now creates the production order and its draft schedule, so
+      // the next thing to do is agree that schedule. Reloading the comparison
+      // would leave the brand on a screen whose work is finished.
+      const order = await orderForQuote(quote.id);
+      if (order) navigate(`/orders/${order.id}`);
+      else await load();
     } catch (awardError) {
       setError(awardError);
     } finally {

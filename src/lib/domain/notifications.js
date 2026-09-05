@@ -12,7 +12,7 @@ export async function listNotifications(orgId, { limit = 20 } = {}) {
   return unwrap(
     await supabase
       .from("notifications")
-      .select("id, kind, subject_type, subject_id, title, body, read_at, created_at")
+      .select("id, kind, subject_type, subject_id, order_id, title, body, read_at, created_at")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false })
       .limit(limit),
@@ -51,6 +51,22 @@ export async function markAllRead(orgId) {
  * new notification kind has one obvious place to be handled.
  */
 export function notificationLink(notification, { isFactory }) {
-  if (notification.subject_type !== "rfq" || !notification.subject_id) return null;
-  return isFactory ? `/browse/${notification.subject_id}` : `/rfqs/${notification.subject_id}`;
+  const { subject_type: type, subject_id: id } = notification;
+  if (!id) return null;
+
+  // A request lives at a different address for each side; an order does not —
+  // it is one row with two parties, and the same link has to open for both.
+  if (type === "rfq") return isFactory ? `/browse/${id}` : `/rfqs/${id}`;
+  if (type === "order") return `/orders/${id}`;
+
+  // Milestones and payments carry their order id alongside the subject, since
+  // neither is addressable without it.
+  if (type === "milestone" && notification.order_id) {
+    return `/orders/${notification.order_id}/milestones/${id}`;
+  }
+  if (type === "payment" && notification.order_id) {
+    return `/orders/${notification.order_id}/payments/${id}`;
+  }
+
+  return null;
 }

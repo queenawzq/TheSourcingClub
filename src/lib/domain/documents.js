@@ -24,7 +24,21 @@ const PRIVATE_KINDS = new Set([
   "measurement_chart",
   "contract",
   "quote_attachment",
+  // Production photographs of a brand's unreleased product. The public bucket
+  // is `public: true` — served to anyone with the URL and no sign-in at all —
+  // so this is the one kind where the convenient choice is also unrecoverable.
+  "milestone_update",
 ]);
+
+/**
+ * The kinds a platform admin actually reviews.
+ *
+ * This used to be inferred as "private, except tech packs", which quietly
+ * coupled two unrelated questions: adding any private kind also added it to
+ * the verification queue. Milestone photos are private and are reviewed by
+ * nobody, which is what made the coupling visible.
+ */
+const REVIEWED_KINDS = new Set(["business_registration", "certificate"]);
 
 export function bucketFor(kind) {
   return PRIVATE_KINDS.has(kind) ? "org-private" : "org-public";
@@ -45,6 +59,12 @@ const EXTENSION_TYPES = {
   jpg: "image/jpeg",
   jpeg: "image/jpeg",
   webp: "image/webp",
+  // What an iPhone shares by default. Note this maps HEIC to its real type
+  // rather than relabelling it as JPEG: passing the allowlist by lying about
+  // the type would store an object no browser can display, with no error
+  // anywhere. The bucket has to admit image/heic for this to help.
+  heic: "image/heic",
+  heif: "image/heif",
   svg: "image/svg+xml",
   mp4: "video/mp4",
   mov: "video/quicktime",
@@ -75,9 +95,14 @@ function safeName(fileName) {
  * insert fails we remove the uploaded object, so a failed upload cannot leave
  * an orphan sitting in a bucket that nothing references and nobody reviews.
  */
-export async function uploadDocument({ orgId, kind, file }) {
+export async function uploadDocument({ orgId, kind, file, scopeId = null }) {
   const bucket = bucketFor(kind);
-  const path = `${orgId}/${kind}/${crypto.randomUUID()}-${safeName(file.name)}`;
+  // `scopeId` becomes a third path segment. Storage policies can only read the
+  // object's name, so a file that has to be readable by someone outside the
+  // owning org needs the thing granting that access to be IN the path — here,
+  // the order the file belongs to.
+  const prefix = scopeId ? `${orgId}/${kind}/${scopeId}` : `${orgId}/${kind}`;
+  const path = `${prefix}/${crypto.randomUUID()}-${safeName(file.name)}`;
 
   const contentType = resolveContentType(file);
 
@@ -103,7 +128,7 @@ export async function uploadDocument({ orgId, kind, file }) {
           size_bytes: file.size,
           // Documents that get reviewed enter the queue immediately; the rest
           // are never looked at and stay unverified.
-          status: PRIVATE_KINDS.has(kind) && kind !== "tech_pack" ? "pending" : "unverified",
+          status: REVIEWED_KINDS.has(kind) ? "pending" : "unverified",
         })
         .select()
         .single(),

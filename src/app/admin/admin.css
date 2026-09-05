@@ -100,3 +100,23 @@
 }
 .admin-bar .shell-mark { font-weight: 900; margin-right: auto; }
 .admin-bar .admin-sub { display: inline; }
+
+/* The admin index, once there was more than one queue to reach. */
+.admin-index { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.admin-index-card {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--line, #e5e7eb);
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+.admin-index-card:hover { border-color: var(--blue, #2458ff); }
+.admin-index-card strong { font-size: 15px; }
+.admin-index-card span { font-size: 13px; color: var(--muted, #6b7280); }
+.admin-pill--sent { background: #fff3d6; }
+.admin-pill--confirmed { background: #e6f4ea; }
+.admin-pill--released { background: #eef2ff; }

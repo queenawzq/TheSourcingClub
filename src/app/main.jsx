@@ -17,6 +17,7 @@ import { isConfigured } from "../lib/supabase.js";
 import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
 import { isPlatformAdmin } from "../lib/domain/admin.js";
 import AdminVerifications from "./admin/AdminVerifications.jsx";
+import AdminPayments from "./admin/AdminPayments.jsx";
 import RfqList from "./rfq/RfqList.jsx";
 import RfqCreate from "./rfq/RfqCreate.jsx";
 import RfqDetail from "./rfq/RfqDetail.jsx";
@@ -25,6 +26,11 @@ import QuoteForm from "./quote/QuoteForm.jsx";
 import QuoteSent from "./quote/QuoteSent.jsx";
 import QuoteCompare from "./quote/QuoteCompare.jsx";
 import InviteFactories from "./rfq/InviteFactories.jsx";
+import OrderList from "./order/OrderList.jsx";
+import OrderDetail from "./order/OrderDetail.jsx";
+import ScheduleEditor from "./order/ScheduleEditor.jsx";
+import MilestoneDetail from "./order/MilestoneDetail.jsx";
+import PaymentInstructions from "./order/PaymentInstructions.jsx";
 import NotificationList from "./NotificationList.jsx";
 import "./shell.css";
 
@@ -349,6 +355,10 @@ function Shell() {
  * is built; until then this is the dashboard plus the admin queue.
  */
 function ShellRoutes({ activeOrg, profile, user, isFactory }) {
+  // listMyOrgs folds the membership role onto the org, and several actions
+  // turn on it: awarding a quote, approving a step that releases money, and
+  // recording a payment as sent are all owner-only in the database.
+  const isOwner = activeOrg.role === "owner";
   const [admin, setAdmin] = useState(false);
 
   useEffect(() => {
@@ -403,6 +413,49 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/browse/:id/quote/sent",
       render: (params) =>
         isFactory ? <QuoteSent rfqId={params.id} /> : <NotForThisSide isFactory={false} />,
+    },
+    {
+      // Production orders are ONE namespace for both sides, unlike /rfqs and
+      // /browse. An order is a single row with two parties, and a link a brand
+      // pastes to its factory has to open.
+      path: "/orders",
+      render: () => <OrderList org={activeOrg} isFactory={isFactory} />,
+    },
+    {
+      path: "/orders/:id",
+      render: (params) => (
+        <OrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} />
+      ),
+    },
+    {
+      path: "/orders/:id/schedule",
+      render: (params) => <ScheduleEditor orderId={params.id} isFactory={isFactory} />,
+    },
+    {
+      path: "/orders/:id/files",
+      render: (params) => (
+        <OrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} tab="files" />
+      ),
+    },
+    {
+      path: "/orders/:id/contract",
+      render: (params) => (
+        <OrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} tab="contract" />
+      ),
+    },
+    {
+      path: "/orders/:id/milestones/:mid",
+      render: (params) => (
+        <MilestoneDetail org={activeOrg} orderId={params.id} milestoneId={params.mid}
+                         isFactory={isFactory} isOwner={isOwner} />
+      ),
+    },
+    {
+      path: "/orders/:id/payments/:pid",
+      render: (params) =>
+        isFactory
+          ? <NotForThisSide isFactory />
+          : <PaymentInstructions orderId={params.id} paymentId={params.pid} />,
     },
     {
       path: "/browse/:id",
@@ -482,6 +535,9 @@ function Dashboard({ activeOrg, profile, isFactory, user, admin }) {
         </p>
 
         <p className="shell-note">
+          <button type="button" className="secondary-btn" onClick={() => navigate("/orders")}>
+            Production orders
+          </button>
           {isFactory ? (
             <button type="button" className="primary-btn" onClick={() => navigate("/browse")}>
               Browse open requests
@@ -495,7 +551,7 @@ function Dashboard({ activeOrg, profile, isFactory, user, admin }) {
 
         {admin ? (
           <p className="shell-note">
-            <button type="button" className="quiet-btn" onClick={() => navigate("/admin/verifications")}>
+            <button type="button" className="quiet-btn" onClick={() => navigate("/admin")}>
               Verification review →
             </button>
           </p>
@@ -525,14 +581,63 @@ function AdminGate({ children }) {
         <div className="gate-card">
           <h1>Not your page</h1>
           <p className="gate-note">
-            Verification review is limited to platform staff. If that should include you, someone
+            The admin tools are limited to platform staff. If that should include you, someone
             with database access has to add you.
           </p>
         </div>
       </div>
     );
   }
-  return <AdminVerifications />;
+  return <AdminRoutes />;
+}
+
+/**
+ * This used to return AdminVerifications for ANY path under /admin, which
+ * meant a second admin screen could be built, linked and deployed while every
+ * link to it silently rendered the first one — right header, no error, and the
+ * obvious conclusion that the new screen was never finished.
+ */
+function AdminRoutes() {
+  return useRoute([
+    { path: "/admin/verifications", render: () => <AdminVerifications /> },
+    { path: "/admin/payments", render: () => <AdminPayments /> },
+    { render: () => <AdminIndex /> },
+  ]);
+}
+
+function AdminIndex() {
+  const { navigate } = useRouter();
+  const { user, signOut } = useAuth();
+
+  return (
+    <div className="admin">
+      <header className="admin-bar">
+        <span className="shell-mark">The Sourcing Club</span>
+        <span className="admin-sub">{user?.email}</span>
+        <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
+      </header>
+
+      <h1>Platform admin</h1>
+      <p className="admin-intro">
+        Two queues, and both of them are things only staff can do: deciding whether an
+        organisation is who it says it is, and confirming that money actually arrived.
+      </p>
+
+      <div className="admin-index">
+        <button type="button" className="admin-index-card" onClick={() => navigate("/admin/verifications")}>
+          <strong>Verification review</strong>
+          <span>Business registrations and certificates. Approving one is what lets a factory quote.</span>
+        </button>
+        <button type="button" className="admin-index-card" onClick={() => navigate("/admin/payments")}>
+          <strong>Payments</strong>
+          <span>
+            Brands mark a payment sent; a factory does not start work until someone here confirms
+            it arrived.
+          </span>
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function App() {
