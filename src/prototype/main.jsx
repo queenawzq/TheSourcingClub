@@ -1615,15 +1615,32 @@ function UpcomingCallCard({ call, thread }) {
 }
 
 function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
-  const timeSlots = thread.scheduleSlots || [
-    { brand: "Tue 10:00 AM ET", factory: `${thread.name}: local time shown after invite` },
-    { brand: "Tue 12:30 PM ET", factory: `${thread.name}: local time shown after invite` },
-    { brand: "Wed 9:30 AM ET", factory: `${thread.name}: local time shown after invite` }
+  const timezoneOptions = [
+    { value: "ET", label: "Eastern Time (ET)", offset: -4 },
+    { value: "CT", label: "Central Time (CT)", offset: -5 },
+    { value: "PT", label: "Pacific Time (PT)", offset: -7 },
+    { value: "UTC", label: "UTC", offset: 0 }
   ];
-  const [selectedSlotIndex, setSelectedSlotIndex] = useState(0);
+  const availableTimes = [810, 840, 870, 900, 990];
+  const calendarDays = Array.from({ length: 31 }, (_, index) => index === 0 ? null : index);
+  const [scheduleStep, setScheduleStep] = useState(1);
+  const [timezone, setTimezone] = useState("ET");
+  const [selectedDate, setSelectedDate] = useState(8);
+  const [selectedTime, setSelectedTime] = useState(840);
   const [callTitle, setCallTitle] = useState("Sample review call");
   const [callDescription, setCallDescription] = useState(`Review open questions with ${thread.name} and confirm next actions.`);
-  const selectedSlot = timeSlots[selectedSlotIndex] || timeSlots[0];
+  const selectedTimezone = timezoneOptions.find((option) => option.value === timezone) || timezoneOptions[0];
+  const formatTime = (utcMinutes, offset) => {
+    const minutesInDay = 24 * 60;
+    const localMinutes = ((utcMinutes + offset * 60) % minutesInDay + minutesInDay) % minutesInDay;
+    const hour = Math.floor(localMinutes / 60);
+    const minute = localMinutes % 60;
+    return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${hour >= 12 ? "PM" : "AM"}`;
+  };
+  const selectedWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][selectedDate % 7];
+  const selectedDateLabel = `${selectedWeekday}, Sep ${selectedDate}`;
+  const brandTime = `${selectedDateLabel} · ${formatTime(selectedTime, selectedTimezone.offset)} ${selectedTimezone.value}`;
+  const factoryTime = `${thread.name}: ${selectedDateLabel} · ${formatTime(selectedTime, 1)} Porto`;
 
   return (
     <section className={isOpen ? "schedule-card open" : "schedule-card"}>
@@ -1636,37 +1653,65 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
       </header>
       {isOpen && (
         <>
-          <label className="schedule-field">
-            <span>Title</span>
-            <input value={callTitle} onChange={(event) => setCallTitle(event.target.value)} />
-          </label>
-          <label className="schedule-field">
-            <span>Description</span>
-            <textarea rows={3} value={callDescription} onChange={(event) => setCallDescription(event.target.value)} />
-          </label>
-          <div className="schedule-slot-grid">
-            {timeSlots.map((slot, index) => (
-              <button className={index === selectedSlotIndex ? "selected" : ""} type="button" onClick={() => setSelectedSlotIndex(index)} key={slot.brand}>
-                <strong>{slot.brand}</strong>
-                <span>{slot.factory}</span>
-              </button>
-            ))}
+          <div className="schedule-stepper" aria-label="Scheduling progress">
+            <span className={scheduleStep === 1 ? "active" : "complete"}><b>{scheduleStep === 1 ? "1" : "✓"}</b> Date &amp; time</span>
+            <i aria-hidden="true" />
+            <span className={scheduleStep === 2 ? "active" : ""}><b>2</b> Call details</span>
           </div>
-          <div className="schedule-footer">
-            <button
-              className="primary-btn compact-btn"
-              type="button"
-              onClick={() => onSchedule?.({
-                title: callTitle,
-                brandTime: selectedSlot.brand,
-                factoryTime: selectedSlot.factory,
-                agenda: callDescription,
-                hasVideo: true
-              })}
-            >
-              Send invite
-            </button>
-          </div>
+          {scheduleStep === 1 ? (
+            <div className="schedule-when-step">
+              <div className="schedule-when-meta">
+                <div><span>Duration</span><strong>30 minutes</strong></div>
+                <label>
+                  <span>Time zone</span>
+                  <select value={timezone} onChange={(event) => setTimezone(event.target.value)}>
+                    {timezoneOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="schedule-when-layout">
+                <section className="schedule-calendar" aria-label="Select a date">
+                  <div className="schedule-calendar-heading"><button type="button" aria-label="Previous month">‹</button><strong>September 2026</strong><button type="button" aria-label="Next month">›</button></div>
+                  <div className="schedule-calendar-weekdays" aria-hidden="true">{["M", "T", "W", "T", "F", "S", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div>
+                  <div className="schedule-calendar-days">
+                    {calendarDays.map((day, index) => day ? (
+                      <button className={day === selectedDate ? "selected" : ""} type="button" onClick={() => setSelectedDate(day)} key={day}>{day}</button>
+                    ) : <span key={`blank-${index}`} />)}
+                  </div>
+                </section>
+                <section className="schedule-time-picker" aria-label="Select a time">
+                  <h4>{selectedDateLabel}</h4>
+                  <div className="schedule-time-list">
+                    {availableTimes.map((utcMinutes) => (
+                      <button className={utcMinutes === selectedTime ? "selected" : ""} type="button" onClick={() => setSelectedTime(utcMinutes)} key={utcMinutes}>
+                        <strong>{formatTime(utcMinutes, selectedTimezone.offset)} {selectedTimezone.value}</strong>
+                        <span>{thread.name}: {formatTime(utcMinutes, 1)} Porto</span>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              </div>
+              <div className="schedule-footer">
+                <button className="primary-btn compact-btn" type="button" onClick={() => setScheduleStep(2)}>Continue</button>
+              </div>
+            </div>
+          ) : (
+            <div className="schedule-details-step">
+              <div className="schedule-selection-summary"><span>Selected time</span><strong>{brandTime}</strong><small>{factoryTime}</small></div>
+              <label className="schedule-field">
+                <span>Title</span>
+                <input value={callTitle} onChange={(event) => setCallTitle(event.target.value)} />
+              </label>
+              <label className="schedule-field">
+                <span>Description</span>
+                <textarea rows={3} value={callDescription} onChange={(event) => setCallDescription(event.target.value)} />
+              </label>
+              <div className="schedule-footer split">
+                <button className="secondary-btn compact-btn" type="button" onClick={() => setScheduleStep(1)}>Back</button>
+                <button className="primary-btn compact-btn" type="button" onClick={() => onSchedule?.({ title: callTitle, brandTime, factoryTime, agenda: callDescription, hasVideo: true })}>Send invite</button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </section>

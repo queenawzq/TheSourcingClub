@@ -12814,7 +12814,7 @@ a.secondary-btn {
 .message-schedule-modal {
   position: relative;
   z-index: 1;
-  width: min(520px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - 32px));
   max-height: calc(100vh - 64px);
   overflow: auto;
   border: 1px solid #d7e0ea;
@@ -13023,6 +13023,279 @@ a.secondary-btn {
 
 .schedule-footer {
   justify-content: flex-end;
+}
+
+.schedule-stepper {
+  display: grid;
+  grid-template-columns: max-content minmax(28px, 1fr) max-content;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 0 4px;
+}
+
+.schedule-stepper span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #60769b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.schedule-stepper span b {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid #cbd8e7;
+  border-radius: 50%;
+  background: #fff;
+  color: #60769b;
+  font-size: 11px;
+}
+
+.schedule-stepper span.active,
+.schedule-stepper span.complete {
+  color: #1a4df2;
+}
+
+.schedule-stepper span.active b,
+.schedule-stepper span.complete b {
+  border-color: #1a4df2;
+  background: #1a4df2;
+  color: #fff;
+}
+
+.schedule-stepper i {
+  height: 1px;
+  background: #d7e0ea;
+}
+
+.schedule-when-step,
+.schedule-details-step {
+  display: grid;
+  gap: 16px;
+}
+
+.schedule-when-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 1fr);
+  gap: 16px;
+  align-items: end;
+}
+
+.schedule-when-meta > div,
+.schedule-when-meta > label {
+  display: grid;
+  gap: 6px;
+}
+
+.schedule-when-meta span,
+.schedule-selection-summary > span {
+  color: #60769b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.schedule-when-meta strong {
+  color: #0b1020;
+  font-size: 15px;
+  line-height: 42px;
+}
+
+.schedule-when-meta select {
+  box-sizing: border-box;
+  width: 100%;
+  height: 42px;
+  padding: 0 36px 0 12px;
+  border: 1px solid #d7e0ea;
+  border-radius: 7px;
+  appearance: none;
+  background: #fff url("/assets/prototype-icons/dropdown.svg") no-repeat calc(100% - 12px) center / 16px 16px;
+  color: #0b1020;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.schedule-when-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(220px, 0.85fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.schedule-calendar,
+.schedule-time-picker,
+.schedule-selection-summary {
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.schedule-calendar {
+  padding: 10px 12px;
+}
+
+.schedule-calendar-heading {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.schedule-calendar-heading strong {
+  color: #0b1020;
+  font-size: 15px;
+  line-height: 20px;
+  text-align: center;
+}
+
+.schedule-calendar-heading button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #60769b;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.schedule-calendar-weekdays,
+.schedule-calendar-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.schedule-calendar-weekdays {
+  margin-bottom: 3px;
+}
+
+.schedule-calendar-weekdays span {
+  color: #60769b;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+
+.schedule-calendar-days button,
+.schedule-calendar-days > span {
+  height: 28px;
+  min-width: 0;
+}
+
+.schedule-calendar-days button {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #0b1020;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.schedule-calendar-days button:hover {
+  background: #eef4ff;
+}
+
+.schedule-calendar-days button.selected {
+  background: #1a4df2;
+  color: #fff;
+}
+
+.schedule-time-picker {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px 12px;
+}
+
+.schedule-time-picker h4 {
+  margin: 0;
+  color: #0b1020;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.schedule-time-list {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.schedule-time-list button {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-height: 48px;
+  padding: 7px 10px;
+  border: 1px solid #d7e0ea;
+  border-radius: 7px;
+  background: #fff;
+  color: #0b1020;
+  text-align: left;
+}
+
+.schedule-time-list button strong {
+  font-size: 13px;
+  line-height: 17px;
+}
+
+.schedule-time-list button span {
+  color: #60769b;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.schedule-time-list button.selected {
+  border-color: #8db7ff;
+  background: #eaf4ff;
+  color: #1a4df2;
+}
+
+.schedule-selection-summary {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  background: #f7faff;
+}
+
+.schedule-selection-summary strong {
+  color: #0b1020;
+  font-size: 14px;
+  line-height: 19px;
+}
+
+.schedule-selection-summary small {
+  color: #60769b;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 17px;
+}
+
+.schedule-footer.split {
+  justify-content: space-between;
+}
+
+@media (min-width: 761px) {
+  .message-schedule-modal .schedule-card {
+    box-sizing: border-box;
+    min-height: 540px;
+  }
 }
 
 .message-file-list button {
@@ -14968,6 +15241,49 @@ button.sort-button {
     width: min(520px, calc(100vw - 24px));
     max-height: calc(100vh - 24px);
     margin-left: 0;
+  }
+
+  .message-schedule-modal .schedule-card {
+    padding: 22px 18px;
+  }
+
+  .schedule-when-meta,
+  .schedule-when-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .schedule-when-meta {
+    gap: 10px;
+  }
+
+  .schedule-time-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 480px) {
+  .schedule-stepper {
+    grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr);
+  }
+
+  .schedule-stepper span {
+    align-items: flex-start;
+    font-size: 11px;
+  }
+
+  .schedule-stepper span:last-child {
+    justify-content: flex-end;
+  }
+
+  .schedule-time-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .schedule-footer,
+  .schedule-footer.split {
+    align-items: stretch;
   }
 }
 
