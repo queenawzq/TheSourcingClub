@@ -10,8 +10,24 @@ const MILESTONE_COLUMNS = `
   due_on, state, submitted_at, approved_at, approval_note, completed_at
 `;
 
+/**
+ * Normalise the payment embed.
+ *
+ * order_payments.milestone_id is UNIQUE, so PostgREST reads the relationship
+ * as to-one and returns an OBJECT, not an array — while an ordinary embed on
+ * the same shape returns an array. Reading it as `[0]` therefore yields
+ * undefined rather than an error: the timeline silently loses every payment
+ * status and the brand's "pay this step" button never appears, with nothing on
+ * screen or in the console to say so. Resolve the shape once, here.
+ */
+function withPayment(row) {
+  const embedded = row.order_payments;
+  const payment = Array.isArray(embedded) ? embedded[0] ?? null : embedded ?? null;
+  return { ...row, payment };
+}
+
 export async function listMilestones(orderId) {
-  return unwrap(
+  const rows = unwrap(
     await supabase
       .from("order_milestones")
       .select(`${MILESTONE_COLUMNS}, order_payments (id, state, amount_cents, currency, fee_bps, due_at, sent_at, confirmed_at, released_at)`)
@@ -19,10 +35,11 @@ export async function listMilestones(orderId) {
       .order("sort"),
     "load the schedule",
   );
+  return rows.map(withPayment);
 }
 
 export async function getMilestone(orderId, milestoneId) {
-  return unwrap(
+  const row = unwrap(
     await supabase
       .from("order_milestones")
       .select(`${MILESTONE_COLUMNS}, order_payments (id, state, amount_cents, currency, fee_bps)`)
@@ -34,6 +51,7 @@ export async function getMilestone(orderId, milestoneId) {
       .maybeSingle(),
     "load that step",
   );
+  return row ? withPayment(row) : null;
 }
 
 /**
@@ -146,7 +164,7 @@ export const KIND_LABEL = {
  * start is the difference between a gate and a screen that appears broken.
  */
 export function milestoneAction(milestone, { isFactory, isOwner, order }) {
-  const payment = milestone.order_payments?.[0] ?? null;
+  const payment = milestone.payment ?? null;
   const running = order?.status === "active";
 
   if (!running) {

@@ -17,6 +17,7 @@ import {
 } from "../../lib/domain/order.js";
 import { listMilestones, milestoneAction } from "../../lib/domain/milestone.js";
 import { listDocuments, urlFor } from "../../lib/domain/documents.js";
+import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import ApproveMilestone from "./ApproveMilestone.jsx";
@@ -51,8 +52,22 @@ export default function OrderDetail({ org, orderId, isFactory, isOwner, tab = ""
       listMilestones(orderId),
       listDocuments(order.brand_org_id).catch(() => []),
     ]);
-    setState({ order, milestones, documents });
-  }, [orderId]);
+    // Only asked for on the factory's own side: a payment is waiting and there
+    // is nowhere for it to go.
+    let needsPayoutDetails = false;
+    if (isFactory) {
+      const owed = milestones.some((m) => ["due", "sent"].includes(m.payment?.state));
+      if (owed) {
+        const { count } = await supabase
+          .from("factory_payout_accounts")
+          .select("id", { count: "exact", head: true })
+          .eq("org_id", order.factory_org_id);
+        needsPayoutDetails = !count;
+      }
+    }
+
+    setState({ order, milestones, documents, needsPayoutDetails });
+  }, [orderId, isFactory]);
 
   useEffect(() => {
     load().catch(setError);
@@ -148,6 +163,20 @@ export default function OrderDetail({ org, orderId, isFactory, isOwner, tab = ""
         </section>
       ) : null}
 
+      {isFactory && state.needsPayoutDetails ? (
+        <section className="detail-card order-agree">
+          <h2>Tell us where to send your money</h2>
+          <p className="ob-hint">
+            There is a payment due on this order and no account for it to go to. The brand cannot
+            pay you until you add one.
+          </p>
+          <button type="button" className="primary-btn" style={{ alignSelf: "flex-start" }}
+                  data-testid="add-payout" onClick={() => navigate("/payout")}>
+            Add your payment details
+          </button>
+        </section>
+      ) : null}
+
       {order.cancel_proposed_at && order.status !== "cancelled" ? (
         <section className="detail-card order-cancel-notice">
           <h2>Cancellation proposed</h2>
@@ -183,7 +212,7 @@ export default function OrderDetail({ org, orderId, isFactory, isOwner, tab = ""
           <h2>Production timeline</h2>
           <ol className="milestone-list">
             {milestones.map((milestone, index) => {
-              const payment = milestone.order_payments?.[0] ?? null;
+              const payment = milestone.payment ?? null;
               const action = milestoneAction(milestone, { isFactory, isOwner, order });
               return (
                 <li key={milestone.id} className={`milestone-item state-${milestone.state}`}

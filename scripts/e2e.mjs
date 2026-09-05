@@ -161,6 +161,31 @@ async function chooseChips(page, key, count = 2) {
   return chosen;
 }
 
+/**
+ * Switch user, reliably.
+ *
+ * Clicking "sign out" from a deep route occasionally leaves the session in
+ * place — the run lands back on the dashboard rather than the gate. Rather
+ * than leave a flaky step in an evidence run, fall back to clearing storage,
+ * which is what closing the browser would do anyway.
+ */
+async function signOutFully(page) {
+  await page.goto(APP);
+  await page.waitForTimeout(1000);
+  try {
+    await clickButton(page, "sign out");
+    await waitFor(page, 'input[type="email"]', 8000);
+    return;
+  } catch {
+    // fall through
+  }
+  await page.evaluate(() => {
+    try { localStorage.clear(); sessionStorage.clear(); } catch {}
+  });
+  await page.goto(APP);
+  await waitFor(page, 'input[type="email"]', 25000);
+}
+
 async function signIn(page, email, who) {
   await page.goto(APP);
   await waitFor(page, 'input[type="email"]');
@@ -323,8 +348,17 @@ async function main() {
       mimeType: "application/pdf",
       buffer: await fs.readFile(FIXTURE),
     });
-    await page.waitForTimeout(2500);
+    // Wait for the upload to actually finish, rather than guessing at a
+    // duration. A fixed 2.5s pause used to be enough until it wasn't, and the
+    // run then navigated away mid-upload — leaving an empty review queue
+    // eleven steps later with nothing pointing at the cause.
+    await waitFor(page, '[data-field="business-registration"] .file-name', 30000);
     await record(page, "Factory verification", "registration goes to the private bucket and enters the review queue");
+
+    const { count: queued } = await db.from("documents")
+      .select("*", { count: "exact", head: true })
+      .eq("kind", "business_registration").eq("status", "pending");
+    check(queued >= 1, "the registration is stored and waiting for review, not merely selected");
     await advance(page, "show your floor");
 
     await record(page, "Factory showcase");
@@ -737,11 +771,78 @@ async function main() {
       .select("status, awarded_quote_id").eq("id", publishedRfq.id).single();
     check(closedRfq.status === "awarded", "the request is closed");
 
+    const { data: bornOrder } = await db.from("production_orders")
+      .select("id, order_number, order_total_cents").eq("rfq_id", publishedRfq.id).single();
+    check(Boolean(bornOrder),
+      "awarding created a production order — nobody pressed another button");
+
+    // Counted by kind: the winner's notification now points at the order it
+    // gained and the loser's at the request, because those are the two
+    // different things worth opening.
     const { count: notified } = await db.from("notifications")
-      .select("*", { count: "exact", head: true }).eq("subject_id", publishedRfq.id);
+      .select("*", { count: "exact", head: true })
+      .in("kind", ["quote_accepted", "quote_declined"])
+      .or(`subject_id.eq.${publishedRfq.id},order_id.eq.${bornOrder.id}`);
     check(notified === 2, `both factories were notified (${notified}) — nobody quotes into silence`);
 
 
+
+    // ================= THE ORDER BEGINS =================
+    // Award used to be the last screen in the product. It now hands the brand
+    // a schedule derived from the very quote it just accepted.
+    console.log("\nTHE ORDER BEGINS");
+
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    await record(page, "Production orders", "the brand's side of the work it just commissioned");
+
+    const orderCards = await page.locator('[data-testid="order-card"]').count();
+    check(orderCards >= 1, `the awarded work appears as an order (${orderCards} card)`);
+
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="order-total"]', 25000);
+    await record(page, "The order", "every figure here is summed in SQL from the rows below it");
+
+    const headerTotal = await page.locator('[data-testid="order-total"]').innerText();
+    const headerPaid = await page.locator('[data-testid="order-paid"]').innerText();
+    check(headerTotal.replace(/[^0-9]/g, "") === String(bornOrder.order_total_cents),
+      `the header total is the sum of the steps, not a literal (${headerTotal})`);
+    check(headerPaid.replace(/[^0-9]/g, "") === "000",
+      `nothing is paid yet (${headerPaid})`);
+
+    const { data: draftSteps } = await db.from("order_milestones")
+      .select("id, title, kind, amount_cents, sort").eq("order_id", bornOrder.id).order("sort");
+    check(draftSteps.length >= 4,
+      `a schedule was generated from the quote, not typed (${draftSteps.length} steps)`);
+    check(draftSteps.some((step) => step.title === "Fit sample"),
+      "the factory's own sample stages became the first steps");
+
+    const stepsTotal = draftSteps.reduce((sum, step) => sum + Number(step.amount_cents ?? 0), 0);
+    check(stepsTotal === Number(bornOrder.order_total_cents),
+      `the steps total exactly what was agreed (${stepsTotal})`);
+
+    // Editing has to withdraw both agreements, or one side's signature
+    // survives a change it never read.
+    await page.goto(`${APP}/orders/${bornOrder.id}/schedule`);
+    await waitFor(page, '[data-testid="schedule-row"]', 25000);
+    const scheduleRows = await page.locator('[data-testid="schedule-row"]').count();
+    check(scheduleRows === draftSteps.length,
+      `nobody faces a blank schedule — ${scheduleRows} steps are already there`);
+    await record(page, "The schedule", "drafted from the quote; either side may change it");
+
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="agree-schedule"]', 25000);
+    await clickButton(page, "agree to this schedule");
+    await page.waitForTimeout(2500);
+    await record(page, "Brand agrees", "one signature. The order has not started");
+
+    const { data: halfSigned } = await db.from("production_orders")
+      .select("status, schedule_brand_agreed_at, schedule_factory_agreed_at")
+      .eq("id", bornOrder.id).single();
+    check(halfSigned.status === "pending_schedule",
+      "one side agreeing does NOT start the order");
+    check(Boolean(halfSigned.schedule_brand_agreed_at) && !halfSigned.schedule_factory_agreed_at,
+      "only the brand's agreement is recorded");
 
     // ================= THE LOSER HEARS =================
     console.log("\nTHE LOSER HEARS");
@@ -755,6 +856,204 @@ async function main() {
     const notifText = await page.locator('[data-testid="notifications"]').innerText();
     check(/accepted/i.test(notifText), "the winning factory is told on its dashboard, without asking");
     await record(page, "Factory hears the outcome", "award_quote wrote this row; now something shows it");
+
+    // ================= THE FACTORY AGREES, AND WORKS =================
+    console.log("\nTHE FACTORY AGREES, AND WORKS");
+
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="agree-schedule"]', 25000);
+
+    const factoryView = await page.locator("body").innerText();
+    check(/agree/i.test(factoryView),
+      "the factory reads its own wording off the same stored status the brand read differently");
+
+    const beforeAgreeing = await page.locator('[data-testid="milestone-action"]').count();
+    check(beforeAgreeing === 0,
+      "no step can be worked or paid before both sides have agreed");
+    await record(page, "Factory sees the schedule", "the same steps the brand read, nothing actionable yet");
+
+    await clickButton(page, "agree to this schedule");
+    await page.waitForTimeout(3000);
+    await record(page, "Both agreed", "the order is running");
+
+    const { data: live } = await db.from("production_orders")
+      .select("status, activated_at").eq("id", bornOrder.id).single();
+    check(live.status === "active", "the order starts only once BOTH sides have agreed");
+
+    const { data: activePayments } = await db.from("order_payments")
+      .select("id, state, milestone_id, amount_cents").eq("order_id", bornOrder.id);
+    const payingSteps = draftSteps.filter((step) => step.amount_cents !== null).length;
+    check(activePayments.length === payingSteps,
+      `activation created one payment per paying step and none for the rest (${activePayments.length})`);
+
+    // The first step, worked the way a factory actually works it.
+    const firstStep = draftSteps[0];
+    await page.goto(`${APP}/orders/${bornOrder.id}/milestones/${firstStep.id}`);
+    await waitFor(page, '[data-field="update_body"]', 25000);
+    await page.locator('[data-field="update_body"]')
+      .fill("Fit sample finished. Front, back and collar detail photographed.");
+    await record(page, "Posting an update", "a note and photographs, which is the factory's only lever here");
+
+    await clickButton(page, "post update");
+    await page.waitForTimeout(3000);
+
+    const { data: postedUpdates } = await db.from("milestone_updates")
+      .select("id, milestone_id").eq("order_id", bornOrder.id);
+    check(postedUpdates.length === 1, "the update was stored");
+    check(postedUpdates[0].milestone_id === firstStep.id,
+      "the update attached to the step that opened the composer, not to the first one on the page");
+
+    await clickButton(page, "send for approval");
+    await page.waitForTimeout(2500);
+    const { data: submitted } = await db.from("order_milestones")
+      .select("state").eq("id", firstStep.id).single();
+    check(submitted.state === "submitted", "the factory sent the step for approval");
+    await record(page, "Sent for approval", "the brand decides; the factory does not mark its own work done");
+
+    // Where the money goes. This run is what found that nothing wrote to this
+    // table: the brand's pay button is correctly disabled with no destination,
+    // and a factory had no way anywhere to supply one.
+    await page.goto(`${APP}/payout`);
+    await waitForHeading(page, "where you get paid", 25000);
+    await page.locator('[data-field="payout_bank_name"]').fill("Banco de Porto");
+    await page.locator('[data-field="payout_account_name"]').fill(factoryName);
+    await page.locator('[data-field="payout_account_number_last4"]').fill("4417");
+    await page.locator('[data-field="payout_swift"]').fill("BCOMPTPL");
+    await record(page, "Where the factory gets paid", "no full account number is asked for, or stored");
+
+    await page.locator('[data-testid="save-payout"]').click();
+    await page.waitForTimeout(2500);
+
+    const { data: payout } = await db.from("factory_payout_accounts")
+      .select("id, account_number_last4").eq("org_id", factoryOrg.id).single();
+    check(payout.account_number_last4 === "4417",
+      "the factory can say where its money goes — without which nobody can pay it");
+
+    // ================= THE BRAND APPROVES, AND PAYS =================
+    console.log("\nTHE BRAND APPROVES, AND PAYS");
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand approving");
+
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="milestone-action"]', 25000);
+    await record(page, "Waiting on the brand", "the factory has sent a step for approval");
+
+    // The brand can actually see the factory's update. If the counterparty
+    // policy were missing this is an empty panel and no error anywhere, which
+    // is the failure this assertion exists to make loud.
+    await page.goto(`${APP}/orders/${bornOrder.id}/milestones/${firstStep.id}`);
+    await waitFor(page, '[data-testid="milestone-update"]', 25000);
+    const brandSeesUpdate = await page.locator('[data-testid="milestone-update"]').count();
+    check(brandSeesUpdate === 1,
+      "the brand can read the factory's update across the org boundary");
+    await record(page, "The brand reads the update", "posted by the factory, readable by the brand, nobody else");
+
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="milestone-action"]', 25000);
+    await page.locator('[data-testid="milestone-action"]').first().click();
+    await waitFor(page, '[data-testid="confirm-approve"]', 15000);
+    await record(page, "Approving", "one modal, whether or not money follows");
+    await page.locator('[data-testid="confirm-approve"]').click();
+    await page.waitForTimeout(3000);
+
+    const { data: dueNow } = await db.from("order_payments")
+      .select("id, state, amount_cents").eq("milestone_id", firstStep.id).single();
+    check(dueNow.state === "due", "approving the sample made its payment due");
+
+    await page.goto(`${APP}/orders/${bornOrder.id}/payments/${dueNow.id}`);
+    await waitFor(page, '[data-testid="pay-reference"]', 25000);
+    await record(page, "How to pay", "amount, destination, and the reference an admin will match");
+
+    const shownReference = await page.locator('[data-testid="pay-reference"]').innerText();
+    check(shownReference.trim() === bornOrder.order_number,
+      `the reference on screen is the stored order number, not one composed in the browser (${shownReference})`);
+
+    const shownFee = await page.locator('[data-testid="pay-fee"]').innerText();
+    check(shownFee.replace(/[^0-9]/g, "") === "000",
+      `the platform fee is shown and charged at zero (${shownFee})`);
+
+    await clickButton(page, "i have sent this payment");
+    await page.waitForTimeout(3000);
+    await record(page, "Marked sent", "the brand's claim — not yet an arrival");
+
+    const { data: claimed } = await db.from("order_payments")
+      .select("state").eq("id", dueNow.id).single();
+    check(claimed.state === "sent", "the payment is recorded as sent");
+
+    const { data: notFunded } = await db.from("production_order_summary")
+      .select("paid_cents").eq("id", bornOrder.id).single();
+    check(Number(notFunded.paid_cents) === 0,
+      "the brand saying it paid does NOT count as funded");
+
+    // ================= THE FACTORY IS NOT TOLD TO START =================
+    // The negative half of the pair that carries this whole phase.
+    console.log("\nTHE FACTORY IS NOT TOLD TO START");
+    await signOutFully(page);
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory waiting");
+
+    const secondStep = draftSteps[1];
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="milestone-row"]', 25000);
+    const waitingText = await page.locator("body").innerText();
+    check(!/you can start this step/i.test(waitingText),
+      "nothing tells the factory to start on the strength of the brand's word");
+    check(/awaiting our confirmation/i.test(waitingText),
+      "the factory is told plainly that we have not confirmed it yet");
+    await record(page, "The factory waits", "the brand says it paid. That is not enough, and the screen says so");
+
+    const { data: stillShut } = await db.from("order_milestones")
+      .select("state").eq("id", secondStep.id).single();
+    check(stillShut.state === "pending",
+      "the next step is still shut while the payment is only claimed");
+
+    // ================= AN ADMIN CONFIRMS =================
+    console.log("\nAN ADMIN CONFIRMS");
+    await signOutFully(page);
+    await signIn(page, adminEmail, "Admin confirming");
+
+    await page.goto(`${APP}/admin/payments`);
+    await waitForHeading(page, "payments", 25000);
+    const adminHeading = await page.locator("h1").first().innerText();
+    check(!/verification/i.test(adminHeading),
+      `the second admin screen is its own page, not the first one at a different url (${adminHeading})`);
+    await record(page, "The payment queue", "a required step, not a convenience: staff have no org to notify");
+
+    const paymentQueueText = await page.locator("body").innerText();
+    check(paymentQueueText.includes(bornOrder.order_number),
+      "the payment is in the queue, named by the order the brand referenced");
+
+    await page.locator('[data-testid="confirm-payment"]').first().click();
+    await page.waitForTimeout(3500);
+    await record(page, "Confirmed", "this click is what a factory on the other side of the world is relying on");
+
+    const { data: confirmedRow } = await db.from("order_payments")
+      .select("state, confirmed_by").eq("id", dueNow.id).single();
+    check(confirmedRow.state === "confirmed", "the payment is confirmed");
+    check(Boolean(confirmedRow.confirmed_by), "and stamped with which member of staff did it");
+
+    const { data: opened } = await db.from("order_milestones")
+      .select("state").eq("id", secondStep.id).single();
+    check(opened.state === "active",
+      "the next step opened on the confirmation, without waiting for funds to be released");
+
+    // ================= AND NOW IT MAY START =================
+    // The same screen, the same factory, the opposite answer — with only an
+    // admin's click in between. This pair is the whole phase.
+    console.log("\nAND NOW IT MAY START");
+    await signOutFully(page);
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory told to start");
+
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="milestone-row"]', 25000);
+    const clearedText = await page.locator("body").innerText();
+    check(/you can start this step/i.test(clearedText),
+      "the same screen that refused two steps ago now says the work may start");
+    await record(page, "Cleared to work", "nothing changed but an admin confirming the money arrived");
+
+    const { data: finalHeader } = await db.from("production_order_summary")
+      .select("paid_cents, outstanding_cents").eq("id", bornOrder.id).single();
+    check(Number(finalHeader.paid_cents) === Number(dueNow.amount_cents),
+      `the header moved because a payment row moved (${finalHeader.paid_cents})`);
 
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
@@ -870,6 +1169,23 @@ async function main() {
       "figure, on the number a brand uses to decide whether a factory can take their",
       "order. The conversion now exists once in SQL and once in JS, deliberately",
       "mirrored, and both are pinned by this test.",
+      "",
+      "## And the one worth reading twice again",
+      "",
+      "Four assertions describe the same screen, seen by the same factory, four",
+      "minutes apart:",
+      "",
+      "> nothing tells the factory to start on the strength of the brand's word  ",
+      "> the next step is still shut while the payment is only claimed  ",
+      "> *(an admin confirms the money arrived)*  ",
+      "> the next step opened on the confirmation, without waiting for funds to be released  ",
+      "> the same screen that refused two steps ago now says the work may start",
+      "",
+      "Nothing changed in between but one click by a member of staff. That click is",
+      "the entire reason a factory in Ningbo would extend credit to a brand in",
+      "Brooklyn it has never met: it is not taking the brand's word, and it is not",
+      "taking ours either — it is reading a stamp written by a third party who",
+      "checked the account. Remove the admin step and the platform is a notepad.",
       "",
     ].join("\n");
 

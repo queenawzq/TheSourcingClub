@@ -31,6 +31,7 @@ import OrderDetail from "./order/OrderDetail.jsx";
 import ScheduleEditor from "./order/ScheduleEditor.jsx";
 import MilestoneDetail from "./order/MilestoneDetail.jsx";
 import PaymentInstructions from "./order/PaymentInstructions.jsx";
+import PayoutDetails from "./order/PayoutDetails.jsx";
 import NotificationList from "./NotificationList.jsx";
 import "./shell.css";
 
@@ -451,6 +452,13 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       ),
     },
     {
+      // A factory has to be able to say where its money goes, or nobody can
+      // pay it. Registered before the :id routes so "payout" is never read as
+      // an order id.
+      path: "/payout",
+      render: () => <PayoutDetails org={activeOrg} isFactory={isFactory} />,
+    },
+    {
       path: "/orders/:id/payments/:pid",
       render: (params) =>
         isFactory
@@ -538,6 +546,11 @@ function Dashboard({ activeOrg, profile, isFactory, user, admin }) {
           <button type="button" className="secondary-btn" onClick={() => navigate("/orders")}>
             Production orders
           </button>
+          {isFactory ? (
+            <button type="button" className="quiet-btn" onClick={() => navigate("/payout")}>
+              Where you get paid
+            </button>
+          ) : null}
           {isFactory ? (
             <button type="button" className="primary-btn" onClick={() => navigate("/browse")}>
               Browse open requests

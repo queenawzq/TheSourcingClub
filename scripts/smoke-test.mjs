@@ -582,6 +582,7 @@ console.log("\nphase 3 — the order runs");
     embedError ? fail("milestone → payment embed parses", embedError)
                : ok("the embed src/lib/domain/milestone.js uses parses");
 
+
     const { error: updateEmbedError } = await admin
       .from("milestone_updates")
       .select("id, body, orgs:author_org_id (name), documents (id, file_name)")
@@ -633,6 +634,22 @@ console.log("\nphase 3 — the order runs");
     payments.length === paying
       ? ok(`activation created ${payments.length} payments — one per paying step, none for the rest`)
       : fail(`expected ${paying} payments, got ${payments.length}`);
+
+    // The SHAPE of that embed, not just that it parses. order_payments
+    // .milestone_id is unique, so PostgREST reads the relationship as to-one
+    // and returns an object where an ordinary embed returns an array. Reading
+    // it as [0] yields undefined rather than an error, and the timeline
+    // silently loses every payment status with nothing to say so.
+    const { data: shaped } = await admin
+      .from("order_milestones")
+      .select("id, kind, order_payments (id, state)")
+      .eq("order_id", order.id)
+      .in("kind", ["approval_and_payment", "payment_only"])
+      .limit(1);
+    const embedded = shaped?.[0]?.order_payments;
+    (embedded && !Array.isArray(embedded))
+      ? ok("the payment embed is to-ONE and comes back as an object — domain code must not index it")
+      : fail(`the payment embed came back as ${Array.isArray(embedded) ? "an array" : typeof embedded}`);
 
     payments.every((p) => p.fee_bps === 0 && p.currency === "USD")
       ? ok("every payment stores its own fee rate and currency, rather than inheriting a default")

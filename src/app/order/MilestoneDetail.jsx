@@ -76,7 +76,7 @@ export default function MilestoneDetail({ org, orderId, milestoneId, isFactory, 
   if (!state) return <div className="rfq-page"><div className="spinner" aria-hidden="true" /></div>;
 
   const { order, milestone, updates } = state;
-  const payment = milestone.order_payments?.[0] ?? null;
+  const payment = milestone.payment ?? null;
   const action = milestoneAction(milestone, { isFactory, isOwner, order });
   const canPost = isFactory && action.kind === "update";
 
