@@ -21,10 +21,17 @@ import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import ApproveMilestone from "./ApproveMilestone.jsx";
+import Thread from "../message/Thread.jsx";
+import { openOrderThread } from "../../lib/domain/message.js";
 import "./order.css";
 
+// Overview, Messages, Files, Contract details — the tabs
+// TSC_DESIGN_SYSTEM.md specifies for a project workspace. Phase 3 shipped
+// without Messages and recorded it as an intentional exception; Phase 4
+// removes the exception rather than leaving it standing.
 const TABS = [
   ["", "Overview"],
+  ["messages", "Messages"],
   ["files", "Files"],
   ["contract", "Contract details"],
 ];
@@ -268,6 +275,17 @@ export default function OrderDetail({ org, orderId, isFactory, isOwner, tab = ""
         </section>
       ) : null}
 
+      {tab === "messages" ? (
+        <section className="detail-card">
+          <h2>Messages</h2>
+          <p className="ob-hint">
+            Kept with this order, so it is still here when someone asks what was agreed. Write in
+            whichever language suits you.
+          </p>
+          <OrderThread org={org} order={order} isFactory={isFactory} />
+        </section>
+      ) : null}
+
       {tab === "files" ? (
         <section className="detail-card">
           <h2>Files</h2>
@@ -398,4 +416,28 @@ function ProposeCancellation({ orderId, busy, run }) {
       </div>
     </section>
   );
+}
+
+/**
+ * The conversation for this order, opened lazily.
+ *
+ * Created the first time somebody looks rather than at award, so an order the
+ * two sides never need to discuss does not carry an empty thread around — and
+ * so the row is created by someone who has already passed the party check.
+ */
+function OrderThread({ org, order, isFactory }) {
+  const [threadId, setThreadId] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    openOrderThread(order.id)
+      .then((thread) => !cancelled && setThreadId(thread.id))
+      .catch((failure) => !cancelled && setError(failure));
+    return () => { cancelled = true; };
+  }, [order.id]);
+
+  if (error) return <p className="ob-error">{error.message}</p>;
+  if (!threadId) return <div className="spinner" aria-hidden="true" />;
+  return <Thread org={org} threadId={threadId} compact />;
 }

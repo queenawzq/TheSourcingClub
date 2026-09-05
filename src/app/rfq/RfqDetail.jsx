@@ -14,6 +14,7 @@ import React, { useEffect, useState } from "react";
 import { getColourSplits, getInvitations, getQuestions, getRfq } from "../../lib/domain/rfq.js";
 import { listDocuments, urlFor } from "../../lib/domain/documents.js";
 import { orderForQuote } from "../../lib/domain/quote.js";
+import { openRfqThread } from "../../lib/domain/message.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -261,6 +262,32 @@ export default function RfqDetail({ org, rfqId, isFactory, profile }) {
               </li>
             ))}
           </ul>
+        </section>
+      ) : null}
+
+      {isFactory && rfq.status === "open" ? (
+        <section className="detail-card">
+          <h2>Not sure about something?</h2>
+          <p className="ob-hint">
+            Ask before you quote. A question here goes to the brand and stays with this request —
+            unlike the public questions above, only the two of you see it.
+          </p>
+          <button
+            type="button"
+            className="secondary-btn"
+            style={{ alignSelf: "flex-start" }}
+            data-testid="ask-the-brand"
+            onClick={async () => {
+              try {
+                const thread = await openRfqThread(rfq.id, org.id);
+                navigate(`/messages/${thread.id}`);
+              } catch (failure) {
+                setError(failure);
+              }
+            }}
+          >
+            Message the brand
+          </button>
         </section>
       ) : null}
 

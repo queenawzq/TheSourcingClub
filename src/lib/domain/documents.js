@@ -28,6 +28,8 @@ const PRIVATE_KINDS = new Set([
   // is `public: true` — served to anyone with the URL and no sign-in at all —
   // so this is the one kind where the convenient choice is also unrecoverable.
   "milestone_update",
+  // Whatever two parties send each other. Private for the same reason.
+  "message_attachment",
 ]);
 
 /**

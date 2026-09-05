@@ -1055,6 +1055,84 @@ async function main() {
     check(Number(finalHeader.paid_cents) === Number(dueNow.amount_cents),
       `the header moved because a payment row moved (${finalHeader.paid_cents})`);
 
+    // ================= THEY TALK =================
+    // Both prototypes design a messaging screen and neither one works: Send is
+    // `onClick={() => setComposer("")}` on both sides, so no message was ever
+    // appended to anything. This is the first time either party can say
+    // something to the other inside the product.
+    console.log("\nTHEY TALK");
+
+    await page.goto(`${APP}/orders/${bornOrder.id}/messages`);
+    await waitFor(page, '[data-field="message_body"]', 25000);
+    await record(page, "The conversation", "kept with the order, so it is there when someone asks what was agreed");
+
+    const factoryLine = "袖口按照新的尺寸表做好了，确认一下。";
+    await page.locator('[data-field="message_body"]').fill(factoryLine);
+    await page.locator('[data-testid="send-message"]').click();
+    await waitFor(page, '[data-testid="message"]', 30000);
+    await record(page, "The factory writes in Chinese", "and does not have to think about who reads it");
+
+    const { data: sentRows } = await db.from("messages")
+      .select("body, body_lang, body_translated, body_translated_lang, sender_org_id")
+      .order("created_at");
+    const sent = sentRows[sentRows.length - 1];
+
+    check(sent.body === factoryLine,
+      "the message is stored exactly as it was typed, character for character");
+    check(sent.sender_org_id === factoryOrg.id,
+      "and attributed to the factory that sent it, not to whoever the screen assumed");
+
+    // Translation must never be a condition of speaking. If the model is
+    // unavailable the message still stands, and the reader sees the original.
+    if (sent.body_translated) {
+      check(sent.body_translated_lang === "en" && sent.body_lang === "zh",
+        `it was translated for the brand: "${sent.body_translated.slice(0, 60)}"`);
+      check(sent.body_translated !== sent.body,
+        "the translation is not simply a copy of the original");
+    } else {
+      check(true, "no translation was produced, and the message went anyway — as it must");
+    }
+
+    // ================= AND THE BRAND READS IT =================
+    console.log("\nAND THE BRAND READS IT");
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand reading");
+
+    await page.goto(`${APP}/messages`);
+    await waitFor(page, '[data-testid="thread-card"]', 25000);
+    await record(page, "Conversations", "one per piece of work, not one per company");
+
+    const unreadShown = await page.locator('[data-testid="unread-count"]').count();
+    check(unreadShown === 1, `the brand is shown an unread message (${unreadShown})`);
+
+    await page.locator('[data-testid="thread-card"]').first().click();
+    await waitFor(page, '[data-testid="message"]', 25000);
+
+    const readerSees = await page.locator('[data-testid="message"]').first().innerText();
+    if (sent.body_translated) {
+      check(readerSees.includes(sent.body_translated.slice(0, 20)),
+        "the brand is shown English first, not a sentence it cannot read");
+      check(/what they wrote/i.test(readerSees),
+        "with the original always one click away — a translation is a convenience, not the record");
+    } else {
+      check(readerSees.includes(factoryLine.slice(0, 8)),
+        "with no translation available, the brand sees exactly what was written");
+    }
+    await record(page, "The brand reads it", "in its own language, with the original one click away");
+
+    const { data: readState } = await db.from("message_reads").select("thread_id, user_id");
+    check(readState.length >= 2,
+      "opening the conversation recorded that it was read — the count cannot get stuck");
+
+    await page.locator('[data-field="message_body"]').fill("Confirmed, that matches the chart. Go ahead.");
+    await page.locator('[data-testid="send-message"]').click();
+    await page.waitForTimeout(4000);
+
+    const { count: exchanged } = await db.from("messages")
+      .select("*", { count: "exact", head: true });
+    check(exchanged === 2, `both sides have now said something (${exchanged} messages)`);
+    await record(page, "A reply", "the first conversation either prototype could not actually have");
+
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
     console.log("\nINVITE ONLY");
@@ -1186,6 +1264,18 @@ async function main() {
       "Brooklyn it has never met: it is not taking the brand's word, and it is not",
       "taking ours either — it is reading a stamp written by a third party who",
       "checked the account. Remove the admin step and the platform is a notepad.",
+      "",
+      "## And the conversation",
+      "",
+      "The factory types Chinese. The brand reads English. Neither has to think",
+      "about it, and both can always see what was actually written — the original",
+      "is stored beside the translation and is one click away, because on a",
+      "measurement or a date a machine translation will eventually be wrong and",
+      "the person needs something to point at.",
+      "",
+      "Both prototypes design this screen. In both of them `Send` is",
+      "`onClick={() => setComposer(\"\")}` — the box clears and nothing is stored.",
+      "This run is the first message either side has ever managed to send.",
       "",
     ].join("\n");
 

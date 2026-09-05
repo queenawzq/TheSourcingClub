@@ -32,6 +32,8 @@ import ScheduleEditor from "./order/ScheduleEditor.jsx";
 import MilestoneDetail from "./order/MilestoneDetail.jsx";
 import PaymentInstructions from "./order/PaymentInstructions.jsx";
 import PayoutDetails from "./order/PayoutDetails.jsx";
+import MessageList from "./message/MessageList.jsx";
+import ThreadPage from "./message/ThreadPage.jsx";
 import NotificationList from "./NotificationList.jsx";
 import "./shell.css";
 
@@ -433,6 +435,12 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       render: (params) => <ScheduleEditor orderId={params.id} isFactory={isFactory} />,
     },
     {
+      path: "/orders/:id/messages",
+      render: (params) => (
+        <OrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} tab="messages" />
+      ),
+    },
+    {
       path: "/orders/:id/files",
       render: (params) => (
         <OrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} tab="files" />
@@ -449,6 +457,16 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       render: (params) => (
         <MilestoneDetail org={activeOrg} orderId={params.id} milestoneId={params.mid}
                          isFactory={isFactory} isOwner={isOwner} />
+      ),
+    },
+    {
+      path: "/messages",
+      render: () => <MessageList org={activeOrg} isFactory={isFactory} />,
+    },
+    {
+      path: "/messages/:id",
+      render: (params) => (
+        <ThreadPage org={activeOrg} threadId={params.id} isFactory={isFactory} />
       ),
     },
     {
@@ -545,6 +563,9 @@ function Dashboard({ activeOrg, profile, isFactory, user, admin }) {
         <p className="shell-note">
           <button type="button" className="secondary-btn" onClick={() => navigate("/orders")}>
             Production orders
+          </button>
+          <button type="button" className="secondary-btn" onClick={() => navigate("/messages")}>
+            Conversations
           </button>
           {isFactory ? (
             <button type="button" className="quiet-btn" onClick={() => navigate("/payout")}>

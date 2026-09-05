@@ -827,6 +827,107 @@ console.log("\nphase 3 — the order runs");
       events.length === 4
         ? ok(`every transition left an event behind: ${events.map((e) => e.to_state).join(" → ")}`)
         : fail(`expected 4 payment events, got ${events.length}`);
+
+      // ---- phase 4: the two sides can talk --------------------------------
+      console.log("\nphase 4 — conversations");
+
+      const threadOpen = await brand.client.rpc("open_order_thread", { target_order: order.id });
+      threadOpen.error ? fail("the brand opens the conversation on its order", threadOpen.error)
+                       : ok("the brand opens the conversation on its order");
+
+      const threadId = threadOpen.data?.id;
+
+      const again = await factoryClient.rpc("open_order_thread", { target_order: order.id });
+      again.data?.id === threadId
+        ? ok("the factory opening it reaches the same conversation, not a second one")
+        : fail("opening from the other side created a different thread");
+
+      const { error: outsiderOpen } = await losingFactory
+        .rpc("open_order_thread", { target_order: order.id });
+      outsiderOpen ? ok("a factory that lost the bid CANNOT open a conversation on the order")
+                   : fail("LEAK: a non-party opened a conversation");
+
+      // Sending is a plain insert governed by a with-check, unlike almost
+      // everything else in this schema. Worth exercising through PostgREST.
+      const { error: sendError } = await brand.client.from("messages").insert({
+        thread_id: threadId,
+        sender_org_id: order.brand_org_id,
+        sender_user_id: brand.id,
+        body: "Can you confirm the sleeve opening on the PP sample?",
+        body_lang: "en",
+        body_translated: "你能确认PP样品的袖口尺寸吗？",
+        body_translated_lang: "zh",
+        translated_by: "smoke-test",
+      });
+      sendError ? fail("the brand sends a message", sendError) : ok("the brand sends a message");
+
+      const { error: impersonation } = await brand.client.from("messages").insert({
+        thread_id: threadId,
+        sender_org_id: order.factory_org_id,
+        sender_user_id: brand.id,
+        body: "Pretending to be the factory",
+      });
+      impersonation ? ok("a party CANNOT write a message as the other side")
+                    : fail("LEAK: impersonated the counterparty");
+
+      const { data: rivalRead } = await losingFactory
+        .from("messages").select("id").eq("thread_id", threadId);
+      (rivalRead ?? []).length === 0
+        ? ok("a factory outside the order reads none of the conversation")
+        : fail("LEAK: an outsider read the messages");
+
+      // The exact select string src/lib/domain/message.js uses. documents now
+      // has THREE foreign keys into this graph, so an ambiguous embed would be
+      // refused rather than guessed.
+      const { data: withEmbeds, error: embedFail } = await factoryClient
+        .from("messages")
+        .select("id, body, body_translated, orgs:sender_org_id (name), documents (id, file_name)")
+        .eq("thread_id", threadId);
+      embedFail ? fail("the message embeds parse", embedFail)
+                : ok("the embeds src/lib/domain/message.js uses parse");
+
+      withEmbeds?.[0]?.orgs?.name
+        ? ok(`a message names its sender from stored data ("${withEmbeds[0].orgs.name}")`)
+        : fail("a message has no sender name");
+
+      Array.isArray(withEmbeds?.[0]?.documents)
+        ? ok("attachments embed as an ARRAY — a message can carry several")
+        : fail("the attachment embed is not an array");
+
+      const { data: unreadForFactory } = await factoryClient
+        .from("message_thread_summary").select("unread_count, subject_kind, subject_title")
+        .eq("id", threadId).single();
+      unreadForFactory.unread_count === 1
+        ? ok("the factory has exactly one unread message")
+        : fail(`factory unread is ${unreadForFactory.unread_count}, expected 1`);
+      unreadForFactory.subject_kind === "order"
+        ? ok(`the conversation knows what it is about (${unreadForFactory.subject_title})`)
+        : fail("the thread has no subject");
+
+      const { data: unreadForSender } = await brand.client
+        .from("message_thread_summary").select("unread_count").eq("id", threadId).single();
+      unreadForSender.unread_count === 0
+        ? ok("your own message is never unread to you")
+        : fail(`sender sees ${unreadForSender.unread_count} unread`);
+
+      await factoryClient.rpc("mark_thread_read", { target_thread: threadId });
+      const { data: afterRead } = await factoryClient
+        .from("message_thread_summary").select("unread_count").eq("id", threadId).single();
+      afterRead.unread_count === 0
+        ? ok("reading it clears the count — derived per person, so it cannot get stuck")
+        : fail(`still ${afterRead.unread_count} unread after marking read`);
+
+      const { error: readLeak } = await losingFactory
+        .rpc("mark_thread_read", { target_thread: threadId });
+      readLeak ? ok("an outsider CANNOT mark a stranger's conversation read")
+               : fail("LEAK: outsider marked a thread read");
+
+      const { data: msgNotif } = await admin
+        .from("notifications").select("org_id, subject_type")
+        .eq("subject_type", "thread").eq("subject_id", threadId);
+      msgNotif.length === 1 && msgNotif[0].org_id === order.factory_org_id
+        ? ok("sending notified the other side, and only the other side")
+        : fail(`expected one notification to the factory, got ${msgNotif.length}`);
     }
   }
 }

@@ -1,0 +1,84 @@
+/* Conversations. */
+
+.thread { display: flex; flex-direction: column; gap: 16px; }
+.thread.is-compact { max-height: 520px; }
+
+.msg-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.msg {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 72ch;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--paper, #f6f6f4);
+  border: 1px solid var(--line, #e5e7eb);
+}
+/* Own messages sit right and carry the accent, so a glance answers "who said
+   this" before any name is read. */
+.msg.is-mine {
+  align-self: flex-end;
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.msg header { display: flex; gap: 10px; align-items: baseline; }
+.msg header strong { font-size: 13px; }
+.msg header span { font-size: 11px; color: var(--muted, #6b7280); }
+
+.msg-body { margin: 0; white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
+
+.msg-translate {
+  align-self: flex-start;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--blue, #2458ff);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Said plainly, because a person acting on a translated measurement should
+   know a machine produced it. */
+.msg-machine { font-size: 11px; color: var(--muted, #6b7280); }
+
+.msg-attachments { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.msg-attachment { display: flex; flex-direction: column; }
+.msg-attachment button {
+  background: none; border: 0; padding: 0;
+  font-size: 13px; color: var(--blue, #2458ff);
+  cursor: pointer; text-align: left; text-decoration: underline;
+}
+.msg-attachment small { font-size: 11px; color: var(--muted, #6b7280); }
+
+.msg-composer { display: flex; flex-direction: column; gap: 8px; }
+.msg-composer-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; }
+.msg-warning { color: #92400e; }
+
+/* Thread list ------------------------------------------------------------- */
+
+.thread-card { align-items: flex-start; }
+.thread-preview { color: var(--muted, #6b7280); }
+.thread-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.thread-meta small { font-size: 12px; color: var(--muted, #6b7280); }
+.thread-unread {
+  background: var(--blue, #2458ff);
+  color: #fff;
+  border-radius: 999px;
+  min-width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  padding: 0 6px;
+}

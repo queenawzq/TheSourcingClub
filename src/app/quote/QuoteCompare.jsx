@@ -15,6 +15,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { getQuestions, getRfq } from "../../lib/domain/rfq.js";
 import { awardQuote, listQuotesForRfq, orderForQuote, quoteTotalCents } from "../../lib/domain/quote.js";
+import { openRfqThread } from "../../lib/domain/message.js";
 import { listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -156,6 +157,23 @@ export default function QuoteCompare({ org, rfqId }) {
                     {quote.version > 1 ? (
                       <span className="compare-version">Revised · v{quote.version}</span>
                     ) : null}
+                    {/* Asking a question is often what settles a comparison, and
+                        having to leave the screen to do it is why people fall
+                        back to email. */}
+                    <button
+                      type="button"
+                      className="compare-message"
+                      onClick={async () => {
+                        try {
+                          const thread = await openRfqThread(rfqId, quote.factory_org_id);
+                          navigate(`/messages/${thread.id}`);
+                        } catch (failure) {
+                          setError(failure);
+                        }
+                      }}
+                    >
+                      Ask a question
+                    </button>
                   </th>
                 ))}
               </tr>

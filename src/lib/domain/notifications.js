@@ -67,6 +67,7 @@ export function notificationLink(notification, { isFactory }) {
   if (type === "payment" && notification.order_id) {
     return `/orders/${notification.order_id}/payments/${id}`;
   }
+  if (type === "thread") return `/messages/${id}`;
 
   return null;
 }

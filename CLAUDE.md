@@ -72,8 +72,8 @@ Phase 1 of the backend lives on `feature/supabase-backend`. Schema, access rules
 ```bash
 supabase start        # local stack in Docker; prints the URL + keys
 npm run db:reset      # re-apply every migration from scratch
-npm run db:test       # pgTAP access-rule suites (129 assertions, three files)
-npm run smoke         # 87 checks through supabase-js: embeds, RPC signatures, grants
+npm run db:test       # pgTAP access-rule suites (155 assertions, four files)
+npm run smoke         # 102 checks through supabase-js: embeds, RPC signatures, grants
 npm run taxonomy      # regenerate migration 007 from the seed JSON
 ```
 
@@ -131,6 +131,18 @@ Things that will bite here specifically:
 - **`order_payments.milestone_id` is unique, so its embed is to-ONE.** PostgREST returns an object where an ordinary embed returns an array, and indexing it as `[0]` yields `undefined` rather than an error — the timeline silently loses every payment status. `listMilestones()` resolves the shape once into `milestone.payment`; nothing downstream should touch `order_payments` directly.
 
 Platform staff have no org, and `notifications.org_id` is `not null references orgs`, so **an admin cannot be notified of anything**. `admin_payment_queue()` is therefore a required step in the workflow, not a convenience: without someone watching it, every payment stalls at `sent`. Do not solve this with a synthetic platform org — it would leak into `current_org_ids()` and every `or is_platform_admin()` branch.
+
+### Conversations (Phase 4)
+
+A thread belongs to the **request or order it is about**, never to a pair of companies. That is what makes visibility free: `can_see_rfq()` and `is_order_party()` already answer who may read it, so there is no fourth set of rules to keep in step. One thread per order; one per `(rfq, factory)`, because asking four factories is four conversations.
+
+- **Sending is a plain insert**, unlike almost everything else here. There is no state machine and no privilege to escalate — the payload is the sender's own words — so a `with check` on `is_thread_party` plus `sender_org_id`/`sender_user_id` says everything worth saying. Messages have no update or delete grant at all: changing the record of what you said is the opposite of what a conversation is for once money is involved.
+- **Translation is stored, not computed on read.** `body` is what was typed and is never overwritten; `body_translated` is the other language. `/api/translate` **must never block a send** — any failure stores the message untranslated and the reader sees the original. This is the opposite of the taxonomy rule (`label_en`/`label_zh` are hand-written, never machine-translated) and deliberately so: a mistranslated *category* silently corrupts matching, while a mistranslated sentence is visibly a sentence and the person can ask.
+- **Unread is derived per user** from `message_reads.last_read_at`, not stored on the thread. The prototype's thread-level integer is never decremented anywhere in either app.
+- Attachments are `documents` with `message_id` and kind `message_attachment`, and need the same three parts as milestone photos: the private bucket, a `documents` policy for the counterparty, and a matching `storage.objects` policy keyed on the thread in the path.
+- `documents` now has **three** FKs into this graph (`milestone_update_id`, `order_id`, `message_id`). An ambiguous embed is refused rather than guessed; the smoke test pins the exact select strings the domain modules use.
+
+Not built, deliberately: call scheduling (the prototype's slot proposals, timezones and video links), presence, and "usually replies in 2h". Every one of those is a hardcoded literal in the prototypes with nothing behind it.
 
 ### Auth
 
