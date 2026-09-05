@@ -32,7 +32,7 @@ begin
   end if;
 
   if o.status not in ('pending_schedule', 'active') then
-    raise exception 'this order is %s already', o.status using errcode = '22023';
+    raise exception 'this order is % already', o.status using errcode = '22023';
   end if;
 
   if length(btrim(coalesce(reason, ''))) = 0 then
@@ -136,7 +136,7 @@ declare
 begin
   select * into o from public.production_orders where id = target_order for update;
   if o.status not in ('pending_schedule', 'active') then
-    raise exception 'this order is %s already', o.status using errcode = '22023';
+    raise exception 'this order is % already', o.status using errcode = '22023';
   end if;
 
   update public.production_orders

@@ -144,12 +144,12 @@ begin
   end if;
 
   if o.status <> 'active' then
-    raise exception 'this order is %s, so there is nothing to report against yet', o.status
+    raise exception 'this order is %, so there is nothing to report against yet', o.status
       using errcode = '22023';
   end if;
 
   if m.state not in ('active', 'submitted') then
-    raise exception 'that step is %s, so it cannot take an update', m.state
+    raise exception 'that step is %, so it cannot take an update', m.state
       using errcode = '22023';
   end if;
 
@@ -221,13 +221,13 @@ begin
     raise exception 'only the factory sends a step for approval' using errcode = '42501';
   end if;
   if o.status <> 'active' then
-    raise exception 'this order is %s', o.status using errcode = '22023';
+    raise exception 'this order is %', o.status using errcode = '22023';
   end if;
   if m.kind = 'payment_only' then
     raise exception 'a payment step has nothing to send for approval' using errcode = '22023';
   end if;
   if m.state <> 'active' then
-    raise exception 'that step is %s, not open work', m.state using errcode = '22023';
+    raise exception 'that step is %, not open work', m.state using errcode = '22023';
   end if;
 
   update public.order_milestones
@@ -280,7 +280,7 @@ begin
   select * into m from public.order_milestones where id = target_milestone for update;
 
   if o.status <> 'active' then
-    raise exception 'this order is %s', o.status using errcode = '22023';
+    raise exception 'this order is %', o.status using errcode = '22023';
   end if;
 
   if m.kind = 'payment_only' then
@@ -302,7 +302,7 @@ begin
   -- Also the double-approve guard: a second concurrent call blocks on the row
   -- lock above, then reads the new state and lands here.
   if m.state <> 'submitted' then
-    raise exception 'that step is %s, so it is not waiting on you', m.state
+    raise exception 'that step is %, so it is not waiting on you', m.state
       using errcode = '22023';
   end if;
 

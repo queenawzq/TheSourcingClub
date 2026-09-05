@@ -45,11 +45,11 @@ begin
   end if;
 
   if o.status <> 'active' then
-    raise exception 'this order is %s', o.status using errcode = '22023';
+    raise exception 'this order is %', o.status using errcode = '22023';
   end if;
 
   if p.state <> 'due' then
-    raise exception 'that payment is %s, not due', p.state using errcode = '22023';
+    raise exception 'that payment is %, not due', p.state using errcode = '22023';
   end if;
 
   update public.order_payments
@@ -109,7 +109,7 @@ begin
   end if;
 
   if p.state <> 'sent' then
-    raise exception 'that payment is %s; only one marked sent can be confirmed', p.state
+    raise exception 'that payment is %; only one marked sent can be confirmed', p.state
       using errcode = '22023';
   end if;
 
@@ -193,7 +193,7 @@ begin
     raise exception 'payment not found' using errcode = 'P0002';
   end if;
   if p.state <> 'sent' then
-    raise exception 'that payment is %s', p.state using errcode = '22023';
+    raise exception 'that payment is %', p.state using errcode = '22023';
   end if;
 
   select * into o from public.production_orders where id = p.order_id;
@@ -245,7 +245,7 @@ begin
     raise exception 'payment not found' using errcode = 'P0002';
   end if;
   if p.state <> 'confirmed' then
-    raise exception 'that payment is %s; only a confirmed one can be released', p.state
+    raise exception 'that payment is %; only a confirmed one can be released', p.state
       using errcode = '22023';
   end if;
 

@@ -18,7 +18,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(68);
+select plan(69);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures
@@ -144,6 +144,40 @@ select is(
        and amount_cents is not null),
   0,
   'a step with nothing to pay for cannot carry an amount'
+);
+
+-- A quote can be submitted with no deposit split at all — the column is
+-- nullable and submit_quote does not require it. Uncoalesced, the generator
+-- would emit a schedule totalling only the sample lines, which agree_schedule
+-- then refuses forever: an order that is dead with nothing explaining why.
+reset role;
+set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000001","email":"p3-brandowner@example.com","role":"authenticated"}';
+set local role authenticated;
+
+insert into public.rfqs (id, brand_org_id, title, status, visibility, quantity_total)
+values ('e3000000-0000-0000-0000-000000000002', 'd3000000-0000-0000-0000-00000000000b',
+        'P3 no-split', 'open', 'open_to_all', 100);
+
+reset role;
+insert into public.quotes
+  (id, rfq_id, factory_org_id, status, unit_price_cents, production_quantity,
+   bulk_lead_time_days, valid_until, submitted_at)
+values ('f3000000-0000-0000-0000-0000000000f3', 'e3000000-0000-0000-0000-000000000002',
+        'd3000000-0000-0000-0000-0000000000f2', 'submitted', 7777, 3, 20,
+        current_date + 30, now());
+
+set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000001","email":"p3-brandowner@example.com","role":"authenticated"}';
+set local role authenticated;
+select public.award_quote('f3000000-0000-0000-0000-0000000000f3');
+
+reset role;
+select is(
+  (select sum(m.amount_cents)::bigint
+     from public.order_milestones m
+     join public.production_orders o on o.id = m.order_id
+     where o.quote_id = 'f3000000-0000-0000-0000-0000000000f3'),
+  23331::bigint,
+  'a quote awarded with NO deposit split still produces a schedule totalling the order exactly'
 );
 
 -- ---------------------------------------------------------------------------

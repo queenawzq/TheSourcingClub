@@ -358,6 +358,8 @@ console.log("\nphase 2 — verification unlocks quoting");
 let rfqId = null;
 let winningQuote = null;
 let losingQuote = null;
+let awardedQuote = null;
+let f1Client = null;      // the winning factory acts as itself: RPCs key on auth.uid()
 let losingFactory = null;   // its own client: RPCs key on auth.uid(), so
                             // service_role cannot act on a factory's behalf
 {
@@ -428,6 +430,7 @@ let losingFactory = null;   // its own client: RPCs key on auth.uid(), so
 console.log("\nphase 2 — the loop");
 {
   const f1 = await signedInUser(`f1-${stamp}@example.com`);
+  f1Client = f1.client;
   const { data: f1org } = await f1.client.rpc("create_org", {
     org_name: `Atelier Three ${stamp}`, org_kind: "factory",
   });
@@ -491,21 +494,36 @@ console.log("\nphase 2 — the loop");
   const { error: staleError } = await brand.client.rpc("award_quote", { quote_id: q.id });
   staleError ? ok("awarding a superseded version is refused") : fail("LEAK: awarded a stale quote version");
 
-  await admin.from("quotes").update({ payment_term_id: pay.id, incoterm_id: inco.id }).eq("id", revised.id);
+  // A deposit split, as the quote form collects it. It is nullable and
+  // submit_quote does not require it — the no-split case is pinned in pgTAP,
+  // where the schedule still has to total the contract exactly.
+  await admin.from("quotes").update({
+    payment_term_id: pay.id, incoterm_id: inco.id, deposit_pct: 30, balance_pct: 70,
+  }).eq("id", revised.id);
   await f1.client.rpc("submit_quote", { quote_id: revised.id });
   const { error: loserSubmit } = await losingFactory.rpc("submit_quote", { quote_id: losingQuote });
   if (loserSubmit) fail("the second factory could not submit", loserSubmit);
 
   const { error: awardError } = await brand.client.rpc("award_quote", { quote_id: revised.id });
   awardError ? fail("award_quote", awardError) : ok("the brand awards the current version");
+  awardedQuote = revised.id;
 
   const { data: loser } = await admin.from("quotes").select("status").eq("id", losingQuote).single();
   loser.status === "declined"
     ? ok("the other factory's quote was auto-declined in the same transaction")
     : fail(`loser is ${loser.status}, expected declined`);
 
+  // Counted by kind, not subject: since Phase 3 the winner's notification
+  // points at the production order it just gained and the loser's at the
+  // request, because those are the two different things worth opening.
+  const { data: madeOrder } = await admin
+    .from("production_orders").select("id").eq("quote_id", revised.id).maybeSingle();
+  // Scoped to this run's request and order. A bare count over the whole table
+  // passes alone and fails the moment anything else has run first.
   const { count: notified } = await admin.from("notifications")
-    .select("*", { count: "exact", head: true }).eq("subject_id", rfqId);
+    .select("*", { count: "exact", head: true })
+    .in("kind", ["quote_accepted", "quote_declined"])
+    .or(`subject_id.eq.${rfqId},order_id.eq.${madeOrder?.id ?? rfqId}`);
   notified === 2 ? ok("both factories were notified — nobody is left waiting")
                  : fail(`expected 2 notifications, got ${notified}`);
 
@@ -513,6 +531,287 @@ console.log("\nphase 2 — the loop");
   rfqRow.status === "awarded" && rfqRow.awarded_quote_id === revised.id
     ? ok("the rfq closed and points at the winning quote")
     : fail(`rfq is ${rfqRow.status}`);
+}
+
+console.log("\nphase 3 — the order runs");
+{
+  // Everything here goes through the same calls src/lib/domain makes, because
+  // the point of this file is the layer pgTAP cannot reach: PostgREST embeds,
+  // RPC argument names, and role grants.
+  const { data: order, error: orderError } = await admin
+    .from("production_orders").select("*").eq("quote_id", awardedQuote).maybeSingle();
+
+  if (orderError || !order) {
+    fail("awarding created a production order", orderError);
+  } else {
+    ok(`awarding created order ${order.order_number} with nobody pressing another button`);
+
+    const { data: milestones } = await admin
+      .from("order_milestones").select("*").eq("order_id", order.id).order("sort");
+
+    const total = milestones.reduce((sum, m) => sum + Number(m.amount_cents ?? 0), 0);
+    total === Number(order.order_total_cents)
+      ? ok(`the generated schedule totals ${total} — exactly the contract value`)
+      : fail(`schedule totals ${total}, contract is ${order.order_total_cents}`);
+
+    milestones.some((m) => m.kind === "payment_only" && m.title === "Bulk deposit")
+      ? ok("the deposit came from the quote's payment split, not a template")
+      : fail("no deposit milestone was derived");
+
+    milestones.every((m) =>
+      (["approval_and_payment", "payment_only"].includes(m.kind)) === (m.amount_cents !== null))
+      ? ok("only the steps that involve money carry an amount")
+      : fail("a step's amount disagrees with its kind");
+
+    // The summary view is what every header reads. If it disagrees with the
+    // rows beneath it, four screens are wrong at once.
+    const { data: summary, error: viewError } = await admin
+      .from("production_order_summary").select("*").eq("id", order.id).maybeSingle();
+    if (viewError) fail("the summary view is queryable", viewError);
+    else Number(summary.total_cents) === total && Number(summary.paid_cents) === 0
+      ? ok("the summary view agrees with the rows it sums")
+      : fail(`view says ${summary.total_cents}/${summary.paid_cents}`);
+
+    // The exact select strings the client uses. documents now has two foreign
+    // keys into the order graph, and an ambiguous embed is refused rather than
+    // guessed — which is how the quotes!quotes_rfq_id_fkey lesson was learned.
+    const { error: embedError } = await admin
+      .from("order_milestones")
+      .select("id, title, order_payments (id, state, amount_cents, fee_bps)")
+      .eq("order_id", order.id);
+    embedError ? fail("milestone → payment embed parses", embedError)
+               : ok("the embed src/lib/domain/milestone.js uses parses");
+
+    const { error: updateEmbedError } = await admin
+      .from("milestone_updates")
+      .select("id, body, orgs:author_org_id (name), documents (id, file_name)")
+      .eq("order_id", order.id);
+    updateEmbedError ? fail("update → documents embed parses", updateEmbedError)
+                     : ok("the embed src/lib/domain/milestone.js uses for photos parses");
+
+    // ---- both sides agree -------------------------------------------------
+    const brandAgree = await brand.client.rpc("agree_schedule", {
+      target_order: order.id, revision: order.schedule_revision,
+    });
+    brandAgree.error ? fail("the brand agrees the schedule", brandAgree.error)
+                     : ok("the brand agrees the schedule");
+
+    const { data: halfway } = await admin
+      .from("production_orders").select("status").eq("id", order.id).single();
+    halfway.status === "pending_schedule"
+      ? ok("one signature is not enough — the order has not started")
+      : fail(`order is ${halfway.status} after one agreement`);
+
+    const { error: staleAgree } = await brand.client.rpc("agree_schedule", {
+      target_order: order.id, revision: order.schedule_revision,
+    });
+    staleAgree ? ok("a side cannot agree the same schedule twice")
+               : fail("LEAK: agreed twice");
+
+    // The factory has to act as itself: every RPC keys on auth.uid(), so
+    // service_role genuinely cannot stand in for a party here.
+    const { data: winner } = await admin
+      .from("quotes").select("factory_org_id").eq("id", awardedQuote).single();
+    // Reuse the winning factory's own session from the loop above.
+    const factoryClient = f1Client;
+    const factoryAgree = await factoryClient.rpc("agree_schedule", {
+      target_order: order.id, revision: order.schedule_revision,
+    });
+    factoryAgree.error ? fail("the factory agrees too", factoryAgree.error)
+                       : ok("the factory agrees too");
+
+    const { data: active } = await admin
+      .from("production_orders").select("status, activated_at").eq("id", order.id).single();
+    active.status === "active"
+      ? ok("the order starts only once BOTH sides have agreed")
+      : fail(`order is ${active.status} after both agreements`);
+
+    const { data: payments } = await admin
+      .from("order_payments").select("*, order_milestones (title, sort, kind)")
+      .eq("order_id", order.id);
+    const paying = milestones.filter((m) => m.amount_cents !== null).length;
+    payments.length === paying
+      ? ok(`activation created ${payments.length} payments — one per paying step, none for the rest`)
+      : fail(`expected ${paying} payments, got ${payments.length}`);
+
+    payments.every((p) => p.fee_bps === 0 && p.currency === "USD")
+      ? ok("every payment stores its own fee rate and currency, rather than inheriting a default")
+      : fail("a payment is missing its fee rate or currency");
+
+    // ---- the gate ---------------------------------------------------------
+    // The first sample is what actually opens: the deposit sits AFTER the
+    // samples in the derived schedule, so it is correctly not_due until they
+    // are done. Following the real order is the only way to reach the gate.
+    const first = milestones[0];
+    first.kind === "approval_and_payment"
+      ? ok(`the schedule opens with "${first.title}", the first stage the factory quoted`)
+      : fail(`first step is ${first.kind}`);
+
+    // Bank details are NOT visible yet: nothing is owed.
+    const { data: tooEarly } = await brand.client
+      .from("factory_payout_accounts").select("id").eq("org_id", winner.factory_org_id);
+    (tooEarly ?? []).length === 0
+      ? ok("a brand CANNOT see the factory's bank details before anything is owed")
+      : fail("LEAK: bank details visible with no payment outstanding");
+
+    await admin.from("factory_payout_accounts").insert({
+      org_id: winner.factory_org_id, bank_name: "Banco Smoke",
+      account_number_last4: "9911", is_primary: true,
+    });
+
+    const posted = await factoryClient.rpc("post_milestone_update", {
+      target_milestone: first.id,
+      body: "Fit sample finished and photographed.",
+      document_ids: [],
+    });
+    posted.error ? fail("the factory posts an update", posted.error)
+                 : ok("the factory posts an update against the step it is working on");
+
+    const { error: brandPost } = await brand.client.rpc("post_milestone_update", {
+      target_milestone: first.id, body: "Looks good", document_ids: [],
+    });
+    brandPost ? ok("a brand CANNOT post an update as though it were the factory")
+              : fail("LEAK: the brand posted a factory update");
+
+    // The brand can read what the factory posted. This is the positive twin of
+    // every isolation check, and the one whose absence is silent: get the
+    // policy wrong and the gallery is simply empty, with no error at all.
+    const { data: seen } = await brand.client
+      .from("milestone_updates").select("id, body").eq("milestone_id", first.id);
+    (seen ?? []).length === 1
+      ? ok("the brand CAN read the factory's update — the counterparty policy works")
+      : fail(`the brand sees ${(seen ?? []).length} updates, expected 1`);
+
+    const { data: notSeen } = await losingFactory
+      .from("milestone_updates").select("id").eq("milestone_id", first.id);
+    (notSeen ?? []).length === 0
+      ? ok("a competing factory CANNOT read that update")
+      : fail("LEAK: a competitor read the update");
+
+    await factoryClient.rpc("submit_milestone", { target_milestone: first.id });
+    const approved = await brand.client.rpc("approve_milestone", {
+      target_milestone: first.id, note: "Approved from the smoke test",
+    });
+    approved.error ? fail("the brand approves the sample", approved.error)
+                   : ok("the brand approves the sample");
+
+    const { data: deposit } = await admin
+      .from("order_payments").select("*").eq("milestone_id", first.id).single();
+
+    deposit.state === "due"
+      ? ok("approving the sample made its payment due")
+      : fail(`payment is ${deposit.state} after approval, expected due`);
+
+    {
+      const { data: payout } = await brand.client
+        .from("factory_payout_accounts").select("id").eq("org_id", winner.factory_org_id);
+      (payout ?? []).length === 1
+        ? ok("and NOW the brand can read where to send it — because money is owed")
+        : fail("the brand cannot read the payout account with a payment due");
+
+      const sent = await brand.client.rpc("mark_payment_sent", {
+        target_payment: deposit.id, reference: "SMOKE-REF", note: null,
+      });
+      sent.error ? fail("the brand records the payment as sent", sent.error)
+                 : ok("the brand records the payment as sent");
+
+      const { data: afterSent } = await admin
+        .from("production_order_summary").select("paid_cents").eq("id", order.id).single();
+      Number(afterSent.paid_cents) === 0
+        ? ok("the brand SAYING it paid does not count as funded")
+        : fail(`paid_cents is ${afterSent.paid_cents} on the brand's word alone`);
+
+      const { data: blockedStep } = await admin
+        .from("order_milestones").select("state").eq("id", first.id).single();
+      blockedStep.state !== "complete"
+        ? ok("the step does not complete while the payment is only claimed sent")
+        : fail("LEAK: a claimed payment completed the step");
+
+      const { data: nextStep } = await admin
+        .from("order_milestones").select("state").eq("id", milestones[1].id).single();
+      nextStep.state === "pending"
+        ? ok("the NEXT step stays shut while the payment is only claimed sent")
+        : fail(`next step is ${nextStep.state} on the brand's word alone`);
+
+      const brandConfirm = await brand.client.rpc("confirm_payment_received", {
+        target_payment: deposit.id, amount_received: null, note: null,
+      });
+      brandConfirm.error ? ok("the brand that sent the money CANNOT confirm it arrived")
+                         : fail("LEAK: the payer confirmed its own payment");
+
+      const factoryConfirm = await factoryClient.rpc("confirm_payment_received", {
+        target_payment: deposit.id, amount_received: null, note: null,
+      });
+      factoryConfirm.error ? ok("the factory that is owed the money CANNOT confirm it arrived")
+                           : fail("LEAK: the payee confirmed its own payment");
+
+      const staff = await signedInUser(`payments-admin-${stamp}@example.com`);
+      await admin.from("platform_admins").insert({ user_id: staff.id });
+
+      const { data: queue, error: queueError } = await staff.client.rpc("admin_payment_queue");
+      if (queueError) fail("the admin payment queue is readable by staff", queueError);
+      else queue.some((row) => row.payment_id === deposit.id)
+        ? ok("the payment appears in the queue an admin actually watches")
+        : fail("the sent payment is not in the admin queue");
+
+      const { error: queueLeak } = await brand.client.rpc("admin_payment_queue");
+      queueLeak ? ok("a brand CANNOT read the platform-wide payment queue")
+                : fail("LEAK: the payment queue is readable by a party");
+
+      const confirmed = await staff.client.rpc("confirm_payment_received", {
+        target_payment: deposit.id, amount_received: null, note: "seen on the statement",
+      });
+      confirmed.error ? fail("an admin confirms the payment", confirmed.error)
+                      : ok("an admin confirms the payment arrived");
+
+      const { data: afterConfirm } = await admin
+        .from("order_milestones").select("state").eq("id", first.id).single();
+      afterConfirm.state === "complete"
+        ? ok("the step completes on the ADMIN's confirmation — it said otherwise a moment ago")
+        : fail(`step is ${afterConfirm.state} after confirmation`);
+
+      const { data: opened } = await admin
+        .from("order_milestones").select("state").eq("id", milestones[1].id).single();
+      opened.state === "active"
+        ? ok("and the next step opens, WITHOUT waiting for the funds to be released")
+        : fail(`next step is ${opened.state} after confirmation`);
+
+      const { data: funded } = await admin
+        .from("production_order_summary").select("paid_cents").eq("id", order.id).single();
+      Number(funded.paid_cents) === Number(deposit.amount_cents)
+        ? ok("the header total moved because a payment row moved, not because anything was typed")
+        : fail(`paid_cents is ${funded.paid_cents}, expected ${deposit.amount_cents}`);
+
+      const { data: told } = await admin
+        .from("notifications").select("kind, org_id, order_id")
+        .eq("order_id", order.id).eq("kind", "payment_confirmed");
+      told.some((n) => n.org_id === winner.factory_org_id)
+        ? ok("the factory was told, in the same transaction, that it can start")
+        : fail("the factory was not notified of the confirmation");
+
+      told.every((n) => n.order_id === order.id)
+        ? ok("payment notifications carry their order, so the link in the feed resolves")
+        : fail("a payment notification has no order to link to");
+
+      const released = await staff.client.rpc("release_payment_to_factory", {
+        target_payment: deposit.id, note: null,
+      });
+      released.error ? fail("an admin releases the funds", released.error)
+                     : ok("an admin releases the funds");
+
+      const { data: stillOpen } = await admin
+        .from("order_milestones").select("state").eq("id", milestones[1].id).single();
+      stillOpen.state === "active"
+        ? ok("releasing changes no milestone state — the work opened at confirmation")
+        : fail(`releasing moved the next step to ${stillOpen.state}`);
+
+      const { data: events } = await admin
+        .from("payment_events").select("to_state").eq("payment_id", deposit.id).order("created_at");
+      events.length === 4
+        ? ok(`every transition left an event behind: ${events.map((e) => e.to_state).join(" → ")}`)
+        : fail(`expected 4 payment events, got ${events.length}`);
+    }
+  }
 }
 
 console.log("\nemail sign-in");

@@ -176,7 +176,7 @@ begin
   end if;
 
   if o.status <> 'pending_schedule' then
-    raise exception 'this order is %s and its schedule is settled', o.status
+    raise exception 'this order is % and its schedule is settled', o.status
       using errcode = '22023';
   end if;
 

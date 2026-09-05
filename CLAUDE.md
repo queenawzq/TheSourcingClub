@@ -72,7 +72,7 @@ Phase 1 of the backend lives on `feature/supabase-backend`. Schema, access rules
 ```bash
 supabase start        # local stack in Docker; prints the URL + keys
 npm run db:reset      # re-apply every migration from scratch
-npm run db:test       # pgTAP access-rule suite (25 assertions)
+npm run db:test       # pgTAP access-rule suites (129 assertions, three files)
 npm run smoke         # end-to-end check through supabase-js
 npm run taxonomy      # regenerate migration 007 from the seed JSON
 ```
@@ -110,7 +110,26 @@ Option lists come from `taxonomy_terms` — nothing in the flow hardcodes a voca
 
 ### Tests must not depend on each other
 
-Both suites run against the same local database with no reset between them, so **every assertion is scoped to its own fixtures**. pgTAP org slugs are `pgtap-` prefixed and every `count(*)` filters on the fixture ids; the smoke test stamps its org names with the run timestamp. A bare `count(*)` passes alone and fails the moment the other suite has run first — which is exactly how this broke the first time.
+All three pgTAP files and the smoke test run against the same local database with no reset between them, so **every assertion is scoped to its own fixtures**. Org slugs are prefixed per phase (`pgtap-`, `pgtap2-`, `pgtap3-`) and every `count(*)` filters on the fixture ids; the smoke test stamps its org names with the run timestamp. A bare `count(*)` passes alone and fails the moment another suite has run first — which is exactly how this broke the first time.
+
+### Production orders (Phase 3)
+
+An awarded quote becomes a `production_orders` row in the same transaction, carrying a **snapshot** of the quote's commercial terms. Copied, not joined: a factory revising its quote afterwards must not rewrite an executed contract. A trigger enforces that, rather than a policy, because `service_role` bypasses RLS and holds a blanket write grant.
+
+Things that will bite here specifically:
+
+- **`grant select` and nothing else, on every Phase 3 table.** Not stylistic. An UPDATE policy's `using` clause can gate the state a row comes *from*, but its `with check` cannot stop the same statement writing a confirmation stamp alongside it. A policy gates the transition; it cannot gate the payload. So the RPCs own every write.
+- **A `security definer` function has no policy behind it.** The `or is_platform_admin()` branches on the read policies do not protect `confirm_payment_received`. The admin test is the first statement in each of the three admin RPCs — before any `select`, since checking afterwards leaks existence through `P0002` versus `42501`.
+- **`quotes.deposit_pct` is nullable** and `submit_quote()` does not require it. Uncoalesced, the schedule generator emits milestones totalling only the sample lines, `agree_schedule` refuses that forever, and the order is dead with nothing on screen explaining why.
+- **Compute one side of a percentage split and subtract for the other.** Rounding both independently loses or invents a cent, permanently, on a figure a brand types into a bank transfer.
+- **`agree_schedule` takes a revision.** Without it: brand agrees, factory edits, factory agrees, and a client that cached "I already agreed" re-stamps the brand on terms it never read. The order activates showing two green checkmarks.
+- **The chain advances on `confirmed`, never on `released`.** Keying it to release would freeze a production order permanently on one forgotten admin click, with no error and no party able to unstick it.
+- **`documents_own` is `for all`** and says nothing about `milestone_update_id`. Without `documents_link_guard`, one UPDATE re-parents a photo onto another order and the counterparty read policy then serves it to strangers.
+- **Milestone photos need three things to work**: the kind in `PRIVATE_KINDS`, a `documents` read policy for the counterparty, *and* a matching `storage.objects` policy. With only the first two, `urlFor()` mints a signed URL that 400s — a broken image tile, not an error message.
+- **Money is `bigint` throughout.** `unit_price_cents * production_quantity` passes `int4` at 100,000 units of a $250 jacket.
+- **Every header figure comes from `production_order_summary`.** JavaScript never sums money and never decides whose turn it is. The order total is the sum of the *milestones*, not the quote — they are equal at award and diverge the moment either side edits.
+
+Platform staff have no org, and `notifications.org_id` is `not null references orgs`, so **an admin cannot be notified of anything**. `admin_payment_queue()` is therefore a required step in the workflow, not a convenience: without someone watching it, every payment stalls at `sent`. Do not solve this with a synthetic platform org — it would leak into `current_org_ids()` and every `or is_platform_admin()` branch.
 
 ### Auth
 
