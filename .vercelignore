@@ -1,0 +1,10 @@
+# The deploy needs the site source and api/ only. Everything below is either
+# regenerated, local-only, or several megabytes of things a CDN should never
+# be asked to hold.
+node_modules
+dist
+.vite
+e2e-evidence
+supabase
+scripts
+*.log
