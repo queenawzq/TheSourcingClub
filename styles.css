@@ -875,15 +875,11 @@ td:nth-child(2) {
 
 .price-card strong {
   display: block;
-  margin: 28px 0 10px;
+  margin: 48px 0 10px;
   color: var(--blue);
   font-size: 34px;
   line-height: 0.95;
   font-weight: 900;
-}
-
-.price-card:first-child strong {
-  margin-top: 48px;
 }
 
 .price-card:nth-child(2) strong {
