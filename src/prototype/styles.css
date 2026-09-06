@@ -15656,6 +15656,23 @@ button.sort-button {
   .saved-factory-meta {
     display: none;
   }
+
+  .saved-factory-card-top {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+
+  .saved-factory-identity {
+    grid-area: auto;
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: stretch;
+  }
+
+  .saved-factory-actions {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
 }
 
 @media (max-width: 760px) {
