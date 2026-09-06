@@ -16284,3 +16284,15 @@ button.sort-button {
     max-width: 100%;
   }
 }
+
+/* States the prototype never needed and the real app cannot do without. */
+.projects-empty {
+  margin: 0;
+  padding: var(--card-padding);
+  border: 1px dashed var(--border);
+  border-radius: var(--card-radius);
+  color: var(--text-muted);
+  font-size: var(--card-subtitle-size);
+  line-height: var(--card-subtitle-line);
+}
+.projects-error { border-color: #f2a48a; background: #fff1ea; color: #b33416; }

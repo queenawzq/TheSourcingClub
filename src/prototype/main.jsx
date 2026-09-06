@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
+import { useOrders } from "../lib/data/DataProvider.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import "./styles.css";
 import "../shared/profile-shell.css";
@@ -564,7 +564,7 @@ const closedRfqs = [
   }
 ];
 
-const activeProjects = [
+export const activeProjects = [
   {
     title: "Organic cotton woven shirt production",
     factory: "Atelier Minho",
@@ -5127,6 +5127,9 @@ function RfqCard({ rfq, goTo, customTabs = [] }) {
 }
 
 function ProjectsScreen({ goTo, setSelectedReorderProject }) {
+  // Reads through the data seam rather than the module constant, so the same
+  // screen serves mock data in prototype.html and real orders in app.html.
+  const { data: orders, loading, error } = useOrders();
   const [activeTab, setActiveTab] = useState("active");
   const [projectTabs, setProjectTabs] = useState([
     { key: "active", label: "Active orders (4)", locked: true },
@@ -5332,15 +5335,30 @@ function ProjectsScreen({ goTo, setSelectedReorderProject }) {
       )}
 
       <section className="projects-list" aria-label={activeTab === "closed" ? "Closed orders" : "Active orders"}>
-        {activeProjects.map((project) => (
-          <ProjectListCard
-            project={project}
-            goTo={goTo}
-            customTabs={customTabs}
-            setSelectedReorderProject={setSelectedReorderProject}
-            key={project.title}
-          />
-        ))}
+        {/* Three states the prototype has never had. Against the mock adapter
+            only the last one is ever reached, which is why the page looks
+            unchanged; against a network all three happen. */}
+        {loading ? (
+          <p className="projects-empty" data-testid="orders-loading">Loading your orders…</p>
+        ) : error ? (
+          <p className="projects-empty projects-error" data-testid="orders-error">
+            {error.message}
+          </p>
+        ) : !orders?.length ? (
+          <p className="projects-empty" data-testid="orders-empty">
+            No production orders yet. One appears here when a quote is awarded.
+          </p>
+        ) : (
+          orders.map((project) => (
+            <ProjectListCard
+              project={project}
+              goTo={goTo}
+              customTabs={customTabs}
+              setSelectedReorderProject={setSelectedReorderProject}
+              key={project.id ?? project.title}
+            />
+          ))
+        )}
       </section>
     </div>
   );
@@ -6908,4 +6926,6 @@ function Toast({ message, onDone }) {
   return <div className="toast">{message}</div>;
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+// Mounted by src/prototype/entry.jsx (mock data) and by src/app/main.jsx
+// (live data). Both wrap this in a DataProvider; see src/lib/data/DataProvider.jsx.
+export default App;
