@@ -31,6 +31,12 @@ import QuoteSent from "./quote/QuoteSent.jsx";
 import QuoteCompare from "./quote/QuoteCompare.jsx";
 import InviteFactories from "./rfq/InviteFactories.jsx";
 import OrderList from "./order/OrderList.jsx";
+// The designed screens, mounted against live data through the seam. Importing
+// them pulls in the prototype stylesheet, which is the point — the design is
+// the CSS.
+import { ProjectsScreen } from "../prototype/main.jsx";
+import { DataProvider } from "../lib/data/DataProvider.jsx";
+import { createLiveAdapter } from "./live-adapter.js";
 import OrderDetail from "./order/OrderDetail.jsx";
 import ScheduleEditor from "./order/ScheduleEditor.jsx";
 import MilestoneDetail from "./order/MilestoneDetail.jsx";
@@ -414,6 +420,22 @@ function Shell() {
  * What the signed-in user is looking at. Each Phase 2 screen lands here as it
  * is built; until then this is the dashboard plus the admin queue.
  */
+/**
+ * The prototype's screens navigate with a screen KEY and no entity id
+ * (`goTo("projectDetail")`). The real app navigates by path. Until the ported
+ * screens carry ids, the translation lives here rather than in each screen.
+ */
+function navigateFromPrototype(screenKey, navigate) {
+  const paths = {
+    projects: "/orders",
+    rfqs: "/rfqs",
+    messages: "/messages",
+    home: "/",
+    quotes: "/rfqs",
+  };
+  navigate(paths[screenKey] ?? "/");
+}
+
 function ShellRoutes({ activeOrg, profile, user, isFactory }) {
   // listMyOrgs folds the membership role onto the org, and several actions
   // turn on it: awarding a quote, approving a step that releases money, and
@@ -478,7 +500,18 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // Production orders are ONE namespace for both sides, unlike /rfqs and
       // /browse. An order is a single row with two parties, and a link a brand
       // pastes to its factory has to open.
+      // Slice one of the port: the designed orders screen, live data.
       path: "/orders",
+      render: () => (
+        <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
+          <ProjectsScreen goTo={(next) => navigateFromPrototype(next, navigate)} />
+        </DataProvider>
+      ),
+    },
+    {
+      // Kept reachable while the ported screen is compared against it. Goes
+      // when the slice is signed off, not before.
+      path: "/orders/legacy",
       render: () => <OrderList org={activeOrg} isFactory={isFactory} />,
     },
     {

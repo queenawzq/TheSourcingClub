@@ -40,6 +40,31 @@ Deep-linking is by query param, since there is no router:
 
 Every page must be registered in `vite.config.js` `rollupOptions.input` or it will not be built.
 
+## The data seam — how the designed UI meets the backend
+
+The direction as of Phase 5: **the prototype UI becomes the product.** `src/app` was growing hand-built screens beside ~14,000 lines of designed ones, which was waste. The prototypes are being wired to the real backend in place, screen by screen.
+
+Editing Queena's files in place, rather than copying them, is deliberate. Two files at different paths share no ancestry, so `git merge origin/main` cannot help and every change of hers would be re-applied by hand forever. In place, git 3-way merges do the work. Keep edit footprints small — a screen changing from `activeProjects.map(...)` to `useOrders().map(...)` is one line — because small diffs are what keep a frequent merge uneventful.
+
+The prototypes **must keep rendering with no database**. That is Queena's design loop: open `prototype.html`, see populated screens, iterate on visuals. So the same components mount twice against two adapters:
+
+| Entry | Adapter | Data |
+|---|---|---|
+| `prototype.html` → `src/prototype/entry.jsx` | mock | the constants already in `main.jsx` |
+| `app.html` → `src/app/main.jsx` | live | `src/lib/domain/*` via `src/app/live-adapter.js` |
+
+`src/lib/data/DataProvider.jsx` is the seam. Every hook returns `{ data, loading, error, reload }` **even for the mock**, where `loading` is never true — a screen that handles that correctly against mock data handles it correctly against a network. There is not one loading or error state in the prototypes today, and those states are exactly where a port silently regresses.
+
+`npm run check:prototype` asserts the mock loop still works. If it rots, Queena will not find out until she needs it.
+
+Things that will bite here:
+
+- **`toProjectCard` in `src/app/live-adapter.js` is where the two vocabularies are reconciled**, not glue. The design's fixed five-step rail ("1st step funded / Fit sample / Fit / lab dip / Production / Shipped") does not map onto a schedule derived from a quote, which can contain any steps at all. The current mapping is right at both ends and approximate in between; it needs Queena's decision, not a cleverer function.
+- **Screen keys carry no entity ids.** `goTo("projectDetail")`, not `/orders/:id`. `navigateFromPrototype` in `src/app/main.jsx` translates for now; the screens need real ids as they port.
+- **Importing a prototype screen pulls in `src/prototype/styles.css`** — ~16,000 lines with `!important` blocks that restyle every `.primary-btn`, `.tag` and `.project-status` on the page. That is intended (the design is the CSS), but it means the remaining hand-built `src/app` screens are being restyled too.
+- **CSS custom properties must be defined, not merely referenced.** `var(--blue, #2458ff)` with no `--blue` does not warn — it silently paints the wrong colour, and the fallback makes it look deliberate. Phases 3 and 4 shipped 48 of these. `npm run check:css` runs in the build to stop it happening again.
+- **Design System v2 sizing lives in `src/app/shell.css`'s `:root`**, copied verbatim from the prototype's. Copied rather than imported to avoid the `!important` blocks above. Keep it in step when v2 moves. Buttons are 34px; **inputs stay 42px**.
+
 ## Design system
 
 `TSC_DESIGN_SYSTEM.md` is the enforceable spec for **product screens** (the React prototypes): tokens, a role-based type scale, and fixed component dimensions (42px buttons, 28px pills, 8px cards, 76px bottom bar). Read it before changing prototype UI, and follow its rule that conflicts are fixed by updating the screen rather than adding a local exception.
@@ -74,6 +99,8 @@ supabase start        # local stack in Docker; prints the URL + keys
 npm run db:reset      # re-apply every migration from scratch
 npm run db:test       # pgTAP access-rule suites (155 assertions, four files)
 npm run smoke         # 102 checks through supabase-js: embeds, RPC signatures, grants
+npm run check:css     # fails on a CSS variable used but never defined (runs in build)
+npm run check:prototype  # the prototype must still render with NO database
 npm run taxonomy      # regenerate migration 007 from the seed JSON
 ```
 

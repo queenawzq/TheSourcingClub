@@ -119,12 +119,30 @@ async function waitFor(page, selector, timeout = 20000) {
   throw new Error(`timed out waiting for ${selector}`);
 }
 
+/**
+ * Count-then-index is a race: React can re-render between `count()` and
+ * `nth(index)`, and the element that was there is gone. That was harmless
+ * while every screen rendered synchronously from a constant; the ported
+ * screens fetch, so there is now a render cycle in the middle of the loop. A
+ * transient miss must not end the run — this helper's whole job is to wait.
+ */
+async function eachText(page, selector) {
+  const found = [];
+  const count = await page.locator(selector).count();
+  for (let index = 0; index < count; index += 1) {
+    try {
+      found.push(await page.locator(selector).nth(index).innerText());
+    } catch {
+      // The DOM moved under us; the next pass will see the new shape.
+    }
+  }
+  return found;
+}
+
 async function waitForHeading(page, text, timeout = 25000) {
   const deadline = Date.now() + timeout;
   while (Date.now() < deadline) {
-    const count = await page.locator("h1").count();
-    for (let index = 0; index < count; index += 1) {
-      const heading = await page.locator("h1").nth(index).innerText();
+    for (const heading of await eachText(page, "h1")) {
       if (heading.toLowerCase().includes(text.toLowerCase())) return heading;
     }
     await page.waitForTimeout(250);
@@ -133,14 +151,17 @@ async function waitForHeading(page, text, timeout = 25000) {
 }
 
 async function clickButton(page, text) {
-  const buttons = page.locator("button");
-  const total = await buttons.count();
+  const total = await page.locator("button").count();
   for (let index = 0; index < total; index += 1) {
-    const button = buttons.nth(index);
-    const label = (await button.innerText()).trim().toLowerCase();
-    if (label.includes(text.toLowerCase()) && (await button.isVisible())) {
-      await button.click();
-      return;
+    try {
+      const button = page.locator("button").nth(index);
+      const label = (await button.innerText()).trim().toLowerCase();
+      if (label.includes(text.toLowerCase()) && (await button.isVisible())) {
+        await button.click();
+        return;
+      }
+    } catch {
+      // Same race as eachText: a re-render moved this button. Keep looking.
     }
   }
   throw new Error(`no visible button matching "${text}"`);
@@ -222,15 +243,17 @@ async function signIn(page, email, who) {
     await page.goto(link);
   }
 
-  // A first-time user lands on the org chooser; a returning one goes straight
-  // to their dashboard. Wait for whichever arrives.
+  // Three landings now, not two: the org chooser for a first-time user, the
+  // dashboard for a returning one, and — since invitations became visible —
+  // an offer to join an organisation that already exists. Someone invited must
+  // NOT be asked to create one of their own, so this is a distinct state.
   const deadline = Date.now() + 30000;
   let landed = null;
   while (Date.now() < deadline && !landed) {
-    const headings = await page.locator("h1").count();
-    for (let index = 0; index < headings; index += 1) {
-      const text = (await page.locator("h1").nth(index).innerText()).toLowerCase();
+    for (const heading of await eachText(page, "h1")) {
+      const text = heading.toLowerCase();
       if (text.includes("which side are you on")) landed = "new";
+      if (text.includes("you have been invited")) landed = "invited";
     }
     if (!landed && (await page.locator(".home").count()) > 0) landed = "returning";
     if (!landed) await page.waitForTimeout(250);
@@ -796,8 +819,21 @@ async function main() {
     await waitForHeading(page, "production orders", 25000);
     await record(page, "Production orders", "the brand's side of the work it just commissioned");
 
-    const orderCards = await page.locator('[data-testid="order-card"]').count();
+    // Re-pointed at the DESIGNED orders screen, which now renders this route
+    // against live data through the seam. Same assertion, new markup: the card
+    // class is Queena's, the data behind it is the database's.
+    const orderCards = await page.locator(".brand-project-card").count();
     check(orderCards >= 1, `the awarded work appears as an order (${orderCards} card)`);
+
+    const orderListText = await page.locator(".projects-list").innerText();
+    // rfqTitle, not publishedRfq.title — that select does not include the
+    // column, and `.includes(undefined)` coerces to the string "undefined"
+    // rather than throwing, so the assertion failed for a reason that had
+    // nothing to do with the screen.
+    check(orderListText.includes(rfqTitle),
+      "the designed card is showing a real request title, not the mock one");
+    check(!/Atelier Minho|Hansu Studio/.test(orderListText),
+      "and no mock counterparty leaked through — the constants are not being read");
 
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="order-total"]', 25000);
@@ -1259,6 +1295,13 @@ async function main() {
     console.log("\nSESSION");
     // A deep link must survive a hard refresh — this is what the vercel.json
     // rewrite and its dev-server twin exist for.
+    //
+    // Navigate there explicitly rather than relying on wherever the previous
+    // act happened to leave the browser. That hidden precondition broke the
+    // moment two acts were inserted above, and a test that depends on the
+    // order of unrelated acts is a test that will keep breaking.
+    await page.goto(`${APP}/rfqs/${privateRfq.id}`);
+    await waitForHeading(page, privateTitle.slice(0, 20), 30000);
     await page.reload();
     await waitForHeading(page, privateTitle.slice(0, 20), 30000);
     await record(page, "Deep link survives a hard refresh", "the rewrite works, in dev and in production");

@@ -5126,7 +5126,7 @@ function RfqCard({ rfq, goTo, customTabs = [] }) {
   );
 }
 
-function ProjectsScreen({ goTo, setSelectedReorderProject }) {
+export function ProjectsScreen({ goTo, setSelectedReorderProject }) {
   // Reads through the data seam rather than the module constant, so the same
   // screen serves mock data in prototype.html and real orders in app.html.
   const { data: orders, loading, error } = useOrders();
