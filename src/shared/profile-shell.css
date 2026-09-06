@@ -1,0 +1,135 @@
+.factory-profile-page,
+.brand-profile-page.factory-profile-page {
+  min-height: 100vh;
+  width: min(1280px, calc(100vw - (var(--nav-expanded-page-offset) + 40px)));
+  margin-left: calc(var(--nav-expanded-page-offset) + 40px);
+  padding: 48px 48px var(--page-top-standard) 0;
+  background: #fbfaf8;
+  transition: margin-left 180ms ease, width 180ms ease;
+}
+
+.nav-collapsed .factory-profile-page,
+.nav-collapsed .brand-profile-page.factory-profile-page {
+  width: min(1280px, calc(100vw - (var(--nav-collapsed-page-offset) + 40px)));
+  margin-left: 170px;
+}
+
+.factory-profile-page .factory-profile-shell,
+.brand-profile-page.factory-profile-page .factory-profile-shell {
+  position: relative;
+  display: grid;
+  gap: 22px;
+  max-width: 1240px;
+}
+
+.factory-profile-owner-bar,
+.brand-profile-redesign .factory-profile-owner-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  min-height: 56px;
+  padding: 10px 12px 10px 20px;
+  border: 1px solid #d6e0ec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.factory-profile-owner-bar > div:first-child,
+.brand-profile-redesign .factory-profile-owner-bar > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.factory-profile-owner-bar span,
+.brand-profile-redesign .factory-profile-owner-bar span {
+  color: #60769b;
+  font-size: 11px;
+  font-weight: var(--weight-strong);
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.factory-profile-owner-bar strong,
+.brand-profile-redesign .factory-profile-owner-bar strong {
+  color: #0b1020;
+  font-size: 15px;
+  font-weight: var(--weight-strong);
+  line-height: 19px;
+}
+
+.factory-profile-view-toggle,
+.brand-profile-redesign .factory-profile-view-toggle {
+  display: inline-flex;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid #d6e0ec;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.factory-profile-view-toggle button,
+.brand-profile-redesign .factory-profile-view-toggle button {
+  min-height: 32px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #536b94;
+  font-size: 13px;
+  font-weight: var(--weight-strong);
+}
+
+.factory-profile-view-toggle button.active,
+.brand-profile-redesign .factory-profile-view-toggle button.active {
+  background: #0b1020;
+  color: #fff;
+}
+
+.app-shell:not(.nav-collapsed) > .brand-profile-page.factory-profile-page,
+.side-nav:not(.collapsed) + .brand-profile-page.factory-profile-page,
+.app-shell > .brand-profile-page.factory-profile-page {
+  padding-top: 48px !important;
+}
+
+.app-shell:not(.nav-collapsed) > .factory-profile-page,
+.side-nav:not(.collapsed) + .factory-profile-page {
+  padding-top: 48px !important;
+}
+
+@media (min-width: 761px) {
+  .factory-profile-owner-bar,
+  .brand-profile-redesign .factory-profile-owner-bar {
+    align-items: center !important;
+    flex-direction: row !important;
+  }
+
+  .factory-profile-view-toggle,
+  .brand-profile-redesign .factory-profile-view-toggle {
+    flex: 0 0 auto !important;
+    width: auto !important;
+  }
+
+  .factory-profile-view-toggle button,
+  .brand-profile-redesign .factory-profile-view-toggle button {
+    flex: 0 0 auto !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .factory-profile-owner-bar,
+  .brand-profile-redesign .factory-profile-owner-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .factory-profile-view-toggle,
+  .brand-profile-redesign .factory-profile-view-toggle {
+    width: 100%;
+  }
+
+  .factory-profile-view-toggle button,
+  .brand-profile-redesign .factory-profile-view-toggle button {
+    flex: 1 1 0;
+  }
+}
