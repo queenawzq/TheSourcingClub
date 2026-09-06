@@ -932,6 +932,115 @@ console.log("\nphase 3 — the order runs");
   }
 }
 
+console.log("\nphase 5 — the home screen, and joining a team");
+{
+  // dashboard_snapshot is the single source for every figure on the home
+  // screen. It runs as the CALLER, so a mistake in it can under-report but
+  // cannot leak — which is why it is not a definer function.
+  const { data: brandRows, error: snapError } = await brand.client
+    .rpc("dashboard_snapshot", { target_org: org.id });
+  const snap = Array.isArray(brandRows) ? brandRows[0] : brandRows;
+
+  if (snapError || !snap) {
+    fail("the brand's dashboard snapshot loads", snapError);
+  } else {
+    ok("the brand's dashboard snapshot loads in one round trip");
+
+    snap.is_factory === false
+      ? ok("it knows which side it is describing")
+      : fail("the snapshot has the wrong side");
+
+    // Cross-check a figure against the rows it claims to summarise. A
+    // dashboard that disagrees with the screen it links to is worse than one
+    // that shows nothing.
+    const { count: reallyActive } = await admin
+      .from("production_orders").select("*", { count: "exact", head: true })
+      .eq("brand_org_id", org.id).eq("status", "active");
+    snap.orders_active === reallyActive
+      ? ok(`the order count matches the rows behind it (${snap.orders_active})`)
+      : fail(`snapshot says ${snap.orders_active} active, table says ${reallyActive}`);
+
+    const { data: duePayments } = await admin
+      .from("order_payments").select("amount_cents, order_id, state").eq("state", "due");
+    const dueSum = duePayments.reduce((t, p) => t + Number(p.amount_cents), 0);
+    Number(snap.payments_due_cents) === dueSum
+      ? ok(`money due matches the payment rows (${snap.payments_due_cents})`)
+      : fail(`snapshot says ${snap.payments_due_cents} due, rows say ${dueSum}`);
+  }
+
+  // An org you are not in tells you nothing, even by shape.
+  const { data: nosyRows } = await losingFactory
+    .rpc("dashboard_snapshot", { target_org: org.id });
+  const nosy = Array.isArray(nosyRows) ? nosyRows[0] : nosyRows;
+  (!nosy || (nosy.orders_active === 0 && Number(nosy.payments_due_cents) === 0))
+    ? ok("someone outside the org learns nothing from its dashboard")
+    : fail("LEAK: the dashboard reported another org's figures");
+
+  // ---- invitations, which nothing has ever exercised --------------------
+  const joiner = await signedInUser(`joiner-${stamp}@example.com`);
+
+  const { error: inviteError } = await brand.client.from("org_invitations").insert({
+    org_id: org.id, email: `joiner-${stamp}@example.com`, role: "member",
+  });
+  inviteError ? fail("an owner invites someone", inviteError)
+              : ok("an owner invites someone by email address");
+
+  const { data: theirs } = await joiner.client
+    .from("org_invitations").select("id, role, orgs (name)").eq("status", "pending");
+  (theirs ?? []).length === 1
+    ? ok("the invited person can see the invitation addressed to them")
+    : fail(`the invited person sees ${(theirs ?? []).length} invitations`);
+
+  // The one that matters: an invitation is addressed to an email, and only
+  // the holder of that address may see or take it.
+  const { data: notTheirs } = await losingFactory
+    .from("org_invitations").select("id").eq("status", "pending");
+  (notTheirs ?? []).length === 0
+    ? ok("somebody else's invitation is invisible to you")
+    : fail("LEAK: read an invitation addressed to another person");
+
+  const { error: stealError } = await losingFactory
+    .rpc("accept_invitation", { invitation_id: theirs?.[0]?.id });
+  stealError ? ok("and cannot be accepted by anyone but the person invited")
+             : fail("LEAK: accepted somebody else's invitation");
+
+  const { error: acceptError } = await joiner.client
+    .rpc("accept_invitation", { invitation_id: theirs[0].id });
+  acceptError ? fail("the invited person accepts", acceptError)
+              : ok("the invited person accepts and joins the organisation");
+
+  const { data: nowIn } = await admin
+    .from("org_members").select("role").eq("org_id", org.id).eq("user_id", joiner.id).maybeSingle();
+  nowIn?.role === "member"
+    ? ok("they are a member of the org, at the role they were invited as")
+    : fail("the accepted invitation did not create a membership");
+
+  const { data: usedUp } = await admin
+    .from("org_invitations").select("status").eq("id", theirs[0].id).single();
+  usedUp.status === "accepted"
+    ? ok("and the invitation is spent, not left open")
+    : fail(`invitation is ${usedUp.status} after being accepted`);
+
+  // A new member is a member, not an owner: the money actions stay shut.
+  // Unconditional on purpose — mark_payment_sent checks who you are BEFORE it
+  // checks what state the payment is in, so any payment on the order proves
+  // the authorisation. An assertion that only runs when the data happens to
+  // suit it is an assertion that quietly stops running.
+  const { data: anyPayment } = await admin
+    .from("order_payments").select("id, order_id, production_orders!inner(brand_org_id)")
+    .eq("production_orders.brand_org_id", org.id).limit(1).maybeSingle();
+
+  if (!anyPayment) {
+    fail("no payment on the brand's orders to test member permissions against");
+  } else {
+    const { error: notOwner } = await joiner.client
+      .rpc("mark_payment_sent", { target_payment: anyPayment.id, reference: null, note: null });
+    notOwner
+      ? ok("a newly joined member CANNOT record a payment as sent — that stays with owners")
+      : fail("LEAK: a plain member moved money");
+  }
+}
+
 console.log("\nemail sign-in");
 {
   // The real login path, not a stand-in: request a code, read the delivered

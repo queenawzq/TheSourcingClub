@@ -232,7 +232,7 @@ async function signIn(page, email, who) {
       const text = (await page.locator("h1").nth(index).innerText()).toLowerCase();
       if (text.includes("which side are you on")) landed = "new";
     }
-    if (!landed && (await page.locator(".fact-grid").count()) > 0) landed = "returning";
+    if (!landed && (await page.locator(".home").count()) > 0) landed = "returning";
     if (!landed) await page.waitForTimeout(250);
   }
   if (!landed) throw new Error(`${who} did not reach a signed-in screen`);
@@ -371,7 +371,7 @@ async function main() {
     await record(page, "Factory terms", "signature is recorded against a terms version, and cannot be edited later");
 
     await clickButton(page, "publish my profile");
-    await waitFor(page, ".fact-grid");
+    await waitFor(page, ".home");
     await record(page, "Factory published", "live and findable, but not yet verified");
 
     // What the screen claims, checked against the database.
@@ -444,7 +444,7 @@ async function main() {
     await page.locator('input[type="checkbox"]').first().click();
     await field(page, "type-your-full-name-to-sign").fill("E2E Brand Founder");
     await clickButton(page, "finish");
-    await waitFor(page, ".fact-grid");
+    await waitFor(page, ".home");
     await record(page, "Brand complete", "both sides onboarded against one schema");
 
     const { data: brandOrg } = await db.from("orgs").select("id").eq("name", brandName).single();
@@ -582,7 +582,7 @@ async function main() {
 
     const landed = await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory again");
     check(landed === "returning", "signing back in skips onboarding and lands on the dashboard");
-    await waitFor(page, ".fact-grid", 30000);
+    await waitFor(page, ".home", 30000);
     await record(page, "Factory dashboard", "still unverified, so it may look but not bid");
 
     await clickButton(page, "browse open requests");
@@ -850,7 +850,7 @@ async function main() {
     await page.waitForTimeout(1500);
     await waitFor(page, 'input[type="email"]', 30000);
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Winning factory");
-    await waitFor(page, ".fact-grid", 30000);
+    await waitFor(page, ".home", 30000);
 
     await waitFor(page, '[data-testid="notifications"]', 20000);
     const notifText = await page.locator('[data-testid="notifications"]').innerText();
@@ -1175,6 +1175,86 @@ async function main() {
       .select("*", { count: "exact", head: true }).eq("rfq_id", privateRfq.id);
     check(inviteCount === 1, `one factory was invited (${inviteCount})`);
 
+    // ================= THE HOME SCREEN =================
+    // It used to be a heading, a notification list and a row of buttons, with
+    // a line telling people the real screens lived in the prototype.
+    console.log("\nTHE HOME SCREEN");
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand at home");
+
+    await page.goto(APP);
+    await waitFor(page, ".home", 25000);
+    await record(page, "Brand home", "what needs you, before anything else");
+
+    const homeText = await page.locator(".home").innerText();
+    check(!/mock data|original address/i.test(homeText),
+      "the home screen no longer tells a signed-up user the product is somewhere else");
+
+    // Every figure has to agree with the rows behind it, or a dashboard is
+    // worse than no dashboard.
+    const { data: snapRows } = await db.rpc("dashboard_snapshot", { target_org: brandOrg.id });
+    const snap = Array.isArray(snapRows) ? snapRows[0] : snapRows;
+    check(snap.orders_active === 1,
+      `the snapshot counts the order that exists (${snap.orders_active})`);
+    check(homeText.includes(String(snap.orders_active)),
+      "and the screen shows the figure the database computed, not one of its own");
+
+    // Either there is something waiting, or the screen says so plainly. "Zero
+    // things to do" is a legitimate state and the one most likely to render as
+    // an accidental blank, so it is asserted rather than assumed away.
+    const waitingItems = await page.locator('[data-testid="waiting-item"]').count();
+    const nothingWaiting = await page.locator('[data-testid="nothing-waiting"]').count();
+    check(waitingItems >= 1 || nothingWaiting === 1,
+      waitingItems
+        ? `the brand is told what is waiting on them (${waitingItems} item(s))`
+        : "with nothing outstanding, the screen says so rather than showing an empty space");
+
+    // ================= JOINING A TEAM =================
+    // listMyInvitations() and acceptInvitation() have existed since Phase 1
+    // with nothing calling either: an invitation could be sent and never seen.
+    console.log("\nJOINING A TEAM");
+    await page.goto(`${APP}/team`);
+    await waitForHeading(page, "your team", 25000);
+    await record(page, "The team", "who else acts as this brand");
+
+    const colleagueEmail = `colleague-${stamp}@example.com`;
+    await page.locator('[data-field="invite_email"]').fill(colleagueEmail);
+    await page.locator('[data-testid="send-invite"]').click();
+    await page.waitForTimeout(2500);
+
+    const { data: invited } = await db.from("org_invitations")
+      .select("id, status, role").eq("email", colleagueEmail).single();
+    check(invited.status === "pending", "the invitation is stored and waiting");
+    await record(page, "Invited", "they see it the next time they sign in");
+
+    await db.auth.admin.createUser({ email: colleagueEmail, email_confirm: true });
+
+    await signOutFully(page);
+    await signIn(page, colleagueEmail, "Colleague");
+
+    // The screen that matters: someone invited must not be told to start an
+    // organisation of their own, which is exactly what used to happen.
+    await waitFor(page, '[data-testid="accept-invitation"]', 25000);
+    const joinText = await page.locator(".gate-card").innerText();
+    check(/invited/i.test(joinText),
+      "an invited person is offered the organisation, not asked to create one");
+    await record(page, "You have been invited", "the invitation was in the database from the start; nothing ever showed it");
+
+    await page.locator('[data-testid="accept-invitation"]').click();
+    await page.waitForTimeout(4000);
+    await waitFor(page, ".home", 30000);
+    await record(page, "Joined", "straight into the brand they were invited to, with no onboarding to redo");
+
+    const { data: membership } = await db.from("org_members")
+      .select("role").eq("org_id", brandOrg.id);
+    check(membership.length === 2, `the brand now has two people (${membership.length})`);
+    check(membership.filter((m) => m.role === "owner").length === 1,
+      "one owner and one member — joining does not confer the money permissions");
+
+    const colleagueHome = await page.locator(".home").innerText();
+    check(colleagueHome.includes(brandName),
+      "and they land in that organisation, not one of their own");
+
     // ================= RESUME =================
     console.log("\nSESSION");
     // A deep link must survive a hard refresh — this is what the vercel.json
@@ -1184,7 +1264,7 @@ async function main() {
     await record(page, "Deep link survives a hard refresh", "the rewrite works, in dev and in production");
 
     await page.goto(APP);
-    await waitFor(page, ".fact-grid", 30000);
+    await waitFor(page, ".home", 30000);
     await record(page, "Session survives reload", "onboarding not shown again");
 
     const { count: signatures } = await db

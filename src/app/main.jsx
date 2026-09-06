@@ -1,15 +1,19 @@
 /**
  * The authenticated app shell.
  *
- * One entry point for both sides: after Google sign-in, the org's type decides
- * whether the brand or the factory experience renders. The two existing
- * prototypes are wired in behind this gate phase by phase; until a phase
- * lands, its screens still run on their own mock data at their original URLs.
+ * One entry point for both sides: after sign-in, the org's type decides
+ * whether the brand or the factory experience renders.
+ *
+ * Requests, quotes, awards, production orders, milestones, payments and
+ * conversations all run against the database now. What has NOT been rebuilt —
+ * saved factories, collections, analytics, the settings screens — still lives
+ * only in the prototypes at their own URLs, and is reached from there rather
+ * than being half-linked from here.
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
-import { createOrg } from "../lib/domain/org.js";
+import { acceptInvitation, createOrg, listMyInvitations } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/BrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/FactoryOnboarding.jsx";
@@ -34,6 +38,8 @@ import PaymentInstructions from "./order/PaymentInstructions.jsx";
 import PayoutDetails from "./order/PayoutDetails.jsx";
 import MessageList from "./message/MessageList.jsx";
 import ThreadPage from "./message/ThreadPage.jsx";
+import Home from "./home/Home.jsx";
+import Team from "./settings/Team.jsx";
 import NotificationList from "./NotificationList.jsx";
 import "./shell.css";
 
@@ -206,6 +212,14 @@ function ChooseOrgType() {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // Someone who was invited lands here, and used to be told to create an
+  // organisation of their own — the one thing they should not do. The
+  // invitation existed in the database and no screen ever showed it.
+  const [invitations, setInvitations] = useState([]);
+
+  useEffect(() => {
+    listMyInvitations().then(setInvitations).catch(() => {});
+  }, []);
 
   async function submit(event) {
     event.preventDefault();
@@ -220,6 +234,49 @@ function ChooseOrgType() {
       setError(createError);
       setBusy(false);
     }
+  }
+
+  if (invitations.length) {
+    return (
+      <div className="gate">
+        <div className="gate-card">
+          <p className="gate-eyebrow">Signed in as {user?.email}</p>
+          <h1>You have been invited</h1>
+          <p className="gate-note">
+            Join an organisation that already exists, rather than starting one of your own.
+          </p>
+          {invitations.map((invitation) => (
+            <button
+              key={invitation.id}
+              type="button"
+              className="primary-btn"
+              data-testid="accept-invitation"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                setError(null);
+                try {
+                  await acceptInvitation(invitation.id);
+                  await refreshOrgs();
+                } catch (failure) {
+                  setError(failure);
+                  setBusy(false);
+                }
+              }}
+            >
+              Join {invitation.orgs?.name} as {invitation.role}
+            </button>
+          ))}
+          {error ? <p className="gate-error">{error.message}</p> : null}
+          <div className="gate-row">
+            <button type="button" className="quiet-btn" onClick={() => setInvitations([])}>
+              Start my own organisation instead
+            </button>
+            <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -460,6 +517,10 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       ),
     },
     {
+      path: "/team",
+      render: () => <Team org={activeOrg} />,
+    },
+    {
       path: "/messages",
       render: () => <MessageList org={activeOrg} isFactory={isFactory} />,
     },
@@ -492,7 +553,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     },
     {
       render: () => (
-        <Dashboard activeOrg={activeOrg} profile={profile} isFactory={isFactory} user={user} admin={admin} />
+        <Home org={activeOrg} profile={profile} isFactory={isFactory} user={user} admin={admin} />
       ),
     },
   ]);
@@ -515,84 +576,6 @@ function NotForThisSide({ isFactory }) {
   );
 }
 
-function Dashboard({ activeOrg, profile, isFactory, user, admin }) {
-  const { navigate } = useRouter();
-
-  return (
-      <main className="shell-body">
-        <span className={`side-chip side-chip--${activeOrg.type}`}>
-          {isFactory ? "Factory" : "Brand"}
-        </span>
-        <h1>{activeOrg.name}</h1>
-        <p className="shell-note">
-          Onboarding complete. Signed in as {user?.email}, {activeOrg.role} of this organisation.
-        </p>
-
-        <NotificationList org={activeOrg} isFactory={isFactory} />
-
-        <dl className="fact-grid">
-          <div>
-            <dt>Verification</dt>
-            <dd>{profile.verification_status}</dd>
-          </div>
-          <div>
-            <dt>Completed</dt>
-            <dd>{new Date(profile.onboarding_completed_at).toLocaleDateString()}</dd>
-          </div>
-          <div>
-            <dt>Org id</dt>
-            <dd>{activeOrg.id}</dd>
-          </div>
-        </dl>
-
-        <p className="shell-note">
-          {profile.verification_status === "verified"
-            ? "Your business registration has been verified."
-            : "Your business registration is with our review team. Everything else works while you wait."}
-        </p>
-
-        <p className="shell-note">
-          The remaining {isFactory ? "factory" : "brand"} screens are wired to this shell phase by
-          phase; until then they run on mock data at{" "}
-          <a href={isFactory ? "/factory-prototype.html" : "/prototype.html"}>
-            their original address
-          </a>
-          .
-        </p>
-
-        <p className="shell-note">
-          <button type="button" className="secondary-btn" onClick={() => navigate("/orders")}>
-            Production orders
-          </button>
-          <button type="button" className="secondary-btn" onClick={() => navigate("/messages")}>
-            Conversations
-          </button>
-          {isFactory ? (
-            <button type="button" className="quiet-btn" onClick={() => navigate("/payout")}>
-              Where you get paid
-            </button>
-          ) : null}
-          {isFactory ? (
-            <button type="button" className="primary-btn" onClick={() => navigate("/browse")}>
-              Browse open requests
-            </button>
-          ) : (
-            <button type="button" className="primary-btn" onClick={() => navigate("/rfqs")}>
-              Requests for quotes
-            </button>
-          )}
-        </p>
-
-        {admin ? (
-          <p className="shell-note">
-            <button type="button" className="quiet-btn" onClick={() => navigate("/admin")}>
-              Verification review →
-            </button>
-          </p>
-        ) : null}
-      </main>
-  );
-}
 
 /**
  * Platform staff have no brand or factory org, so the admin tool cannot live
