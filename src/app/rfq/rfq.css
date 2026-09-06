@@ -1,5 +1,5 @@
 /* RFQ screens. Extends the onboarding vocabulary rather than inventing a
-   second one — same 42px controls, 8px cards, 28px pills. */
+   second one — same 34px buttons, 42px inputs, 8px cards, 28px pills. */
 
 .question-row {
   display: grid;

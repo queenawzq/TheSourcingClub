@@ -1,5 +1,5 @@
 /* Auth shell. Follows TSC_DESIGN_SYSTEM.md: Satoshi, #1A4DF2 primary,
-   42px buttons, 8px cards, 28px pills. */
+   34px buttons, 42px inputs, 8px cards, 28px pills (Design System v2). */
 
 @font-face {
   font-family: "Satoshi";
@@ -14,6 +14,17 @@
   font-display: swap;
 }
 
+/**
+ * Design System v2 tokens.
+ *
+ * The dimension tokens below are copied verbatim from the `:root` block of
+ * src/prototype/styles.css, which TSC_DESIGN_SYSTEM.md v2 treats as normative.
+ * Copied rather than imported on purpose: that stylesheet is ~16,000 lines and
+ * carries `!important` blocks that forcibly restyle every .primary-btn, .tag
+ * and .project-status on the page, and it redefines --bg-page.
+ *
+ * Keep them in step with the prototype's :root when v2 moves.
+ */
 :root {
   --primary: #1a4df2;
   --primary-hover: #123fd6;
@@ -26,6 +37,106 @@
   --text: #0b1020;
   --text-muted: #5a6b87;
   --danger: #b33416;
+
+  /* --- v2 dimensions ---------------------------------------------------- */
+  --weight-body: 400;
+  --weight-medium: 500;
+  --weight-strong: 600;
+  --weight-heading: 700;
+  --weight-display: 800;
+  --card-radius: 8px;
+  --card-padding: 24px;
+  --card-row-padding: 20px 24px;
+  --card-compact-padding: 16px;
+  --card-mobile-padding: 12px 14px 13px;
+  --card-section-gap: 16px;
+  --card-row-gap: 10px;
+  --card-column-gap: 26px;
+  --card-title-media: 46px;
+  --card-title-gap: 12px;
+  --card-title-size: 15px;
+  --card-title-line: 19px;
+  --card-subtitle-offset: 3px;
+  --card-subtitle-size: 12px;
+  --card-subtitle-line: 17px;
+  --card-metric-padding: 8px 10px;
+  --card-metric-min-height: 48px;
+  --card-metric-label-size: 10px;
+  --card-metric-label-line: 14px;
+  --card-metric-value-size: 14px;
+  --card-metric-value-line: 19px;
+  --production-card-detail-row-height: 56px;
+  --production-card-progress-bottom-clearance: 0px;
+  --button-height: 34px;
+  --button-radius: 34px;
+  --button-padding: 0 14px;
+  --button-font-size: 12px;
+  --button-line: 18px;
+  --pill-height: 28px;
+  --pill-radius: 5px;
+  --pill-padding: 0 10px;
+  --pill-font-size: 12px;
+  --pill-line: 16px;
+  --compact-control-height: 34px;
+  --compact-control-padding: 0 14px;
+  --compact-control-font-size: 12px;
+  --brand-action-height: 34px;
+  --brand-action-padding: 0 14px;
+  --brand-action-font-size: 12px;
+  --brand-action-line: 18px;
+  --dashboard-action-height: 34px;
+  --dashboard-action-padding: 0 14px;
+  --dashboard-action-font-size: 12px;
+  --dashboard-action-line: 18px;
+  --status-pill-height: 26px;
+  --status-pill-padding: 0 10px;
+  --status-pill-radius: 5px;
+  --status-pill-font-size: 11px;
+  --status-pill-line: 24px;
+  --pill-tab-gap: 32px;
+  --pill-tab-cluster-gap: 24px;
+  --pill-tab-offset-before: -8px;
+  --pill-tab-offset-after: 0;
+  --pill-tab-height: 30px;
+  --pill-tab-padding: 0 0 6px;
+  --pill-tab-font-size: 14px;
+  --nav-expanded-width: 276px;
+  --nav-expanded-page-offset: 276px;
+  --nav-collapsed-page-offset: 78px;
+  --page-max-width: none;
+  --page-padding-inline: 28px;
+  --page-padding-inline-mobile: 16px;
+  --page-top-standard: 72px;
+  --page-top-compact: 36px;
+  --page-top-directory: 32px;
+  --page-shell-max: 1048px;
+  --page-shell-gap: 26px;
+  --page-grid-gap: 24px;
+  --page-controls-gap: 24px;
+  --page-controls-responsive-gap: 18px 14px;
+  --responsive-card-top-gap: 14px;
+  --responsive-card-action-gap: 18px;
+  --responsive-media-max: 420px;
+
+  /* --- aliases ----------------------------------------------------------
+   * The Phase 3 and 4 stylesheets were written against the MARKETING site's
+   * token names (--blue, --ink, --paper, --line, --muted) rather than this
+   * app's. Every one of those was undefined here, so each silently fell back
+   * to a hardcoded default in the wrong colour — #2458ff where the brand blue
+   * is #1a4df2, #6b7280 where muted is #5a6b87. No error, no warning, just
+   * slightly wrong. CLAUDE.md warns about exactly this: don't mix the two
+   * token sets.
+   *
+   * These aliases make the existing references correct while the screens are
+   * ported. New CSS should use the names above, not these.
+   */
+  --blue: var(--primary);
+  --line: var(--border);
+  --muted: var(--text-muted);
+  --card: var(--surface);
+  --paper: var(--bg-page);
+  --ink: var(--text);
+  --tag-fill: var(--soft-blue-fill);
 }
 
 * { box-sizing: border-box; }
@@ -92,11 +203,13 @@ body {
 
 .google-btn,
 .primary-btn {
-  height: 42px;
-  border-radius: 21px;
+  height: var(--button-height);
+  border-radius: var(--button-radius);
+  padding: var(--button-padding);
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--button-font-size);
+  line-height: var(--button-line);
+  font-weight: var(--weight-heading);
   cursor: pointer;
   display: inline-flex;
   align-items: center;

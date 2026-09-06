@@ -1,4 +1,4 @@
-/* Onboarding. Follows TSC_DESIGN_SYSTEM.md: 42px controls, 8px cards,
+/* Onboarding. Follows TSC_DESIGN_SYSTEM.md: 34px buttons, 42px inputs, 8px cards,
    28px pills, #1A4DF2 for primary actions and selected controls only. */
 
 .ob-shell {
@@ -369,16 +369,20 @@
 }
 
 .secondary-btn {
-  height: 42px;
-  border-radius: 21px;
+  height: var(--button-height);
+  border-radius: var(--button-radius);
   background: var(--surface);
   border: 1px solid var(--border-strong);
   color: var(--primary);
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: var(--button-font-size);
+  line-height: var(--button-line);
+  font-weight: var(--weight-heading);
   cursor: pointer;
-  padding: 0 18px;
+  padding: var(--button-padding);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .secondary-btn:disabled { opacity: .45; cursor: not-allowed; }
 
