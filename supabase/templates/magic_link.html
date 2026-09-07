@@ -1,0 +1,29 @@
+<!-- Sign-in email.
+     Carries BOTH a link and a code on purpose: the link is quicker, but the
+     code works when the link cannot be followed — a preview deploy behind
+     SSO, a different browser, or a phone reading mail for a desktop session. -->
+<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#0B1020">
+  <p style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#5A6B87;margin:0 0 8px">
+    The Sourcing Club
+  </p>
+  <h1 style="font-size:22px;line-height:28px;margin:0 0 16px">Your sign-in code</h1>
+
+  <p style="font-size:14px;line-height:20px;color:#5A6B87;margin:0 0 8px">
+    Enter this code to sign in:
+  </p>
+  <p style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:32px;font-weight:700;letter-spacing:.18em;margin:0 0 24px;color:#1A4DF2">
+    {{ .Token }}
+  </p>
+
+  <p style="font-size:14px;line-height:20px;color:#5A6B87;margin:0 0 8px">
+    Or open this link on the device you started from:
+  </p>
+  <p style="margin:0 0 24px">
+    <a href="{{ .ConfirmationURL }}" style="color:#1A4DF2;font-size:14px">Sign in to The Sourcing Club</a>
+  </p>
+
+  <p style="font-size:13px;line-height:18px;color:#5A6B87;margin:0;border-top:1px solid #D7E0EA;padding-top:16px">
+    The code expires in an hour. If you did not ask to sign in, ignore this email &mdash;
+    nobody can get in without it.
+  </p>
+</div>

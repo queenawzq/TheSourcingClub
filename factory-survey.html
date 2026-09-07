@@ -43,6 +43,7 @@
         action="/factory-survey-thank-you.html"
         data-netlify="true"
         netlify-honeypot="bot-field"
+        data-survey-form
       >
         <input type="hidden" name="form-name" value="factory-prototype-survey" />
         <p class="survey-hidden">
@@ -212,9 +213,11 @@
 
         <div class="survey-actions">
           <button type="submit">提交问卷</button>
-          <p>提交后会进入感谢页，回复会保存到 Netlify Forms。</p>
+          <p>提交后会进入感谢页，回复会安全保存。</p>
+          <p class="survey-error" data-survey-error hidden>提交失败，请检查网络后重试。</p>
         </div>
       </form>
     </main>
+    <script type="module" src="/survey.js"></script>
   </body>
 </html>

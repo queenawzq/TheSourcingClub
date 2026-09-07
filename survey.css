@@ -335,3 +335,9 @@
     padding-top: 40px;
   }
 }
+
+.survey-error {
+  margin-top: 8px;
+  color: #b33416;
+  font-weight: 500;
+}
