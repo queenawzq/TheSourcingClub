@@ -1155,9 +1155,13 @@ const onboardingCopy = {
         title: "Review your profile",
         intro: "Confirm the main details brands will use to understand and match with your factory.",
         sections: [
-          ["Factory details", [["Factory Name", "Golden Thread Manufacturing"], ["Year Founded", "2016"], ["Location", "Dongguan, China"], ["Nearest Port", "Shenzhen"]]],
-          ["Production fit", [["Production Type", "Cut & sew knits, Wovens"], ["Product Categories", "Tops, Bottoms, Activewear"], ["Makes", "Button-down shirts, Poplin blouses, Woven dresses"], ["Specializes in", "In-house pattern room, Fit sample + PP sample, Small-batch export, GOTS cotton"], ["Market Level", "Premium / contemporary"], ["Services", "Full package (FPP), Pattern making"]]],
-          ["Capacity & verification", [["MOQ", "100 units / style"], ["Lead Time", "30-45 days"], ["Line-hours", "2,400 hours / month"], ["Estimated units", "Aug roughly 4,800-8,000 pcs"], ["Booking level", "Aug mostly open; Sep partly booked"], ["Verification", "Registration uploaded; certificates pending"]]]
+          ["Factory details", [["Factory Name", "Golden Thread Manufacturing"], ["Year Founded", "2016"], ["Website URL", "goldenthreadmfg.com"], ["Location", "Dongguan, China"], ["Nearest Port", "Shenzhen"], ["Total Employees", "120"]]],
+          ["Factory context", [["About the factory", "Full-service woven and cut & sew factory focused on premium small-batch production, sampling support, and export quality."], ["Factory logo", "Uploaded"], ["Samples developed", "3 uploads"]]],
+          ["Production fit", [["Production Type", "Cut & sew knits, Wovens"], ["Product Categories", "Tops, Bottoms, Activewear"], ["Makes", "Button-down shirts, Poplin blouses, Woven dresses"], ["Market Level", "Premium / contemporary"]]],
+          ["Specialty, services & tools", [["Specializes in", "In-house pattern room, Fit sample + PP sample, Small-batch export, GOTS cotton"], ["Design Services", "Full package (FPP)"], ["3D & digital tools", "None selected"], ["Key machines or equipment", "Flatlock, linking, embroidery, washing"]]],
+          ["Capacity & terms", [["MOQ", "100 units / style"], ["Lead Time", "30-45 days"], ["Capacity category", "Wovens"], ["Line-hours", "2,400 hours / month"], ["Reference style", "Basic woven shirt · ~18 min/pc"], ["Estimated units", "Aug roughly 4,800-8,000 pcs"], ["Booking level", "Aug mostly open; Sep partly booked"]]],
+          ["Verification", [["Business registration", "Uploaded"], ["Certifications", "OEKO-TEX uploaded; GOTS and BSCI pending"], ["Client references", "Maison Rue · Ari Chen"]]],
+          ["Factory walkthrough", [["Walkthrough video", "Not added yet"], ["Target length", "2-4 minutes"], ["Required areas", "Entrance, production floor, materials, machines, QC, packing"]]]
         ],
         cta: "Confirm"
       },
@@ -1276,9 +1280,13 @@ const onboardingCopy = {
         title: "确认你的工厂资料",
         intro: "请确认品牌将看到并用于匹配的主要信息。",
         sections: [
-          ["工厂信息", [["工厂名称", "金线服装制造"], ["成立年份", "2016"], ["所在地", "中国东莞"], ["最近港口", "深圳"]]],
-          ["生产匹配", [["生产类型", "针织裁剪缝制，梭织"], ["产品品类", "上装，下装，运动服"], ["可生产款式", "纽扣衬衫，府绸上衣，梭织连衣裙"], ["专长", "内部制版房，试身样 + 产前样，小批量出口，GOTS 棉"], ["市场层级", "高级成衣 / 当代品牌"], ["服务", "全包生产 FPP，制版"]]],
-          ["产能与验证", [["MOQ", "100 件 / 款"], ["交期", "30-45 天"], ["产线工时", "2,400 小时 / 月"], ["估算件数", "8 月约 4,800-8,000 件"], ["接单状态", "8 月较空；9 月部分已订"], ["验证状态", "注册文件已上传；认证待补充"]]]
+          ["工厂信息", [["工厂名称", "金线服装制造"], ["成立年份", "2016"], ["官网", "goldenthreadmfg.com"], ["所在地", "中国东莞"], ["最近港口", "深圳"], ["员工总数", "120"]]],
+          ["工厂背景", [["工厂介绍", "专注高级小批量生产、打样支持和出口品质的全服务梭织与针织裁剪缝制工厂。"], ["工厂 Logo", "已上传"], ["已开发样品", "已上传 3 个文件"]]],
+          ["生产匹配", [["生产类型", "针织裁剪缝制，梭织"], ["产品品类", "上装，下装，运动服"], ["可生产款式", "纽扣衬衫，府绸上衣，梭织连衣裙"], ["市场层级", "高级成衣 / 当代品牌"]]],
+          ["专长、服务与工具", [["专长", "内部制版房，试身样 + 产前样，小批量出口，GOTS 棉"], ["设计服务", "全包生产 FPP"], ["3D 和数字工具", "未选择"], ["关键机器或设备", "绷缝机、套口机、刺绣、水洗"]]],
+          ["产能与合作条件", [["MOQ", "100 件 / 款"], ["交期", "30-45 天"], ["产能品类", "梭织"], ["产线工时", "2,400 小时 / 月"], ["参考款", "基础梭织衬衫 · 约 18 分钟 / 件"], ["估算件数", "8 月约 4,800-8,000 件"], ["接单状态", "8 月较空；9 月部分已订"]]],
+          ["验证资料", [["营业执照 / 注册文件", "已上传"], ["认证", "OEKO-TEX 已上传；GOTS 和 BSCI 待补充"], ["客户参考", "Maison Rue · Ari Chen"]]],
+          ["工厂介绍视频", [["视频状态", "尚未添加"], ["建议长度", "2-4 分钟"], ["需展示区域", "入口、生产车间、物料、机器、质检、包装"]]]
         ],
         cta: "确认"
       },
@@ -1392,6 +1400,7 @@ function App() {
   const shouldOpenPrototypeScreen = Boolean(restoredScreen);
   const [onboardingComplete, setOnboardingComplete] = useState(shouldOpenPrototypeScreen);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  const [onboardingReviewEdit, setOnboardingReviewEdit] = useState(false);
   const [onboardingLanguage, setOnboardingLanguage] = useState("en");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [screen, setScreen] = useState(shouldOpenPrototypeScreen ? restoredScreen : "dashboard");
@@ -1442,14 +1451,26 @@ function App() {
       <FactoryOnboarding
         language={onboardingLanguage}
         step={onboardingStep}
+        isReviewEdit={onboardingReviewEdit}
         onLanguageChange={setOnboardingLanguage}
         onEditSection={(targetStep) => {
+          setOnboardingReviewEdit(true);
           setOnboardingStep(targetStep);
           window.scrollTo({ top: 0, behavior: "smooth" });
         }}
-        onBack={() => setOnboardingStep((value) => Math.max(0, value - 1))}
+        onBack={() => {
+          if (onboardingReviewEdit) {
+            setOnboardingReviewEdit(false);
+            setOnboardingStep(8);
+          } else {
+            setOnboardingStep((value) => Math.max(0, value - 1));
+          }
+        }}
         onNext={() => {
-          if (onboardingStep >= factoryOnboardingSteps.length - 1) {
+          if (onboardingReviewEdit) {
+            setOnboardingReviewEdit(false);
+            setOnboardingStep(8);
+          } else if (onboardingStep >= factoryOnboardingSteps.length - 1) {
             setOnboardingComplete(true);
             setScreen("dashboard");
           } else {
@@ -5346,7 +5367,7 @@ function FactorySettingsScreen({ language = "en" }) {
   );
 }
 
-function FactoryOnboarding({ language, step, onLanguageChange, onEditSection, onBack, onNext }) {
+function FactoryOnboarding({ language, step, isReviewEdit, onLanguageChange, onEditSection, onBack, onNext }) {
   const copy = onboardingCopy[language];
   const current = copy.steps[step];
   const isFirst = step === 0;
@@ -5383,7 +5404,7 @@ function FactoryOnboarding({ language, step, onLanguageChange, onEditSection, on
             </button>
           )}
           <button className="primary-btn" type="button" onClick={onNext}>
-            {current.cta || (isLast ? copy.steps[copy.steps.length - 1].cta : copy.next)}
+            {isReviewEdit ? (language === "zh" ? "保存" : "Save") : current.cta || (isLast ? copy.steps[copy.steps.length - 1].cta : copy.next)}
           </button>
         </footer>
       </section>
@@ -5546,7 +5567,7 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
   }
 
   if (step === 8) {
-    const reviewEditSteps = [1, 3, 5];
+    const reviewEditSteps = [1, 2, 3, 4, 5, 6, 7];
     const editLabel = language === "zh" ? "编辑" : "Edit";
 
     return (

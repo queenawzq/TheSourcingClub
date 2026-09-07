@@ -13456,7 +13456,12 @@ a.secondary-btn {
 }
 
 @media (max-width: 760px) {
+  .brand-onboarding-page {
+    padding: 24px 16px 48px;
+  }
+
   .brand-onboarding-topbar {
+    margin-bottom: 36px;
     padding: 18px 16px;
   }
 
@@ -13469,14 +13474,21 @@ a.secondary-btn {
     font-size: 12px;
   }
 
-  .brand-onboarding-card {
-    width: calc(100vw - 24px);
+  .brand-onboarding-card,
+  .brand-onboarding-card.welcome,
+  .brand-onboarding-card.complete {
+    width: 100%;
     padding: 28px 20px;
   }
 
   .brand-onboarding-card h1 {
     font-size: 24px;
     line-height: 30px;
+  }
+
+  .brand-onboarding-card.welcome .brand-onboarding-card-header h1 {
+    font-size: 26px;
+    line-height: 32px;
   }
 
   .brand-onboarding-card.welcome .brand-onboarding-card-header p,
@@ -13500,6 +13512,8 @@ a.secondary-btn {
   }
 
   .brand-onboarding-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
     flex-wrap: wrap;
   }
 

@@ -8101,15 +8101,35 @@
   }
 
   .factory-onboarding-page {
-    padding: 24px 14px 48px;
+    padding: 24px 16px 48px;
   }
 
   .factory-onboarding-topbar {
-    margin-bottom: 22px;
+    margin-bottom: 36px;
+    padding: 18px 16px;
+  }
+
+  .factory-onboarding-topbar img {
+    width: 118px;
+    height: auto;
+  }
+
+  .factory-onboarding-topbar span {
+    font-size: 12px;
   }
 
   .factory-onboarding-card,
-  .factory-onboarding-card.step-9 {
+  .factory-onboarding-card.step-1,
+  .factory-onboarding-card.step-2,
+  .factory-onboarding-card.step-3,
+  .factory-onboarding-card.step-4,
+  .factory-onboarding-card.step-5,
+  .factory-onboarding-card.step-6,
+  .factory-onboarding-card.step-7,
+  .factory-onboarding-card.step-8,
+  .factory-onboarding-card.step-9,
+  .factory-onboarding-card.step-10,
+  .factory-onboarding-card.step-11 {
     width: 100%;
     min-height: auto;
     padding: 28px 20px;
@@ -8118,6 +8138,12 @@
   .factory-onboarding-card-header h1 {
     font-size: 24px;
     line-height: 31px;
+  }
+
+  .factory-onboarding-card.step-1 .factory-onboarding-card-header h1 {
+    font-size: 26px;
+    line-height: 32px;
+    white-space: normal;
   }
 
   .factory-profile-owner-bar {

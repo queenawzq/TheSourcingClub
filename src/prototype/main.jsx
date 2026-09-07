@@ -974,6 +974,7 @@ function App() {
         : "projects";
   const [screen, setScreen] = useState(initialScreen);
   const [brandOnboardingStep, setBrandOnboardingStep] = useState(0);
+  const [brandOnboardingReviewEdit, setBrandOnboardingReviewEdit] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [selectedFactories, setSelectedFactories] = useState(["Atelier Minho", "Hanshu Studio"]);
   const [selectedQuote, setSelectedQuote] = useState("Atelier Minho");
@@ -1118,9 +1119,25 @@ function App() {
     return (
       <BrandOnboarding
         step={brandOnboardingStep}
-        onBack={() => setBrandOnboardingStep((value) => Math.max(0, value - 1))}
+        isReviewEdit={brandOnboardingReviewEdit}
+        onEditSection={(targetStep) => {
+          setBrandOnboardingReviewEdit(true);
+          setBrandOnboardingStep(targetStep);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        onBack={() => {
+          if (brandOnboardingReviewEdit) {
+            setBrandOnboardingReviewEdit(false);
+            setBrandOnboardingStep(7);
+          } else {
+            setBrandOnboardingStep((value) => Math.max(0, value - 1));
+          }
+        }}
         onNext={() => {
-          if (brandOnboardingStep >= brandOnboardingSteps.length - 1) {
+          if (brandOnboardingReviewEdit) {
+            setBrandOnboardingReviewEdit(false);
+            setBrandOnboardingStep(7);
+          } else if (brandOnboardingStep >= brandOnboardingSteps.length - 1) {
             goTo("home");
           } else {
             setBrandOnboardingStep((value) => value + 1);
@@ -2146,7 +2163,7 @@ function SettingsScreen({ accountType = "brand" }) {
   );
 }
 
-function BrandOnboarding({ step, onBack, onNext }) {
+function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext }) {
   const current = brandOnboardingSteps[step];
   const isFirst = step === 0;
   const isLast = step === brandOnboardingSteps.length - 1;
@@ -2170,15 +2187,12 @@ function BrandOnboarding({ step, onBack, onNext }) {
         <BrandOnboardingStep
           content={current}
           step={step}
-          onEditSection={(targetStep) => {
-            setBrandOnboardingStep(targetStep);
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }}
+          onEditSection={onEditSection}
         />
 
         <footer className="brand-onboarding-actions">
           {!isFirst && !isLast && <button className="secondary-btn" type="button" onClick={onBack}>Previous</button>}
-          <button className="primary-btn" type="button" onClick={onNext}>{current.cta || "Next"}</button>
+          <button className="primary-btn" type="button" onClick={onNext}>{isReviewEdit ? "Save" : current.cta || "Next"}</button>
         </footer>
       </section>
 
