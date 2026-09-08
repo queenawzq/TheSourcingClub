@@ -140,10 +140,23 @@ async function eachText(page, selector) {
 }
 
 async function waitForHeading(page, text, timeout = 25000) {
-  const deadline = Date.now() + timeout;
+  let deadline = Date.now() + timeout;
+  let extended = false;
   while (Date.now() < deadline) {
     for (const heading of await eachText(page, "h1")) {
       if (heading.toLowerCase().includes(text.toLowerCase())) return heading;
+    }
+    // "Checking your session…" is not the wrong page, it is the right page
+    // still authenticating. This run signs in seventeen times, and the local
+    // auth service intermittently takes longer than the default budget on the
+    // later ones. Give it one extension rather than failing a product
+    // assertion for an infrastructure stall.
+    if (!extended && (await page.locator(".gate-card").count()) > 0) {
+      const gate = (await page.locator(".gate-card").first().innerText().catch(() => "")) || "";
+      if (/checking your session/i.test(gate)) {
+        extended = true;
+        deadline = Date.now() + timeout;
+      }
     }
     await page.waitForTimeout(250);
   }
@@ -1162,10 +1175,19 @@ async function main() {
 
     await page.locator('[data-field="message_body"]').fill("Confirmed, that matches the chart. Go ahead.");
     await page.locator('[data-testid="send-message"]').click();
-    await page.waitForTimeout(4000);
 
-    const { count: exchanged } = await db.from("messages")
-      .select("*", { count: "exact", head: true });
+    // Wait for the message to actually arrive, not for a guessed duration.
+    // sendMessage awaits /api/translate BEFORE inserting, and a model round
+    // trip routinely outlasts a fixed 4s sleep — which is how this passed
+    // locally and failed as soon as the model was slower.
+    let exchanged = 0;
+    const sendDeadline = Date.now() + 45000;
+    while (Date.now() < sendDeadline) {
+      const { count } = await db.from("messages").select("*", { count: "exact", head: true });
+      exchanged = count ?? 0;
+      if (exchanged >= 2) break;
+      await page.waitForTimeout(500);
+    }
     check(exchanged === 2, `both sides have now said something (${exchanged} messages)`);
     await record(page, "A reply", "the first conversation either prototype could not actually have");
 
