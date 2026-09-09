@@ -10,7 +10,8 @@
  * never does.
  */
 import { listOrders, orderStatusLabel, statusTone } from "../lib/domain/order.js";
-import { formatMoney } from "../lib/money.js";
+import { listRfqs } from "../lib/domain/rfq.js";
+import { formatMoney, formatRange } from "../lib/money.js";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -86,9 +87,73 @@ export function toProjectCard(order, isFactory) {
   };
 }
 
+const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+
+/**
+ * A request row in the shape the designed card reads.
+ *
+ * The three metric cells are the interesting part: the prototype hardcodes
+ * "3 quotes · 7 invited · 2 message" per mock request. Two of those are real
+ * counts I already fetch; the third is not, and rather than invent a number
+ * the cell is dropped. A card with two true figures beats one with three where
+ * a reader cannot tell which is which.
+ */
+export function toRfqCard(rfq) {
+  const quotes = rfq.quotes?.[0]?.count ?? 0;
+  const invited = rfq.rfq_invitations?.[0]?.count ?? 0;
+
+  const posted = rfq.published_at ?? rfq.created_at;
+  const due = rfq.quote_deadline
+    ? ` · Quote due ${DAY.format(new Date(rfq.quote_deadline))}`
+    : "";
+
+  const tags = [
+    rfq.quantity_total ? `${rfq.quantity_total.toLocaleString()} units` : null,
+    formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents) !== "—"
+      ? formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents)
+      : null,
+    rfq.requires_sample ? "Sample before bulk" : null,
+  ].filter(Boolean);
+
+  return {
+    id: rfq.id,
+    title: rfq.title || "Untitled request",
+    date: `${rfq.published_at ? "Posted" : "Started"} ${DAY.format(new Date(posted))}${due}`,
+    description: rfq.brief ?? "",
+    tags,
+    // Real requests may have no reference imagery, and the card renders
+    // without it rather than showing a placeholder that implies one exists.
+    images: [],
+    status: rfq.status === "awarded"
+      ? "Awarded"
+      : quotes > 0
+        ? "Ready to compare"
+        : rfq.status === "draft"
+          ? "Draft"
+          : "Waiting for quotes",
+    statusTone: rfq.status === "awarded" ? "ready" : quotes > 0 ? "ready" : "neutral",
+    metrics: [
+      [String(quotes), quotes === 1 ? "quote" : "quotes"],
+      [String(invited), "invited"],
+    ],
+  };
+}
+
 export function createLiveAdapter({ org, isFactory, user }) {
   return {
     viewer: { isFactory, org, user },
     orders: async () => (await listOrders(org.id)).map((order) => toProjectCard(order, isFactory)),
+
+    // Split here rather than in the screen: which statuses count as "closed"
+    // is a domain question, and the factory side will need the same answer.
+    rfqs: async () => {
+      const rows = await listRfqs(org.id);
+      const bucket = (predicate) => rows.filter(predicate).map(toRfqCard);
+      return {
+        active: bucket((r) => r.status === "open"),
+        drafts: bucket((r) => r.status === "draft"),
+        closed: bucket((r) => r.status === "awarded" || r.status === "cancelled"),
+      };
+    },
   };
 }

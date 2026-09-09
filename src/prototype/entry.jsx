@@ -10,7 +10,7 @@
  */
 import React from "react";
 import { createRoot } from "react-dom/client";
-import App, { activeProjects } from "./main.jsx";
+import App, { activeProjects, activeRfqs, closedRfqs, draftRfqs } from "./main.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 
 /**
@@ -21,6 +21,7 @@ import { DataProvider } from "../lib/data/DataProvider.jsx";
 const mockAdapter = {
   viewer: { isFactory: false, org: { name: "Maison Rue" }, user: null },
   orders: () => activeProjects,
+  rfqs: () => ({ active: activeRfqs, drafts: draftRfqs, closed: closedRfqs }),
 };
 
 createRoot(document.getElementById("root")).render(

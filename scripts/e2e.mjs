@@ -503,10 +503,25 @@ async function main() {
     // ================= RFQ =================
     console.log("\nREQUEST FOR QUOTES");
     await clickButton(page, "requests for quotes");
-    await waitForHeading(page, "requests");
-    await record(page, "Brand requests", "empty until the first one is written");
+    // Re-pointed at the DESIGNED requests screen, which now renders this route
+    // against live data. Queena relabelled the brand's nav RFQs → Quotes, so
+    // the heading and the primary action are hers.
+    await waitForHeading(page, "quotes");
 
-    await clickButton(page, "write your first one");
+    // The empty state, which is reachable here and exists nowhere in the
+    // prototype. A brand's very first visit is the one guaranteed to hit it.
+    const emptyRfqs = await page.locator('[data-testid="rfqs-empty"]').count();
+    check(emptyRfqs === 1, "a brand with no requests is told so, not shown a blank panel");
+
+    // The tab counts were literals — "Active quotes (4)" on an account with
+    // none. A number on screen that does not come from the data is what the
+    // design system's own provenance rule forbids.
+    const tabsText = await page.locator(".rfqs-tabs").first().innerText();
+    check(/active quotes \(0\)/i.test(tabsText),
+      `the tab counts are real, not the mock's literals (${tabsText.split("\n")[0]})`);
+    await record(page, "Brand requests", "the designed screen, empty until the first one is written");
+
+    await clickButton(page, "request new quote");
     await waitForHeading(page, "what do you need made");
     // The draft row exists before a single field is filled, so nothing typed
     // is ever held only in component state.
@@ -828,7 +843,11 @@ async function main() {
     // a schedule derived from the very quote it just accepted.
     console.log("\nTHE ORDER BEGINS");
 
-    await page.goto(`${APP}/orders`);
+    // Click through rather than deep-linking. A URL navigation would not have
+    // caught goTo() being broken inside the ported screen, and did not.
+    await page.goto(APP);
+    await waitFor(page, ".home", 25000);
+    await clickButton(page, "production orders");
     await waitForHeading(page, "production orders", 25000);
     await record(page, "Production orders", "the brand's side of the work it just commissioned");
 

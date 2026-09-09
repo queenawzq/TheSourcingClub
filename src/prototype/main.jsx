@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useOrders } from "../lib/data/DataProvider.jsx";
+import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import "./styles.css";
 import "../shared/profile-shell.css";
@@ -419,7 +419,7 @@ const marketplaceFactories = [
   }
 ];
 
-const activeRfqs = [
+export const activeRfqs = [
   {
     title: "Organic cotton woven shirt production",
     date: "Posted Jul 18 · Quote due Jul 24",
@@ -492,7 +492,7 @@ const activeRfqs = [
   }
 ];
 
-const draftRfqs = [
+export const draftRfqs = [
   {
     title: "Silk slip dress capsule",
     date: "Draft saved Aug 2 · Needs factory invite",
@@ -528,7 +528,7 @@ const draftRfqs = [
   }
 ];
 
-const closedRfqs = [
+export const closedRfqs = [
   {
     title: "Linen camp shirt summer run",
     date: "Closed Jul 12 · Quote accepted",
@@ -4816,7 +4816,7 @@ function SavedFactoryCard({ factory, goTo }) {
   );
 }
 
-function RfqsScreen({ goTo }) {
+export function RfqsScreen({ goTo }) {
   const [activeTab, setActiveTab] = useState("active");
   const [rfqTabs, setRfqTabs] = useState([
     { key: "active", label: "Active quotes (4)", locked: true },
@@ -4827,12 +4827,26 @@ function RfqsScreen({ goTo }) {
   const [newTabName, setNewTabName] = useState("");
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
   const [draftTabs, setDraftTabs] = useState(rfqTabs);
-  const rfqDataByTab = {
-    active: activeRfqs,
-    drafts: draftRfqs,
-    closed: closedRfqs
+  // Through the seam: mock constants in prototype.html, real requests in
+  // app.html. The adapter returns the three buckets already split, because
+  // which statuses count as "closed" is a domain question, not a screen one.
+  const { data: rfqBuckets, loading: rfqsLoading, error: rfqsError } = useRfqs();
+  const rfqDataByTab = rfqBuckets ?? { active: [], drafts: [], closed: [] };
+  const activeRfqsForTab = rfqDataByTab[activeTab] ?? [];
+
+  /**
+   * The counts in the locked tab labels are real.
+   *
+   * They were literals — "Active quotes (4)", "Drafts (2)", "Closed (6)" — and
+   * a number on screen that does not come from the data is exactly what the
+   * design system's own provenance rule forbids. Custom tabs keep the label
+   * their author typed.
+   */
+  const tabLabel = (tab) => {
+    if (!tab.locked) return tab.label;
+    const count = rfqDataByTab[tab.key]?.length ?? 0;
+    return `${tab.label.replace(/\s*\(\d+\)\s*$/, "")} (${count})`;
   };
-  const activeRfqsForTab = rfqDataByTab[activeTab] || activeRfqs;
   const customTabs = rfqTabs.filter((tab) => !tab.locked).map((tab) => tab.label);
 
   function openManageTabs() {
@@ -4928,7 +4942,7 @@ function RfqsScreen({ goTo }) {
                   aria-current={activeTab === tab.key ? "page" : undefined}
                   onClick={() => setActiveTab(tab.key)}
                 >
-                  {tab.label}
+                  {tabLabel(tab)}
                 </button>
               </div>
             ) : (
@@ -4939,7 +4953,7 @@ function RfqsScreen({ goTo }) {
                 onClick={() => setActiveTab(tab.key)}
                 key={tab.key}
               >
-                {tab.label}
+                {tabLabel(tab)}
               </button>
             )
           ))}
@@ -5013,9 +5027,23 @@ function RfqsScreen({ goTo }) {
       )}
 
       <section className="rfq-list" aria-label={`${activeTab} quotes`}>
-        {activeRfqsForTab.map((rfq) => (
-          <RfqCard rfq={rfq} goTo={goTo} customTabs={customTabs} key={rfq.title} />
-        ))}
+        {rfqsLoading ? (
+          <p className="projects-empty" data-testid="rfqs-loading">Loading your requests…</p>
+        ) : rfqsError ? (
+          <p className="projects-empty projects-error" data-testid="rfqs-error">{rfqsError.message}</p>
+        ) : !activeRfqsForTab.length ? (
+          <p className="projects-empty" data-testid="rfqs-empty">
+            {activeTab === "drafts"
+              ? "No drafts. A request is saved here as soon as you start writing one."
+              : activeTab === "closed"
+                ? "Nothing closed yet."
+                : "No open requests. Post one and factories can start quoting."}
+          </p>
+        ) : (
+          activeRfqsForTab.map((rfq) => (
+            <RfqCard rfq={rfq} goTo={goTo} customTabs={customTabs} key={rfq.id ?? rfq.title} />
+          ))
+        )}
       </section>
     </div>
   );

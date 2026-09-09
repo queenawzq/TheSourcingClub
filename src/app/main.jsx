@@ -34,7 +34,7 @@ import OrderList from "./order/OrderList.jsx";
 // The designed screens, mounted against live data through the seam. Importing
 // them pulls in the prototype stylesheet, which is the point — the design is
 // the CSS.
-import { ProjectsScreen } from "../prototype/main.jsx";
+import { ProjectsScreen, RfqsScreen } from "../prototype/main.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 import { createLiveAdapter } from "./live-adapter.js";
 import OrderDetail from "./order/OrderDetail.jsx";
@@ -432,6 +432,9 @@ function navigateFromPrototype(screenKey, navigate) {
     messages: "/messages",
     home: "/",
     quotes: "/rfqs",
+    // The prototype's RFQ flow is a linear wizard with no real form behind it.
+    // "describe" is its first step, and it maps to the composer that does.
+    describe: "/rfqs/new",
   };
   navigate(paths[screenKey] ?? "/");
 }
@@ -441,6 +444,11 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
   // turn on it: awarding a quote, approving a step that releases money, and
   // recording a payment as sent are all owner-only in the database.
   const isOwner = activeOrg.role === "owner";
+  // The ported screens navigate through this. Without it every goTo() from a
+  // designed screen throws and silently does nothing — which the orders slice
+  // shipped with, undetected, because the walkthrough reached /orders by URL
+  // rather than by clicking the way a person does.
+  const { navigate } = useRouter();
   const [admin, setAdmin] = useState(false);
 
   useEffect(() => {
@@ -450,7 +458,17 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
   return useRoute([
     // Brand-only for now; the factory side of the loop lands next.
     {
+      // Slice two: the designed requests screen, live data.
       path: "/rfqs",
+      render: () =>
+        isFactory ? <NotForThisSide isFactory /> : (
+          <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
+            <RfqsScreen goTo={(next) => navigateFromPrototype(next, navigate)} />
+          </DataProvider>
+        ),
+    },
+    {
+      path: "/rfqs/legacy",
       render: () =>
         isFactory ? <NotForThisSide isFactory /> : <RfqList org={activeOrg} />,
     },
