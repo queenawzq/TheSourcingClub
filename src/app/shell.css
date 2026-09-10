@@ -414,3 +414,35 @@ body {
   height: 1px;
   background: var(--border);
 }
+
+/* The crash screen. Deliberately plain, and deliberately not dependent on any
+   token that might itself be what broke. */
+.crash {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg-page, #f8fafc);
+}
+.crash-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #d7e0ea);
+  border-radius: var(--card-radius, 8px);
+  padding: var(--card-padding, 24px);
+  max-width: 34rem;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.crash-card h1 { margin: 0; font-size: 20px; }
+.crash-note { margin: 0; font-size: 14px; color: var(--text-muted, #5a6b87); }
+.crash-ref {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--bg-page, #f8fafc);
+  border: 1px solid var(--border, #d7e0ea);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 13px;
+  color: var(--text, #0b1020);
+}
+.crash-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }

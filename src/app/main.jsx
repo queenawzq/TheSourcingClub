@@ -47,6 +47,7 @@ import ThreadPage from "./message/ThreadPage.jsx";
 import Home from "./home/Home.jsx";
 import Team from "./settings/Team.jsx";
 import NotificationList from "./NotificationList.jsx";
+import ErrorBoundary from "../lib/ErrorBoundary.jsx";
 import "./shell.css";
 
 function Loading({ label }) {
@@ -448,14 +449,16 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
   // designed screen throws and silently does nothing — which the orders slice
   // shipped with, undetected, because the walkthrough reached /orders by URL
   // rather than by clicking the way a person does.
-  const { navigate } = useRouter();
+  const { navigate, path } = useRouter();
   const [admin, setAdmin] = useState(false);
 
   useEffect(() => {
     isPlatformAdmin().then(setAdmin);
   }, [user?.id]);
 
-  return useRoute([
+  // Keyed on the path so navigating away from a crashed screen clears the
+  // error rather than showing the crash card on the next screen too.
+  const routed = useRoute([
     // Brand-only for now; the factory side of the loop lands next.
     {
       // Slice two: the designed requests screen, live data.
@@ -568,6 +571,15 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       ),
     },
     {
+      // A deliberate crash, so the boundary and the reporter can be verified
+      // rather than assumed. Dev only — it is a self-test, not a feature.
+      path: "/__crash",
+      render: () => {
+        if (!import.meta.env.DEV) return <NotForThisSide isFactory={isFactory} />;
+        throw new Error("Deliberate crash from /__crash — this is a self-test.");
+      },
+    },
+    {
       path: "/team",
       render: () => <Team org={activeOrg} />,
     },
@@ -608,6 +620,11 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       ),
     },
   ]);
+
+  // A crash in one screen must not take the shell, the navigation and the
+  // sign-out button with it. Keyed on the path so navigating away from a
+  // broken screen clears the error instead of showing the crash card again.
+  return <ErrorBoundary key={path} label="This screen">{routed}</ErrorBoundary>;
 }
 
 function NotForThisSide({ isFactory }) {
@@ -738,10 +755,15 @@ function App() {
   );
 }
 
+// Two boundaries, not one. The outer catches anything in the router, the auth
+// provider or the shell itself; the inner one (around each route, below) keeps
+// a single broken screen from taking the whole application down with it.
 createRoot(document.getElementById("root")).render(
-  <RouterProvider>
-    <AuthProvider>
-      <App />
-    </AuthProvider>
-  </RouterProvider>,
+  <ErrorBoundary label="The Sourcing Club">
+    <RouterProvider>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </RouterProvider>
+  </ErrorBoundary>,
 );
