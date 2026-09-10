@@ -86,9 +86,21 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      // The app is NOT built on Netlify, deliberately.
+      //
+      // Three things it needs are Vercel-only: the `/app.html/*` rewrite that
+      // makes a deep link survive a refresh, the `api/*` functions (which use
+      // Vercel's `(request, response)` handler signature, not Netlify's
+      // `(event, context)`), and the Supabase auth redirect allowlist. On
+      // Netlify a deep link 404s, brief generation and message translation
+      // silently do nothing, and a magic link cannot come back.
+      //
+      // A half-working app is worse than an absent one, so Netlify builds the
+      // marketing site and the prototypes — which need none of the above and
+      // are how Queena reviews design — and the app lives on Vercel.
       input: {
         main: "index.html",
-        app: "app.html",
+        ...(deployTarget === "netlify" ? {} : { app: "app.html" }),
         caseStudy: "case-study.html",
         factories: "factories.html",
         factorySearch: "factory-search.html",

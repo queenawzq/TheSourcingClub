@@ -7,12 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm install
 npm run dev     # Vite dev server on http://127.0.0.1:5173
-npm run build   # vite build, then copies script.js and assets/* into dist/
+npm run build   # check:css, vite build, then copies script.js and assets/* into dist/
 ```
 
-There is no test suite, linter, or formatter configured.
+There is no linter, formatter, unit-test runner or CI. There ARE four verification suites — see **Backend (Supabase)** below for `db:test`, `smoke`, `check:css` and `check:prototype`, plus the Stagehand walkthrough in `scripts/e2e.mjs`.
 
-Deploys via Netlify (`netlify.toml`: `npm run build` → publish `dist`).
+**The app deploys to Vercel; Netlify hosts the marketing site and the prototypes only.** `app.html` is excluded from a Netlify build (see `vite.config.js`) because three things it depends on are Vercel-only: the `/app.html/*` rewrite that makes deep links survive a refresh, the `api/*` functions (Vercel's `(request, response)` signature, not Netlify's `(event, context)`), and the Supabase auth redirect allowlist in `supabase/config.toml`. On Netlify a deep link 404s and the AI features fail soft and silently.
 
 ## Architecture
 

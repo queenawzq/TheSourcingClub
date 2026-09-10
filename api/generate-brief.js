@@ -23,7 +23,11 @@
 
 const MODEL = process.env.OPENROUTER_MODEL ?? "anthropic/claude-opus-5";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
-const TIMEOUT_MS = 45000;
+// Under Vercel's Hobby ceiling (10s), deliberately. Above it the platform
+// kills the function before this abort fires, so the caller gets a 504 rather
+// than the soft null this file is built around — the one failure mode the
+// design says must never happen.
+const TIMEOUT_MS = 9000;
 
 /**
  * The model returns taxonomy SLUGS, not free text, so its guesses map onto

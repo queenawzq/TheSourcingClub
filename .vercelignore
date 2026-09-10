@@ -6,5 +6,9 @@ dist
 .vite
 e2e-evidence
 supabase
-scripts
 *.log
+
+# scripts/ is NOT excluded: `npm run build` begins with
+# `node scripts/check-css-tokens.mjs`, so excluding it fails the deploy with
+# MODULE_NOT_FOUND. It did, between the commit that added this file and the
+# commit that added the check.

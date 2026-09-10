@@ -20,7 +20,9 @@
 
 const MODEL = process.env.OPENROUTER_MODEL ?? "anthropic/claude-opus-5";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
-const TIMEOUT_MS = 20000;
+// Under Vercel's Hobby ceiling (10s). See the note in generate-brief.js:
+// exceeding it turns a designed soft failure into a platform 504.
+const TIMEOUT_MS = 9000;
 
 const SCHEMA = {
   type: "object",
