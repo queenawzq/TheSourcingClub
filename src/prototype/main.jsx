@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
+import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import "./styles.css";
 import "../shared/profile-shell.css";
@@ -15,7 +16,7 @@ const samplePhotos = [
 const steps = [
   { title: "Describe request", meta: "Draft product need" },
   { title: "Review brief", meta: "Quote-ready basics" },
-  { title: "Invite factories", meta: "Choose who can quote" },
+  { title: "Invite vendors", meta: "Choose who can quote" },
   { title: "Review quotes", meta: "Compare responses" },
   { title: "Contract terms", meta: "Scope + delivery" },
   { title: "Production steps", meta: "Payment + approvals" },
@@ -75,37 +76,37 @@ const screenMeta = {
   describe: {
     step: 0,
     title: "Describe what you need made.",
-    description: "Start with the product, quantity, timeline, sample needs, target price, and any quality requirements factories should price against.",
+    description: "Start with the product, quantity, timeline, sample needs, target price, and any quality requirements vendors should price against.",
     cta: "Generate brief"
   },
   review: {
     step: 1,
     title: "Review your quote brief.",
-    description: "Check the structured request before it goes to factories, so every partner sees the same product details and expectations.",
-    cta: "Invite factories"
+    description: "Check the structured request before it goes to vendors, so every partner sees the same product details and expectations.",
+    cta: "Invite vendors"
   },
   invite: {
     step: 2,
-    title: "Invite factories to quote.",
-    description: "Choose matched factories and send the quote request to partners with the right category, MOQ, region, and service fit.",
-    cta: "Invite factories"
+    title: "Invite vendors to quote.",
+    description: "Choose matched vendors and send the quote request to partners with the right category, MOQ, region, and service fit.",
+    cta: "Invite vendors"
   },
   inviteSuccess: {
     step: 2,
     title: "Quote request sent.",
-    description: "Factories have the brief, attachments, and questions they need to decide whether to quote.",
+    description: "Vendors have the brief, attachments, and questions they need to decide whether to quote.",
     cta: "Review quotes"
   },
   quotes: {
     step: 3,
-    title: "Review factory quotes.",
-    description: "Compare pricing, timelines, sample plans, open questions, and factory fit before selecting who should move forward.",
+    title: "Review vendor quotes.",
+    description: "Compare pricing, timelines, sample plans, open questions, and vendor fit before selecting who should move forward.",
     cta: "Review quote"
   },
   quoteDetail: {
     step: 3,
     title: "Review Atelier Minho quote.",
-    description: "Inspect one factory response in detail, including unit pricing, lead time, sample terms, assumptions, and included revisions.",
+    description: "Inspect one vendor response in detail, including unit pricing, lead time, sample terms, assumptions, and included revisions.",
     cta: "Choose quote"
   },
   contract: {
@@ -419,6 +420,67 @@ const marketplaceFactories = [
   }
 ];
 
+const marketplaceTradingCompanies = [
+  {
+    initials: "PS",
+    name: "Pacific Source Partners",
+    location: "Hong Kong · sourcing across China and Vietnam",
+    trust: "trusted",
+    match: "94%",
+    rating: "4.9",
+    orders: "18 Club orders",
+    categories: ["Woven shirts", "Light outerwear", "Dresses", "Knit basics", "Accessories"],
+    capabilities: ["Supplier matching", "Sample management", "In-line QC", "Freight consolidation"],
+    stats: [["Network MOQ", "200/style"], ["Regions", "China + Vietnam"], ["Lead time", "35-55 days"], ["Partners", "18 factories"]],
+    products: [
+      { name: "Premium shirting program", image: "https://images.pexels.com/photos/7752674/pexels-photo-7752674.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Resort collection", image: "https://images.pexels.com/photos/6461392/pexels-photo-6461392.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Outerwear development", image: "https://images.pexels.com/photos/7760024/pexels-photo-7760024.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    notes: ["Best for brands that want one team to source factories, manage samples, oversee QC, and consolidate shipments across multiple categories."],
+    featured: true,
+    vendorType: "Trading company"
+  },
+  {
+    initials: "AT",
+    name: "Atlas Textile Network",
+    location: "Istanbul, Turkey · sourcing across Turkey and Portugal",
+    trust: "verified",
+    match: "90%",
+    rating: "4.8",
+    orders: "11 Club orders",
+    categories: ["Jersey sets", "Sweatshirts", "Woven separates", "Denim", "Premium basics"],
+    capabilities: ["Material sourcing", "Product development", "Final inspection", "DDP coordination"],
+    stats: [["Network MOQ", "150/style"], ["Regions", "Turkey + Portugal"], ["Lead time", "30-50 days"], ["Partners", "12 factories"]],
+    products: [
+      { name: "Organic jersey capsule", image: "https://images.pexels.com/photos/37704838/pexels-photo-37704838.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Premium lounge set", image: "https://images.pexels.com/photos/3894389/pexels-photo-3894389.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Denim development", image: "https://images.pexels.com/photos/28174872/pexels-photo-28174872.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    notes: ["Strong choice for mixed knit-and-woven capsules that need material sourcing, supplier coordination, and one consolidated production timeline."],
+    vendorType: "Trading company"
+  },
+  {
+    initials: "NH",
+    name: "North Harbor Sourcing",
+    location: "Seoul, South Korea · sourcing across Korea and China",
+    trust: "verified",
+    match: "87%",
+    rating: "4.7",
+    orders: "7 Club orders",
+    categories: ["Fine-gauge knitwear", "Activewear", "Technical jersey", "Accessories"],
+    capabilities: ["Yarn sourcing", "Lab testing", "Compliance support", "Production tracking"],
+    stats: [["Network MOQ", "250/style"], ["Regions", "Korea + China"], ["Lead time", "40-60 days"], ["Partners", "9 factories"]],
+    products: [
+      { name: "Fine-gauge knit program", image: "https://images.pexels.com/photos/9603624/pexels-photo-9603624.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Ribbed essentials", image: "https://images.pexels.com/photos/8433475/pexels-photo-8433475.jpeg?auto=compress&dpr=1&w=900" },
+      { name: "Technical development", image: "https://images.pexels.com/photos/31031119/pexels-photo-31031119.jpeg?auto=compress&dpr=1&w=900" }
+    ],
+    notes: ["Useful for technical products that need yarn development, testing coordination, and close production tracking across specialist partners."],
+    vendorType: "Trading company"
+  }
+];
+
 const activeRfqs = [
   {
     title: "Organic cotton woven shirt production",
@@ -476,7 +538,7 @@ const activeRfqs = [
   {
     title: "Silk slip dress capsule",
     date: "Posted today · Quote due Aug 4",
-    description: "Bias-cut silk blend slip dresses across two colors. Need final size range and target price before inviting factories.",
+    description: "Bias-cut silk blend slip dresses across two colors. Need final size range and target price before inviting vendors.",
     tags: ["Wovens", "Premium $40-$90", "180 units"],
     images: [
       { label: "Slip dress reference", src: "https://images.pexels.com/photos/1036622/pexels-photo-1036622.jpeg?auto=compress&dpr=1&w=900" },
@@ -495,8 +557,8 @@ const activeRfqs = [
 const draftRfqs = [
   {
     title: "Silk slip dress capsule",
-    date: "Draft saved Aug 2 · Needs factory invite",
-    description: "Bias-cut silk blend slip dresses across two colors. Need final size range and target price before inviting factories.",
+    date: "Draft saved Aug 2 · Needs vendor invite",
+    description: "Bias-cut silk blend slip dresses across two colors. Need final size range and target price before inviting vendors.",
     tags: ["Wovens", "Premium $40-$90", "180 units"],
     images: [
       { label: "Slip dress reference", src: "https://images.pexels.com/photos/1036622/pexels-photo-1036622.jpeg?auto=compress&dpr=1&w=900" },
@@ -630,6 +692,8 @@ const projectDetailMilestones = [
   {
     title: "Fit sample",
     meta: "Funded · due Aug 16",
+    dueStatus: "Due today",
+    dueTone: "danger",
     amount: "$120",
     description: "Factory prepares first sample and uploads sample photos for approval.",
     action: "Approve fund",
@@ -645,12 +709,16 @@ const projectDetailMilestones = [
   {
     title: "Strike-off / print",
     meta: "Factory update due Aug 18",
+    dueStatus: "Due soon",
+    dueTone: "warning",
     description: "Factory confirms print, embroidery, or construction details before bulk.",
     action: "Approve"
   },
   {
     title: "Size set / fit notes",
     meta: "Factory update due Aug 18",
+    dueStatus: "Due soon",
+    dueTone: "warning",
     description: "Brand reviews graded sizes or fit notes when needed for the style.",
     action: "Approve"
   },
@@ -734,6 +802,8 @@ const messageThreads = [
   {
     id: "atelier",
     name: "Atelier Minho",
+    primaryContact: "Ines Carvalho",
+    primaryContactTitle: "Owner",
     initials: "AM",
     location: "Porto, Portugal",
     status: "Online",
@@ -848,7 +918,7 @@ const messageThreads = [
     status: "Offline",
     localTime: "6:48 AM local time",
     project: "Low-MOQ swim capsule with recycled nylon",
-    kind: "Saved factory",
+    kind: "Saved vendor",
     lastDate: "Jul 30",
     lastPreview: "Shared updated certification list and recycled nylon range.",
     unread: 0,
@@ -870,6 +940,39 @@ const messageThreads = [
   }
 ];
 
+const brandBusinessCategoryOptions = [
+  "Direct-to-consumer brand",
+  "E-commerce retailer",
+  "Physical retailer",
+  "Wholesale brand",
+  "Private label",
+  "Multi-brand retailer / marketplace",
+  "Distributor / importer",
+  "Other"
+];
+
+const brandProductOptions = [
+  "Womenswear",
+  "Menswear",
+  "Childrenswear / baby",
+  "Unisex",
+  "Tops",
+  "Bottoms",
+  "Dresses & jumpsuits",
+  "Sweaters & knitwear",
+  "Denim",
+  "Outerwear",
+  "Activewear",
+  "Intimates & underwear",
+  "Swimwear",
+  "Sleepwear & loungewear",
+  "Uniforms & workwear",
+  "Bags & small leather goods",
+  "Fashion accessories",
+  "Footwear",
+  "All categories"
+];
+
 const brandOnboardingSteps = [
   {
     title: "Welcome to The Sourcing Club",
@@ -880,36 +983,35 @@ const brandOnboardingSteps = [
   },
   {
     title: "Tell us about your brand",
-    intro: "This helps factories understand who they are quoting for.",
+    intro: "Brand name and category are required. Everything else can be added now or completed later.",
     type: "fields",
     fields: [
-      ["Brand name", "e.g. Aria Studio"],
-      ["Brand category", "", "select"],
-      ["Business email", "name@maisonrue.com"],
-      ["Year founded", "YYYY"],
-      ["Website URL", "www.example.com"],
-      ["HQ location", "City, Country"]
+      ["Brand name", "Your brand name", "text", true],
+      ["Brand category", "", "multiselect", true],
+      ["Business email", "name@maisonrue.com", "text", false],
+      ["Year founded", "YYYY", "text", false],
+      ["Website URL", "www.example.com", "text", false],
+      ["HQ location", "City, Country", "text", false]
     ],
-    helper: "We'll use this to help build your profile in a later step."
+    helper: "You can complete optional details from your profile later."
   },
   {
     title: "Add brand context",
-    intro: "Share the details that help factories understand your brand direction and sourcing needs.",
+    intro: "Share the details that help vendors understand your brand direction and sourcing needs.",
     type: "brandContext"
   },
   {
     title: "What are you looking to make?",
-    intro: "Choose the production methods and product categories factories should match against.",
+    intro: "Tell us who you design for and what you make so we can find the most relevant vendors.",
     type: "chips",
     groups: [
-      ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"], ["Cut & sew knits", "Wovens"]],
-      ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"], ["Tops", "Bottoms"]],
-      ["Market level", ["Luxury ($500+)", "Premium / contemporary ($100-$500)", "Mid range ($50-$100)", "Mass market (under $50)"], ["Premium / contemporary ($100-$500)"]]
+      ["What does your brand make?", brandProductOptions, [], true, "Select all that apply. We will use these choices to suggest suitable factories."],
+      ["Market level", ["Luxury ($500+)", "Premium / contemporary ($100-$500)", "Mid range ($50-$100)", "Mass market (under $50)"], [], true]
     ]
   },
   {
     title: "Share your sourcing volume",
-    intro: "Help factories understand order size, cadence, and pricing fit before they quote.",
+    intro: "Help vendors understand order size, cadence, and pricing fit before they quote.",
     type: "sourcingPlan",
     fields: [
       ["Average pieces ordered per year", ["Under 1,000", "1,000-5,000", "5,000-20,000", "20,000-100,000", "100,000+"], "5,000-20,000"],
@@ -917,11 +1019,11 @@ const brandOnboardingSteps = [
       ["Collections per year", ["1", "2", "3-4", "5-6", "Monthly drops"], "3-4"],
       ["Typical price range for core styles", "e.g. $12-$28 FOB per unit"],
       ["Typical reorder cadence", ["One-time seasonal buys", "Monthly reorders", "Quarterly reorders", "Repeat best sellers as needed"], "Quarterly reorders"],
-      ["Current sourcing stage", ["Exploring factories", "Sampling soon", "Ready for production", "Replacing current supplier"], "Sampling soon"]
+      ["Current sourcing stage", ["Exploring vendors", "Sampling soon", "Ready for production", "Replacing current supplier"], "Sampling soon"]
     ]
   },
   {
-    title: "Factory preferences",
+    title: "Vendor preferences",
     intro: "Set the regions, certifications, and services you care about most.",
     type: "chips",
     groups: [
@@ -931,13 +1033,13 @@ const brandOnboardingSteps = [
     ]
   },
   {
-    title: "Help factories trust you",
+    title: "Help vendors trust you",
     intro: "Verified brands get faster responses. We review this in the background so you can keep exploring while we do.",
     type: "trust"
   },
   {
     title: "Review your profile",
-    intro: "Confirm the information factories will use to understand your brand.",
+    intro: "Confirm the information vendors will use to understand your brand.",
     type: "review",
     cta: "Confirm & Continue"
   },
@@ -946,9 +1048,9 @@ const brandOnboardingSteps = [
     intro: "Please read and sign our terms before continuing.",
     type: "terms",
     terms: [
-      ["Platform Usage", "Use The Sourcing Club to share accurate brand information, submit real sourcing needs, and communicate with factories in good faith."],
-      ["Data Privacy & Confidentiality", "Only upload assets, product references, and company documents you are allowed to share. Factory quotes, pricing, and private project details should remain confidential."],
-      ["Brand Responsibilities", "Keep your profile, project briefs, payment status, and decision-maker details accurate so factories can quote and plan production confidently."]
+      ["Platform Usage", "Use The Sourcing Club to share accurate brand information, submit real sourcing needs, and communicate with vendors in good faith."],
+      ["Data Privacy & Confidentiality", "Only upload assets, product references, and company documents you are allowed to share. Vendor quotes, pricing, and private project details should remain confidential."],
+      ["Brand Responsibilities", "Keep your profile, project briefs, payment status, and decision-maker details accurate so vendors can quote and plan production confidently."]
     ],
     agreement: "I have read and agree to the Terms and Conditions",
     signature: "Type your full name to sign electronically",
@@ -956,7 +1058,7 @@ const brandOnboardingSteps = [
   },
   {
     title: "You're all set",
-    intro: "Your brand profile has been submitted. We'll review your verification documents and let you know when your profile is ready for factories to discover.",
+    intro: "Your brand profile has been submitted. We'll review your verification documents and let you know when your profile is ready for vendors to discover.",
     cta: "Go to Dashboard",
     type: "complete"
   }
@@ -965,14 +1067,25 @@ const brandOnboardingSteps = [
 function App() {
   const query = new URLSearchParams(window.location.search);
   const requestedScreen = query.get("screen");
-  const initialScreen = requestedScreen === "brandOnboarding" || query.get("view") === "brand-onboarding"
+  const dashboardState = query.get("state") === "active" ? "active" : "newcomer";
+  const requestedBrandOnboarding = requestedScreen === "brandOnboarding" || query.get("view") === "brand-onboarding";
+  const requestedAuthMode = requestedScreen === "login" || requestedScreen === "signup"
+    ? requestedScreen
+    : requestedBrandOnboarding
+      ? "signup"
+      : null;
+  const standaloneBrandScreens = ["home", "profile", "profileCompletion", "factorySearch", "factoryMarketplace", "factoryProfile", "rfqs", "projects", "projectDetail", "messages", "saved", "settings", "billing"];
+  const initialScreen = requestedBrandOnboarding
     ? "brandOnboarding"
-    : screenMeta[requestedScreen]
+    : requestedScreen === "dashboard"
+      ? "home"
+    : screenMeta[requestedScreen] || standaloneBrandScreens.includes(requestedScreen)
       ? requestedScreen
       : query.get("view") === "marketplace"
         ? "factoryMarketplace"
         : "projects";
   const [screen, setScreen] = useState(initialScreen);
+  const [authMode, setAuthMode] = useState(requestedAuthMode);
   const [brandOnboardingStep, setBrandOnboardingStep] = useState(0);
   const [brandOnboardingReviewEdit, setBrandOnboardingReviewEdit] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
@@ -1020,10 +1133,10 @@ function App() {
         cta: `Fund ${fundingMilestone.amount}`
       }
     : meta;
-  const isStandalone = screen === "home" || screen === "profile" || screen === "profileCompletion" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "messages" || screen === "saved" || screen === "settings" || screen === "billing";
+  const isStandalone = screen === "home" || screen === "profile" || screen === "profileCompletion" || screen === "factorySearch" || screen === "factoryMarketplace" || screen === "factoryProfile" || screen === "rfqs" || screen === "projects" || screen === "projectDetail" || screen === "messages" || screen === "saved" || screen === "settings" || screen === "billing";
   const isWideFlow = screen === "invite" || screen === "quotes" || screen === "quoteDetail";
   const hasBottomBar = !isStandalone && screen !== "describe";
-  const baseMainClassName = screen === "profile" ? "factory-profile-page brand-profile-page" : screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" ? "rfqs-page brand-rfqs-page" : screen === "projects" ? "rfqs-page brand-projects-page" : screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : screen === "quotes" ? "flow-page wide-flow quote-review-flow" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page";
+  const baseMainClassName = screen === "profile" || screen === "factoryProfile" ? "factory-profile-page brand-profile-page" : screen === "profileCompletion" ? "profile-completion-shell" : screen === "messages" ? "messages-page" : screen === "settings" ? "settings-page-shell" : screen === "billing" ? "billing-page-shell" : screen === "factorySearch" || screen === "factoryMarketplace" ? "directory-page" : screen === "rfqs" ? "rfqs-page brand-rfqs-page" : screen === "projects" ? "rfqs-page brand-projects-page" : screen === "projectDetail" || screen === "saved" ? "rfqs-page" : isStandalone ? "home-page" : screen === "quotes" ? "flow-page wide-flow quote-review-flow" : isWideFlow ? "flow-page wide-flow" : screen === "describe" ? "flow-page describe-flow" : screen === "review" ? "flow-page review-flow" : screen === "payment" ? "flow-page quote-action-flow trade-flow" : ["contract", "milestones"].includes(screen) ? "flow-page quote-action-flow" : "flow-page";
   const mainClassName = `${baseMainClassName}${hasBottomBar ? " rfq-bottom-nav-flow" : ""}`;
 
   const goTo = (next) => {
@@ -1039,7 +1152,7 @@ function App() {
   };
 
   const next = () => {
-    if (screen === "invite") setToast("Quote request sent to 2 selected factories");
+    if (screen === "invite") setToast("Quote request sent to selected vendors");
     if (screen === "quoteDetail") setSelectedQuote("Atelier Minho");
     if (screen === "fund") setToast(fundingMilestone ? `${fundingMilestone.title} funded` : "Sample payment funded");
     goTo(screenOrder[Math.min(index + 1, screenOrder.length - 1)]);
@@ -1065,7 +1178,7 @@ function App() {
 
     switch (screen) {
       case "home":
-        return <HomeScreen goTo={goTo} onOpenActivity={() => setActivityDrawerOpen(true)} />;
+        return <HomeScreen dashboardState={dashboardState} goTo={goTo} onOpenActivity={() => setActivityDrawerOpen(true)} />;
       case "profile":
         return <BrandProfileScreen onViewCompletion={() => goTo("profileCompletion")} />;
       case "profileCompletion":
@@ -1074,6 +1187,8 @@ function App() {
         return <FactorySearchScreen goTo={goTo} />;
       case "factoryMarketplace":
         return <FactoryMarketplaceScreen goTo={goTo} />;
+      case "factoryProfile":
+        return <BrandFactoryProfileScreen goTo={goTo} />;
       case "rfqs":
         return <RfqsScreen goTo={goTo} />;
       case "projects":
@@ -1113,7 +1228,32 @@ function App() {
       default:
         return null;
     }
-  }, [screen, selectedFactories, selectedQuote, selectedQuotesForCompare, quoteCompareOpen, selectedReorderProject, milestoneTypes]);
+  }, [screen, selectedFactories, selectedQuote, selectedQuotesForCompare, quoteCompareOpen, selectedReorderProject, milestoneTypes, dashboardState]);
+
+  if (authMode) {
+    return (
+      <AuthScreen
+        accountType="brand"
+        initialMode={authMode}
+        onModeChange={(nextMode) => {
+          setAuthMode(nextMode);
+          window.history.replaceState(null, "", `${window.location.pathname}?screen=${nextMode}`);
+        }}
+        onAuthenticate={({ mode }) => {
+          setAuthMode(null);
+          if (mode === "signup") {
+            setBrandOnboardingStep(0);
+            setBrandOnboardingReviewEdit(false);
+            setScreen("brandOnboarding");
+            window.history.replaceState(null, "", `${window.location.pathname}?screen=brandOnboarding`);
+          } else {
+            goTo("home");
+            window.history.replaceState(null, "", `${window.location.pathname}?screen=home`);
+          }
+        }}
+      />
+    );
+  }
 
   if (screen === "brandOnboarding") {
     return (
@@ -1150,14 +1290,14 @@ function App() {
   return (
     <div className={sidebarCollapsed ? "app-shell nav-collapsed" : "app-shell"}>
       <SideNav
-        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" ? "Browse factories" : screen === "profile" || screen === "profileCompletion" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Payments" : screen === "settings" ? "Settings" : screen === "rfqs" ? "Quotes" : "Quotes"}
+        active={screen === "home" ? "Dashboard" : screen === "factorySearch" || screen === "factoryMarketplace" || screen === "factoryProfile" ? "Browse vendors" : screen === "profile" || screen === "profileCompletion" ? "" : screen === "projects" || screen === "projectDetail" ? "Production orders" : screen === "messages" ? "Conversations" : screen === "saved" ? "Saved" : screen === "billing" ? "Payments" : screen === "settings" ? "Settings" : screen === "rfqs" ? "Quotes" : "Quotes"}
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((value) => !value)}
         onNav={(label) => {
           if (label === "Dashboard") goTo("home");
           if (label === "Quotes") goTo("rfqs");
           if (label === "Production orders") goTo("projects");
-          if (label === "Browse factories") goTo("factoryMarketplace");
+          if (label === "Browse vendors") goTo("factoryMarketplace");
           if (label === "Conversations") goTo("messages");
           if (label === "Saved") goTo("saved");
           if (label === "Payments") goTo("billing");
@@ -1190,7 +1330,7 @@ function App() {
                   ‹ Back to production detail
                 </button>
               ) : (
-                <p className="eyebrow">FACTORY QUOTE REQUEST</p>
+                <p className="eyebrow">VENDOR QUOTE REQUEST</p>
               )}
               <h1>{activeMeta.title}</h1>
               <p>
@@ -1211,7 +1351,7 @@ function App() {
           onBack={back}
           onNext={screen === "success" ? () => goTo("describe") : screen === "inviteSuccess" ? () => goTo("quotes") : next}
           primaryLabel={screen === "quotes" || screen === "success" ? "" : activeMeta.cta}
-          centerText={screen === "invite" ? `${selectedFactories.length} factories selected · 5 recommended` : ""}
+          centerText={screen === "invite" ? `${selectedFactories.length} vendors selected · 6 recommended` : ""}
         />
       )}
       {toast && <Toast message={toast} onDone={() => setToast("")} />}
@@ -1225,7 +1365,7 @@ function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
     { label: "Dashboard", icon: "home" },
     { label: "Quotes", icon: "rfq" },
     { label: "Production orders", icon: "projects" },
-    { label: "Browse factories", icon: "explore" },
+    { label: "Browse vendors", icon: "explore" },
     { label: "Conversations", icon: "messages" },
     { label: "Saved", icon: "bookmarks" },
     { label: "Payments", icon: "billing" },
@@ -1266,7 +1406,7 @@ function CloseIconButton({ label }) {
 function BillingScreen({ accountType = "brand" }) {
   const isFactory = accountType === "factory";
   const [tab, setTab] = useState(isFactory ? "earnings" : "payments");
-  const defaultFilter = isFactory ? "All clients" : "All factories";
+  const defaultFilter = isFactory ? "All clients" : "All vendors";
   const [client, setClient] = useState(defaultFilter);
   const allRows = isFactory ? factoryBillingHistory[tab] : tab === "discounts" ? [] : brandBillingHistory;
   const clients = [defaultFilter, ...Array.from(new Set(allRows.map((row) => row.client)))];
@@ -1303,7 +1443,7 @@ function BillingScreen({ accountType = "brand" }) {
         )}
         {(isFactory || tab === "payments") && (
           <label>
-            <span>{isFactory && tab === "payments" ? "Filter by source" : isFactory ? "Filter by client" : "Filter by factory"}</span>
+            <span>{isFactory && tab === "payments" ? "Filter by source" : isFactory ? "Filter by client" : "Filter by vendor"}</span>
             <select value={selectedClient} onChange={(event) => setClient(event.target.value)}>
               {clients.map((item) => (
                 <option key={item}>{item}</option>
@@ -1313,9 +1453,9 @@ function BillingScreen({ accountType = "brand" }) {
         )}
         {!isFactory && tab === "discounts" && (
           <label className="billing-filter-placeholder" aria-hidden="true">
-            <span>Filter by factory</span>
-            <select tabIndex={-1} value="All factories" readOnly>
-              <option>All factories</option>
+            <span>Filter by vendor</span>
+            <select tabIndex={-1} value="All vendors" readOnly>
+              <option>All vendors</option>
             </select>
           </label>
         )}
@@ -1473,8 +1613,11 @@ function MessagesScreen() {
         <header className="message-room-header">
           <div className="message-room-identity">
             <div>
-              <h2>{activeThread.name}</h2>
-              <p>{activeThread.localTime} · {activeThread.project}</p>
+              <h2>{activeThread.primaryContact || activeThread.name}</h2>
+              <p>
+                {activeThread.primaryContactTitle && <>{activeThread.primaryContactTitle} · </>}
+                {activeThread.name} · {activeThread.localTime} · {activeThread.project}
+              </p>
             </div>
           </div>
           <div className="message-room-actions">
@@ -1739,7 +1882,7 @@ const settingsPermissionLabels = [
   { key: "rfqFlow", label: "Quote flow", detail: "Create quote request, choose quote, set terms and milestones", single: true },
   { key: "approve", label: "Approve samples", detail: "Lab dip, strike-off, sample, and more" },
   { key: "releaseFunds", label: "Release funds", detail: "Release approved payments from project funds" },
-  { key: "primaryContact", label: "Primary contact", detail: "Main factory contact for messages and calls", single: true },
+  { key: "primaryContact", label: "Primary contact", detail: "Main vendor contact for messages and calls", single: true },
   { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
 ];
 
@@ -2007,7 +2150,7 @@ function SettingsScreen({ accountType = "brand" }) {
             <div className="settings-section-header split">
               <div>
                 <h3>{isFactory ? "Manage team & stakeholders" : "Stakeholder authority"}</h3>
-                <p>{isFactory ? "Control who can quote requests, post updates, and act as the primary contact." : "Assign quote flow, sample approvals, fund release, and the primary factory contact."}</p>
+                <p>{isFactory ? "Control who can quote requests, post updates, and act as the primary contact." : "Assign quote flow, sample approvals, fund release, and the primary vendor contact."}</p>
               </div>
               <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
             </div>
@@ -2168,6 +2311,39 @@ function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext }) 
   const isFirst = step === 0;
   const isLast = step === brandOnboardingSteps.length - 1;
 
+  function clearFieldError(event) {
+    event.target.closest(".has-onboarding-error")?.classList.remove("has-onboarding-error");
+  }
+
+  function continueOnboarding(event) {
+    const card = event.currentTarget.closest(".brand-onboarding-card");
+    const requiredFields = [...card.querySelectorAll('[data-onboarding-required="true"]')];
+    card.querySelectorAll(".has-onboarding-error").forEach((field) => field.classList.remove("has-onboarding-error"));
+
+    const invalidFields = requiredFields.filter((field) => {
+      if (field.dataset.valid !== undefined) return field.dataset.valid !== "true";
+      if (field instanceof HTMLInputElement && field.type === "checkbox") return !field.checked;
+      return !String(field.value || "").trim();
+    });
+
+    invalidFields.forEach((field) => {
+      field.closest(".brand-onboarding-field, .brand-onboarding-chip-group, .brand-terms-required")?.classList.add("has-onboarding-error");
+    });
+
+    if (invalidFields.length) {
+      const firstField = invalidFields[0];
+      const focusTarget = firstField.matches("details")
+        ? firstField.querySelector("summary")
+        : firstField.matches("section")
+          ? firstField.querySelector("button")
+          : firstField;
+      focusTarget?.focus();
+      return;
+    }
+
+    onNext();
+  }
+
   return (
     <main className="brand-onboarding-page">
       <header className="brand-onboarding-topbar">
@@ -2175,7 +2351,7 @@ function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext }) 
         <span>Step {step + 1} of {brandOnboardingSteps.length}</span>
       </header>
 
-      <section className={`brand-onboarding-card ${current.type}`} aria-label={current.title}>
+      <section className={`brand-onboarding-card ${current.type}`} aria-label={current.title} onInput={clearFieldError} onChange={clearFieldError}>
         {current.type !== "complete" && (
           <header className="brand-onboarding-card-header">
             {isFirst && <img className="brand-onboarding-label" src="/assets/onboarding-sourcing-club-label-clean.png" alt="" />}
@@ -2192,7 +2368,7 @@ function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext }) 
 
         <footer className="brand-onboarding-actions">
           {!isFirst && !isLast && <button className="secondary-btn" type="button" onClick={onBack}>Previous</button>}
-          <button className="primary-btn" type="button" onClick={onNext}>{isReviewEdit ? "Save" : current.cta || "Next"}</button>
+          <button className="primary-btn" type="button" onClick={continueOnboarding}>{isReviewEdit ? "Save" : current.cta || "Next"}</button>
         </footer>
       </section>
 
@@ -2244,22 +2420,25 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
   if (content.type === "fields") {
     return (
       <div className="brand-onboarding-form-grid">
-        {content.fields.map(([label, placeholder, type]) => (
-          <label className="brand-onboarding-field" key={label}>
-            <span>{label}</span>
-            {type === "select" ? (
-              <select defaultValue="">
-                <option value="" disabled />
-                <option>Fashion brand</option>
-                <option>Retailer</option>
-                <option>Emerging designer</option>
-                <option>Private label</option>
-              </select>
-            ) : (
-              <input placeholder={placeholder} />
-            )}
-          </label>
-        ))}
+        {content.fields.map(([label, placeholder, type, required = false]) => {
+          if (type === "multiselect") {
+            return (
+              <div className="brand-onboarding-field" key={label}>
+                <span>{label}<OnboardingRequirement required={required} /></span>
+                <BrandCategoryMultiSelect required={required} />
+                <small className="brand-onboarding-validation-message">Choose at least one brand category.</small>
+              </div>
+            );
+          }
+          return (
+            <label className="brand-onboarding-field" key={label}>
+              <span>{label}<OnboardingRequirement required={required} /></span>
+              <input type={type || "text"} placeholder={placeholder} data-onboarding-required={required ? "true" : undefined} />
+              {required && <small className="brand-onboarding-validation-message">Enter your {label.toLowerCase()} to continue.</small>}
+            </label>
+          );
+        })}
+        {content.helper && <p className="brand-onboarding-form-helper">{content.helper}</p>}
       </div>
     );
   }
@@ -2267,8 +2446,8 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
   if (content.type === "chips") {
     return (
       <div className="brand-onboarding-chip-stack">
-        {content.groups.map(([label, options, selected]) => (
-          <BrandOnboardingChipGroup label={label} options={options} selected={selected} key={label} />
+        {content.groups.map(([label, options, selected, required = false, helper = ""]) => (
+          <BrandOnboardingChipGroup label={label} options={options} selected={selected} required={required} helper={helper} key={label} />
         ))}
       </div>
     );
@@ -2279,7 +2458,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
       <div className="brand-onboarding-form-grid brand-sourcing-volume-grid">
         {content.fields.map(([label, optionsOrPlaceholder, defaultValue]) => (
           <label className="brand-onboarding-field" key={label}>
-            <span>{label}</span>
+            <span>{label}<OnboardingRequirement /></span>
             {Array.isArray(optionsOrPlaceholder) ? (
               <select defaultValue={defaultValue || ""}>
                 <option value="" disabled />
@@ -2300,13 +2479,13 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
     return (
       <div className="brand-context-step">
         <label className="brand-onboarding-field full">
-          <span>About the brand</span>
-          <textarea placeholder="A short overview of your aesthetic, customer, positioning, and what factories should understand about the brand." />
+          <span>About the brand<OnboardingRequirement /></span>
+          <textarea placeholder="A short overview of your aesthetic, customer, positioning, and what vendors should understand about the brand." />
         </label>
 
         <div className="brand-context-upload-grid">
-          <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" />
-          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want factories to understand." accept="PNG, JPG, or PDF" />
+          <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" optional />
+          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want vendors to understand." accept="PNG, JPG, or PDF" optional />
         </div>
       </div>
     );
@@ -2316,7 +2495,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
     return (
       <div className="brand-assets-step">
         <BrandAssetUploadCard title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" />
-        <BrandAssetUploadCard title="Product photos" helper="Upload current styles or reference products factories should understand." accept="3-6 images recommended" />
+        <BrandAssetUploadCard title="Product photos" helper="Upload current styles or reference products vendors should understand." accept="3-6 images recommended" />
         <BrandAssetUploadCard title="Brand direction" helper="Upload a lookbook, moodboard, range plan, or line sheet." accept="PDF, PNG, JPG, or deck" />
       </div>
     );
@@ -2326,7 +2505,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
     return (
       <div className="brand-trust-step">
         <label className="brand-onboarding-field full">
-          <span>Annual revenue</span>
+          <span>Annual revenue<OnboardingRequirement /></span>
           <select defaultValue="">
             <option value="" disabled />
             <option>Under $250k</option>
@@ -2339,7 +2518,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
 
         <section className="brand-trust-group brand-onboarding-stakeholders">
           <div className="brand-onboarding-stakeholder-heading">
-            <strong>Decision makers</strong>
+            <strong>Decision makers<OnboardingRequirement /></strong>
             <button className="secondary-btn compact-btn" type="button" onClick={() => setStakeholderModalOpen(true)}>+ Add stakeholder</button>
           </div>
           <div className="brand-onboarding-stakeholder-list">
@@ -2364,7 +2543,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
               <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setStakeholderModalOpen(false)}>×</button>
               <header className="brand-profile-modal-header">
                 <h1 id="brand-onboarding-stakeholder-title">Add stakeholder</h1>
-                <p>Add one person factories should expect to work with.</p>
+                <p>Add one person vendors should expect to work with.</p>
               </header>
               <div className="brand-profile-edit-stack">
                 <BrandProfileEditField label="Name" value={stakeholderDraft.name} onChange={(value) => updateStakeholderDraft("name", value)} />
@@ -2381,7 +2560,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
         )}
 
         <label className="brand-onboarding-field full">
-          <span>Business registration or resale certificate</span>
+          <span>Business registration or resale certificate<OnboardingRequirement /></span>
           <button className="brand-onboarding-upload-row" type="button">
             <img src="/assets/prototype-icons/upload.svg" alt="" />
             <strong>Click or drag files to upload</strong>
@@ -2393,11 +2572,11 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
 
   if (content.type === "review") {
     const sections = [
-      { title: "Brand basics", step: 1, rows: [["Brand name", "Maison Rue"], ["Category", "Fashion brand"], ["Business email", "name@maisonrue.com"], ["Founded", "2021"], ["Website URL", "www.maisonrue.com"], ["HQ location", "New York, USA"]] },
+      { title: "Brand basics", step: 1, rows: [["Brand name", "Maison Rue"], ["Category", "Direct-to-consumer brand · E-commerce retailer"], ["Business email", "name@maisonrue.com"], ["Founded", "2021"], ["Website URL", "www.maisonrue.com"], ["HQ location", "New York, USA"]] },
       { title: "Brand context", step: 2, rows: [["About the brand", "Premium wardrobe staples with clean silhouettes and natural fibers"], ["Logo", "Uploaded"], ["Product images", "Reference images added"]] },
-      { title: "Sourcing fit", step: 3, rows: [["Production type", "Cut & sew knits, wovens"], ["Product categories", "Tops, bottoms"], ["Market level", "Premium / contemporary ($100-$500)"]] },
+      { title: "Sourcing fit", step: 3, rows: [["Products", "Womenswear · Tops · Bottoms"], ["Market level", "Premium / contemporary ($100-$500)"]] },
       { title: "Sourcing volume", step: 4, rows: [["Annual order volume", "5,000-20,000 pieces"], ["Typical order per style", "300-1,000 pieces"], ["Collections per year", "3-4"], ["Typical price range for core styles", "$12-$28 FOB per unit"], ["Reorder cadence", "Quarterly reorders"], ["Current sourcing stage", "Sampling soon"]] },
-      { title: "Factory preferences", step: 5, rows: [["Preferred regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services needed", "Full package, sample development"]] },
+      { title: "Vendor preferences", step: 5, rows: [["Preferred regions", "Portugal, China, Korea"], ["Certifications", "GOTS, OEKO-TEX"], ["Services needed", "Full package, sample development"]] },
       { title: "Trust", step: 6, rows: [["Annual revenue", "$1M-$5M"], ["Decision makers", "Founder / production lead added"], ["Business certificate", "Registration or resale certificate uploaded"]] }
     ];
 
@@ -2439,13 +2618,17 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
             <p>{description}</p>
           </article>
         ))}
-        <label className="brand-onboarding-check brand-terms-check">
-          <input type="checkbox" defaultChecked />
-          <span>{content.agreement}</span>
-        </label>
+        <div className="brand-terms-required">
+          <label className="brand-onboarding-check brand-terms-check">
+            <input type="checkbox" data-onboarding-required="true" />
+            <span>{content.agreement} <OnboardingRequirement required /></span>
+          </label>
+          <small className="brand-onboarding-validation-message">Please accept the terms to continue.</small>
+        </div>
         <label className="brand-onboarding-field full">
-          <span>Signature</span>
-          <input placeholder={content.signature} />
+          <span>Signature<OnboardingRequirement required /></span>
+          <input placeholder={content.signature} data-onboarding-required="true" />
+          <small className="brand-onboarding-validation-message">Type your full name to sign and continue.</small>
         </label>
       </div>
     );
@@ -2465,20 +2648,88 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
   );
 }
 
-function BrandOnboardingChipGroup({ label, options, selected = [] }) {
+function OnboardingRequirement({ required = false }) {
+  return required ? <em className="brand-onboarding-required-mark" aria-label="required">*</em> : null;
+}
+
+function BrandCategoryMultiSelect({ required = false }) {
+  const options = brandBusinessCategoryOptions;
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    function closeOnOutsideClick(event) {
+      if (dropdownRef.current?.open && !dropdownRef.current.contains(event.target)) {
+        dropdownRef.current.removeAttribute("open");
+      }
+    }
+
+    function closeOnEscape(event) {
+      if (event.key === "Escape" && dropdownRef.current?.open) {
+        dropdownRef.current.removeAttribute("open");
+        dropdownRef.current.querySelector("summary")?.focus();
+      }
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
+  function toggleCategory(category) {
+    setSelectedCategories((current) => current.includes(category)
+      ? current.filter((item) => item !== category)
+      : [...current, category]);
+  }
+
+  return (
+    <details
+      className="brand-category-multiselect"
+      data-onboarding-required={required ? "true" : undefined}
+      data-valid={selectedCategories.length ? "true" : "false"}
+      ref={dropdownRef}
+    >
+      <summary>
+        <span className={selectedCategories.length ? "has-selection" : ""}>
+          {selectedCategories.length ? selectedCategories.join(", ") : "Select all that apply"}
+        </span>
+        <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+      </summary>
+      <div className="brand-category-multiselect-menu" role="group" aria-label="Brand category options">
+        {options.map((option) => (
+          <label key={option}>
+            <input
+              type="checkbox"
+              checked={selectedCategories.includes(option)}
+              onChange={() => toggleCategory(option)}
+            />
+            <span>{option}</span>
+          </label>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function BrandOnboardingChipGroup({ label, options, selected = [], required = false, helper = "" }) {
   const [selectedOptions, setSelectedOptions] = useState(selected);
   const [customValue, setCustomValue] = useState("");
   const [customOptions, setCustomOptions] = useState([]);
   const isSingleSelect = label === "Market level";
-  const canAddCustom = ["Production type", "Product categories", "Certifications", "Services needed"].includes(label);
+  const canAddCustom = ["What does your brand make?", "Certifications", "Services needed"].includes(label);
   const visibleOptions = [...options, ...customOptions];
 
   function toggleOption(option) {
     setSelectedOptions((current) => {
       if (isSingleSelect) return [option];
-      return current.includes(option)
-        ? current.filter((item) => item !== option)
-        : [...current, option];
+      if (option === "All categories") return current.includes(option) ? [] : [option];
+      const selections = current.filter((item) => item !== "All categories");
+      return selections.includes(option)
+        ? selections.filter((item) => item !== option)
+        : [...selections, option];
     });
   }
 
@@ -2487,20 +2738,28 @@ function BrandOnboardingChipGroup({ label, options, selected = [] }) {
     const trimmedValue = customValue.trim();
     if (!trimmedValue || visibleOptions.includes(trimmedValue)) return;
     setCustomOptions((items) => [...items, trimmedValue]);
-    setSelectedOptions((items) => [...items, trimmedValue]);
+    setSelectedOptions((items) => [...items.filter((item) => item !== "All categories"), trimmedValue]);
     setCustomValue("");
   }
 
   return (
-    <section className="brand-onboarding-chip-group">
-      <strong>{label}</strong>
+    <section
+      className="brand-onboarding-chip-group"
+      data-onboarding-required={required ? "true" : undefined}
+      data-valid={selectedOptions.length ? "true" : "false"}
+    >
+      <strong>{label}<OnboardingRequirement required={required} /></strong>
+      {helper && <small>{helper}</small>}
       <div className="tag-row compact-tags">
         {visibleOptions.map((option) => (
           <button
             className={selectedOptions.includes(option) ? "selected" : ""}
             type="button"
             aria-pressed={selectedOptions.includes(option)}
-            onClick={() => toggleOption(option)}
+            onClick={(event) => {
+              event.currentTarget.closest(".has-onboarding-error")?.classList.remove("has-onboarding-error");
+              toggleOption(option);
+            }}
             key={option}
           >
             {option}
@@ -2513,15 +2772,16 @@ function BrandOnboardingChipGroup({ label, options, selected = [] }) {
           <button className="secondary-btn compact-btn" type="submit">Add</button>
         </form>
       )}
+      {required && <small className="brand-onboarding-validation-message">Choose at least one option to continue.</small>}
     </section>
   );
 }
 
-function BrandAssetUploadCard({ title, helper, accept, className = "" }) {
+function BrandAssetUploadCard({ title, helper, accept, className = "", optional = false }) {
   return (
     <section className={className ? `brand-asset-card ${className}` : "brand-asset-card"}>
       <div>
-        <strong>{title}</strong>
+        <strong>{title}{optional && <OnboardingRequirement />}</strong>
         <span>{helper}</span>
       </div>
       <button className="brand-onboarding-upload-row" type="button">
@@ -2606,7 +2866,7 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
   if (screen === "review") {
     return (
       <aside className="right-rail review-right-rail">
-        <Card title="What factories need" tone="soft">
+        <Card title="What vendors need" tone="soft">
           <ul className="clean-list">
             <li>Product type</li>
             <li>Quantity and color breakdown</li>
@@ -2615,7 +2875,7 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
             <li>Material / quality level</li>
             <li>Materials and components sourcing responsibility</li>
             <li>Target unit price range</li>
-            <li>Questions factories should answer</li>
+            <li>Questions vendors should answer</li>
           </ul>
         </Card>
       </aside>
@@ -2705,7 +2965,7 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
         {screen !== "milestones" && (
           <section className="accepted-reminder">
             <h3>TSC reminder</h3>
-            <p>Message the factory to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
+            <p>Message the vendor to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
           </section>
         )}
         {screen === "milestones" && (
@@ -2764,14 +3024,15 @@ const passiveActivityItems = [
     time: "Yesterday"
   },
   {
-    type: "Factory",
-    title: "Two saved factories added summer capacity",
+    type: "Vendor",
+    title: "Two saved vendors added summer availability",
     meta: "Portugal and South Korea partners",
     time: "Jul 22"
   }
 ];
 
-function HomeScreen({ goTo, onOpenActivity }) {
+function HomeScreen({ dashboardState, goTo, onOpenActivity }) {
+  const isNewcomer = dashboardState === "newcomer";
   const [inviteBrandOpen, setInviteBrandOpen] = useState(false);
   const [discountCodesOpen, setDiscountCodesOpen] = useState(false);
   const attentionItems = [
@@ -2779,7 +3040,7 @@ function HomeScreen({ goTo, onOpenActivity }) {
       type: "Draft",
       tone: "danger",
       title: "Finish your quote draft",
-      meta: "Add target pricing and invite factories before sending.",
+      meta: "Add target pricing and invite vendors before sending.",
       facts: [],
       action: "Continue draft",
       onClick: () => goTo("describe")
@@ -2796,7 +3057,7 @@ function HomeScreen({ goTo, onOpenActivity }) {
       type: "Profile",
       tone: "warning",
       title: "Complete your profile",
-      meta: "Add certifications and one more project photo to improve factory confidence.",
+      meta: "Add certifications and one more project photo to improve vendor confidence.",
       facts: [],
       action: "Edit profile",
       onClick: () => goTo("profile")
@@ -2820,74 +3081,132 @@ function HomeScreen({ goTo, onOpenActivity }) {
         </div>
         <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">
           <img src="/assets/prototype-icons/notification.svg" alt="" />
-          <b aria-hidden="true">4</b>
+          {!isNewcomer && <b aria-hidden="true">4</b>}
         </button>
       </header>
       <section className="card home-search-card">
         <label className="search-field home-search-field">
           <SearchIcon />
-          <input placeholder="Ask anything about sourcing, factories, or your projects..." />
+          <input placeholder="Ask anything about sourcing, vendors, or your projects..." />
           <b aria-hidden="true">✦</b>
         </label>
         <p className="home-section-label">Suggested actions</p>
         <div className="home-suggestion-row">
-          <button className="pill" type="button">Find a denim factory with MOQ under 500</button>
-          <button className="pill" type="button">Show me factories with GOTS certification</button>
+          <button className="pill" type="button">Find a denim vendor with MOQ under 500</button>
+          <button className="pill" type="button">Show me vendors with GOTS certification</button>
           <button className="pill" type="button">What do I still need for verification?</button>
           <button className="pill" type="button" onClick={() => goTo("describe")}>Start a new project</button>
         </div>
       </section>
-      <div className="home-dashboard-grid">
-        <section className="home-active-rfqs">
-          <header className="home-panel-header">
-            <div>
-              <h2>Active quotes</h2>
-              <p>Compare quote activity and open questions before choosing a factory.</p>
+      {isNewcomer ? (
+        <>
+          <div className="home-recommendations-layout">
+            <section className="home-recommended-factories">
+              <header className="home-panel-header">
+                <div>
+                  <h2>Recommended factories</h2>
+                  <p>A few trusted partners that match Maison Rue’s product focus and order size.</p>
+                </div>
+                <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse all vendors</button>
+              </header>
+              <div className="home-recommended-factory-grid">
+                {marketplaceFactories.slice(0, 3).map((factory) => (
+                  <HomeRecommendedFactoryCard factory={factory} goTo={goTo} key={factory.name} />
+                ))}
+              </div>
+            </section>
+            <div className="home-newcomer-side-rail">
+              <section className="home-new-brand-card">
+                <div className="home-new-brand-copy">
+                  <p className="eyebrow">YOUR FIRST QUOTE</p>
+                  <h2>Ready to start sourcing?</h2>
+                  <p>Build a clear request, find matching factories, and compare quotes.</p>
+                </div>
+                <div className="home-new-brand-actions">
+                  <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Create new quote</button>
+                  <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse vendors</button>
+                </div>
+              </section>
+              <section className="home-attention">
+                <header className="home-panel-header compact">
+                  <div>
+                    <h2>Savings</h2>
+                  </div>
+                  <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteBrandOpen(true)}>Invite brand</button>
+                </header>
+                <BrandDashboardDiscountCard onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
+              </section>
+              <section className="home-attention">
+                <header className="home-panel-header compact">
+                  <div>
+                    <h2>Needs your attention</h2>
+                    <p>Finish the essentials that help vendors trust your brand.</p>
+                  </div>
+                </header>
+                <div className="home-attention-grid">
+                  {attentionItems.slice(2).map((item) => (
+                    <HomeAttentionCard item={item} key={item.title} />
+                  ))}
+                </div>
+              </section>
             </div>
-            <button className="secondary-btn" type="button" onClick={() => goTo("rfqs")}>View all</button>
-          </header>
-          <div className="home-rfq-list">
-            {activeRfqs.slice(0, 4).map((rfq) => (
-              <HomeRfqMiniCard rfq={rfq} goTo={goTo} key={rfq.title} />
-            ))}
           </div>
-        </section>
-        <section className="home-attention">
-          <header className="home-panel-header compact">
-            <div>
-              <h2>Savings</h2>
+        </>
+      ) : (
+        <>
+          <div className="home-dashboard-grid home-dashboard-secondary">
+            <section className="home-active-rfqs">
+              <header className="home-panel-header">
+                <div>
+                  <h2>Active quotes</h2>
+                  <p>Compare quote activity and open questions before choosing a vendor.</p>
+                </div>
+                <button className="secondary-btn" type="button" onClick={() => goTo("rfqs")}>View all</button>
+              </header>
+              <div className="home-rfq-list">
+                {activeRfqs.slice(0, 4).map((rfq) => (
+                  <HomeRfqMiniCard rfq={rfq} goTo={goTo} key={rfq.title} />
+                ))}
+              </div>
+            </section>
+            <section className="home-attention">
+              <header className="home-panel-header compact">
+                <div>
+                  <h2>Savings</h2>
+                </div>
+                <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteBrandOpen(true)}>Invite brand</button>
+              </header>
+              <BrandDashboardDiscountCard onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
+              <HomeUpcomingCallCard />
+              <header className="home-panel-header compact">
+                <div>
+                  <h2>Needs your attention</h2>
+                  <p>Priority quotes, messages, and production steps.</p>
+                </div>
+              </header>
+              <div className="home-attention-grid">
+                {attentionItems.map((item) => (
+                  <HomeAttentionCard item={item} key={item.title} />
+                ))}
+              </div>
+            </section>
+          </div>
+          <section className="home-active-orders">
+            <header className="home-panel-header">
+              <div>
+                <h2>Active production orders</h2>
+                <p>Track current orders and next action dates.</p>
+              </div>
+              <button className="secondary-btn" type="button" onClick={() => goTo("projects")}>View all</button>
+            </header>
+            <div className="projects-list home-projects-list">
+              {activeProjects.slice(0, 2).map((project) => (
+                <HomeProjectMiniCard project={project} goTo={goTo} key={project.title} />
+              ))}
             </div>
-            <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteBrandOpen(true)}>Invite brand</button>
-          </header>
-          <BrandDashboardDiscountCard onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
-          <HomeUpcomingCallCard />
-          <header className="home-panel-header compact">
-            <div>
-              <h2>Needs your attention</h2>
-              <p>Priority quotes, messages, and production steps.</p>
-            </div>
-          </header>
-          <div className="home-attention-grid">
-            {attentionItems.map((item) => (
-              <HomeAttentionCard item={item} key={item.title} />
-            ))}
-          </div>
-        </section>
-      </div>
-      <section className="home-active-orders">
-        <header className="home-panel-header">
-          <div>
-            <h2>Active production orders</h2>
-            <p>Track current orders and next action dates.</p>
-          </div>
-          <button className="secondary-btn" type="button" onClick={() => goTo("projects")}>View all</button>
-        </header>
-        <div className="projects-list home-projects-list">
-          {activeProjects.slice(0, 2).map((project) => (
-            <HomeProjectMiniCard project={project} goTo={goTo} key={project.title} />
-          ))}
-        </div>
-      </section>
+          </section>
+        </>
+      )}
       {inviteBrandOpen && (
         <InviteBrandModal onClose={() => setInviteBrandOpen(false)} />
       )}
@@ -2895,6 +3214,96 @@ function HomeScreen({ goTo, onOpenActivity }) {
         <DiscountCodesModal onClose={() => setDiscountCodesOpen(false)} />
       )}
     </div>
+  );
+}
+
+function HomeRecommendedFactoryCard({ factory, goTo }) {
+  const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
+  const updateSampleScroll = (element) => {
+    if (!element) return;
+    const remaining = element.scrollWidth - element.clientWidth - element.scrollLeft;
+    setSampleScroll({
+      left: element.scrollLeft > 4,
+      right: remaining > 4
+    });
+  };
+
+  return (
+    <article className={`factory-card selected home-recommended-invite-card${factory.name.length > 18 ? " home-recommended-long-name" : ""}`}>
+      <div className="invite-factory-content">
+        <div className="invite-factory-top">
+          <a className="marketplace-factory-title marketplace-factory-profile-link" href={`/prototype.html?screen=factoryProfile&factory=${encodeURIComponent(factory.name)}&from=dashboard`} aria-label={`View ${factory.name} factory profile`}>
+            <div className="factory-avatar">{factory.initials}</div>
+            <div>
+              <div className="factory-name-row">
+                <h3>{factory.name}</h3>
+                <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+              </div>
+              <p>{factory.location}</p>
+            </div>
+          </a>
+          <div className="factory-card-metrics">
+            <Metric label="match" value={factory.match} className={matchTierClass(factory.match)} />
+            <Metric label="rating" value={factory.rating} />
+            <span className="orders-count">{factory.orders}</span>
+          </div>
+          <div className="factory-actions home-recommended-card-actions">
+            <button className="save-pill button-like-action" type="button">Message</button>
+            <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Request quote</button>
+          </div>
+        </div>
+
+        <div className="invite-factory-body">
+          <div className="marketplace-spec-panel invite-spec-panel">
+            <div className="marketplace-stat-grid invite-stat-grid">
+              {factory.stats.map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="marketplace-note-list invite-note-list">
+              <p>{factory.notes[0]}</p>
+            </div>
+          </div>
+          <div className="marketplace-samples-shell invite-samples-shell">
+            <button
+              className={sampleScroll.left ? "marketplace-samples-prev visible" : "marketplace-samples-prev"}
+              type="button"
+              aria-label="Scroll sample images back"
+              onClick={(event) => {
+                const scroller = event.currentTarget.nextElementSibling;
+                scroller?.scrollBy({ left: -240, behavior: "smooth" });
+                window.setTimeout(() => updateSampleScroll(scroller), 260);
+              }}
+            >
+              <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+            </button>
+            <div className="marketplace-samples invite-samples" aria-label={`${factory.name} sample products`} onScroll={(event) => updateSampleScroll(event.currentTarget)}>
+              {factory.products.map((product) => (
+                <figure className="marketplace-sample invite-sample" key={product.name}>
+                  <img src={product.image} alt={`${factory.name} ${product.name}`} />
+                  <figcaption><strong>{product.name}</strong></figcaption>
+                </figure>
+              ))}
+            </div>
+            <button
+              className={sampleScroll.right ? "marketplace-samples-next visible" : "marketplace-samples-next"}
+              type="button"
+              aria-label="Scroll sample images"
+              onClick={(event) => {
+                const scroller = event.currentTarget.previousElementSibling;
+                scroller?.scrollBy({ left: 240, behavior: "smooth" });
+                window.setTimeout(() => updateSampleScroll(scroller), 260);
+              }}
+            >
+              <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -2991,7 +3400,7 @@ function ActivityDrawer({ onClose }) {
         <header className="activity-drawer-header">
           <div>
             <h2 id="activity-drawer-title">Activity</h2>
-            <p>Passive updates from quotes, files, factories, and production.</p>
+            <p>Passive updates from quotes, files, vendors, and production.</p>
           </div>
           <button className="activity-close-btn" type="button" aria-label="Close activity" onClick={onClose}>
             <img src="/assets/prototype-icons/close.svg" alt="" />
@@ -3149,6 +3558,141 @@ function HomeProjectMiniCard({ project, goTo }) {
   );
 }
 
+function BrandFactoryProfileScreen({ goTo }) {
+  const query = new URLSearchParams(window.location.search);
+  const requestedFactory = query.get("factory");
+  const profileOrigin = query.get("from");
+  const returnTarget = profileOrigin === "dashboard" ? "home" : profileOrigin === "invite" ? "invite" : "factoryMarketplace";
+  const returnLabel = profileOrigin === "dashboard" ? "dashboard" : profileOrigin === "invite" ? "vendor selection" : "vendors";
+  const factory = marketplaceFactories.find((item) => item.name === requestedFactory) || marketplaceFactories[0];
+  const statValue = (label) => factory.stats.find(([name]) => name === label)?.[1] || "—";
+  const overviewRows = [
+    ["Factory name", factory.name],
+    ["Factory location", factory.location],
+    ["Specialty", factory.specialty],
+    ["Average response", factory.response],
+    ["Typical MOQ", statValue("MOQ")],
+    ["Typical bulk lead", statValue("Bulk lead")]
+  ];
+
+  return (
+    <div className="brand-profile brand-profile-redesign brand-factory-public-profile is-public-view">
+      <div className="factory-profile-shell">
+        <div className="brand-factory-profile-back-row">
+          <button className="project-back-link" type="button" onClick={() => goTo(returnTarget)}>
+            ‹ Back to {returnLabel}
+          </button>
+        </div>
+
+        <section className="factory-profile-hero">
+          <div className="factory-profile-identity">
+            <div className="factory-profile-logo-wrap">
+              <div className="factory-profile-logo">{factory.initials}</div>
+            </div>
+            <div>
+              <div className="factory-profile-title-row">
+                <h1>{factory.name}</h1>
+                <span className="factory-profile-verified" title={`${factory.trust} factory`}>
+                  <img src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+                </span>
+              </div>
+              <p>{factory.location} · {factory.specialty}</p>
+              <div className="tag-row compact-tags factory-profile-hero-tags">
+                {factory.categories.slice(0, 4).map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+              </div>
+            </div>
+          </div>
+          <div className="factory-profile-actions">
+            <button className="secondary-btn" type="button">Save factory</button>
+            <button className="secondary-btn" type="button">Message</button>
+            <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Request quote</button>
+          </div>
+        </section>
+
+        <div className="factory-profile-layout">
+          <section className="factory-profile-main">
+            <ProfilePerformanceCard
+              eyebrow="Factory performance"
+              primary={factory.rating}
+              primaryLabel={`${factory.match} match · ${factory.response} avg. response`}
+              metrics={[
+                { label: "Club orders", value: factory.orders.replace(" Club orders", "") },
+                { label: "MOQ", value: statValue("MOQ") },
+                { label: "Capacity", value: statValue("Capacity") }
+              ]}
+            />
+
+            <section className="factory-profile-card">
+              <ProfileCardHeader title="Overview" />
+              <p>{factory.notes[0]}</p>
+              <div className="factory-profile-detail-grid">
+                {overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <ProfileCardHeader title="Production fit" />
+              <ProfileChipSection label="Makes" items={factory.categories} />
+              <ProfileChipSection label="Capabilities" items={factory.capabilities} />
+              <ProfileChipSection label="Price point" items={[statValue("Price point")]} />
+            </section>
+
+            <section className="factory-profile-card">
+              <ProfileCardHeader title="Sample work" />
+              <div className="factory-profile-product-grid">
+                {factory.products.slice(0, 3).map((product) => (
+                  <article className="factory-profile-product" key={product.name}>
+                    <img src={product.image} alt={`${product.name} by ${factory.name}`} />
+                    <strong>{product.name}</strong>
+                    <span>{factory.specialty}</span>
+                  </article>
+                ))}
+              </div>
+            </section>
+          </section>
+
+          <aside className="factory-profile-side">
+            <section className="factory-profile-card factory-profile-contact-card">
+              <h2>Contact factory</h2>
+              <div className="factory-profile-contact-row">
+                <div className="factory-avatar">{factory.initials}</div>
+                <div>
+                  <strong>{factory.name}</strong>
+                  <span>{factory.location}</span>
+                </div>
+              </div>
+              <button className="primary-btn" type="button">Message factory</button>
+            </section>
+
+            <section className="factory-profile-card">
+              <ProfileCardHeader title="Capacity and terms" />
+              <div className="factory-profile-detail-grid brand-factory-profile-side-details">
+                {factory.stats.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
+              </div>
+            </section>
+
+            <section className="factory-profile-card">
+              <ProfileCardHeader title="Trust and verification" />
+              <div className="factory-profile-cert-list">
+                <div className="factory-profile-cert">
+                  <strong>Club Standard</strong>
+                  <span className="verified">{factory.trust === "trusted" ? "Trusted" : factory.trust === "verified" ? "Verified" : "Basic"}</span>
+                </div>
+                {factory.capabilities.slice(-2).map((capability) => (
+                  <div className="factory-profile-cert" key={capability}>
+                    <strong>{capability}</strong>
+                    <span className="verified">Listed</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </aside>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BrandProfileScreen({ onViewCompletion }) {
   const [projectTab, setProjectTab] = useState("completed");
   const [profileMode, setProfileMode] = useState(new URLSearchParams(window.location.search).get("view") === "public" ? "public" : "edit");
@@ -3158,7 +3702,7 @@ function BrandProfileScreen({ onViewCompletion }) {
     name: "Maison Rue",
     location: "New York, USA",
     founded: "2021",
-    category: "Fashion brand",
+    brandCategories: ["Direct-to-consumer brand", "E-commerce retailer"],
     website: "www.maisonrue.com",
     businessEmail: "name@maisonrue.com",
     annualRevenue: "$1M-$5M",
@@ -3169,9 +3713,8 @@ function BrandProfileScreen({ onViewCompletion }) {
     activeRfqs: "3",
     repeatFactories: "2",
     intro:
-      "Premium womenswear brand focused on organic cotton shirts, polished woven tops, and small-batch capsule production. Maison Rue shares clear product references, quick feedback, and defined sample approval paths so factories can quote confidently.",
-    productCategories: ["Tops", "Bottoms"],
-    productionTypes: ["Cut & sew knits", "Wovens"],
+      "Premium womenswear brand focused on organic cotton shirts, polished woven tops, and small-batch capsule production. Maison Rue shares clear product references, quick feedback, and defined sample approval paths so vendors can quote confidently.",
+    products: ["Womenswear", "Tops", "Bottoms"],
     marketLevel: ["Premium / contemporary ($100-$500)"],
     preferredRegions: ["Portugal", "China", "Korea"],
     certifications: ["GOTS", "OEKO-TEX"],
@@ -3252,7 +3795,7 @@ function BrandProfileScreen({ onViewCompletion }) {
   const visibleProjects = projectTab === "completed" ? data.completedProjects : data.activeProjects;
   const overviewRows = [
     ["Brand name", data.name],
-    ["Brand category", data.category],
+    ["Brand category", data.brandCategories.join(" · ")],
     ["Business email", data.businessEmail],
     ["Year founded", data.founded],
     ["Website URL", data.website],
@@ -3305,7 +3848,7 @@ function BrandProfileScreen({ onViewCompletion }) {
           isOwnerView={isOwnerView}
           onEdit={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
           onPublic={() => setProfileMode("public")}
-          ownerText="Edit what factories see"
+          ownerText="Edit what vendors see"
           profileLabel="Brand profile"
         />
 
@@ -3323,10 +3866,9 @@ function BrandProfileScreen({ onViewCompletion }) {
               <div className="factory-profile-title-row">
                 <h1>{data.name}</h1>
               </div>
-              <p>{data.location} · {data.category} · {data.annualRevenue} revenue</p>
+              <p>{data.location} · {data.brandCategories.join(" · ")} · {data.annualRevenue} revenue</p>
               <div className="tag-row compact-tags factory-profile-hero-tags">
-                {data.productCategories.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
-                {data.productionTypes.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                {data.products.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
                 {data.marketLevel.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
               </div>
             </div>
@@ -3341,7 +3883,7 @@ function BrandProfileScreen({ onViewCompletion }) {
               primaryLabel={`Club orders · ${data.responseTime} avg. response`}
               metrics={[
                 { label: "Active quotes", value: data.activeRfqs },
-                { label: "Repeat factories", value: data.repeatFactories },
+                { label: "Repeat vendors", value: data.repeatFactories },
                 { label: "Payment status", value: data.paymentStatus }
               ]}
             />
@@ -3356,8 +3898,7 @@ function BrandProfileScreen({ onViewCompletion }) {
 
             <section className="factory-profile-card">
               <ProfileCardHeader title="Sourcing fit" editable={isOwnerView} onEdit={() => openEditor("sourcing")} />
-              <ProfileChipSection label="Product categories" items={data.productCategories} />
-              <ProfileChipSection label="Production type" items={data.productionTypes} />
+              <ProfileChipSection label="What the brand makes" items={data.products} />
               <ProfileChipSection label="Market level" items={data.marketLevel} />
               <ProfileChipSection label="Preferred regions" items={data.preferredRegions} />
               <ProfileChipSection label="Certifications requested" items={data.certifications} />
@@ -3387,8 +3928,8 @@ function BrandProfileScreen({ onViewCompletion }) {
             <section className="factory-profile-card">
               <div className="factory-profile-section-header">
                 <div>
-                  <h2>Past work with factories</h2>
-                  <p>Completed and active TSC activity that helps factories understand how this brand works.</p>
+                  <h2>Past work with vendors</h2>
+                  <p>Completed and active TSC activity that helps vendors understand how this brand works.</p>
                 </div>
                 {isOwnerView && <span className="factory-profile-sync-pill">Auto-added</span>}
               </div>
@@ -3487,8 +4028,8 @@ function BrandProfileScreen({ onViewCompletion }) {
 }
 
 const brandProfileEditorOptions = {
-  productCategories: ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"],
-  productionTypes: ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"],
+  brandCategories: brandBusinessCategoryOptions,
+  products: brandProductOptions,
   marketLevel: ["Luxury ($500+)", "Premium / contemporary ($100-$500)", "Mid range ($50-$100)", "Mass market (under $50)"],
   preferredRegions: ["Portugal", "China", "Korea", "India", "Turkey", "United States"],
   certifications: ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP", "No preference"],
@@ -3506,19 +4047,19 @@ const brandProfileCompletionChecks = [
     title: "Business email",
     status: "Verified",
     tone: "complete",
-    description: "The brand email has been confirmed, so factories can trust the listed contact channel."
+    description: "The brand email has been confirmed, so vendors can trust the listed contact channel."
   },
   {
     title: "Decision makers",
     status: "Added",
     tone: "complete",
-    description: "Founder and production lead contacts are listed so factories know who they will work with."
+    description: "Founder and production lead contacts are listed so vendors know who they will work with."
   },
   {
     title: "Brand assets",
     status: "Added",
     tone: "complete",
-    description: "Product references and visual assets are present, helping factories understand the brand direction."
+    description: "Product references and visual assets are present, helping vendors understand the brand direction."
   },
   {
     title: "Payment method",
@@ -3549,7 +4090,7 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
           <div>
             <span>Profile verification</span>
             <h1>Profile completion summary</h1>
-            <p>You can browse factories and draft quotes now. Complete the items below to improve trust signals and make the brand easier for factories to evaluate.</p>
+            <p>You can browse vendors and draft quotes now. Complete the items below to improve trust signals and make the brand easier for vendors to evaluate.</p>
           </div>
           <div className="factory-profile-completion-score">
             <strong>88%</strong>
@@ -3564,7 +4105,7 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
               <div className="factory-profile-section-header">
                 <div>
                   <h2>Verification checklist</h2>
-                  <p>Each item shows whether factories can rely on it now, whether it is still in progress, or whether action is needed.</p>
+                  <p>Each item shows whether vendors can rely on it now, whether it is still in progress, or whether action is needed.</p>
                 </div>
               </div>
               <div className="profile-completion-check-list">
@@ -3618,28 +4159,27 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
 function BrandProfileEditModal({ editor, data, onClose, onSave }) {
   const isUploadEditor = ["banner", "assets", "projects"].includes(editor);
   const editorTitles = {
-    overview: ["Edit overview", "Update the brand details factories see on this profile."],
-    sourcing: ["Edit sourcing fit", "Update the tags factories use to understand what this brand is looking for."],
+    overview: ["Edit overview", "Update the brand details vendors see on this profile."],
+    sourcing: ["Edit sourcing fit", "Update the tags vendors use to understand what this brand is looking for."],
     sourcingVolume: ["Edit sourcing volume", "Update order size, cadence, target pricing, and sourcing stage."],
     banner: ["Edit profile images", "Upload or replace the profile image and banner image used on this profile."],
     assets: ["Manage brand assets", "Upload logos, product photos, direction files, and brand references."],
-    projects: ["Manage projects", "Update completed or active TSC work shown to factories."],
+    projects: ["Manage projects", "Update completed or active TSC work shown to vendors."],
     verification: ["Edit verification", "Add or update the onboarding verification details shown on this brand profile."],
     payment: ["Add payment method", "Add a card or bank account so payment status can be verified on the brand profile."],
-    stakeholders: ["Edit decision makers", "Add or update the people factories should expect to work with."]
+    stakeholders: ["Edit decision makers", "Add or update the people vendors should expect to work with."]
   };
   const [title, helper] = editorTitles[editor] || editorTitles.overview;
   const [form, setForm] = useState(() => ({
     name: data.name,
     location: data.location,
-    category: data.category,
+    brandCategories: data.brandCategories,
     founded: data.founded,
     website: data.website,
     businessEmail: data.businessEmail,
     annualRevenue: data.annualRevenue,
     intro: data.intro,
-    productCategories: data.productCategories,
-    productionTypes: data.productionTypes,
+    products: data.products,
     marketLevel: data.marketLevel,
     preferredRegions: data.preferredRegions,
     certifications: data.certifications,
@@ -3715,7 +4255,7 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
       onSave({
         name: form.name,
         location: form.location,
-        category: form.category,
+        brandCategories: form.brandCategories,
         founded: form.founded,
         website: form.website,
         businessEmail: form.businessEmail,
@@ -3727,8 +4267,7 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
 
     if (editor === "sourcing") {
       onSave({
-        productCategories: form.productCategories,
-        productionTypes: form.productionTypes,
+        products: form.products,
         marketLevel: form.marketLevel,
         preferredRegions: form.preferredRegions,
         certifications: form.certifications,
@@ -3801,13 +4340,14 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
               <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
             </label>
             <BrandProfileEditField label="Brand name" value={form.name} onChange={(value) => updateField("name", value)} />
-            <BrandProfileEditField
-              label="Brand category"
-              value={form.category}
-              onChange={(value) => updateField("category", value)}
-              type="select"
-              options={["Fashion brand", "Retailer", "Emerging designer", "Private label"]}
-            />
+            <section className="brand-profile-edit-section full-width">
+              <BrandProfileChipEditor
+                label="Brand category"
+                options={brandProfileEditorOptions.brandCategories}
+                selected={form.brandCategories}
+                onChange={(items) => updateField("brandCategories", items)}
+              />
+            </section>
             <BrandProfileEditField label="Business email" value={form.businessEmail} onChange={(value) => updateField("businessEmail", value)} />
             <BrandProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
             <BrandProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
@@ -3819,12 +4359,11 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
           <div className="brand-profile-edit-stack">
             <section className="brand-profile-edit-section">
               <h2>What do you make?</h2>
-              <BrandProfileChipEditor label="Product categories" options={brandProfileEditorOptions.productCategories} selected={form.productCategories} onChange={(items) => updateField("productCategories", items)} />
-              <BrandProfileChipEditor label="Production type" options={brandProfileEditorOptions.productionTypes} selected={form.productionTypes} onChange={(items) => updateField("productionTypes", items)} />
+              <BrandProfileChipEditor label="What does your brand make?" options={brandProfileEditorOptions.products} selected={form.products} onChange={(items) => updateField("products", items)} />
               <BrandProfileChipEditor label="Market level" options={brandProfileEditorOptions.marketLevel} selected={form.marketLevel} onChange={(items) => updateField("marketLevel", items)} singleSelect />
             </section>
             <section className="brand-profile-edit-section">
-              <h2>Factory preferences</h2>
+              <h2>Vendor preferences</h2>
               <BrandProfileChipEditor label="Preferred regions" options={brandProfileEditorOptions.preferredRegions} selected={form.preferredRegions} onChange={(items) => updateField("preferredRegions", items)} />
               <BrandProfileChipEditor label="Certifications" options={brandProfileEditorOptions.certifications} selected={form.certifications} onChange={(items) => updateField("certifications", items)} />
               <BrandProfileChipEditor label="Services needed" options={brandProfileEditorOptions.services} selected={form.services} onChange={(items) => updateField("services", items)} />
@@ -3965,7 +4504,7 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
         {isUploadEditor && (
           <BrandProfileAssetEditor
             assets={editor === "assets" ? data.assets : getBrandProfileMediaAssets(editor, data)}
-            uploadHelper={editor === "projects" ? "Add completed work, active production, or sampling proof that helps factories understand how this brand works." : editor === "assets" ? "Add logos, product photos, direction files, or brand references." : "Add another image or file."}
+            uploadHelper={editor === "projects" ? "Add completed work, active production, or sampling proof that helps vendors understand how this brand works." : editor === "assets" ? "Add logos, product photos, direction files, or brand references." : "Add another image or file."}
             itemType={editor === "projects" ? "project" : "image"}
           />
         )}
@@ -3992,7 +4531,7 @@ function getBrandProfileMediaAssets(editor, data) {
 
     return projects.map((project, index) => ({
       title: project.title,
-      meta: `${project.partner || "Factory partner"} · ${project.result}`,
+      meta: `${project.partner || "Vendor partner"} · ${project.result}`,
       src: ["/assets/dashboard-rfq-shirt.jpg", "/assets/dashboard-rfq-denim.jpg", "/assets/dashboard-rfq-knit.jpg"][index % 3]
     }));
   }
@@ -4106,7 +4645,7 @@ function ProfileAssetUploadDialog({ asset = null, helper, itemType = "image", mo
           </label>
           <label>
             <span>{isProject ? "Project summary" : "Description"}</span>
-            <input defaultValue={asset?.meta || ""} placeholder={isProject ? "e.g. Factory partner · Completed on time" : "e.g. Wovens · sample development"} />
+            <input defaultValue={asset?.meta || ""} placeholder={isProject ? "e.g. Vendor partner · Completed on time" : "e.g. Wovens · sample development"} />
           </label>
         </div>
         <footer className="profile-asset-upload-actions">
@@ -4140,9 +4679,16 @@ function BrandProfileChipEditor({ label, options, selected, onChange, singleSele
       return;
     }
 
-    onChange(selected.includes(option)
-      ? selected.filter((item) => item !== option)
-      : [...selected, option]);
+    if (option === "All categories") {
+      onChange(selected.includes(option) ? [] : [option]);
+      return;
+    }
+
+    const selections = selected.filter((item) => item !== "All categories");
+
+    onChange(selections.includes(option)
+      ? selections.filter((item) => item !== option)
+      : [...selections, option]);
   };
 
   return (
@@ -4271,19 +4817,19 @@ function FactorySearchScreen({ goTo }) {
           <FilterCheck label="Verified" icon="verified" />
           <FilterCheck label="Basic" icon="basic" />
         </FilterGroup>
-        <FilterGroup title="Open capacity">
+        <FilterGroup title={isTrading ? "Network availability" : "Open capacity"}>
           <label className="directory-select">
-            <span>Start window</span>
+            <span>{isTrading ? "Next intake window" : "Start window"}</span>
             <select defaultValue="">
-              <option value="" disabled>Select start window</option>
+              <option value="" disabled>{isTrading ? "Select intake window" : "Select start window"}</option>
               <option>Next 30 days</option>
               <option>August</option>
             </select>
           </label>
           <label className="directory-select">
-            <span>Available quantity</span>
+            <span>{isTrading ? "Supported order size" : "Available quantity"}</span>
             <select defaultValue="">
-              <option value="" disabled>Select quantity</option>
+              <option value="" disabled>{isTrading ? "Select order size" : "Select quantity"}</option>
               <option>300-500 units</option>
               <option>500+ units</option>
             </select>
@@ -4292,15 +4838,15 @@ function FactorySearchScreen({ goTo }) {
             <button className="directory-chip" type="button">Next 30 days</button>
             <button className="directory-chip" type="button">300-500 units</button>
           </div>
-          <p>Use quick presets, or open the dropdowns for exact windows and quantities.</p>
+          <p>{isTrading ? "Filter by when a sourcing team can begin and the order sizes its partner network supports." : "Use quick presets, or open the dropdowns for exact windows and quantities."}</p>
         </FilterGroup>
       </section>
 
       <section className="directory-results" aria-label="Factory search results">
         <header className="directory-hero">
           <div>
-            <p className="eyebrow">FACTORY DIRECTORY</p>
-            <h1>SEARCH VETTED FACTORIES</h1>
+            <p className="eyebrow">VENDOR DIRECTORY</p>
+            <h1>SEARCH VETTED VENDORS</h1>
           </div>
           <label className="directory-search">
             <SearchIcon />
@@ -4391,6 +4937,9 @@ function DirectoryFactoryCard({ factory, onQuote }) {
 
 function FactoryMarketplaceScreen({ goTo }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [vendorType, setVendorType] = useState("factories");
+  const isTrading = vendorType === "trading";
+  const vendors = isTrading ? marketplaceTradingCompanies : marketplaceFactories;
 
   useEffect(() => {
     if (!filtersOpen) return undefined;
@@ -4430,15 +4979,11 @@ function FactoryMarketplaceScreen({ goTo }) {
             <button className="marketplace-filter-close" type="button" onClick={() => setFiltersOpen(false)}>Close</button>
           </div>
         </div>
-        <FilterGroup title="Production type">
-          <FilterCheck label="Cut & sew knits" />
-          <FilterCheck checked label="Wovens" />
-          <FilterCheck label="Sweaters / knitwear" />
-          <FilterCheck label="Denim" />
-          <FilterCheck label="Seamless / circular knit" />
-          <FilterCheck label="Intimates / delicate garments" />
-          <FilterCheck label="Leather / suede" />
-          <FilterCheck label="Bags / soft goods" />
+        <FilterGroup title={isTrading ? "Sourcing regions" : "Production type"}>
+          {(isTrading
+            ? ["China", "Portugal", "Korea", "India", "Turkey", "Vietnam"]
+            : ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"]
+          ).map((label) => <FilterCheck checked={label === (isTrading ? "China" : "Wovens")} label={label} key={label} />)}
         </FilterGroup>
         <FilterGroup title="Product categories">
           <FilterCheck checked label="Tops" />
@@ -4453,12 +4998,11 @@ function FactoryMarketplaceScreen({ goTo }) {
           <FilterCheck label="Uniforms / workwear" />
           <FilterCheck label="Accessories" />
         </FilterGroup>
-        <FilterGroup title="Specializes in">
-          <FilterCheck checked label="Small-batch production" />
-          <FilterCheck label="Fit sample support" />
-          <FilterCheck label="Wash development" />
-          <FilterCheck label="Yarn sourcing" />
-          <FilterCheck label="Embroidery / print" />
+        <FilterGroup title={isTrading ? "Services" : "Specializes in"}>
+          {(isTrading
+            ? ["Supplier matching", "Product development", "Sample management", "Quality control", "Compliance support", "Logistics coordination"]
+            : ["Small-batch production", "Fit sample support", "Wash development", "Yarn sourcing", "Embroidery / print"]
+          ).map((label, index) => <FilterCheck checked={index === 0} label={label} key={label} />)}
         </FilterGroup>
         <FilterGroup title="Price point">
           <div className="directory-chip-grid">
@@ -4534,21 +5078,24 @@ function FactoryMarketplaceScreen({ goTo }) {
         </FilterGroup>
       </aside>
 
-      <section className="marketplace-results" aria-label="Factory marketplace results">
+      <section className="marketplace-results" aria-label={`${isTrading ? "Trading company" : "Factory"} marketplace results`}>
+        <div className="marketplace-vendor-toggle" role="tablist" aria-label="Vendor type">
+          <button className={!isTrading ? "active" : ""} type="button" role="tab" aria-selected={!isTrading} onClick={() => setVendorType("factories")}>Factories</button>
+          <button className={isTrading ? "active" : ""} type="button" role="tab" aria-selected={isTrading} onClick={() => setVendorType("trading")}>Trading companies</button>
+        </div>
         <header className="marketplace-header">
           <div>
-            <p className="eyebrow">FACTORY DIRECTORY</p>
-              <h1>Browse factories</h1>
+            <h1>{isTrading ? "Browse trading companies" : "Browse factories"}</h1>
           </div>
           <label className="directory-search marketplace-search">
             <SearchIcon />
-            <input placeholder="Search shirts, cardigans, denim wash, baby rompers..." />
+            <input placeholder={isTrading ? "Search sourcing regions, services, product categories..." : "Search shirts, cardigans, denim wash, baby rompers..."} />
           </label>
         </header>
         <div className="marketplace-summary">
           <div>
-            <strong>36 factories</strong>
-            <span>showing larger samples, exact garment tags, specialties, and verified capability notes</span>
+            <strong>{isTrading ? "14 trading companies" : "36 factories"}</strong>
+            <span>{isTrading ? "showing sourcing regions, partner networks, managed services, and verified company details" : "showing larger samples, exact garment tags, specialties, and verified capability notes"}</span>
           </div>
           <div className="directory-summary-actions">
             <button
@@ -4565,8 +5112,8 @@ function FactoryMarketplaceScreen({ goTo }) {
           </div>
         </div>
         <div className="marketplace-card-list">
-          {marketplaceFactories.map((factory) => (
-            <MarketplaceFactoryCard factory={factory} key={factory.name} onQuote={() => goTo("describe")} />
+          {vendors.map((factory) => (
+            <MarketplaceFactoryCard factory={factory} vendorType={isTrading ? "trading" : "factory"} key={factory.name} onQuote={() => goTo("describe")} />
           ))}
         </div>
       </section>
@@ -4574,7 +5121,7 @@ function FactoryMarketplaceScreen({ goTo }) {
   );
 }
 
-function MarketplaceFactoryCard({ factory, onQuote }) {
+function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote }) {
   const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
   const updateSampleScroll = (element) => {
     if (!element) return;
@@ -4586,18 +5133,32 @@ function MarketplaceFactoryCard({ factory, onQuote }) {
   };
 
   return (
-    <article className={factory.featured ? "marketplace-factory-card featured" : "marketplace-factory-card"}>
+    <article className={`marketplace-factory-card${factory.featured ? " featured" : ""}${["Tirupur Natural Studio", "Hangzhou Denim Lab"].includes(factory.name) ? " marketplace-tight-wrapped-name" : ""}`}>
       <div className="marketplace-factory-top">
-        <div className="marketplace-factory-title">
+        {vendorType === "factory" ? (
+          <a className="marketplace-factory-title marketplace-factory-profile-link" href={`/prototype.html?screen=factoryProfile&factory=${encodeURIComponent(factory.name)}&from=vendors`} aria-label={`View ${factory.name} factory profile`}>
+            <div className="factory-avatar">{factory.initials}</div>
+            <div>
+              <div className="factory-name-row">
+                <h2>{factory.name}</h2>
+                <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} vendor`} />
+              </div>
+              <p>{factory.location}</p>
+            </div>
+          </a>
+        ) : (
+          <div className="marketplace-factory-title">
           <div className="factory-avatar">{factory.initials}</div>
           <div>
             <div className="factory-name-row">
               <h2>{factory.name}</h2>
-              <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+              <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} vendor`} />
             </div>
             <p>{factory.location}</p>
+            <span className="marketplace-vendor-type">Trading company</span>
           </div>
-        </div>
+          </div>
+        )}
         <div className="marketplace-factory-metrics">
           <Metric label="match" value={factory.match} className={matchTierClass(factory.match)} />
           <Metric label="rating" value={factory.rating} />
@@ -4640,7 +5201,7 @@ function MarketplaceFactoryCard({ factory, onQuote }) {
           </button>
           <div
             className="marketplace-samples"
-            aria-label={`${factory.name} sample products`}
+            aria-label={`${factory.name} example products`}
             onScroll={(event) => updateSampleScroll(event.currentTarget)}
           >
             {factory.products.map((product) => (
@@ -4669,7 +5230,7 @@ function MarketplaceFactoryCard({ factory, onQuote }) {
 
       <div className="marketplace-tag-section">
         <div>
-          <span className="marketplace-tag-label">Makes</span>
+          <span className="marketplace-tag-label">{vendorType === "trading" ? "Sources" : "Makes"}</span>
           <div className="tag-row compact-tags">
             {factory.categories.map((tag) => (
               <span className="tag garment-tag" key={tag}>{tag}</span>
@@ -4677,7 +5238,7 @@ function MarketplaceFactoryCard({ factory, onQuote }) {
           </div>
         </div>
         <div>
-          <span className="marketplace-tag-label">Specializes in</span>
+          <span className="marketplace-tag-label">{vendorType === "trading" ? "Services" : "Specializes in"}</span>
           <div className="tag-row compact-tags">
             {factory.capabilities.map((tag) => (
               <span className="tag blue-tag" key={tag}>{tag}</span>
@@ -4696,18 +5257,18 @@ function SavedFactoriesScreen({ goTo }) {
     <div className="rfqs-shell saved-shell">
       <header className="rfqs-header saved-header">
         <div>
-          <h1>Saved factories</h1>
-          <p>Factories Maison Rue saved for current quotes, future sourcing, and production follow-up.</p>
+          <h1>Saved vendors</h1>
+          <p>Vendors Maison Rue saved for current quotes, future sourcing, and production follow-up.</p>
         </div>
-        <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse factories</button>
+        <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse vendors</button>
       </header>
 
-      <section className="rfqs-controls saved-controls" aria-label="Saved factory filters">
+      <section className="rfqs-controls saved-controls" aria-label="Saved vendor filters">
         <label className="rfqs-search">
-          <span>Search saved factories</span>
+          <span>Search saved vendors</span>
           <div>
             <SearchIcon />
-            <input placeholder="Factory name, category, location..." />
+            <input placeholder="Vendor name, category, location..." />
           </div>
         </label>
         <label className="rfqs-sort">
@@ -4720,7 +5281,7 @@ function SavedFactoriesScreen({ goTo }) {
         </label>
       </section>
 
-      <section className="saved-card-grid" aria-label="Saved factories">
+      <section className="saved-card-grid" aria-label="Saved vendors">
         {savedFactories.map((factory) => (
           <SavedFactoryCard factory={factory} goTo={goTo} key={factory.name} />
         ))}
@@ -4908,9 +5469,9 @@ function RfqsScreen({ goTo }) {
       <header className="rfqs-header">
         <div>
           <h1>Quotes</h1>
-          <p>Track live factory quote requests, compare responses, and move selected quotes toward contract terms.</p>
+          <p>Track live vendor quote requests, compare responses, and move selected quotes toward contract terms.</p>
         </div>
-        <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Request new quote</button>
+        <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Create new quote</button>
       </header>
 
       <section className="rfqs-controls" aria-label="Quote filters">
@@ -4918,7 +5479,7 @@ function RfqsScreen({ goTo }) {
           <span>Search Projects</span>
           <div>
             <SearchIcon />
-            <input placeholder="Project name, ID, or factory..." />
+            <input placeholder="Project name, ID, or vendor..." />
           </div>
         </label>
         <label className="rfqs-sort">
@@ -5098,7 +5659,7 @@ function RfqCard({ rfq, goTo, customTabs = [] }) {
                 </div>
                 <button type="button" role="menuitem" onClick={() => goTo("review")}>Edit quote</button>
                 <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate quote</button>
-                <button type="button" role="menuitem" onClick={() => goTo("invite")}>Invite more factories</button>
+                <button type="button" role="menuitem" onClick={() => goTo("invite")}>Invite more vendors</button>
                 <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive quote</button>
               </div>
             )}
@@ -5212,7 +5773,7 @@ function ProjectsScreen({ goTo, setSelectedReorderProject }) {
       <header className="rfqs-header projects-header">
         <div>
           <h1>Production orders</h1>
-          <p>Track funded factory work, sample approvals, milestones, messages, and shared files.</p>
+          <p>Track funded vendor work, sample approvals, milestones, messages, and shared files.</p>
         </div>
       </header>
 
@@ -5221,13 +5782,13 @@ function ProjectsScreen({ goTo, setSelectedReorderProject }) {
           <span>Search Projects</span>
           <div>
             <SearchIcon />
-            <input placeholder="Project name, ID, or factory..." />
+            <input placeholder="Project name, ID, or vendor..." />
           </div>
         </label>
         <label className="rfqs-sort">
-          <span>Factory</span>
+          <span>Vendor</span>
           <select defaultValue="all">
-            <option value="all">All factories</option>
+            <option value="all">All vendors</option>
             <option value="atelier">Atelier Minho</option>
             <option value="hansu">Hansu Studio</option>
           </select>
@@ -5245,7 +5806,7 @@ function ProjectsScreen({ goTo, setSelectedReorderProject }) {
           <select defaultValue="newest">
             <option value="newest">Newest First</option>
             <option value="due">Next Due</option>
-            <option value="factory">Factory</option>
+            <option value="factory">Vendor</option>
           </select>
         </label>
       </section>
@@ -5317,7 +5878,7 @@ function ProjectsScreen({ goTo, setSelectedReorderProject }) {
             <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setManageTabsOpen(false)}>×</button>
             <header className="brand-profile-modal-header">
               <h1 id="project-tabs-title">Manage tabs</h1>
-              <p>Create tabs for collections, seasons, factories, or any order grouping your team uses.</p>
+              <p>Create tabs for collections, seasons, vendors, or any order grouping your team uses.</p>
             </header>
 
             <div className="project-tabs-manager">
@@ -5703,6 +6264,22 @@ function ProjectContractDetailsPanel({ goTo }) {
 }
 
 function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = false, onApproveFund, onFundMilestone, onApprove, onComment }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [reminderSent, setReminderSent] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+
+    function closeOnOutsideClick(event) {
+      if (menuRef.current?.contains(event.target)) return;
+      setMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [menuOpen]);
+
   const handleAction = () => {
     if (milestone.action === "Approve fund") onApproveFund?.(milestone);
     if (milestone.action === "Fund milestone") onFundMilestone?.(milestone);
@@ -5718,26 +6295,58 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
             <h3>{milestone.title}</h3>
             <p>{milestone.meta}</p>
           </div>
-          <div className="milestone-amount-cell">
-            {milestone.amount && <strong>{milestone.amount}</strong>}
-          </div>
         </div>
         <p className="milestone-description">{milestone.description}</p>
         {milestone.update && <ProjectUpdateCard />}
       </div>
-      <button className="milestone-comment" type="button" aria-label={`Add update for ${milestone.title}`} onClick={() => onComment?.(milestone)}>
-        <img src="/assets/prototype-icons/add-update.svg" alt="" />
-      </button>
-      {(isPaid || isApproved) && (
-        <span className={isApproved ? "milestone-paid-status approved" : "milestone-paid-status"}>
-          {isApproved ? "Approved" : "Paid"}
-        </span>
-      )}
-      {milestone.action && !isPaid && !isApproved && (
-        <button className={milestone.tone === "primary" ? "primary-btn milestone-action" : "secondary-btn milestone-action"} type="button" onClick={handleAction}>
-          {milestone.action}
-        </button>
-      )}
+      <div className="milestone-row-actions">
+        {milestone.amount && <strong className="milestone-row-amount">{milestone.amount}</strong>}
+        {milestone.dueStatus && (
+          <span className={`project-status shared-card-status ${milestone.dueTone}`}>{milestone.dueStatus}</span>
+        )}
+        <div className="project-overflow milestone-more" ref={menuRef}>
+          <button
+            className="rfq-more milestone-more-button"
+            type="button"
+            aria-label={`More actions for ${milestone.title}`}
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((open) => !open)}
+          >...</button>
+          {menuOpen && (
+            <div className="project-overflow-menu milestone-action-menu" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                disabled={reminderSent}
+                onClick={() => {
+                  setReminderSent(true);
+                  setMenuOpen(false);
+                }}
+              >
+                {reminderSent ? "Reminder sent" : "Send reminder"}
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onComment?.(milestone);
+                }}
+              >Add comment</button>
+            </div>
+          )}
+        </div>
+        {(isPaid || isApproved) && (
+          <span className={isApproved ? "milestone-paid-status approved" : "milestone-paid-status"}>
+            {isApproved ? "Approved" : "Paid"}
+          </span>
+        )}
+        {milestone.action && !isPaid && !isApproved && (
+          <button className={milestone.tone === "primary" ? "primary-btn milestone-action" : "secondary-btn milestone-action"} type="button" onClick={handleAction}>
+            {milestone.action}
+          </button>
+        )}
+      </div>
     </article>
   );
 }
@@ -5874,7 +6483,7 @@ function DescribeScreen({ onContinue }) {
         </label>
         <textarea
           id="request"
-          defaultValue="300 women's woven shirts in organic cotton poplin. Need a fit sample and PP sample before bulk approval. Looking for low-MOQ factory with strong woven shirt experience."
+          defaultValue="300 women's woven shirts in organic cotton poplin. Need a fit sample and PP sample before bulk approval. Looking for a low-MOQ vendor with a strong woven production network."
         />
         <div className="describe-actions">
           <button className="secondary-btn" type="button" onClick={onContinue}>Skip AI</button>
@@ -5893,8 +6502,8 @@ function ReviewScreen() {
           <div>
             <h3>Project brief</h3>
             <p>
-              Maison Rue needs a cut-and-sew factory for 300 women's organic cotton woven shirts.
-              The brand has a tech pack and wants factories to quote the sample path and small
+              Maison Rue needs a production vendor for 300 women's organic cotton woven shirts.
+              The brand has a tech pack and wants vendors to quote the sample path and small
               production run clearly before contract terms.
             </p>
           </div>
@@ -5908,19 +6517,19 @@ function ReviewScreen() {
           <Field label="Target timeline *" value="Sample in August, bulk by late September" />
           <Field label="Sample requirement *" value="Fit sample + PP sample before bulk" />
           <Field label="Target unit price" value="Ideal $18-$24 per unit" />
-          <Field label="Factory region preference" value="China, Portugal, Korea" />
+          <Field label="Vendor region preference" value="China, Portugal, Korea" />
           <Field label="Certifications" value="GOTS preferred" />
           <Field label="Quote deadline" value="Jul 24, 2026 · 5 business days after publish" className="brief-grid-full" />
         </div>
         <section className="brief-sourcing-block">
-          <h3>Factory sourcing responsibility</h3>
+          <h3>Vendor sourcing responsibility</h3>
           <div className="brief-sourcing-section">
             <div className="brief-sourcing-grid">
             <label className="field-label" htmlFor="review-sourcing-support">
               Sourcing support needed
               <select id="review-sourcing-support" defaultValue="partial">
-                <option value="full">Factory should source all materials and components</option>
-                <option value="partial">Factory should source some materials or components</option>
+                <option value="full">Vendor should source all materials and components</option>
+                <option value="partial">Vendor should source some materials or components</option>
                 <option value="brand-provided">Brand will provide all materials and components</option>
                 <option value="unsure">Not sure yet</option>
               </select>
@@ -5929,7 +6538,7 @@ function ReviewScreen() {
               Details
               <textarea
                 id="review-sourcing-details"
-                defaultValue="Factory should source organic cotton poplin and button trims from brand-approved direction. Brand will provide labels, packaging, and final color standards."
+                defaultValue="Vendor should source organic cotton poplin and button trims from brand-approved direction. Brand will provide labels, packaging, and final color standards."
               />
             </label>
             </div>
@@ -5938,7 +6547,7 @@ function ReviewScreen() {
       </Card>
       <Card title="Additional details">
         <div className="note-field">
-          Optional: packaging, QC expectations, shipping notes, or anything factories should know
+          Optional: packaging, QC expectations, shipping notes, or anything vendors should know
           before quoting.
         </div>
       </Card>
@@ -5947,7 +6556,7 @@ function ReviewScreen() {
           + Add tech pack, sketches, sample references, or color breakdown
         </button>
       </Card>
-      <Card title="Questions factories should answer">
+      <Card title="Questions vendors should answer">
         <div className="question-box">
           <ol>
             <li>Can you quote fit sample and PP sample separately?</li>
@@ -5961,6 +6570,16 @@ function ReviewScreen() {
 }
 
 function InviteScreen({ selectedFactories, setSelectedFactories }) {
+  const [vendorType, setVendorType] = useState("factories");
+  const isTrading = vendorType === "trading";
+  const inviteVendors = isTrading
+    ? marketplaceTradingCompanies.map((company) => ({
+        ...company,
+        fit: company.match,
+        note: company.notes[0]
+      }))
+    : factories;
+
   const toggle = (name) => {
     setSelectedFactories((items) =>
       items.includes(name) ? items.filter((item) => item !== name) : [...items, name]
@@ -5969,10 +6588,14 @@ function InviteScreen({ selectedFactories, setSelectedFactories }) {
 
   return (
     <div className="stack">
+      <div className="marketplace-vendor-toggle invite-vendor-toggle" role="tablist" aria-label="Vendor type">
+        <button className={!isTrading ? "active" : ""} type="button" role="tab" aria-selected={!isTrading} onClick={() => setVendorType("factories")}>Factories</button>
+        <button className={isTrading ? "active" : ""} type="button" role="tab" aria-selected={isTrading} onClick={() => setVendorType("trading")}>Trading companies</button>
+      </div>
       <div className="invite-toolbar">
         <label className="search-field">
           <SearchIcon />
-          <input placeholder="Search factories" />
+          <input placeholder={isTrading ? "Search trading companies" : "Search factories"} />
         </label>
         <label className="toggle-row">
           <input type="checkbox" />
@@ -5982,7 +6605,7 @@ function InviteScreen({ selectedFactories, setSelectedFactories }) {
         <label className="toggle-row">
           <input type="checkbox" defaultChecked />
           <span className="toggle" />
-          Open to all factories
+          Open to all vendors
         </label>
         <button className="filter-button" type="button">≡ Filter</button>
       </div>
@@ -5999,7 +6622,7 @@ function InviteScreen({ selectedFactories, setSelectedFactories }) {
       </div>
       <Card className="invite-results">
         <div className="factory-list">
-          {factories.map((factory) => (
+          {inviteVendors.map((factory) => (
             <InviteFactoryCard
               factory={factory}
               isSelected={selectedFactories.includes(factory.name)}
@@ -6025,16 +6648,28 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
   };
 
   return (
-    <button
-      className={isSelected ? "factory-card selected" : "factory-card"}
-      type="button"
-      aria-pressed={isSelected}
+    <article
+      className={isSelected ? "factory-card invite-selection-factory-card selected" : "factory-card invite-selection-factory-card"}
       onClick={onToggle}
     >
-      <span className={isSelected ? "check-box checked" : "check-box"} />
+      <button
+        className={isSelected ? "check-box checked" : "check-box"}
+        type="button"
+        aria-label={`${isSelected ? "Remove" : "Select"} ${factory.name}`}
+        aria-pressed={isSelected}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggle();
+        }}
+      />
       <div className="invite-factory-content">
         <div className="invite-factory-top">
-          <div className="marketplace-factory-title">
+          <a
+            className="marketplace-factory-title marketplace-factory-profile-link"
+            href={`/prototype.html?screen=factoryProfile&factory=${encodeURIComponent(factory.name)}&from=invite`}
+            aria-label={`View ${factory.name} factory profile`}
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="factory-avatar">{factory.initials}</div>
             <div>
               <div className="factory-name-row">
@@ -6043,11 +6678,11 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
               </div>
               <p>{factory.location}</p>
             </div>
-          </div>
+          </a>
           <div className="factory-card-metrics">
             <Metric label="match" value={factory.fit} className={matchTierClass(factory.fit)} />
-            <Metric label="rating" value={factory.name === "Atelier Minho" ? "4.9" : factory.name === "Hanshu Studio" ? "4.8" : "4.7"} />
-            <span className="orders-count">{factory.name === "Atelier Minho" ? "12" : factory.name === "Hanshu Studio" ? "8" : "19"} Club orders</span>
+            <Metric label="rating" value={factory.rating || (factory.name === "Atelier Minho" ? "4.9" : factory.name === "Hanshu Studio" ? "4.8" : "4.7")} />
+            <span className="orders-count">{factory.orders || `${factory.name === "Atelier Minho" ? "12" : factory.name === "Hanshu Studio" ? "8" : "19"} Club orders`}</span>
           </div>
           <div className="factory-actions">
             <span className="save-pill button-like-action">Message</span>
@@ -6113,12 +6748,12 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
           </div>
         </div>
       </div>
-    </button>
+    </article>
   );
 }
 
 function InviteSuccessScreen({ goTo, selectedFactories }) {
-  const factoryCount = selectedFactories.length;
+  const vendorCount = selectedFactories.length;
 
   return (
     <div className="stack">
@@ -6127,14 +6762,14 @@ function InviteSuccessScreen({ goTo, selectedFactories }) {
         <div className="success-copy">
           <h2>Your quote request is live</h2>
           <p>
-            We sent the brief to {factoryCount} selected factories. They can review the request,
+            We sent the brief to {vendorCount} selected vendors. They can review the request,
             ask questions, and submit quotes before the deadline.
           </p>
         </div>
         <section className="success-next-panel">
           <h3>What happens next</h3>
           <ul className="success-next-list">
-            <li>Factories review your brief, attachments, and sourcing responsibilities.</li>
+            <li>Vendors review your brief, attachments, and sourcing responsibilities.</li>
             <li>You will see responses, questions, and quote status updates on the quotes page.</li>
             <li>When enough quotes are ready, compare pricing, timing, and sample plans before choosing one.</li>
           </ul>
@@ -6317,7 +6952,7 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                       <p>{factory.fitSummary}</p>
                     </div>
                     <div className="factory-note-box">
-                      <strong>Notes from factory</strong>
+                      <strong>Notes from vendor</strong>
                       <span>{factory.factoryNote}</span>
                     </div>
                   </div>
@@ -6334,13 +6969,13 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
             <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={() => setQuoteCompareOpen(false)}>×</button>
             <header className="brand-profile-modal-header">
               <h1 id="quote-compare-title">Compare quotes</h1>
-              <p>Review selected factory quotes side by side before choosing one.</p>
+              <p>Review selected vendor quotes side by side before choosing one.</p>
             </header>
             <div className="quote-compare-table-wrap">
               <table className="quote-compare-table">
                 <thead>
                   <tr>
-                    <th>Factory</th>
+                    <th>Vendor</th>
                     <th>Unit price</th>
                     <th>Quantity</th>
                     <th>Bulk lead</th>
@@ -6400,10 +7035,10 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
   const quoteDetails = getQuoteComparisonDetails(factory);
   return (
     <div className="quote-detail-layout">
-      <button className="text-link quote-back-link" type="button" onClick={() => goTo("quotes")}>‹ Back to factory quotes</button>
+      <button className="text-link quote-back-link" type="button" onClick={() => goTo("quotes")}>‹ Back to vendor quotes</button>
       <header className="quote-detail-header">
         <h1>{factory.name} quotation</h1>
-        <p>Review the full factory quote before messaging, asking a follow-up question, or choosing this quote for contract terms.</p>
+        <p>Review the full vendor quote before messaging, asking a follow-up question, or choosing this quote for contract terms.</p>
       </header>
       <div className="quote-detail-grid">
         <Card className="quote-detail-card">
@@ -6515,7 +7150,7 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
           </section>
 
           <section className="quote-note-panel">
-            <h3>Factory notes and open clarification</h3>
+            <h3>Vendor notes and open clarification</h3>
             <p>Can quote fit and PP separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec.</p>
           </section>
         </Card>

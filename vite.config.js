@@ -12,6 +12,7 @@ export default defineConfig({
         factorySearch: "factory-search.html",
         prototype: "prototype.html",
         factoryPrototype: "factory-prototype.html",
+        adminPrototype: "admin-prototype.html",
         factorySurvey: "factory-survey.html",
         factorySurveyThankYou: "factory-survey-thank-you.html"
       }

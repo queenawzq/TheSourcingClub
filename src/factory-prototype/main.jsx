@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
+import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import "../prototype/styles.css";
 import "./styles.css";
@@ -110,6 +111,7 @@ const factoryMessageThreads = [
     id: "maison-rue",
     name: "Maison Rue",
     primaryContact: "Ari Chen",
+    primaryContactTitle: "Founder",
     initials: "MR",
     location: "New York, USA",
     status: "Online",
@@ -1055,7 +1057,7 @@ const onboardingCopy = {
     steps: [
       {
         title: "Welcome to The Sourcing Club",
-        intro: "Let's set up your factory profile so brands can find you. It takes about 5 minutes, and you can edit everything later.",
+        intro: "Let's set up your profile so brands can find you. It takes about 5 minutes, and you can edit everything later.",
         meta: "11 steps · 5 minutes",
         languageLabel: "Language",
         languageHelp: "",
@@ -1064,7 +1066,7 @@ const onboardingCopy = {
       {
         title: "Tell us about your factory",
         fields: [
-          ["Factory Name", "e.g. Golden Thread Manufacturing"],
+          ["Factory Name", "e.g. Golden Thread Manufacturing", true],
           ["Year Founded", "YYYY"],
           ["Website URL", "www.example.com"],
           ["Factory Location", "City, Country"],
@@ -1081,27 +1083,29 @@ const onboardingCopy = {
         logoTitle: "Factory logo",
         logoHelper: "Upload your factory logo, wordmark, or icon mark.",
         logoAccept: "SVG, PNG, or JPG",
-        imagesTitle: "Samples developed",
-        imagesHelper: "Upload sample garments, product development examples, construction details, or finished pieces your factory has made.",
+        imagesTitle: "Samples & product catalogues",
+        imagesHelper: "Upload sample garments, development examples, finished pieces, or a product catalogue or lookbook that shows what your factory can make.",
         imagesAccept: "PNG, JPG, or PDF"
       },
       {
         title: "What type of production does your factory specialize in?",
         intro: "Start with the production method, then choose the garment categories you can reliably make.",
         groups: [
-          ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"], ["Cut & sew knits", "Wovens"]],
-          ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"], ["Tops", "Bottoms"]],
+          ["Manufacturing model", ["OEM / made to specification", "ODM / design + manufacture", "Full package production (FPP)", "CMT / cut, make & trim", "Private label / white label", "OBM / own-brand manufacturing"], ["OEM / made to specification", "Full package production (FPP)"], true],
+          ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"], ["Cut & sew knits", "Wovens"], true],
+          ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"], ["Tops", "Bottoms"], true],
           ["Makes", ["Button-down shirts", "Poplin blouses", "Woven dresses", "Linen co-ords", "Lightweight jackets", "Pleated skirts", "Rib tops", "Canvas totes", "Denim jackets", "Swim sets"], ["Button-down shirts", "Poplin blouses", "Woven dresses"]],
-          ["Market level", ["Luxury / high-end", "Premium / contemporary", "Mid range", "Mass market"], ["Premium / contemporary"]]
+          ["Market level", ["Luxury / high-end (retail $500+)", "Premium / contemporary (retail $100-$500)", "Mid range (retail $50-$100)", "Mass market (retail under $50)"], ["Premium / contemporary (retail $100-$500)"]]
         ],
       },
       {
-        title: "Specialty, services, and tools",
-        intro: "Add the capabilities brands use to understand your sampling support and production setup.",
+        title: "Specialty, services, markets, and tools",
+        intro: "Add the capabilities and export experience brands use to understand your sampling support and production setup.",
         groups: [
-          ["Specializes in", ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton", "Wash development", "Trim sourcing", "QC photo updates", "Low-MOQ sampling"], ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton"]],
-          ["Design Services", ["Pattern making", "Grading", "Sample development", "Tech pack support", "Full package (FPP)", "CMT only"], ["Full package (FPP)"]],
-          ["3D & digital tools (optional)", ["CLO 3D", "Browzwear", "Lectra", "Gerber", "None"], []]
+          ["Specializes in", ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton", "Wash development", "Trim sourcing", "QC photo updates", "Low-MOQ sampling"], ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton"], true],
+          ["Design Services", ["Pattern making", "Grading", "Sample development", "Tech pack support", "Material sourcing", "Trim sourcing", "Packaging development"], ["Pattern making", "Sample development"]],
+          ["Primary export markets", ["United States & Canada", "United Kingdom", "European Union", "Eastern Europe", "Australia & New Zealand", "Japan & South Korea", "Southeast Asia", "Greater China", "Middle East", "Latin America", "Africa", "Domestic market"], ["United States & Canada", "European Union"], true],
+          ["3D & digital tools (optional)", ["CLO 3D", "Browzwear", "Lectra", "Gerber"], []]
         ],
         equipmentLabel: "Key machines or equipment",
         equipmentPlaceholder: "Optional: flatlock, linking, embroidery, washing, laser cutting..."
@@ -1111,7 +1115,8 @@ const onboardingCopy = {
         intro: "Share your monthly line-hours and booking level. We translate this into capacity estimates brands can understand.",
         fields: [
           ["Minimum Order Quantity", "e.g. 100 units / style"],
-          ["Typical Lead Time", "e.g. 30-45 days"]
+          ["Bulk Production Lead Time", "e.g. 30-45 days"],
+          ["Typical Sample Lead Time", "e.g. 10-14 days"]
         ],
         category: "Wovens — based on your selected production type",
         lineHoursLabel: "Line-hours available per month",
@@ -1156,10 +1161,10 @@ const onboardingCopy = {
         intro: "Confirm the main details brands will use to understand and match with your factory.",
         sections: [
           ["Factory details", [["Factory Name", "Golden Thread Manufacturing"], ["Year Founded", "2016"], ["Website URL", "goldenthreadmfg.com"], ["Location", "Dongguan, China"], ["Nearest Port", "Shenzhen"], ["Total Employees", "120"]]],
-          ["Factory context", [["About the factory", "Full-service woven and cut & sew factory focused on premium small-batch production, sampling support, and export quality."], ["Factory logo", "Uploaded"], ["Samples developed", "3 uploads"]]],
-          ["Production fit", [["Production Type", "Cut & sew knits, Wovens"], ["Product Categories", "Tops, Bottoms, Activewear"], ["Makes", "Button-down shirts, Poplin blouses, Woven dresses"], ["Market Level", "Premium / contemporary"]]],
-          ["Specialty, services & tools", [["Specializes in", "In-house pattern room, Fit sample + PP sample, Small-batch export, GOTS cotton"], ["Design Services", "Full package (FPP)"], ["3D & digital tools", "None selected"], ["Key machines or equipment", "Flatlock, linking, embroidery, washing"]]],
-          ["Capacity & terms", [["MOQ", "100 units / style"], ["Lead Time", "30-45 days"], ["Capacity category", "Wovens"], ["Line-hours", "2,400 hours / month"], ["Reference style", "Basic woven shirt · ~18 min/pc"], ["Estimated units", "Aug roughly 4,800-8,000 pcs"], ["Booking level", "Aug mostly open; Sep partly booked"]]],
+          ["Factory context", [["About the factory", "Full-service woven and cut & sew factory focused on premium small-batch production, sampling support, and export quality."], ["Factory logo", "Uploaded"], ["Samples & product catalogues", "3 uploads"]]],
+          ["Production fit", [["Manufacturing model", "OEM / made to specification, Full package production (FPP)"], ["Production Type", "Cut & sew knits, Wovens"], ["Product Categories", "Tops, Bottoms, Activewear"], ["Makes", "Button-down shirts, Poplin blouses, Woven dresses"], ["Market Level & Retail Price", "Premium / contemporary (retail $100-$500)"]]],
+          ["Specialty, services, markets & tools", [["Specializes in", "In-house pattern room, Fit sample + PP sample, Small-batch export, GOTS cotton"], ["Design Services", "Pattern making, Sample development"], ["Primary export markets", "United States & Canada, European Union"], ["3D & digital tools", "None selected"], ["Key machines or equipment", "Flatlock, linking, embroidery, washing"]]],
+          ["Capacity & terms", [["MOQ", "100 units / style"], ["Bulk production lead time", "30-45 days"], ["Typical sample lead time", "10-14 days"], ["Capacity category", "Wovens"], ["Line-hours", "2,400 hours / month"], ["Reference style", "Basic woven shirt · ~18 min/pc"], ["Estimated units", "Aug roughly 4,800-8,000 pcs"], ["Booking level", "Aug mostly open; Sep partly booked"]]],
           ["Verification", [["Business registration", "Uploaded"], ["Certifications", "OEKO-TEX uploaded; GOTS and BSCI pending"], ["Client references", "Maison Rue · Ari Chen"]]],
           ["Factory walkthrough", [["Walkthrough video", "Not added yet"], ["Target length", "2-4 minutes"], ["Required areas", "Entrance, production floor, materials, machines, QC, packing"]]]
         ],
@@ -1190,7 +1195,7 @@ const onboardingCopy = {
     steps: [
       {
         title: "欢迎来到 The Sourcing Club",
-        intro: "我们将帮你建立工厂资料，让品牌更容易找到你。大约需要 5 分钟，之后可以随时修改。",
+        intro: "让我们来设置您的资料，让品牌可以找到您。大约需要 5 分钟，之后您可以随时修改。",
         meta: "11 步 · 约 5 分钟",
         languageLabel: "语言",
         languageHelp: "",
@@ -1198,7 +1203,7 @@ const onboardingCopy = {
       },
       {
         title: "告诉我们你的工厂信息",
-        fields: [["工厂名称", "例如：金线服装制造"], ["成立年份", "YYYY"], ["官网", "www.example.com"], ["工厂所在地", "城市，国家/地区"], ["最近港口", "例如：深圳港"], ["员工总数", "例如：120"]],
+        fields: [["工厂名称", "例如：金线服装制造", true], ["成立年份", "YYYY"], ["官网", "www.example.com"], ["工厂所在地", "城市，国家/地区"], ["最近港口", "例如：深圳港"], ["员工总数", "例如：120"]],
         helper: "你最常使用的海港或机场。"
       },
       {
@@ -1209,27 +1214,29 @@ const onboardingCopy = {
         logoTitle: "工厂 Logo",
         logoHelper: "上传工厂 logo、字标或图标。",
         logoAccept: "SVG、PNG 或 JPG",
-        imagesTitle: "已开发样品",
-        imagesHelper: "上传工厂开发过的样衣、产品开发案例、结构细节或成品图片。",
+        imagesTitle: "样品与产品目录册",
+        imagesHelper: "上传工厂开发过的样衣、产品案例或成品，也可以上传展示工厂可生产产品的目录册或 lookbook。",
         imagesAccept: "PNG、JPG 或 PDF"
       },
       {
         title: "你的工厂擅长哪类生产？",
         intro: "先选择生产工艺，再选择可稳定生产的品类。",
         groups: [
-          ["生产类型", ["针织裁剪缝制", "梭织", "毛衫 / 针织成衣", "牛仔", "无缝 / 圆机针织", "内衣 / 精细工艺", "皮革 / 麂皮", "包袋 / 软配件", "其他"], ["针织裁剪缝制", "梭织"]],
-          ["产品品类", ["上装", "下装", "连衣裙 / 连体衣", "外套", "运动服", "内衣", "泳装", "睡衣 / 家居服", "童装 / 婴童", "制服 / 工装", "配饰", "其他"], ["上装", "下装"]],
+          ["合作生产模式", ["OEM / 按品牌规格生产", "ODM / 设计与生产", "全包生产 FPP", "CMT / 来料加工", "Private label / 白牌", "OBM / 自有品牌生产"], ["OEM / 按品牌规格生产", "全包生产 FPP"], true],
+          ["生产类型", ["针织裁剪缝制", "梭织", "毛衫 / 针织成衣", "牛仔", "无缝 / 圆机针织", "内衣 / 精细工艺", "皮革 / 麂皮", "包袋 / 软配件", "其他"], ["针织裁剪缝制", "梭织"], true],
+          ["产品品类", ["上装", "下装", "连衣裙 / 连体衣", "外套", "运动服", "内衣", "泳装", "睡衣 / 家居服", "童装 / 婴童", "制服 / 工装", "配饰", "其他"], ["上装", "下装"], true],
           ["可生产款式", ["纽扣衬衫", "府绸上衣", "梭织连衣裙", "亚麻套装", "轻薄外套", "百褶裙", "罗纹上衣", "帆布托特包", "牛仔夹克", "泳装套装"], ["纽扣衬衫", "府绸上衣", "梭织连衣裙"]],
-          ["市场层级", ["奢侈 / 高端", "高级成衣 / 当代品牌", "中端市场", "大众市场"], ["高级成衣 / 当代品牌"]]
+          ["市场层级", ["奢侈 / 高端（成品零售价 $500+）", "高级成衣 / 当代品牌（成品零售价 $100-$500）", "中端市场（成品零售价 $50-$100）", "大众市场（成品零售价低于 $50）"], ["高级成衣 / 当代品牌（成品零售价 $100-$500）"]]
         ],
       },
       {
-        title: "专长、服务与工具",
-        intro: "补充品牌会用于判断打样支持和生产配置的能力信息。",
+        title: "专长、服务、市场与工具",
+        intro: "补充品牌会用于判断打样支持、出口经验和生产配置的能力信息。",
         groups: [
-          ["专长", ["内部制版房", "试身样 + 产前样", "小批量出口", "GOTS 棉", "水洗开发", "辅料采购", "QC 图片更新", "低起订量打样"], ["内部制版房", "试身样 + 产前样", "小批量出口", "GOTS 棉"]],
-          ["设计服务", ["制版", "放码", "样衣开发", "Tech pack 支持", "全包生产 FPP", "仅 CMT"], ["全包生产 FPP"]],
-          ["3D 和数字工具（选填）", ["CLO 3D", "Browzwear", "Lectra", "Gerber", "无"], []]
+          ["专长", ["内部制版房", "试身样 + 产前样", "小批量出口", "GOTS 棉", "水洗开发", "辅料采购", "QC 图片更新", "低起订量打样"], ["内部制版房", "试身样 + 产前样", "小批量出口", "GOTS 棉"], true],
+          ["设计服务", ["制版", "放码", "样衣开发", "Tech pack 支持", "面料采购", "辅料采购", "包装开发"], ["制版", "样衣开发"]],
+          ["主要出口市场", ["美国与加拿大", "英国", "欧盟", "东欧", "澳大利亚与新西兰", "日本与韩国", "东南亚", "大中华区", "中东", "拉丁美洲", "非洲", "本地市场"], ["美国与加拿大", "欧盟"], true],
+          ["3D 和数字工具（选填）", ["CLO 3D", "Browzwear", "Lectra", "Gerber"], []]
         ],
         equipmentLabel: "关键机器或设备",
         equipmentPlaceholder: "选填：绷缝机、套口机、刺绣、水洗、激光裁剪..."
@@ -1237,7 +1244,7 @@ const onboardingCopy = {
       {
         title: "产能与合作条件",
         intro: "填写每月可用工时和接单状态。我们会转化成品牌更容易理解的产能估算。",
-        fields: [["最低起订量 MOQ", "例如：100 件 / 款"], ["常规交期", "例如：30-45 天"]],
+        fields: [["最低起订量 MOQ", "例如：100 件 / 款"], ["大货生产周期", "例如：30-45 天"], ["常规打样周期", "例如：10-14 天"]],
         category: "梭织 — 基于你选择的生产类型",
         lineHoursLabel: "每月可用产线工时",
         referenceTitle: "基础梭织衬衫",
@@ -1281,10 +1288,10 @@ const onboardingCopy = {
         intro: "请确认品牌将看到并用于匹配的主要信息。",
         sections: [
           ["工厂信息", [["工厂名称", "金线服装制造"], ["成立年份", "2016"], ["官网", "goldenthreadmfg.com"], ["所在地", "中国东莞"], ["最近港口", "深圳"], ["员工总数", "120"]]],
-          ["工厂背景", [["工厂介绍", "专注高级小批量生产、打样支持和出口品质的全服务梭织与针织裁剪缝制工厂。"], ["工厂 Logo", "已上传"], ["已开发样品", "已上传 3 个文件"]]],
-          ["生产匹配", [["生产类型", "针织裁剪缝制，梭织"], ["产品品类", "上装，下装，运动服"], ["可生产款式", "纽扣衬衫，府绸上衣，梭织连衣裙"], ["市场层级", "高级成衣 / 当代品牌"]]],
-          ["专长、服务与工具", [["专长", "内部制版房，试身样 + 产前样，小批量出口，GOTS 棉"], ["设计服务", "全包生产 FPP"], ["3D 和数字工具", "未选择"], ["关键机器或设备", "绷缝机、套口机、刺绣、水洗"]]],
-          ["产能与合作条件", [["MOQ", "100 件 / 款"], ["交期", "30-45 天"], ["产能品类", "梭织"], ["产线工时", "2,400 小时 / 月"], ["参考款", "基础梭织衬衫 · 约 18 分钟 / 件"], ["估算件数", "8 月约 4,800-8,000 件"], ["接单状态", "8 月较空；9 月部分已订"]]],
+          ["工厂背景", [["工厂介绍", "专注高级小批量生产、打样支持和出口品质的全服务梭织与针织裁剪缝制工厂。"], ["工厂 Logo", "已上传"], ["样品与产品目录册", "已上传 3 个文件"]]],
+          ["生产匹配", [["合作生产模式", "OEM / 按品牌规格生产，全包生产 FPP"], ["生产类型", "针织裁剪缝制，梭织"], ["产品品类", "上装，下装，运动服"], ["可生产款式", "纽扣衬衫，府绸上衣，梭织连衣裙"], ["市场层级与成品零售价", "高级成衣 / 当代品牌（成品零售价 $100-$500）"]]],
+          ["专长、服务、市场与工具", [["专长", "内部制版房，试身样 + 产前样，小批量出口，GOTS 棉"], ["设计服务", "制版，样衣开发"], ["主要出口市场", "美国与加拿大，欧盟"], ["3D 和数字工具", "未选择"], ["关键机器或设备", "绷缝机、套口机、刺绣、水洗"]]],
+          ["产能与合作条件", [["MOQ", "100 件 / 款"], ["大货生产周期", "30-45 天"], ["常规打样周期", "10-14 天"], ["产能品类", "梭织"], ["产线工时", "2,400 小时 / 月"], ["参考款", "基础梭织衬衫 · 约 18 分钟 / 件"], ["估算件数", "8 月约 4,800-8,000 件"], ["接单状态", "8 月较空；9 月部分已订"]]],
           ["验证资料", [["营业执照 / 注册文件", "已上传"], ["认证", "OEKO-TEX 已上传；GOTS 和 BSCI 待补充"], ["客户参考", "Maison Rue · Ari Chen"]]],
           ["工厂介绍视频", [["视频状态", "尚未添加"], ["建议长度", "2-4 分钟"], ["需展示区域", "入口、生产车间、物料、机器、质检、包装"]]]
         ],
@@ -1313,7 +1320,136 @@ const onboardingCopy = {
   }
 };
 
-const factoryOnboardingSteps = onboardingCopy.en.steps;
+const tradingOnboardingCopy = {
+  en: {
+    back: "Previous",
+    next: "Next",
+    steps: [
+      {
+        type: "welcome",
+        title: "Welcome to The Sourcing Club",
+        intro: "Let's set up your profile so brands can find you. It takes about 5 minutes, and you can edit everything later.",
+        meta: "10 steps · 4 minutes",
+        languageLabel: "Language",
+        languageHelp: "",
+        cta: "Get started"
+      },
+      {
+        type: "fields",
+        title: "Tell us about your trading company",
+        intro: "Share the company details brands need before starting a sourcing relationship.",
+        fields: [["Company Name", "e.g. Meridian Sourcing Group", true], ["Year Founded", "YYYY"], ["Website URL", "www.example.com"], ["Headquarters / primary sourcing office", "e.g. Hong Kong / Shenzhen, China"], ["Team size", "e.g. 25"], ["Languages supported", "e.g. English, Mandarin, Portuguese"]]
+      },
+      {
+        type: "context",
+        title: "Add company context",
+        intro: "Explain how your team sources, manages suppliers, and supports brands through production.",
+        brandLabel: "About the trading company",
+        brandPlaceholder: "Describe your sourcing network, typical customers, product strengths, quality process, and how you manage partner factories.",
+        logoTitle: "Company logo",
+        logoHelper: "Upload your company logo, wordmark, or icon mark.",
+        logoAccept: "SVG, PNG, or JPG",
+        imagesTitle: "Products sourced & product catalogues",
+        imagesHelper: "Upload examples of products your company has sourced or managed through production, or a product catalogue or lookbook that shows your sourcing capabilities.",
+        imagesAccept: "PNG, JPG, or PDF"
+      },
+      {
+        type: "chipsBalanced",
+        title: "What does your sourcing network specialize in?",
+        intro: "Choose the production methods, product categories, and regions covered by your partner network.",
+        groups: [
+          ["Production programs supported", ["OEM / made to specification", "ODM / design + manufacture", "Full package production (FPP)", "CMT / cut, make & trim", "Private label / white label", "Small-batch / low MOQ"], ["OEM / made to specification", "Full package production (FPP)"], true],
+          ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"], ["Cut & sew knits", "Wovens"], true],
+          ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"], ["Tops", "Bottoms"], true],
+          ["Makes", ["Button-down shirts", "Poplin blouses", "Woven dresses", "Linen co-ords", "Lightweight jackets", "Pleated skirts", "Rib tops", "Canvas totes", "Denim jackets", "Swim sets"], ["Button-down shirts", "Poplin blouses", "Woven dresses"]],
+          ["Sourcing regions", ["China", "Portugal", "South Korea", "India", "Turkey", "Vietnam", "Bangladesh", "Cambodia", "Indonesia", "Pakistan", "Sri Lanka", "Morocco / Tunisia", "Mexico", "United States"], ["China", "Portugal"]],
+          ["Market level", ["Luxury / high-end (retail $500+)", "Premium / contemporary (retail $100-$500)", "Mid range (retail $50-$100)", "Mass market (retail under $50)"], ["Premium / contemporary (retail $100-$500)"]]
+        ]
+      },
+      {
+        type: "chipsWithField",
+        title: "Services and supplier management",
+        intro: "Show brands what your team manages directly across development and production.",
+        groups: [
+          ["Core services", ["Supplier matching", "Costing & negotiation", "Merchandising", "Sample management", "Production management", "Order consolidation", "Logistics coordination"], ["Supplier matching", "Sample management", "Production management"], true],
+          ["Product development", ["Design support", "Tech pack support", "Pattern making", "Grading", "Sample development", "Material sourcing", "Trim sourcing", "Packaging development"], ["Tech pack support", "Sample development", "Material sourcing"]],
+          ["Quality & compliance", ["Factory verification", "In-line inspection", "Final inspection", "Third-party inspection", "Lab testing coordination", "Certification validation", "Social compliance checks", "Traceability support"], ["Factory verification", "In-line inspection", "Final inspection"], true],
+          ["Primary destination markets", ["United States & Canada", "United Kingdom", "European Union", "Eastern Europe", "Australia & New Zealand", "Japan & South Korea", "Southeast Asia", "Greater China", "Middle East", "Latin America", "Africa", "Domestic market"], ["United States & Canada", "European Union"], true],
+          ["Digital tools (optional)", ["PLM", "ERP / order tracking", "CLO 3D", "Browzwear", "Lectra", "Gerber"], []]
+        ],
+        equipmentLabel: "Other capabilities",
+        equipmentPlaceholder: "Optional: merchandising, packaging, freight consolidation..."
+      },
+      {
+        type: "fields",
+        title: "Commercial terms and order fit",
+        intro: "Help brands understand the orders your network can support.",
+        fields: [["Typical minimum order", "e.g. 300 units / style"], ["Typical lead time", "e.g. 45-60 days"], ["Typical order value", "e.g. $15,000-$100,000"], ["Number of active partner factories", "e.g. 18"], ["Supported Incoterms", "e.g. FOB, EXW, DDP"], ["Typical payment terms", "e.g. 30% deposit, 70% before shipment"]]
+      },
+      {
+        type: "verification",
+        title: "Get verified, get found",
+        intro: "We review these in the background so brands can understand who operates and verifies your supplier network.",
+        businessLabel: "Business registration certificate *",
+        businessUpload: "Click or drag files to upload",
+        businessHelper: "Required for verification.",
+        certificationLabel: "Add certifications or memberships",
+        search: "Search or add a certification",
+        add: "Add certification",
+        certifications: [["ISO 9001", "pending"], ["Sedex", "uploaded"], ["BSCI", "pending"]],
+        uploadCertificate: "Click or drag certificate to upload",
+        uploadedCertificate: "Certificate uploaded",
+        deleteCertificate: "Delete",
+        certificateHelper: "PDF, PNG, or JPG",
+        reference: "Client references",
+        addReference: "+ Add another reference",
+        referenceHelper: "Brands or retailers your company has supported."
+      },
+      {
+        type: "review",
+        title: "Review your profile",
+        intro: "Confirm the main details brands will use to understand and match with your trading company.",
+        reviewEditSteps: [1, 2, 3, 4, 5, 6],
+        sections: [
+          ["Company details", [["Company Name", "Pacific Source Partners"], ["Year Founded", "2016"], ["Website URL", "pacificsourcepartners.com"], ["Headquarters / primary sourcing office", "Hong Kong / Shenzhen, China"], ["Team size", "25"], ["Languages supported", "English, Mandarin, Cantonese"]]],
+          ["Company context", [["About the company", "Multi-region sourcing and production management for premium apparel brands."], ["Company logo", "Uploaded"], ["Products sourced & product catalogues", "3 uploads"]]],
+          ["Sourcing network", [["Production programs", "OEM / made to specification, Full package production (FPP)"], ["Production Type", "Cut & sew knits, Wovens"], ["Product Categories", "Tops, Bottoms"], ["Makes", "Button-down shirts, Poplin blouses, Woven dresses"], ["Sourcing Regions", "China, Portugal"], ["Market Level & Retail Price", "Premium / contemporary (retail $100-$500)"]]],
+          ["Services & oversight", [["Core services", "Supplier matching, Sample management, Production management"], ["Product development", "Tech pack support, Sample development, Material sourcing"], ["Quality & compliance", "Factory verification, in-line inspection, final inspection"], ["Primary destination markets", "United States & Canada, European Union"], ["Digital tools", "None selected"], ["Other capabilities", "Packaging and freight consolidation"]]],
+          ["Commercial terms", [["Typical MOQ", "300 units / style"], ["Lead Time", "45-60 days"], ["Order value", "$15,000-$100,000"], ["Partner factories", "18 active"], ["Incoterms", "FOB, EXW, DDP"], ["Payment terms", "30% deposit, 70% before shipment"]]],
+          ["Verification", [["Business registration", "Uploaded"], ["Certifications", "Sedex uploaded; ISO 9001 and BSCI pending"], ["Client references", "Maison Rue · Ari Chen"]]]
+        ],
+        cta: "Confirm"
+      },
+      {
+        type: "terms",
+        title: "Terms & Conditions",
+        intro: "Please read and sign our terms before continuing.",
+        terms: [
+          ["Platform Usage", "Share accurate company, sourcing-network, and production information, and communicate with brands in good faith."],
+          ["Data Privacy & Confidentiality", "Only upload documents and media you are allowed to share. Keep brand enquiries, tech packs, pricing, and supplier details confidential."],
+          ["Trading Company Responsibilities", "Disclose your role clearly, keep partner-factory information current, and ensure quotes and production commitments reflect what your network can deliver."]
+        ],
+        agreement: "I have read and agree to the Terms and Conditions",
+        signature: "Type your full name to sign electronically",
+        cta: "Sign & Continue"
+      },
+      {
+        type: "complete",
+        title: "You're all set",
+        intro: "Your trading company profile has been submitted. We'll review your verification documents and let you know when brands can discover your profile.",
+        cta: "Go to Dashboard"
+      }
+    ]
+  }
+};
+
+tradingOnboardingCopy.zh = {
+  ...tradingOnboardingCopy.en,
+  back: "上一步",
+  next: "下一步",
+  steps: tradingOnboardingCopy.en.steps.map((step) => ({ ...step }))
+};
+
 const factoryScreens = [
   "dashboard",
   "browse",
@@ -1338,6 +1474,8 @@ const factoryProjectMilestones = [
   {
     title: "Fit sample",
     meta: "Funded · due Aug 16",
+    dueStatus: "Due today",
+    dueTone: "danger",
     amount: "$120",
     description: "Factory prepares first sample and uploads sample photos for approval.",
     active: true
@@ -1350,11 +1488,15 @@ const factoryProjectMilestones = [
   {
     title: "Strike-off / print",
     meta: "Factory update due Aug 18",
+    dueStatus: "Due soon",
+    dueTone: "warning",
     description: "Factory confirms print, embroidery, or construction details before bulk."
   },
   {
     title: "Size set / fit notes",
     meta: "Factory update due Aug 18",
+    dueStatus: "Due soon",
+    dueTone: "warning",
     description: "Brand reviews graded sizes or fit notes when needed for the style."
   },
   {
@@ -1387,6 +1529,9 @@ function getCapacityUnitRange(lineHours, minPercent = 60, maxPercent = 100) {
 function App() {
   const query = new URLSearchParams(window.location.search);
   const requestedScreen = query.get("screen");
+  const requestedDashboardState = query.get("state") === "active" ? "active" : "newcomer";
+  const explicitAuthMode = requestedScreen === "login" || requestedScreen === "signup" ? requestedScreen : null;
+  const requestedCompanyType = query.get("company") === "trading" ? "trading" : "factory";
   const shouldForceOnboarding = requestedScreen === "onboarding" || query.get("onboarding") === "1" || query.get("view") === "onboarding";
   if (shouldForceOnboarding) {
     window.localStorage.removeItem("tscFactoryPrototypeScreen");
@@ -1398,12 +1543,16 @@ function App() {
       ? savedScreen
       : "";
   const shouldOpenPrototypeScreen = Boolean(restoredScreen);
+  const requestedAuthMode = explicitAuthMode || (!shouldOpenPrototypeScreen ? "signup" : null);
   const [onboardingComplete, setOnboardingComplete] = useState(shouldOpenPrototypeScreen);
+  const [authMode, setAuthMode] = useState(requestedAuthMode);
+  const [onboardingCompanyType, setOnboardingCompanyType] = useState(requestedCompanyType);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingReviewEdit, setOnboardingReviewEdit] = useState(false);
   const [onboardingLanguage, setOnboardingLanguage] = useState("en");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [screen, setScreen] = useState(shouldOpenPrototypeScreen ? restoredScreen : "dashboard");
+  const [dashboardState] = useState(requestedDashboardState);
   const [detailBackTarget, setDetailBackTarget] = useState("browse");
   const [quoteBackTarget, setQuoteBackTarget] = useState("detail");
   const [capacityDrawerOpen, setCapacityDrawerOpen] = useState(false);
@@ -1437,22 +1586,60 @@ function App() {
   }, [sidebarCollapsed]);
 
   useEffect(() => {
-    if (!onboardingComplete || !factoryScreens.includes(screen)) return;
+    if (authMode || !onboardingComplete || !factoryScreens.includes(screen)) return;
     window.localStorage.setItem("tscFactoryPrototypeScreen", screen);
-    window.history.replaceState(null, "", `${window.location.pathname}?screen=${screen}`);
-  }, [onboardingComplete, screen]);
+    const stateQuery = screen === "dashboard" && dashboardState === "active" ? "&state=active" : "";
+    window.history.replaceState(null, "", `${window.location.pathname}?screen=${screen}${stateQuery}`);
+  }, [authMode, onboardingComplete, screen, dashboardState]);
 
   const goToDashboard = () => {
     setScreen("dashboard");
   };
 
+  if (authMode) {
+    return (
+      <AuthScreen
+        accountType="factory"
+        initialMode={authMode}
+        onModeChange={(nextMode) => {
+          setAuthMode(nextMode);
+          window.history.replaceState(null, "", `${window.location.pathname}?screen=${nextMode}`);
+        }}
+        onAuthenticate={({ mode }) => {
+          setAuthMode(null);
+          if (mode === "signup") {
+            setOnboardingComplete(false);
+            setOnboardingStep(0);
+            setOnboardingReviewEdit(false);
+            const companyQuery = onboardingCompanyType === "trading" ? "&company=trading" : "";
+            window.history.replaceState(null, "", `${window.location.pathname}?screen=onboarding${companyQuery}`);
+          } else {
+            setOnboardingComplete(true);
+            setScreen("dashboard");
+            window.history.replaceState(null, "", `${window.location.pathname}?screen=dashboard`);
+          }
+        }}
+      />
+    );
+  }
+
   if (!onboardingComplete) {
+    const activeOnboardingSteps = (onboardingCompanyType === "trading" ? tradingOnboardingCopy : onboardingCopy)[onboardingLanguage].steps;
+    const onboardingReviewStep = activeOnboardingSteps.findIndex((item) => item.type === "review");
+    const reviewStep = onboardingReviewStep >= 0 ? onboardingReviewStep : 8;
+
     return (
       <FactoryOnboarding
+        companyType={onboardingCompanyType}
         language={onboardingLanguage}
         step={onboardingStep}
         isReviewEdit={onboardingReviewEdit}
         onLanguageChange={setOnboardingLanguage}
+        onCompanyTypeChange={(nextCompanyType) => {
+          setOnboardingCompanyType(nextCompanyType);
+          const companyQuery = nextCompanyType === "trading" ? "&company=trading" : "";
+          window.history.replaceState(null, "", `${window.location.pathname}?screen=onboarding${companyQuery}`);
+        }}
         onEditSection={(targetStep) => {
           setOnboardingReviewEdit(true);
           setOnboardingStep(targetStep);
@@ -1461,7 +1648,7 @@ function App() {
         onBack={() => {
           if (onboardingReviewEdit) {
             setOnboardingReviewEdit(false);
-            setOnboardingStep(8);
+            setOnboardingStep(reviewStep);
           } else {
             setOnboardingStep((value) => Math.max(0, value - 1));
           }
@@ -1469,8 +1656,8 @@ function App() {
         onNext={() => {
           if (onboardingReviewEdit) {
             setOnboardingReviewEdit(false);
-            setOnboardingStep(8);
-          } else if (onboardingStep >= factoryOnboardingSteps.length - 1) {
+            setOnboardingStep(reviewStep);
+          } else if (onboardingStep >= activeOnboardingSteps.length - 1) {
             setOnboardingComplete(true);
             setScreen("dashboard");
           } else {
@@ -1514,17 +1701,20 @@ function App() {
 
       {screen === "dashboard" && (
         <FactoryDashboardPage
+          dashboardState={dashboardState}
           language={onboardingLanguage}
           capacityValue={dashboardCapacity}
           creditBalance={creditBalance}
           onUpdateCapacity={() => setCapacityDrawerOpen(true)}
           onPurchaseCredits={() => setCreditPurchaseOpen(true)}
           onViewRfqs={() => setScreen("rfqs")}
+          onBrowseRfqs={() => setScreen("browse")}
           onViewRfqDetail={() => {
             setDetailBackTarget("browse");
             setScreen("detail");
           }}
           onViewProjects={() => setScreen("projects")}
+          onViewProfile={() => setScreen("profile")}
           onOpenActivity={() => setActivityDrawerOpen(true)}
         />
       )}
@@ -1678,9 +1868,10 @@ function App() {
   );
 }
 
-function FactoryDashboardPage({ language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onViewRfqs, onViewRfqDetail, onViewProjects, onOpenActivity }) {
+function FactoryDashboardPage({ dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity }) {
   const capacityUnits = getCapacityUnitRange(capacityValue);
   const [inviteFactoryOpen, setInviteFactoryOpen] = useState(false);
+  const isNewcomer = dashboardState === "newcomer";
   const tx = (value) => (language === "zh" ? translateFactoryMainText(value) : value);
   const creditCardCopy = language === "zh"
     ? {
@@ -1705,26 +1896,28 @@ function FactoryDashboardPage({ language, capacityValue, creditBalance, onUpdate
           <h1>{language === "zh" ? "你好，Atelier Minho" : "Hi Atelier Minho"}</h1>
           <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">
             <img src="/assets/prototype-icons/notification.svg" alt="" />
-            <b aria-hidden="true">4</b>
+            {!isNewcomer && <b aria-hidden="true">4</b>}
           </button>
         </header>
 
         <section className="factory-dashboard-grid" aria-label="Factory dashboard overview">
           <div className="factory-dashboard-main-stack">
-            <div className="factory-dashboard-metrics">
-              <FactoryMetricCard label={tx("Open RFQs")} value="7" note={tx("+3 invited this week")} tone="blue" />
-              <FactoryMetricCard label={tx("Quotes sent this month")} value="14" note={tx("4 awaiting brand review")} tone="green" />
-              <FactoryMetricCard label={tx("Active production orders")} value="5" note={tx("2 need sample updates")} tone="amber" />
-            </div>
+            {!isNewcomer && (
+              <div className="factory-dashboard-metrics">
+                <FactoryMetricCard label={tx("Open RFQs")} value="7" note={tx("+3 invited this week")} tone="blue" />
+                <FactoryMetricCard label={tx("Quotes sent this month")} value="14" note={tx("4 awaiting brand review")} tone="green" />
+                <FactoryMetricCard label={tx("Active production orders")} value="5" note={tx("2 need sample updates")} tone="amber" />
+              </div>
+            )}
 
             <FactoryDashboardPanel
               className="factory-rfq-invites-panel"
-              title={tx("RFQ invites")}
-              subtitle={tx("Prioritized requests that match your capacity and capabilities.")}
-              action={tx("View all")}
-              onAction={onViewRfqs}
+              title={tx(isNewcomer ? "Matched RFQs" : "RFQ invites")}
+              subtitle={tx(isNewcomer ? "Quote-ready requests matched to your capabilities, MOQ, and available capacity." : "Prioritized requests that match your capacity and capabilities.")}
+              action={tx(isNewcomer ? "Browse all" : "View all")}
+              onAction={isNewcomer ? onBrowseRfqs : onViewRfqs}
             >
-              {factoryRfqs.slice(0, 4).map((rfq) => (
+              {factoryRfqs.slice(0, isNewcomer ? 3 : 4).map((rfq) => (
                 <FactoryDashboardRfqRow rfq={rfq} language={language} onView={onViewRfqDetail} key={rfq.title} />
               ))}
             </FactoryDashboardPanel>
@@ -1756,53 +1949,86 @@ function FactoryDashboardPage({ language, capacityValue, creditBalance, onUpdate
             <FactoryDashboardPanel
               className="factory-brand-messages-panel"
               title="Needs your attention"
-              subtitle="Priority RFQs, messages, and production steps."
-              preHeader={<FactoryDashboardCallCard language={language} />}
+              subtitle={isNewcomer ? "Finish the essentials that help brands trust and contact your factory." : "Priority RFQs, messages, and production steps."}
+              preHeader={isNewcomer ? null : <FactoryDashboardCallCard language={language} />}
             >
-              <FactoryAttentionCard
-                type="Question"
-                tone="info"
-                title="Maison Rue asked about sample costs"
-                meta="Split fit and PP sample cost before quote review."
-                action="Reply"
-              />
-              <FactoryAttentionCard
-                type="Capacity"
-                tone="danger"
-                title="Update August capacity"
-                meta="Your capacity is marked mostly open for new RFQ matches."
-                action="Update"
-                onAction={onUpdateCapacity}
-              />
-              <FactoryAttentionCard
-                type="Verification"
-                tone="success"
-                title="Review verification renewal"
-                meta="TSC ops needs updated documents this month."
-                action="Review"
-              />
-              <FactoryAttentionCard
-                type="Sample"
-                tone="warning"
-                title="Upload sample update"
-                meta="Add fit-sample notes for the active Maison Rue order."
-                action="Update"
-                onAction={onViewProjects}
-              />
+              {isNewcomer ? (
+                <>
+                  <FactoryAttentionCard
+                    type="Profile"
+                    tone="warning"
+                    title="Complete your factory profile"
+                    meta="Add production specialties and one recent sample so matched brands can assess your fit."
+                    action="Edit profile"
+                    onAction={onViewProfile}
+                  />
+                  <FactoryAttentionCard
+                    type="Verification"
+                    tone="success"
+                    title="Review verification checklist"
+                    meta="Confirm which documents are still needed before your profile can be fully verified."
+                    action="View checklist"
+                    onAction={onViewProfile}
+                  />
+                  <FactoryAttentionCard
+                    type="Capacity"
+                    tone="danger"
+                    title="Confirm August capacity"
+                    meta="Keep your available line-hours current so RFQ matches stay accurate."
+                    action="Update"
+                    onAction={onUpdateCapacity}
+                  />
+                </>
+              ) : (
+                <>
+                  <FactoryAttentionCard
+                    type="Question"
+                    tone="info"
+                    title="Maison Rue asked about sample costs"
+                    meta="Split fit and PP sample cost before quote review."
+                    action="Reply"
+                  />
+                  <FactoryAttentionCard
+                    type="Capacity"
+                    tone="danger"
+                    title="Update August capacity"
+                    meta="Your capacity is marked mostly open for new RFQ matches."
+                    action="Update"
+                    onAction={onUpdateCapacity}
+                  />
+                  <FactoryAttentionCard
+                    type="Verification"
+                    tone="success"
+                    title="Review verification renewal"
+                    meta="TSC ops needs updated documents this month."
+                    action="Review"
+                  />
+                  <FactoryAttentionCard
+                    type="Sample"
+                    tone="warning"
+                    title="Upload sample update"
+                    meta="Add fit-sample notes for the active Maison Rue order."
+                    action="Update"
+                    onAction={onViewProjects}
+                  />
+                </>
+              )}
             </FactoryDashboardPanel>
           </div>
 
-          <FactoryDashboardPanel
-            className="factory-active-projects-panel"
-            title="Active production orders"
-            subtitle="Track current orders and next action dates."
-            action="View all"
-            onAction={onViewProjects}
-          >
-            {factoryProjects.slice(0, 2).map((project) => (
-              <FactoryProjectDashboardRow project={project} language={language} onView={onViewProjects} key={project.title} />
-            ))}
-          </FactoryDashboardPanel>
+          {!isNewcomer && (
+            <FactoryDashboardPanel
+              className="factory-active-projects-panel"
+              title="Active production orders"
+              subtitle="Track current orders and next action dates."
+              action="View all"
+              onAction={onViewProjects}
+            >
+              {factoryProjects.slice(0, 2).map((project) => (
+                <FactoryProjectDashboardRow project={project} language={language} onView={onViewProjects} key={project.title} />
+              ))}
+            </FactoryDashboardPanel>
+          )}
         </section>
       </div>
       {inviteFactoryOpen && (
@@ -3627,6 +3853,7 @@ function getFactoryMessageCopy(value) {
     "Attach file": "上传文件",
     "Send": "发送",
     "Brand": "品牌",
+    "Founder": "创始人",
     "Translate to English": "翻译成中文",
     "Show original": "查看原文",
     "Scheduled call": "已预约通话",
@@ -3754,7 +3981,10 @@ function FactoryMessagesScreen({ language = "en" }) {
           <div className="message-room-identity">
             <div>
               <h2>{activeThread.primaryContact}</h2>
-              <p>{activeThread.name} - {tx(activeThread.localTime)} - {tx(activeThread.project)}</p>
+              <p>
+                {activeThread.primaryContactTitle && <>{tx(activeThread.primaryContactTitle)} · </>}
+                {activeThread.name} · {tx(activeThread.localTime)} · {tx(activeThread.project)}
+              </p>
             </div>
           </div>
           <div className="message-room-actions">
@@ -5367,11 +5597,39 @@ function FactorySettingsScreen({ language = "en" }) {
   );
 }
 
-function FactoryOnboarding({ language, step, isReviewEdit, onLanguageChange, onEditSection, onBack, onNext }) {
-  const copy = onboardingCopy[language];
+function FactoryOnboarding({ companyType = "factory", language, step, isReviewEdit, onLanguageChange, onCompanyTypeChange, onEditSection, onBack, onNext }) {
+  const cardRef = useRef(null);
+  const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
   const current = copy.steps[step];
   const isFirst = step === 0;
   const isLast = step === copy.steps.length - 1;
+  const cardStepClass = current.type === "complete" ? "step-11" : `step-${step + 1}`;
+  const clearFieldError = (event) => {
+    event.target.closest(".has-onboarding-error")?.classList.remove("has-onboarding-error");
+  };
+  const handleNext = () => {
+    const card = cardRef.current;
+    const requiredFields = [...(card?.querySelectorAll('[data-onboarding-required="true"]') || [])];
+    card?.querySelectorAll(".has-onboarding-error").forEach((field) => field.classList.remove("has-onboarding-error"));
+
+    const invalidFields = requiredFields.filter((field) => {
+      if (field.dataset.valid !== undefined) return field.dataset.valid !== "true";
+      if (field instanceof HTMLInputElement && field.type === "checkbox") return !field.checked;
+      return !String(field.value || "").trim();
+    });
+
+    invalidFields.forEach((field) => {
+      field.closest(".factory-onboarding-field, .onboarding-chip-group, .factory-terms-required")?.classList.add("has-onboarding-error");
+    });
+
+    if (invalidFields.length) {
+      const firstField = invalidFields[0];
+      const focusTarget = firstField.matches("section") ? firstField.querySelector("button") : firstField;
+      focusTarget?.focus();
+      return;
+    }
+    onNext();
+  };
 
   return (
     <main className="factory-onboarding-page">
@@ -5380,7 +5638,14 @@ function FactoryOnboarding({ language, step, isReviewEdit, onLanguageChange, onE
         <span>{language === "zh" ? `第 ${step + 1} 步 / 共 ${copy.steps.length} 步` : `Step ${step + 1} of ${copy.steps.length}`}</span>
       </header>
 
-      <section className={`factory-onboarding-card step-${step + 1}`} aria-label={current.title}>
+      <section
+        className={`factory-onboarding-card ${cardStepClass}`}
+        aria-label={current.title}
+        ref={cardRef}
+        onInput={clearFieldError}
+        onChange={clearFieldError}
+        onClick={clearFieldError}
+      >
         {!isLast && (
           <div className="factory-onboarding-card-header">
             {isFirst && <img className="factory-onboarding-label" src="/assets/onboarding-sourcing-club-label-clean.png" alt="" />}
@@ -5392,8 +5657,10 @@ function FactoryOnboarding({ language, step, isReviewEdit, onLanguageChange, onE
         <FactoryOnboardingStep
           step={step}
           content={current}
+          companyType={companyType}
           language={language}
           onLanguageChange={onLanguageChange}
+          onCompanyTypeChange={onCompanyTypeChange}
           onEditSection={onEditSection}
         />
 
@@ -5403,7 +5670,7 @@ function FactoryOnboarding({ language, step, isReviewEdit, onLanguageChange, onE
               {copy.back}
             </button>
           )}
-          <button className="primary-btn" type="button" onClick={onNext}>
+          <button className="primary-btn" type="button" onClick={handleNext}>
             {isReviewEdit ? (language === "zh" ? "保存" : "Save") : current.cta || (isLast ? copy.steps[copy.steps.length - 1].cta : copy.next)}
           </button>
         </footer>
@@ -5418,11 +5685,32 @@ function FactoryOnboarding({ language, step, isReviewEdit, onLanguageChange, onE
   );
 }
 
-function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEditSection }) {
-  if (step === 0) {
+function FactoryOnboardingStep({ step, content, companyType, language, onLanguageChange, onCompanyTypeChange, onEditSection }) {
+  const stepType = content.type || ["welcome", "fields", "context", "chipsBalanced", "chipsWithField", "capacity", "verification", "walkthrough", "review", "terms", "complete"][step];
+
+  if (stepType === "welcome") {
     return (
       <div className="factory-onboarding-section welcome-section">
         <p className="onboarding-time">{content.meta}</p>
+        <fieldset className="onboarding-company-type">
+          <legend>{language === "zh" ? "您的公司类型是？" : "What type of company are you?"}</legend>
+          <div>
+            <label className={companyType === "factory" ? "selected" : ""}>
+              <input type="radio" name="onboarding-company-type" value="factory" checked={companyType === "factory"} onChange={(event) => onCompanyTypeChange(event.target.value)} />
+              <span>
+                <strong>{language === "zh" ? "工厂" : "Factory"}</strong>
+                <small>{language === "zh" ? "我们在自有工厂生产产品。" : "We manufacture products in our own facility."}</small>
+              </span>
+            </label>
+            <label className={companyType === "trading" ? "selected" : ""}>
+              <input type="radio" name="onboarding-company-type" value="trading" checked={companyType === "trading"} onChange={(event) => onCompanyTypeChange(event.target.value)} />
+              <span>
+                <strong>{language === "zh" ? "贸易公司" : "Trading company"}</strong>
+                <small>{language === "zh" ? "我们通过合作工厂采购并管理生产。" : "We source and manage production through partner factories."}</small>
+              </span>
+            </label>
+          </div>
+        </fieldset>
         <label className="factory-onboarding-field">
           <span>{content.languageLabel}</span>
           <select value={language} onChange={(event) => onLanguageChange(event.target.value)}>
@@ -5435,11 +5723,11 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
     );
   }
 
-  if (step === 1) {
+  if (stepType === "fields") {
     return (
       <div className="factory-onboarding-form-grid">
-        {content.fields.map(([label, placeholder]) => (
-          <OnboardingField label={label} placeholder={placeholder} key={label} />
+        {content.fields.map(([label, placeholder, required]) => (
+          <OnboardingField label={label} placeholder={placeholder} required={required} language={language} key={label} />
         ))}
         {content.add && <button className="onboarding-text-action" type="button">{content.add}</button>}
         {content.helper && <p className="onboarding-helper">{content.helper}</p>}
@@ -5447,36 +5735,36 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
     );
   }
 
-  if (step === 2) {
+  if (stepType === "context") {
     return <OnboardingBrandContext content={content} language={language} />;
   }
 
-  if (step === 5) {
+  if (stepType === "capacity") {
     return <OnboardingCapacitySetup content={content} language={language} />;
   }
 
-  if (step === 3) {
+  if (stepType === "chipsBalanced") {
     return (
       <div className="factory-onboarding-section production-fit-section">
-        {content.groups.map(([label, options, selected]) => (
-          <OnboardingChipGroup label={label} options={options} selected={selected} balanced language={language} key={label} />
+        {content.groups.map(([label, options, selected, required]) => (
+          <OnboardingChipGroup label={label} options={options} selected={selected} required={required} balanced language={language} companyType={companyType} key={label} />
         ))}
       </div>
     );
   }
 
-  if (step === 4) {
+  if (stepType === "chipsWithField") {
     return (
       <div className="factory-onboarding-section production-fit-section">
-        {content.groups.map(([label, options, selected]) => (
-          <OnboardingChipGroup label={label} options={options} selected={selected} language={language} key={label} />
+        {content.groups.map(([label, options, selected, required]) => (
+          <OnboardingChipGroup label={label} options={options} selected={selected} required={required} language={language} companyType={companyType} key={label} />
         ))}
         <OnboardingField label={content.equipmentLabel} placeholder={content.equipmentPlaceholder} />
       </div>
     );
   }
 
-  if (step === 6) {
+  if (stepType === "verification") {
     return (
       <div className="factory-onboarding-section verification-step">
         <div className="verification-upload-block">
@@ -5530,7 +5818,7 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
     );
   }
 
-  if (step === 7) {
+  if (stepType === "walkthrough") {
     const [primaryChecklist, secondaryChecklist] = [content.checklist.slice(0, 3), content.checklist.slice(3)];
 
     return (
@@ -5566,8 +5854,8 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
     );
   }
 
-  if (step === 8) {
-    const reviewEditSteps = [1, 2, 3, 4, 5, 6, 7];
+  if (stepType === "review") {
+    const reviewEditSteps = content.reviewEditSteps || [1, 2, 3, 4, 5, 6, 7];
     const editLabel = language === "zh" ? "编辑" : "Edit";
 
     return (
@@ -5596,7 +5884,7 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
     );
   }
 
-  if (step === 9) {
+  if (stepType === "terms") {
     return (
       <div className="factory-onboarding-section terms-section">
         {content.terms.map(([term, description], index) => (
@@ -5605,11 +5893,16 @@ function FactoryOnboardingStep({ step, content, language, onLanguageChange, onEd
             <p>{description}</p>
           </article>
         ))}
-        <label className="directory-check terms-check">
-          <input type="checkbox" defaultChecked />
-          <span>{content.agreement}</span>
-        </label>
-        <OnboardingField label={language === "zh" ? "签名" : "Signature"} placeholder={content.signature} />
+        <div className="factory-terms-required">
+          <label className="directory-check terms-check">
+            <input type="checkbox" defaultChecked required data-onboarding-required="true" />
+            <span>{content.agreement}</span>
+          </label>
+          <small className="factory-onboarding-validation-message">
+            {language === "zh" ? "请接受条款后继续。" : "Please accept the terms to continue."}
+          </small>
+        </div>
+        <OnboardingField label={language === "zh" ? "签名" : "Signature"} placeholder={content.signature} required language={language} />
       </div>
     );
   }
@@ -5667,11 +5960,16 @@ function OnboardingAssetUploadCard({ title, helper, accept, uploadLabel }) {
   );
 }
 
-function OnboardingField({ label, placeholder }) {
+function OnboardingField({ label, placeholder, required = false, language = "en" }) {
   return (
     <label className="factory-onboarding-field">
-      <span>{label}</span>
-      <input placeholder={placeholder} />
+      <span>{label}{required && <b className="onboarding-required-mark" aria-hidden="true"> *</b>}</span>
+      <input placeholder={placeholder} required={required} data-onboarding-required={required ? "true" : undefined} />
+      {required && (
+        <small className="factory-onboarding-validation-message">
+          {language === "zh" ? `请输入${label}后继续。` : `Enter your ${label.toLowerCase()} to continue.`}
+        </small>
+      )}
     </label>
   );
 }
@@ -5729,8 +6027,8 @@ function OnboardingCapacitySetup({ content, language }) {
   return (
     <div className="onboarding-capacity-setup">
       <div className="factory-onboarding-form-grid">
-        {content.fields.map(([label, placeholder]) => (
-          <OnboardingField label={label} placeholder={placeholder} key={label} />
+        {content.fields.map(([label, placeholder, required]) => (
+          <OnboardingField label={label} placeholder={placeholder} required={required} key={label} />
         ))}
       </div>
 
@@ -5830,18 +6128,19 @@ function OnboardingCapacitySetup({ content, language }) {
   );
 }
 
-function OnboardingChipGroup({ label, options, selected = [], balanced = false, language = "en" }) {
+function OnboardingChipGroup({ label, options, selected = [], required = false, balanced = false, language = "en", companyType = "factory" }) {
   const [selectedOptions, setSelectedOptions] = useState(selected);
   const [customOptions, setCustomOptions] = useState([]);
   const [customValue, setCustomValue] = useState("");
-  const isSingleSelect = label.toLowerCase().includes("market") || label.includes("市场");
-  const canAddCustom = ["production type", "product categories", "makes", "specializes", "生产类型", "产品品类", "可生产款式", "专长"].some((term) =>
+  const isSingleSelect = label.toLowerCase() === "market level" || label === "市场层级";
+  const canAddCustom = ["production type", "product categories", "makes", "specializes", "digital tools", "生产类型", "产品品类", "可生产款式", "专长", "数字工具"].some((term) =>
     label.toLowerCase().includes(term)
   );
+  const isTradingCompany = companyType === "trading";
   const groupCopy = {
     "Makes": {
-      title: "What products do you make?",
-      helper: "Select all that apply, then add as many specific product types as you want to help brands find you."
+      title: isTradingCompany ? "What products does your network source?" : "What products do you make?",
+      helper: isTradingCompany ? "Select the products your supplier network can reliably source and manage." : "Select all that apply, then add as many specific product types as you want to help brands find you."
     },
     "Specializes in": {
       title: "What do you specialize in?",
@@ -5849,19 +6148,57 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false, 
     },
     "Production type": {
       title: "Production type",
-      helper: "Choose the main production methods your factory can reliably support."
+      helper: isTradingCompany ? "Choose the production methods your partner network can reliably support." : "Choose the main production methods your factory can reliably support."
+    },
+    "Manufacturing model": {
+      title: "Manufacturing model",
+      helper: "Select every engagement model your factory can support; brands may filter by OEM, ODM, full-package, or private-label needs."
     },
     "Product categories": {
       title: "Product categories",
-      helper: "Choose the garment categories your factory can produce."
+      helper: isTradingCompany ? "Choose the garment categories your network can source and manage." : "Choose the garment categories your factory can produce."
     },
     "Market level": {
-      title: "Market level",
-      helper: "Choose the brand price level your factory is best set up for."
+      title: "Market level & retail price",
+      helper: isTradingCompany
+        ? "Choose the brand segment your network is best set up to support, based on the typical retail price of a finished product."
+        : "Choose the brand segment your factory is best set up to support, based on the typical retail price of a finished product."
+    },
+    "Production programs supported": {
+      title: "Production programs supported",
+      helper: "Select the engagement models your supplier network can support."
+    },
+    "Sourcing regions": {
+      title: "Sourcing regions",
+      helper: "Choose the countries where you have active supplier relationships and production experience."
+    },
+    "Core services": {
+      title: "Core services",
+      helper: "Select the sourcing and order-management work your team handles directly."
+    },
+    "Product development": {
+      title: "Product development",
+      helper: "Select the development services your team coordinates before production."
+    },
+    "Quality & compliance": {
+      title: "Quality & compliance",
+      helper: "Choose the verification, inspection, testing, and traceability support you provide."
+    },
+    "Primary destination markets": {
+      title: "Primary destination markets",
+      helper: "Choose the markets where your team understands buyer expectations, compliance, labeling, and shipping requirements."
+    },
+    "Digital tools (optional)": {
+      title: "Digital tools",
+      helper: "Optional: select the systems your team uses for development and order management."
     },
     "Design Services": {
       title: "Design services",
       helper: "Select the product development services you can offer before production."
+    },
+    "Primary export markets": {
+      title: "Primary export markets",
+      helper: "Choose the regions where you already understand buyer expectations, compliance, labeling, and shipping requirements."
     },
     "3D & digital tools (optional)": {
       title: "3D & digital tools",
@@ -5879,17 +6216,25 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false, 
       title: "生产类型",
       helper: "选择工厂可以稳定支持的主要生产方式。"
     },
+    "合作生产模式": {
+      title: "合作生产模式",
+      helper: "选择工厂可支持的所有合作方式，方便品牌按 OEM、ODM、全包生产或白牌需求筛选。"
+    },
     "产品品类": {
       title: "产品品类",
       helper: "选择你的工厂可以生产的成衣品类。"
     },
     "市场层级": {
-      title: "市场层级",
-      helper: "选择你的工厂最适合服务的品牌价格层级。"
+      title: "市场层级与成品零售价",
+      helper: "根据成品的常见零售价，选择你的工厂最适合服务的品牌市场层级。"
     },
     "设计服务": {
       title: "设计服务",
       helper: "选择你在生产前可以提供的产品开发服务。"
+    },
+    "主要出口市场": {
+      title: "主要出口市场",
+      helper: "选择你已熟悉买方要求、合规、标签和运输规则的市场区域。"
     },
     "3D 和数字工具（选填）": {
       title: "3D 和数字工具",
@@ -5904,6 +6249,10 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false, 
     setSelectedOptions((current) => {
       if (isSingleSelect) {
         return [option];
+      }
+
+      if (required && current.length === 1 && current.includes(option)) {
+        return current;
       }
 
       return current.includes(option)
@@ -5921,9 +6270,14 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false, 
   };
 
   return (
-    <section className={balanced ? "onboarding-chip-group balanced" : "onboarding-chip-group"}>
+    <section
+      className={balanced ? "onboarding-chip-group balanced" : "onboarding-chip-group"}
+      aria-required={required || undefined}
+      data-onboarding-required={required ? "true" : undefined}
+      data-valid={required ? String(selectedOptions.length > 0) : undefined}
+    >
       <div className="onboarding-chip-heading">
-        <h2>{copy.title}</h2>
+        <h2>{copy.title}{required && <span className="onboarding-required-mark" aria-hidden="true"> *</span>}</h2>
         {copy.helper && <p>{copy.helper}</p>}
       </div>
       <div className="tag-row compact-tags">
@@ -5948,6 +6302,11 @@ function OnboardingChipGroup({ label, options, selected = [], balanced = false, 
           />
           <button className="secondary-btn compact-btn" type="submit">{isZh ? "添加" : "Add"}</button>
         </form>
+      )}
+      {required && (
+        <small className="factory-onboarding-validation-message">
+          {isZh ? "请至少选择一个选项后继续。" : "Choose at least one option to continue."}
+        </small>
       )}
     </section>
   );
@@ -6626,11 +6985,16 @@ function FactoryMilestoneItem({ milestone, index, onAddUpdate, showUpdate = fals
           <h3>{milestone.title}</h3>
           <p>{milestone.meta}</p>
         </div>
-        {milestone.amount && <strong>{milestone.amount}</strong>}
         <p>{milestone.description}</p>
         {showUpdate && <FactoryPostedUpdateCard />}
       </div>
-      <button className="secondary-btn" type="button" onClick={() => onAddUpdate(milestone)}>Add update</button>
+      <div className="factory-milestone-actions">
+        {milestone.amount && <strong>{milestone.amount}</strong>}
+        {milestone.dueStatus && (
+          <span className={`project-status shared-card-status ${milestone.dueTone}`}>{milestone.dueStatus}</span>
+        )}
+        <button className="secondary-btn" type="button" onClick={() => onAddUpdate(milestone)}>Add update</button>
+      </div>
     </article>
   );
 }
