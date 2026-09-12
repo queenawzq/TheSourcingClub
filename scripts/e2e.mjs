@@ -314,6 +314,16 @@ async function main() {
   const page = await stagehand.browser.context.newPage(APP);
   await page.setViewportSize(1440, 1100);
 
+  // Start from nothing. The local browser keeps a profile between runs, so an
+  // aborted run leaves a signed-in session behind and the next run's first
+  // sign-in silently restores it — which reads as a product bug two hundred
+  // steps later, on a screen belonging to a company from the previous run.
+  await page.evaluate(() => {
+    try { localStorage.clear(); sessionStorage.clear(); } catch {}
+  });
+  await page.goto(APP);
+  await page.waitForTimeout(1000);
+
   const stamp = Date.now();
   const factoryName = `Atelier E2E ${stamp}`;
   const brandName = `Maison E2E ${stamp}`;
@@ -436,9 +446,7 @@ async function main() {
       .eq("subject_id", factoryOrg.id);
     check(linkCount >= 4, `taxonomy selections saved as ${linkCount} links, not free text`);
 
-    await clickButton(page, "sign out");
-    await page.waitForTimeout(1500);
-    await waitFor(page, 'input[type="email"]', 30000);
+    await signOutFully(page);
 
     // ================= BRAND =================
     console.log("\nBRAND");
@@ -510,6 +518,12 @@ async function main() {
 
     // The empty state, which is reachable here and exists nowhere in the
     // prototype. A brand's very first visit is the one guaranteed to hit it.
+    //
+    // Wait for the fetch to settle first. The heading renders before the
+    // request resolves, so asserting straight after it was a race that read
+    // the loading state and reported a missing empty state — a screen bug
+    // that was not there.
+    await waitFor(page, '[data-testid="rfqs-empty"], [data-testid="rfqs-error"]', 20000);
     const emptyRfqs = await page.locator('[data-testid="rfqs-empty"]').count();
     check(emptyRfqs === 1, "a brand with no requests is told so, not shown a blank panel");
 
@@ -521,7 +535,7 @@ async function main() {
       `the tab counts are real, not the mock's literals (${tabsText.split("\n")[0]})`);
     await record(page, "Brand requests", "the designed screen, empty until the first one is written");
 
-    await clickButton(page, "request new quote");
+    await clickButton(page, "create new quote");
     await waitForHeading(page, "what do you need made");
     // The draft row exists before a single field is filled, so nothing typed
     // is ever held only in component state.
@@ -643,9 +657,7 @@ async function main() {
 
     // ================= THE TWO SIDES MEET =================
     console.log("\nFACTORY FINDS IT");
-    await clickButton(page, "sign out");
-    await page.waitForTimeout(1500);
-    await waitFor(page, 'input[type="email"]', 30000);
+    await signOutFully(page);
 
     const landed = await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory again");
     check(landed === "returning", "signing back in skips onboarding and lands on the dashboard");
@@ -690,9 +702,7 @@ async function main() {
     });
     await db.from("platform_admins").insert({ user_id: adminUser.user.id });
 
-    await clickButton(page, "sign out");
-    await page.waitForTimeout(1500);
-    await waitFor(page, 'input[type="email"]', 30000);
+    await signOutFully(page);
     await signIn(page, adminEmail, "Admin");
 
     // Platform staff have no brand or factory org; the admin tool must be
@@ -723,11 +733,39 @@ async function main() {
       .from("factory_profiles").select("verification_status").eq("org_id", factoryOrg.id).single();
     check(verified.verification_status === "verified", "the factory is now verified in the database");
 
+    // ================= THE OPERATIONS WORKSPACE =================
+    // The designed admin console, on the same session. Same origin, so the
+    // session carries across the page boundary; everything it shows comes back
+    // through a security-definer RPC.
+    const ADMIN = APP.replace(/app\.html.*$/, "admin.html");
+    await page.goto(ADMIN);
+    await page.waitForTimeout(4000);
+    const consoleText = await page.locator("body").innerText();
+
+    check(/admin overview/i.test(consoleText), "the operations workspace opens for staff");
+    check(
+      !/not a staff account/i.test(consoleText),
+      "and does not turn away an account that is on the admin list",
+    );
+    check(
+      consoleText.includes(brandName) || consoleText.includes(factoryName),
+      "a company from this run is in the live verification queue",
+    );
+    check(
+      !/could not load/i.test(consoleText),
+      "the queue loaded rather than erroring",
+    );
+    await record(page, "Operations workspace", "the designed admin console, on marketplace data");
+
+    await page.goto(`${ADMIN}?screen=quotes`);
+    await page.waitForTimeout(3500);
+    const quotesText = await page.locator("body").innerText();
+    check(/quotes/i.test(quotesText), "the marketplace-wide quote table opens");
+    await record(page, "Marketplace quotes", "every quote across the marketplace, staff only");
+
     // ================= THE QUOTE =================
     console.log("\nFACTORY QUOTES");
-    await clickButton(page, "sign out");
-    await page.waitForTimeout(1500);
-    await waitFor(page, 'input[type="email"]', 30000);
+    await signOutFully(page);
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory quoting");
 
     await page.goto(`${APP}/browse/${publishedRfq.id}`);
@@ -789,9 +827,7 @@ async function main() {
 
     // ================= AWARD =================
     console.log("\nBRAND DECIDES");
-    await clickButton(page, "sign out");
-    await page.waitForTimeout(1500);
-    await waitFor(page, 'input[type="email"]', 30000);
+    await signOutFully(page);
     await signIn(page, brandEmail, "Brand deciding");
 
     await page.goto(`${APP}/rfqs/${publishedRfq.id}/quotes`);
@@ -930,9 +966,7 @@ async function main() {
 
     // ================= THE LOSER HEARS =================
     console.log("\nTHE LOSER HEARS");
-    await clickButton(page, "sign out");
-    await page.waitForTimeout(1500);
-    await waitFor(page, 'input[type="email"]', 30000);
+    await signOutFully(page);
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Winning factory");
     await waitFor(page, ".home", 30000);
 
@@ -1156,8 +1190,15 @@ async function main() {
     await waitFor(page, '[data-testid="message"]', 30000);
     await record(page, "The factory writes in Chinese", "and does not have to think about who reads it");
 
+    // Scoped to this run's thread. Every other suite writes messages to the
+    // same local database with no reset between them, so an unscoped read here
+    // is answering a question about somebody else's conversation.
+    const { data: runThread } = await db.from("message_threads")
+      .select("id").eq("order_id", bornOrder.id).single();
+
     const { data: sentRows } = await db.from("messages")
       .select("body, body_lang, body_translated, body_translated_lang, sender_org_id")
+      .eq("thread_id", runThread.id)
       .order("created_at");
     const sent = sentRows[sentRows.length - 1];
 
@@ -1204,7 +1245,8 @@ async function main() {
     }
     await record(page, "The brand reads it", "in its own language, with the original one click away");
 
-    const { data: readState } = await db.from("message_reads").select("thread_id, user_id");
+    const { data: readState } = await db.from("message_reads")
+      .select("thread_id, user_id").eq("thread_id", runThread.id);
     check(readState.length >= 2,
       "opening the conversation recorded that it was read — the count cannot get stuck");
 
@@ -1218,20 +1260,23 @@ async function main() {
     let exchanged = 0;
     const sendDeadline = Date.now() + 45000;
     while (Date.now() < sendDeadline) {
-      const { count } = await db.from("messages").select("*", { count: "exact", head: true });
+      const { count } = await db.from("messages")
+        .select("*", { count: "exact", head: true })
+        .eq("thread_id", runThread.id);
       exchanged = count ?? 0;
       if (exchanged >= 2) break;
       await page.waitForTimeout(500);
     }
-    check(exchanged === 2, `both sides have now said something (${exchanged} messages)`);
+    // Counted on this thread, not across the database. A bare count(*) passes
+    // on a fresh stack and fails the moment the smoke suite has run first,
+    // which is the failure this file has already been bitten by once.
+    check(exchanged === 2, `both sides have now said something (${exchanged} messages on this thread)`);
     await record(page, "A reply", "the first conversation either prototype could not actually have");
 
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
     console.log("\nINVITE ONLY");
-    await clickButton(page, "sign out");
-    await page.waitForTimeout(1500);
-    await waitFor(page, 'input[type="email"]', 30000);
+    await signOutFully(page);
     await signIn(page, brandEmail, "Brand again");
     await page.goto(`${APP}/rfqs/new`);
     await waitForHeading(page, "what do you need made");

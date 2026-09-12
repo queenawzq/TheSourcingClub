@@ -100,7 +100,9 @@ export default defineConfig({
       // are how Queena reviews design — and the app lives on Vercel.
       input: {
         main: "index.html",
-        ...(deployTarget === "netlify" ? {} : { app: "app.html" }),
+        // admin.html rides with app.html for the same reason: it is an
+        // authenticated page, and a magic link cannot come back on Netlify.
+        ...(deployTarget === "netlify" ? {} : { app: "app.html", admin: "admin.html" }),
         caseStudy: "case-study.html",
         factories: "factories.html",
         factorySearch: "factory-search.html",

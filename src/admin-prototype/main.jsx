@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { createRoot } from "react-dom/client";
 import { PrototypeSideNav, ProfileChipSection, ProfileDetailPair } from "../shared/ProfileShell.jsx";
+import { useActions, useAdminMetrics, useAdminQuotes, useAdminRfqs, useVerificationQueue } from "../lib/data/DataProvider.jsx";
 import "../prototype/styles.css";
 import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
@@ -14,7 +14,7 @@ const adminNav = [
   { label: "Settings", icon: "settings" }
 ];
 
-const initialProfiles = [
+export const initialProfiles = [
   {
     id: "vendor-atelier",
     initials: "AM",
@@ -121,7 +121,7 @@ const initialProfiles = [
   }
 ];
 
-const rfqs = [
+export const rfqs = [
   ["RFQ-1048", "Organic cotton woven shirt", "Maison Rue", "Aug 12", "6 vendors", "Open", "info"],
   ["RFQ-1047", "Premium knit resort capsule", "Élan Studio", "Aug 12", "4 vendors", "Quotes received", "success"],
   ["RFQ-1046", "Washed denim overshirt", "Northline", "Aug 11", "8 vendors", "Quotes received", "success"],
@@ -129,7 +129,7 @@ const rfqs = [
   ["RFQ-1044", "Linen co-ord collection", "Serein", "Aug 10", "5 vendors", "Closed", "neutral"]
 ];
 
-const quotes = [
+export const quotes = [
   ["Q-2098", "Atelier Minho", "Maison Rue", "RFQ-1048", "$5,780", "Aug 13", "Brand reviewing", "warning"],
   ["Q-2089", "Porto Stitch Studio", "Maison Rue", "RFQ-1048", "$6,120", "Aug 13", "Submitted", "info"],
   ["Q-2082", "Lusitano Apparel", "Maison Rue", "RFQ-1048", "$5,940", "Aug 12", "Submitted", "info"],
@@ -195,7 +195,9 @@ function VerificationRow({ profile, onReview }) {
         <span>{profile.initials}</span>
         <div><strong>{profile.name}</strong><small>{profile.entityType} · {profile.location}</small></div>
       </div>
-      <div className="admin-row-stat"><span>Confidence</span><strong>{profile.confidence}%</strong></div>
+      {profile.confidence != null
+        ? <div className="admin-row-stat"><span>Confidence</span><strong>{profile.confidence}%</strong></div>
+        : <div className="admin-row-stat"><span>Assigned</span><strong>{profile.owner || "Unassigned"}</strong></div>}
       <div className="admin-row-stat"><span>Evidence</span><strong>{profile.evidence}</strong></div>
       <StatusPill tone={profile.tone}>{profile.status}</StatusPill>
       <button className="secondary-btn compact-btn" type="button" onClick={() => onReview(profile)}>Review</button>
@@ -222,13 +224,13 @@ function DataTable({ columns, rows, type, onView }) {
   );
 }
 
-function RfqActivityCards({ onOpenRfq }) {
-  const recentRfqs = rfqs.slice(0, 4);
+function RfqActivityCards({ rfqRows, quoteRows, onOpenRfq }) {
+  const recentRfqs = rfqRows.slice(0, 4);
   return (
     <div className="home-rfq-list admin-rfq-card-list">
       {recentRfqs.map((rfq) => {
-        const quote = quotes.find((item) => item[3] === rfq[0]);
-        const quoteCount = quotes.filter((item) => item[3] === rfq[0]).length;
+        const quote = quoteRows.find((item) => item[3] === rfq[0]);
+        const quoteCount = quoteRows.filter((item) => item[3] === rfq[0]).length;
         return (
           <article className="home-rfq-card admin-rfq-card shared-responsive-card shared-dashboard-card" key={rfq[0]}>
             <header className="home-production-title shared-card-heading">
@@ -254,7 +256,7 @@ function RfqActivityCards({ onOpenRfq }) {
   );
 }
 
-function Overview({ profiles, onReview, onNavigate, onOpenRfq }) {
+function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate, onOpenRfq }) {
   const pending = profiles.filter((profile) => !["Approved", "Declined"].includes(profile.status));
   return (
     <main className="factory-dashboard-page admin-page">
@@ -265,27 +267,31 @@ function Overview({ profiles, onReview, onNavigate, onOpenRfq }) {
         </header>
 
         <div className="factory-dashboard-metrics admin-metrics">
-          <MetricCard label="Profiles awaiting review" value={pending.length} note="2 submitted today" tone="blue" />
-          <MetricCard label="RFQs submitted today" value="12" note="3 need marketplace review" tone="green" />
-          <MetricCard label="Quotes submitted today" value="19" note="2 revisions flagged" tone="amber" />
-          <MetricCard label="Low-confidence checks" value="3" note="Below the 80% threshold" tone="red" />
+          <MetricCard label="Profiles awaiting review" value={metrics.profilesAwaitingReview ?? pending.length} note={`${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" />
+          <MetricCard label="RFQs submitted today" value={metrics.rfqsSubmittedToday ?? 0} note={`${rfqRows.length} in the marketplace`} tone="green" />
+          <MetricCard label="Quotes submitted today" value={metrics.quotesSubmittedToday ?? 0} note={`${quoteRows.length} in the marketplace`} tone="amber" />
+          {/* Where the design puts "low-confidence checks". There is no
+              confidence score, and platform staff have no org and so cannot be
+              notified of anything — a payment sits at 'sent' until a human
+              opens the queue, and this count is the only prompt that exists. */}
+          <MetricCard label="Payments awaiting confirmation" value={metrics.paymentsAwaitingConfirmation ?? 0} note="Nothing else will chase these" tone="red" />
         </div>
 
         <section className="admin-overview-grid">
-          <Panel title="Verification queue" subtitle="Profiles prioritized by risk, confidence, and submission time." action="View all" onAction={() => onNavigate("Verification")}>
+          <Panel title="Verification queue" subtitle="Profiles prioritized by review state and how long each has been waiting." action="View all" onAction={() => onNavigate("Verification")}>
             {pending.map((profile) => <VerificationRow profile={profile} onReview={onReview} key={profile.id} />)}
           </Panel>
         </section>
 
         <Panel title="Recent RFQs and quotes" subtitle="Review each request together with its latest vendor response." action="View all RFQs" onAction={() => onNavigate("RFQs")}>
-          <RfqActivityCards onOpenRfq={onOpenRfq} />
+          <RfqActivityCards rfqRows={rfqRows} quoteRows={quoteRows} onOpenRfq={onOpenRfq} />
         </Panel>
       </div>
     </main>
   );
 }
 
-function QueuePage({ kind, profiles, onReview, onOpenRfq, onOpenQuote }) {
+function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, onOpenQuote }) {
   const [verificationTab, setVerificationTab] = useState("Active");
   const [rfqTab, setRfqTab] = useState("All");
   const [quoteTab, setQuoteTab] = useState("All");
@@ -305,14 +311,14 @@ function QueuePage({ kind, profiles, onReview, onOpenRfq, onOpenQuote }) {
     || rfq[5] === tab
     || (tab === "With quotes" && rfq[5] === "Quotes received")
     || (tab === "Needs attention" && rfq[5] === "Needs review");
-  const rfqTabCounts = Object.fromEntries(rfqTabs.map((tab) => [tab, rfqs.filter((rfq) => matchesRfqTab(rfq, tab)).length]));
-  const filteredRfqs = rfqs.filter((rfq) => matchesRfqTab(rfq, rfqTab) && (!normalizedSearch || rfq.slice(0, 3).join(" ").toLowerCase().includes(normalizedSearch)));
+  const rfqTabCounts = Object.fromEntries(rfqTabs.map((tab) => [tab, rfqRows.filter((rfq) => matchesRfqTab(rfq, tab)).length]));
+  const filteredRfqs = rfqRows.filter((rfq) => matchesRfqTab(rfq, rfqTab) && (!normalizedSearch || rfq.slice(0, 3).join(" ").toLowerCase().includes(normalizedSearch)));
   const matchesQuoteTab = (quote, tab) => tab === "All"
     || quote[6] === tab
     || (tab === "Needs attention" && ["Needs clarification", "Revision requested"].includes(quote[6]))
     || (tab === "Closed" && quote[6] === "Declined");
-  const quoteTabCounts = Object.fromEntries(quoteTabs.map((tab) => [tab, quotes.filter((quote) => matchesQuoteTab(quote, tab)).length]));
-  const filteredQuotes = quotes.filter((quote) => matchesQuoteTab(quote, quoteTab) && (!normalizedSearch || quote.slice(0, 4).join(" ").toLowerCase().includes(normalizedSearch)));
+  const quoteTabCounts = Object.fromEntries(quoteTabs.map((tab) => [tab, quoteRows.filter((quote) => matchesQuoteTab(quote, tab)).length]));
+  const filteredQuotes = quoteRows.filter((quote) => matchesQuoteTab(quote, quoteTab) && (!normalizedSearch || quote.slice(0, 4).join(" ").toLowerCase().includes(normalizedSearch)));
   const filteredProfiles = baseProfiles.filter((profile) => {
     const matchesType = kind !== "Verification" || profileType === "All profile types"
       || (profileType === "Brands" && profile.entityType === "Brand")
@@ -325,7 +331,7 @@ function QueuePage({ kind, profiles, onReview, onOpenRfq, onOpenQuote }) {
   const copy = {
     RFQs: ["RFQs", "See every request submitted to the marketplace and identify items that need review."],
     Quotes: ["Quotes", "Monitor vendor responses, pricing, revisions, and brand decisions."],
-    Verification: ["Verification queue", "Prioritize profile decisions using submitted evidence and backend confidence signals."]
+    Verification: ["Verification queue", "Prioritize profile decisions using the evidence each company has actually submitted."]
   }[kind];
 
   return (
@@ -540,6 +546,12 @@ function EvidenceDetailModal({ profile, check, onClose }) {
 function VerificationDetail({ profile, onBack, onDecision }) {
   const [requestOpen, setRequestOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
+  // Both modals had a textarea whose value was dropped on the floor: the
+  // decision fired with the status alone. Live, that is not cosmetic — the
+  // database refuses "Needs information" with no note, because a factory told
+  // only "Needs information" has nothing to act on.
+  const [requestNote, setRequestNote] = useState("");
+  const [declineNote, setDeclineNote] = useState("");
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState(null);
   if (!profile) return null;
@@ -558,6 +570,7 @@ function VerificationDetail({ profile, onBack, onDecision }) {
               <div className="admin-detail-grid">{profile.details.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
               <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} />
             </Panel>
+            {profile.checks?.length ? (
             <Panel title="Verification checks" subtitle="Backend checks are shown with their evidence, result, and confidence so the final decision is explainable.">
               <div className="admin-check-list">
                 {profile.checks.map(([label, result, confidence, detail]) => {
@@ -587,15 +600,16 @@ function VerificationDetail({ profile, onBack, onDecision }) {
                 })}
               </div>
             </Panel>
+            ) : null}
           </div>
           <aside className="admin-review-side">
-            <ConfidenceCard score={profile.confidence} />
+            {profile.confidence != null && <ConfidenceCard score={profile.confidence} />}
             <section className="factory-profile-card admin-review-meta">
               <h2>Review details</h2>
-              <ProfileDetailPair label="Profile completeness" value={`${profile.completion}%`} />
+              {profile.completion != null && <ProfileDetailPair label="Profile completeness" value={`${profile.completion}%`} />}
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
-              <ProfileDetailPair label="Risk level" value={profile.risk} />
-              <ProfileDetailPair label="Assigned to" value={profile.owner} />
+              <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
+              <ProfileDetailPair label="Assigned to" value={profile.owner || "Unassigned"} />
             </section>
             <section className="factory-profile-card admin-decision-card">
               <span>Final decision</span>
@@ -616,8 +630,8 @@ function VerificationDetail({ profile, onBack, onDecision }) {
             <div className="admin-request-options">
               {["Business registration document", "Certification scope or validity", "Facility or product evidence", "Company ownership details"].map((label) => <label key={label}><input type="checkbox" /> <span>{label}</span></label>)}
             </div>
-            <label className="factory-onboarding-field"><span>Message</span><textarea placeholder="Add context or instructions for the applicant..." /></label>
-            <footer><button className="secondary-btn" type="button" onClick={() => setRequestOpen(false)}>Cancel</button><button className="primary-btn" type="button" onClick={() => { setRequestOpen(false); onDecision(profile.id, "Needs information"); }}>Send request</button></footer>
+            <label className="factory-onboarding-field"><span>Message</span><textarea value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Add context or instructions for the applicant..." /></label>
+            <footer><button className="secondary-btn" type="button" onClick={() => setRequestOpen(false)}>Cancel</button><button className="primary-btn" type="button" disabled={!requestNote.trim()} onClick={() => { setRequestOpen(false); onDecision(profile.id, "Needs information", requestNote.trim()); setRequestNote(""); }}>Send request</button></footer>
           </section>
         </div>
       )}
@@ -628,8 +642,8 @@ function VerificationDetail({ profile, onBack, onDecision }) {
           <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="decline-title">
             <button className="settings-drawer-close" type="button" aria-label="Close" onClick={() => setDeclineOpen(false)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
             <header><div><span>Final decision</span><h2 id="decline-title">Decline this profile?</h2><p>The applicant will be notified and can contact support if they believe this is an error.</p></div></header>
-            <label className="factory-onboarding-field"><span>Reason</span><textarea placeholder="Explain why this profile cannot be approved..." /></label>
-            <footer><button className="secondary-btn" type="button" onClick={() => setDeclineOpen(false)}>Cancel</button><button className="primary-btn danger-action" type="button" onClick={() => { setDeclineOpen(false); onDecision(profile.id, "Declined"); }}>Decline profile</button></footer>
+            <label className="factory-onboarding-field"><span>Reason</span><textarea value={declineNote} onChange={(event) => setDeclineNote(event.target.value)} placeholder="Explain why this profile cannot be approved..." /></label>
+            <footer><button className="secondary-btn" type="button" onClick={() => setDeclineOpen(false)}>Cancel</button><button className="primary-btn danger-action" type="button" onClick={() => { setDeclineOpen(false); onDecision(profile.id, "Declined", declineNote.trim() || null); setDeclineNote(""); }}>Decline profile</button></footer>
           </section>
         </div>
       )}
@@ -846,14 +860,29 @@ function SettingsPage() {
 }
 
 function App() {
+  // Everything below reads through the data seam. admin-prototype.html serves
+  // the constants in this file; admin.html serves the marketplace. The
+  // components in between never learn which.
+  const { data: queue, loading: queueLoading, error: queueError, reload: reloadQueue } = useVerificationQueue();
+  const { data: rfqRows, loading: rfqsLoading, error: rfqsError } = useAdminRfqs();
+  const { data: quoteRows, loading: quotesLoading, error: quotesError } = useAdminQuotes();
+  const { data: metricRow, reload: reloadMetrics } = useAdminMetrics();
+  const actions = useActions();
+
+  const profiles = queue ?? [];
+  const rfqList = rfqRows ?? [];
+  const quoteList = quoteRows ?? [];
+  const metrics = metricRow ?? {};
+  const loading = queueLoading || rfqsLoading || quotesLoading;
+  const loadError = queueError || rfqsError || quotesError;
+
   const query = new URLSearchParams(window.location.search);
   const requested = query.get("screen") || "overview";
-  const requestedProfile = initialProfiles.find((profile) => profile.id === query.get("profile")) || initialProfiles[0];
-  const requestedRfq = rfqs.find((rfq) => rfq[0] === query.get("rfq")) || rfqs[0];
-  const requestedQuote = quotes.find((quote) => quote[0] === query.get("quote")) || quotes.find((quote) => quote[3] === requestedRfq[0]) || quotes[0];
+  const requestedProfile = profiles.find((profile) => profile.id === query.get("profile")) || profiles[0];
+  const requestedRfq = rfqList.find((rfq) => rfq[0] === query.get("rfq")) || rfqList[0];
+  const requestedQuote = quoteList.find((quote) => quote[0] === query.get("quote")) || quoteList.find((quote) => quote[3] === requestedRfq?.[0]) || quoteList[0];
   const screenLabel = { overview: "Overview", rfqs: "RFQs", quotes: "Quotes", brands: "Verification", vendors: "Verification", verification: "Verification", review: "Review", "rfq-detail": "RFQ detail", "quote-detail": "Quote detail", settings: "Settings" }[requested] || "Overview";
   const [screen, setScreen] = useState(screenLabel);
-  const [profiles, setProfiles] = useState(initialProfiles);
   const [selectedProfile, setSelectedProfile] = useState(requestedProfile);
   const [selectedRfq, setSelectedRfq] = useState(requestedRfq);
   const [selectedQuote, setSelectedQuote] = useState(requestedQuote);
@@ -861,6 +890,19 @@ function App() {
   const [rfqBack, setRfqBack] = useState(requested === "rfq-detail" ? "RFQs" : "Overview");
   const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [toast, setToast] = useState("");
+
+  // Against the mock every list is populated on the first render, so these
+  // seeds are no-ops. Against the network the first render has nothing, and a
+  // deep link would otherwise land on a blank detail screen.
+  useEffect(() => {
+    if (!selectedProfile && profiles.length) setSelectedProfile(profiles[0]);
+  }, [profiles, selectedProfile]);
+  useEffect(() => {
+    if (!selectedRfq && rfqList.length) setSelectedRfq(rfqList[0]);
+  }, [rfqList, selectedRfq]);
+  useEffect(() => {
+    if (!selectedQuote && quoteList.length) setSelectedQuote(quoteList[0]);
+  }, [quoteList, selectedQuote]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 760px)");
@@ -895,16 +937,27 @@ function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const openQuote = (quote) => {
-    const matchingRfq = rfqs.find((rfq) => rfq[0] === quote[3]);
+    const matchingRfq = rfqList.find((rfq) => rfq[0] === quote[3]);
     if (matchingRfq) setSelectedRfq(matchingRfq);
     setSelectedQuote(quote);
     setScreen("Quote detail");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const decide = (id, status) => {
+  const decide = async (id, status, note = null) => {
     const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
-    setProfiles((current) => current.map((profile) => profile.id === id ? { ...profile, status, tone } : profile));
+    try {
+      await actions.decideReview?.(id, status, note);
+    } catch (error) {
+      setToast(error.message || "That decision could not be recorded");
+      window.setTimeout(() => setToast(""), 4000);
+      return;
+    }
+    // The mock action mutates its own array; the live one has written to the
+    // database. Either way the queue is re-read rather than patched locally,
+    // so what is on screen is what the decision actually produced.
     setSelectedProfile((current) => current?.id === id ? { ...current, status, tone } : current);
+    reloadQueue();
+    reloadMetrics();
     setToast(status === "Approved" ? "Profile approved" : status === "Declined" ? "Profile declined" : "Information request sent");
     window.setTimeout(() => setToast(""), 2400);
   };
@@ -924,15 +977,21 @@ function App() {
         onToggle={() => setCollapsed((value) => !value)}
       />
       {!collapsed && <button className="mobile-nav-backdrop" type="button" aria-label="Close navigation" onClick={() => setCollapsed(true)} />}
-      {screen === "Overview" && <Overview profiles={profiles} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} />}
-      {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage kind={screen} profiles={profiles} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
+      {loadError
+        ? <main className="admin-page"><div className="admin-empty-state admin-load-error"><strong>The workspace could not load</strong><p>{loadError.message}</p></div></main>
+        : loading
+          ? <main className="admin-page"><div className="admin-empty-state"><strong>Loading the marketplace…</strong></div></main>
+          : <>
+      {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} />}
+      {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Review" && <VerificationDetail profile={selectedProfile} onBack={() => navigate(reviewBack)} onDecision={decide} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate("RFQ detail")} />}
       {screen === "Settings" && <SettingsPage />}
+            </>}
       {toast && <div className="app-toast admin-toast" role="status">{toast}</div>}
     </div>
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+export default App;

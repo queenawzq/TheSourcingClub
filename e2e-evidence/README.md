@@ -1,8 +1,8 @@
 # End-to-end evidence
 
-Recorded 2026-09-10T11:52:48.332Z against `http://127.0.0.1:5173/app.html`.
+Recorded 2026-09-12T13:25:12.556Z against `http://127.0.0.1:5173/app.html`.
 
-**120 steps, 114 assertions, 0 failed.**
+**122 steps, 119 assertions, 0 failed.**
 
 A real browser, driven by Stagehand, against a real database. No mock data
 anywhere: every value below was typed into the interface and then read back
@@ -13,9 +13,9 @@ out of Postgres to confirm the screen and the database agree.
 | # | Step | What it shows | Screenshot |
 |---|---|---|---|
 | 1 | Factory sign-in | cold start, no session | [01-factory-sign-in.png](01-factory-sign-in.png) |
-| 2 | Factory code requested | e2e-factory-1789040930002@example.com | [02-factory-code-requested.png](02-factory-code-requested.png) |
-| 3 | Factory signed in | code 373069 accepted — no password anywhere | [03-factory-signed-in.png](03-factory-signed-in.png) |
-| 4 | Factory organisation | factory: Atelier E2E 1789040930002 | [04-factory-organisation.png](04-factory-organisation.png) |
+| 2 | Factory code requested | e2e-factory-1789219279113@example.com | [02-factory-code-requested.png](02-factory-code-requested.png) |
+| 3 | Factory signed in | code 607611 accepted — no password anywhere | [03-factory-signed-in.png](03-factory-signed-in.png) |
+| 4 | Factory organisation | factory: Atelier E2E 1789219279113 | [04-factory-organisation.png](04-factory-organisation.png) |
 | 5 | Factory basics | country is stored as an ISO code, which is what matching compares | [05-factory-basics.png](05-factory-basics.png) |
 | 6 | Factory company details |  | [06-factory-company-details.png](06-factory-company-details.png) |
 | 7 | Factory what you make | from taxonomy_terms: Cut & sew knits, Tops, Bottoms | [07-factory-what-you-make.png](07-factory-what-you-make.png) |
@@ -27,9 +27,9 @@ out of Postgres to confirm the screen and the database agree.
 | 13 | Factory terms | signature is recorded against a terms version, and cannot be edited later | [13-factory-terms.png](13-factory-terms.png) |
 | 14 | Factory published | live and findable, but not yet verified | [14-factory-published.png](14-factory-published.png) |
 | 15 | Brand sign-in | cold start, no session | [15-brand-sign-in.png](15-brand-sign-in.png) |
-| 16 | Brand code requested | e2e-brand-1789040930002@example.com | [16-brand-code-requested.png](16-brand-code-requested.png) |
-| 17 | Brand signed in | code 813314 accepted — no password anywhere | [17-brand-signed-in.png](17-brand-signed-in.png) |
-| 18 | Brand organisation | brand: Maison E2E 1789040930002 | [18-brand-organisation.png](18-brand-organisation.png) |
+| 16 | Brand code requested | e2e-brand-1789219279113@example.com | [16-brand-code-requested.png](16-brand-code-requested.png) |
+| 17 | Brand signed in | code 722110 accepted — no password anywhere | [17-brand-signed-in.png](17-brand-signed-in.png) |
+| 18 | Brand organisation | brand: Maison E2E 1789219279113 | [18-brand-organisation.png](18-brand-organisation.png) |
 | 19 | Brand basics |  | [19-brand-basics.png](19-brand-basics.png) |
 | 20 | Brand about | logo and product imagery upload here, to the public bucket | [20-brand-about.png](20-brand-about.png) |
 | 21 | Brand what you make | same vocabulary the factory picked from: Cut & sew knits | [21-brand-what-you-make.png](21-brand-what-you-make.png) |
@@ -48,90 +48,92 @@ out of Postgres to confirm the screen and the database agree.
 | 34 | RFQ review | visibility decides who can see it; verification decides who can bid | [34-rfq-review.png](34-rfq-review.png) |
 | 35 | RFQ published |  | [35-rfq-published.png](35-rfq-published.png) |
 | 36 | Factory again sign-in | cold start, no session | [36-factory-again-sign-in.png](36-factory-again-sign-in.png) |
-| 37 | Factory again code requested | e2e-factory-1789040930002@example.com | [37-factory-again-code-requested.png](37-factory-again-code-requested.png) |
-| 38 | Factory again signed in | code 387096 accepted — no password anywhere | [38-factory-again-signed-in.png](38-factory-again-signed-in.png) |
+| 37 | Factory again code requested | e2e-factory-1789219279113@example.com | [37-factory-again-code-requested.png](37-factory-again-code-requested.png) |
+| 38 | Factory again signed in | code 488406 accepted — no password anywhere | [38-factory-again-signed-in.png](38-factory-again-signed-in.png) |
 | 39 | Factory dashboard | still unverified, so it may look but not bid | [39-factory-dashboard.png](39-factory-dashboard.png) |
 | 40 | Factory browse | the brand's request, found by a factory that was never invited | [40-factory-browse.png](40-factory-browse.png) |
 | 41 | Factory reads the request | every field traces to a stored column, none of it is copy | [41-factory-reads-the-request.png](41-factory-reads-the-request.png) |
 | 42 | Admin sign-in | cold start, no session | [42-admin-sign-in.png](42-admin-sign-in.png) |
-| 43 | Admin code requested | e2e-admin-1789040930002@example.com | [43-admin-code-requested.png](43-admin-code-requested.png) |
-| 44 | Admin signed in | code 250964 accepted — no password anywhere | [44-admin-signed-in.png](44-admin-signed-in.png) |
+| 43 | Admin code requested | e2e-admin-1789219279113@example.com | [43-admin-code-requested.png](43-admin-code-requested.png) |
+| 44 | Admin signed in | code 733086 accepted — no password anywhere | [44-admin-signed-in.png](44-admin-signed-in.png) |
 | 45 | Verification queue | an admin with no org of their own can still work | [45-verification-queue.png](45-verification-queue.png) |
 | 46 | Factory approved | approving the registration verifies the org, which unlocks quoting | [46-factory-approved.png](46-factory-approved.png) |
-| 47 | Factory quoting sign-in | cold start, no session | [47-factory-quoting-sign-in.png](47-factory-quoting-sign-in.png) |
-| 48 | Factory quoting code requested | e2e-factory-1789040930002@example.com | [48-factory-quoting-code-requested.png](48-factory-quoting-code-requested.png) |
-| 49 | Factory quoting signed in | code 654978 accepted — no password anywhere | [49-factory-quoting-signed-in.png](49-factory-quoting-signed-in.png) |
-| 50 | Factory can now bid | the verification notice is gone and the quote button is live | [50-factory-can-now-bid.png](50-factory-can-now-bid.png) |
-| 51 | Factory quote | production + samples = $5,390.00, computed not typed | [51-factory-quote.png](51-factory-quote.png) |
-| 52 | Quote sent | and the factory is promised an answer either way | [52-quote-sent.png](52-quote-sent.png) |
-| 53 | Brand deciding sign-in | cold start, no session | [53-brand-deciding-sign-in.png](53-brand-deciding-sign-in.png) |
-| 54 | Brand deciding code requested | e2e-brand-1789040930002@example.com | [54-brand-deciding-code-requested.png](54-brand-deciding-code-requested.png) |
-| 55 | Brand deciding signed in | code 334824 accepted — no password anywhere | [55-brand-deciding-signed-in.png](55-brand-deciding-signed-in.png) |
-| 56 | Quote comparison | two quotes side by side, every figure derived from stored columns | [56-quote-comparison.png](56-quote-comparison.png) |
-| 57 | Confirm award | it says plainly that the others will be told | [57-confirm-award.png](57-confirm-award.png) |
-| 58 | Awarded | the loop closes here | [58-awarded.png](58-awarded.png) |
-| 59 | Production orders | the brand's side of the work it just commissioned | [59-production-orders.png](59-production-orders.png) |
-| 60 | The order | every figure here is summed in SQL from the rows below it | [60-the-order.png](60-the-order.png) |
-| 61 | The schedule | drafted from the quote; either side may change it | [61-the-schedule.png](61-the-schedule.png) |
-| 62 | Brand agrees | one signature. The order has not started | [62-brand-agrees.png](62-brand-agrees.png) |
-| 63 | Winning factory sign-in | cold start, no session | [63-winning-factory-sign-in.png](63-winning-factory-sign-in.png) |
-| 64 | Winning factory code requested | e2e-factory-1789040930002@example.com | [64-winning-factory-code-requested.png](64-winning-factory-code-requested.png) |
-| 65 | Winning factory signed in | code 911567 accepted — no password anywhere | [65-winning-factory-signed-in.png](65-winning-factory-signed-in.png) |
-| 66 | Factory hears the outcome | award_quote wrote this row; now something shows it | [66-factory-hears-the-outcome.png](66-factory-hears-the-outcome.png) |
-| 67 | Factory sees the schedule | the same steps the brand read, nothing actionable yet | [67-factory-sees-the-schedule.png](67-factory-sees-the-schedule.png) |
-| 68 | Both agreed | the order is running | [68-both-agreed.png](68-both-agreed.png) |
-| 69 | Posting an update | a note and photographs, which is the factory's only lever here | [69-posting-an-update.png](69-posting-an-update.png) |
-| 70 | Sent for approval | the brand decides; the factory does not mark its own work done | [70-sent-for-approval.png](70-sent-for-approval.png) |
-| 71 | Where the factory gets paid | no full account number is asked for, or stored | [71-where-the-factory-gets-paid.png](71-where-the-factory-gets-paid.png) |
-| 72 | Brand approving sign-in | cold start, no session | [72-brand-approving-sign-in.png](72-brand-approving-sign-in.png) |
-| 73 | Brand approving code requested | e2e-brand-1789040930002@example.com | [73-brand-approving-code-requested.png](73-brand-approving-code-requested.png) |
-| 74 | Brand approving signed in | code 081703 accepted — no password anywhere | [74-brand-approving-signed-in.png](74-brand-approving-signed-in.png) |
-| 75 | Waiting on the brand | the factory has sent a step for approval | [75-waiting-on-the-brand.png](75-waiting-on-the-brand.png) |
-| 76 | The brand reads the update | posted by the factory, readable by the brand, nobody else | [76-the-brand-reads-the-update.png](76-the-brand-reads-the-update.png) |
-| 77 | Approving | one modal, whether or not money follows | [77-approving.png](77-approving.png) |
-| 78 | How to pay | amount, destination, and the reference an admin will match | [78-how-to-pay.png](78-how-to-pay.png) |
-| 79 | Marked sent | the brand's claim — not yet an arrival | [79-marked-sent.png](79-marked-sent.png) |
-| 80 | Factory waiting sign-in | cold start, no session | [80-factory-waiting-sign-in.png](80-factory-waiting-sign-in.png) |
-| 81 | Factory waiting code requested | e2e-factory-1789040930002@example.com | [81-factory-waiting-code-requested.png](81-factory-waiting-code-requested.png) |
-| 82 | Factory waiting signed in | code 861113 accepted — no password anywhere | [82-factory-waiting-signed-in.png](82-factory-waiting-signed-in.png) |
-| 83 | The factory waits | the brand says it paid. That is not enough, and the screen says so | [83-the-factory-waits.png](83-the-factory-waits.png) |
-| 84 | Admin confirming sign-in | cold start, no session | [84-admin-confirming-sign-in.png](84-admin-confirming-sign-in.png) |
-| 85 | Admin confirming code requested | e2e-admin-1789040930002@example.com | [85-admin-confirming-code-requested.png](85-admin-confirming-code-requested.png) |
-| 86 | Admin confirming signed in | code 792884 accepted — no password anywhere | [86-admin-confirming-signed-in.png](86-admin-confirming-signed-in.png) |
-| 87 | The payment queue | a required step, not a convenience: staff have no org to notify | [87-the-payment-queue.png](87-the-payment-queue.png) |
-| 88 | Confirmed | this click is what a factory on the other side of the world is relying on | [88-confirmed.png](88-confirmed.png) |
-| 89 | Factory told to start sign-in | cold start, no session | [89-factory-told-to-start-sign-in.png](89-factory-told-to-start-sign-in.png) |
-| 90 | Factory told to start code requested | e2e-factory-1789040930002@example.com | [90-factory-told-to-start-code-requested.png](90-factory-told-to-start-code-requested.png) |
-| 91 | Factory told to start signed in | code 882591 accepted — no password anywhere | [91-factory-told-to-start-signed-in.png](91-factory-told-to-start-signed-in.png) |
-| 92 | Cleared to work | nothing changed but an admin confirming the money arrived | [92-cleared-to-work.png](92-cleared-to-work.png) |
-| 93 | The conversation | kept with the order, so it is there when someone asks what was agreed | [93-the-conversation.png](93-the-conversation.png) |
-| 94 | The factory writes in Chinese | and does not have to think about who reads it | [94-the-factory-writes-in-chinese.png](94-the-factory-writes-in-chinese.png) |
-| 95 | Brand reading sign-in | cold start, no session | [95-brand-reading-sign-in.png](95-brand-reading-sign-in.png) |
-| 96 | Brand reading code requested | e2e-brand-1789040930002@example.com | [96-brand-reading-code-requested.png](96-brand-reading-code-requested.png) |
-| 97 | Brand reading signed in | code 593946 accepted — no password anywhere | [97-brand-reading-signed-in.png](97-brand-reading-signed-in.png) |
-| 98 | Conversations | one per piece of work, not one per company | [98-conversations.png](98-conversations.png) |
-| 99 | The brand reads it | in its own language, with the original one click away | [99-the-brand-reads-it.png](99-the-brand-reads-it.png) |
-| 100 | A reply | the first conversation either prototype could not actually have | [100-a-reply.png](100-a-reply.png) |
-| 101 | Brand again sign-in | cold start, no session | [101-brand-again-sign-in.png](101-brand-again-sign-in.png) |
-| 102 | Brand again code requested | e2e-brand-1789040930002@example.com | [102-brand-again-code-requested.png](102-brand-again-code-requested.png) |
-| 103 | Brand again signed in | code 687048 accepted — no password anywhere | [103-brand-again-signed-in.png](103-brand-again-signed-in.png) |
-| 104 | Invite-only chosen | publishing this without inviting anyone used to strand it | [104-invite-only-chosen.png](104-invite-only-chosen.png) |
-| 105 | Choose who sees it | ranked by fit against this request, same score the factory sees | [105-choose-who-sees-it.png](105-choose-who-sees-it.png) |
-| 106 | Invitations saved |  | [106-invitations-saved.png](106-invitations-saved.png) |
-| 107 | Brand at home sign-in | cold start, no session | [107-brand-at-home-sign-in.png](107-brand-at-home-sign-in.png) |
-| 108 | Brand at home code requested | e2e-brand-1789040930002@example.com | [108-brand-at-home-code-requested.png](108-brand-at-home-code-requested.png) |
-| 109 | Brand at home signed in | code 100878 accepted — no password anywhere | [109-brand-at-home-signed-in.png](109-brand-at-home-signed-in.png) |
-| 110 | Brand home | what needs you, before anything else | [110-brand-home.png](110-brand-home.png) |
-| 111 | The team | who else acts as this brand | [111-the-team.png](111-the-team.png) |
-| 112 | Invited | they see it the next time they sign in | [112-invited.png](112-invited.png) |
-| 113 | Colleague sign-in | cold start, no session | [113-colleague-sign-in.png](113-colleague-sign-in.png) |
-| 114 | Colleague code requested | colleague-1789040930002@example.com | [114-colleague-code-requested.png](114-colleague-code-requested.png) |
-| 115 | Colleague signed in | code 840224 accepted — no password anywhere | [115-colleague-signed-in.png](115-colleague-signed-in.png) |
-| 116 | You have been invited | the invitation was in the database from the start; nothing ever showed it | [116-you-have-been-invited.png](116-you-have-been-invited.png) |
-| 117 | Joined | straight into the brand they were invited to, with no onboarding to redo | [117-joined.png](117-joined.png) |
-| 118 | When it breaks | the reference on screen is the one in the database | [118-when-it-breaks.png](118-when-it-breaks.png) |
-| 119 | Deep link survives a hard refresh | the rewrite works, in dev and in production | [119-deep-link-survives-a-hard-refresh.png](119-deep-link-survives-a-hard-refresh.png) |
-| 120 | Session survives reload | onboarding not shown again | [120-session-survives-reload.png](120-session-survives-reload.png) |
+| 47 | Operations workspace | the designed admin console, on marketplace data | [47-operations-workspace.png](47-operations-workspace.png) |
+| 48 | Marketplace quotes | every quote across the marketplace, staff only | [48-marketplace-quotes.png](48-marketplace-quotes.png) |
+| 49 | Factory quoting sign-in | cold start, no session | [49-factory-quoting-sign-in.png](49-factory-quoting-sign-in.png) |
+| 50 | Factory quoting code requested | e2e-factory-1789219279113@example.com | [50-factory-quoting-code-requested.png](50-factory-quoting-code-requested.png) |
+| 51 | Factory quoting signed in | code 211974 accepted — no password anywhere | [51-factory-quoting-signed-in.png](51-factory-quoting-signed-in.png) |
+| 52 | Factory can now bid | the verification notice is gone and the quote button is live | [52-factory-can-now-bid.png](52-factory-can-now-bid.png) |
+| 53 | Factory quote | production + samples = $5,390.00, computed not typed | [53-factory-quote.png](53-factory-quote.png) |
+| 54 | Quote sent | and the factory is promised an answer either way | [54-quote-sent.png](54-quote-sent.png) |
+| 55 | Brand deciding sign-in | cold start, no session | [55-brand-deciding-sign-in.png](55-brand-deciding-sign-in.png) |
+| 56 | Brand deciding code requested | e2e-brand-1789219279113@example.com | [56-brand-deciding-code-requested.png](56-brand-deciding-code-requested.png) |
+| 57 | Brand deciding signed in | code 913403 accepted — no password anywhere | [57-brand-deciding-signed-in.png](57-brand-deciding-signed-in.png) |
+| 58 | Quote comparison | two quotes side by side, every figure derived from stored columns | [58-quote-comparison.png](58-quote-comparison.png) |
+| 59 | Confirm award | it says plainly that the others will be told | [59-confirm-award.png](59-confirm-award.png) |
+| 60 | Awarded | the loop closes here | [60-awarded.png](60-awarded.png) |
+| 61 | Production orders | the brand's side of the work it just commissioned | [61-production-orders.png](61-production-orders.png) |
+| 62 | The order | every figure here is summed in SQL from the rows below it | [62-the-order.png](62-the-order.png) |
+| 63 | The schedule | drafted from the quote; either side may change it | [63-the-schedule.png](63-the-schedule.png) |
+| 64 | Brand agrees | one signature. The order has not started | [64-brand-agrees.png](64-brand-agrees.png) |
+| 65 | Winning factory sign-in | cold start, no session | [65-winning-factory-sign-in.png](65-winning-factory-sign-in.png) |
+| 66 | Winning factory code requested | e2e-factory-1789219279113@example.com | [66-winning-factory-code-requested.png](66-winning-factory-code-requested.png) |
+| 67 | Winning factory signed in | code 083895 accepted — no password anywhere | [67-winning-factory-signed-in.png](67-winning-factory-signed-in.png) |
+| 68 | Factory hears the outcome | award_quote wrote this row; now something shows it | [68-factory-hears-the-outcome.png](68-factory-hears-the-outcome.png) |
+| 69 | Factory sees the schedule | the same steps the brand read, nothing actionable yet | [69-factory-sees-the-schedule.png](69-factory-sees-the-schedule.png) |
+| 70 | Both agreed | the order is running | [70-both-agreed.png](70-both-agreed.png) |
+| 71 | Posting an update | a note and photographs, which is the factory's only lever here | [71-posting-an-update.png](71-posting-an-update.png) |
+| 72 | Sent for approval | the brand decides; the factory does not mark its own work done | [72-sent-for-approval.png](72-sent-for-approval.png) |
+| 73 | Where the factory gets paid | no full account number is asked for, or stored | [73-where-the-factory-gets-paid.png](73-where-the-factory-gets-paid.png) |
+| 74 | Brand approving sign-in | cold start, no session | [74-brand-approving-sign-in.png](74-brand-approving-sign-in.png) |
+| 75 | Brand approving code requested | e2e-brand-1789219279113@example.com | [75-brand-approving-code-requested.png](75-brand-approving-code-requested.png) |
+| 76 | Brand approving signed in | code 895703 accepted — no password anywhere | [76-brand-approving-signed-in.png](76-brand-approving-signed-in.png) |
+| 77 | Waiting on the brand | the factory has sent a step for approval | [77-waiting-on-the-brand.png](77-waiting-on-the-brand.png) |
+| 78 | The brand reads the update | posted by the factory, readable by the brand, nobody else | [78-the-brand-reads-the-update.png](78-the-brand-reads-the-update.png) |
+| 79 | Approving | one modal, whether or not money follows | [79-approving.png](79-approving.png) |
+| 80 | How to pay | amount, destination, and the reference an admin will match | [80-how-to-pay.png](80-how-to-pay.png) |
+| 81 | Marked sent | the brand's claim — not yet an arrival | [81-marked-sent.png](81-marked-sent.png) |
+| 82 | Factory waiting sign-in | cold start, no session | [82-factory-waiting-sign-in.png](82-factory-waiting-sign-in.png) |
+| 83 | Factory waiting code requested | e2e-factory-1789219279113@example.com | [83-factory-waiting-code-requested.png](83-factory-waiting-code-requested.png) |
+| 84 | Factory waiting signed in | code 399469 accepted — no password anywhere | [84-factory-waiting-signed-in.png](84-factory-waiting-signed-in.png) |
+| 85 | The factory waits | the brand says it paid. That is not enough, and the screen says so | [85-the-factory-waits.png](85-the-factory-waits.png) |
+| 86 | Admin confirming sign-in | cold start, no session | [86-admin-confirming-sign-in.png](86-admin-confirming-sign-in.png) |
+| 87 | Admin confirming code requested | e2e-admin-1789219279113@example.com | [87-admin-confirming-code-requested.png](87-admin-confirming-code-requested.png) |
+| 88 | Admin confirming signed in | code 157835 accepted — no password anywhere | [88-admin-confirming-signed-in.png](88-admin-confirming-signed-in.png) |
+| 89 | The payment queue | a required step, not a convenience: staff have no org to notify | [89-the-payment-queue.png](89-the-payment-queue.png) |
+| 90 | Confirmed | this click is what a factory on the other side of the world is relying on | [90-confirmed.png](90-confirmed.png) |
+| 91 | Factory told to start sign-in | cold start, no session | [91-factory-told-to-start-sign-in.png](91-factory-told-to-start-sign-in.png) |
+| 92 | Factory told to start code requested | e2e-factory-1789219279113@example.com | [92-factory-told-to-start-code-requested.png](92-factory-told-to-start-code-requested.png) |
+| 93 | Factory told to start signed in | code 641498 accepted — no password anywhere | [93-factory-told-to-start-signed-in.png](93-factory-told-to-start-signed-in.png) |
+| 94 | Cleared to work | nothing changed but an admin confirming the money arrived | [94-cleared-to-work.png](94-cleared-to-work.png) |
+| 95 | The conversation | kept with the order, so it is there when someone asks what was agreed | [95-the-conversation.png](95-the-conversation.png) |
+| 96 | The factory writes in Chinese | and does not have to think about who reads it | [96-the-factory-writes-in-chinese.png](96-the-factory-writes-in-chinese.png) |
+| 97 | Brand reading sign-in | cold start, no session | [97-brand-reading-sign-in.png](97-brand-reading-sign-in.png) |
+| 98 | Brand reading code requested | e2e-brand-1789219279113@example.com | [98-brand-reading-code-requested.png](98-brand-reading-code-requested.png) |
+| 99 | Brand reading signed in | code 645635 accepted — no password anywhere | [99-brand-reading-signed-in.png](99-brand-reading-signed-in.png) |
+| 100 | Conversations | one per piece of work, not one per company | [100-conversations.png](100-conversations.png) |
+| 101 | The brand reads it | in its own language, with the original one click away | [101-the-brand-reads-it.png](101-the-brand-reads-it.png) |
+| 102 | A reply | the first conversation either prototype could not actually have | [102-a-reply.png](102-a-reply.png) |
+| 103 | Brand again sign-in | cold start, no session | [103-brand-again-sign-in.png](103-brand-again-sign-in.png) |
+| 104 | Brand again code requested | e2e-brand-1789219279113@example.com | [104-brand-again-code-requested.png](104-brand-again-code-requested.png) |
+| 105 | Brand again signed in | code 248526 accepted — no password anywhere | [105-brand-again-signed-in.png](105-brand-again-signed-in.png) |
+| 106 | Invite-only chosen | publishing this without inviting anyone used to strand it | [106-invite-only-chosen.png](106-invite-only-chosen.png) |
+| 107 | Choose who sees it | ranked by fit against this request, same score the factory sees | [107-choose-who-sees-it.png](107-choose-who-sees-it.png) |
+| 108 | Invitations saved |  | [108-invitations-saved.png](108-invitations-saved.png) |
+| 109 | Brand at home sign-in | cold start, no session | [109-brand-at-home-sign-in.png](109-brand-at-home-sign-in.png) |
+| 110 | Brand at home code requested | e2e-brand-1789219279113@example.com | [110-brand-at-home-code-requested.png](110-brand-at-home-code-requested.png) |
+| 111 | Brand at home signed in | code 852984 accepted — no password anywhere | [111-brand-at-home-signed-in.png](111-brand-at-home-signed-in.png) |
+| 112 | Brand home | what needs you, before anything else | [112-brand-home.png](112-brand-home.png) |
+| 113 | The team | who else acts as this brand | [113-the-team.png](113-the-team.png) |
+| 114 | Invited | they see it the next time they sign in | [114-invited.png](114-invited.png) |
+| 115 | Colleague sign-in | cold start, no session | [115-colleague-sign-in.png](115-colleague-sign-in.png) |
+| 116 | Colleague code requested | colleague-1789219279113@example.com | [116-colleague-code-requested.png](116-colleague-code-requested.png) |
+| 117 | Colleague signed in | code 922132 accepted — no password anywhere | [117-colleague-signed-in.png](117-colleague-signed-in.png) |
+| 118 | You have been invited | the invitation was in the database from the start; nothing ever showed it | [118-you-have-been-invited.png](118-you-have-been-invited.png) |
+| 119 | Joined | straight into the brand they were invited to, with no onboarding to redo | [119-joined.png](119-joined.png) |
+| 120 | When it breaks | the reference on screen is the one in the database | [120-when-it-breaks.png](120-when-it-breaks.png) |
+| 121 | Deep link survives a hard refresh | the rewrite works, in dev and in production | [121-deep-link-survives-a-hard-refresh.png](121-deep-link-survives-a-hard-refresh.png) |
+| 122 | Session survives reload | onboarding not shown again | [122-session-survives-reload.png](122-session-survives-reload.png) |
 
 ## Assertions
 
@@ -176,6 +178,11 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the factory's registration is waiting for a decision
 - ✅ the queue row for this factory was found and approved
 - ✅ the factory is now verified in the database
+- ✅ the operations workspace opens for staff
+- ✅ and does not turn away an account that is on the admin list
+- ✅ a company from this run is in the live verification queue
+- ✅ the queue loaded rather than erroring
+- ✅ the marketplace-wide quote table opens
 - ✅ the total is worked out from the lines: 300 x $17.10 + $260 = $5,390.00
 - ✅ both quotes are shown for comparison (2 columns)
 - ✅ the comparison shows the same total the factory saw, not a re-parsed string
@@ -209,7 +216,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the factory can say where its money goes — without which nobody can pay it
 - ✅ the brand can read the factory's update across the org boundary
 - ✅ approving the sample made its payment due
-- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000001)
+- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000017)
 - ✅ the platform fee is shown and charged at zero ($0.00)
 - ✅ the payment is recorded as sent
 - ✅ the brand saying it paid does NOT count as funded
@@ -229,7 +236,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the brand is shown an unread message (1)
 - ✅ with no translation available, the brand sees exactly what was written
 - ✅ opening the conversation recorded that it was read — the count cannot get stuck
-- ✅ both sides have now said something (2 messages)
+- ✅ both sides have now said something (2 messages on this thread)
 - ✅ the request is invite-only
 - ✅ one factory was invited (1)
 - ✅ the home screen no longer tells a signed-up user the product is somewhere else
@@ -243,7 +250,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ and they land in that organisation, not one of their own
 - ✅ a crash says what is and is not lost, rather than showing a blank page
 - ✅ and offers a way out — reload, or back to the start
-- ✅ the crash was reported, under the reference shown (07107138)
+- ✅ the crash was reported, under the reference shown (C3C935C8)
 - ✅ with the real error message, not a generic one
 - ✅ and the screen it happened on
 - ✅ navigating away clears the crash — one broken screen does not poison the next

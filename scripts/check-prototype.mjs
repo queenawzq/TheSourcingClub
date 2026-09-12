@@ -57,6 +57,39 @@ try {
   await factory.waitForTimeout(3500);
   const factoryBody = await factory.locator("body").innerText();
   check(factoryBody.trim().length > 200, "the factory prototype still renders too");
+
+  // The admin workspace now reads through the same seam, so it makes the same
+  // promise and can break the same way. Every screen here is behind a
+  // security-definer RPC in the live console; with no database it must still
+  // be a populated page Queena can iterate on.
+  const adminPage = await stagehand.browser.context.newPage(`${BASE}/admin-prototype.html`);
+  await adminPage.setViewportSize(1440, 1100);
+  await adminPage.waitForTimeout(4000);
+  const adminBody = await adminPage.locator("body").innerText();
+  check(/admin overview/i.test(adminBody), "the admin overview renders with no database");
+  check(
+    adminBody.includes("Atelier Minho"),
+    "mock profiles reach the queue through the provider",
+  );
+  check(
+    !/loading the marketplace/i.test(adminBody),
+    "and never flashes the loading state a synchronous adapter cannot reach",
+  );
+  check(
+    !/could not load/i.test(adminBody),
+    "nor the error state",
+  );
+
+  const adminQueue = await stagehand.browser.context.newPage(
+    `${BASE}/admin-prototype.html?screen=quotes`,
+  );
+  await adminQueue.setViewportSize(1440, 1100);
+  await adminQueue.waitForTimeout(3500);
+  const queueBody = await adminQueue.locator("body").innerText();
+  check(
+    queueBody.includes("Porto Stitch Studio"),
+    "the quote table still reads its rows after they moved to a prop",
+  );
 } finally {
   await stagehand.close();
   await browser.close().catch(() => {});

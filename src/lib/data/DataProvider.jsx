@@ -109,6 +109,24 @@ export const useRfqs = () => useResource("rfqs");
 export const useThreads = () => useResource("threads");
 export const useDashboard = () => useResource("dashboard");
 
+/* The admin workspace. Same seam, same contract: admin-prototype.html serves
+   the constants in the file, admin.html serves the marketplace. */
+export const useVerificationQueue = () => useResource("verificationQueue");
+export const useAdminRfqs = () => useResource("adminRfqs");
+export const useAdminQuotes = () => useResource("adminQuotes");
+export const useAdminMetrics = () => useResource("adminMetrics");
+
+/**
+ * The one thing a screen calls that is not a read.
+ *
+ * Returns the adapter's action map, so a decision button in the prototype is
+ * a state update and the same button in the live console is an RPC. A screen
+ * that awaits the result handles both, because the mock's is already resolved.
+ */
+export function useActions() {
+  return useAdapter().actions ?? {};
+}
+
 /** Who is looking, and which side they are on. */
 export function useViewer() {
   return useAdapter().viewer ?? { isFactory: false, org: null, user: null };

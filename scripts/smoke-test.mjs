@@ -1048,6 +1048,25 @@ console.log("\nphase 6 — admin operations");
   const staff = await signedInUser(`ops-admin-${stamp}@example.com`);
   await admin.from("platform_admins").insert({ user_id: staff.id });
 
+  // org_members_read ends in `or is_platform_admin()`, so an unfiltered read of
+  // that table returns every membership in the marketplace to staff. The app
+  // took the first row as the signed-in user's own org, which dropped an admin
+  // into a stranger's workspace mid-onboarding. RLS says what may be read; it
+  // does not say what a query means.
+  const { data: staffOrgs, error: staffOrgsError } = await staff.client
+    .from("org_members")
+    .select("org_id")
+    .eq("user_id", staff.id);
+  if (staffOrgsError) fail("staff can query their own memberships", staffOrgsError);
+  else (staffOrgs ?? []).length === 0
+    ? ok("an admin's own membership list is empty — they are staff, not a company")
+    : fail(`an admin appears to belong to ${staffOrgs.length} org(s)`);
+
+  const { data: everyMembership } = await staff.client.from("org_members").select("org_id");
+  (everyMembership ?? []).length > 0
+    ? ok("while the same table unfiltered shows staff the whole marketplace, by design")
+    : fail("admin tooling can no longer see memberships at all");
+
   const { data: queue, error: queueError } = await staff.client.rpc("admin_verification_queue");
   if (queueError) fail("staff can read the verification queue", queueError);
   else ok(`the verification queue is readable by staff (${queue.length} companies)`);

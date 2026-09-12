@@ -7,12 +7,29 @@
  */
 import { supabase, unwrap } from "../supabase.js";
 
-/** Orgs the signed-in user belongs to. RLS returns only their own. */
+/**
+ * Orgs the signed-in user belongs to.
+ *
+ * The user_id filter is load-bearing, not belt-and-braces. `org_members_read`
+ * ends in `or is_platform_admin()` — deliberately, because the admin tooling
+ * needs to see who belongs to what — so for staff this query without a filter
+ * returns EVERY membership in the marketplace. The app then took the first
+ * one as the signed-in user's own org and dropped an admin into a stranger's
+ * workspace, mid-onboarding, with their org id written to localStorage.
+ *
+ * RLS says what a user may read. It does not say what a query means. This one
+ * means "mine", so it says so.
+ */
 export async function listMyOrgs() {
+  const { data: auth } = await supabase.auth.getUser();
+  const userId = auth?.user?.id;
+  if (!userId) return [];
+
   return unwrap(
     await supabase
       .from("org_members")
       .select("role, orgs (id, type, name, slug, is_demo, created_at)")
+      .eq("user_id", userId)
       .order("created_at", { referencedTable: "orgs", ascending: true }),
     "load your organisations",
   ).map((row) => ({ ...row.orgs, role: row.role }));

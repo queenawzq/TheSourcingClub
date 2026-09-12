@@ -1,0 +1,181 @@
+/**
+ * The live half of the admin seam.
+ *
+ * Maps the marketplace onto the shapes the designed admin screens expect.
+ * Like toProjectCard in ../live-adapter.js this is not glue — it is where two
+ * vocabularies are reconciled, and it belongs in one file rather than smeared
+ * across screens.
+ *
+ * The RFQ and quote tables read positional tuples, which is how the design
+ * wrote them:
+ *
+ *   rfq    [ref, title, brand, submitted, "N vendors", status, tone]
+ *   quote  [ref, factory, brand, rfqRef, total, submitted, status, tone]
+ *
+ * Keeping that shape is deliberate. Changing it would mean rewriting
+ * DataTable, RfqActivityCards and every filter predicate in QueuePage — a
+ * large diff through Queena's file for no gain, and the next merge would pay
+ * for it.
+ */
+import {
+  claimReview,
+  decideReview,
+  overviewMetrics,
+  quoteQueue,
+  rfqQueue,
+  verificationQueue,
+} from "../../lib/domain/admin.js";
+import { formatMoney } from "../../lib/money.js";
+
+const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+
+const shortDate = (value) => (value ? MONTH_DAY.format(new Date(value)) : "—");
+
+/**
+ * A reference a human can say out loud.
+ *
+ * The design shows "RFQ-1048". There is no sequence column behind that, and
+ * adding one to a populated table to satisfy a label would be the wrong order
+ * of operations — so this shortens the uuid instead. It is stable, unique in
+ * practice within a page of results, and honest about being an id.
+ */
+const ref = (prefix, id) => `${prefix}-${String(id).slice(0, 8)}`;
+
+/** What the queue's five states are called on screen, and how they are coloured. */
+const REVIEW_LABEL = {
+  ready_for_review: ["Ready for review", "info"],
+  in_review: ["In review", "info"],
+  needs_information: ["Needs information", "warning"],
+  approved: ["Approved", "success"],
+  declined: ["Declined", "neutral"],
+};
+
+/** And the reverse, for the three decisions the detail screen can send. */
+const DECISION_STATE = {
+  Approved: "approved",
+  Declined: "declined",
+  "Needs information": "needs_information",
+};
+
+const RFQ_LABEL = {
+  open: ["Open", "info"],
+  awarded: ["Closed", "neutral"],
+  cancelled: ["Closed", "neutral"],
+};
+
+const QUOTE_LABEL = {
+  submitted: ["Submitted", "info"],
+  superseded: ["Revision requested", "danger"],
+  withdrawn: ["Closed", "neutral"],
+  accepted: ["Accepted", "success"],
+  declined: ["Declined", "neutral"],
+};
+
+const initials = (name) =>
+  (name ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0].toUpperCase())
+    .join("") || "??";
+
+/** "18 min ago" in the design; derived here, so it cannot describe a stale time. */
+function ago(value) {
+  if (!value) return "—";
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 60000));
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+/**
+ * One company in the verification queue.
+ *
+ * `confidence`, `completion` and `checks` are absent on purpose, and the
+ * screens render conditionally around them. They are the output of an
+ * automated registry check that does not exist; a number invented here would
+ * be trusted by the person deciding whether a company may trade.
+ */
+export function toReviewProfile(row) {
+  const [status, tone] = REVIEW_LABEL[row.state] ?? ["Ready for review", "info"];
+  return {
+    id: row.orgId,
+    initials: initials(row.name),
+    name: row.name,
+    entityType: row.type === "factory" ? "Factory" : "Brand",
+    location: row.location ?? "Location not given",
+    submitted: ago(row.submittedAt),
+    status,
+    tone,
+    evidence: `${row.evidenceReceived} of ${row.evidenceExpected} received`,
+    owner: row.ownerName ?? "",
+    risk: row.risk ? row.risk[0].toUpperCase() + row.risk.slice(1) : "",
+    summary: row.intro ?? "No introduction was submitted.",
+    details: [
+      ["Legal name", row.legalName ?? "—"],
+      ["Website", row.websiteUrl ?? "—"],
+      ["Location", row.location ?? "—"],
+      ["Profile status", row.verificationStatus],
+      ["Last note", row.note ?? "—"],
+      ["Decided", row.decidedAt ? shortDate(row.decidedAt) : "Not yet"],
+    ],
+    capabilities: [],
+  };
+}
+
+export function toRfqRow(rfq) {
+  const [label, tone] = RFQ_LABEL[rfq.status] ?? ["Open", "info"];
+  // "Quotes received" is a real distinction the design's tabs filter on, and
+  // it is the count that decides it, not a separate status column.
+  const status = rfq.status === "open" && rfq.quoteCount > 0 ? "Quotes received" : label;
+  return [
+    ref("RFQ", rfq.id),
+    rfq.title || "Untitled request",
+    rfq.brandName,
+    shortDate(rfq.publishedAt ?? rfq.createdAt),
+    `${rfq.invitedCount} vendors`,
+    status,
+    status === "Quotes received" ? "success" : tone,
+  ];
+}
+
+export function toQuoteRow(quote) {
+  const [status, tone] = QUOTE_LABEL[quote.status] ?? ["Submitted", "info"];
+  return [
+    ref("Q", quote.id),
+    quote.factoryName,
+    quote.brandName,
+    ref("RFQ", quote.rfqId),
+    quote.totalCents == null ? "—" : formatMoney(quote.totalCents, quote.currency),
+    shortDate(quote.submittedAt),
+    status,
+    tone,
+  ];
+}
+
+export function createAdminAdapter({ user }) {
+  return {
+    viewer: { isAdmin: true, org: null, user },
+
+    verificationQueue: () => verificationQueue().then((rows) => rows.map(toReviewProfile)),
+    adminRfqs: () => rfqQueue().then((rows) => rows.map(toRfqRow)),
+    adminQuotes: () => quoteQueue().then((rows) => rows.map(toQuoteRow)),
+    adminMetrics: () => overviewMetrics(),
+
+    actions: {
+      claimReview,
+      /**
+       * The screen speaks in the design's three labels; the database speaks in
+       * five states. Translating here rather than in the screen keeps the
+       * decision buttons unchanged through the next merge.
+       */
+      decideReview: (orgId, status, note) => {
+        const decision = DECISION_STATE[status];
+        if (!decision) throw new Error(`unknown review decision "${status}"`);
+        return decideReview(orgId, decision, note ?? null);
+      },
+    },
+  };
+}

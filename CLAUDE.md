@@ -52,6 +52,8 @@ The prototypes **must keep rendering with no database**. That is Queena's design
 |---|---|---|
 | `prototype.html` → `src/prototype/entry.jsx` | mock | the constants already in `main.jsx` |
 | `app.html` → `src/app/main.jsx` | live | `src/lib/domain/*` via `src/app/live-adapter.js` |
+| `admin-prototype.html` → `src/admin-prototype/entry.jsx` | mock | the constants already in `main.jsx` |
+| `admin.html` → `src/app/admin/console.jsx` | live | `src/lib/domain/admin.js` via `src/app/admin/live-admin-adapter.js` |
 
 `src/lib/data/DataProvider.jsx` is the seam. Every hook returns `{ data, loading, error, reload }` **even for the mock**, where `loading` is never true — a screen that handles that correctly against mock data handles it correctly against a network. There is not one loading or error state in the prototypes today, and those states are exactly where a port silently regresses.
 
@@ -97,8 +99,8 @@ Phase 1 of the backend lives on `feature/supabase-backend`. Schema, access rules
 ```bash
 supabase start        # local stack in Docker; prints the URL + keys
 npm run db:reset      # re-apply every migration from scratch
-npm run db:test       # pgTAP access-rule suites (155 assertions, four files)
-npm run smoke         # 102 checks through supabase-js: embeds, RPC signatures, grants
+npm run db:test       # pgTAP access-rule suites (180 assertions, five files)
+npm run smoke         # 133 checks through supabase-js: embeds, RPC signatures, grants
 npm run check:css     # fails on a CSS variable used but never defined (runs in build)
 npm run check:prototype  # the prototype must still render with NO database
 npm run taxonomy      # regenerate migration 007 from the seed JSON
@@ -170,6 +172,40 @@ A thread belongs to the **request or order it is about**, never to a pair of com
 - `documents` now has **three** FKs into this graph (`milestone_update_id`, `order_id`, `message_id`). An ambiguous embed is refused rather than guessed; the smoke test pins the exact select strings the domain modules use.
 
 Not built, deliberately: call scheduling (the prototype's slot proposals, timezones and video links), presence, and "usually replies in 2h". Every one of those is a hardcoded literal in the prototypes with nothing behind it.
+
+### Admin operations (Phase 6)
+
+The admin prototype reviews a **company**; `review_document()` reviews a
+**file**. Both exist, and both write the same `verification_status` column, so
+a company-level verdict and a file-level one cannot contradict each other.
+
+- **`org_reviews` is staff-only.** The internal note and the assigned reviewer
+  are notes about a customer. What the company must see travels as a
+  notification written in the same transaction, and `needs_information` is
+  refused without a note at the database — a factory told only "Needs
+  information" has nothing to act on.
+- **Confidence scores and the per-check breakdown are deliberately not built.**
+  They are the output of an automated registry check that does not exist, and a
+  fabricated number on a reviewer's screen would be trusted. The queue reports
+  evidence received of expected instead. `risk` is a field an admin sets by
+  hand. The screens render conditionally around all three, so the prototype
+  keeps showing its mock versions.
+- **The overview's fourth card is payments awaiting confirmation**, where the
+  design puts "low-confidence checks". Platform staff have no org and cannot be
+  notified of anything, so a payment sits at `sent` until a human opens the
+  queue; that count is the only prompt there is.
+- **Every function on this surface is `security definer` and has no policy
+  behind it.** The `is_platform_admin()` test is the first statement in each,
+  before any `select` — checking afterwards leaks existence through `P0002`
+  versus `42501`. `supabase/tests/admin_access_test.sql` is accordingly almost
+  entirely negative.
+- **RLS says what may be read; it does not say what a query means.**
+  `org_members_read` ends in `or is_platform_admin()`, so an unfiltered read of
+  that table returns every membership in the marketplace to staff.
+  `listMyOrgs()` relied on the policy to mean "mine" and so dropped an admin
+  into a stranger's workspace mid-onboarding, with their org id written to
+  `localStorage`. Any query whose name says "my" needs its own `user_id`
+  filter, whatever the policy happens to allow.
 
 ### Auth
 
