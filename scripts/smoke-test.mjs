@@ -1041,6 +1041,118 @@ console.log("\nphase 5 — the home screen, and joining a team");
   }
 }
 
+console.log("\nphase 6 — admin operations");
+{
+  // Every function on this surface is security definer and therefore has no
+  // policy behind it. The checks that matter are the ones a party fails.
+  const staff = await signedInUser(`ops-admin-${stamp}@example.com`);
+  await admin.from("platform_admins").insert({ user_id: staff.id });
+
+  const { data: queue, error: queueError } = await staff.client.rpc("admin_verification_queue");
+  if (queueError) fail("staff can read the verification queue", queueError);
+  else ok(`the verification queue is readable by staff (${queue.length} companies)`);
+
+  const { error: queueLeak } = await brand.client.rpc("admin_verification_queue");
+  queueLeak ? ok("a brand CANNOT read the verification queue")
+            : fail("LEAK: the verification queue is readable by a party");
+
+  const { error: rfqLeak } = await factory.client.rpc("admin_rfq_queue");
+  rfqLeak ? ok("a factory CANNOT read every brand's requests")
+          : fail("LEAK: marketplace-wide requests are readable by a factory");
+
+  const { error: quoteLeak } = await brand.client.rpc("admin_quote_queue");
+  quoteLeak ? ok("a brand CANNOT read every factory's prices")
+            : fail("LEAK: marketplace-wide quotes are readable by a brand");
+
+  const { error: metricsLeak } = await brand.client.rpc("admin_overview_metrics");
+  metricsLeak ? ok("nor the marketplace counts")
+              : fail("LEAK: the overview metrics are readable by a party");
+
+  // The whole gate: approving yourself is approving your own right to quote.
+  const { data: brandOrgRow } = await admin
+    .from("orgs").select("id").eq("name", `Maison ${stamp}`).maybeSingle();
+  const selfOrg = brandOrgRow?.id
+    ?? (await admin.from("org_members").select("org_id").eq("user_id", brand.id).limit(1).maybeSingle()).data?.org_id;
+
+  if (!selfOrg) {
+    fail("could not resolve the brand's org for the self-approval check");
+  } else {
+    const { error: selfApprove } = await brand.client.rpc("admin_review_decision", {
+      target_org: selfOrg, decision: "approved", note: null, risk: null,
+    });
+    selfApprove ? ok("a brand CANNOT approve its own company")
+                : fail("LEAK: a brand verified itself");
+
+    const { error: reviewRowLeak, data: reviewRows } = await brand.client
+      .from("org_reviews").select("org_id, note, owner_user_id").eq("org_id", selfOrg);
+    if (reviewRowLeak) ok("org_reviews is refused outright to the company under review");
+    else (reviewRows ?? []).length === 0
+      ? ok("the company under review cannot read the staff notes about itself")
+      : fail("LEAK: internal review notes are readable by the company");
+
+    // And the admin path works end to end.
+    const returned = await staff.client.rpc("admin_review_decision", {
+      target_org: selfOrg, decision: "needs_information", note: null, risk: null,
+    });
+    returned.error ? ok("returning a review with no note is refused")
+                   : fail("a review went back with nothing for the company to act on");
+
+    const withNote = await staff.client.rpc("admin_review_decision", {
+      target_org: selfOrg, decision: "needs_information",
+      note: "Please upload your business registration.", risk: "medium",
+    });
+    withNote.error ? fail("an admin returns a review with a note", withNote.error)
+                   : ok("an admin returns a review with a note");
+
+    const { data: told } = await brand.client
+      .from("notifications").select("id, body").eq("kind", "verification_needs_information");
+    (told ?? []).length > 0
+      ? ok("and the company is told what is missing")
+      : fail("the company was not notified of what to send");
+
+    const approved = await staff.client.rpc("admin_review_decision", {
+      target_org: selfOrg, decision: "approved", note: "Registration checked.", risk: "low",
+    });
+    approved.error ? fail("an admin approves the company", approved.error)
+                   : ok("an admin approves the company");
+
+    const { data: profileAfter } = await admin
+      .from("brand_profiles").select("verification_status").eq("org_id", selfOrg).maybeSingle();
+    profileAfter?.verification_status === "verified"
+      ? ok("approval writes the same column review_document() writes, so the two cannot disagree")
+      : fail(`profile is ${profileAfter?.verification_status} after approval`);
+  }
+
+  // Shapes the domain modules index into. A renamed column here is a blank
+  // screen, not an error.
+  const { data: rfqRows } = await staff.client.rpc("admin_rfq_queue", { row_limit: 50 });
+  const rfqRow = (rfqRows ?? [])[0];
+  rfqRow && "invited_count" in rfqRow && "quote_count" in rfqRow && "brand_name" in rfqRow
+    ? ok("the request queue carries the counts the table column headers promise")
+    : fail("admin_rfq_queue is missing the columns the admin table reads");
+
+  const { data: quoteRows } = await staff.client.rpc("admin_quote_queue", { row_limit: 50 });
+  const quoteRow = (quoteRows ?? [])[0];
+  if (!quoteRow) fail("admin_quote_queue returned nothing after a full run");
+  else {
+    "total_cents" in quoteRow && "factory_name" in quoteRow
+      ? ok("the quote queue carries a total and both party names")
+      : fail("admin_quote_queue is missing the columns the admin table reads");
+
+    const priced = (quoteRows ?? []).find((row) => row.total_cents != null);
+    priced && Number.isFinite(Number(priced.total_cents))
+      ? ok("and the total is a number, summed in SQL rather than in JavaScript")
+      : fail("no quote in the queue carries a usable total");
+  }
+
+  const { data: metrics } = await staff.client.rpc("admin_overview_metrics");
+  const m = (metrics ?? [])[0];
+  m && typeof m.payments_awaiting_confirmation === "number"
+    ? ok("the overview counts payments nothing else will ever chase")
+    : fail("admin_overview_metrics did not return the payment backstop count");
+}
+
+
 console.log("\nemail sign-in");
 {
   // The real login path, not a stand-in: request a code, read the delivered
