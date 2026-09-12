@@ -405,3 +405,38 @@
     flex-direction: column;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   What the server said.
+
+   The design has no slot for this, because in the prototype the form always
+   succeeds. Against a real account it does not: a wrong password, an address
+   already taken, a password under the minimum. Left out, those failures are a
+   button that does nothing.
+   --------------------------------------------------------------------------- */
+.auth-error,
+.auth-notice {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.auth-error {
+  border: 1px solid #f3bcaa;
+  background: #fff2ec;
+  color: #a8330f;
+}
+
+.auth-notice {
+  border: 1px solid #b9cdfb;
+  background: #eef3ff;
+  color: #174df2;
+}
+
+.auth-submit[disabled],
+.auth-google-button[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}

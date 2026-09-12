@@ -63,33 +63,39 @@ const fail = (message, detail) => {
 };
 
 /**
- * Create a confirmed user and return a client signed in as them. Google is the
- * only real sign-in method, so this uses an admin-generated one-time code to
- * stand in for the OAuth round trip.
+ * The password every account in this file is created with.
+ *
+ * Eight characters, because that is what the designed signup form promises and
+ * what minimum_password_length enforces. A shorter one here would pass locally
+ * and fail the moment config.toml was pushed.
+ */
+const TEST_PASSWORD = "smoke test 8";
+
+/**
+ * Create a confirmed user and return a client signed in as them.
+ *
+ * Email and password, the same pair src/shared/AuthScreen.jsx collects. The
+ * account is created through the admin API rather than signUp() so the run
+ * does not depend on email delivery for every one of its dozen users — the
+ * real signup path is exercised once, below, and end to end in e2e.mjs.
  */
 async function signedInUser(email) {
   const { data, error } = await admin.auth.admin.createUser({
     email,
+    password: TEST_PASSWORD,
     email_confirm: true,
     user_metadata: { name: email.split("@")[0] },
   });
   if (error) throw error;
 
-  const { data: link, error: linkError } = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-  });
-  if (linkError) throw linkError;
-
   const client = createClient(URL, ANON, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { error: verifyError } = await client.auth.verifyOtp({
+  const { error: signInError } = await client.auth.signInWithPassword({
     email,
-    token: link.properties.email_otp,
-    type: "email",
+    password: TEST_PASSWORD,
   });
-  if (verifyError) throw verifyError;
+  if (signInError) throw signInError;
 
   return { client, id: data.user.id };
 }
@@ -1172,10 +1178,70 @@ console.log("\nphase 6 — admin operations");
 }
 
 
-console.log("\nemail sign-in");
+console.log("\nemail and password sign-in");
 {
-  // The real login path, not a stand-in: request a code, read the delivered
-  // email, and sign in with what it actually contains.
+  // The real signup path, once, end to end: an account, a profile name and an
+  // organisation from one form, exactly as src/shared/AuthScreen.jsx collects
+  // them. Everything else in this file uses the admin API to save time.
+  const email = `signup-${stamp}@example.com`;
+  const client = createClient(URL, ANON, { auth: { persistSession: false } });
+
+  const { data: signedUp, error: signUpError } = await client.auth.signUp({
+    email,
+    password: TEST_PASSWORD,
+    options: { data: { full_name: "Signup Probe", company_name: `Signup Co ${stamp}` } },
+  });
+
+  if (signUpError) fail("sign up with a password", signUpError);
+  else ok(`signed up as ${email} — a password, not a code`);
+
+  signedUp?.session
+    ? ok("and is signed in immediately, with no confirmation step in the way")
+    : fail("signUp returned no session — enable_confirmations must be off for this flow");
+
+  // handle_new_user() copies the name out of the signup metadata.
+  const { data: profile } = await admin
+    .from("user_profiles").select("full_name").eq("email", email).maybeSingle();
+  profile?.full_name === "Signup Probe"
+    ? ok("the name typed on the signup form reached user_profiles")
+    : fail(`user_profiles.full_name is ${JSON.stringify(profile?.full_name)}`);
+
+  // The portal decides the org type; create_org makes the caller its owner.
+  const { error: orgError } = await client.rpc("create_org", {
+    org_name: `Signup Co ${stamp}`, org_kind: "brand",
+  });
+  orgError ? fail("signup creates the org from the company name", orgError)
+           : ok("and the company name became an org, owned by the person who typed it");
+
+  // The minimum the form promises has to be the minimum the server enforces.
+  // A client-side minLength alone is a promise the product does not keep.
+  const { error: weak } = await createClient(URL, ANON, { auth: { persistSession: false } })
+    .auth.signUp({ email: `weak-${stamp}@example.com`, password: "abc123" });
+  weak ? ok(`a password under 8 characters is refused by the server: ${weak.message}`)
+       : fail("LEAK: the server accepted a password the signup form forbids");
+
+  // Wrong password, right address.
+  const { error: wrong } = await createClient(URL, ANON, { auth: { persistSession: false } })
+    .auth.signInWithPassword({ email, password: "not the password" });
+  wrong ? ok("a wrong password is rejected")
+        : fail("LEAK: a wrong password signed in");
+
+  const { error: right } = await createClient(URL, ANON, { auth: { persistSession: false } })
+    .auth.signInWithPassword({ email, password: TEST_PASSWORD });
+  right ? fail("sign in with the right password", right)
+        : ok("and the right one is accepted");
+
+  // "Forgot password" must not double as a way to ask who has an account.
+  const stranger = createClient(URL, ANON, { auth: { persistSession: false } });
+  const { error: unknownReset } = await stranger.auth
+    .resetPasswordForEmail(`nobody-${stamp}@example.com`);
+  unknownReset
+    ? fail(`reset for an unknown address reported an error: ${unknownReset.message}`)
+    : ok("a reset for an address with no account reports success, like any other");
+}
+
+console.log("\npassword recovery email");
+{
   let mailReachable = true;
   try {
     await fetch(`${MAIL}/api/v1/messages`);
@@ -1186,15 +1252,14 @@ console.log("\nemail sign-in");
   if (!mailReachable) {
     console.log("  –  skipped (no local mail server at " + MAIL + ")");
   } else {
-    const email = `signin-${stamp}@example.com`;
-    const client = createClient(URL, ANON, { auth: { persistSession: false } });
+    // The one email the app still sends. Nothing signs in with a code any
+    // more, but someone locked out has to be able to get back in.
+    const email = `recover-${stamp}@example.com`;
+    await admin.auth.admin.createUser({ email, password: TEST_PASSWORD, email_confirm: true });
 
-    const { error: sendError } = await client.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true },
-    });
-    if (sendError) fail("request a sign-in code", sendError);
-    else ok("code requested");
+    const client = createClient(URL, ANON, { auth: { persistSession: false } });
+    const { error: sendError } = await client.auth.resetPasswordForEmail(email);
+    sendError ? fail("request a password reset", sendError) : ok("reset requested");
 
     await new Promise((resolve) => setTimeout(resolve, 1500));
 
@@ -1204,42 +1269,39 @@ console.log("\nemail sign-in");
     );
 
     if (!message) {
-      fail("no sign-in email was delivered");
+      fail("no recovery email was delivered");
     } else {
       const body = await (await fetch(`${MAIL}/api/v1/message/${message.ID ?? message.id}`)).json();
       const html = body.HTML ?? body.html ?? "";
-      const code = (html.match(/>\s*(\d{6})\s*</) ?? [])[1];
+      const token = (html.match(/>\s*(\d{6})\s*</) ?? [])[1];
       const hasLink = /token_hash|\/auth\/v1\/verify/.test(html);
 
-      code
-        ? ok(`email carries a ${code.length}-digit code`)
-        : fail("template did not render the code — check magic_link.html");
-      hasLink
-        ? ok("email also carries a magic link, for whichever is easier")
-        : fail("email has no sign-in link");
+      hasLink ? ok("the recovery email carries a link back into the app")
+              : fail("the recovery email has no link — check magic_link.html");
 
-      if (code) {
+      if (token) {
         const { data, error: verifyError } = await client.auth.verifyOtp({
-          email,
-          token: code,
-          type: "email",
+          email, token, type: "recovery",
         });
-        if (verifyError) fail("sign in with the code", verifyError);
-        else ok(`signed in as ${data.user.email}`);
+        if (verifyError) fail("the recovery code opens a session to set a new password", verifyError);
+        else ok(`recovery signed in ${data.user.email} for long enough to choose a password`);
 
-        const { error: queryError } = await client.from("taxonomy_terms").select("slug").limit(1);
-        queryError
-          ? fail("signed-in session cannot query", queryError)
-          : ok("the session reads the database under RLS");
+        const { error: changeError } = await client.auth.updateUser({ password: "a new one 99" });
+        changeError ? fail("set a new password on the recovery session", changeError)
+                    : ok("and the new password is saved");
+
+        const { error: oldStillWorks } = await createClient(URL, ANON, { auth: { persistSession: false } })
+          .auth.signInWithPassword({ email, password: TEST_PASSWORD });
+        oldStillWorks ? ok("the old password stops working, which is the point of a reset")
+                      : fail("LEAK: the old password still signs in after a reset");
+
+        const { error: newFails } = await createClient(URL, ANON, { auth: { persistSession: false } })
+          .auth.signInWithPassword({ email, password: "a new one 99" });
+        newFails ? fail("sign in with the new password", newFails)
+                 : ok("and the new one does");
+      } else {
+        ok("no code in the recovery email — the link is the way back, and it is there");
       }
-
-      const other = createClient(URL, ANON, { auth: { persistSession: false } });
-      const { error: badCode } = await other.auth.verifyOtp({
-        email,
-        token: "000000",
-        type: "email",
-      });
-      badCode ? ok("a wrong code is rejected") : fail("LEAK: wrong code accepted");
     }
   }
 }

@@ -83,7 +83,7 @@ function check(condition, description) {
  * free-tier project sends. Handling both means this test exercises the same
  * path a real hosted user takes rather than only the local one.
  */
-async function signInEmail(email, attempts = 25) {
+async function recoveryEmail(email, attempts = 25) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     const list = await (await fetch(`${MAIL}/api/v1/messages`)).json();
     const message = (list.messages ?? list.items ?? []).find((entry) =>
@@ -203,13 +203,39 @@ async function chooseChips(page, key, count = 2) {
  * than leave a flaky step in an evidence run, fall back to clearing storage,
  * which is what closing the browser would do anyway.
  */
+/**
+ * Sign out, and prove it.
+ *
+ * Waiting for the login screen is not enough. It renders the moment the
+ * status flips, while the stored token is still being cleared — so a run that
+ * navigated immediately afterwards was signed straight back in as the
+ * previous account, three acts later, with no error in between. What actually
+ * settles the question is whether a token is still in storage.
+ */
+async function noSessionLeft(page) {
+  return page.evaluate(() => {
+    const held = (store) => {
+      try {
+        return Object.keys(store).some((k) => k.startsWith("sb-") && k.includes("auth-token"));
+      } catch {
+        return false;
+      }
+    };
+    return !held(localStorage) && !held(sessionStorage);
+  });
+}
+
 async function signOutFully(page) {
   await page.goto(APP);
   await page.waitForTimeout(1000);
   try {
     await clickButton(page, "sign out");
     await waitFor(page, 'input[type="email"]', 8000);
-    return;
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+      if (await noSessionLeft(page)) return;
+      await page.waitForTimeout(200);
+    }
   } catch {
     // fall through
   }
@@ -220,47 +246,68 @@ async function signOutFully(page) {
   await waitFor(page, 'input[type="email"]', 25000);
 }
 
-async function signIn(page, email, who) {
-  await page.goto(APP);
-  await waitFor(page, 'input[type="email"]');
+/** Every account in the walkthrough uses the same one, at the length the form promises. */
+const PASSWORD = "walkthrough 8";
+
+const portalUrl = (accountType) => (accountType === "factory" ? `${APP}?portal=factory` : APP);
+
+/**
+ * Sign up on the designed screen.
+ *
+ * One form: name, company, email, password. Which portal it is rendered in
+ * decides whether the company is a brand or a vendor — so the account, the
+ * person's name and the organisation are all created by this one submit, and
+ * there is no "which side are you on?" afterwards. That question used to be a
+ * separate screen and is now answered by the URL.
+ */
+async function signUp(page, { email, fullName, companyName, accountType, who }) {
+  await page.goto(portalUrl(accountType));
+  await waitFor(page, ".auth-card", 30000);
+  await record(page, `${who} sign-up`, `the designed ${accountType === "factory" ? "vendor" : "brand"} portal`);
+
+  await clickButton(page, "create an account");
+  await waitFor(page, 'input[name="companyName"]', 10000);
+
+  await page.locator('input[name="fullName"]').first().fill(fullName);
+  await page.locator('input[name="companyName"]').first().fill(companyName);
+  await page.locator('input[name="email"]').first().fill(email);
+  await page.locator('input[name="password"]').first().fill(PASSWORD);
+  await record(page, `${who} account details`, "name, company, email and password on one form");
+
+  await clickButton(page, "create account");
+
+  // The org is created after the session exists, so the landing is onboarding
+  // rather than an org chooser.
+  const deadline = Date.now() + 40000;
+  while (Date.now() < deadline) {
+    if ((await page.locator(".auth-card").count()) === 0) break;
+    await page.waitForTimeout(250);
+  }
+  if ((await page.locator(".auth-card").count()) > 0) {
+    const shown = await page.locator(".auth-card").innerText().catch(() => "");
+    throw new Error(`${who} did not get past signup: ${shown.slice(0, 200)}`);
+  }
+  await record(page, `${who} signed up`, "an account, a name and a company in one submit");
+}
+
+/**
+ * Log in on the designed screen.
+ *
+ * Three landings: the dashboard for someone with a company, an offer to join
+ * for someone who was invited, and the org chooser for an account whose org
+ * creation did not complete. Someone invited must NOT be asked to start a
+ * company of their own, so that stays a distinct state.
+ */
+async function signIn(page, email, who, accountType = "brand") {
+  await page.goto(portalUrl(accountType));
+  await waitFor(page, 'input[name="email"]', 30000);
   await record(page, `${who} sign-in`, "cold start, no session");
 
-  await page.locator('input[type="email"]').first().fill(email);
-  await clickButton(page, "email me a sign-in link");
+  await page.locator('input[name="email"]').first().fill(email);
+  await page.locator('input[name="password"]').first().fill(PASSWORD);
+  await clickButton(page, "log in");
 
-  // Supabase throttles repeat requests per address (max_frequency). The screen
-  // says exactly how long to wait, so wait that long and ask again — which is
-  // what a real person does, and worth exercising.
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    try {
-      await waitFor(page, 'input[placeholder="000000"]', 6000);
-      break;
-    } catch {
-      const message = await page.locator(".gate-error").innerText().catch(() => "");
-      const seconds = Number((message.match(/after (\d+) seconds?/) ?? [])[1] ?? 0);
-      if (!seconds && !/security purposes/i.test(message)) throw new Error(`sign-in stalled: ${message || "no code field"}`);
-      await page.waitForTimeout((seconds + 2) * 1000);
-      await clickButton(page, "email me a sign-in link");
-    }
-  }
-  await waitFor(page, 'input[placeholder="000000"]', 20000);
-  await record(page, `${who} code requested`, email);
-
-  const { code, link } = await signInEmail(email);
-
-  if (code) {
-    await page.locator('input[placeholder="000000"]').first().fill(code);
-    await clickButton(page, "sign in");
-  } else {
-    // No code in the email, so follow the link the way a hosted user would.
-    await page.goto(link);
-  }
-
-  // Three landings now, not two: the org chooser for a first-time user, the
-  // dashboard for a returning one, and — since invitations became visible —
-  // an offer to join an organisation that already exists. Someone invited must
-  // NOT be asked to create one of their own, so this is a distinct state.
-  const deadline = Date.now() + 30000;
+  const deadline = Date.now() + 40000;
   let landed = null;
   while (Date.now() < deadline && !landed) {
     for (const heading of await eachText(page, "h1")) {
@@ -269,23 +316,16 @@ async function signIn(page, email, who) {
       if (text.includes("you have been invited")) landed = "invited";
     }
     if (!landed && (await page.locator(".home").count()) > 0) landed = "returning";
+    if (!landed && (await page.locator('[data-testid="accept-invitation"]').count()) > 0) landed = "invited";
     if (!landed) await page.waitForTimeout(250);
   }
-  if (!landed) throw new Error(`${who} did not reach a signed-in screen`);
+  if (!landed) {
+    const shown = await page.locator(".auth-card, .gate-card").first().innerText().catch(() => "");
+    throw new Error(`${who} did not reach a signed-in screen: ${shown.slice(0, 200)}`);
+  }
 
-  await record(
-    page,
-    `${who} signed in`,
-    code ? `code ${code} accepted — no password anywhere` : "magic link followed — no password anywhere",
-  );
+  await record(page, `${who} signed in`, "email and password, on the designed screen");
   return landed;
-}
-
-async function createOrg(page, kind, name, who) {
-  await clickButton(page, `i’m a ${kind}`);
-  await page.locator(".gate-card input[type=text]").first().fill(name);
-  await record(page, `${who} organisation`, `${kind}: ${name}`);
-  await clickButton(page, "continue");
 }
 
 async function advance(page, nextHeading) {
@@ -331,8 +371,13 @@ async function main() {
   try {
     // ================= FACTORY =================
     console.log("\nFACTORY");
-    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory");
-    await createOrg(page, "factory", factoryName, "Factory");
+    await signUp(page, {
+      email: `e2e-factory-${stamp}@example.com`,
+      fullName: "Ana Factory",
+      companyName: factoryName,
+      accountType: "factory",
+      who: "Factory",
+    });
     await waitForHeading(page, "factory basics");
 
     await field(page, "factory-name").fill(factoryName);
@@ -451,8 +496,13 @@ async function main() {
     // ================= BRAND =================
     console.log("\nBRAND");
     const brandEmail = `e2e-brand-${stamp}@example.com`;
-    await signIn(page, brandEmail, "Brand");
-    await createOrg(page, "brand", brandName, "Brand");
+    await signUp(page, {
+      email: brandEmail,
+      fullName: "Remy Brand",
+      companyName: brandName,
+      accountType: "brand",
+      who: "Brand",
+    });
     await waitForHeading(page, "brand basics");
 
     await field(page, "brand-name").fill(brandName);
@@ -659,7 +709,7 @@ async function main() {
     console.log("\nFACTORY FINDS IT");
     await signOutFully(page);
 
-    const landed = await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory again");
+    const landed = await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory again", "factory");
     check(landed === "returning", "signing back in skips onboarding and lands on the dashboard");
     await waitFor(page, ".home", 30000);
     await record(page, "Factory dashboard", "still unverified, so it may look but not bid");
@@ -698,7 +748,7 @@ async function main() {
     console.log("\nADMIN VERIFIES");
     const adminEmail = `e2e-admin-${stamp}@example.com`;
     const { data: adminUser } = await db.auth.admin.createUser({
-      email: adminEmail, email_confirm: true,
+      email: adminEmail, password: PASSWORD, email_confirm: true,
     });
     await db.from("platform_admins").insert({ user_id: adminUser.user.id });
 
@@ -766,7 +816,7 @@ async function main() {
     // ================= THE QUOTE =================
     console.log("\nFACTORY QUOTES");
     await signOutFully(page);
-    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory quoting");
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory quoting", "factory");
 
     await page.goto(`${APP}/browse/${publishedRfq.id}`);
     await waitForHeading(page, rfqTitle.slice(0, 20));
@@ -967,7 +1017,7 @@ async function main() {
     // ================= THE LOSER HEARS =================
     console.log("\nTHE LOSER HEARS");
     await signOutFully(page);
-    await signIn(page, `e2e-factory-${stamp}@example.com`, "Winning factory");
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Winning factory", "factory");
     await waitFor(page, ".home", 30000);
 
     await waitFor(page, '[data-testid="notifications"]', 20000);
@@ -1107,7 +1157,7 @@ async function main() {
     // The negative half of the pair that carries this whole phase.
     console.log("\nTHE FACTORY IS NOT TOLD TO START");
     await signOutFully(page);
-    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory waiting");
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory waiting", "factory");
 
     const secondStep = draftSteps[1];
     await page.goto(`${APP}/orders/${bornOrder.id}`);
@@ -1159,7 +1209,7 @@ async function main() {
     // admin's click in between. This pair is the whole phase.
     console.log("\nAND NOW IT MAY START");
     await signOutFully(page);
-    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory told to start");
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory told to start", "factory");
 
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-row"]', 25000);
@@ -1365,7 +1415,7 @@ async function main() {
     check(invited.status === "pending", "the invitation is stored and waiting");
     await record(page, "Invited", "they see it the next time they sign in");
 
-    await db.auth.admin.createUser({ email: colleagueEmail, email_confirm: true });
+    await db.auth.admin.createUser({ email: colleagueEmail, password: PASSWORD, email_confirm: true });
 
     await signOutFully(page);
     await signIn(page, colleagueEmail, "Colleague");
@@ -1456,6 +1506,57 @@ async function main() {
     const { data: draftLeak } = await db
       .from("rfqs").select("id").eq("brand_org_id", brandOrg.id).eq("status", "draft");
     check(true, `${draftLeak?.length ?? 0} draft request(s) exist and never appeared in browse`);
+
+    // ================= LOCKED OUT =================
+    // The design's "Forgot password?" link, followed the whole way: request,
+    // email, link, new password, and the old one no longer working. A reset
+    // that leaves the old password valid is not a reset.
+    console.log("\nLOCKED OUT");
+    const lockedEmail = `e2e-locked-${stamp}@example.com`;
+    await db.auth.admin.createUser({
+      email: lockedEmail, password: PASSWORD, email_confirm: true,
+    });
+
+    await signOutFully(page);
+    await page.goto(APP);
+    await waitFor(page, ".auth-card", 30000);
+    await clickButton(page, "forgot password");
+    await waitFor(page, 'input[type="email"]', 15000);
+    await page.locator('input[type="email"]').first().fill(lockedEmail);
+    await clickButton(page, "email me a reset link");
+    await page.waitForTimeout(2500);
+
+    const resetShown = await page.locator(".gate-card, .auth-card").first().innerText().catch(() => "");
+    check(!/no account|not found|unknown/i.test(resetShown),
+      "the reset form never says whether an account exists — it is not a customer lookup");
+    await record(page, "Forgot password", "asked for, without confirming who is a customer");
+
+    const { link: resetLink } = await recoveryEmail(lockedEmail);
+    check(Boolean(resetLink), "a reset link was emailed");
+
+    await page.goto(resetLink);
+    await waitForHeading(page, "choose a new password");
+    await record(page, "Choose a new password", "the link lands here, not on the dashboard");
+
+    const newPassword = "a different 9";
+    await page.locator('input[type="password"]').first().fill(newPassword);
+    await clickButton(page, "save password");
+    await page.waitForTimeout(4000);
+    check((await page.locator("h1").first().innerText().catch(() => "")).toLowerCase()
+            !== "choose a new password",
+      "saving the new password lets them through");
+
+    const anon = createClient(
+      process.env.SUPABASE_URL ?? stack.API_URL,
+      process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY,
+      { auth: { persistSession: false } },
+    );
+    const { error: oldPassword } = await anon.auth
+      .signInWithPassword({ email: lockedEmail, password: PASSWORD });
+    check(Boolean(oldPassword), "the old password no longer works");
+    const { error: newPasswordFails } = await anon.auth
+      .signInWithPassword({ email: lockedEmail, password: newPassword });
+    check(!newPasswordFails, "and the new one does");
 
     console.log(failures ? `\n${failures} assertion(s) failed\n` : "\nAll end-to-end assertions passed\n");
   } catch (error) {

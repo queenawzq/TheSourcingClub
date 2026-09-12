@@ -12,11 +12,42 @@ function GoogleMark() {
   );
 }
 
-export function AuthScreen({ accountType, initialMode = "login", onModeChange, onAuthenticate }) {
+/**
+ * The login and signup screen for both portals.
+ *
+ * Mounted twice, like every other designed screen: the prototypes pass nothing
+ * and it behaves as it always did — fill anything in, press the button, land
+ * on the next screen. app.html passes `onAuthenticate` an async function and
+ * the form becomes real, with the submitted values, a busy state and whatever
+ * the server said.
+ *
+ * The fields are uncontrolled and read from the form on submit rather than
+ * held in state per keystroke. That keeps the prototype's behaviour identical
+ * and the diff small.
+ */
+export function AuthScreen({
+  accountType,
+  initialMode = "login",
+  onModeChange,
+  onAuthenticate,
+  onForgotPassword,
+  busy = false,
+  error = null,
+  notice = null,
+  googleEnabled = true,
+  minPasswordLength = 8,
+  // Both links point at the prototypes by default, which is where they lead
+  // today. app.html passes its own so the live portals switch to each other
+  // rather than dropping a signed-up user into a mock.
+  homeHref,
+  switchPortalHref,
+}) {
   const [mode, setMode] = useState(initialMode);
   const [showPassword, setShowPassword] = useState(false);
   const isSignup = mode === "signup";
   const isFactory = accountType === "factory";
+  const home = homeHref ?? (isFactory ? "/factory-prototype.html?screen=login" : "/prototype.html?screen=login");
+  const otherPortal = switchPortalHref ?? (isFactory ? "/prototype.html?screen=login" : "/factory-prototype.html?screen=login");
   const audience = isFactory ? "factory" : "brand";
   const audienceLabel = isFactory ? "vendor" : "brand";
 
@@ -29,13 +60,25 @@ export function AuthScreen({ accountType, initialMode = "login", onModeChange, o
 
   const submit = (event) => {
     event.preventDefault();
-    onAuthenticate?.({ mode });
+    if (busy) return;
+    // Read the values off the form itself. The prototype ignores them, which
+    // is why they were never collected before.
+    const form = new FormData(event.currentTarget);
+    onAuthenticate?.({
+      mode,
+      accountType,
+      email: String(form.get("email") ?? ""),
+      password: String(form.get("password") ?? ""),
+      fullName: String(form.get("fullName") ?? ""),
+      companyName: String(form.get("companyName") ?? ""),
+      keepSignedIn: form.get("keepSignedIn") === "on",
+    });
   };
 
   return (
     <main className={`auth-page auth-page-${audience}`}>
       <section className="auth-story" aria-label={`${audienceLabel} account benefits`}>
-        <a className="auth-logo" href={isFactory ? "/factory-prototype.html?screen=login" : "/prototype.html?screen=login"}>
+        <a className="auth-logo" href={home}>
           <img src="/assets/logo.svg" alt="The Sourcing Club" />
         </a>
         <div className="auth-story-copy">
@@ -62,48 +105,57 @@ export function AuthScreen({ accountType, initialMode = "login", onModeChange, o
             <p>{isSignup ? `Set up your ${audienceLabel} workspace and continue to your profile.` : `Log in to continue to your ${audienceLabel} workspace.`}</p>
           </header>
 
-          <button className="auth-google-button" type="button" onClick={() => onAuthenticate?.({ mode, provider: "google" })}>
-            <GoogleMark />
-            Continue with Google
-          </button>
+          {googleEnabled && (
+            <>
+              <button className="auth-google-button" type="button" disabled={busy} onClick={() => onAuthenticate?.({ mode, accountType, provider: "google" })}>
+                <GoogleMark />
+                Continue with Google
+              </button>
 
-          <div className="auth-divider"><span>or continue with email</span></div>
+              <div className="auth-divider"><span>or continue with email</span></div>
+            </>
+          )}
 
           <form className="auth-form" onSubmit={submit}>
             {isSignup && (
               <div className="auth-field-row">
                 <label className="auth-field">
                   <span>Your name</span>
-                  <input type="text" placeholder="Your full name" autoComplete="name" required />
+                  <input type="text" name="fullName" placeholder="Your full name" autoComplete="name" required />
                 </label>
                 <label className="auth-field">
                   <span>{isFactory ? "Company name" : "Brand name"}</span>
-                  <input type="text" placeholder={isFactory ? "Your company" : "Your brand"} autoComplete="organization" required />
+                  <input type="text" name="companyName" placeholder={isFactory ? "Your company" : "Your brand"} autoComplete="organization" required />
                 </label>
               </div>
             )}
 
             <label className="auth-field">
               <span>Work email</span>
-              <input type="email" placeholder="you@company.com" autoComplete="email" required />
+              <input type="email" name="email" placeholder="you@company.com" autoComplete="email" required />
             </label>
 
             <label className="auth-field">
               <span>Password</span>
               <span className="auth-password-control">
-                <input type={showPassword ? "text" : "password"} placeholder={isSignup ? "At least 8 characters" : "Enter your password"} minLength={isSignup ? 8 : undefined} autoComplete={isSignup ? "new-password" : "current-password"} required />
+                <input type={showPassword ? "text" : "password"} name="password" placeholder={isSignup ? `At least ${minPasswordLength} characters` : "Enter your password"} minLength={isSignup ? minPasswordLength : undefined} autoComplete={isSignup ? "new-password" : "current-password"} required />
                 <button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Hide" : "Show"}</button>
               </span>
             </label>
 
             {!isSignup && (
               <div className="auth-form-options">
-                <label><input type="checkbox" /> <span>Keep me logged in</span></label>
-                <button type="button">Forgot password?</button>
+                <label><input type="checkbox" name="keepSignedIn" defaultChecked /> <span>Keep me logged in</span></label>
+                <button type="button" onClick={() => onForgotPassword?.()}>Forgot password?</button>
               </div>
             )}
 
-            <button className="auth-submit" type="submit">{isSignup ? "Create account" : "Log in"}</button>
+            {notice && <p className="auth-notice" role="status">{notice}</p>}
+            {error && <p className="auth-error" role="alert">{error.message ?? String(error)}</p>}
+
+            <button className="auth-submit" type="submit" disabled={busy}>
+              {busy ? (isSignup ? "Creating your account…" : "Logging in…") : isSignup ? "Create account" : "Log in"}
+            </button>
           </form>
 
           {isSignup && <p className="auth-legal">By creating an account, you agree to our <a href="#terms">Terms</a> and <a href="#privacy">Privacy Policy</a>.</p>}
@@ -114,7 +166,7 @@ export function AuthScreen({ accountType, initialMode = "login", onModeChange, o
           </p>
         </div>
 
-        <a className="auth-portal-switch" href={isFactory ? "/prototype.html?screen=login" : "/factory-prototype.html?screen=login"}>
+        <a className="auth-portal-switch" href={otherPortal}>
           {isFactory ? "Looking for the brand portal?" : "Are you a factory or trading company?"} <strong>Switch portal</strong>
         </a>
       </section>

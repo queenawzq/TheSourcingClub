@@ -100,7 +100,7 @@ Phase 1 of the backend lives on `feature/supabase-backend`. Schema, access rules
 supabase start        # local stack in Docker; prints the URL + keys
 npm run db:reset      # re-apply every migration from scratch
 npm run db:test       # pgTAP access-rule suites (180 assertions, five files)
-npm run smoke         # 133 checks through supabase-js: embeds, RPC signatures, grants
+npm run smoke         # 138 checks through supabase-js: embeds, RPC signatures, grants
 npm run check:css     # fails on a CSS variable used but never defined (runs in build)
 npm run check:prototype  # the prototype must still render with NO database
 npm run taxonomy      # regenerate migration 007 from the seed JSON
@@ -209,10 +209,48 @@ a company-level verdict and a file-level one cannot contradict each other.
 
 ### Auth
 
-Passwordless. The primary method is a one-time code emailed to the user; nothing in the app calls `signInWithPassword` and no account ever has a password set. Google is coded and ready but disabled until credentials exist — set the two secrets in `supabase/.env`, flip `enabled` in `[auth.external.google]`, and set `VITE_GOOGLE_AUTH_ENABLED=true` so the button appears.
+**Email and password**, because `src/shared/AuthScreen.jsx` is the specification
+and the backend answers to it rather than the other way round.
 
-Local emails land in Mailpit at http://127.0.0.1:54324 and carry both a six-digit code and a link, from `supabase/templates/magic_link.html`.
+- **Signing up is one step.** The design collects a person's name and their
+  company's name on the same form, and the portal it is rendered in says what
+  kind of company that is — `app.html` for brands, `app.html?portal=factory`
+  for vendors. So one submit creates the account, the profile name and the
+  organisation. There is no separate "which side are you on?" question; that
+  screen survives only as the recovery path for a signup whose org creation
+  failed, and for Google.
+- **The minimum is eight characters in two places and they must agree.**
+  `minimum_password_length` in `supabase/config.toml` and
+  `MIN_PASSWORD_LENGTH` in `src/lib/auth.jsx`. A client-side `minLength` the
+  server does not share is a promise the product does not keep.
+- **"Keep me logged in" is real.** Checked, the session goes to
+  `localStorage`; unchecked, to `sessionStorage`, and dies with the tab. The
+  storage adapter in `src/lib/supabase.js` reads *both* on the way out, so a
+  session written under one setting is not lost when the setting changes.
+- **Signing out clears the stored token before awaiting the network call.**
+  The login screen renders the instant the status flips — deliberately, since
+  clearing orgs while the shell thinks it is signed in crashes it to a blank
+  page — and anyone navigating in that gap was previously signed back in by
+  the token still on disk. `signOutFully` in `scripts/e2e.mjs` now polls
+  storage rather than trusting the login form to have appeared.
+- **"Forgot password" always reports success.** Saying "no account with that
+  email" turns the form into a way to ask whether a company is a customer, one
+  address at a time.
+- **A one-time code is still emailed, but only for recovery.** Nothing signs in
+  with a code any more. The reset link lands on `app.html?reset=1`, which is
+  allow-listed in `config.toml` as an exact URL.
+- **Google is coded and hidden.** The design shows the button unconditionally;
+  it appears only once `VITE_GOOGLE_AUTH_ENABLED=true`, because a button that
+  opens Google and returns an error is worse than one that is not there. To
+  turn it on: set the two secrets in `supabase/.env`, flip `enabled` in
+  `[auth.external.google]`, set the env var.
 
-**Hosted sends a link only, and rarely.** Supabase rejects custom email templates on a free-tier project using the built-in sender, and that sender allows roughly two emails an hour — fine for a solo check, useless for testing with several people. Configuring custom SMTP (Resend, Postmark, SES) fixes both at once: hosted emails get the code back, and the rate limit goes away.
+Local emails land in Mailpit at http://127.0.0.1:54324, from
+`supabase/templates/magic_link.html`.
+
+**Hosted sends rarely.** Supabase rejects custom email templates on a free-tier
+project using the built-in sender, and that sender allows roughly two emails an
+hour. That now only affects password resets rather than every sign-in, but
+configuring custom SMTP (Resend, Postmark, SES) still fixes both at once.
 
 Push auth settings to the hosted project with `./scripts/push-config.sh --project-ref <ref>`, which strips the template block the free tier rejects. Once SMTP is configured, delete that stripping and use `supabase config push` directly.

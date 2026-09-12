@@ -165,8 +165,13 @@ additional_redirect_urls = [
   "http://localhost:5173",
   "http://127.0.0.1:5173/app.html",
   "http://localhost:5173/app.html",
+  # Where "forgot password" lands. An exact match is required, so the query
+  # string the reset link carries is listed rather than assumed.
+  "http://127.0.0.1:5173/app.html?reset=1",
+  "http://localhost:5173/app.html?reset=1",
   "https://the-sourcing-club.vercel.app",
   "https://the-sourcing-club.vercel.app/app.html",
+  "https://the-sourcing-club.vercel.app/app.html?reset=1",
   # Vercel gives every preview deploy its own hostname.
   "https://the-sourcing-club-*-john-maheswarans-projects.vercel.app/**",
 ]
@@ -188,7 +193,12 @@ enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
 enable_manual_linking = false
 # Passwords shorter than this value will be rejected as weak. Minimum 6, recommended 8 or more.
-minimum_password_length = 6
+#
+# Eight, because the designed signup form says "At least 8 characters". A
+# client-side minLength the server does not share is a promise the product
+# does not keep — and the one that matters is the server's. MIN_PASSWORD_LENGTH
+# in src/lib/auth.jsx mirrors this; move them together.
+minimum_password_length = 8
 # Passwords that do not meet the following requirements will be rejected as weak. Supported values
 # are: `letters_digits`, `lower_upper_letters_digits`, `lower_upper_letters_digits_symbols`
 password_requirements = ""
@@ -235,9 +245,10 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-# Email is the primary sign-in method: a one-time code, never a password.
-# Enabling this does NOT create a password path — nothing in the app ever calls
-# signInWithPassword, and no account has a password set.
+#
+# Email and password is the sign-in method, per src/shared/AuthScreen.jsx.
+# A one-time code is still emailed, but only by "forgot password" — it is a way
+# back into an account, not a way past having one.
 enable_signup = true
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.

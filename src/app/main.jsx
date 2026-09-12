@@ -35,6 +35,7 @@ import OrderList from "./order/OrderList.jsx";
 // them pulls in the prototype stylesheet, which is the point — the design is
 // the CSS.
 import { ProjectsScreen, RfqsScreen } from "../prototype/main.jsx";
+import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 import { createLiveAdapter } from "./live-adapter.js";
 import OrderDetail from "./order/OrderDetail.jsx";
@@ -79,133 +80,203 @@ function SetupNeeded() {
   );
 }
 
+/**
+ * Sign in and sign up, on the designed screen.
+ *
+ * src/shared/AuthScreen.jsx is the same component the two prototypes mount;
+ * here it is given real handlers. Which portal you are standing in decides
+ * what kind of company a signup creates — `?portal=factory` for vendors,
+ * anything else for brands — and that is the whole of the question the app
+ * used to ask separately as "which side are you on?".
+ *
+ * Three states share the screen: log in, sign up, and the password reset the
+ * "forgot password" link starts. Reset is a mode rather than a page because
+ * the link lands back on app.html and there is nothing else for it to land on.
+ */
+function portalFromUrl() {
+  const portal = new URLSearchParams(window.location.search).get("portal");
+  return portal === "factory" || portal === "vendor" ? "factory" : "brand";
+}
+
 function SignIn() {
-  const { sendEmailCode, verifyEmailCode, signInWithGoogle, googleEnabled, error } = useAuth();
+  const {
+    signInWithPassword,
+    signUpWithPassword,
+    requestPasswordReset,
+    signInWithGoogle,
+    googleEnabled,
+    minPasswordLength,
+    clearError,
+    error,
+  } = useAuth();
 
-  const [stage, setStage] = useState("email");
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
+  const params = new URLSearchParams(window.location.search);
+  const accountType = portalFromUrl();
+
+  const [mode, setMode] = useState(params.get("mode") === "signup" ? "signup" : "login");
   const [busy, setBusy] = useState(false);
-  const [resentAt, setResentAt] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [resetFor, setResetFor] = useState(null);
 
-  async function requestCode(event) {
-    event?.preventDefault();
-    if (busy || !email.includes("@")) return;
-
-    setBusy(true);
-    const sent = await sendEmailCode(email);
-    setBusy(false);
-    if (sent) {
-      setStage("code");
-      setResentAt(Date.now());
+  async function authenticate(submitted) {
+    if (submitted.provider === "google") {
+      await signInWithGoogle();
+      return;
     }
-  }
-
-  async function submitCode(event) {
-    event.preventDefault();
-    if (busy || code.trim().length < 6) return;
 
     setBusy(true);
-    await verifyEmailCode(email, code);
+    setNotice(null);
+    if (submitted.mode === "signup") {
+      await signUpWithPassword({
+        email: submitted.email,
+        password: submitted.password,
+        fullName: submitted.fullName,
+        companyName: submitted.companyName,
+        accountType: submitted.accountType,
+      });
+    } else {
+      await signInWithPassword({
+        email: submitted.email,
+        password: submitted.password,
+        keepSignedIn: submitted.keepSignedIn,
+      });
+    }
+    // No navigation on success: the session changes, AuthProvider re-renders,
+    // and App picks the next screen. Setting one here would race that.
     setBusy(false);
   }
 
-  if (stage === "code") {
+  async function sendReset(email) {
+    setBusy(true);
+    await requestPasswordReset(email);
+    setBusy(false);
+    setResetFor(null);
+    // Deliberately the same message whether or not an account exists. Saying
+    // otherwise turns this box into a way to ask who your customers are.
+    setNotice(`If an account exists for ${email}, a reset link is on its way.`);
+  }
+
+  if (resetFor !== null) {
     return (
       <div className="gate">
-        <form className="gate-card" onSubmit={submitCode}>
+        <form
+          className="gate-card"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!busy && resetFor.includes("@")) sendReset(resetFor);
+          }}
+        >
           <p className="gate-eyebrow">The Sourcing Club</p>
-          <h1>Check your email</h1>
+          <h1>Reset your password</h1>
           <p className="gate-note">
-            We sent a sign-in email to <strong>{email}</strong>. Open the link in it,
-            or type the code below if your email has one. Either expires in an hour.
+            Tell us the address on the account and we will email a link to set a new
+            password.
           </p>
 
           <label className="field">
-            <span>Sign-in code</span>
+            <span>Work email</span>
             <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
+              type="email"
+              autoComplete="email"
               autoFocus
-              maxLength={8}
-              className="code-input"
-              value={code}
-              onChange={(event) => setCode(event.target.value.replace(/[^0-9]/g, ""))}
-              placeholder="000000"
+              value={resetFor}
+              onChange={(event) => setResetFor(event.target.value)}
+              placeholder="you@company.com"
             />
           </label>
 
-          <button type="submit" className="primary-btn" disabled={busy || code.length < 6}>
-            {busy ? "Checking…" : "Sign in"}
+          <button type="submit" className="primary-btn" disabled={busy || !resetFor.includes("@")}>
+            {busy ? "Sending…" : "Email me a reset link"}
+          </button>
+
+          <button
+            type="button"
+            className="quiet-btn"
+            onClick={() => {
+              setResetFor(null);
+              clearError();
+            }}
+          >
+            Back to log in
           </button>
 
           {error ? <p className="gate-error">{error.message}</p> : null}
-
-          <div className="gate-row">
-            <button
-              type="button"
-              className="quiet-btn"
-              onClick={() => {
-                setStage("email");
-                setCode("");
-              }}
-            >
-              Use a different address
-            </button>
-            <button
-              type="button"
-              className="quiet-btn"
-              disabled={busy || (resentAt && Date.now() - resentAt < 20000)}
-              onClick={requestCode}
-            >
-              Resend
-            </button>
-          </div>
         </form>
       </div>
     );
   }
 
   return (
+    <AuthScreen
+      accountType={accountType}
+      initialMode={mode}
+      busy={busy}
+      error={error}
+      notice={notice}
+      googleEnabled={googleEnabled}
+      minPasswordLength={minPasswordLength}
+      homeHref="/"
+      switchPortalHref={accountType === "factory" ? "/app.html" : "/app.html?portal=factory"}
+      onModeChange={(next) => {
+        setMode(next);
+        setNotice(null);
+        clearError();
+      }}
+      onForgotPassword={() => {
+        clearError();
+        setResetFor("");
+      }}
+      onAuthenticate={authenticate}
+    />
+  );
+}
+
+/**
+ * The landing for a password-reset link.
+ *
+ * The link signs the user in — that is how Supabase recovery works — so this
+ * screen is reachable only with a live session, and its whole job is to set a
+ * password before letting them go any further.
+ */
+function SetNewPassword({ onDone }) {
+  const { updatePassword, minPasswordLength, error } = useAuth();
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event) {
+    event.preventDefault();
+    if (busy || password.length < minPasswordLength) return;
+    setBusy(true);
+    const changed = await updatePassword(password);
+    setBusy(false);
+    if (changed) onDone();
+  }
+
+  return (
     <div className="gate">
-      <form className="gate-card" onSubmit={requestCode}>
+      <form className="gate-card" onSubmit={submit}>
         <p className="gate-eyebrow">The Sourcing Club</p>
-        <h1>Sign in</h1>
-        <p className="gate-note">
-          We email you a sign-in link. No password to set, and nothing to remember.
-        </p>
+        <h1>Choose a new password</h1>
+        <p className="gate-note">At least {minPasswordLength} characters.</p>
 
         <label className="field">
-          <span>Email address</span>
+          <span>New password</span>
           <input
-            type="email"
-            autoComplete="email"
+            type="password"
+            autoComplete="new-password"
             autoFocus
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@yourbrand.com"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
           />
         </label>
 
-        <button type="submit" className="primary-btn" disabled={busy || !email.includes("@")}>
-          {busy ? "Sending…" : "Email me a sign-in link"}
+        <button
+          type="submit"
+          className="primary-btn"
+          disabled={busy || password.length < minPasswordLength}
+        >
+          {busy ? "Saving…" : "Save password"}
         </button>
-
-        {googleEnabled ? (
-          <>
-            <p className="gate-divider"><span>or</span></p>
-            <button type="button" className="google-btn" onClick={signInWithGoogle}>
-              <svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">
-                <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z" />
-                <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.83.86-3.04.86-2.34 0-4.32-1.58-5.03-3.7H.96v2.33A9 9 0 0 0 9 18Z" />
-                <path fill="#FBBC05" d="M3.97 10.72a5.4 5.4 0 0 1 0-3.44V4.95H.96a9 9 0 0 0 0 8.1l3.01-2.33Z" />
-                <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.95l3.01 2.33C4.68 5.16 6.66 3.58 9 3.58Z" />
-              </svg>
-              Continue with Google
-            </button>
-          </>
-        ) : null}
 
         {error ? <p className="gate-error">{error.message}</p> : null}
       </form>
@@ -728,9 +799,33 @@ function AdminIndex() {
 function App() {
   const { status, error, activeOrg } = useAuth();
 
+  /**
+   * A password-reset link signs the user in and comes back with ?reset=1.
+   * Without this the session would simply drop them at their dashboard and
+   * the password they came to change would stay as it was.
+   *
+   * Held in state, not read from the URL each render, so clearing the query
+   * string after saving does not bounce them back here.
+   */
+  const [resetting, setResetting] = useState(
+    () => new URLSearchParams(window.location.search).get("reset") === "1",
+  );
+
   if (status === "unconfigured") return <SetupNeeded />;
   if (status === "loading") return <Loading label="Checking your session…" />;
   if (status === "signed-out") return <SignIn />;
+  if (resetting) {
+    return (
+      <SetNewPassword
+        onDone={() => {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("reset");
+          window.history.replaceState(null, "", url.toString());
+          setResetting(false);
+        }}
+      />
+    );
+  }
   // Reachable before an org exists, and deliberately so.
   if (status === "no-org") return <AdminGate><ChooseOrgType /></AdminGate>;
   if (status === "error") {

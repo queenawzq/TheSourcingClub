@@ -19,15 +19,90 @@ const publishableKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
  */
 export const isConfigured = Boolean(url && publishableKey);
 
+/**
+ * "Keep me logged in", made real.
+ *
+ * The designed login screen offers the choice, so it has to mean something.
+ * Checked, the session goes to localStorage and survives closing the browser;
+ * unchecked, it goes to sessionStorage and dies with the tab — which is what
+ * someone ticking nothing on a shared machine is asking for.
+ *
+ * The preference itself lives in localStorage, because it has to be readable
+ * before the session is restored in order to know where to look for it. Reads
+ * check both stores regardless: a session written under one setting must not
+ * disappear because the preference changed after it was saved.
+ *
+ * Every accessor is wrapped. Storage throws rather than returning null in a
+ * locked-down browser, and an exception here happens before any error
+ * boundary exists — it is a white page, not a message.
+ */
+const KEEP_KEY = "tscKeepSignedIn";
+
+const safe = (fn, fallback = null) => {
+  try {
+    return fn();
+  } catch {
+    return fallback;
+  }
+};
+
+export function setKeepSignedIn(keep) {
+  safe(() => window.localStorage.setItem(KEEP_KEY, keep ? "1" : "0"));
+}
+
+const keepSignedIn = () => safe(() => window.localStorage.getItem(KEEP_KEY), "1") !== "0";
+
+const sessionStorageAdapter = {
+  getItem(key) {
+    // Both stores, always. Otherwise a session written before the preference
+    // changed becomes unreachable and the user is silently signed out.
+    return safe(() => window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key));
+  },
+  setItem(key, value) {
+    if (keepSignedIn()) {
+      safe(() => window.localStorage.setItem(key, value));
+      safe(() => window.sessionStorage.removeItem(key));
+    } else {
+      safe(() => window.sessionStorage.setItem(key, value));
+      safe(() => window.localStorage.removeItem(key));
+    }
+  },
+  removeItem(key) {
+    safe(() => window.localStorage.removeItem(key));
+    safe(() => window.sessionStorage.removeItem(key));
+  },
+};
+
+/**
+ * Drop the stored session now, rather than when the network call comes back.
+ *
+ * signOut() renders the login screen immediately — deliberately, because
+ * clearing orgs while the shell still thinks it is signed in crashes it to a
+ * blank page. But the stored token lives until supabase's own signOut
+ * resolves, and anyone who navigates in that window is signed straight back
+ * in by the session that is still on disk.
+ */
+export function clearStoredSession() {
+  for (const store of [window.localStorage, window.sessionStorage]) {
+    const keys = safe(() => Object.keys(store), []) ?? [];
+    for (const key of keys) {
+      if (key.startsWith("sb-") && key.includes("auth-token")) {
+        safe(() => store.removeItem(key));
+      }
+    }
+  }
+}
+
 export const supabase = isConfigured
   ? createClient(url, publishableKey, {
       auth: {
-        // Google redirects back with the session in the URL; pick it up and
-        // then clean the address bar.
+        // Google and the password-reset link both come back with the session
+        // in the URL; pick it up and then clean the address bar.
         detectSessionInUrl: true,
         persistSession: true,
         autoRefreshToken: true,
         flowType: "pkce",
+        storage: sessionStorageAdapter,
       },
     })
   : null;
