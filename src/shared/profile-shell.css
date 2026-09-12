@@ -61,28 +61,28 @@
 .factory-profile-view-toggle,
 .brand-profile-redesign .factory-profile-view-toggle {
   display: inline-flex;
-  gap: 6px;
-  padding: 5px;
-  border: 1px solid #d6e0ec;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #d8e1ec;
   border-radius: 999px;
-  background: #fff;
+  background: #f2f6fb;
 }
 
 .factory-profile-view-toggle button,
 .brand-profile-redesign .factory-profile-view-toggle button {
-  min-height: 32px;
-  padding: 0 16px;
+  min-height: 38px;
+  padding: 0 18px;
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: #536b94;
+  color: #5c7298;
   font-size: 13px;
-  font-weight: var(--weight-strong);
+  font-weight: 700;
 }
 
 .factory-profile-view-toggle button.active,
 .brand-profile-redesign .factory-profile-view-toggle button.active {
-  background: #0b1020;
+  background: #174df2;
   color: #fff;
 }
 
@@ -131,5 +131,6 @@
   .factory-profile-view-toggle button,
   .brand-profile-redesign .factory-profile-view-toggle button {
     flex: 1 1 0;
+    padding-inline: 10px;
   }
 }

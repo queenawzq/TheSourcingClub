@@ -21,8 +21,8 @@
   max-width: 100% !important;
 }
 
-.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading h1,
-.shared-responsive-card:not(.shared-dashboard-card) .shared-card-heading h2 {
+.shared-responsive-card:not(.shared-dashboard-card):not(.factory-dashboard-rfq-row) .shared-card-heading h1,
+.shared-responsive-card:not(.shared-dashboard-card):not(.factory-dashboard-rfq-row) .shared-card-heading h2 {
   margin: 0 !important;
   color: #0b1223 !important;
   font-size: 18px !important;
@@ -99,7 +99,7 @@
 
   .factory-dashboard-rfq-row.factory-dashboard-mini-card.shared-responsive-card > .shared-card-header {
     display: grid !important;
-    grid-template-columns: minmax(320px, 1fr) auto !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
     gap: 0 var(--shared-card-column-gap) !important;
   }
 
