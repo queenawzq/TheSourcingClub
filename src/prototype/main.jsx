@@ -3800,6 +3800,7 @@ function BrandProfileScreen({ onViewCompletion }) {
     ["Year founded", data.founded],
     ["Website URL", data.website],
     ["HQ location", data.location],
+    ...(isOwnerView ? [["Annual revenue", data.annualRevenue]] : []),
   ];
   const sourcingVolumeRows = [
     ["Annual order volume", data.sourcingVolume.annualVolume],
@@ -3866,7 +3867,7 @@ function BrandProfileScreen({ onViewCompletion }) {
               <div className="factory-profile-title-row">
                 <h1>{data.name}</h1>
               </div>
-              <p>{data.location} · {data.brandCategories.join(" · ")} · {data.annualRevenue} revenue</p>
+              <p>{data.location} · {data.brandCategories.join(" · ")}{isOwnerView ? ` · ${data.annualRevenue} revenue` : ""}</p>
               <div className="tag-row compact-tags factory-profile-hero-tags">
                 {data.products.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
                 {data.marketLevel.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}

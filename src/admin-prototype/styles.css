@@ -551,6 +551,12 @@
   gap: 18px;
 }
 
+.admin-rfq-detail-page .factory-detail-pair strong,
+.admin-quote-detail-page .factory-detail-pair strong {
+  font-size: 13px;
+  line-height: 18px;
+}
+
 .admin-rfq-detail-quote-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
