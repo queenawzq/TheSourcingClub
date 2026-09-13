@@ -8052,11 +8052,39 @@ function AddUpdateModal({ language, milestone, onClose, onPost }) {
   );
 }
 
-export function FactorySubmitQuote({ project, companyType = "factory", language, backLabel = "‹ Back to view request", onBack, onReviewTotal }) {
+export function FactorySubmitQuote({
+  project,
+  companyType = "factory",
+  language,
+  backLabel = "‹ Back to view request",
+  onBack,
+  onReviewTotal,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  values,
+  onSubmit,
+  busy = false,
+  error = null,
+}) {
   const isZh = language === "zh";
+  const cardRef = useRef(null);
+
+  /**
+   * Read the quote off the card.
+   *
+   * The design makes these fields contentEditable rather than inputs, so their
+   * answers live in the DOM as text. Reading them here is the same sweep the
+   * onboarding cards use.
+   */
+  const readQuote = () => {
+    const out = {};
+    for (const node of cardRef.current?.querySelectorAll("[data-quote-field]") ?? []) {
+      out[node.dataset.quoteField] = node.textContent?.trim() ?? "";
+    }
+    return out;
+  };
 
   return (
-    <main className="factory-detail-page factory-submit-page">
+    <main className="factory-detail-page factory-submit-page" ref={cardRef}>
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header">
           <button className="text-link" type="button" onClick={onBack}>{backLabel}</button>
@@ -8068,7 +8096,7 @@ export function FactorySubmitQuote({ project, companyType = "factory", language,
         <div className="factory-submit-layout">
           <section className="factory-submit-main">
             <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} />
-            <FactoryQuoteSections companyType={companyType} language={language} />
+            <FactoryQuoteSections companyType={companyType} language={language} values={values} />
           </section>
 
           <FactoryQuoteReminder companyType={companyType} />
@@ -8077,7 +8105,16 @@ export function FactorySubmitQuote({ project, companyType = "factory", language,
       <footer className="factory-submit-bottom-bar">
         <div className="factory-submit-bottom-actions">
           <button className="secondary-btn" type="button">Save draft</button>
-          <button className="primary-btn" type="button" onClick={onReviewTotal}>Review quote</button>
+          {error && <p className="composer-error" role="alert">{error.message ?? String(error)}</p>}
+          <button
+            className="primary-btn"
+            type="button"
+            data-testid="submit-quote"
+            disabled={busy}
+            onClick={() => (onSubmit ? onSubmit(readQuote()) : onReviewTotal?.())}
+          >
+            {busy ? (isZh ? "提交中…" : "Sending…") : onSubmit ? (isZh ? "发送报价" : "Send quote") : "Review quote"}
+          </button>
         </div>
       </footer>
     </main>
@@ -8241,7 +8278,7 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
   );
 }
 
-function FactoryQuoteSections({ companyType = "factory", language = "en", readOnly = false }) {
+function FactoryQuoteSections({ companyType = "factory", language = "en", readOnly = false, values }) {
   const isZh = language === "zh";
   const reviewEnglish = isZh && readOnly;
   const reviewFieldProps = reviewEnglish ? { valueNoTranslate: true, editable: true } : {};
@@ -8294,13 +8331,13 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
     <>
       <SubmitSection title="Quote terms" description="Enter exact commercial terms for this request.">
         <div className="factory-submit-field-grid">
-          <QuoteField label="Unit price" value="$18.40 / unit" {...reviewFieldProps} />
-          <QuoteField label="Exact production quantity *" value="300 units" {...reviewFieldProps} />
-          <QuoteField label="Bulk lead time *" value="28 days after PP approval" {...reviewFieldProps} />
+          <QuoteField name="unitPrice" label="Unit price" value={values?.unitPrice ?? "$18.40 / unit"} {...reviewFieldProps} />
+          <QuoteField name="quantity" label="Exact production quantity *" value={values?.quantity ?? "300 units"} {...reviewFieldProps} />
+          <QuoteField name="leadTime" label="Bulk lead time *" value={values?.leadTime ?? "28 days after PP approval"} {...reviewFieldProps} />
           <QuoteField label={companyType === "trading" ? "Partner production window *" : "Open capacity window *"} value={companyType === "trading" ? "Aug 12-30 · partner confirmed" : "Aug 12-30 · 420 units"} {...reviewFieldProps} />
           <QuoteField label="Payment terms" value="30% deposit / 70% before shipment" {...reviewFieldProps} />
           <QuoteField label="Shipping / incoterms" value="EXW quoted; shipping TBD" {...reviewFieldProps} />
-          <QuoteField label="Quote valid until" value="Aug 1, 2026" {...reviewFieldProps} />
+          <QuoteField name="validUntil" label="Quote valid until" value={values?.validUntil ?? "Aug 1, 2026"} {...reviewFieldProps} />
         </div>
       </SubmitSection>
 
@@ -8463,11 +8500,14 @@ function SubmitSection({ title, description, helper, children, descriptionNoTran
   );
 }
 
-function QuoteField({ label, value, helper, valueNoTranslate = false, editable = false }) {
+function QuoteField({ label, value, helper, valueNoTranslate = false, editable = false, name }) {
   return (
     <label className="factory-quote-field">
       <span>{label}</span>
+      {/* The design makes these contentEditable rather than inputs, so a named
+          one is read back by its text on submit. */}
       <strong
+        data-quote-field={name}
         data-no-translate={valueNoTranslate || undefined}
         contentEditable={editable || undefined}
         suppressContentEditableWarning={editable || undefined}

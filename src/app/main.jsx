@@ -20,13 +20,11 @@ import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
 import { isConfigured } from "../lib/supabase.js";
 import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
 import { isPlatformAdmin } from "../lib/domain/admin.js";
-import RfqList from "./rfq/RfqList.jsx";
 import RfqDetail from "./rfq/RfqDetail.jsx";
 import LiveBrowse from "./rfq/LiveBrowse.jsx";
 import QuoteForm from "./quote/QuoteForm.jsx";
 import QuoteSent from "./quote/QuoteSent.jsx";
 import LiveQuotes from "./quote/LiveQuotes.jsx";
-import OrderList from "./order/OrderList.jsx";
 // The designed screens, mounted against live data through the seam. Importing
 // them pulls in the prototype stylesheet, which is the point — the design is
 // the CSS.
@@ -542,11 +540,6 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
         ),
     },
     {
-      path: "/rfqs/legacy",
-      render: () =>
-        isFactory ? <NotForThisSide isFactory /> : <RfqList org={activeOrg} />,
-    },
-    {
       path: "/rfqs/new",
       render: () =>
         isFactory ? <NotForThisSide isFactory /> : (
@@ -610,12 +603,6 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
           <ProjectsScreen goTo={(next) => navigateFromPrototype(next, navigate)} />
         </DataProvider>
       ),
-    },
-    {
-      // Kept reachable while the ported screen is compared against it. Goes
-      // when the slice is signed off, not before.
-      path: "/orders/legacy",
-      render: () => <OrderList org={activeOrg} isFactory={isFactory} />,
     },
     {
       path: "/orders/:id",
