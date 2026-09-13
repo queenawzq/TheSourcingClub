@@ -10,7 +10,7 @@
  * implied is the composer-default bug rebuilt around a bank transfer.
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { getOrder } from "../../lib/domain/order.js";
+import { agreeSchedule, getOrder } from "../../lib/domain/order.js";
 import { KIND_LABEL, listMilestones, saveSchedule } from "../../lib/domain/milestone.js";
 import { formatMoney, fromCents, toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -25,7 +25,7 @@ const KINDS = [
 
 const PAYS = new Set(["approval_and_payment", "payment_only"]);
 
-export default function ScheduleEditor({ orderId, isFactory }) {
+export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
   const { navigate } = useRouter();
   const [order, setOrder] = useState(null);
   const [rows, setRows] = useState(null);
@@ -112,11 +112,34 @@ export default function ScheduleEditor({ orderId, isFactory }) {
           <span>Both sides agreed it and the order is running, so it can no longer be edited.</span>
         </div>
       ) : (
-        <p className="ob-hint">
-          {order.schedule_brand_agreed_at || order.schedule_factory_agreed_at
-            ? "One side has already agreed. Saving a change withdraws both agreements, so you will each need to agree again."
-            : "Neither side has agreed yet."}
-        </p>
+        <>
+          <p className="ob-hint">
+            {order.schedule_brand_agreed_at || order.schedule_factory_agreed_at
+              ? "One side has already agreed. Saving a change withdraws both agreements, so you will each need to agree again."
+              : "Neither side has agreed yet."}
+          </p>
+          {/* Agreeing moved here from the order screen, because this is where
+              the schedule is. agree_schedule takes the revision: without it a
+              client that cached "I already agreed" re-stamps a side onto terms
+              it never read, and the order activates showing two green ticks. */}
+          <div className="order-actions">
+            <button
+              type="button"
+              className="primary-btn"
+              data-testid="agree-schedule"
+              disabled={Boolean(isFactory ? order.schedule_factory_agreed_at : order.schedule_brand_agreed_at)}
+              onClick={async () => {
+                await agreeSchedule(order.id, order.schedule_revision);
+                await load();
+                onAgreed?.();
+              }}
+            >
+              {(isFactory ? order.schedule_factory_agreed_at : order.schedule_brand_agreed_at)
+                ? "You have agreed"
+                : "Agree to this schedule"}
+            </button>
+          </div>
+        </>
       )}
 
       <div className="schedule-rows">

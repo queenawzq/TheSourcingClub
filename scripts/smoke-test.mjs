@@ -966,8 +966,16 @@ console.log("\nphase 5 — the home screen, and joining a team");
       ? ok(`the order count matches the rows behind it (${snap.orders_active})`)
       : fail(`snapshot says ${snap.orders_active} active, table says ${reallyActive}`);
 
+    // Scoped to THIS org's orders. Summing every due payment in the database
+    // compares one org's snapshot against the whole marketplace, which passes
+    // on a fresh stack and fails the moment the walkthrough has run first.
+    const { data: myOrders } = await admin
+      .from("production_orders").select("id").eq("brand_org_id", org.id);
+    const myOrderIds = (myOrders ?? []).map((row) => row.id);
     const { data: duePayments } = await admin
-      .from("order_payments").select("amount_cents, order_id, state").eq("state", "due");
+      .from("order_payments").select("amount_cents, order_id, state")
+      .eq("state", "due")
+      .in("order_id", myOrderIds.length ? myOrderIds : ["00000000-0000-0000-0000-000000000000"]);
     const dueSum = duePayments.reduce((t, p) => t + Number(p.amount_cents), 0);
     Number(snap.payments_due_cents) === dueSum
       ? ok(`money due matches the payment rows (${snap.payments_due_cents})`)

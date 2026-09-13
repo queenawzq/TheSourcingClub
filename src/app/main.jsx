@@ -34,7 +34,6 @@ import { ProjectsScreen, RfqsScreen } from "../prototype/main.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 import { createLiveAdapter } from "./live-adapter.js";
-import OrderDetail from "./order/OrderDetail.jsx";
 import ScheduleEditor from "./order/ScheduleEditor.jsx";
 import MilestoneDetail from "./order/MilestoneDetail.jsx";
 import PaymentInstructions from "./order/PaymentInstructions.jsx";
@@ -43,6 +42,7 @@ import AdminPayments from "./admin/AdminPayments.jsx";
 import LiveMessages from "./message/LiveMessages.jsx";
 import LiveHome from "./home/LiveHome.jsx";
 import LiveComposer from "./rfq/LiveComposer.jsx";
+import LiveOrderDetail from "./order/LiveOrderDetail.jsx";
 import LiveSettings from "./settings/LiveSettings.jsx";
 import NotificationList from "./NotificationList.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
@@ -620,7 +620,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/orders/:id",
       render: (params) => (
-        <OrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} />
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} />
       ),
     },
     {
@@ -638,13 +638,13 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/orders/:id/files",
       render: (params) => (
-        <OrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} tab="files" />
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} />
       ),
     },
     {
       path: "/orders/:id/contract",
       render: (params) => (
-        <OrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} tab="contract" />
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} />
       ),
     },
     {

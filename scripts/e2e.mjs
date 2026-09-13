@@ -1054,16 +1054,12 @@ async function main() {
     check(!/Atelier Minho|Hansu Studio/.test(orderListText),
       "and no mock counterparty leaked through — the constants are not being read");
 
+    // An order that has not been agreed opens on the agreement, because there
+    // is no interior yet: no steps to work, no payments to make. The header
+    // figures are asserted once it is active, below.
     await page.goto(`${APP}/orders/${bornOrder.id}`);
-    await waitFor(page, '[data-testid="order-total"]', 25000);
-    await record(page, "The order", "every figure here is summed in SQL from the rows below it");
-
-    const headerTotal = await page.locator('[data-testid="order-total"]').innerText();
-    const headerPaid = await page.locator('[data-testid="order-paid"]').innerText();
-    check(headerTotal.replace(/[^0-9]/g, "") === String(bornOrder.order_total_cents),
-      `the header total is the sum of the steps, not a literal (${headerTotal})`);
-    check(headerPaid.replace(/[^0-9]/g, "") === "000",
-      `nothing is paid yet (${headerPaid})`);
+    await waitFor(page, '[data-testid="schedule-row"]', 25000);
+    await record(page, "The order", "before either side agrees, the schedule is the whole screen");
 
     const { data: draftSteps } = await db.from("order_milestones")
       .select("id, title, kind, amount_cents, sort").eq("order_id", bornOrder.id).order("sort");
@@ -1085,7 +1081,6 @@ async function main() {
       `nobody faces a blank schedule — ${scheduleRows} steps are already there`);
     await record(page, "The schedule", "drafted from the quote; either side may change it");
 
-    await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="agree-schedule"]', 25000);
     await clickButton(page, "agree to this schedule");
     await page.waitForTimeout(2500);
@@ -1136,6 +1131,19 @@ async function main() {
     const { data: live } = await db.from("production_orders")
       .select("status, activated_at").eq("id", bornOrder.id).single();
     check(live.status === "active", "the order starts only once BOTH sides have agreed");
+
+    // Now there is an interior to look at. Every figure in the designed header
+    // is summed in SQL from the rows below it.
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="order-total"]', 25000);
+    await record(page, "The order, active", "the designed header, on production_order_summary");
+
+    const headerTotal = await page.locator('[data-testid="order-total"]').innerText();
+    const headerPaid = await page.locator('[data-testid="order-paid"]').innerText();
+    check(headerTotal.replace(/[^0-9]/g, "") === String(bornOrder.order_total_cents),
+      `the header total is the sum of the steps, not a literal (${headerTotal})`);
+    check(headerPaid.replace(/[^0-9]/g, "") === "000",
+      `nothing is paid yet (${headerPaid})`);
 
     const { data: activePayments } = await db.from("order_payments")
       .select("id, state, milestone_id, amount_cents").eq("order_id", bornOrder.id);
@@ -1207,11 +1215,12 @@ async function main() {
 
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-action"]', 25000);
+    // The designed timeline approves from the row itself — the action a row
+    // carries is the one its state allows, so there is nothing to confirm
+    // about which transition is being made.
     await page.locator('[data-testid="milestone-action"]').first().click();
-    await waitFor(page, '[data-testid="confirm-approve"]', 15000);
-    await record(page, "Approving", "one modal, whether or not money follows");
-    await page.locator('[data-testid="confirm-approve"]').click();
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(4000);
+    await record(page, "Approved", "from the row, on the state that row is actually in");
 
     const { data: dueNow } = await db.from("order_payments")
       .select("id, state, amount_cents").eq("milestone_id", firstStep.id).single();

@@ -6349,17 +6349,21 @@ export function ProjectDetailScreen({
     <div className="project-detail-shell">
       <button className="project-back-link" type="button" onClick={() => goTo("projects")}>‹ Back to production orders</button>
       <header className="project-detail-header">
-        <h1>Organic cotton woven shirt production</h1>
-        <p>Atelier Minho · Porto, Portugal · Started Jul 19</p>
+        <h1>{order?.title ?? "Organic cotton woven shirt production"}</h1>
+        <p>{order?.subtitle ?? "Atelier Minho · Porto, Portugal · Started Jul 19"}</p>
       </header>
 
       <div className="project-detail-layout">
         <div className="project-detail-main">
+          {/* Every figure comes from production_order_summary. JavaScript
+              never sums money here: the order total is the sum of the
+              milestones, not of the quote, and the two diverge the moment
+              either side edits the schedule. */}
           <section className="project-summary-strip" aria-label="Project summary">
-            <Metric label="project total" value="$5,780" />
-            <Metric label="project funds" value="$120" />
-            <Metric label="remaining" value="$5,660" />
-            <Metric label="next payment" value="$1,656" className="highlight" />
+            <Metric label="project total" value={order?.total ?? "$5,780"} testId="order-total" />
+            <Metric label="project funds" value={order?.paid ?? "$120"} testId="order-paid" />
+            <Metric label="remaining" value={order?.remaining ?? "$5,660"} />
+            <Metric label="next payment" value={order?.nextPayment ?? "$1,656"} className="highlight" />
           </section>
 
           <nav className="rfqs-tabs project-detail-tabs" aria-label="Project detail sections">
@@ -6579,13 +6583,21 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
   }, [menuOpen]);
 
   const handleAction = () => {
+    // Live rows carry the transition they are actually allowed to make; the
+    // prototype's rows carry one of three fixed labels.
+    if (milestone.kind) {
+      if (milestone.kind === "fund") onFundMilestone?.(milestone);
+      else if (milestone.kind === "approve") onApprove?.(milestone);
+      else onComment?.(milestone);
+      return;
+    }
     if (milestone.action === "Approve fund") onApproveFund?.(milestone);
     if (milestone.action === "Fund milestone") onFundMilestone?.(milestone);
     if (milestone.action === "Approve") onApprove?.(milestone);
   };
 
   return (
-    <article className="project-milestone-item">
+    <article className="project-milestone-item" data-testid="milestone-row">
       <span className={index === 0 ? "milestone-number current" : "milestone-number"}>{index + 1}</span>
       <div className="milestone-body">
         <div className="milestone-title-line">
@@ -6640,7 +6652,7 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
           </span>
         )}
         {milestone.action && !isPaid && !isApproved && (
-          <button className={milestone.tone === "primary" ? "primary-btn milestone-action" : "secondary-btn milestone-action"} type="button" onClick={handleAction}>
+          <button className={milestone.tone === "primary" ? "primary-btn milestone-action" : "secondary-btn milestone-action"} type="button" data-testid="milestone-action" onClick={handleAction}>
             {milestone.action}
           </button>
         )}
@@ -7975,10 +7987,10 @@ function Field({ label, value, muted = false, className = "", name, onChange }) 
   );
 }
 
-function Metric({ label, value, className = "" }) {
+function Metric({ label, value, className = "", testId }) {
   return (
     <div className={`metric ${className}`}>
-      <strong>{value}</strong>
+      <strong data-testid={testId}>{value}</strong>
       <span>{label}</span>
     </div>
   );
