@@ -10,6 +10,7 @@ const adminNav = [
   { label: "Overview", icon: "home" },
   { label: "RFQs", icon: "rfq" },
   { label: "Quotes", icon: "projects" },
+  { label: "Users", icon: "connections" },
   { label: "Verification", icon: "verification" },
   { label: "Settings", icon: "settings" }
 ];
@@ -119,6 +120,17 @@ export const initialProfiles = [
       ["Risk screening", "Clear", 99, "No material sanctions or adverse media signals found."]
     ]
   }
+];
+
+const initialUsers = [
+  { id: "user-ari", initials: "AC", name: "Ari Chen", email: "ari@maisonrue.com", type: "Brand", company: "Maison Rue", joined: "Jul 18, 2026", lastActive: "12 min ago", status: "Active" },
+  { id: "user-maya", initials: "MR", name: "Maya Reynolds", email: "maya@maisonrue.com", type: "Brand", company: "Maison Rue", joined: "Jul 18, 2026", lastActive: "Yesterday", status: "Active" },
+  { id: "user-sofia", initials: "SC", name: "Sofia Costa", email: "sofia@atelierminho.pt", type: "Factory", company: "Atelier Minho", joined: "Aug 2, 2026", lastActive: "34 min ago", status: "Active" },
+  { id: "user-rui", initials: "RM", name: "Rui Mendes", email: "rui@atelierminho.pt", type: "Factory", company: "Atelier Minho", joined: "Aug 4, 2026", lastActive: "3 days ago", status: "Disabled" },
+  { id: "user-lin", initials: "LW", name: "Lin Wei", email: "lin@pacificsourcepartners.com", type: "Trading company", company: "Pacific Source Partners", joined: "Aug 6, 2026", lastActive: "8 min ago", status: "Active" },
+  { id: "user-grace", initials: "GW", name: "Grace Wong", email: "grace@pacificsourcepartners.com", type: "Trading company", company: "Pacific Source Partners", joined: "Aug 6, 2026", lastActive: "2 hours ago", status: "Active" },
+  { id: "user-leo", initials: "LP", name: "Leo Park", email: "leo@seoulknitworks.kr", type: "Factory", company: "Seoul Knit Works", joined: "Aug 8, 2026", lastActive: "Yesterday", status: "Active" },
+  { id: "user-tsc", initials: "TS", name: "TSC Operations", email: "operations@thesourcingclub.com", type: "Admin", company: "The Sourcing Club", joined: "Jun 3, 2026", lastActive: "Now", status: "Active", protected: true }
 ];
 
 export const rfqs = [
@@ -790,6 +802,82 @@ function AdminQuoteDetail({ quote, rfq, onBack }) {
   );
 }
 
+function UsersPage({ users, onToggleStatus }) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [userType, setUserType] = useState("All user types");
+  const [status, setStatus] = useState("All statuses");
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const filteredUsers = users.filter((user) => {
+    const matchesSearch = !normalizedSearch || `${user.name} ${user.email} ${user.company}`.toLowerCase().includes(normalizedSearch);
+    const matchesType = userType === "All user types" || user.type === userType;
+    const matchesStatus = status === "All statuses" || user.status === status;
+    return matchesSearch && matchesType && matchesStatus;
+  });
+  const activeCount = users.filter((user) => user.status === "Active").length;
+
+  return (
+    <main className="rfqs-page admin-page admin-queue-page admin-users-page">
+      <header className="rfqs-header admin-list-header">
+        <div><p className="admin-eyebrow">Admin</p><h1>User management</h1><p>Find marketplace users, review their account type, and control access.</p></div>
+      </header>
+
+      <div className="admin-user-metrics" aria-label="User account summary">
+        <div><span>Total users</span><strong>{users.length}</strong></div>
+        <div><span>Active</span><strong>{activeCount}</strong></div>
+        <div><span>Disabled</span><strong>{users.length - activeCount}</strong></div>
+      </div>
+
+      <div className="admin-filter-bar admin-users-filter-bar">
+        <label className="admin-search">
+          <SearchIcon />
+          <span className="admin-visually-hidden">Search users</span>
+          <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search name, email, or company" />
+        </label>
+        <label className="rfqs-sort admin-profile-type-filter">
+          <span>User type</span>
+          <select value={userType} onChange={(event) => setUserType(event.target.value)}>
+            <option>All user types</option><option>Brand</option><option>Factory</option><option>Trading company</option><option>Admin</option>
+          </select>
+        </label>
+        <label className="rfqs-sort admin-profile-type-filter admin-user-status-filter">
+          <span>Account status</span>
+          <select value={status} onChange={(event) => setStatus(event.target.value)}>
+            <option>All statuses</option><option>Active</option><option>Disabled</option>
+          </select>
+        </label>
+      </div>
+
+      <section className="factory-dashboard-panel admin-panel admin-users-panel">
+        <header><div><h2>{filteredUsers.length} user{filteredUsers.length === 1 ? "" : "s"}</h2><p>Access changes take effect immediately and can be reversed at any time.</p></div></header>
+        {filteredUsers.length > 0 ? (
+          <div className="admin-table-wrap">
+            <table className="admin-table admin-users-table">
+              <thead><tr><th>User</th><th>User type</th><th>Company</th><th>Last active</th><th>Status</th><th>Access</th></tr></thead>
+              <tbody>
+                {filteredUsers.map((user) => (
+                  <tr className={user.status === "Disabled" ? "is-disabled" : ""} key={user.id}>
+                    <td><div className="admin-user-identity"><span>{user.initials}</span><div><strong>{user.name}</strong><small>{user.email}</small></div></div></td>
+                    <td><StatusPill tone={user.type === "Admin" ? "violet" : "info"}>{user.type}</StatusPill></td>
+                    <td>{user.company}</td><td>{user.lastActive}</td>
+                    <td><StatusPill tone={user.status === "Active" ? "success" : "neutral"}>{user.status}</StatusPill></td>
+                    <td>
+                      {user.protected ? <span className="admin-current-account">Current account</span> : (
+                        <button className={`secondary-btn admin-user-access-button ${user.status === "Active" ? "disable" : "enable"}`} type="button" aria-label={`${user.status === "Active" ? "Disable" : "Enable"} ${user.name}`} onClick={() => onToggleStatus(user.id)}>
+                          {user.status === "Active" ? "Disable" : "Enable"}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : <div className="admin-empty-state"><strong>No users found</strong><p>Try a different search term or filter.</p></div>}
+      </section>
+    </main>
+  );
+}
+
 function SettingsPage() {
   const initialThresholds = { autoClear: "95", manualMin: "80", manualMax: "94", moreInformation: "80", authority: "TSC operations" };
   const [thresholds, setThresholds] = useState(initialThresholds);
@@ -881,8 +969,11 @@ function App() {
   const requestedProfile = profiles.find((profile) => profile.id === query.get("profile")) || profiles[0];
   const requestedRfq = rfqList.find((rfq) => rfq[0] === query.get("rfq")) || rfqList[0];
   const requestedQuote = quoteList.find((quote) => quote[0] === query.get("quote")) || quoteList.find((quote) => quote[3] === requestedRfq?.[0]) || quoteList[0];
-  const screenLabel = { overview: "Overview", rfqs: "RFQs", quotes: "Quotes", brands: "Verification", vendors: "Verification", verification: "Verification", review: "Review", "rfq-detail": "RFQ detail", "quote-detail": "Quote detail", settings: "Settings" }[requested] || "Overview";
+  const screenLabel = { overview: "Overview", rfqs: "RFQs", quotes: "Quotes", users: "Users", brands: "Verification", vendors: "Verification", verification: "Verification", review: "Review", "rfq-detail": "RFQ detail", "quote-detail": "Quote detail", settings: "Settings" }[requested] || "Overview";
   const [screen, setScreen] = useState(screenLabel);
+  // Still local state: nothing backs the user list yet, so this is the mock
+  // list in both mounts. See the note above UsersPage.
+  const [users, setUsers] = useState(initialUsers);
   const [selectedProfile, setSelectedProfile] = useState(requestedProfile);
   const [selectedRfq, setSelectedRfq] = useState(requestedRfq);
   const [selectedQuote, setSelectedQuote] = useState(requestedQuote);
@@ -912,7 +1003,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const slug = { Overview: "overview", RFQs: "rfqs", Quotes: "quotes", Verification: "verification", Settings: "settings" }[screen];
+    const slug = { Overview: "overview", RFQs: "rfqs", Quotes: "quotes", Users: "users", Verification: "verification", Settings: "settings" }[screen];
     if (screen === "Review" && selectedProfile) {
       window.history.replaceState(null, "", `${window.location.pathname}?screen=review&profile=${selectedProfile.id}`);
     } else if (screen === "RFQ detail" && selectedRfq) {
@@ -961,6 +1052,14 @@ function App() {
     setToast(status === "Approved" ? "Profile approved" : status === "Declined" ? "Profile declined" : "Information request sent");
     window.setTimeout(() => setToast(""), 2400);
   };
+  const toggleUserStatus = (id) => {
+    const user = users.find((item) => item.id === id);
+    if (!user || user.protected) return;
+    const nextStatus = user.status === "Active" ? "Disabled" : "Active";
+    setUsers((current) => current.map((item) => item.id === id ? { ...item, status: nextStatus } : item));
+    setToast(`${user.name} ${nextStatus === "Active" ? "enabled" : "disabled"}`);
+    window.setTimeout(() => setToast(""), 2400);
+  };
   const navigate = (label) => { setScreen(label); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const active = screen === "Review" ? reviewBack : ["RFQ detail", "Quote detail"].includes(screen) ? (rfqBack === "Overview" ? "Overview" : "RFQs") : screen;
 
@@ -984,6 +1083,7 @@ function App() {
           : <>
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
+      {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
       {screen === "Review" && <VerificationDetail profile={selectedProfile} onBack={() => navigate(reviewBack)} onDecision={decide} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate("RFQ detail")} />}

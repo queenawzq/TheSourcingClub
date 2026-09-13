@@ -208,8 +208,10 @@ button {
 .factory-avatar {
   display: grid;
   place-items: center;
+  flex: 0 0 48px;
   width: 48px;
   height: 48px;
+  aspect-ratio: 1;
   border-radius: 6px;
   background: #000;
   color: #fff;
@@ -2565,7 +2567,7 @@ button {
 .brand-profile-redesign .factory-detail-pair strong {
   color: #0b1220;
   font-size: 14px;
-  font-weight: var(--weight-heading);
+  font-weight: var(--weight-medium);
   line-height: 18px;
 }
 
@@ -12089,6 +12091,7 @@ body:has(.brand-onboarding-page) {
   border-radius: 8px;
   background: #fff;
   color: #0b1020;
+  font-size: 14px;
   font-weight: 400;
   outline: none;
 }

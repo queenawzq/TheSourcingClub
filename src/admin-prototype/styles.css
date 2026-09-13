@@ -372,6 +372,136 @@
   white-space: nowrap;
 }
 
+.admin-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.admin-user-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 680px;
+  margin: -8px 0 24px;
+}
+
+.admin-user-metrics > div {
+  display: grid;
+  gap: 3px;
+  padding: 15px 17px;
+  border: 1px solid #d9dfe9;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.admin-user-metrics span {
+  color: #60708d;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 15px;
+}
+
+.admin-user-metrics strong {
+  color: #0b1020;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 28px;
+}
+
+.admin-users-filter-bar {
+  margin-bottom: 24px;
+}
+
+.admin-users-panel {
+  max-width: 1220px;
+}
+
+.admin-users-panel > header {
+  margin-bottom: 14px;
+}
+
+.admin-users-panel > header p {
+  margin: 2px 0 0;
+  color: #60769b;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+.admin-users-table {
+  min-width: 880px;
+}
+
+.admin-users-table tr.is-disabled td {
+  background: #fafbfc;
+  color: #7b879b;
+}
+
+.admin-user-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 210px;
+}
+
+.admin-user-identity > span {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 7px;
+  background: #0b1020;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.admin-user-identity > div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.admin-user-identity small {
+  color: #60769b;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 15px;
+}
+
+.admin-user-access-button {
+  min-width: 78px;
+  padding: 8px 14px;
+  font-size: 12px;
+}
+
+.admin-user-access-button.disable {
+  border-color: #efb1b1;
+  color: #b42323;
+}
+
+.admin-user-access-button.disable:hover {
+  border-color: #d64545;
+  background: #fff4f4;
+}
+
+.admin-user-access-button.enable {
+  border-color: #86d4c7;
+  color: #087467;
+}
+
+.admin-current-account {
+  display: inline-block;
+  color: #71809a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .admin-verification-tabs {
   margin-top: -8px;
   margin-bottom: 24px;
@@ -549,6 +679,12 @@
 .admin-rfq-requirement-list {
   display: grid;
   gap: 18px;
+}
+
+.admin-rfq-detail-page .factory-detail-pair strong,
+.admin-quote-detail-page .factory-detail-pair strong {
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .admin-rfq-detail-quote-summary {
@@ -1226,6 +1362,7 @@
   }
 
   .admin-metrics,
+  .admin-user-metrics,
   .admin-detail-grid,
   .admin-settings-grid,
   .admin-threshold-form,
