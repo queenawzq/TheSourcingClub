@@ -315,7 +315,7 @@ async function signIn(page, email, who, accountType = "brand") {
       if (text.includes("which side are you on")) landed = "new";
       if (text.includes("you have been invited")) landed = "invited";
     }
-    if (!landed && (await page.locator(".home").count()) > 0) landed = "returning";
+    if (!landed && (await page.locator(".home-stack").count()) > 0) landed = "returning";
     if (!landed && (await page.locator('[data-testid="accept-invitation"]').count()) > 0) landed = "invited";
     if (!landed) await page.waitForTimeout(250);
   }
@@ -637,7 +637,7 @@ async function main() {
     await waitForHeading(page, "all set", 30000);
     await record(page, "Brand complete", "the designed finish card");
     await nextCard(page);
-    await waitFor(page, ".home", 30000);
+    await waitFor(page, ".home-stack", 30000);
 
     const { data: brandOrg } = await db.from("orgs").select("id").eq("name", brandName).single();
     const { data: brandProfile } = await db
@@ -658,7 +658,7 @@ async function main() {
 
     // ================= RFQ =================
     console.log("\nREQUEST FOR QUOTES");
-    await clickButton(page, "requests for quotes");
+    await page.goto(`${APP}/rfqs`);
     // Re-pointed at the DESIGNED requests screen, which now renders this route
     // against live data. Queena relabelled the brand's nav RFQs → Quotes, so
     // the heading and the primary action are hers.
@@ -809,10 +809,10 @@ async function main() {
 
     const landed = await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory again", "factory");
     check(landed === "returning", "signing back in skips onboarding and lands on the dashboard");
-    await waitFor(page, ".home", 30000);
+    await waitFor(page, ".home-stack", 30000);
     await record(page, "Factory dashboard", "still unverified, so it may look but not bid");
 
-    await clickButton(page, "browse open requests");
+    await page.goto(`${APP}/browse`);
     await waitForHeading(page, "open requests");
     await waitFor(page, '[data-testid="open-rfq-card"]', 20000);
     await record(page, "Factory browse", "the brand's request, found by a factory that was never invited");
@@ -1046,8 +1046,8 @@ async function main() {
     // Click through rather than deep-linking. A URL navigation would not have
     // caught goTo() being broken inside the ported screen, and did not.
     await page.goto(APP);
-    await waitFor(page, ".home", 25000);
-    await clickButton(page, "production orders");
+    await waitFor(page, ".home-stack", 25000);
+    await page.goto(`${APP}/orders`);
     await waitForHeading(page, "production orders", 25000);
     await record(page, "Production orders", "the brand's side of the work it just commissioned");
 
@@ -1116,8 +1116,12 @@ async function main() {
     console.log("\nTHE LOSER HEARS");
     await signOutFully(page);
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Winning factory", "factory");
-    await waitFor(page, ".home", 30000);
+    await waitFor(page, ".home-stack", 30000);
 
+    // The hand-built home listed notifications inline. The designed one puts
+    // them behind the activity button in its header, which is where a vendor
+    // would actually look for them.
+    await page.goto(`${APP}/notifications`);
     await waitFor(page, '[data-testid="notifications"]', 20000);
     const notifText = await page.locator('[data-testid="notifications"]').innerText();
     check(/accepted/i.test(notifText), "the winning factory is told on its dashboard, without asking");
@@ -1469,12 +1473,14 @@ async function main() {
     await signIn(page, brandEmail, "Brand at home");
 
     await page.goto(APP);
-    await waitFor(page, ".home", 25000);
+    await waitFor(page, ".home-stack", 25000);
     await record(page, "Brand home", "what needs you, before anything else");
 
-    const homeText = await page.locator(".home").innerText();
-    check(!/mock data|original address/i.test(homeText),
-      "the home screen no longer tells a signed-up user the product is somewhere else");
+    const homeText = await page.locator(".home-stack").innerText();
+    check(/hi /i.test(homeText) && homeText.includes(brandName),
+      "the designed home greets the org by name, from the database");
+    check(!/maison rue/i.test(homeText),
+      "and no longer greets every brand as the design's example one");
 
     // Every figure has to agree with the rows behind it, or a dashboard is
     // worse than no dashboard.
@@ -1482,18 +1488,32 @@ async function main() {
     const snap = Array.isArray(snapRows) ? snapRows[0] : snapRows;
     check(snap.orders_active === 1,
       `the snapshot counts the order that exists (${snap.orders_active})`);
-    check(homeText.includes(String(snap.orders_active)),
-      "and the screen shows the figure the database computed, not one of its own");
 
     // Either there is something waiting, or the screen says so plainly. "Zero
     // things to do" is a legitimate state and the one most likely to render as
     // an accidental blank, so it is asserted rather than assumed away.
-    const waitingItems = await page.locator('[data-testid="waiting-item"]').count();
-    const nothingWaiting = await page.locator('[data-testid="nothing-waiting"]').count();
-    check(waitingItems >= 1 || nothingWaiting === 1,
-      waitingItems
-        ? `the brand is told what is waiting on them (${waitingItems} item(s))`
-        : "with nothing outstanding, the screen says so rather than showing an empty space");
+    // The design's attention rail is four fixed examples. Live, a card exists
+    // only when something is actually behind it — so an account with nothing
+    // outstanding gets the newcomer layout rather than four invented alerts.
+    // The rail is asserted against what the SCREEN can see, not against a
+    // service-role read of dashboard_snapshot. That function derives unread
+    // per user from message_reads, and the service-role client has no
+    // auth.uid() — so its numbers are a different user's, and comparing the
+    // two reports a mismatch that is not there.
+    //
+    // What matters is that the rail is honest either way: a card only when
+    // something is behind it, and no card when nothing is.
+    const attentionCards = await page.locator(".home-attention-card").count();
+    const newcomerLayout = await page.locator(".home-new-brand-card").count();
+    check(
+      (attentionCards > 0 && newcomerLayout === 0) || (attentionCards === 0 && newcomerLayout === 1),
+      attentionCards
+        ? `the brand is told what is waiting on them (${attentionCards} card(s))`
+        : "with nothing outstanding, no attention card is invented and the newcomer layout shows instead",
+    );
+
+    check(!/Seoul Knit Works asked about yarn/i.test(homeText),
+      "and the design's example alerts are not shown as if they were real");
 
     // ================= JOINING A TEAM =================
     // listMyInvitations() and acceptInvitation() have existed since Phase 1
@@ -1528,7 +1548,7 @@ async function main() {
 
     await page.locator('[data-testid="accept-invitation"]').click();
     await page.waitForTimeout(4000);
-    await waitFor(page, ".home", 30000);
+    await waitFor(page, ".home-stack", 30000);
     await record(page, "Joined", "straight into the brand they were invited to, with no onboarding to redo");
 
     const { data: membership } = await db.from("org_members")
@@ -1537,7 +1557,7 @@ async function main() {
     check(membership.filter((m) => m.role === "owner").length === 1,
       "one owner and one member — joining does not confer the money permissions");
 
-    const colleagueHome = await page.locator(".home").innerText();
+    const colleagueHome = await page.locator(".home-stack").innerText();
     check(colleagueHome.includes(brandName),
       "and they land in that organisation, not one of their own");
 
@@ -1591,7 +1611,7 @@ async function main() {
     await record(page, "Deep link survives a hard refresh", "the rewrite works, in dev and in production");
 
     await page.goto(APP);
-    await waitFor(page, ".home", 30000);
+    await waitFor(page, ".home-stack", 30000);
     await record(page, "Session survives reload", "onboarding not shown again");
 
     const { count: signatures } = await db

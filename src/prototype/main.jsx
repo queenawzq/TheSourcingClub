@@ -3130,11 +3130,22 @@ const passiveActivityItems = [
   }
 ];
 
-function HomeScreen({ dashboardState, goTo, onOpenActivity }) {
+export function HomeScreen({
+  dashboardState,
+  goTo,
+  onOpenActivity,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  orgName,
+  attention,
+  factories,
+  unreadCount,
+}) {
   const isNewcomer = dashboardState === "newcomer";
   const [inviteBrandOpen, setInviteBrandOpen] = useState(false);
   const [discountCodesOpen, setDiscountCodesOpen] = useState(false);
-  const attentionItems = [
+  const who = orgName ?? "Maison Rue";
+  const recommended = factories ?? marketplaceFactories;
+  const defaultAttentionItems = [
     {
       type: "Draft",
       tone: "danger",
@@ -3170,17 +3181,20 @@ function HomeScreen({ dashboardState, goTo, onOpenActivity }) {
       action: "View checklist"
     }
   ];
+  // Whatever is actually waiting on this org, or the design's examples when
+  // nothing is passed.
+  const attentionItems = attention ?? defaultAttentionItems;
 
   return (
     <div className="home-stack">
       <header className="home-header">
         <div>
-          <h1>Hi Maison Rue</h1>
+          <h1>Hi {who}</h1>
           <span />
         </div>
         <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">
           <img src="/assets/prototype-icons/notification.svg" alt="" />
-          {!isNewcomer && <b aria-hidden="true">4</b>}
+          {(unreadCount ?? (isNewcomer ? 0 : 4)) > 0 && <b aria-hidden="true">{unreadCount ?? 4}</b>}
         </button>
       </header>
       <section className="card home-search-card">
@@ -3204,12 +3218,12 @@ function HomeScreen({ dashboardState, goTo, onOpenActivity }) {
               <header className="home-panel-header">
                 <div>
                   <h2>Recommended factories</h2>
-                  <p>A few trusted partners that match Maison Rue’s product focus and order size.</p>
+                  <p>A few trusted partners that match {who}’s product focus and order size.</p>
                 </div>
                 <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse all vendors</button>
               </header>
               <div className="home-recommended-factory-grid">
-                {marketplaceFactories.slice(0, 3).map((factory) => (
+                {recommended.slice(0, 3).map((factory) => (
                   <HomeRecommendedFactoryCard factory={factory} goTo={goTo} key={factory.name} />
                 ))}
               </div>
@@ -3243,7 +3257,10 @@ function HomeScreen({ dashboardState, goTo, onOpenActivity }) {
                   </div>
                 </header>
                 <div className="home-attention-grid">
-                  {attentionItems.slice(2).map((item) => (
+                  {/* The design shows the last two of its four examples here.
+                      Live items are already only the things actually
+                      outstanding, so there is nothing to trim. */}
+                  {(attention ? attentionItems : attentionItems.slice(2)).map((item) => (
                     <HomeAttentionCard item={item} key={item.title} />
                   ))}
                 </div>

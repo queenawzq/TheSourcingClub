@@ -45,7 +45,7 @@ import PaymentInstructions from "./order/PaymentInstructions.jsx";
 import PayoutDetails from "./order/PayoutDetails.jsx";
 import MessageList from "./message/MessageList.jsx";
 import ThreadPage from "./message/ThreadPage.jsx";
-import Home from "./home/Home.jsx";
+import LiveHome from "./home/LiveHome.jsx";
 import Team from "./settings/Team.jsx";
 import NotificationList from "./NotificationList.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
@@ -507,6 +507,9 @@ function navigateFromPrototype(screenKey, navigate) {
     // The prototype's RFQ flow is a linear wizard with no real form behind it.
     // "describe" is its first step, and it maps to the composer that does.
     describe: "/rfqs/new",
+    factoryMarketplace: "/browse",
+    profile: "/",
+    notifications: "/notifications",
   };
   navigate(paths[screenKey] ?? "/");
 }
@@ -686,8 +689,20 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
         ) : <NotForThisSide isFactory={false} />,
     },
     {
+      // The designed home puts notifications behind the activity button in its
+      // header rather than listing them inline, so they need a page of their
+      // own — there was never a route for them before.
+      path: "/notifications",
+      render: () => <NotificationList org={activeOrg} isFactory={isFactory} />,
+    },
+    {
       render: () => (
-        <Home org={activeOrg} profile={profile} isFactory={isFactory} user={user} admin={admin} />
+        <LiveHome
+          org={activeOrg}
+          isFactory={isFactory}
+          goTo={(next) => navigateFromPrototype(next, navigate)}
+          onOpenActivity={() => navigate("/notifications")}
+        />
       ),
     },
   ]);
