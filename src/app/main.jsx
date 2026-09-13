@@ -25,7 +25,7 @@ import RfqDetail from "./rfq/RfqDetail.jsx";
 import BrowseRfqs from "./rfq/BrowseRfqs.jsx";
 import QuoteForm from "./quote/QuoteForm.jsx";
 import QuoteSent from "./quote/QuoteSent.jsx";
-import QuoteCompare from "./quote/QuoteCompare.jsx";
+import LiveQuotes from "./quote/LiveQuotes.jsx";
 import OrderList from "./order/OrderList.jsx";
 // The designed screens, mounted against live data through the seam. Importing
 // them pulls in the prototype stylesheet, which is the point — the design is
@@ -585,7 +585,9 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/rfqs/:id/quotes",
       render: (params) =>
-        isFactory ? <NotForThisSide isFactory /> : <QuoteCompare org={activeOrg} rfqId={params.id} />,
+        isFactory ? <NotForThisSide isFactory /> : (
+          <LiveQuotes rfqId={params.id} onAwarded={() => navigate("/orders")} />
+        ),
     },
     {
       path: "/browse/:id/quote",

@@ -964,35 +964,29 @@ async function main() {
     await signIn(page, brandEmail, "Brand deciding");
 
     await page.goto(`${APP}/rfqs/${publishedRfq.id}/quotes`);
-    await waitFor(page, '[data-testid="quote-compare"]', 25000);
-    await record(page, "Quote comparison", "two quotes side by side, every figure derived from stored columns");
+    await waitFor(page, ".quote-list", 25000);
+    await record(page, "Quotes received", "Queena's quote list, every figure derived from stored columns");
 
-    const columns = await page.locator('[data-testid="compare-column"]').count();
-    check(columns === 2, `both quotes are shown for comparison (${columns} columns)`);
+    const quoteCards = await page.locator(".quote-card").count();
+    check(quoteCards === 2, `both quotes are listed (${quoteCards} cards)`);
 
-    const compareText = await page.locator('[data-testid="quote-compare"]').innerText();
-    check(compareText.includes("5,390"),
-      "the comparison shows the same total the factory saw, not a re-parsed string");
-    check(!/MOQ/i.test(compareText), "MOQ is absent — the design system forbids it as a comparison metric");
+    const quoteListText = await page.locator(".quote-list").innerText();
+    check(quoteListText.includes("5,390"),
+      "the list shows the same total the factory saw, not a re-parsed string");
+    check(quoteListText.includes(factoryName), "the quoting factory is named on its card");
 
-    const columnHeaders = page.locator('[data-testid="compare-column"]');
-    let ourColumn = -1;
-    for (let index = 0; index < (await columnHeaders.count()); index += 1) {
-      if ((await columnHeaders.nth(index).innerText()).includes(factoryName)) ourColumn = index;
+    // Choosing a quote awards it, and awarding creates the production order in
+    // the same transaction. There is no separate confirmation card in the
+    // design, so the click is the decision.
+    const cards = page.locator(".quote-card");
+    let ourCard = -1;
+    for (let index = 0; index < (await cards.count()); index += 1) {
+      if ((await cards.nth(index).innerText()).includes(factoryName)) ourCard = index;
     }
-    check(ourColumn >= 0, `the quoting factory has a column (position ${ourColumn + 1})`);
+    check(ourCard >= 0, `the quoting factory has a card (position ${ourCard + 1})`);
 
-    await page
-      .locator(`.compare-table tbody tr:last-child td:nth-of-type(${ourColumn + 1}) button`)
-      .click();
-    await waitFor(page, ".confirm-card", 15000);
-
-    const confirmText = await page.locator(".confirm-card").innerText();
-    check(confirmText.includes(factoryName), "the confirmation names the factory being awarded");
-    await record(page, "Confirm award", "it says plainly that the others will be told");
-
-    await clickButton(page, "yes, award it");
-    await page.waitForTimeout(3000);
+    await page.locator(`.quote-card:nth-of-type(${ourCard + 1}) [data-testid="choose-quote"]`).click();
+    await page.waitForTimeout(4000);
     await record(page, "Awarded", "the loop closes here");
 
     const { data: winner } = await db.from("quotes")

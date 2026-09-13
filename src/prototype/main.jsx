@@ -7253,8 +7253,24 @@ function getQuoteComparisonDetails(factory) {
   };
 }
 
-function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompare, setSelectedQuotesForCompare, quoteCompareOpen, setQuoteCompareOpen, setSelectedReorderProject, goTo }) {
-  const selectedQuoteFactories = factories.filter((factory) => selectedQuotesForCompare.includes(factory.name));
+export function QuotesScreen({
+  selectedQuote,
+  setSelectedQuote,
+  selectedQuotesForCompare,
+  setSelectedQuotesForCompare,
+  quoteCompareOpen,
+  setQuoteCompareOpen,
+  setSelectedReorderProject,
+  goTo,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  quotes: liveQuotes,
+  onAward,
+  busy = false,
+  error = null,
+}) {
+  const quoteList = liveQuotes ?? factories;
+  const isLive = Boolean(liveQuotes);
+  const selectedQuoteFactories = quoteList.filter((factory) => selectedQuotesForCompare.includes(factory.name));
 
   function toggleCompareQuote(factoryName) {
     setSelectedQuotesForCompare((current) =>
@@ -7278,8 +7294,9 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
           </button>
         </div>
       </div>
+      {error && <p className="composer-error" role="alert">{error.message ?? String(error)}</p>}
       <div className="quote-list">
-        {factories.map((factory) => (
+        {quoteList.map((factory) => (
           <button
             key={factory.name}
             type="button"
@@ -7328,14 +7345,22 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                   </span>
                   <strong
                     className="button-like-action"
+                    data-testid="choose-quote"
                     onClick={(event) => {
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
                       setSelectedReorderProject(null);
+                      // Live, choosing a quote awards it — which creates the
+                      // production order in the same transaction. There is no
+                      // separate contract step to walk to first.
+                      if (isLive) {
+                        if (!busy) onAward?.(factory.id);
+                        return;
+                      }
                       goTo("contract");
                     }}
                   >
-                    Choose quote
+                    {isLive && busy ? "Awarding…" : "Choose quote"}
                   </strong>
                 </div>
               </div>
@@ -7355,6 +7380,17 @@ function QuotesScreen({ selectedQuote, setSelectedQuote, selectedQuotesForCompar
                       <span>Bulk lead</span>
                       <strong>{factory.lead}</strong>
                     </div>
+                    {/* The figure a brand actually decides on. The card shows
+                        unit price, quantity and lead time; the total is what
+                        those three come to, and leaving it off makes every
+                        comparison arithmetic the reader has to do. Shown only
+                        where there is one, so the prototype is unchanged. */}
+                    {factory.total && (
+                    <div>
+                      <span>Total</span>
+                      <strong>{factory.total}</strong>
+                    </div>
+                    )}
                   </div>
                   <div className="marketplace-note-list quote-note-list">
                     <div className="quote-fit-row">
