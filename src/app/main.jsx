@@ -22,7 +22,7 @@ import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
 import { isPlatformAdmin } from "../lib/domain/admin.js";
 import RfqList from "./rfq/RfqList.jsx";
 import RfqDetail from "./rfq/RfqDetail.jsx";
-import BrowseRfqs from "./rfq/BrowseRfqs.jsx";
+import LiveBrowse from "./rfq/LiveBrowse.jsx";
 import QuoteForm from "./quote/QuoteForm.jsx";
 import QuoteSent from "./quote/QuoteSent.jsx";
 import LiveQuotes from "./quote/LiveQuotes.jsx";
@@ -570,7 +570,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/browse",
       render: () =>
-        isFactory ? <BrowseRfqs org={activeOrg} profile={profile} /> : <NotForThisSide isFactory={false} />,
+        isFactory ? <LiveBrowse profile={profile} /> : <NotForThisSide isFactory={false} />,
     },
     {
       path: "/rfqs/:id/invite",

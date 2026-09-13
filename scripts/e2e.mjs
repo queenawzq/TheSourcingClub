@@ -796,20 +796,24 @@ async function main() {
     await record(page, "Factory dashboard", "still unverified, so it may look but not bid");
 
     await page.goto(`${APP}/browse`);
-    await waitForHeading(page, "open requests");
+    await waitForHeading(page, "browse rfqs");
     await waitFor(page, '[data-testid="open-rfq-card"]', 20000);
     await record(page, "Factory browse", "the brand's request, found by a factory that was never invited");
 
     const cardText = await page.locator('[data-testid="open-rfq-card"]').first().innerText();
     check(cardText.includes(rfqTitle), "the request a brand published minutes ago is visible to a factory");
-    check(/%\s*fit/i.test(cardText), "each request is scored against what this factory actually makes");
+    // Fit is a per-pair score this list never asks for, so the card shows none
+    // rather than a number that came from nowhere.
+    check(cardText.includes("300"), "the quantity the brand typed reaches the factory's card");
     check(cardText.includes(brandName), "the brand is named, not anonymous — nobody quotes a stranger");
 
     // Visibility and permission are deliberately different things.
     const gate = await page.locator(".browse-gate").count();
     check(gate === 1, "an unverified factory is told it can look but not bid");
 
-    await page.locator('[data-testid="open-rfq-card"]').first().click();
+    // The card's affordance is its own View RFQ button, which is how the
+    // design draws it.
+    await page.locator('[data-testid="open-rfq-card"] .primary-btn').first().click();
     await waitForHeading(page, rfqTitle.slice(0, 20));
     await record(page, "Factory reads the request", "every field traces to a stored column, none of it is copy");
 

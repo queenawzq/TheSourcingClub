@@ -5179,7 +5179,7 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   );
 }
 
-function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, onEdit }) {
+export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, onEdit }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-rfq-read-page">
       <div className="factory-submit-content">
@@ -5549,7 +5549,14 @@ function ProjectProgress({ progress }) {
   );
 }
 
-function FactoryBrowsePage({ companyType = "factory", language, onViewDetails }) {
+export function FactoryBrowsePage({
+  companyType = "factory",
+  language,
+  onViewDetails,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  projects: liveProjects,
+  emptyNote,
+}) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const isTradingCompany = companyType === "trading";
 
@@ -5703,9 +5710,16 @@ function FactoryBrowsePage({ companyType = "factory", language, onViewDetails })
             </div>
           </div>
           <div className="directory-card-list">
-            {brandProjects.map((project) => (
+            {(liveProjects ?? brandProjects).map((project) => (
               <BrandProjectCard project={project} companyType={companyType} language={language} key={project.title} onViewDetails={onViewDetails} />
             ))}
+            {/* An open marketplace with nothing in it is a real state on a
+                quiet day, and the design has no card for it. */}
+            {liveProjects && liveProjects.length === 0 && (
+              <p className="projects-empty" data-testid="browse-empty">
+                {emptyNote ?? "No open requests right now. New ones appear here as brands post them."}
+              </p>
+            )}
           </div>
         </section>
       </div>
@@ -7352,7 +7366,7 @@ function BrandProjectCard({ project, companyType = "factory", language, onViewDe
   ];
 
   return (
-    <article className={project.featured ? "factory-request-card featured shared-responsive-card shared-browse-rfq-card" : "factory-request-card shared-responsive-card shared-browse-rfq-card"}>
+    <article data-testid="open-rfq-card" className={project.featured ? "factory-request-card featured shared-responsive-card shared-browse-rfq-card" : "factory-request-card shared-responsive-card shared-browse-rfq-card"}>
       <header className="factory-request-card-top shared-card-header">
         <div className="factory-request-title shared-card-heading">
           <div className="factory-avatar">{project.initials}</div>
@@ -7366,7 +7380,7 @@ function BrandProjectCard({ project, companyType = "factory", language, onViewDe
         <div className="factory-request-card-actions shared-card-actions">
           <span className={`factory-project-fit shared-card-status ${project.fitTone}`}>{companyType === "trading" ? "Network fit" : project.capacity[0]}</span>
           <button className="secondary-btn" type="button">Save</button>
-          <button className="primary-btn" type="button" onClick={onViewDetails}>View RFQ</button>
+          <button className="primary-btn" type="button" onClick={() => onViewDetails?.(project)}>View RFQ</button>
         </div>
       </header>
 
@@ -8038,7 +8052,7 @@ function AddUpdateModal({ language, milestone, onClose, onPost }) {
   );
 }
 
-function FactorySubmitQuote({ project, companyType = "factory", language, backLabel = "‹ Back to view request", onBack, onReviewTotal }) {
+export function FactorySubmitQuote({ project, companyType = "factory", language, backLabel = "‹ Back to view request", onBack, onReviewTotal }) {
   const isZh = language === "zh";
 
   return (
@@ -8376,7 +8390,7 @@ function FactoryQuoteReminder({ companyType = "factory" }) {
   );
 }
 
-function FactoryQuoteSent({ project, companyType = "factory", language = "en", onBack, onDashboard }) {
+export function FactoryQuoteSent({ project, companyType = "factory", language = "en", onBack, onDashboard }) {
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
 

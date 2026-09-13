@@ -1,6 +1,6 @@
 # End-to-end evidence
 
-Recorded 2026-09-13T19:37:30.120Z against `http://127.0.0.1:5173/app.html`.
+Recorded 2026-09-13T19:46:32.428Z against `http://127.0.0.1:5173/app.html`.
 
 **110 steps, 127 assertions, 0 failed.**
 
@@ -156,7 +156,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the factory scores 42% against this specific request
 - ✅ signing back in skips onboarding and lands on the dashboard
 - ✅ the request a brand published minutes ago is visible to a factory
-- ✅ each request is scored against what this factory actually makes
+- ✅ the quantity the brand typed reaches the factory's card
 - ✅ the brand is named, not anonymous — nobody quotes a stranger
 - ✅ an unverified factory is told it can look but not bid
 - ✅ the quantity the brand typed is what the factory reads
@@ -203,7 +203,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the factory can say where its money goes — without which nobody can pay it
 - ✅ the brand can read the factory's update across the org boundary
 - ✅ approving the sample made its payment due
-- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000037)
+- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000038)
 - ✅ the platform fee is shown and charged at zero ($0.00)
 - ✅ the payment is recorded as sent
 - ✅ the brand saying it paid does NOT count as funded
@@ -241,7 +241,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ and they land in that organisation, not one of their own
 - ✅ a crash says what is and is not lost, rather than showing a blank page
 - ✅ and offers a way out — reload, or back to the start
-- ✅ the crash was reported, under the reference shown (5B38319B)
+- ✅ the crash was reported, under the reference shown (13AABFA4)
 - ✅ with the real error message, not a generic one
 - ✅ and the screen it happened on
 - ✅ navigating away clears the crash — one broken screen does not poison the next
