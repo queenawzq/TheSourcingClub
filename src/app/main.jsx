@@ -16,7 +16,7 @@ import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { acceptInvitation, createOrg, listMyInvitations } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
-import FactoryOnboarding from "./onboarding/FactoryOnboarding.jsx";
+import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
 import { isConfigured } from "../lib/supabase.js";
 import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
 import { isPlatformAdmin } from "../lib/domain/admin.js";

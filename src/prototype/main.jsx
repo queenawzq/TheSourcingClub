@@ -2445,6 +2445,31 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
   // the data source.
   const optionsFor = (label, fallback) => optionsByLabel?.[label] ?? fallback;
   const valueFor = (label) => values?.[onboardingFieldName(label)];
+
+  /**
+   * The review card names a few things differently from the step that
+   * collected them — "Founded" for "Year founded", "Products" for "What does
+   * your brand make?". This is that translation, and the only place it lives.
+   */
+  const REVIEW_ALIAS = {
+    Category: "Brand category",
+    Founded: "Year founded",
+    Products: "What does your brand make?",
+    "Annual order volume": "Average pieces ordered per year",
+    "Typical order per style": "Typical order size per style",
+    "Reorder cadence": "Typical reorder cadence",
+  };
+
+  /**
+   * What the brand actually typed, or the design's example when nothing has
+   * been. The prototype passes no values and so keeps reading as it was drawn.
+   */
+  const reviewValue = (label, drawn) => {
+    const actual = valueFor(REVIEW_ALIAS[label] ?? label);
+    if (actual === undefined || actual === null) return drawn;
+    if (Array.isArray(actual)) return actual.length ? actual.join(", ") : drawn;
+    return String(actual).trim() === "" ? drawn : actual;
+  };
   const [onboardingStakeholders, setOnboardingStakeholders] = useState([
     { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder" },
     { name: "Maya Lee", email: "maya@maisonrue.com", role: "Production lead" }
@@ -2667,7 +2692,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
               {rows.map(([label, value]) => (
                 <div className="detail-pair" key={label}>
                   <strong>{label}</strong>
-                  <span>{value}</span>
+                  <span>{reviewValue(label, value)}</span>
                 </div>
               ))}
             </div>

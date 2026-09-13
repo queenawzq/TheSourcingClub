@@ -6449,7 +6449,64 @@ function FactorySettingsScreen({ companyType = "factory", language = "en" }) {
   );
 }
 
-function FactoryOnboarding({ companyType = "factory", language, step, isReviewEdit, onLanguageChange, onCompanyTypeChange, onEditSection, onBack, onNext }) {
+/**
+ * A language-stable key for a designed factory field.
+ *
+ * The factory screens are bilingual, so the visible label is "Factory Name" or
+ * "工厂名称" depending on who is looking. Deriving the key from whichever one is
+ * on screen would store a brand's answer under a different column depending on
+ * the language they filled the form in. The English copy is the canonical
+ * vocabulary, so the key always comes from there — the same position in
+ * onboardingCopy.en — whatever is displayed.
+ */
+export function factoryFieldName(label) {
+  return String(label)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/** The English label at the same position, for a key that does not move. */
+function englishLabel(companyType, step, kind, index) {
+  const copy = companyType === "trading" ? tradingOnboardingCopy.en : onboardingCopy.en;
+  const entry = copy?.steps?.[step]?.[kind]?.[index];
+  return Array.isArray(entry) ? entry[0] : entry;
+}
+
+function readFactoryCard(card) {
+  const values = {};
+  if (!card) return values;
+  for (const control of card.querySelectorAll("[name]")) {
+    const key = control.getAttribute("name");
+    if (!key || key === "onboarding-company-type") continue;
+    // A File is not a string, so it is handed over as itself rather than as
+    // the browser's "C:\\fakepath\\" version of control.value.
+    if (control.type === "file") {
+      const file = control.files?.[0];
+      if (file) values[key] = file;
+    } else if (control.type === "checkbox") values[key] = control.checked;
+    else if (control.dataset.multi !== undefined) values[key] = String(control.value || "").split("\u001f").filter(Boolean);
+    else values[key] = control.value;
+  }
+  return values;
+}
+
+export function FactoryOnboarding({
+  companyType = "factory",
+  language,
+  step,
+  isReviewEdit,
+  onLanguageChange,
+  onCompanyTypeChange,
+  onEditSection,
+  onBack,
+  onNext,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  optionsByLabel,
+  values: savedValues,
+  busy = false,
+  error = null,
+}) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
   const current = copy.steps[step];
@@ -6480,7 +6537,7 @@ function FactoryOnboarding({ companyType = "factory", language, step, isReviewEd
       focusTarget?.focus();
       return;
     }
-    onNext();
+    onNext(readFactoryCard(card));
   };
 
   return (
@@ -6514,7 +6571,11 @@ function FactoryOnboarding({ companyType = "factory", language, step, isReviewEd
           onLanguageChange={onLanguageChange}
           onCompanyTypeChange={onCompanyTypeChange}
           onEditSection={onEditSection}
+          optionsByLabel={optionsByLabel}
+          values={savedValues}
         />
+
+        {error && <p className="factory-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
 
         <footer className="factory-onboarding-actions">
           {!isFirst && !isLast && (
@@ -6522,8 +6583,10 @@ function FactoryOnboarding({ companyType = "factory", language, step, isReviewEd
               {copy.back}
             </button>
           )}
-          <button className="primary-btn" type="button" onClick={handleNext}>
-            {isReviewEdit ? (language === "zh" ? "保存" : "Save") : current.cta || (isLast ? copy.steps[copy.steps.length - 1].cta : copy.next)}
+          <button className="primary-btn" type="button" disabled={busy} onClick={handleNext}>
+            {busy
+              ? (language === "zh" ? "保存中…" : "Saving…")
+              : isReviewEdit ? (language === "zh" ? "保存" : "Save") : current.cta || (isLast ? copy.steps[copy.steps.length - 1].cta : copy.next)}
           </button>
         </footer>
       </section>
@@ -6537,7 +6600,16 @@ function FactoryOnboarding({ companyType = "factory", language, step, isReviewEd
   );
 }
 
-function FactoryOnboardingStep({ step, content, companyType, language, onLanguageChange, onCompanyTypeChange, onEditSection }) {
+function FactoryOnboardingStep({ step, content, companyType, language, onLanguageChange, onCompanyTypeChange, onEditSection, optionsByLabel, values = {} }) {
+  const [registrationName, setRegistrationName] = useState("");
+  // Keys and option lists both resolve through the English copy, so neither
+  // depends on the language the form happens to be displayed in.
+  const nameAt = (kind, index) => {
+    const label = englishLabel(companyType, step, kind, index);
+    return label ? factoryFieldName(label) : undefined;
+  };
+  const valueAt = (kind, index) => values?.[nameAt(kind, index)];
+  const optionsAt = (kind, index, fallback) => optionsByLabel?.[englishLabel(companyType, step, kind, index)] ?? fallback;
   const stepType = content.type || ["welcome", "fields", "context", "chipsBalanced", "chipsWithField", "capacity", "verification", "walkthrough", "review", "terms", "complete"][step];
 
   if (stepType === "welcome") {
@@ -6578,8 +6650,8 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
   if (stepType === "fields") {
     return (
       <div className="factory-onboarding-form-grid">
-        {content.fields.map(([label, placeholder, required]) => (
-          <OnboardingField label={label} placeholder={placeholder} required={required} language={language} key={label} />
+        {content.fields.map(([label, placeholder, required], index) => (
+          <OnboardingField label={label} placeholder={placeholder} required={required} language={language} name={nameAt("fields", index)} defaultValue={valueAt("fields", index)} key={label} />
         ))}
         {content.add && <button className="onboarding-text-action" type="button">{content.add}</button>}
         {content.helper && <p className="onboarding-helper">{content.helper}</p>}
@@ -6588,7 +6660,7 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
   }
 
   if (stepType === "context") {
-    return <OnboardingBrandContext content={content} language={language} />;
+    return <OnboardingBrandContext content={content} language={language} values={values} />;
   }
 
   if (stepType === "capacity") {
@@ -6598,8 +6670,8 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
   if (stepType === "chipsBalanced") {
     return (
       <div className="factory-onboarding-section production-fit-section">
-        {content.groups.map(([label, options, selected, required]) => (
-          <OnboardingChipGroup label={label} options={options} selected={selected} required={required} balanced language={language} companyType={companyType} key={label} />
+        {content.groups.map(([label, options, selected, required], index) => (
+          <OnboardingChipGroup label={label} options={optionsAt("groups", index, options)} selected={valueAt("groups", index) ?? selected} required={required} balanced language={language} companyType={companyType} name={nameAt("groups", index)} key={label} />
         ))}
       </div>
     );
@@ -6608,10 +6680,10 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
   if (stepType === "chipsWithField") {
     return (
       <div className="factory-onboarding-section production-fit-section">
-        {content.groups.map(([label, options, selected, required]) => (
-          <OnboardingChipGroup label={label} options={options} selected={selected} required={required} language={language} companyType={companyType} key={label} />
+        {content.groups.map(([label, options, selected, required], index) => (
+          <OnboardingChipGroup label={label} options={optionsAt("groups", index, options)} selected={valueAt("groups", index) ?? selected} required={required} language={language} companyType={companyType} name={nameAt("groups", index)} key={label} />
         ))}
-        <OnboardingField label={content.equipmentLabel} placeholder={content.equipmentPlaceholder} />
+        <OnboardingField label={content.equipmentLabel} placeholder={content.equipmentPlaceholder} name="equipment" defaultValue={values?.equipment} />
       </div>
     );
   }
@@ -6621,7 +6693,24 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
       <div className="factory-onboarding-section verification-step">
         <div className="verification-upload-block">
           <strong>{content.businessLabel}</strong>
-          <button className="onboarding-file-upload" type="button">{content.businessUpload}</button>
+          {/* The design draws an upload affordance with nothing behind it —
+              fine in a prototype, where no file is ever read. The button is
+              untouched; it now opens a real picker, and the chosen file's name
+              replaces its label so the vendor can see what they attached. */}
+          <button
+            className="onboarding-file-upload"
+            type="button"
+            onClick={(event) => event.currentTarget.parentElement.querySelector('input[type="file"]')?.click()}
+          >
+            {registrationName || content.businessUpload}
+          </button>
+          <input
+            type="file"
+            name="business-registration"
+            accept=".pdf,.png,.jpg,.jpeg"
+            hidden
+            onChange={(event) => setRegistrationName(event.target.files?.[0]?.name ?? "")}
+          />
           <small>{content.businessHelper}</small>
         </div>
         <div className="certification-add-control">
@@ -6754,7 +6843,7 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
             {language === "zh" ? "请接受条款后继续。" : "Please accept the terms to continue."}
           </small>
         </div>
-        <OnboardingField label={language === "zh" ? "签名" : "Signature"} placeholder={content.signature} required language={language} />
+        <OnboardingField label={language === "zh" ? "签名" : "Signature"} placeholder={content.signature} required language={language} name="signature" />
       </div>
     );
   }
@@ -6773,12 +6862,12 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
   );
 }
 
-function OnboardingBrandContext({ content, language }) {
+function OnboardingBrandContext({ content, language, values = {} }) {
   return (
     <div className="factory-brand-context-step">
       <label className="factory-onboarding-field full-width">
         <span>{content.brandLabel}</span>
-        <textarea placeholder={content.brandPlaceholder} />
+        <textarea name="about-the-factory" defaultValue={values?.["about-the-factory"] ?? ""} placeholder={content.brandPlaceholder} />
       </label>
 
       <div className="factory-brand-context-upload-grid">
@@ -6812,11 +6901,11 @@ function OnboardingAssetUploadCard({ title, helper, accept, uploadLabel }) {
   );
 }
 
-function OnboardingField({ label, placeholder, required = false, language = "en" }) {
+function OnboardingField({ label, placeholder, required = false, language = "en", name, defaultValue }) {
   return (
     <label className="factory-onboarding-field">
       <span>{label}{required && <b className="onboarding-required-mark" aria-hidden="true"> *</b>}</span>
-      <input placeholder={placeholder} required={required} data-onboarding-required={required ? "true" : undefined} />
+      <input name={name ?? factoryFieldName(label)} defaultValue={defaultValue ?? ""} placeholder={placeholder} required={required} data-onboarding-required={required ? "true" : undefined} />
       {required && (
         <small className="factory-onboarding-validation-message">
           {language === "zh" ? `请输入${label}后继续。` : `Enter your ${label.toLowerCase()} to continue.`}
@@ -6888,7 +6977,7 @@ function OnboardingCapacitySetup({ content, language }) {
         <div className="onboarding-capacity-topline">
           <span>{language === "zh" ? "品类" : "Category"}</span>
           <label className="capacity-select-field onboarding-capacity-select">
-            <select value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)} aria-label={language === "zh" ? "选择品类" : "Select category"}>
+            <select name="capacity-category" value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)} aria-label={language === "zh" ? "选择品类" : "Select category"}>
               {FACTORY_CAPACITY_CATEGORIES.map((category) => (
                 <option value={category.key} key={category.key}>{language === "zh" ? category.labelZh : category.label}</option>
               ))}
@@ -6925,6 +7014,12 @@ function OnboardingCapacitySetup({ content, language }) {
             />
           )}
           <span>{capacityInputMode === "hours" ? (language === "zh" ? "小时 / 月" : "hours / month") : (language === "zh" ? "件 / 月" : "units / month")}</span>
+          {/* The designed inputs are controlled by this component's own state,
+              so the card sweep cannot see them. These carry the answer out:
+              capacity is the one step whose result lives in its own table. */}
+          <input type="hidden" name="capacity-input-mode" value={capacityInputMode} readOnly />
+          <input type="hidden" name="capacity-line-hours" value={lineHours ?? ""} readOnly />
+          <input type="hidden" name="capacity-units" value={capacityUnits ?? ""} readOnly />
         </label>
 
         {capacityInputMode === "hours" && (
@@ -6980,7 +7075,7 @@ function OnboardingCapacitySetup({ content, language }) {
   );
 }
 
-function OnboardingChipGroup({ label, options, selected = [], required = false, balanced = false, language = "en", companyType = "factory" }) {
+function OnboardingChipGroup({ label, options, selected = [], required = false, balanced = false, language = "en", companyType = "factory", name }) {
   const [selectedOptions, setSelectedOptions] = useState(selected);
   const [customOptions, setCustomOptions] = useState([]);
   const [customValue, setCustomValue] = useState("");
@@ -7192,6 +7287,9 @@ function OnboardingChipGroup({ label, options, selected = [], required = false, 
           {isZh ? "请至少选择一个选项后继续。" : "Choose at least one option to continue."}
         </small>
       )}
+      {/* The group draws buttons, and buttons carry no value; this is the only
+          way its selection can be read back. */}
+      <input type="hidden" data-multi name={name ?? factoryFieldName(label)} value={selectedOptions.join("\u001f")} readOnly />
     </section>
   );
 }

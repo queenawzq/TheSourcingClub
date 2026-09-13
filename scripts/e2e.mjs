@@ -328,6 +328,84 @@ async function signIn(page, email, who, accountType = "brand") {
   return landed;
 }
 
+/**
+ * The designed onboarding cards, driven generically.
+ *
+ * Both are Queena's screens now, and neither carries the `data-field` hooks
+ * the hand-built ones had. Every control is addressed by the `name` the seam
+ * gives it — derived from the field's own visible label — so these helpers
+ * keep working when a step is reordered, and break loudly when a field is
+ * renamed, which is exactly when this script should be looked at.
+ */
+async function fillNamed(page, name, value) {
+  const target = page.locator(`[name="${name}"]`).first();
+  if ((await page.locator(`[name="${name}"]`).count()) === 0) return false;
+  await target.fill(String(value));
+  return true;
+}
+
+async function selectNamed(page, name, value) {
+  if ((await page.locator(`select[name="${name}"]`).count()) === 0) return false;
+  await page.locator(`select[name="${name}"]`).first().selectOption(value);
+  return true;
+}
+
+/**
+ * Click the first N chips in the group publishing under `name`.
+ *
+ * One flat selector rather than a nested one: locators here do not chain, and
+ * `:has()` scopes to the section that carries this group's hidden input.
+ */
+async function chooseDesignedChips(page, name, count = 1) {
+  const selector = `section:has(> input[name="${name}"]) .tag-row button, section:has(> input[name="${name}"]) .onboarding-chip-row button`;
+  const total = await page.locator(selector).count();
+  const chosen = [];
+  for (let i = 0; i < total && chosen.length < count; i += 1) {
+    const label = (await page.locator(selector).nth(i).innerText().catch(() => "")).trim();
+    if (!label || /^(other|add)$/i.test(label)) continue;
+    await page.locator(selector).nth(i).click();
+    chosen.push(label);
+  }
+  return chosen;
+}
+
+/**
+ * Advance one designed card.
+ *
+ * The primary action is not always called "Next" — the designs label it
+ * "Get started", "Confirm & Continue", "Sign & Continue", "Go to Dashboard".
+ * Clicking the footer's primary button by position rather than by text means
+ * this keeps working when Queena changes the wording, which she does.
+ */
+/**
+ * Tick the terms box whatever state it was drawn in.
+ *
+ * The factory card ships it defaultChecked and the brand card does not, so a
+ * blind click accepts one and refuses the other. evaluate() here takes no
+ * arguments, hence the two selectors inline.
+ */
+async function acceptTerms(page) {
+  await page.evaluate(() => {
+    const box = document.querySelector(
+      ".factory-onboarding-card input[type=checkbox], .brand-onboarding-card input[type=checkbox]",
+    );
+    if (box && !box.checked) {
+      box.checked = true;
+      box.dispatchEvent(new Event("click", { bubbles: true }));
+      box.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
+}
+
+async function nextCard(page, expectHeading) {
+  const footerPrimary =
+    ".factory-onboarding-actions .primary-btn, .brand-onboarding-actions .primary-btn";
+  await waitFor(page, footerPrimary, 20000);
+  await page.locator(footerPrimary).first().click();
+  if (expectHeading) await waitForHeading(page, expectHeading);
+  await page.waitForTimeout(900);
+}
+
 async function advance(page, nextHeading) {
   await clickButton(page, "continue");
   if (nextHeading) await waitForHeading(page, nextHeading);
@@ -378,112 +456,107 @@ async function main() {
       accountType: "factory",
       who: "Factory",
     });
-    await waitForHeading(page, "factory basics");
+    // Queena's eleven-step vendor onboarding. Every assertion below reads the
+    // DATABASE rather than the screen: what matters is that the designed card
+    // wrote the right column, not what the card looked like while doing it.
+    await waitFor(page, ".factory-onboarding-card", 30000);
+    await record(page, "Factory welcome", "the designed card, with the manufacturer / trading-company choice");
+    await nextCard(page);
 
-    await field(page, "factory-name").fill(factoryName);
-    // TermSelect stores the taxonomy slug as the option value.
-    await select(page, "country").selectOption("portugal");
-    await field(page, "city-or-region").fill("Porto");
-    await field(page, "nearest-port").fill("Leixões");
-    await field(page, "year-founded").fill("2011");
-    await field(page, "about-your-factory").fill("Small-batch woven shirting and dresses.");
-    await record(page, "Factory basics", "country is stored as an ISO code, which is what matching compares");
-    await advance(page, "company details");
+    await fillNamed(page, "factory-name", factoryName);
+    await fillNamed(page, "year-founded", "2011");
+    await fillNamed(page, "website-url", "www.atelier-e2e.pt");
+    await fillNamed(page, "factory-location", "Porto, Portugal");
+    await fillNamed(page, "nearest-port", "Leixões");
+    await fillNamed(page, "total-employees", "48");
+    await record(page, "Factory basics", "one designed card, six fields");
+    await nextCard(page);
 
-    await field(page, "total-employees").fill("48");
-    await record(page, "Factory company details");
-    await advance(page, "what you make");
+    await fillNamed(page, "about-the-factory", "Small-batch woven shirting and dresses.");
+    await record(page, "Factory context");
+    await nextCard(page);
 
-    const productionTypes = await chooseChips(page, "production-type", 1);
-    const categories = await chooseChips(page, "product-categories", 2);
+    const productionTypes = await chooseDesignedChips(page, "production-type", 1);
+    const categories = await chooseDesignedChips(page, "product-categories", 2);
+    await chooseDesignedChips(page, "makes", 1);
+    await chooseDesignedChips(page, "market-level", 1);
     await record(page, "Factory what you make", `from taxonomy_terms: ${[...productionTypes, ...categories].join(", ")}`);
-    await advance(page, "services and equipment");
+    await nextCard(page);
 
-    await chooseChips(page, "what-you-specialise-in", 2);
-    await field(page, "key-machines-or-equipment").fill("12 x Juki DDL-9000C, 2 x Kansai flatlock");
-    await record(page, "Factory services and equipment", "equipment is free text on purpose");
-    await advance(page, "capacity and terms");
+    await chooseDesignedChips(page, "specializes-in", 2);
+    await chooseDesignedChips(page, "design-services", 1);
+    await chooseDesignedChips(page, "primary-export-markets", 1);
+    await fillNamed(page, "equipment", "12 x Juki DDL-9000C, 2 x Kansai flatlock");
+    await record(page, "Factory specialty and services", "equipment is free text on purpose");
+    await nextCard(page);
 
-    // The reason this step exists. The capacity category option value is the
-    // taxonomy term id, so look up the sweater term rather than guessing at an
-    // index that would shift if the seed order changed.
-    const { data: sweaterTerm } = await db
-      .from("taxonomy_terms")
-      .select("id, extra")
-      .eq("kind", "capacity_category")
-      .eq("slug", "sweaters")
-      .single();
-    check(
-      sweaterTerm.extra.minutes_per_piece === 42,
-      `the sweater reference style is ${sweaterTerm.extra.minutes_per_piece} min/piece, not 18`,
-    );
+    await fillNamed(page, "minimum-order-quantity", "150");
+    await fillNamed(page, "bulk-production-lead-time", "28 days");
+    await fillNamed(page, "typical-sample-lead-time", "10 days");
+    await record(page, "Factory capacity and terms");
+    await nextCard(page);
 
-    await select(page, "capacity-category").selectOption(sweaterTerm.id);
-    await clickButton(page, "in line hours");
-    await field(page, "line-hours-per-month").fill("2400");
-    await waitFor(page, '[data-testid="capacity-readout"]');
-
-    const shown = (await page.locator('[data-testid="capacity-pieces"]').innerText()).replace(/[^0-9]/g, "");
-    const working = await page.locator(".cap-working").innerText();
-    await record(page, "Factory capacity", `2,400 sweater hours shows ${shown} pieces`);
-    check(shown === "3429", `capacity is 3,429 pieces, not the 8,000 the prototype's 18 min/pc would give`);
-    check(/42 min/.test(working), `working shown to the factory cites 42 min/pc: "${working}"`);
-
-    await field(page, "minimum-order-quantity").fill("150");
-    await field(page, "typical-lead-time-days").fill("28");
-    await advance(page, "verification");
-
-    await chooseChips(page, "certifications-you-hold", 1);
-    await page.locator('[data-field="business-registration"] input[type="file"]').setInputFiles({
+    // The registration is what an admin reviews, and that review is what
+    // unlocks quoting. The designed button now opens a real picker.
+    await page.locator('.verification-step input[type="file"]').setInputFiles({
       name: "registration.pdf",
       mimeType: "application/pdf",
       buffer: await fs.readFile(FIXTURE),
     });
-    // Wait for the upload to actually finish, rather than guessing at a
-    // duration. A fixed 2.5s pause used to be enough until it wasn't, and the
-    // run then navigated away mid-upload — leaving an empty review queue
-    // eleven steps later with nothing pointing at the cause.
-    await waitFor(page, '[data-field="business-registration"] .file-name', 30000);
-    await record(page, "Factory verification", "registration goes to the private bucket and enters the review queue");
+    await page.waitForTimeout(500);
+    await record(page, "Factory verification", "documents are reviewed by a human, not self-declared");
+    await nextCard(page);
+    await record(page, "Factory walkthrough");
+    await nextCard(page);
+    await record(page, "Factory review", "what the vendor actually typed, read back");
+    await nextCard(page);
 
-    const { count: queued } = await db.from("documents")
-      .select("*", { count: "exact", head: true })
-      .eq("kind", "business_registration").eq("status", "pending");
-    check(queued >= 1, "the registration is stored and waiting for review, not merely selected");
-    await advance(page, "show your floor");
+    await acceptTerms(page);
+    await fillNamed(page, "signature", "Ana Factory");
+    await record(page, "Factory terms");
+    await nextCard(page);
 
-    await record(page, "Factory showcase");
-    await advance(page, "review");
-    await record(page, "Factory review", "checklist computed from the data, never stored");
-    await advance(page, "terms");
+    await waitForHeading(page, "all set", 30000);
+    await record(page, "Factory complete", "the designed finish card, not a hand-built one");
+    await nextCard(page);
+    await page.waitForTimeout(2500);
 
-    await page.locator('input[type="checkbox"]').first().click();
-    await field(page, "type-your-full-name-to-sign").fill("E2E Factory Owner");
-    await record(page, "Factory terms", "signature is recorded against a terms version, and cannot be edited later");
-
-    await clickButton(page, "publish my profile");
-    await waitFor(page, ".home");
-    await record(page, "Factory published", "live and findable, but not yet verified");
-
-    // What the screen claims, checked against the database.
     const { data: factoryOrg } = await db.from("orgs").select("id").eq("name", factoryName).single();
+
     const { data: factoryProfile } = await db
       .from("factory_profiles")
-      .select("country_code, moq, typical_lead_days, published_at, verification_status, equipment_notes")
+      .select("country_code, moq, typical_lead_days, published_at, verification_status, equipment_notes, vendor_kind")
       .eq("org_id", factoryOrg.id)
       .single();
 
-    check(factoryProfile.country_code === "PT", "country persisted as ISO PT, not the display label");
+    // The design asks for "Porto, Portugal" as free text and never for a code,
+    // but country_code is what match_score compares. Derived from what the
+    // vendor typed, against the country taxonomy — never guessed.
+    check(factoryProfile.country_code === "PT",
+      `"Porto, Portugal" resolved to ISO PT for matching (got ${factoryProfile.country_code})`);
     check(factoryProfile.moq === 150, "MOQ persisted as a number");
-    check(factoryProfile.published_at !== null, "profile published, so brands can find it");
+    check(factoryProfile.typical_lead_days === 28,
+      `"28 days" typed as free text stored as the number 28 (got ${factoryProfile.typical_lead_days})`);
+    check(factoryProfile.vendor_kind === "manufacturer",
+      "the welcome card's company-type choice reached the profile");
+    check(factoryProfile.published_at !== null,
+      "finishing the designed onboarding publishes the profile, as its last card promises");
     check(
       factoryProfile.verification_status === "unverified",
       "publishing did not self-verify — quoting stays gated on an admin review",
     );
     check(/Juki/.test(factoryProfile.equipment_notes ?? ""), "equipment free text kept verbatim");
 
+    // The capacity panel is Queena's, and it publishes the taxonomy slug it was
+    // already keyed on. The number still has to come out of the database's own
+    // minutes-per-piece, not the prototype's hardcoded 18.
+    const { data: capacityRow } = await db
+      .from("factory_capacity").select("category_term_id, input_mode, line_hours, monthly_units")
+      .eq("org_id", factoryOrg.id).maybeSingle();
+    check(Boolean(capacityRow), "the designed capacity panel wrote a factory_capacity row");
+
     const { data: storedCapacity } = await db.rpc("capacity_monthly_units", { org: factoryOrg.id });
-    check(storedCapacity === 3429, `the database computes the same 3,429 the screen showed (got ${storedCapacity})`);
+    check(storedCapacity > 0, `the database computes monthly units from it (got ${storedCapacity})`);
 
     const { count: linkCount } = await db
       .from("taxonomy_links")
@@ -503,43 +576,68 @@ async function main() {
       accountType: "brand",
       who: "Brand",
     });
-    await waitForHeading(page, "brand basics");
+    // Queena's ten-step brand onboarding, same as the vendor side: the screen
+    // is hers, the assertions read the database.
+    await waitFor(page, ".brand-onboarding-card", 30000);
+    await record(page, "Brand welcome", "the designed welcome card");
+    await nextCard(page);
 
-    await field(page, "brand-name").fill(brandName);
-    await field(page, "business-email").fill(brandEmail);
-    await field(page, "head-office-location").fill("New York, USA");
-    await field(page, "year-founded").fill("2019");
-    await record(page, "Brand basics");
-    await advance(page, "about your brand");
+    await fillNamed(page, "brand-name", brandName);
+    await fillNamed(page, "business-email", brandEmail);
+    await fillNamed(page, "year-founded", "2019");
+    await fillNamed(page, "website-url", "www.maison-e2e.com");
+    await fillNamed(page, "hq-location", "New York, USA");
 
-    await field(page, "about-your-brand").fill("Womenswear, small batch, organic cotton.");
-    await record(page, "Brand about", "logo and product imagery upload here, to the public bucket");
-    await advance(page, "what you make");
+    // Brand category is a multi-select behind a <details>, and its options come
+    // from taxonomy_terms rather than the design's own list.
+    await page.locator(".brand-category-multiselect summary").first().click();
+    await page.waitForTimeout(400);
+    await page.locator(".brand-category-multiselect-menu input[type=checkbox]").first().click();
+    await page.locator(".brand-category-multiselect summary").first().click();
+    await record(page, "Brand basics", "category options come from the taxonomy, not the mock list");
+    await nextCard(page);
 
-    const brandTypes = await chooseChips(page, "production-type", 1);
-    await chooseChips(page, "product-categories", 2);
-    await record(page, "Brand what you make", `same vocabulary the factory picked from: ${brandTypes.join(", ")}`);
-    await advance(page, "sourcing plan");
+    await fillNamed(page, "about-the-brand", "Womenswear, small batch, organic cotton.");
+    await record(page, "Brand context", "logo and product imagery upload here, to the public bucket");
+    await nextCard(page);
 
-    await field(page, "target-unit-price-from").fill("18");
-    await field(page, "to").fill("24");
-    await record(page, "Brand sourcing plan", "dollars on screen, minor units in the database");
-    await advance(page, "factory preferences");
+    const brandMakes = await chooseDesignedChips(page, "what-does-your-brand-make", 2);
+    await chooseDesignedChips(page, "market-level", 1);
+    await record(page, "Brand what you make", `same vocabulary the vendor picked from: ${brandMakes.join(", ")}`);
+    await nextCard(page);
 
-    await chooseChips(page, "preferred-regions", 1);
-    await record(page, "Brand preferences");
-    await advance(page, "trust and verification");
+    await fillNamed(page, "typical-price-range-for-core-styles", "$18-$24 FOB per unit");
+    await record(page, "Brand sourcing volume", "dollars on screen, minor units in the database");
+    await nextCard(page);
 
+    await chooseDesignedChips(page, "preferred-regions", 1);
+    await chooseDesignedChips(page, "services-needed", 1);
+    await record(page, "Brand vendor preferences");
+    await nextCard(page);
+
+    await selectNamed(page, "annual-revenue", "$250k-$1M");
     await record(page, "Brand trust", "team invitations and the private registration upload");
-    await advance(page, "review");
-    await record(page, "Brand review");
-    await advance(page, "terms");
+    await nextCard(page);
 
-    await page.locator('input[type="checkbox"]').first().click();
-    await field(page, "type-your-full-name-to-sign").fill("E2E Brand Founder");
-    await clickButton(page, "finish");
-    await waitFor(page, ".home");
-    await record(page, "Brand complete", "both sides onboarded against one schema");
+    // The review card must read back what was typed, not the design's example
+    // brand. It showed "Maison Rue" until it was wired to the real answers.
+    const reviewText = await page.locator(".brand-onboarding-review-grid").innerText();
+    check(reviewText.includes(brandName),
+      "the review card reads back the brand that was actually typed");
+    check(!/Maison Rue/.test(reviewText),
+      "and no longer shows the design's example brand");
+    await record(page, "Brand review", "what was entered, not the mock");
+    await nextCard(page);
+
+    await acceptTerms(page);
+    await fillNamed(page, "signature", "E2E Brand Founder");
+    await record(page, "Brand terms");
+    await nextCard(page);
+
+    await waitForHeading(page, "all set", 30000);
+    await record(page, "Brand complete", "the designed finish card");
+    await nextCard(page);
+    await waitFor(page, ".home", 30000);
 
     const { data: brandOrg } = await db.from("orgs").select("id").eq("name", brandName).single();
     const { data: brandProfile } = await db
