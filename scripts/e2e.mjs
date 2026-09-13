@@ -385,6 +385,14 @@ async function chooseDesignedChips(page, name, count = 1) {
  * arguments, hence the two selectors inline.
  */
 async function acceptTerms(page) {
+  // Wait for the box to exist before reading it. The terms card renders after
+  // the step transition, and ticking nothing then pressing Next reads as the
+  // product refusing a signature it never saw.
+  await waitFor(
+    page,
+    ".factory-onboarding-card input[type=checkbox], .brand-onboarding-card input[type=checkbox]",
+    15000,
+  ).catch(() => {});
   await page.evaluate(() => {
     const box = document.querySelector(
       ".factory-onboarding-card input[type=checkbox], .brand-onboarding-card input[type=checkbox]",

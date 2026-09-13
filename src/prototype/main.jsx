@@ -6321,7 +6321,18 @@ function ProjectProgress({ progress }) {
   );
 }
 
-function ProjectDetailScreen({ goTo, goToFundingMilestone }) {
+export function ProjectDetailScreen({
+  goTo,
+  goToFundingMilestone,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  order,
+  milestones: liveMilestones,
+  onAction,
+  busy = false,
+  error = null,
+}) {
+  const milestoneList = liveMilestones ?? projectDetailMilestones;
+  const isLive = Boolean(liveMilestones);
   const [activeDetailTab, setActiveDetailTab] = useState("overview");
   const [approveFundMilestone, setApproveFundMilestone] = useState(null);
   const [paidMilestones, setPaidMilestones] = useState([]);
@@ -6369,16 +6380,19 @@ function ProjectDetailScreen({ goTo, goToFundingMilestone }) {
             <section className="milestone-timeline-card">
               <h2>Production timeline</h2>
               <div className="milestone-timeline-list">
-                {projectDetailMilestones.map((milestone, index) => (
+                {milestoneList.map((milestone, index) => (
                   <ProjectMilestoneItem
                     milestone={milestone}
                     index={index}
                     isPaid={paidMilestones.includes(milestone.title)}
                     isApproved={approvedMilestones.includes(milestone.title)}
-                    onApproveFund={setApproveFundMilestone}
-                    onFundMilestone={goToFundingMilestone}
-                    onApprove={setApprovalMilestone}
-                    onComment={setCommentMilestone}
+                    // Live, the row's action is whatever the milestone's own
+                    // state allows, and it goes straight to the RPC that owns
+                    // that transition. The prototype keeps its modals.
+                    onApproveFund={isLive ? () => onAction?.("fund", milestone) : setApproveFundMilestone}
+                    onFundMilestone={isLive ? () => onAction?.("fund", milestone) : goToFundingMilestone}
+                    onApprove={isLive ? () => onAction?.("approve", milestone) : setApprovalMilestone}
+                    onComment={isLive ? () => onAction?.("comment", milestone) : setCommentMilestone}
                     key={milestone.title}
                   />
                 ))}

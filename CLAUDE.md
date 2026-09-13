@@ -65,23 +65,28 @@ The prototypes **must keep rendering with no database**. That is Queena's design
 wire it in place; do not write a parallel one in `src/app`. The hand-built
 screens that remain are debt being paid down, not a pattern to extend.
 
-On the design, live: **auth** (`src/shared/AuthScreen.jsx`), **brand and
-factory onboarding**, **the dashboard**, **requests**, **orders**,
-**conversations**, **settings**, and the whole **admin console**
-(`admin.html`).
+On the design, live: **auth**, **brand and factory onboarding**, **the
+dashboard**, **requests**, **orders**, the **request composer and its invite
+step**, **comparing quotes**, **conversations**, **settings**, and the whole
+**admin console** (`admin.html`).
 
-Still hand-built in `src/app`, each with a designed counterpart already
-written and unused: the RFQ composer and its invite step (`DescribeScreen`,
-`ReviewScreen`, `InviteScreen`), quoting (`QuoteForm`, `QuoteCompare` →
-`QuotesScreen`, `QuoteDetailScreen`), and the order interior (`OrderDetail`,
-`ScheduleEditor`, `MilestoneDetail`, `PaymentInstructions` →
-`ProjectDetailScreen`, `ContractScreen`, `MilestonesScreen`, `PaymentScreen`).
+Still hand-built in `src/app`: the **order interior** (`OrderDetail`,
+`ScheduleEditor`, `MilestoneDetail`, `PaymentInstructions`, `PayoutDetails`)
+and the **factory's quoting path** (`BrowseRfqs`, `RfqDetail`, `QuoteForm`,
+`QuoteSent`). Their designed counterparts exist and are unused:
+`ProjectDetailScreen`, `ContractScreen`, `MilestonesScreen`, `PaymentScreen`,
+`FundScreen`, and on the factory side `FactoryBrowsePage`,
+`FactoryReadOnlyRfqPage`, `FactorySubmitQuote`, `FactoryReviewTotal`.
 
-Those all sit **inside the prototype's own flow chrome** — side nav, right
-rail, bottom bar, and a `screen` state machine in its `App`. Mounting one of
-them alone means recreating that chrome, which is inventing UI. The way in is
-to mount the prototype's `App` for those routes and let the chrome come with
-it, then feed the screens through the seam one at a time.
+The order interior is the harder of the two: five screens, one sub-system, and
+about a dozen hooks in `scripts/e2e.mjs` covering schedule agreement, milestone
+submit and approve, payments and payouts. Port it as a unit, not a screen at a
+time, or the walkthrough goes red in the middle of the money path.
+
+**`FlowShell` is how a designed flow screen gets mounted.** It was extracted
+from the prototype's `App` — journey rail, eyebrow, right rail, bottom bar —
+because those screens are drawn to sit inside that frame, and rebuilding it
+would mean inventing one that already exists.
 
 `src/app/admin/AdminPayments.jsx` is the one hand-built screen kept on
 purpose: the designs have no payments queue, and confirming a payment is a
