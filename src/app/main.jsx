@@ -20,8 +20,6 @@ import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
 import { isConfigured } from "../lib/supabase.js";
 import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
 import { isPlatformAdmin } from "../lib/domain/admin.js";
-import AdminVerifications from "./admin/AdminVerifications.jsx";
-import AdminPayments from "./admin/AdminPayments.jsx";
 import RfqList from "./rfq/RfqList.jsx";
 import RfqCreate from "./rfq/RfqCreate.jsx";
 import RfqDetail from "./rfq/RfqDetail.jsx";
@@ -43,6 +41,7 @@ import ScheduleEditor from "./order/ScheduleEditor.jsx";
 import MilestoneDetail from "./order/MilestoneDetail.jsx";
 import PaymentInstructions from "./order/PaymentInstructions.jsx";
 import PayoutDetails from "./order/PayoutDetails.jsx";
+import AdminPayments from "./admin/AdminPayments.jsx";
 import LiveMessages from "./message/LiveMessages.jsx";
 import LiveHome from "./home/LiveHome.jsx";
 import Team from "./settings/Team.jsx";
@@ -764,52 +763,31 @@ function AdminGate({ children }) {
 }
 
 /**
- * This used to return AdminVerifications for ANY path under /admin, which
- * meant a second admin screen could be built, linked and deployed while every
- * link to it silently rendered the first one — right header, no error, and the
- * obvious conclusion that the new screen was never finished.
+ * Verification review moved to /admin.html — Queena's operations workspace, on
+ * the Phase 6 RPCs. The hand-built queue that used to live here is gone rather
+ * than kept alongside it: two verification surfaces means a decision recorded
+ * in one that the other does not show.
+ *
+ * Payments did NOT move, because the designs have no payments queue. Confirming
+ * that money arrived is a required step in the workflow — platform staff have
+ * no org and cannot be notified, so a payment sits at 'sent' until someone
+ * opens this — and deleting the only screen that does it to match a design
+ * that does not cover it would stop the product working. It stays until there
+ * is a designed replacement.
  */
 function AdminRoutes() {
   return useRoute([
-    { path: "/admin/verifications", render: () => <AdminVerifications /> },
     { path: "/admin/payments", render: () => <AdminPayments /> },
-    { render: () => <AdminIndex /> },
+    { render: () => <AdminConsoleRedirect /> },
   ]);
 }
 
-function AdminIndex() {
-  const { navigate } = useRouter();
-  const { user, signOut } = useAuth();
+function AdminConsoleRedirect() {
+  useEffect(() => {
+    window.location.replace("/admin.html");
+  }, []);
 
-  return (
-    <div className="admin">
-      <header className="admin-bar">
-        <span className="shell-mark">The Sourcing Club</span>
-        <span className="admin-sub">{user?.email}</span>
-        <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
-      </header>
-
-      <h1>Platform admin</h1>
-      <p className="admin-intro">
-        Two queues, and both of them are things only staff can do: deciding whether an
-        organisation is who it says it is, and confirming that money actually arrived.
-      </p>
-
-      <div className="admin-index">
-        <button type="button" className="admin-index-card" onClick={() => navigate("/admin/verifications")}>
-          <strong>Verification review</strong>
-          <span>Business registrations and certificates. Approving one is what lets a factory quote.</span>
-        </button>
-        <button type="button" className="admin-index-card" onClick={() => navigate("/admin/payments")}>
-          <strong>Payments</strong>
-          <span>
-            Brands mark a payment sent; a factory does not start work until someone here confirms
-            it arrived.
-          </span>
-        </button>
-      </div>
-    </div>
-  );
+  return <Loading label="Opening the operations workspace…" />;
 }
 
 function App() {

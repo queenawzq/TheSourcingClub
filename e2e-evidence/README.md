@@ -1,6 +1,6 @@
 # End-to-end evidence
 
-Recorded 2026-09-13T17:30:56.864Z against `http://127.0.0.1:5173/app.html`.
+Recorded 2026-09-13T17:38:36.074Z against `http://127.0.0.1:5173/app.html`.
 
 **112 steps, 126 assertions, 0 failed.**
 
@@ -56,7 +56,7 @@ out of Postgres to confirm the screen and the database agree.
 | 42 | Admin sign-in | cold start, no session | [42-admin-sign-in.png](42-admin-sign-in.png) |
 | 43 | Admin signed in | email and password, on the designed screen | [43-admin-signed-in.png](43-admin-signed-in.png) |
 | 44 | Verification queue | an admin with no org of their own can still work | [44-verification-queue.png](44-verification-queue.png) |
-| 45 | Factory approved | approving the registration verifies the org, which unlocks quoting | [45-factory-approved.png](45-factory-approved.png) |
+| 45 | Factory approved | approving the company verifies it, which unlocks quoting | [45-factory-approved.png](45-factory-approved.png) |
 | 46 | Operations workspace | the designed admin console, on marketplace data | [46-operations-workspace.png](46-operations-workspace.png) |
 | 47 | Marketplace quotes | every quote across the marketplace, staff only | [47-marketplace-quotes.png](47-marketplace-quotes.png) |
 | 48 | Factory quoting sign-in | cold start, no session | [48-factory-quoting-sign-in.png](48-factory-quoting-sign-in.png) |
@@ -166,8 +166,8 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the brand's question reaches the factory
 - ✅ no brand contact details leak into the factory's view
 - ✅ the quote button is present but refused — the gate is explained, not hidden
-- ✅ the factory's registration is waiting for a decision
-- ✅ the queue row for this factory was found and approved
+- ✅ the factory is waiting for a decision in the live queue
+- ✅ the queue row for this factory was found and opened
 - ✅ the factory is now verified in the database
 - ✅ the operations workspace opens for staff
 - ✅ and does not turn away an account that is on the admin list
@@ -207,14 +207,14 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the factory can say where its money goes — without which nobody can pay it
 - ✅ the brand can read the factory's update across the org boundary
 - ✅ approving the sample made its payment due
-- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000026)
+- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000031)
 - ✅ the platform fee is shown and charged at zero ($0.00)
 - ✅ the payment is recorded as sent
 - ✅ the brand saying it paid does NOT count as funded
 - ✅ nothing tells the factory to start on the strength of the brand's word
 - ✅ the factory is told plainly that we have not confirmed it yet
 - ✅ the next step is still shut while the payment is only claimed
-- ✅ the second admin screen is its own page, not the first one at a different url (Payments)
+- ✅ the payments queue is its own page (Payments)
 - ✅ the payment is in the queue, named by the order the brand referenced
 - ✅ the payment is confirmed
 - ✅ and stamped with which member of staff did it
@@ -242,7 +242,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ and they land in that organisation, not one of their own
 - ✅ a crash says what is and is not lost, rather than showing a blank page
 - ✅ and offers a way out — reload, or back to the start
-- ✅ the crash was reported, under the reference shown (58F3710C)
+- ✅ the crash was reported, under the reference shown (8929FF08)
 - ✅ with the real error message, not a generic one
 - ✅ and the screen it happened on
 - ✅ navigating away clears the crash — one broken screen does not poison the next

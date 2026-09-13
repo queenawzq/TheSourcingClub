@@ -855,27 +855,38 @@ async function main() {
 
     // Platform staff have no brand or factory org; the admin tool must be
     // reachable anyway.
-    await page.goto(`${APP}/admin/verifications`);
-    await waitForHeading(page, "verification review");
+    // Everything staff do is in the operations workspace now. Approving a
+    // company there is what verifies it, and verification is what unlocks
+    // quoting.
+    const ADMIN = APP.replace(/app\.html.*$/, "admin.html");
+    await page.goto(ADMIN);
+    await waitForHeading(page, "admin overview", 30000);
     await record(page, "Verification queue", "an admin with no org of their own can still work");
 
-    const queueText = await page.locator(".admin").first().innerText();
-    check(queueText.includes(factoryName), "the factory's registration is waiting for a decision");
+    const queueText = await page.locator("body").innerText();
+    check(queueText.includes(factoryName), "the factory is waiting for a decision in the live queue");
 
-    const rows = page.locator(".admin tbody tr");
-    let approved = false;
-    for (let index = 0; index < (await rows.count()); index += 1) {
-      if ((await rows.nth(index).innerText()).includes(factoryName)) {
-        await page
-          .locator(`.admin tbody tr:nth-child(${index + 1}) button.admin-approve`)
-          .click();
-        approved = true;
-        break;
-      }
-    }
-    check(approved, "the queue row for this factory was found and approved");
+    // Open the queue and approve this run's factory.
+    await page.goto(`${ADMIN}?screen=verification`);
     await page.waitForTimeout(3000);
-    await record(page, "Factory approved", "approving the registration verifies the org, which unlocks quoting");
+    // Each queue row ends in a Review button. Addressed by position within the
+    // row rather than by text, so relabelling it does not break the run.
+    const reviewButtons = ".admin-verification-row button:last-child";
+    const rowCount = await page.locator(".admin-verification-row").count();
+    let approved = false;
+    for (let index = 0; index < rowCount; index += 1) {
+      const text = await page.locator(".admin-verification-row").nth(index).innerText().catch(() => "");
+      if (!text.includes(factoryName)) continue;
+      await page.locator(reviewButtons).nth(index).click();
+      approved = true;
+      break;
+    }
+    check(approved, "the queue row for this factory was found and opened");
+    await page.waitForTimeout(2500);
+
+    await clickButton(page, "approve profile");
+    await page.waitForTimeout(4000);
+    await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
 
     const { data: verified } = await db
       .from("factory_profiles").select("verification_status").eq("org_id", factoryOrg.id).single();
@@ -885,7 +896,6 @@ async function main() {
     // The designed admin console, on the same session. Same origin, so the
     // session carries across the page boundary; everything it shows comes back
     // through a security-definer RPC.
-    const ADMIN = APP.replace(/app\.html.*$/, "admin.html");
     await page.goto(ADMIN);
     await page.waitForTimeout(4000);
     const consoleText = await page.locator("body").innerText();
@@ -1284,8 +1294,8 @@ async function main() {
     await page.goto(`${APP}/admin/payments`);
     await waitForHeading(page, "payments", 25000);
     const adminHeading = await page.locator("h1").first().innerText();
-    check(!/verification/i.test(adminHeading),
-      `the second admin screen is its own page, not the first one at a different url (${adminHeading})`);
+    check(/payment/i.test(adminHeading),
+      `the payments queue is its own page (${adminHeading})`);
     await record(page, "The payment queue", "a required step, not a convenience: staff have no org to notify");
 
     const paymentQueueText = await page.locator("body").innerText();
