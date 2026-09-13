@@ -71,16 +71,24 @@ step**, **comparing quotes**, the **order interior**, the **factory's
 marketplace**, **conversations**, **settings**, and the whole **admin console**
 (`admin.html`).
 
-Three hand-built screens remain, each for a stated reason rather than because
-nobody got to them:
+**Everything a brand or a vendor touches is on the design**, except the
+screens below — each held back for a stated reason, not a backlog entry:
 
-- **`ScheduleEditor`** — agreeing the schedule has no designed screen, and it
-  is what activates an order. An unagreed order opens straight onto it.
-- **`AdminPayments`** — no designed payments queue, and confirming a payment
-  is a required step: staff have no org and cannot be notified, so a payment
-  sits at `sent` until a human opens it.
-- **`MilestoneDetail`, `PaymentInstructions`, `PayoutDetails`, `RfqDetail`,
-  `QuoteSent`** — reachable from the designed screens, not yet ported.
+- **`PaymentInstructions` and `PayoutDetails`.** The designed payment flow says
+  the brand "pays by card through TSC checkout so funds can be held before
+  release". Payments are **track-only** — bank wire off-platform, the product
+  records the trail — which is a locked decision taken to avoid
+  money-transmitter, KYC and PCI exposure. Wiring that screen would tell a
+  brand its money is on a card and held by TSC, and both are false. This is not
+  a styling gap; it needs the design and the product to agree on where money
+  goes.
+- **`ScheduleEditor`.** Agreeing the schedule has no designed screen, and it is
+  what activates an order. An unagreed order opens straight onto it.
+- **`AdminPayments`.** No designed payments queue, and confirming a payment is a
+  required step: staff have no org and cannot be notified, so a payment sits at
+  `sent` until a human opens it.
+- **`MilestoneDetail`** and the brand's own **`RfqDetail`** — no designed
+  counterpart yet.
 
 **The designed quote form writes prose where the schema keeps ids.** "30%
 deposit / 70% before shipment" and "EXW quoted" are matched against

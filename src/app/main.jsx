@@ -24,7 +24,7 @@ import RfqDetail from "./rfq/RfqDetail.jsx";
 import LiveBrowse from "./rfq/LiveBrowse.jsx";
 import LiveRequestView from "./rfq/LiveRequestView.jsx";
 import LiveQuoteForm from "./quote/LiveQuoteForm.jsx";
-import QuoteSent from "./quote/QuoteSent.jsx";
+import LiveQuoteSent from "./quote/LiveQuoteSent.jsx";
 import LiveQuotes from "./quote/LiveQuotes.jsx";
 // The designed screens, mounted against live data through the seam. Importing
 // them pulls in the prototype stylesheet, which is the point — the design is
@@ -591,7 +591,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/browse/:id/quote/sent",
       render: (params) =>
-        isFactory ? <QuoteSent rfqId={params.id} /> : <NotForThisSide isFactory={false} />,
+        isFactory ? <LiveQuoteSent rfqId={params.id} profile={profile} /> : <NotForThisSide isFactory={false} />,
     },
     {
       // Production orders are ONE namespace for both sides, unlike /rfqs and
