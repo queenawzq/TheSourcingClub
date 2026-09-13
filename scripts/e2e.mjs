@@ -1333,13 +1333,13 @@ async function main() {
     console.log("\nTHEY TALK");
 
     await page.goto(`${APP}/orders/${bornOrder.id}/messages`);
-    await waitFor(page, '[data-field="message_body"]', 25000);
+    await waitFor(page, '.message-composer textarea', 25000);
     await record(page, "The conversation", "kept with the order, so it is there when someone asks what was agreed");
 
     const factoryLine = "袖口按照新的尺寸表做好了，确认一下。";
-    await page.locator('[data-field="message_body"]').fill(factoryLine);
+    await page.locator('.message-composer textarea').fill(factoryLine);
     await page.locator('[data-testid="send-message"]').click();
-    await waitFor(page, '[data-testid="message"]', 30000);
+    await waitFor(page, '.message-bubble', 30000);
     await record(page, "The factory writes in Chinese", "and does not have to think about who reads it");
 
     // Scoped to this run's thread. Every other suite writes messages to the
@@ -1375,17 +1375,27 @@ async function main() {
     await signOutFully(page);
     await signIn(page, brandEmail, "Brand reading");
 
+    // Unread is derived per user from message_reads, so "unread" means this
+    // user has no read stamp on this thread yet. Asserted before opening,
+    // because the designed screen selects the newest conversation on arrival —
+    // which is what clears it.
+    const { data: brandUser } = await db
+      .from("user_profiles").select("id").eq("email", brandEmail).single();
+    const { count: readBefore } = await db
+      .from("message_reads")
+      .select("*", { count: "exact", head: true })
+      .eq("thread_id", runThread.id)
+      .eq("user_id", brandUser.id);
+    check(readBefore === 0, "the brand has not read this conversation yet");
+
     await page.goto(`${APP}/messages`);
-    await waitFor(page, '[data-testid="thread-card"]', 25000);
+    await waitFor(page, '.message-thread-card', 25000);
     await record(page, "Conversations", "one per piece of work, not one per company");
 
-    const unreadShown = await page.locator('[data-testid="unread-count"]').count();
-    check(unreadShown === 1, `the brand is shown an unread message (${unreadShown})`);
+    await page.locator('.message-thread-card').first().click();
+    await waitFor(page, '.message-bubble', 25000);
 
-    await page.locator('[data-testid="thread-card"]').first().click();
-    await waitFor(page, '[data-testid="message"]', 25000);
-
-    const readerSees = await page.locator('[data-testid="message"]').first().innerText();
+    const readerSees = await page.locator('.message-bubble').first().innerText();
     if (sent.body_translated) {
       check(readerSees.includes(sent.body_translated.slice(0, 20)),
         "the brand is shown English first, not a sentence it cannot read");
@@ -1402,7 +1412,7 @@ async function main() {
     check(readState.length >= 2,
       "opening the conversation recorded that it was read — the count cannot get stuck");
 
-    await page.locator('[data-field="message_body"]').fill("Confirmed, that matches the chart. Go ahead.");
+    await page.locator('.message-composer textarea').fill("Confirmed, that matches the chart. Go ahead.");
     await page.locator('[data-testid="send-message"]').click();
 
     // Wait for the message to actually arrive, not for a guessed duration.

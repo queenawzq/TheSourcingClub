@@ -798,7 +798,7 @@ const milestones = [
   }
 ];
 
-const messageThreads = [
+const mockMessageThreads = [
   {
     id: "atelier",
     name: "Atelier Minho",
@@ -1532,8 +1532,18 @@ function BillingScreen({ accountType = "brand" }) {
   );
 }
 
-function MessagesScreen() {
-  const [activeThreadId, setActiveThreadId] = useState(messageThreads[0].id);
+export function MessagesScreen({
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  threads: liveThreads,
+  initialThreadId,
+  onSelectThread,
+  onSend,
+  sending = false,
+}) {
+  const messageThreads = liveThreads ?? mockMessageThreads;
+  const isLive = Boolean(liveThreads);
+  // A conversation opened from an order or a request arrives with its own id.
+  const [activeThreadId, setActiveThreadId] = useState(initialThreadId ?? messageThreads[0]?.id);
   const [composer, setComposer] = useState("");
   const [showSchedule, setShowSchedule] = useState(false);
   const [isCallPanelOpen, setIsCallPanelOpen] = useState(false);
@@ -1549,7 +1559,17 @@ function MessagesScreen() {
     }
   });
   const activeThread = messageThreads.find((thread) => thread.id === activeThreadId) || messageThreads[0];
-  const activeScheduledCall = scheduledCalls[activeThread.id];
+
+  // The design switches threads in its own state; the live mount needs to know
+  // so it can fetch that conversation and mark it read.
+  useEffect(() => {
+    if (activeThreadId) onSelectThread?.(activeThreadId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeThreadId]);
+  // Call scheduling, presence and "usually replies in 2h" are drawn but have
+  // nothing behind them — see CLAUDE.md. Rather than render invented times and
+  // availability as if they were real, the live mount goes without them.
+  const activeScheduledCall = isLive ? null : scheduledCalls[activeThread?.id];
 
   useEffect(() => {
     if (!showSchedule) return undefined;
@@ -1616,7 +1636,7 @@ function MessagesScreen() {
               <h2>{activeThread.primaryContact || activeThread.name}</h2>
               <p>
                 {activeThread.primaryContactTitle && <>{activeThread.primaryContactTitle} · </>}
-                {activeThread.name} · {activeThread.localTime} · {activeThread.project}
+                {[activeThread.name, activeThread.localTime, activeThread.project].filter(Boolean).join(" · ")}
               </p>
             </div>
           </div>
@@ -1626,8 +1646,11 @@ function MessagesScreen() {
                 <img className="message-call-drawer-icon" src="/assets/prototype-icons/scheduled-call.svg" alt="" />
               </button>
             )}
-            <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>Schedule call</button>
-            <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>
+            {/* Call scheduling and video are drawn with nothing behind them.
+                They stay in the prototype and are absent live, rather than
+                offering a brand a call that cannot happen. */}
+            {!isLive && <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>Schedule call</button>}
+            {!isLive && <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>}
           </div>
         </header>
 
@@ -1644,6 +1667,7 @@ function MessagesScreen() {
                 message={message}
                 showTranslation={showTranslation}
                 onToggleTranslation={() => toggleTranslation(activeThread.id, index)}
+                otherName={activeThread.name}
                 key={`${message.time}-${index}`}
               />
             );
@@ -1662,7 +1686,21 @@ function MessagesScreen() {
               <img src="/assets/prototype-icons/upload.svg" alt="" />
               <span>Attach file</span>
             </button>
-            <button className="primary-btn compact-btn" type="button" onClick={() => setComposer("")}>Send</button>
+            <button
+              className="primary-btn compact-btn"
+              type="button"
+              data-testid="send-message"
+              disabled={sending || (isLive && !composer.trim())}
+              onClick={async () => {
+                if (isLive) {
+                  if (!composer.trim()) return;
+                  await onSend?.(activeThread.id, composer.trim());
+                }
+                setComposer("");
+              }}
+            >
+              {sending ? "Sending…" : "Send"}
+            </button>
           </div>
         </footer>
       </section>
@@ -1702,14 +1740,14 @@ function MessagesScreen() {
   );
 }
 
-function MessageBubble({ message, showTranslation, onToggleTranslation }) {
+function MessageBubble({ message, showTranslation, onToggleTranslation, ownName, otherName }) {
   const isBrand = message.from === "brand";
   const hasTranslation = Boolean(message.translation);
 
   return (
     <article className={isBrand ? "message-bubble own" : "message-bubble"}>
       <div>
-        <span>{isBrand ? "Maison Rue" : "Factory"}</span>
+        <span>{isBrand ? ownName ?? "Maison Rue" : otherName ?? "Factory"}</span>
         <time>{message.time}</time>
       </div>
       <p>{showTranslation && hasTranslation ? message.translation : message.body || message.original}</p>

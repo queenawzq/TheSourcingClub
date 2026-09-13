@@ -43,8 +43,7 @@ import ScheduleEditor from "./order/ScheduleEditor.jsx";
 import MilestoneDetail from "./order/MilestoneDetail.jsx";
 import PaymentInstructions from "./order/PaymentInstructions.jsx";
 import PayoutDetails from "./order/PayoutDetails.jsx";
-import MessageList from "./message/MessageList.jsx";
-import ThreadPage from "./message/ThreadPage.jsx";
+import LiveMessages from "./message/LiveMessages.jsx";
 import LiveHome from "./home/LiveHome.jsx";
 import Team from "./settings/Team.jsx";
 import NotificationList from "./NotificationList.jsx";
@@ -621,8 +620,10 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     },
     {
       path: "/orders/:id/messages",
+      // The order's conversation opens on the designed messages screen rather
+      // than a tab inside the order, which is where a conversation lives.
       render: (params) => (
-        <OrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} tab="messages" />
+        <LiveMessages org={activeOrg} orderId={params.id} isFactory={isFactory} user={user} />
       ),
     },
     {
@@ -659,12 +660,12 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     },
     {
       path: "/messages",
-      render: () => <MessageList org={activeOrg} isFactory={isFactory} />,
+      render: () => <LiveMessages org={activeOrg} isFactory={isFactory} user={user} />,
     },
     {
       path: "/messages/:id",
       render: (params) => (
-        <ThreadPage org={activeOrg} threadId={params.id} isFactory={isFactory} />
+        <LiveMessages org={activeOrg} threadId={params.id} isFactory={isFactory} user={user} />
       ),
     },
     {

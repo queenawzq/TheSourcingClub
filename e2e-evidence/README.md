@@ -1,6 +1,6 @@
 # End-to-end evidence
 
-Recorded 2026-09-13T17:03:24.041Z against `http://127.0.0.1:5173/app.html`.
+Recorded 2026-09-13T17:30:56.864Z against `http://127.0.0.1:5173/app.html`.
 
 **112 steps, 126 assertions, 0 failed.**
 
@@ -207,7 +207,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the factory can say where its money goes — without which nobody can pay it
 - ✅ the brand can read the factory's update across the org boundary
 - ✅ approving the sample made its payment due
-- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000016)
+- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000026)
 - ✅ the platform fee is shown and charged at zero ($0.00)
 - ✅ the payment is recorded as sent
 - ✅ the brand saying it paid does NOT count as funded
@@ -224,7 +224,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the message is stored exactly as it was typed, character for character
 - ✅ and attributed to the factory that sent it, not to whoever the screen assumed
 - ✅ no translation was produced, and the message went anyway — as it must
-- ✅ the brand is shown an unread message (1)
+- ✅ the brand has not read this conversation yet
 - ✅ with no translation available, the brand sees exactly what was written
 - ✅ opening the conversation recorded that it was read — the count cannot get stuck
 - ✅ both sides have now said something (2 messages on this thread)
@@ -242,7 +242,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ and they land in that organisation, not one of their own
 - ✅ a crash says what is and is not lost, rather than showing a blank page
 - ✅ and offers a way out — reload, or back to the start
-- ✅ the crash was reported, under the reference shown (8B2BA7AB)
+- ✅ the crash was reported, under the reference shown (58F3710C)
 - ✅ with the real error message, not a generic one
 - ✅ and the screen it happened on
 - ✅ navigating away clears the crash — one broken screen does not poison the next
