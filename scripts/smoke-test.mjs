@@ -1094,10 +1094,13 @@ console.log("\nphase 6 — admin operations");
               : fail("LEAK: the overview metrics are readable by a party");
 
   // The whole gate: approving yourself is approving your own right to quote.
-  const { data: brandOrgRow } = await admin
-    .from("orgs").select("id").eq("name", `Maison ${stamp}`).maybeSingle();
-  const selfOrg = brandOrgRow?.id
-    ?? (await admin.from("org_members").select("org_id").eq("user_id", brand.id).limit(1).maybeSingle()).data?.org_id;
+  // ORG_NAME, not a guess at it. This read used to be `Maison ${stamp}` while
+  // the org is `Maison Rue ${stamp}`, so it never matched and fell through to
+  // "any org this user belongs to" — which is a different org the moment the
+  // duplicate-name check above creates a second one, and then the profile
+  // assertion below is about a company that has no profile.
+  const selfOrg = org?.id
+    ?? (await admin.from("orgs").select("id").eq("name", ORG_NAME).maybeSingle()).data?.id;
 
   if (!selfOrg) {
     fail("could not resolve the brand's org for the self-approval check");
