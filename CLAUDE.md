@@ -59,6 +59,35 @@ The prototypes **must keep rendering with no database**. That is Queena's design
 
 `npm run check:prototype` asserts the mock loop still works. If it rots, Queena will not find out until she needs it.
 
+### Which screens are the design, and which are not
+
+**Never hand-build a screen.** If a designed component exists, export it and
+wire it in place; do not write a parallel one in `src/app`. The hand-built
+screens that remain are debt being paid down, not a pattern to extend.
+
+On the design, live: **auth** (`src/shared/AuthScreen.jsx`), **brand and
+factory onboarding**, **the dashboard**, **requests**, **orders**,
+**conversations**, **settings**, and the whole **admin console**
+(`admin.html`).
+
+Still hand-built in `src/app`, each with a designed counterpart already
+written and unused: the RFQ composer and its invite step (`DescribeScreen`,
+`ReviewScreen`, `InviteScreen`), quoting (`QuoteForm`, `QuoteCompare` →
+`QuotesScreen`, `QuoteDetailScreen`), and the order interior (`OrderDetail`,
+`ScheduleEditor`, `MilestoneDetail`, `PaymentInstructions` →
+`ProjectDetailScreen`, `ContractScreen`, `MilestonesScreen`, `PaymentScreen`).
+
+Those all sit **inside the prototype's own flow chrome** — side nav, right
+rail, bottom bar, and a `screen` state machine in its `App`. Mounting one of
+them alone means recreating that chrome, which is inventing UI. The way in is
+to mount the prototype's `App` for those routes and let the chrome come with
+it, then feed the screens through the seam one at a time.
+
+`src/app/admin/AdminPayments.jsx` is the one hand-built screen kept on
+purpose: the designs have no payments queue, and confirming a payment is a
+required step — staff have no org and cannot be notified, so a payment sits at
+`sent` until someone opens it.
+
 Things that will bite here:
 
 - **`toProjectCard` in `src/app/live-adapter.js` is where the two vocabularies are reconciled**, not glue. The design's fixed five-step rail ("1st step funded / Fit sample / Fit / lab dip / Production / Shipped") does not map onto a schedule derived from a quote, which can contain any steps at all. The current mapping is right at both ends and approximate in between; it needs Queena's decision, not a cleverer function.
@@ -206,6 +235,25 @@ a company-level verdict and a file-level one cannot contradict each other.
   into a stranger's workspace mid-onboarding, with their org id written to
   `localStorage`. Any query whose name says "my" needs its own `user_id`
   filter, whatever the policy happens to allow.
+
+### Wiring a designed screen to live data
+
+The pattern, used by every port so far:
+
+- **Give each control a `name`**, derived from its own visible label, and read
+  the card's values on submit. The designs carry no names, values or handlers
+  because nothing is ever read back in a prototype.
+- **A control that draws buttons publishes through a hidden input.** Chip
+  groups and the capacity panel hold their answer in their own state; one
+  `<input type="hidden" data-multi>` is how it leaves.
+- **Factory keys come from the English copy** whatever language is displayed,
+  or a vendor filling the form in Chinese writes to different columns.
+- **Option lists come from `taxonomy_terms`, never the hardcoded arrays.**
+  Matching is on slugs.
+- **Anything the design draws with nothing behind it is rendered
+  conditionally**, so the prototype keeps it and the live mount goes without:
+  confidence scores in the admin queue, call scheduling and presence in
+  conversations, permission toggles in settings.
 
 ### Auth
 
