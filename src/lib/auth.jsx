@@ -18,7 +18,7 @@
  * It is not a way to sign in without a password.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { supabase, isConfigured, setKeepSignedIn, clearStoredSession } from "./supabase.js";
+import { supabase, isConfigured, setKeepSignedIn } from "./supabase.js";
 import { createOrg, listMyOrgs } from "./domain/org.js";
 
 /** Mirrors `minimum_password_length` in supabase/config.toml and the design's copy. */
@@ -323,10 +323,16 @@ export function AuthProvider({ children }) {
         setOrgs([]);
         setActiveOrgId(null);
         window.localStorage.removeItem("tscActiveOrg");
-        // Before awaiting the network call, not after: the login screen is
-        // already on screen, and a navigation in the gap would be signed back
-        // in by the token still sitting in storage.
-        clearStoredSession();
+        // supabase-js owns the stored token, and nothing else may clear it.
+        //
+        // Deleting the keys here first looked like it closed a gap — the login
+        // screen renders before this await resolves — but the client still
+        // holds the session in memory with a refresh timer running. Pulled out
+        // from under it, the refresh either wrote the session straight back
+        // (sign-out silently reversed itself) or left getUser() never
+        // settling, which parked the whole app on "Checking your session…"
+        // with no error and no way forward. signOut() cancels that timer and
+        // clears the storage itself; letting it do both is the fix.
         await supabase.auth.signOut();
       },
 

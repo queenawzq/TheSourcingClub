@@ -73,26 +73,6 @@ const sessionStorageAdapter = {
   },
 };
 
-/**
- * Drop the stored session now, rather than when the network call comes back.
- *
- * signOut() renders the login screen immediately — deliberately, because
- * clearing orgs while the shell still thinks it is signed in crashes it to a
- * blank page. But the stored token lives until supabase's own signOut
- * resolves, and anyone who navigates in that window is signed straight back
- * in by the session that is still on disk.
- */
-export function clearStoredSession() {
-  for (const store of [window.localStorage, window.sessionStorage]) {
-    const keys = safe(() => Object.keys(store), []) ?? [];
-    for (const key of keys) {
-      if (key.startsWith("sb-") && key.includes("auth-token")) {
-        safe(() => store.removeItem(key));
-      }
-    }
-  }
-}
-
 export const supabase = isConfigured
   ? createClient(url, publishableKey, {
       auth: {

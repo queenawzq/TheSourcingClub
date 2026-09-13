@@ -2306,7 +2306,61 @@ function SettingsScreen({ accountType = "brand" }) {
   );
 }
 
-function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext }) {
+/**
+ * A stable name for a designed field, derived from its visible label.
+ *
+ * The onboarding screens were drawn as pure layout — no input carried a name,
+ * a value or a handler, because in the prototype nothing is ever read back.
+ * Wiring them to the database needs a key per field, and the label is the only
+ * thing that already identifies one. Slugifying it keeps the markup and the
+ * copy as the single source of truth: rename a field in the design and its key
+ * moves with it, rather than drifting from a second list somewhere else.
+ */
+export function onboardingFieldName(label) {
+  return String(label)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Read every named control inside one onboarding card.
+ *
+ * The design already inspects the DOM to validate (`data-onboarding-required`),
+ * so collecting values the same way is idiomatic here and costs no extra state.
+ * Multi-value controls — the chip groups — publish their selection through a
+ * hidden input, which is why a `data-multi` attribute is honoured.
+ */
+function readOnboardingCard(card) {
+  const values = {};
+  if (!card) return values;
+  for (const control of card.querySelectorAll("[name]")) {
+    const key = control.getAttribute("name");
+    if (!key) continue;
+    if (control.type === "checkbox") {
+      values[key] = control.checked;
+    } else if (control.dataset.multi !== undefined) {
+      values[key] = String(control.value || "").split("\u001f").filter(Boolean);
+    } else {
+      values[key] = control.value;
+    }
+  }
+  return values;
+}
+
+export function BrandOnboarding({
+  step,
+  isReviewEdit,
+  onEditSection,
+  onBack,
+  onNext,
+  // Live mounts pass these. The prototype passes none of them and behaves
+  // exactly as it always did.
+  optionsByLabel,
+  values: savedValues,
+  busy = false,
+  error = null,
+}) {
   const current = brandOnboardingSteps[step];
   const isFirst = step === 0;
   const isLast = step === brandOnboardingSteps.length - 1;
@@ -2341,7 +2395,7 @@ function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext }) 
       return;
     }
 
-    onNext();
+    onNext(readOnboardingCard(card));
   }
 
   return (
@@ -2364,11 +2418,15 @@ function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext }) 
           content={current}
           step={step}
           onEditSection={onEditSection}
+          optionsByLabel={optionsByLabel}
+          values={savedValues}
         />
+
+        {error && <p className="brand-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
 
         <footer className="brand-onboarding-actions">
           {!isFirst && !isLast && <button className="secondary-btn" type="button" onClick={onBack}>Previous</button>}
-          <button className="primary-btn" type="button" onClick={continueOnboarding}>{isReviewEdit ? "Save" : current.cta || "Next"}</button>
+          <button className="primary-btn" type="button" disabled={busy} onClick={continueOnboarding}>{busy ? "Saving…" : isReviewEdit ? "Save" : current.cta || "Next"}</button>
         </footer>
       </section>
 
@@ -2381,7 +2439,12 @@ function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext }) 
   );
 }
 
-function BrandOnboardingStep({ content, step, onEditSection }) {
+function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, values = {} }) {
+  // Live mounts replace a hardcoded option list with the taxonomy; the
+  // prototype passes nothing and keeps its own. The design is the UI, never
+  // the data source.
+  const optionsFor = (label, fallback) => optionsByLabel?.[label] ?? fallback;
+  const valueFor = (label) => values?.[onboardingFieldName(label)];
   const [onboardingStakeholders, setOnboardingStakeholders] = useState([
     { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder" },
     { name: "Maya Lee", email: "maya@maisonrue.com", role: "Production lead" }
@@ -2425,7 +2488,12 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
             return (
               <div className="brand-onboarding-field" key={label}>
                 <span>{label}<OnboardingRequirement required={required} /></span>
-                <BrandCategoryMultiSelect required={required} />
+                <BrandCategoryMultiSelect
+                  required={required}
+                  name={onboardingFieldName(label)}
+                  options={optionsFor(label)}
+                  selected={valueFor(label)}
+                />
                 <small className="brand-onboarding-validation-message">Choose at least one brand category.</small>
               </div>
             );
@@ -2433,7 +2501,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
           return (
             <label className="brand-onboarding-field" key={label}>
               <span>{label}<OnboardingRequirement required={required} /></span>
-              <input type={type || "text"} placeholder={placeholder} data-onboarding-required={required ? "true" : undefined} />
+              <input type={type || "text"} name={onboardingFieldName(label)} defaultValue={valueFor(label) ?? ""} placeholder={placeholder} data-onboarding-required={required ? "true" : undefined} />
               {required && <small className="brand-onboarding-validation-message">Enter your {label.toLowerCase()} to continue.</small>}
             </label>
           );
@@ -2447,7 +2515,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
     return (
       <div className="brand-onboarding-chip-stack">
         {content.groups.map(([label, options, selected, required = false, helper = ""]) => (
-          <BrandOnboardingChipGroup label={label} options={options} selected={selected} required={required} helper={helper} key={label} />
+          <BrandOnboardingChipGroup label={label} options={optionsFor(label, options)} selected={valueFor(label) ?? selected} required={required} helper={helper} key={label} />
         ))}
       </div>
     );
@@ -2460,14 +2528,14 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
           <label className="brand-onboarding-field" key={label}>
             <span>{label}<OnboardingRequirement /></span>
             {Array.isArray(optionsOrPlaceholder) ? (
-              <select defaultValue={defaultValue || ""}>
+              <select name={onboardingFieldName(label)} defaultValue={valueFor(label) ?? defaultValue ?? ""}>
                 <option value="" disabled />
-                {optionsOrPlaceholder.map((option) => (
+                {optionsFor(label, optionsOrPlaceholder).map((option) => (
                   <option key={option}>{option}</option>
                 ))}
               </select>
             ) : (
-              <input placeholder={optionsOrPlaceholder} />
+              <input name={onboardingFieldName(label)} defaultValue={valueFor(label) ?? ""} placeholder={optionsOrPlaceholder} />
             )}
           </label>
         ))}
@@ -2480,7 +2548,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
       <div className="brand-context-step">
         <label className="brand-onboarding-field full">
           <span>About the brand<OnboardingRequirement /></span>
-          <textarea placeholder="A short overview of your aesthetic, customer, positioning, and what vendors should understand about the brand." />
+          <textarea name={onboardingFieldName("About the brand")} defaultValue={valueFor("About the brand") ?? ""} placeholder="A short overview of your aesthetic, customer, positioning, and what vendors should understand about the brand." />
         </label>
 
         <div className="brand-context-upload-grid">
@@ -2506,7 +2574,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
       <div className="brand-trust-step">
         <label className="brand-onboarding-field full">
           <span>Annual revenue<OnboardingRequirement /></span>
-          <select defaultValue="">
+          <select name={onboardingFieldName("Annual revenue")} defaultValue={valueFor("Annual revenue") ?? ""}>
             <option value="" disabled />
             <option>Under $250k</option>
             <option>$250k-$1M</option>
@@ -2627,7 +2695,7 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
         </div>
         <label className="brand-onboarding-field full">
           <span>Signature<OnboardingRequirement required /></span>
-          <input placeholder={content.signature} data-onboarding-required="true" />
+          <input name={onboardingFieldName("Signature")} placeholder={content.signature} data-onboarding-required="true" />
           <small className="brand-onboarding-validation-message">Type your full name to sign and continue.</small>
         </label>
       </div>
@@ -2652,9 +2720,9 @@ function OnboardingRequirement({ required = false }) {
   return required ? <em className="brand-onboarding-required-mark" aria-label="required">*</em> : null;
 }
 
-function BrandCategoryMultiSelect({ required = false }) {
-  const options = brandBusinessCategoryOptions;
-  const [selectedCategories, setSelectedCategories] = useState([]);
+function BrandCategoryMultiSelect({ required = false, name, options: providedOptions, selected }) {
+  const options = providedOptions ?? brandBusinessCategoryOptions;
+  const [selectedCategories, setSelectedCategories] = useState(selected ?? []);
   const dropdownRef = useRef(null);
 
   useEffect(() => {
@@ -2710,11 +2778,14 @@ function BrandCategoryMultiSelect({ required = false }) {
           </label>
         ))}
       </div>
+      {/* The checkboxes inside a <details> menu are unnamed on purpose — this
+          one hidden input is the group's single value. */}
+      <input type="hidden" data-multi name={name ?? "brand-category"} value={selectedCategories.join("\u001f")} readOnly />
     </details>
   );
 }
 
-function BrandOnboardingChipGroup({ label, options, selected = [], required = false, helper = "" }) {
+function BrandOnboardingChipGroup({ label, options, selected = [], required = false, helper = "", name }) {
   const [selectedOptions, setSelectedOptions] = useState(selected);
   const [customValue, setCustomValue] = useState("");
   const [customOptions, setCustomOptions] = useState([]);
@@ -2773,6 +2844,9 @@ function BrandOnboardingChipGroup({ label, options, selected = [], required = fa
         </form>
       )}
       {required && <small className="brand-onboarding-validation-message">Choose at least one option to continue.</small>}
+      {/* Invisible, and the only way a chip group can be read back: the design
+          draws buttons, and buttons carry no value. */}
+      <input type="hidden" data-multi name={name ?? onboardingFieldName(label)} value={selectedOptions.join("\u001f")} readOnly />
     </section>
   );
 }

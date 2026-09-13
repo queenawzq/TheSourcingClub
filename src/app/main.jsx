@@ -15,7 +15,7 @@ import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { acceptInvitation, createOrg, listMyInvitations } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile } from "../lib/domain/profile.js";
-import BrandOnboarding from "./onboarding/BrandOnboarding.jsx";
+import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/FactoryOnboarding.jsx";
 import { isConfigured } from "../lib/supabase.js";
 import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
