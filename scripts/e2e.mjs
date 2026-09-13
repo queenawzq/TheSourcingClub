@@ -918,42 +918,64 @@ async function main() {
     await record(page, "Factory can now bid", "the verification notice is gone and the quote button is live");
 
     await clickButton(page, "send a quote");
-    await waitForHeading(page, "your quote");
+    await waitFor(page, ".factory-submit-page", 25000);
+    await record(page, "The quote", "Queena's submit screen, on a real draft row");
 
-    await field(page, "unit-price").fill("17.10");
-    await field(page, "production-quantity").fill("300");
-    await field(page, "bulk-lead-time-days").fill("26");
-    await select(page, "payment-terms").selectOption(
-      (await db.from("taxonomy_terms").select("id").eq("kind", "payment_term").eq("slug", "deposit-30-70").single()).data.id,
-    );
-    await select(page, "shipping-terms").selectOption(
-      (await db.from("taxonomy_terms").select("id").eq("kind", "incoterm").eq("slug", "fob").single()).data.id,
-    );
+    // The design's fields are contentEditable rather than inputs, so they are
+    // typed into by setting their text the way a person would.
+    const setQuoteField = async (name, value) => {
+      const ok = await page.evaluate(`(() => {
+        const node = document.querySelector('[data-quote-field="${name}"]');
+        if (!node) return false;
+        node.textContent = ${JSON.stringify(value)};
+        node.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      })()`);
+      check(ok !== false, `the quote field "${name}" exists on the designed screen`);
+    };
+
+    await setQuoteField("unitPrice", "$17.10 / unit");
+    await setQuoteField("quantity", "300 units");
+    await setQuoteField("leadTime", "26 days");
+    await setQuoteField("paymentTerms", "30% deposit / 70% before shipment");
+    await setQuoteField("incoterms", "FOB quoted");
     const validUntil = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
-    await field(page, "quote-valid-until").fill(validUntil);
+    await setQuoteField("validUntil", validUntil);
+    await setQuoteField("sample.0.stage", "Fit sample");
+    await setQuoteField("sample.0.cost", "$95");
+    await setQuoteField("sample.0.timing", "10 days");
+    await setQuoteField("sample.1.stage", "PP sample");
+    await setQuoteField("sample.1.cost", "$165");
+    await record(page, "Factory quote", "prose on screen, taxonomy ids and rows underneath");
 
-    // Sample lines: the figure the prototype hardcodes per factory name.
-    await page.locator(".sample-row input").nth(0).fill("Fit sample");
-    await page.locator(".sample-row input").nth(1).fill("95");
-    await page.locator(".sample-row input").nth(2).fill("10");
-    await clickButton(page, "add a sample stage");
-    // Four inputs per row, so the second row starts at index 4.
-    await page.locator(".sample-row input").nth(4).fill("PP sample");
-    await page.locator(".sample-row input").nth(5).fill("165");
+    await page.locator('[data-testid="submit-quote"]').click();
+    await page.waitForTimeout(6000);
 
-    await page.locator('.detail-card textarea').first().fill("Yes — we quote fit and PP separately.");
-    await page.waitForTimeout(500);
-
-    const shownTotal = await page.locator('[data-testid="quote-total-amount"]').innerText();
-    check(
-      shownTotal.replace(/[^0-9]/g, "") === "539000",
-      `the total is worked out from the lines: 300 x $17.10 + $260 = ${shownTotal}`,
-    );
-    await record(page, "Factory quote", `production + samples = ${shownTotal}, computed not typed`);
-
-    await clickButton(page, "send quote");
-    await waitForHeading(page, "quote sent");
+    const quoteError = await page.locator(".composer-error").innerText().catch(() => "");
+    check(!quoteError, quoteError ? `the quote was refused: ${quoteError}` : "the quote was accepted");
     await record(page, "Quote sent", "and the factory is promised an answer either way");
+
+    // The prose was matched onto the vocabulary, not stored as a sentence.
+    const { data: sentQuote } = await db.from("quotes")
+      .select("unit_price_cents, production_quantity, bulk_lead_time_days, payment_term_id, incoterm_id, deposit_pct, status")
+      .eq("rfq_id", publishedRfq.id).eq("factory_org_id", factoryOrg.id).single();
+    check(sentQuote.status === "submitted", `the quote is submitted (${sentQuote.status})`);
+    check(sentQuote.unit_price_cents === 1710, `"$17.10 / unit" became 1710 minor units (${sentQuote.unit_price_cents})`);
+    check(sentQuote.production_quantity === 300, "the quantity is a number");
+    check(Boolean(sentQuote.payment_term_id), "'30% deposit / 70%' matched a payment term rather than being stored as prose");
+    check(Boolean(sentQuote.incoterm_id), "'FOB quoted' matched an incoterm");
+    check(Number(sentQuote.deposit_pct) === 30,
+      `the deposit split came with it (${sentQuote.deposit_pct}%) — without one the order's schedule is unagreeable`);
+
+    const { data: sentLines } = await db.from("quote_sample_lines")
+      .select("stage, cost_cents").eq("quote_id",
+        (await db.from("quotes").select("id").eq("rfq_id", publishedRfq.id).eq("factory_org_id", factoryOrg.id).single()).data.id);
+    check((sentLines ?? []).length === 2, `the sample plan is ${sentLines?.length ?? 0} rows, not a drawn plan`);
+
+    const { data: quoteSubtotal } = await db.rpc("quote_sample_subtotal", {
+      target_quote: (await db.from("quotes").select("id").eq("rfq_id", publishedRfq.id).eq("factory_org_id", factoryOrg.id).single()).data.id,
+    });
+    check(Number(quoteSubtotal) === 26000, `the samples subtotal is computed from the rows (${quoteSubtotal})`);
 
     // A second bidder, seeded directly. Without one, "awarding declines the
     // others" has nothing to decline and proves nothing.

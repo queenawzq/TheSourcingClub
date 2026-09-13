@@ -22,7 +22,7 @@ import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
 import { isPlatformAdmin } from "../lib/domain/admin.js";
 import RfqDetail from "./rfq/RfqDetail.jsx";
 import LiveBrowse from "./rfq/LiveBrowse.jsx";
-import QuoteForm from "./quote/QuoteForm.jsx";
+import LiveQuoteForm from "./quote/LiveQuoteForm.jsx";
 import QuoteSent from "./quote/QuoteSent.jsx";
 import LiveQuotes from "./quote/LiveQuotes.jsx";
 // The designed screens, mounted against live data through the seam. Importing
@@ -585,7 +585,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/browse/:id/quote",
       render: (params) =>
-        isFactory ? <QuoteForm org={activeOrg} rfqId={params.id} profile={profile} /> : <NotForThisSide isFactory={false} />,
+        isFactory ? <LiveQuoteForm org={activeOrg} rfqId={params.id} profile={profile} /> : <NotForThisSide isFactory={false} />,
     },
     {
       path: "/browse/:id/quote/sent",

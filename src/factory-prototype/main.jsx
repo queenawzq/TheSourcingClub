@@ -8335,8 +8335,8 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
           <QuoteField name="quantity" label="Exact production quantity *" value={values?.quantity ?? "300 units"} {...reviewFieldProps} />
           <QuoteField name="leadTime" label="Bulk lead time *" value={values?.leadTime ?? "28 days after PP approval"} {...reviewFieldProps} />
           <QuoteField label={companyType === "trading" ? "Partner production window *" : "Open capacity window *"} value={companyType === "trading" ? "Aug 12-30 · partner confirmed" : "Aug 12-30 · 420 units"} {...reviewFieldProps} />
-          <QuoteField label="Payment terms" value="30% deposit / 70% before shipment" {...reviewFieldProps} />
-          <QuoteField label="Shipping / incoterms" value="EXW quoted; shipping TBD" {...reviewFieldProps} />
+          <QuoteField name="paymentTerms" label="Payment terms" value={values?.paymentTerms ?? "30% deposit / 70% before shipment"} {...reviewFieldProps} />
+          <QuoteField name="incoterms" label="Shipping / incoterms" value={values?.incoterms ?? "EXW quoted; shipping TBD"} {...reviewFieldProps} />
           <QuoteField name="validUntil" label="Quote valid until" value={values?.validUntil ?? "Aug 1, 2026"} {...reviewFieldProps} />
         </div>
       </SubmitSection>
@@ -8384,8 +8384,8 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
 
       <SubmitSection title="Sample plan" description="Break out sample stages so the brand can compare quotes clearly.">
         <div className="factory-submit-sample-rows">
-          <SamplePlanRow stage="Fit sample" cost="$95" timing="10 days" includes="1 revision round" readOnly={readOnly} reviewEnglish={reviewEnglish} />
-          <SamplePlanRow stage="PP sample" cost="$165" timing="11 days" includes="1 revision round" readOnly={readOnly} reviewEnglish={reviewEnglish} />
+          <SamplePlanRow index={0} stage={values?.["sample.0.stage"] ?? "Fit sample"} cost={values?.["sample.0.cost"] ?? "$95"} timing={values?.["sample.0.timing"] ?? "10 days"} includes={values?.["sample.0.includes"] ?? "1 revision round"} readOnly={readOnly} reviewEnglish={reviewEnglish} />
+          <SamplePlanRow index={1} stage={values?.["sample.1.stage"] ?? "PP sample"} cost={values?.["sample.1.cost"] ?? "$165"} timing={values?.["sample.1.timing"] ?? "11 days"} includes={values?.["sample.1.includes"] ?? "1 revision round"} readOnly={readOnly} reviewEnglish={reviewEnglish} />
         </div>
         {!readOnly && <button className="factory-add-stage" type="button">+ Add sample stage</button>}
       </SubmitSection>
@@ -8530,14 +8530,18 @@ function QuoteTextarea({ value, label, editable = false }) {
   );
 }
 
-function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, reviewEnglish = false }) {
+function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, reviewEnglish = false, index }) {
   const reviewFieldProps = reviewEnglish ? { valueNoTranslate: true, editable: true } : {};
+  // Each stage becomes a quote_sample_lines row, and the quote total is
+  // computed from them — so every cell is named and read back rather than
+  // being a drawn plan.
+  const at = (field) => (index == null ? undefined : `sample.${index}.${field}`);
   return (
     <div className={readOnly ? "factory-submit-sample-row read-only" : "factory-submit-sample-row"}>
-      <QuoteField label="Stage" value={stage} {...reviewFieldProps} />
-      <QuoteField label="Cost" value={cost} {...reviewFieldProps} />
-      <QuoteField label="Timing" value={timing} {...reviewFieldProps} />
-      <QuoteField label="Includes" value={includes} {...reviewFieldProps} />
+      <QuoteField name={at("stage")} label="Stage" value={stage} {...reviewFieldProps} />
+      <QuoteField name={at("cost")} label="Cost" value={cost} {...reviewFieldProps} />
+      <QuoteField name={at("timing")} label="Timing" value={timing} {...reviewFieldProps} />
+      <QuoteField name={at("includes")} label="Includes" value={includes} {...reviewFieldProps} />
       {!readOnly && <CloseIconButton label={`Remove ${stage}`} />}
     </div>
   );

@@ -71,16 +71,9 @@ step**, **comparing quotes**, the **order interior**, the **factory's
 marketplace**, **conversations**, **settings**, and the whole **admin console**
 (`admin.html`).
 
-Four hand-built screens remain, each for a stated reason rather than because
+Three hand-built screens remain, each for a stated reason rather than because
 nobody got to them:
 
-- **`QuoteForm`** — the designed `FactorySubmitQuote` is wired as far as it
-  honestly goes but is not routed. `submit_quote()` needs a payment term and
-  an incoterm as taxonomy ids and sample lines as rows; the design offers free
-  text for the first two and a static plan for the third. Routing it means a
-  factory being refused at the last step, or a quote stored with a payment
-  term nobody chose. Needs Queena, not a parser guessing "30% deposit / 70%
-  before shipment" into a slug.
 - **`ScheduleEditor`** — agreeing the schedule has no designed screen, and it
   is what activates an order. An unagreed order opens straight onto it.
 - **`AdminPayments`** — no designed payments queue, and confirming a payment
@@ -88,6 +81,16 @@ nobody got to them:
   sits at `sent` until a human opens it.
 - **`MilestoneDetail`, `PaymentInstructions`, `PayoutDetails`, `RfqDetail`,
   `QuoteSent`** — reachable from the designed screens, not yet ported.
+
+**The designed quote form writes prose where the schema keeps ids.** "30%
+deposit / 70% before shipment" and "EXW quoted" are matched against
+`taxonomy_terms` — a payment split by its numbers, an incoterm by its
+three-letter code — and the sample plan's rows become `quote_sample_lines`, so
+the total stays computed. Nothing is guessed: a value matching no term stores
+nothing and `submit_quote()` then refuses and names the field, which the
+screen shows. `deposit_pct` is derived from the matched term for the same
+reason migration 005 gives — without one the generated schedule totals only
+the sample lines and `agree_schedule` refuses it forever.
 
 **`FlowShell` is how a designed flow screen gets mounted.** It was extracted
 from the prototype's `App` — journey rail, eyebrow, right rail, bottom bar —
