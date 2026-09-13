@@ -17456,3 +17456,70 @@ button.sort-button {
   color: #a8330f;
   font-size: 13px;
 }
+
+/* A review field being corrected. Matches the read-back it replaces, so the
+   card does not change shape when someone edits it. */
+.field .field-input {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+}
+
+.field .field-input:focus {
+  outline: 2px solid var(--blue, #2458ff);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* The composer has no slot for a refused save — in the prototype it always
+   succeeds. */
+.composer-error {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #f3bcaa;
+  border-radius: 10px;
+  background: #fff2ec;
+  color: #a8330f;
+  font-size: 13px;
+}
+
+/* The questions a vendor answers against, typed rather than listed. */
+.question-box .question-input {
+  display: block;
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border, #e3e6ee);
+  border-radius: 8px;
+  font: inherit;
+}
+
+.question-box .question-input:last-child { margin-bottom: 0; }
+
+textarea.note-field {
+  width: 100%;
+  min-height: 84px;
+  resize: vertical;
+  font: inherit;
+}
+
+/* The request's name, typed into the card heading it already occupies. */
+.card h2 .card-title-input,
+.card .card-title-input {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.card .card-title-input:focus {
+  outline: 2px solid var(--blue, #2458ff);
+  outline-offset: 3px;
+  border-radius: 4px;
+}

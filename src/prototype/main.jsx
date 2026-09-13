@@ -1064,6 +1064,59 @@ const brandOnboardingSteps = [
   }
 ];
 
+/**
+ * The flow chrome, lifted out of App so app.html can render the same screens
+ * inside the same frame.
+ *
+ * Every element below is App's, unchanged — the journey rail, the eyebrow and
+ * heading, the right rail, the bottom bar. It was extracted rather than
+ * rewritten precisely because rebuilding it would mean inventing a frame that
+ * already exists, and the two would then drift.
+ *
+ * App still renders its own copy; this is for the live app, which keeps its
+ * own router and so cannot mount App wholesale.
+ */
+export function FlowShell({
+  screen,
+  children,
+  onBack,
+  onNext,
+  canBack = true,
+  primaryLabel,
+  centerText = "",
+  selectedQuote = null,
+  fundingMilestone = null,
+  busy = false,
+}) {
+  const meta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
+
+  return (
+    <main className={`flow-page${["invite", "quotes", "quoteDetail"].includes(screen) ? " wide-flow" : ""}`}>
+      <JourneyRail current={meta.step} isMilestoneFunding={Boolean(fundingMilestone)} />
+      <section className="flow-content">
+        {screen !== "quoteDetail" && (
+          <header className="flow-header">
+            <p className="eyebrow">VENDOR QUOTE REQUEST</p>
+            <h1>{meta.title}</h1>
+            <p>{meta.description || "Move this quote request forward with the next project detail."}</p>
+          </header>
+        )}
+        <div className="screen-transition">{children}</div>
+      </section>
+      <RightRail screen={screen} selectedQuote={selectedQuote} fundingMilestone={fundingMilestone} />
+      {screen !== "describe" && (
+        <BottomBar
+          canBack={canBack}
+          onBack={onBack}
+          onNext={onNext}
+          primaryLabel={busy ? "Saving…" : primaryLabel ?? meta.cta}
+          centerText={centerText}
+        />
+      )}
+    </main>
+  );
+}
+
 function App() {
   const query = new URLSearchParams(window.location.search);
   const requestedScreen = query.get("screen");
@@ -6705,52 +6758,102 @@ function ProjectUpdateCard() {
   );
 }
 
-function DescribeScreen({ onContinue }) {
+export function DescribeScreen({
+  onContinue,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  value,
+  onValueChange,
+  onSkip,
+  busy = false,
+  error = null,
+  modelEnabled = true,
+}) {
+  const isLive = Boolean(onValueChange);
+
   return (
     <div className="main-grid single">
       <Card title="Describe what you need made" className="large-card">
         <label className="field-label" htmlFor="request">
           Product request
         </label>
-        <textarea
-          id="request"
-          defaultValue="300 women's woven shirts in organic cotton poplin. Need a fit sample and PP sample before bulk approval. Looking for a low-MOQ vendor with a strong woven production network."
-        />
+        {isLive ? (
+          <textarea
+            id="request"
+            name="request"
+            value={value ?? ""}
+            placeholder="300 women's woven shirts in organic cotton poplin. Need a fit sample and PP sample before bulk approval."
+            onChange={(event) => onValueChange(event.target.value)}
+          />
+        ) : (
+          <textarea
+            id="request"
+            defaultValue="300 women's woven shirts in organic cotton poplin. Need a fit sample and PP sample before bulk approval. Looking for a low-MOQ vendor with a strong woven production network."
+          />
+        )}
+        {error && <p className="composer-error" role="alert">{error.message ?? String(error)}</p>}
         <div className="describe-actions">
-          <button className="secondary-btn" type="button" onClick={onContinue}>Skip AI</button>
-          <button className="primary-btn" type="button" onClick={onContinue}>Generate request brief</button>
+          <button className="secondary-btn" type="button" disabled={busy} onClick={onSkip ?? onContinue}>Skip AI</button>
+          {/* The model is optional and often off. Offering to draft a brief it
+              cannot draft would be a button that does nothing. */}
+          {(!isLive || modelEnabled) && (
+            <button className="primary-btn" type="button" disabled={busy} onClick={onContinue}>
+              {busy ? "Drafting…" : "Generate request brief"}
+            </button>
+          )}
         </div>
       </Card>
     </div>
   );
 }
 
-function ReviewScreen() {
+export function ReviewScreen({ brief, values, onChange, onEditBrief }) {
+  // The prototype passes none of these and reads exactly as drawn.
+  const isLive = Boolean(values);
+  const at = (key, drawn) => (isLive ? values[key] ?? "" : drawn);
+  const change = isLive ? onChange : undefined;
+
   return (
     <div className="stack review-brief-stack">
-      <Card title="Organic cotton woven shirt production">
+      <Card
+        title={
+          isLive ? (
+            /* The design takes the request's name from the model's draft. With
+               "Skip AI" there is no draft, and a request with no name is one
+               nobody can find later — so the heading is typed here. */
+            <input
+              className="card-title-input"
+              name="title"
+              value={values.title ?? ""}
+              placeholder="Name this request"
+              onChange={(event) => onChange("title", event.target.value)}
+            />
+          ) : (
+            "Organic cotton woven shirt production"
+          )
+        }
+      >
         <section className="brief-panel">
           <div>
             <h3>Project brief</h3>
             <p>
-              Maison Rue needs a production vendor for 300 women's organic cotton woven shirts.
-              The brand has a tech pack and wants vendors to quote the sample path and small
-              production run clearly before contract terms.
+              {isLive
+                ? brief || "Describe what you need made, and it will be summarised here."
+                : "Maison Rue needs a production vendor for 300 women's organic cotton woven shirts. The brand has a tech pack and wants vendors to quote the sample path and small production run clearly before contract terms."}
             </p>
           </div>
-          <button className="secondary-btn compact-btn" type="button">Edit</button>
+          <button className="secondary-btn compact-btn" type="button" onClick={onEditBrief}>Edit</button>
         </section>
         <h3 className="section-title">Quote requirements</h3>
         <div className="brief-grid">
-          <Field label="Product category *" value="Womenswear / woven shirting" />
-          <Field label="Quantity + color split *" value="300 units total · 3 colors, 100 each" />
-          <Field label="Material / quality *" value="Organic cotton poplin, mid-weight" />
-          <Field label="Target timeline *" value="Sample in August, bulk by late September" />
-          <Field label="Sample requirement *" value="Fit sample + PP sample before bulk" />
-          <Field label="Target unit price" value="Ideal $18-$24 per unit" />
-          <Field label="Vendor region preference" value="China, Portugal, Korea" />
-          <Field label="Certifications" value="GOTS preferred" />
-          <Field label="Quote deadline" value="Jul 24, 2026 · 5 business days after publish" className="brief-grid-full" />
+          <Field label="Product category *" name="category" value={at("category", "Womenswear / woven shirting")} onChange={change} />
+          <Field label="Quantity + color split *" name="quantity" value={at("quantity", "300 units total · 3 colors, 100 each")} onChange={change} />
+          <Field label="Material / quality *" name="material" value={at("material", "Organic cotton poplin, mid-weight")} onChange={change} />
+          <Field label="Target timeline *" name="timeline" value={at("timeline", "Sample in August, bulk by late September")} onChange={change} />
+          <Field label="Sample requirement *" name="samples" value={at("samples", "Fit sample + PP sample before bulk")} onChange={change} />
+          <Field label="Target unit price" name="price" value={at("price", "Ideal $18-$24 per unit")} onChange={change} />
+          <Field label="Vendor region preference" name="regions" value={at("regions", "China, Portugal, Korea")} onChange={change} />
+          <Field label="Certifications" name="certifications" value={at("certifications", "GOTS preferred")} onChange={change} />
+          <Field label="Quote deadline" name="deadline" value={at("deadline", "Jul 24, 2026 · 5 business days after publish")} onChange={change} className="brief-grid-full" />
         </div>
         <section className="brief-sourcing-block">
           <h3>Vendor sourcing responsibility</h3>
@@ -6758,7 +6861,13 @@ function ReviewScreen() {
             <div className="brief-sourcing-grid">
             <label className="field-label" htmlFor="review-sourcing-support">
               Sourcing support needed
-              <select id="review-sourcing-support" defaultValue="partial">
+              <select
+                id="review-sourcing-support"
+                name="sourcing"
+                {...(isLive
+                  ? { value: values.sourcing ?? "partial", onChange: (event) => onChange("sourcing", event.target.value) }
+                  : { defaultValue: "partial" })}
+              >
                 <option value="full">Vendor should source all materials and components</option>
                 <option value="partial">Vendor should source some materials or components</option>
                 <option value="brand-provided">Brand will provide all materials and components</option>
@@ -6767,20 +6876,43 @@ function ReviewScreen() {
             </label>
             <label className="field-label" htmlFor="review-sourcing-details">
               Details
-              <textarea
-                id="review-sourcing-details"
-                defaultValue="Vendor should source organic cotton poplin and button trims from brand-approved direction. Brand will provide labels, packaging, and final color standards."
-              />
+              {isLive ? (
+                <textarea
+                  id="review-sourcing-details"
+                  name="sourcingDetails"
+                  value={values.sourcingDetails ?? ""}
+                  placeholder="Who sources what — materials, trims, labels, packaging."
+                  onChange={(event) => onChange("sourcingDetails", event.target.value)}
+                />
+              ) : (
+                <textarea
+                  id="review-sourcing-details"
+                  defaultValue="Vendor should source organic cotton poplin and button trims from brand-approved direction. Brand will provide labels, packaging, and final color standards."
+                />
+              )}
             </label>
             </div>
           </div>
         </section>
       </Card>
       <Card title="Additional details">
-        <div className="note-field">
-          Optional: packaging, QC expectations, shipping notes, or anything vendors should know
-          before quoting.
-        </div>
+        {/* Drawn as placeholder copy inside a box. It is the box's own
+            placeholder: made real rather than left as text a brand cannot
+            type into. */}
+        {isLive ? (
+          <textarea
+            className="note-field"
+            name="additionalDetails"
+            value={values.additionalDetails ?? ""}
+            placeholder="Optional: packaging, QC expectations, shipping notes, or anything vendors should know before quoting."
+            onChange={(event) => onChange("additionalDetails", event.target.value)}
+          />
+        ) : (
+          <div className="note-field">
+            Optional: packaging, QC expectations, shipping notes, or anything vendors should know
+            before quoting.
+          </div>
+        )}
       </Card>
       <Card title="Attachments">
         <button className="upload-zone" type="button">
@@ -6788,28 +6920,60 @@ function ReviewScreen() {
         </button>
       </Card>
       <Card title="Questions vendors should answer">
-        <div className="question-box">
-          <ol>
-            <li>Can you quote fit sample and PP sample separately?</li>
-            <li>Can you support 3 colors at 100 units each?</li>
-            <li>Which materials or components can you source, and what do you need the brand to provide?</li>
-          </ol>
-        </div>
+        {/* Each question becomes a row a vendor answers against, so they are
+            typed rather than listed. Drawn as three examples; they are the
+            three placeholders. */}
+        {isLive ? (
+          <div className="question-box">
+            {[0, 1, 2].map((index) => (
+              <input
+                key={index}
+                className="question-input"
+                name={`question-${index}`}
+                value={values[`question-${index}`] ?? ""}
+                placeholder={[
+                  "Can you quote fit sample and PP sample separately?",
+                  "Can you support 3 colors at 100 units each?",
+                  "Which materials can you source, and what should the brand provide?",
+                ][index]}
+                onChange={(event) => onChange(`question-${index}`, event.target.value)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="question-box">
+            <ol>
+              <li>Can you quote fit sample and PP sample separately?</li>
+              <li>Can you support 3 colors at 100 units each?</li>
+              <li>Which materials or components can you source, and what do you need the brand to provide?</li>
+            </ol>
+          </div>
+        )}
       </Card>
     </div>
   );
 }
 
-function InviteScreen({ selectedFactories, setSelectedFactories }) {
+export function InviteScreen({
+  selectedFactories,
+  setSelectedFactories,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  vendors: liveVendors,
+  openToAll,
+  onOpenToAllChange,
+}) {
   const [vendorType, setVendorType] = useState("factories");
   const isTrading = vendorType === "trading";
-  const inviteVendors = isTrading
-    ? marketplaceTradingCompanies.map((company) => ({
-        ...company,
-        fit: company.match,
-        note: company.notes[0]
-      }))
-    : factories;
+  const isLive = Boolean(liveVendors);
+  const inviteVendors = isLive
+    ? liveVendors
+    : isTrading
+      ? marketplaceTradingCompanies.map((company) => ({
+          ...company,
+          fit: company.match,
+          note: company.notes[0]
+        }))
+      : factories;
 
   const toggle = (name) => {
     setSelectedFactories((items) =>
@@ -6819,10 +6983,14 @@ function InviteScreen({ selectedFactories, setSelectedFactories }) {
 
   return (
     <div className="stack">
-      <div className="marketplace-vendor-toggle invite-vendor-toggle" role="tablist" aria-label="Vendor type">
-        <button className={!isTrading ? "active" : ""} type="button" role="tab" aria-selected={!isTrading} onClick={() => setVendorType("factories")}>Factories</button>
-        <button className={isTrading ? "active" : ""} type="button" role="tab" aria-selected={isTrading} onClick={() => setVendorType("trading")}>Trading companies</button>
-      </div>
+      {/* Trading companies are a vendor_kind on the same table, so live they
+          are simply in the one list rather than behind a second tab. */}
+      {!isLive && (
+        <div className="marketplace-vendor-toggle invite-vendor-toggle" role="tablist" aria-label="Vendor type">
+          <button className={!isTrading ? "active" : ""} type="button" role="tab" aria-selected={!isTrading} onClick={() => setVendorType("factories")}>Factories</button>
+          <button className={isTrading ? "active" : ""} type="button" role="tab" aria-selected={isTrading} onClick={() => setVendorType("trading")}>Trading companies</button>
+        </div>
+      )}
       <div className="invite-toolbar">
         <label className="search-field">
           <SearchIcon />
@@ -6834,7 +7002,18 @@ function InviteScreen({ selectedFactories, setSelectedFactories }) {
           Available now
         </label>
         <label className="toggle-row">
-          <input type="checkbox" defaultChecked />
+          {/* The only place visibility is expressed in the designed flow, so it
+              is what decides open_to_all versus invited_only on publish. */}
+          {isLive ? (
+            <input
+              type="checkbox"
+              name="open-to-all"
+              checked={openToAll}
+              onChange={(event) => onOpenToAllChange?.(event.target.checked)}
+            />
+          ) : (
+            <input type="checkbox" defaultChecked />
+          )}
           <span className="toggle" />
           Open to all vendors
         </label>
@@ -7724,11 +7903,24 @@ function Card({ title, children, className = "", tone = "" }) {
   );
 }
 
-function Field({ label, value, muted = false, className = "" }) {
+function Field({ label, value, muted = false, className = "", name, onChange }) {
   return (
     <div className={`${muted ? "field muted-field" : "field"} ${className}`}>
       <span>{label}</span>
-      <strong>{value}</strong>
+      {/* Read-back until the live mount hands it a change handler. The design
+          shows a brief the AI drafted; with "Skip AI" there is nothing drafted,
+          and a review you cannot correct is not a review. */}
+      {onChange ? (
+        <input
+          className="field-input"
+          name={name}
+          value={value ?? ""}
+          placeholder="—"
+          onChange={(event) => onChange(name, event.target.value)}
+        />
+      ) : (
+        <strong>{value}</strong>
+      )}
     </div>
   );
 }

@@ -21,13 +21,11 @@ import { isConfigured } from "../lib/supabase.js";
 import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
 import { isPlatformAdmin } from "../lib/domain/admin.js";
 import RfqList from "./rfq/RfqList.jsx";
-import RfqCreate from "./rfq/RfqCreate.jsx";
 import RfqDetail from "./rfq/RfqDetail.jsx";
 import BrowseRfqs from "./rfq/BrowseRfqs.jsx";
 import QuoteForm from "./quote/QuoteForm.jsx";
 import QuoteSent from "./quote/QuoteSent.jsx";
 import QuoteCompare from "./quote/QuoteCompare.jsx";
-import InviteFactories from "./rfq/InviteFactories.jsx";
 import OrderList from "./order/OrderList.jsx";
 // The designed screens, mounted against live data through the seam. Importing
 // them pulls in the prototype stylesheet, which is the point — the design is
@@ -44,6 +42,7 @@ import PayoutDetails from "./order/PayoutDetails.jsx";
 import AdminPayments from "./admin/AdminPayments.jsx";
 import LiveMessages from "./message/LiveMessages.jsx";
 import LiveHome from "./home/LiveHome.jsx";
+import LiveComposer from "./rfq/LiveComposer.jsx";
 import LiveSettings from "./settings/LiveSettings.jsx";
 import NotificationList from "./NotificationList.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
@@ -550,12 +549,16 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/rfqs/new",
       render: () =>
-        isFactory ? <NotForThisSide isFactory /> : <RfqCreate org={activeOrg} />,
+        isFactory ? <NotForThisSide isFactory /> : (
+          <LiveComposer org={activeOrg} onPublished={(id) => navigate(`/rfqs/${id}`)} />
+        ),
     },
     {
       path: "/rfqs/:id/edit",
       render: (params) =>
-        isFactory ? <NotForThisSide isFactory /> : <RfqCreate org={activeOrg} rfqId={params.id} />,
+        isFactory ? <NotForThisSide isFactory /> : (
+          <LiveComposer org={activeOrg} rfqId={params.id} onPublished={(id) => navigate(`/rfqs/${id}`)} />
+        ),
     },
     {
       path: "/rfqs/:id",
@@ -571,8 +574,13 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     },
     {
       path: "/rfqs/:id/invite",
+      // The invite step is part of the composer now, because that is where the
+      // design puts it and where its visibility toggle lives. Arriving here
+      // from an old link resumes the composer at that step.
       render: (params) =>
-        isFactory ? <NotForThisSide isFactory /> : <InviteFactories org={activeOrg} rfqId={params.id} />,
+        isFactory ? <NotForThisSide isFactory /> : (
+          <LiveComposer org={activeOrg} rfqId={params.id} onPublished={(id) => navigate(`/rfqs/${id}`)} />
+        ),
     },
     {
       path: "/rfqs/:id/quotes",

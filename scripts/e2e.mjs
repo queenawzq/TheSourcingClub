@@ -684,84 +684,53 @@ async function main() {
     await record(page, "Brand requests", "the designed screen, empty until the first one is written");
 
     await clickButton(page, "create new quote");
-    await waitForHeading(page, "what do you need made");
-    // The draft row exists before a single field is filled, so nothing typed
-    // is ever held only in component state.
-    const draftUrl = String(await page.url());
-    check(/\/rfqs\/[0-9a-f-]{36}\/edit/.test(draftUrl), "a draft is created on entry and its id is in the url");
+    await waitFor(page, ".describe-flow, .flow-page", 25000);
+    await record(page, "Describe what you need", "Queena's first flow card, on her chrome");
 
     const rfqTitle = `E2E woven shirts ${stamp}`;
-    await field(page, "give-it-a-name").fill(rfqTitle);
-    await field(page, "describe-what-you-need-made").fill(
-      "300 women's woven shirts in organic cotton poplin, three colours.",
+    await page.locator('textarea[name="request"]').fill(
+      "300 women's woven shirts in organic cotton poplin, 3 colors, 100 each. Fit sample and PP sample before bulk. Bulk by late September 2026.",
     );
-    // The AI draft, when a key is configured. Skipped silently otherwise, so
-    // the run does not depend on a credential.
-    const draftButton = await page.locator(".ai-draft button").count();
-    if (draftButton) {
-      await clickButton(page, "fill in the rest from this");
-      await page.waitForTimeout(30000);
-      const outcome = await page.locator(".ai-draft").innerText();
-      const drafted = /Filled in \d+ thing|already filled everything/.test(outcome);
-      const upstreamFailed = /model service returned|took too long|nothing usable|no model key/i.test(outcome);
 
-      if (upstreamFailed) {
-        // The model service is unavailable — out of credit, rate limited, down.
-        // That is not our code failing, and asserting "drafting works" here
-        // would be asserting OpenRouter's billing. What IS ours is the soft
-        // failure: this feature must never block the composer, so test THAT
-        // instead. It is a better assertion than the happy path, because it
-        // only runs when the failure is real.
-        check(true, `the model service is unavailable (${outcome.split("\n").pop()?.slice(0, 60)})`);
-        const titleAfter = await field(page, "give-it-a-name").inputValue();
-        check(titleAfter === rfqTitle,
-          "and the composer is untouched by it — nothing typed was lost to a failed model call");
-        await record(page, "Model unavailable", "the feature fails soft; the brand types it themselves");
-      } else {
-        check(drafted, `drafting from the description: ${outcome.split("\n").pop()?.slice(0, 70)}`);
-      }
-      if (drafted) {
-        // The title the test typed must survive: the feature fills blanks, it
-        // does not rewrite deliberate input.
-        const titleAfter = await field(page, "give-it-a-name").inputValue();
-        check(titleAfter === rfqTitle, "the title the brand typed was left alone");
-        await record(page, "Drafted from the description", "fills only what was blank, and nothing is sent until publish");
-      }
-    }
+    // "Skip AI" is part of the design and is the path taken here: the model
+    // needs a credential, and the run must not depend on one.
+    await clickButton(page, "skip ai");
+    await waitFor(page, ".review-brief-stack", 30000);
 
-    const cats = await chooseChips(page, "product-category", 1);
-    await record(page, "RFQ describe", `category: ${cats.join(", ")}`);
-    await advance(page, "quantity and materials");
+    const draftUrl = String(await page.url());
+    check(/\/rfqs\/[0-9a-f-]{36}\/edit/.test(draftUrl) || /rfqs\/new/.test(draftUrl),
+      "a draft row exists before the review card is filled in");
+    await record(page, "Review the brief", "read back and correctable — Skip AI leaves it empty to fill");
 
-    await field(page, "total-quantity").fill("300");
-    await page.locator('[data-field="colour-breakdown"] input').nth(0).fill("Ecru");
-    await page.locator('[data-field="colour-breakdown"] input').nth(1).fill("100");
-    await field(page, "materials-and-quality").fill("Organic cotton poplin, mid weight.");
-    await select(page, "who-buys-the-materials").selectOption("factory-sources");
-    await chooseChips(page, "certifications-you-require", 1);
-    await record(page, "RFQ specifics", "sourcing responsibility is stored — full package and CMT are not comparable prices");
-    await advance(page, "timeline and budget");
+    // The review fields are Queena's, addressed by the name the seam gives each.
+    const setField = async (name, value) => {
+      const target = `.review-brief-stack [name="${name}"]`;
+      if ((await page.locator(target).count()) === 0) return false;
+      await page.locator(target).first().fill(value);
+      return true;
+    };
 
-    // The picker offers the next nine months, so index 2 is three months out.
-    // Mirrors deliveryMonths() in RfqCreate.jsx.
-    const now = new Date();
-    const deliveryMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 3, 1))
-      .toISOString().slice(0, 10);
-    await select(page, "delivery-month").selectOption(deliveryMonth);
-    await field(page, "target-unit-price-from").fill("18");
-    await field(page, "to").fill("24");
-    await record(page, "RFQ timeline", "delivery month drives the capacity factor in matching");
-    await advance(page, "questions for factories");
+    await setField("title", rfqTitle);
+    await setField("category", "Womenswear");
+    await setField("quantity", "300 units total · 3 colors, 100 each");
+    await setField("material", "Organic cotton poplin, mid-weight");
+    await setField("timeline", "Bulk by late September 2026");
+    await setField("samples", "Fit sample + PP sample before bulk");
+    await setField("price", "$18-$24 per unit");
+    await setField("regions", "Portugal");
+    await setField("certifications", "GOTS");
+    await setField("sourcingDetails", "Vendor sources the poplin; brand provides labels.");
+    await setField("additionalDetails", "Polybag per unit, carton by colour.");
+    await setField("question-0", "Can you quote fit and PP samples separately?");
+    await record(page, "The brief, corrected", "every field is the brand's, not the model's");
 
-    await clickButton(page, "add a question");
-    await page.locator('[data-field="factory-questions"] input[type="text"]').first()
-      .fill("Can you quote fit and PP samples separately?");
-    await record(page, "RFQ questions", "answers are shared with every factory quoting, unless marked private");
-    await advance(page, "review and publish");
-
-    await record(page, "RFQ review", "visibility decides who can see it; verification decides who can bid");
-    await clickButton(page, "publish request");
-    await page.waitForTimeout(2500);
+    // Review leads to the invite step, which is where the design puts the only
+    // control over who can see the request.
+    await page.locator(".bottom-bar .primary-btn").first().click();
+    await waitFor(page, ".invite-results", 30000);
+    await record(page, "Choose who sees it", "the design's own toggle decides open or invite-only");
+    await clickButton(page, "invite vendors");
+    await page.waitForTimeout(4500);
     await record(page, "RFQ published");
 
     const { data: publishedRfq } = await db
@@ -791,9 +760,15 @@ async function main() {
       `the brand's own question is saved (${savedQuestions?.length ?? 0} question(s) in total)`,
     );
 
-    const { count: colourCount } = await db
-      .from("rfq_colour_splits").select("*", { count: "exact", head: true }).eq("rfq_id", publishedRfq.id);
-    check(colourCount === 1, "the colour breakdown is rows, not a display string");
+    // The design collapses the breakdown into one line — "3 colors, 100 each".
+    // The schema keeps rows, because a vendor quotes per colour, so the line is
+    // parsed into rows rather than stored as a sentence.
+    const { data: colourRows } = await db
+      .from("rfq_colour_splits").select("colour, quantity").eq("rfq_id", publishedRfq.id);
+    check((colourRows ?? []).length === 3,
+      `"3 colors, 100 each" became ${colourRows?.length ?? 0} rows, not a display string`);
+    check((colourRows ?? []).every((row) => row.quantity === 100),
+      "each row carries its own quantity");
 
     // The whole reason migration 014 exists: this score must be about THIS
     // request, not the union of everything the brand has ever posted.
@@ -1451,35 +1426,45 @@ async function main() {
     await signOutFully(page);
     await signIn(page, brandEmail, "Brand again");
     await page.goto(`${APP}/rfqs/new`);
-    await waitForHeading(page, "what do you need made");
+    await waitFor(page, ".describe-flow, .flow-page", 25000);
     const privateTitle = `E2E private request ${stamp}`;
-    await field(page, "give-it-a-name").fill(privateTitle);
-    await field(page, "describe-what-you-need-made").fill("A quieter request, for invited factories only.");
-    await chooseChips(page, "product-category", 1);
-    await advance(page, "quantity and materials");
-    await field(page, "total-quantity").fill("120");
-    await advance(page, "timeline and budget");
-    await advance(page, "questions for factories");
-    await advance(page, "review and publish");
+    await page.locator('textarea[name="request"]').fill("A quieter request, for invited factories only. 120 units.");
+    await clickButton(page, "skip ai");
+    await waitFor(page, ".review-brief-stack", 30000);
 
-    await clickButton(page, "only factories i invite");
+    await page.locator('.review-brief-stack [name="title"]').first().fill(privateTitle);
+    await page.locator('.review-brief-stack [name="quantity"]').first().fill("120 units total");
+    await page.locator(".bottom-bar .primary-btn").first().click();
+    await waitFor(page, ".invite-results", 30000);
+
+    // Untick "Open to all vendors" — the design's only visibility control.
+    // A real click, because React owns the checked state and will not see one
+    // that was assigned.
+    await page.locator('input[name="open-to-all"]').first().click();
+    await page.waitForTimeout(600);
     await record(page, "Invite-only chosen", "publishing this without inviting anyone used to strand it");
-    await clickButton(page, "publish request");
 
-    // Publishing an invite-only request now leads straight here, rather than
-    // to a request nobody can see.
-    await waitForHeading(page, "invite factories", 30000);
-    await waitFor(page, '[data-testid="invite-factory"]', 20000);
+    await page.locator(".invite-selection-factory-card").first().click();
+    await page.waitForTimeout(600);
     await record(page, "Choose who sees it", "ranked by fit against this request, same score the factory sees");
+    const toggleOff = await page.evaluate(
+      () => document.querySelector('input[name="open-to-all"]')?.checked === false,
+    );
+    check(toggleOff, "the open-to-all toggle is off before publishing");
 
-    await page.locator('[data-testid="invite-factory"]').first().click();
-    await clickButton(page, "save invitations");
-    await page.waitForTimeout(2500);
+    // By label, not by position: the bottom bar's primary button is the one
+    // that publishes, and clicking a vendor card first can leave the pointer
+    // over a card-level control at the same coordinates.
+    await clickButton(page, "invite vendors");
+    await page.waitForTimeout(4500);
+    const publishError = await page.locator(".composer-error").innerText().catch(() => "");
+    check(!publishError, publishError ? `publishing was refused: ${publishError}` : "publishing was accepted");
     await record(page, "Invitations saved");
 
     const { data: privateRfq } = await db.from("rfqs")
       .select("id, visibility, status").eq("title", privateTitle).single();
-    check(privateRfq.visibility === "invited_only", "the request is invite-only");
+    check(privateRfq.status === "open", `the invite step published it (status ${privateRfq.status})`);
+    check(privateRfq.visibility === "invited_only", `the request is invite-only (${privateRfq.visibility})`);
 
     const { count: inviteCount } = await db.from("rfq_invitations")
       .select("*", { count: "exact", head: true }).eq("rfq_id", privateRfq.id);
