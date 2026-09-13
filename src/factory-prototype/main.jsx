@@ -5179,7 +5179,7 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   );
 }
 
-export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, onEdit }) {
+export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, onEdit, quote }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-rfq-read-page">
       <div className="factory-submit-content">
@@ -5193,7 +5193,11 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
         <div className="factory-submit-layout factory-rfq-read-layout">
           <section className="factory-submit-main">
             <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} />
-            <FactoryQuoteSections companyType={companyType} language={language} readOnly />
+            {/* The quote panel reads back what this vendor actually sent. With
+                no quote yet it is given empty values rather than the design's
+                example, because a fabricated price on a request you have not
+                quoted is the worst thing this screen could show. */}
+            <FactoryQuoteSections companyType={companyType} language={language} readOnly values={quote} />
           </section>
 
           <aside className="factory-submit-side">
@@ -8390,7 +8394,18 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
         {!readOnly && <button className="factory-add-stage" type="button">+ Add sample stage</button>}
       </SubmitSection>
 
-      <SubmitSection title={companyType === "trading" ? "Brand questions and company notes" : "Brand questions and factory notes"} description="Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM, trim, MOQ, or certification details do you need before final cost?" descriptionNoTranslate>
+      {/* The brand's own questions, which are the point of this section for a
+          factory: they are what it has to answer to quote. Drawn as three
+          examples; live they are the rows the brand actually wrote. */}
+      <SubmitSection
+        title={companyType === "trading" ? "Brand questions and company notes" : "Brand questions and factory notes"}
+        description={
+          values?.brandQuestions?.length
+            ? `Brand asks: ${values.brandQuestions.join(" ")}`
+            : "Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM, trim, MOQ, or certification details do you need before final cost?"
+        }
+        descriptionNoTranslate
+      >
         <QuoteTextarea
           value={isZh && !readOnly
             ? "可以。我们可以分别报价试身样和 PP 样，并支持 3 个颜色、每色 100 件。最终成本取决于确认后的 GSM、纽扣辅料、认证路径和最终尺码规格。"

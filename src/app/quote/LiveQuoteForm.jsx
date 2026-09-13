@@ -25,7 +25,7 @@ import {
   setSampleLines,
   submitQuote,
 } from "../../lib/domain/quote.js";
-import { getRfq } from "../../lib/domain/rfq.js";
+import { getQuestions, getRfq } from "../../lib/domain/rfq.js";
 import { listTermsByKind } from "../../lib/domain/taxonomy.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -72,6 +72,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   const [quote, setQuote] = useState(null);
   const [lines, setLines] = useState([]);
   const [terms, setTerms] = useState({});
+  const [questions, setQuestions] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -79,9 +80,14 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
 
   const load = useCallback(async () => {
     try {
-      const [request, vocab] = await Promise.all([getRfq(rfqId), listTermsByKind(kinds)]);
+      const [request, vocab, asked] = await Promise.all([
+        getRfq(rfqId),
+        listTermsByKind(kinds),
+        getQuestions(rfqId),
+      ]);
       setRfq(request);
       setTerms(vocab);
+      setQuestions(asked ?? []);
 
       const mine = (await getMyQuote(rfqId, org.id)) ?? (await createDraftQuote(rfqId, org.id));
       setQuote(mine);
@@ -174,6 +180,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         fitTone: "",
       }}
       values={{
+        brandQuestions: questions.map((question) => question.prompt),
         unitPrice: quote.unit_price_cents ? `${money(quote.unit_price_cents)} / unit` : undefined,
         quantity: quote.production_quantity
           ? `${quote.production_quantity} units`

@@ -814,19 +814,20 @@ async function main() {
     // The card's affordance is its own View RFQ button, which is how the
     // design draws it.
     await page.locator('[data-testid="open-rfq-card"] .primary-btn').first().click();
-    await waitForHeading(page, rfqTitle.slice(0, 20));
+    // The designed page is headed "View RFQ"; the request's own title is on
+    // the card inside it.
+    await waitForHeading(page, "view rfq", 25000);
     await record(page, "Factory reads the request", "every field traces to a stored column, none of it is copy");
 
-    const detail = await page.locator(".rfq-page").first().innerText();
+    const detail = await page.locator(".factory-rfq-read-page").first().innerText();
+    check(detail.includes(rfqTitle), "the request the brand published is the one on screen");
     check(detail.includes("300"), "the quantity the brand typed is what the factory reads");
     check(/Can you quote fit and PP samples separately/.test(detail), "the brand's question reaches the factory");
     check(!/business_email|hq_location.*private/i.test(detail), "no brand contact details leak into the factory's view");
 
-    const detailButtons = await page.locator(".rfq-page-head button").innerText().catch(() => "");
-    check(
-      /verification needed/i.test(detailButtons),
-      "the quote button is present but refused — the gate is explained, not hidden",
-    );
+    const gateText = await page.locator(".browse-gate").innerText().catch(() => "");
+    check(/not quote it yet/i.test(gateText),
+      "an unverified factory is told plainly it may read this but not quote it");
 
 
     // ================= VERIFICATION =================
@@ -914,10 +915,10 @@ async function main() {
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory quoting", "factory");
 
     await page.goto(`${APP}/browse/${publishedRfq.id}`);
-    await waitForHeading(page, rfqTitle.slice(0, 20));
+    await waitForHeading(page, "view rfq", 25000);
     await record(page, "Factory can now bid", "the verification notice is gone and the quote button is live");
 
-    await clickButton(page, "send a quote");
+    await clickButton(page, "edit quote");
     await waitFor(page, ".factory-submit-page", 25000);
     await record(page, "The quote", "Queena's submit screen, on a real draft row");
 

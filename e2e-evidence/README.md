@@ -1,8 +1,8 @@
 # End-to-end evidence
 
-Recorded 2026-09-13T20:15:18.860Z against `http://127.0.0.1:5173/app.html`.
+Recorded 2026-09-13T20:29:02.393Z against `http://127.0.0.1:5173/app.html`.
 
-**111 steps, 146 assertions, 0 failed.**
+**111 steps, 147 assertions, 0 failed.**
 
 A real browser, driven by Stagehand, against a real database. No mock data
 anywhere: every value below was typed into the interface and then read back
@@ -160,10 +160,11 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the quantity the brand typed reaches the factory's card
 - ✅ the brand is named, not anonymous — nobody quotes a stranger
 - ✅ an unverified factory is told it can look but not bid
+- ✅ the request the brand published is the one on screen
 - ✅ the quantity the brand typed is what the factory reads
 - ✅ the brand's question reaches the factory
 - ✅ no brand contact details leak into the factory's view
-- ✅ the quote button is present but refused — the gate is explained, not hidden
+- ✅ an unverified factory is told plainly it may read this but not quote it
 - ✅ the factory is waiting for a decision in the live queue
 - ✅ the queue row for this factory was found and opened
 - ✅ the factory is now verified in the database
@@ -223,7 +224,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the factory can say where its money goes — without which nobody can pay it
 - ✅ the brand can read the factory's update across the org boundary
 - ✅ approving the sample made its payment due
-- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000048)
+- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000049)
 - ✅ the platform fee is shown and charged at zero ($0.00)
 - ✅ the payment is recorded as sent
 - ✅ the brand saying it paid does NOT count as funded
@@ -261,7 +262,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ and they land in that organisation, not one of their own
 - ✅ a crash says what is and is not lost, rather than showing a blank page
 - ✅ and offers a way out — reload, or back to the start
-- ✅ the crash was reported, under the reference shown (C4A74235)
+- ✅ the crash was reported, under the reference shown (5AB6EF29)
 - ✅ with the real error message, not a generic one
 - ✅ and the screen it happened on
 - ✅ navigating away clears the crash — one broken screen does not poison the next
