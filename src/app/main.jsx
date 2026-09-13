@@ -44,7 +44,7 @@ import PayoutDetails from "./order/PayoutDetails.jsx";
 import AdminPayments from "./admin/AdminPayments.jsx";
 import LiveMessages from "./message/LiveMessages.jsx";
 import LiveHome from "./home/LiveHome.jsx";
-import Team from "./settings/Team.jsx";
+import LiveSettings from "./settings/LiveSettings.jsx";
 import NotificationList from "./NotificationList.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
 import "./shell.css";
@@ -655,7 +655,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     },
     {
       path: "/team",
-      render: () => <Team org={activeOrg} />,
+      render: () => <LiveSettings org={activeOrg} isFactory={isFactory} />,
     },
     {
       path: "/messages",

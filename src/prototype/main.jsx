@@ -1949,14 +1949,22 @@ const factoryBillingHistory = {
   ]
 };
 
-function SettingsScreen({ accountType = "brand" }) {
+export function SettingsScreen({
+  accountType = "brand",
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  team: liveTeam,
+  onInvite,
+  onRemove,
+  busy = false,
+  error = null,
+}) {
   const isFactory = accountType === "factory";
   const [activeSection, setActiveSection] = useState("account");
   const [inviteEmail, setInviteEmail] = useState("");
   const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
   const [stakeholderTab, setStakeholderTab] = useState("members");
   const [paymentTab, setPaymentTab] = useState("earnings");
-  const [team, setTeam] = useState(
+  const [mockTeam, setTeam] = useState(
     isFactory
       ? [
           { name: "Ines Carvalho", email: "ines@atelierminho.pt", role: "Owner", permissions: ["rfqFlow", "addUpdate", "primaryContact", "settingsAccess"] },
@@ -2010,6 +2018,8 @@ function SettingsScreen({ accountType = "brand" }) {
         { email: "ops@maisonrue.com", role: "View only", sent: "Sent yesterday" }
       ];
   const activePermissionLabels = isFactory ? factoryAccountPermissionLabels : settingsPermissionLabels;
+  const team = liveTeam ?? mockTeam;
+  const isLive = Boolean(liveTeam);
 
   const togglePermission = (memberEmail, permission) => {
     const permissionMeta = activePermissionLabels.find((item) => item.key === permission);
@@ -2036,6 +2046,10 @@ function SettingsScreen({ accountType = "brand" }) {
     );
   };
   const removeMember = (memberEmail) => {
+    if (isLive) {
+      onRemove?.(memberEmail);
+      return;
+    }
     setTeam((current) => current.filter((member) => member.email !== memberEmail));
   };
 
@@ -2314,8 +2328,24 @@ function SettingsScreen({ accountType = "brand" }) {
                 </fieldset>
               </div>
               <footer>
+                {error && <p className="settings-invite-error" role="alert">{error.message ?? String(error)}</p>}
                 <button className="secondary-btn" type="button" onClick={() => setIsInvitePanelOpen(false)}>Cancel</button>
-                <button className="primary-btn" type="button" onClick={() => setIsInvitePanelOpen(false)}>Send invite</button>
+                <button
+                  className="primary-btn"
+                  type="button"
+                  data-testid="send-invite"
+                  disabled={busy || (isLive && !inviteEmail.includes("@"))}
+                  onClick={async () => {
+                    if (isLive) {
+                      if (!inviteEmail.includes("@")) return;
+                      await onInvite?.(inviteEmail.trim());
+                    }
+                    setInviteEmail("");
+                    setIsInvitePanelOpen(false);
+                  }}
+                >
+                  {busy ? "Sending…" : "Send invite"}
+                </button>
               </footer>
             </aside>
           </div>

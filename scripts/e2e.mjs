@@ -1539,14 +1539,20 @@ async function main() {
     // listMyInvitations() and acceptInvitation() have existed since Phase 1
     // with nothing calling either: an invitation could be sent and never seen.
     console.log("\nJOINING A TEAM");
+    // The designed settings screen, on its "Roles & access" section.
     await page.goto(`${APP}/team`);
-    await waitForHeading(page, "your team", 25000);
+    await waitFor(page, ".settings-page, .settings-shell, .settings-nav", 25000);
     await record(page, "The team", "who else acts as this brand");
 
     const colleagueEmail = `colleague-${stamp}@example.com`;
-    await page.locator('[data-field="invite_email"]').fill(colleagueEmail);
+    await clickButton(page, "roles & access");
+    await page.waitForTimeout(1000);
+    await clickButton(page, "invite member");
+    await waitFor(page, '[data-testid="send-invite"]', 15000);
+    await page.locator('input[placeholder="name@company.com"]').first().fill(colleagueEmail);
+    await page.waitForTimeout(400);
     await page.locator('[data-testid="send-invite"]').click();
-    await page.waitForTimeout(2500);
+    await page.waitForTimeout(3500);
 
     const { data: invited } = await db.from("org_invitations")
       .select("id, status, role").eq("email", colleagueEmail).single();

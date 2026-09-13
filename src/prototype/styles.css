@@ -17444,3 +17444,15 @@ button.sort-button {
   font-size: 13px;
   line-height: 1.45;
 }
+
+/* The invite panel has no slot for a refused invitation — in the prototype it
+   always succeeds. */
+.settings-invite-error {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border: 1px solid #f3bcaa;
+  border-radius: 8px;
+  background: #fff2ec;
+  color: #a8330f;
+  font-size: 13px;
+}
