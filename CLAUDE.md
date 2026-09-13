@@ -67,21 +67,27 @@ screens that remain are debt being paid down, not a pattern to extend.
 
 On the design, live: **auth**, **brand and factory onboarding**, **the
 dashboard**, **requests**, **orders**, the **request composer and its invite
-step**, **comparing quotes**, **conversations**, **settings**, and the whole
-**admin console** (`admin.html`).
+step**, **comparing quotes**, the **order interior**, the **factory's
+marketplace**, **conversations**, **settings**, and the whole **admin console**
+(`admin.html`).
 
-Still hand-built in `src/app`: the **order interior** (`OrderDetail`,
-`ScheduleEditor`, `MilestoneDetail`, `PaymentInstructions`, `PayoutDetails`)
-and the **factory's quoting path** (`BrowseRfqs`, `RfqDetail`, `QuoteForm`,
-`QuoteSent`). Their designed counterparts exist and are unused:
-`ProjectDetailScreen`, `ContractScreen`, `MilestonesScreen`, `PaymentScreen`,
-`FundScreen`, and on the factory side `FactoryBrowsePage`,
-`FactoryReadOnlyRfqPage`, `FactorySubmitQuote`, `FactoryReviewTotal`.
+Four hand-built screens remain, each for a stated reason rather than because
+nobody got to them:
 
-The order interior is the harder of the two: five screens, one sub-system, and
-about a dozen hooks in `scripts/e2e.mjs` covering schedule agreement, milestone
-submit and approve, payments and payouts. Port it as a unit, not a screen at a
-time, or the walkthrough goes red in the middle of the money path.
+- **`QuoteForm`** — the designed `FactorySubmitQuote` is wired as far as it
+  honestly goes but is not routed. `submit_quote()` needs a payment term and
+  an incoterm as taxonomy ids and sample lines as rows; the design offers free
+  text for the first two and a static plan for the third. Routing it means a
+  factory being refused at the last step, or a quote stored with a payment
+  term nobody chose. Needs Queena, not a parser guessing "30% deposit / 70%
+  before shipment" into a slug.
+- **`ScheduleEditor`** — agreeing the schedule has no designed screen, and it
+  is what activates an order. An unagreed order opens straight onto it.
+- **`AdminPayments`** — no designed payments queue, and confirming a payment
+  is a required step: staff have no org and cannot be notified, so a payment
+  sits at `sent` until a human opens it.
+- **`MilestoneDetail`, `PaymentInstructions`, `PayoutDetails`, `RfqDetail`,
+  `QuoteSent`** — reachable from the designed screens, not yet ported.
 
 **`FlowShell` is how a designed flow screen gets mounted.** It was extracted
 from the prototype's `App` — journey rail, eyebrow, right rail, bottom bar —
