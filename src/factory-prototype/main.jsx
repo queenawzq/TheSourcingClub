@@ -6539,6 +6539,27 @@ function FactoryOnboarding({ companyType = "factory", language, step, isReviewEd
 
 function FactoryOnboardingStep({ step, content, companyType, language, onLanguageChange, onCompanyTypeChange, onEditSection }) {
   const stepType = content.type || ["welcome", "fields", "context", "chipsBalanced", "chipsWithField", "capacity", "verification", "walkthrough", "review", "terms", "complete"][step];
+  const [removedCertificates, setRemovedCertificates] = useState([]);
+  const [hiddenCertificates, setHiddenCertificates] = useState([]);
+  const [customCertificates, setCustomCertificates] = useState([]);
+  const [certificateName, setCertificateName] = useState("");
+  const [clientReferenceRows, setClientReferenceRows] = useState([0]);
+  const nextClientReferenceId = useRef(1);
+
+  const removeCertificateUpload = (name) => {
+    setRemovedCertificates((current) => current.includes(name) ? current : [...current, name]);
+  };
+
+  const addCertificate = (event) => {
+    event.preventDefault();
+    const name = certificateName.trim();
+    const availableCertificates = [...content.certifications.map(([existingName]) => existingName), ...customCertificates];
+
+    if (!name || availableCertificates.some((existingName) => existingName.toLowerCase() === name.toLowerCase())) return;
+
+    setCustomCertificates((current) => [...current, name]);
+    setCertificateName("");
+  };
 
   if (stepType === "welcome") {
     return (
@@ -6624,46 +6645,79 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
           <button className="onboarding-file-upload" type="button">{content.businessUpload}</button>
           <small>{content.businessHelper}</small>
         </div>
-        <div className="certification-add-control">
+        <form className="certification-add-control" onSubmit={addCertificate}>
           <label className="factory-onboarding-field">
             <span>{content.certificationLabel}</span>
-            <input placeholder={content.search} />
+            <input
+              value={certificateName}
+              onChange={(event) => setCertificateName(event.target.value)}
+              placeholder={content.search}
+            />
           </label>
-          <button className="secondary-btn" type="button">{content.add}</button>
-        </div>
+          <button className="secondary-btn" type="submit">{content.add}</button>
+        </form>
         <div className="certification-upload-list">
-          {content.certifications.map(([name, status]) => (
-            <div className="certification-upload-row" key={name}>
-              <div className="certification-upload-heading">
-                <strong>{name}</strong>
-              </div>
-              {status === "uploaded" ? (
-                <div className="certification-file-row">
-                  <div>
-                    <span>{language === "zh" ? `${name}-证书.pdf` : `${name.replace(/\s+/g, "-").toLowerCase()}-certificate.pdf`}</span>
-                    <small>{content.uploadedCertificate}</small>
-                  </div>
-                  <button type="button">
-                    <img src="/assets/prototype-icons/trash.svg" alt="" />
-                    {content.deleteCertificate}
-                  </button>
+          {[...content.certifications, ...customCertificates.map((name) => [name, "not-uploaded"])]
+            .filter(([name]) => !hiddenCertificates.includes(name))
+            .map(([name, status]) => (
+              <div className="certification-upload-row" key={name}>
+                <div className="certification-upload-heading">
+                  <strong>{name}</strong>
+                  <CloseIconButton
+                    className="certification-section-close"
+                    label={language === "zh" ? `移除 ${name} 认证` : `Remove ${name} certification`}
+                    onClick={() => setHiddenCertificates((current) => [...current, name])}
+                  />
                 </div>
-              ) : (
-                <>
-                  <button className="onboarding-file-upload certification-file-upload" type="button">{content.uploadCertificate}</button>
-                  <small>{content.certificateHelper}</small>
-                </>
-              )}
-            </div>
-          ))}
+                {status === "uploaded" && !removedCertificates.includes(name) ? (
+                  <div className="certification-file-row">
+                    <div>
+                      <span>{language === "zh" ? `${name}-证书.pdf` : `${name.replace(/\s+/g, "-").toLowerCase()}-certificate.pdf`}</span>
+                      <small>{content.uploadedCertificate}</small>
+                    </div>
+                    <button type="button" onClick={() => removeCertificateUpload(name)}>
+                      <img src="/assets/prototype-icons/trash.svg" alt="" />
+                      {content.deleteCertificate}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <button className="onboarding-file-upload certification-file-upload" type="button">{content.uploadCertificate}</button>
+                    <small>{content.certificateHelper}</small>
+                  </>
+                )}
+              </div>
+            ))}
         </div>
         <div className="onboarding-reference-row compact">
           <strong>{content.reference}</strong>
-          <div>
-            <input placeholder={language === "zh" ? "公司名称" : "Company name"} />
-            <input placeholder={language === "zh" ? "联系人或公开链接" : "Contact or public link"} />
-          </div>
-          <button className="onboarding-text-action muted" type="button">{content.addReference}</button>
+          {clientReferenceRows.map((rowId, index) => (
+            <div className="onboarding-client-reference-fields" key={rowId}>
+              <input
+                aria-label={language === "zh" ? `公司名称 ${index + 1}` : `Company name ${index + 1}`}
+                placeholder={language === "zh" ? "公司名称" : "Company name"}
+              />
+              <input
+                aria-label={language === "zh" ? `联系人或公开链接 ${index + 1}` : `Contact or public link ${index + 1}`}
+                placeholder={language === "zh" ? "联系人或公开链接" : "Contact or public link"}
+              />
+              <CloseIconButton
+                className="client-reference-close"
+                label={language === "zh" ? `移除客户推荐 ${index + 1}` : `Remove client reference ${index + 1}`}
+                onClick={() => setClientReferenceRows((current) => current.filter((id) => id !== rowId))}
+              />
+            </div>
+          ))}
+          <button
+            className="onboarding-text-action muted"
+            type="button"
+            onClick={() => {
+              setClientReferenceRows((current) => [...current, nextClientReferenceId.current]);
+              nextClientReferenceId.current += 1;
+            }}
+          >
+            {content.addReference}
+          </button>
           <small>{content.referenceHelper}</small>
         </div>
       </div>

@@ -991,6 +991,33 @@
   height: 14px;
 }
 
+.certification-upload-heading .certification-section-close {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 5px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.certification-upload-heading .certification-section-close:hover {
+  background: #e9eef5;
+}
+
+.certification-upload-heading .certification-section-close:focus-visible {
+  outline: 2px solid #174df2;
+  outline-offset: 2px;
+}
+
+.certification-upload-heading .certification-section-close img {
+  display: block;
+  width: 18px;
+  height: 18px;
+}
+
 .uploaded-pill {
   display: inline-grid;
   place-items: center;
@@ -1083,6 +1110,37 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
+}
+
+.onboarding-reference-row > .onboarding-client-reference-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) auto;
+  align-items: center;
+}
+
+.onboarding-client-reference-fields .client-reference-close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.onboarding-client-reference-fields .client-reference-close:hover {
+  background: #e9eef5;
+}
+
+.onboarding-client-reference-fields .client-reference-close:focus-visible {
+  outline: 2px solid #174df2;
+  outline-offset: 2px;
+}
+
+.onboarding-client-reference-fields .client-reference-close img {
+  display: block;
+  width: 20px;
+  height: 20px;
 }
 
 .walkthrough-section {
@@ -8419,6 +8477,19 @@
   .walkthrough-checklist > div,
   .walkthrough-options > div {
     grid-template-columns: 1fr;
+  }
+
+  .onboarding-reference-row > .onboarding-client-reference-fields {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .onboarding-client-reference-fields input {
+    grid-column: 1;
+  }
+
+  .onboarding-client-reference-fields .client-reference-close {
+    grid-column: 2;
+    grid-row: 1;
   }
 
   .onboarding-capacity-setup > .factory-onboarding-form-grid {
