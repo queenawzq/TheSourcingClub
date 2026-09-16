@@ -22,6 +22,7 @@ import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
 import { isPlatformAdmin } from "../lib/domain/admin.js";
 import RfqDetail from "./rfq/RfqDetail.jsx";
 import LiveBrowse from "./rfq/LiveBrowse.jsx";
+import LiveFactoryRfqs from "./rfq/LiveFactoryRfqs.jsx";
 import LiveRequestView from "./rfq/LiveRequestView.jsx";
 import LiveQuoteForm from "./quote/LiveQuoteForm.jsx";
 import LiveQuoteSent from "./quote/LiveQuoteSent.jsx";
@@ -29,7 +30,10 @@ import LiveQuotes from "./quote/LiveQuotes.jsx";
 // The designed screens, mounted against live data through the seam. Importing
 // them pulls in the prototype stylesheet, which is the point — the design is
 // the CSS.
-import { ProjectsScreen, RfqsScreen } from "../prototype/main.jsx";
+import { ProjectsScreen, RfqsScreen, brandNavItems } from "../prototype/main.jsx";
+import { nav as factoryNavItems } from "../factory-prototype/main.jsx";
+import { PrototypeSideNav } from "../shared/ProfileShell.jsx";
+import LiveFactoryHome from "./home/LiveFactoryHome.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 import { createLiveAdapter } from "./live-adapter.js";
@@ -416,6 +420,107 @@ function ChooseOrgType() {
  * A profile that has not finished onboarding cannot be browsed or quoted
  * against, so there is nothing useful to show until it is done.
  */
+/**
+ * Which designed nav item each live path belongs to. Items with no live
+ * destination yet are left out of the nav rather than drawn as dead buttons.
+ */
+const BRAND_NAV_PATHS = {
+  Dashboard: "/",
+  Quotes: "/rfqs",
+  "Production orders": "/orders",
+  Conversations: "/messages",
+  Settings: "/team",
+};
+
+const FACTORY_NAV_PATHS = {
+  Dashboard: "/",
+  RFQs: "/rfqs",
+  "Production orders": "/orders",
+  "Browse RFQs": "/browse",
+  Conversations: "/messages",
+  Payments: "/payout",
+  Settings: "/team",
+};
+
+function activeNavFor(path, isFactory) {
+  if (path === "/" || path === "") return "Dashboard";
+  if (path.startsWith("/orders")) return "Production orders";
+  if (path.startsWith("/messages")) return "Conversations";
+  if (path.startsWith("/team")) return "Settings";
+  if (isFactory && path.startsWith("/browse")) return "Browse RFQs";
+  if (isFactory && path.startsWith("/payout")) return "Payments";
+  if (isFactory && path.startsWith("/rfqs")) return "RFQs";
+  if (!isFactory && path.startsWith("/rfqs")) return "Quotes";
+  return "";
+}
+
+const initialsOf = (name) =>
+  (name ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0].toUpperCase())
+    .join("") || "TS";
+
+/**
+ * The designed app frame — side nav, account card, collapse toggle — exactly
+ * as the prototypes' App draws it. Every designed page positions itself
+ * against this nav, which is why the live pages sat hard against the left
+ * edge while it was missing.
+ */
+function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut, children }) {
+  const { navigate, path } = useRouter();
+  const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
+
+  useEffect(() => {
+    const mobileNav = window.matchMedia("(max-width: 760px)");
+    const sync = () => setCollapsed(mobileNav.matches);
+    mobileNav.addEventListener("change", sync);
+    return () => mobileNav.removeEventListener("change", sync);
+  }, []);
+
+  const paths = isFactory ? FACTORY_NAV_PATHS : BRAND_NAV_PATHS;
+  const items = (isFactory ? factoryNavItems : brandNavItems).filter((item) => paths[item.label]);
+  const accountType = isFactory
+    ? (profile?.vendor_kind === "trading_company" ? "Vendor account" : "Factory account")
+    : "Brand account";
+
+  return (
+    <div className={`app-shell${collapsed ? " nav-collapsed" : ""}${isFactory ? " factory-flow" : ""}`}>
+      <PrototypeSideNav
+        account={{ initials: initialsOf(activeOrg.name), name: activeOrg.name, type: accountType }}
+        active={activeNavFor(path, isFactory)}
+        ariaLabel={accountType}
+        collapsed={collapsed}
+        navItems={items}
+        onNav={(label) => {
+          navigate(paths[label] ?? "/");
+          if (window.matchMedia("(max-width: 760px)").matches) setCollapsed(true);
+        }}
+        onProfile={() => navigate("/team")}
+        onToggle={() => setCollapsed((value) => !value)}
+        onSignOut={onSignOut}
+      />
+      {!collapsed && (
+        <button className="mobile-nav-backdrop" type="button" aria-label="Close navigation" onClick={() => setCollapsed(true)} />
+      )}
+      {children}
+      {orgs.length > 1 && !collapsed ? (
+        <select
+          className="org-switch shell-org-switch"
+          value={activeOrg.id}
+          onChange={(event) => selectOrg(event.target.value)}
+          aria-label="Active organisation"
+        >
+          {orgs.map((org) => (
+            <option key={org.id} value={org.id}>{org.name}</option>
+          ))}
+        </select>
+      ) : null}
+    </div>
+  );
+}
+
 function Shell() {
   const { activeOrg, orgs, selectOrg, signOut, user } = useAuth();
   const isFactory = activeOrg.type === "factory";
@@ -451,36 +556,20 @@ function Shell() {
 
   if (!profile?.onboarding_completed_at) {
     const Onboarding = isFactory ? FactoryOnboarding : BrandOnboarding;
-    return <Onboarding org={activeOrg} user={user} onComplete={loadProfile} />;
+    return <Onboarding org={activeOrg} user={user} onComplete={loadProfile} onSignOut={signOut} />;
   }
 
   return (
-    <div className="shell">
-      <header className="shell-bar">
-        <span className="shell-mark">The Sourcing Club</span>
-
-        {orgs.length > 1 ? (
-          <select
-            className="org-switch"
-            value={activeOrg.id}
-            onChange={(event) => selectOrg(event.target.value)}
-            aria-label="Active organisation"
-          >
-            {orgs.map((org) => (
-              <option key={org.id} value={org.id}>
-                {org.name}
-              </option>
-            ))}
-          </select>
-        ) : null}
-
-        <button type="button" className="quiet-btn" onClick={signOut}>
-          Sign out
-        </button>
-      </header>
-
+    <DesignFrame
+      activeOrg={activeOrg}
+      orgs={orgs}
+      selectOrg={selectOrg}
+      profile={profile}
+      isFactory={isFactory}
+      onSignOut={signOut}
+    >
       <ShellRoutes activeOrg={activeOrg} profile={profile} user={user} isFactory={isFactory} />
-    </div>
+    </DesignFrame>
   );
 }
 
@@ -534,10 +623,15 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // Slice two: the designed requests screen, live data.
       path: "/rfqs",
       render: () =>
-        isFactory ? <NotForThisSide isFactory /> : (
-          <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
-            <RfqsScreen goTo={(next) => navigateFromPrototype(next, navigate)} />
-          </DataProvider>
+        isFactory ? (
+          // The factory's own designed RFQs page: its quotes and invitations.
+          <LiveFactoryRfqs org={activeOrg} />
+        ) : (
+          <main className="rfqs-page brand-rfqs-page">
+            <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
+              <RfqsScreen goTo={(next) => navigateFromPrototype(next, navigate)} />
+            </DataProvider>
+          </main>
         ),
     },
     {
@@ -558,7 +652,9 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/rfqs/:id",
       render: (params) =>
         isFactory ? <NotForThisSide isFactory /> : (
-          <RfqDetail org={activeOrg} rfqId={params.id} isFactory={false} profile={profile} />
+          <main className="home-page">
+            <RfqDetail org={activeOrg} rfqId={params.id} isFactory={false} profile={profile} />
+          </main>
         ),
     },
     {
@@ -600,9 +696,11 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // Slice one of the port: the designed orders screen, live data.
       path: "/orders",
       render: () => (
-        <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
-          <ProjectsScreen goTo={(next) => navigateFromPrototype(next, navigate)} />
-        </DataProvider>
+        <main className={isFactory ? "rfqs-page brand-projects-page factory-projects-page" : "rfqs-page brand-projects-page"}>
+          <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
+            <ProjectsScreen goTo={(next) => navigateFromPrototype(next, navigate)} />
+          </DataProvider>
+        </main>
       ),
     },
     {
@@ -613,14 +711,16 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     },
     {
       path: "/orders/:id/schedule",
-      render: (params) => <ScheduleEditor orderId={params.id} isFactory={isFactory} />,
+      render: (params) => <main className="home-page"><ScheduleEditor orderId={params.id} isFactory={isFactory} /></main>,
     },
     {
       path: "/orders/:id/messages",
       // The order's conversation opens on the designed messages screen rather
       // than a tab inside the order, which is where a conversation lives.
       render: (params) => (
-        <LiveMessages org={activeOrg} orderId={params.id} isFactory={isFactory} user={user} />
+        <main className={isFactory ? "messages-page factory-messages-page" : "messages-page"}>
+          <LiveMessages org={activeOrg} orderId={params.id} isFactory={isFactory} user={user} />
+        </main>
       ),
     },
     {
@@ -638,8 +738,10 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/orders/:id/milestones/:mid",
       render: (params) => (
-        <MilestoneDetail org={activeOrg} orderId={params.id} milestoneId={params.mid}
-                         isFactory={isFactory} isOwner={isOwner} />
+        <main className="home-page">
+          <MilestoneDetail org={activeOrg} orderId={params.id} milestoneId={params.mid}
+                           isFactory={isFactory} isOwner={isOwner} />
+        </main>
       ),
     },
     {
@@ -653,16 +755,26 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     },
     {
       path: "/team",
-      render: () => <LiveSettings org={activeOrg} isFactory={isFactory} />,
+      render: () => (
+        <main className={isFactory ? "settings-page-shell factory-settings-page" : "settings-page-shell"}>
+          <LiveSettings org={activeOrg} isFactory={isFactory} />
+        </main>
+      ),
     },
     {
       path: "/messages",
-      render: () => <LiveMessages org={activeOrg} isFactory={isFactory} user={user} />,
+      render: () => (
+        <main className={isFactory ? "messages-page factory-messages-page" : "messages-page"}>
+          <LiveMessages org={activeOrg} isFactory={isFactory} user={user} />
+        </main>
+      ),
     },
     {
       path: "/messages/:id",
       render: (params) => (
-        <LiveMessages org={activeOrg} threadId={params.id} isFactory={isFactory} user={user} />
+        <main className={isFactory ? "messages-page factory-messages-page" : "messages-page"}>
+          <LiveMessages org={activeOrg} threadId={params.id} isFactory={isFactory} user={user} />
+        </main>
       ),
     },
     {
@@ -670,14 +782,14 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // pay it. Registered before the :id routes so "payout" is never read as
       // an order id.
       path: "/payout",
-      render: () => <PayoutDetails org={activeOrg} isFactory={isFactory} />,
+      render: () => <main className="home-page"><PayoutDetails org={activeOrg} isFactory={isFactory} /></main>,
     },
     {
       path: "/orders/:id/payments/:pid",
       render: (params) =>
         isFactory
           ? <NotForThisSide isFactory />
-          : <PaymentInstructions orderId={params.id} paymentId={params.pid} />,
+          : <main className="home-page"><PaymentInstructions orderId={params.id} paymentId={params.pid} /></main>,
     },
     {
       path: "/browse/:id",
@@ -691,17 +803,22 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // header rather than listing them inline, so they need a page of their
       // own — there was never a route for them before.
       path: "/notifications",
-      render: () => <NotificationList org={activeOrg} isFactory={isFactory} />,
+      render: () => <main className="home-page"><NotificationList org={activeOrg} isFactory={isFactory} /></main>,
     },
     {
-      render: () => (
-        <LiveHome
-          org={activeOrg}
-          isFactory={isFactory}
-          goTo={(next) => navigateFromPrototype(next, navigate)}
-          onOpenActivity={() => navigate("/notifications")}
-        />
-      ),
+      render: () =>
+        isFactory ? (
+          <LiveFactoryHome org={activeOrg} profile={profile} />
+        ) : (
+          <main className="home-page">
+            <LiveHome
+              org={activeOrg}
+              isFactory={isFactory}
+              goTo={(next) => navigateFromPrototype(next, navigate)}
+              onOpenActivity={() => navigate("/notifications")}
+            />
+          </main>
+        ),
     },
   ]);
 
@@ -714,7 +831,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
 function NotForThisSide({ isFactory }) {
   const { navigate } = useRouter();
   return (
-    <main className="shell-body">
+    <main className="home-page shell-body">
       <h1>Not your side of the marketplace</h1>
       <p className="shell-note">
         {isFactory

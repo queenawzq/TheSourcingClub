@@ -446,3 +446,19 @@ body {
   color: var(--text, #0b1020);
 }
 .crash-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+
+/* The org switcher has no place in the design; it sits under the side nav for
+   the rare account that belongs to more than one organisation. */
+.shell-org-switch {
+  position: fixed;
+  left: 22px;
+  bottom: 20px;
+  z-index: 21;
+  width: 232px;
+}
+
+.factory-dashboard-empty {
+  margin: 0;
+  padding: 16px 0;
+  color: var(--text-muted);
+}

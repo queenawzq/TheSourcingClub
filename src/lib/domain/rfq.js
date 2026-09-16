@@ -82,6 +82,39 @@ export async function listOpenRfqs() {
 }
 
 /**
+ * A factory's own side of the marketplace: every quote it has written, and
+ * every invitation it has been sent.
+ *
+ * Two queries rather than one, because an invitation with no quote against it
+ * is a row in a different table — and that is exactly the design's "Invited"
+ * tab. RLS decides which requests come back; this adds no filter of its own
+ * beyond the factory's identity.
+ */
+export async function listFactoryRfqs(factoryOrgId) {
+  const rfqEmbed = `rfqs (${RFQ_COLUMNS}, orgs!rfqs_brand_org_id_fkey (name))`;
+
+  const [quotes, invitations] = await Promise.all([
+    supabase
+      .from("quotes")
+      .select(`id, rfq_id, status, unit_price_cents, currency, submitted_at, created_at, ${rfqEmbed}`)
+      .eq("factory_org_id", factoryOrgId)
+      // Superseded versions are history; the live row is what the tab shows.
+      .neq("status", "superseded")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("rfq_invitations")
+      .select(`id, rfq_id, status, created_at, ${rfqEmbed}`)
+      .eq("factory_org_id", factoryOrgId)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  return {
+    quotes: unwrap(quotes, "load your quotes").filter((row) => row.rfqs),
+    invitations: unwrap(invitations, "load your invitations"),
+  };
+}
+
+/**
  * Publishing is a separate act from saving the last step.
  *
  * Same reason completeOnboarding() is separate from saveBrandProfile(): "I

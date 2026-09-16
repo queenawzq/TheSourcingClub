@@ -27,8 +27,22 @@ import { completeOnboarding, getSelectedTerms, saveBrandProfile } from "../../li
 import { inviteMember } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { toCents } from "../../lib/money.js";
+import { listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 
-const TERMS_VERSION = "2026-09-01";
+/** Uploads on the designed cards → document kind. The kind decides the bucket. */
+const UPLOAD_KINDS = {
+  "brand-logo": "logo",
+  "brand-images": "product_image",
+  "brand-business-registration": "business_registration",
+};
+
+const UPLOADED_FLAG = {
+  logo: "uploaded-logo",
+  product_image: "uploaded-images",
+  business_registration: "uploaded-registration",
+};
+
+const TERMS_VERSION = "2026-09-15";
 
 /** Index of the designed "You're all set" card, the last of the ten. */
 const LAST_STEP = 9;
@@ -81,7 +95,7 @@ function parsePriceRange(text) {
   };
 }
 
-export default function LiveBrandOnboarding({ org, user, onComplete }) {
+export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }) {
   const [step, setStep] = useState(0);
   const [values, setValues] = useState({});
   const [terms, setTerms] = useState({});
@@ -100,10 +114,12 @@ export default function LiveBrandOnboarding({ org, user, onComplete }) {
 
     (async () => {
       try {
-        const [byKind, selected, existing] = await Promise.all([
+        const [byKind, selected, existing, invitations, ...uploaded] = await Promise.all([
           listTermsByKind(kinds),
           getSelectedTerms("brand_profile", org.id),
           supabase.from("brand_profiles").select("*").eq("org_id", org.id).maybeSingle(),
+          supabase.from("org_invitations").select("email, role").eq("org_id", org.id).order("created_at"),
+          ...Object.keys(UPLOADED_FLAG).map((kind) => listDocuments(org.id, kind)),
         ]);
         if (cancelled) return;
 
@@ -111,6 +127,11 @@ export default function LiveBrandOnboarding({ org, user, onComplete }) {
 
         const profile = existing.data ?? {};
         const restored = {};
+        const invitedEmails = (invitations.data ?? []).map((row) => row.email);
+        if (invitedEmails.length) restored[onboardingFieldName("Decision makers")] = invitedEmails;
+        Object.values(UPLOADED_FLAG).forEach((flag, index) => {
+          if (uploaded[index]?.length) restored[flag] = String(uploaded[index].length);
+        });
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
           if (profile[column] != null) restored[onboardingFieldName(label)] = String(profile[column]);
         }
@@ -184,6 +205,15 @@ export default function LiveBrandOnboarding({ org, user, onComplete }) {
 
     if (Object.keys(patch).length) await saveBrandProfile(org.id, patch);
 
+    const flags = {};
+    for (const [field, kind] of Object.entries(UPLOAD_KINDS)) {
+      const chosen = submitted[field];
+      const files = Array.isArray(chosen) ? chosen : chosen instanceof File ? [chosen] : [];
+      for (const file of files) await uploadDocument({ orgId: org.id, kind, file });
+      if (files.length) flags[UPLOADED_FLAG[kind]] = String((Number(values[UPLOADED_FLAG[kind]]) || 0) + files.length);
+    }
+    if (Object.keys(flags).length) setValues((current) => ({ ...current, ...flags }));
+
     // One kind at a time: a blanket delete of an entity's links would wipe the
     // groups this step never showed.
     for (const { kind, termIds } of links) {
@@ -198,7 +228,9 @@ export default function LiveBrandOnboarding({ org, user, onComplete }) {
 
     try {
       await persist(submitted);
-      setValues((current) => ({ ...current, ...submitted }));
+      // Files are not answers to restore; the upload counts persist() set are.
+      const answers = Object.fromEntries(Object.entries(submitted).filter(([key]) => !(key in UPLOAD_KINDS)));
+      setValues((current) => ({ ...current, ...answers }));
 
       const signature = submitted[onboardingFieldName("Signature")];
       if (signature) {
@@ -213,9 +245,16 @@ export default function LiveBrandOnboarding({ org, user, onComplete }) {
         );
       }
 
-      const stakeholders = submitted[onboardingFieldName("Decision makers")] ?? [];
-      for (const email of stakeholders) {
-        if (String(email).includes("@")) await inviteMember(org.id, String(email));
+      // Leaving and returning to this card re-submits the whole list, so only
+      // addresses without an invitation yet are invited.
+      const stakeholders = submitted[onboardingFieldName("Decision makers")];
+      if (stakeholders?.length) {
+        const { data: invited } = await supabase.from("org_invitations").select("email").eq("org_id", org.id);
+        const already = new Set((invited ?? []).map((row) => row.email));
+        for (const email of stakeholders) {
+          const address = String(email).trim().toLowerCase();
+          if (address.includes("@") && !already.has(address)) await inviteMember(org.id, address);
+        }
       }
 
       // The last designed card is "You're all set"; leaving it is what ends
@@ -235,11 +274,29 @@ export default function LiveBrandOnboarding({ org, user, onComplete }) {
     }
   }
 
+  /** Save what is on the card, then sign out. A failed save keeps them here. */
+  async function saveAndExit(submitted = {}) {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const partial = { ...submitted };
+      // A signature on its own is not an agreement; leaving is not signing.
+      delete partial[onboardingFieldName("Signature")];
+      await persist(partial);
+      await onSignOut?.();
+    } catch (saveError) {
+      setError(saveError);
+      setBusy(false);
+    }
+  }
+
   return (
     <BrandOnboarding
       step={step}
       onBack={() => setStep((current) => Math.max(0, current - 1))}
       onNext={next}
+      onSaveAndExit={onSignOut ? saveAndExit : undefined}
       onEditSection={(target) => typeof target === "number" && setStep(target)}
       optionsByLabel={optionsByLabel}
       values={values}

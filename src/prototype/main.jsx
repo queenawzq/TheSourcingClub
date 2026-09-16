@@ -1050,7 +1050,10 @@ const brandOnboardingSteps = [
     terms: [
       ["Platform Usage", "Use The Sourcing Club to share accurate brand information, submit real sourcing needs, and communicate with vendors in good faith."],
       ["Data Privacy & Confidentiality", "Only upload assets, product references, and company documents you are allowed to share. Vendor quotes, pricing, and private project details should remain confidential."],
-      ["Brand Responsibilities", "Keep your profile, project briefs, payment status, and decision-maker details accurate so vendors can quote and plan production confidently."]
+      ["Brand Responsibilities", "Keep your profile, project briefs, payment status, and decision-maker details accurate so vendors can quote and plan production confidently."],
+      ["Verification", "We review your business registration or resale certificate. Documents must be genuine and current, and an account whose documents cannot be verified may be paused."],
+      ["Quotes, Orders & Payments", "Awarding a quote records its terms as a production order with that vendor. You pay the vendor by bank transfer for each agreed step; The Sourcing Club records every payment but never holds or moves funds."],
+      ["Changes to These Terms", "We may update these terms. When we do, we will ask you to review and accept the new version before you continue."]
     ],
     agreement: "I have read and agree to the Terms and Conditions",
     signature: "Type your full name to sign electronically",
@@ -1413,17 +1416,19 @@ function App() {
   );
 }
 
+export const brandNavItems = [
+  { label: "Dashboard", icon: "home" },
+  { label: "Quotes", icon: "rfq" },
+  { label: "Production orders", icon: "projects" },
+  { label: "Browse vendors", icon: "explore" },
+  { label: "Conversations", icon: "messages" },
+  { label: "Saved", icon: "bookmarks" },
+  { label: "Payments", icon: "billing" },
+  { label: "Settings", icon: "settings" }
+];
+
 function SideNav({ active, collapsed, onToggle, onNav, onProfile }) {
-  const nav = [
-    { label: "Dashboard", icon: "home" },
-    { label: "Quotes", icon: "rfq" },
-    { label: "Production orders", icon: "projects" },
-    { label: "Browse vendors", icon: "explore" },
-    { label: "Conversations", icon: "messages" },
-    { label: "Saved", icon: "bookmarks" },
-    { label: "Payments", icon: "billing" },
-    { label: "Settings", icon: "settings" }
-  ];
+  const nav = brandNavItems;
 
   return (
     <PrototypeSideNav
@@ -2458,7 +2463,11 @@ function readOnboardingCard(card) {
   for (const control of card.querySelectorAll("[name]")) {
     const key = control.getAttribute("name");
     if (!key) continue;
-    if (control.type === "checkbox") {
+    if (control.type === "file") {
+      // A File is handed over as itself; several are handed over as a list.
+      const files = [...(control.files ?? [])];
+      if (files.length) values[key] = control.multiple ? files : files[0];
+    } else if (control.type === "checkbox") {
       values[key] = control.checked;
     } else if (control.dataset.multi !== undefined) {
       values[key] = String(control.value || "").split("\u001f").filter(Boolean);
@@ -2481,6 +2490,7 @@ export function BrandOnboarding({
   values: savedValues,
   busy = false,
   error = null,
+  onSaveAndExit,
 }) {
   const current = brandOnboardingSteps[step];
   const isFirst = step === 0;
@@ -2546,6 +2556,18 @@ export function BrandOnboarding({
         {error && <p className="brand-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
 
         <footer className="brand-onboarding-actions">
+          {/* Live only. Saves what is on the card without demanding the
+              required fields, because leaving half-way is the point. */}
+          {onSaveAndExit && (
+            <button
+              className="secondary-btn onboarding-save-exit"
+              type="button"
+              disabled={busy}
+              onClick={(event) => onSaveAndExit(readOnboardingCard(event.currentTarget.closest(".brand-onboarding-card")))}
+            >
+              Save &amp; log out
+            </button>
+          )}
           {!isFirst && !isLast && <button className="secondary-btn" type="button" onClick={onBack}>Previous</button>}
           <button className="primary-btn" type="button" disabled={busy} onClick={continueOnboarding}>{busy ? "Saving…" : isReviewEdit ? "Save" : current.cta || "Next"}</button>
         </footer>
@@ -2566,6 +2588,9 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
   // the data source.
   const optionsFor = (label, fallback) => optionsByLabel?.[label] ?? fallback;
   const valueFor = (label) => values?.[onboardingFieldName(label)];
+  // A live signup starts blank. The design's pre-picked examples are there to
+  // show the prototype populated, not to answer on a real brand's behalf.
+  const isLive = optionsByLabel !== undefined;
 
   /**
    * The review card names a few things differently from the step that
@@ -2586,12 +2611,23 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
    * been. The prototype passes no values and so keeps reading as it was drawn.
    */
   const reviewValue = (label, drawn) => {
+    // Live, an unanswered row says so; the drawn example would read as a
+    // claim about this brand.
+    if (isLive) {
+      if (label === "Logo") return values?.["uploaded-logo"] ? "Uploaded" : "Not uploaded yet";
+      if (label === "Product images") {
+        const count = Number(values?.["uploaded-images"]) || 0;
+        return count ? `${count} uploaded` : "Not uploaded yet";
+      }
+      if (label === "Business certificate") return values?.["uploaded-registration"] ? "Uploaded" : "Not uploaded yet";
+    }
+    const empty = isLive ? "Not added yet" : drawn;
     const actual = valueFor(REVIEW_ALIAS[label] ?? label);
-    if (actual === undefined || actual === null) return drawn;
-    if (Array.isArray(actual)) return actual.length ? actual.join(", ") : drawn;
-    return String(actual).trim() === "" ? drawn : actual;
+    if (actual === undefined || actual === null) return empty;
+    if (Array.isArray(actual)) return actual.length ? actual.join(", ") : empty;
+    return String(actual).trim() === "" ? empty : actual;
   };
-  const [onboardingStakeholders, setOnboardingStakeholders] = useState([
+  const [onboardingStakeholders, setOnboardingStakeholders] = useState(optionsByLabel !== undefined ? (valueFor("Decision makers") ?? []).map((email) => ({ name: email.split("@")[0], email, role: "Stakeholder" })) : [
     { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder" },
     { name: "Maya Lee", email: "maya@maisonrue.com", role: "Production lead" }
   ]);
@@ -2661,7 +2697,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
     return (
       <div className="brand-onboarding-chip-stack">
         {content.groups.map(([label, options, selected, required = false, helper = ""]) => (
-          <BrandOnboardingChipGroup label={label} options={optionsFor(label, options)} selected={valueFor(label) ?? selected} required={required} helper={helper} key={label} />
+          <BrandOnboardingChipGroup label={label} options={optionsFor(label, options)} selected={valueFor(label) ?? (isLive ? [] : selected)} required={required} helper={helper} key={label} />
         ))}
       </div>
     );
@@ -2674,7 +2710,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
           <label className="brand-onboarding-field" key={label}>
             <span>{label}<OnboardingRequirement /></span>
             {Array.isArray(optionsOrPlaceholder) ? (
-              <select name={onboardingFieldName(label)} defaultValue={valueFor(label) ?? defaultValue ?? ""}>
+              <select name={onboardingFieldName(label)} defaultValue={valueFor(label) ?? (isLive ? "" : defaultValue ?? "")}>
                 <option value="" disabled />
                 {optionsFor(label, optionsOrPlaceholder).map((option) => (
                   <option key={option}>{option}</option>
@@ -2698,8 +2734,8 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
         </label>
 
         <div className="brand-context-upload-grid">
-          <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" optional />
-          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want vendors to understand." accept="PNG, JPG, or PDF" optional />
+          <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" optional name="brand-logo" fileTypes=".svg,.png,.jpg,.jpeg" uploadedLabel={values?.["uploaded-logo"] ? "Uploaded" : ""} />
+          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want vendors to understand." accept="PNG, JPG, or PDF" optional name="brand-images" fileTypes=".png,.jpg,.jpeg,.pdf" multiple uploadedLabel={values?.["uploaded-images"] ? `${values["uploaded-images"]} uploaded` : ""} />
         </div>
       </div>
     );
@@ -2748,6 +2784,14 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
             ))}
           </div>
           <p>Founders or decision-makers. We use this to verify your team.</p>
+          {/* The list lives in this component's state; this is how it leaves. */}
+          <input
+            type="hidden"
+            data-multi
+            name={onboardingFieldName("Decision makers")}
+            value={onboardingStakeholders.map((stakeholder) => stakeholder.email).filter(Boolean).join("")}
+            readOnly
+          />
         </section>
 
         {stakeholderModalOpen && createPortal(
@@ -2775,10 +2819,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
 
         <label className="brand-onboarding-field full">
           <span>Business registration or resale certificate<OnboardingRequirement /></span>
-          <button className="brand-onboarding-upload-row" type="button">
-            <img src="/assets/prototype-icons/upload.svg" alt="" />
-            <strong>Click or drag files to upload</strong>
-          </button>
+          <BrandUploadRow name="brand-business-registration" fileTypes=".pdf,.png,.jpg,.jpeg" multiple uploadedLabel={values?.["uploaded-registration"] ? `${values["uploaded-registration"]} uploaded` : ""} />
         </label>
       </div>
     );
@@ -2997,19 +3038,45 @@ function BrandOnboardingChipGroup({ label, options, selected = [], required = fa
   );
 }
 
-function BrandAssetUploadCard({ title, helper, accept, className = "", optional = false }) {
+function BrandAssetUploadCard({ title, helper, accept, className = "", optional = false, name, fileTypes, multiple = false, uploadedLabel = "" }) {
   return (
     <section className={className ? `brand-asset-card ${className}` : "brand-asset-card"}>
       <div>
         <strong>{title}{optional && <OnboardingRequirement />}</strong>
         <span>{helper}</span>
       </div>
-      <button className="brand-onboarding-upload-row" type="button">
-        <img src="/assets/prototype-icons/upload.svg" alt="" />
-        <strong>Click or drag files to upload</strong>
-      </button>
+      <BrandUploadRow name={name} fileTypes={fileTypes} multiple={multiple} uploadedLabel={uploadedLabel} />
       <small>{accept}</small>
     </section>
+  );
+}
+
+// The drawn upload row opens a real picker, and what was chosen replaces its
+// label. Unnamed (the prototype's own use) it reads nothing back.
+function BrandUploadRow({ name, fileTypes, multiple = false, uploadedLabel = "" }) {
+  const [chosen, setChosen] = useState("");
+  return (
+    <>
+      <button
+        className="brand-onboarding-upload-row"
+        type="button"
+        onClick={(event) => event.currentTarget.parentElement.querySelector('input[type="file"]')?.click()}
+      >
+        <img src="/assets/prototype-icons/upload.svg" alt="" />
+        <strong>{chosen || uploadedLabel || "Click or drag files to upload"}</strong>
+      </button>
+      <input
+        type="file"
+        name={name}
+        accept={fileTypes}
+        multiple={multiple}
+        hidden
+        onChange={(event) => {
+          const files = [...(event.target.files ?? [])];
+          setChosen(files.length > 1 ? `${files.length} files selected` : files[0]?.name ?? "");
+        }}
+      />
+    </>
   );
 }
 

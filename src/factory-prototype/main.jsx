@@ -290,7 +290,7 @@ const factoryMessageThreads = [
   }
 ];
 
-const nav = [
+export const nav = [
   { label: "Dashboard", icon: "home" },
   { label: "RFQs", icon: "rfq" },
   { label: "Production orders", icon: "projects" },
@@ -1568,7 +1568,10 @@ const onboardingCopy = {
         terms: [
           ["Platform Usage", "Use The Sourcing Club to share accurate factory information, respond to brand enquiries professionally, and keep communication related to sourcing opportunities."],
           ["Data Privacy & Confidentiality", "Only upload documents and media you are allowed to share. Brand enquiries, tech packs, pricing, and project details should be kept confidential unless both sides agree otherwise."],
-          ["Factory Responsibilities", "Keep your profile, capacity, certifications, and contact details up to date. Quotes, lead times, and production commitments should reflect what your factory can realistically deliver."]
+          ["Factory Responsibilities", "Keep your profile, capacity, certifications, and contact details up to date. Quotes, lead times, and production commitments should reflect what your factory can realistically deliver."],
+          ["Verification", "We review your business registration and any certificates you upload before you can quote. Documents must be genuine and current, and a profile whose documents cannot be verified may be paused."],
+          ["Quotes, Orders & Payments", "A quote you send is an offer on the terms shown. When a brand awards it, those terms are recorded as the production order. Brands pay you by bank transfer for each agreed step; The Sourcing Club records every payment but never holds or moves funds."],
+          ["Changes to These Terms", "We may update these terms. When we do, we will ask you to review and accept the new version before you continue."]
         ],
         agreement: "I have read and agree to the Terms and Conditions",
         signature: "Type your full name to sign electronically",
@@ -1695,7 +1698,10 @@ const onboardingCopy = {
         terms: [
           ["平台使用", "请在 The Sourcing Club 上提供真实准确的工厂信息，专业回复品牌询盘，并将沟通内容用于相关采购合作机会。"],
           ["数据隐私与保密", "只上传你有权分享的文件和媒体。品牌询盘、技术包、报价和项目细节应予以保密，除非双方另有约定。"],
-          ["工厂责任", "请及时更新工厂资料、产能、认证和联系方式。报价、交期和生产承诺应符合工厂实际可交付能力。"]
+          ["工厂责任", "请及时更新工厂资料、产能、认证和联系方式。报价、交期和生产承诺应符合工厂实际可交付能力。"],
+          ["资质验证", "在你可以报价之前，我们会审核你的营业执照和上传的证书。文件必须真实有效；无法验证文件的资料可能会被暂停。"],
+          ["报价、订单与付款", "你发送的报价即为按所示条款提出的报价。品牌授予后，这些条款将记录为生产订单。品牌按每个约定步骤通过银行转账向你付款；The Sourcing Club 记录每笔付款，但从不持有或转移资金。"],
+          ["条款变更", "我们可能会更新本条款。届时我们会请你在继续使用前查看并接受新版本。"]
         ],
         agreement: "我已阅读并同意条款与条件",
         signature: "输入你的全名作为电子签名",
@@ -1819,7 +1825,10 @@ const tradingOnboardingCopy = {
         terms: [
           ["Platform Usage", "Share accurate company, sourcing-network, and production information, and communicate with brands in good faith."],
           ["Data Privacy & Confidentiality", "Only upload documents and media you are allowed to share. Keep brand enquiries, tech packs, pricing, and supplier details confidential."],
-          ["Trading Company Responsibilities", "Disclose your role clearly, keep partner-factory information current, and ensure quotes and production commitments reflect what your network can deliver."]
+          ["Trading Company Responsibilities", "Disclose your role clearly, keep partner-factory information current, and ensure quotes and production commitments reflect what your network can deliver."],
+          ["Verification", "We review your business registration and any certificates you upload before you can quote. Documents must be genuine and current, and a profile whose documents cannot be verified may be paused."],
+          ["Quotes, Orders & Payments", "A quote you send is an offer on the terms shown. When a brand awards it, those terms are recorded as the production order. Brands pay you by bank transfer for each agreed step; The Sourcing Club records every payment but never holds or moves funds."],
+          ["Changes to These Terms", "We may update these terms. When we do, we will ask you to review and accept the new version before you continue."]
         ],
         agreement: "I have read and agree to the Terms and Conditions",
         signature: "Type your full name to sign electronically",
@@ -1941,7 +1950,10 @@ tradingOnboardingCopy.zh = {
       terms: [
         ["平台使用", "请提供真实准确的公司、供应商网络和生产信息，并诚信地与品牌沟通。"],
         ["数据隐私与保密", "只上传你有权分享的文件和媒体。请对品牌询盘、技术包、价格和供应商信息保密。"],
-        ["贸易公司责任", "清楚披露你的角色，及时更新合作工厂信息，并确保报价和生产承诺符合供应商网络的实际交付能力。"]
+        ["贸易公司责任", "清楚披露你的角色，及时更新合作工厂信息，并确保报价和生产承诺符合供应商网络的实际交付能力。"],
+        ["资质验证", "在你可以报价之前，我们会审核你的营业执照和上传的证书。文件必须真实有效；无法验证文件的资料可能会被暂停。"],
+        ["报价、订单与付款", "你发送的报价即为按所示条款提出的报价。品牌授予后，这些条款将记录为生产订单。品牌按每个约定步骤通过银行转账向你付款；The Sourcing Club 记录每笔付款，但从不持有或转移资金。"],
+        ["条款变更", "我们可能会更新本条款。届时我们会请你在继续使用前查看并接受新版本。"]
       ],
       agreement: "我已阅读并同意条款与条件",
       signature: "输入你的全名作为电子签名",
@@ -2406,11 +2418,17 @@ function App() {
   );
 }
 
-function FactoryDashboardPage({ companyType = "factory", dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity }) {
-  const capacityUnits = getCapacityUnitRange(capacityValue);
+export function FactoryDashboardPage({
+  companyType = "factory", dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  orgName, rfqs, projects, metrics, capacity, attention, unreadCount,
+}) {
+  const capacityUnits = capacity?.units ?? getCapacityUnitRange(capacityValue);
   const [inviteFactoryOpen, setInviteFactoryOpen] = useState(false);
   const isNewcomer = dashboardState === "newcomer";
   const isTradingCompany = companyType === "trading";
+  const who = orgName ?? (isTradingCompany ? "Pacific Source Partners" : "Atelier Minho");
+  const badgeCount = unreadCount ?? (isNewcomer ? 0 : 4);
   const tx = (value) => (language === "zh" ? translateFactoryMainText(value) : value);
   const creditCardCopy = language === "zh"
     ? {
@@ -2432,10 +2450,10 @@ function FactoryDashboardPage({ companyType = "factory", dashboardState, languag
     <main className="factory-dashboard-page">
       <div className="factory-dashboard-shell">
         <header className="factory-dashboard-header">
-          <h1>{language === "zh" ? `你好，${isTradingCompany ? "Pacific Source Partners" : "Atelier Minho"}` : `Hi ${isTradingCompany ? "Pacific Source Partners" : "Atelier Minho"}`}</h1>
+          <h1>{language === "zh" ? `你好，${who}` : `Hi ${who}`}</h1>
           <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">
             <img src="/assets/prototype-icons/notification.svg" alt="" />
-            {!isNewcomer && <b aria-hidden="true">4</b>}
+            {badgeCount > 0 && <b aria-hidden="true">{badgeCount}</b>}
           </button>
         </header>
 
@@ -2443,9 +2461,13 @@ function FactoryDashboardPage({ companyType = "factory", dashboardState, languag
           <div className="factory-dashboard-main-stack">
             {!isNewcomer && (
               <div className="factory-dashboard-metrics">
-                <FactoryMetricCard label={tx("Open RFQs")} value="7" note={tx("+3 invited this week")} tone="blue" />
-                <FactoryMetricCard label={tx("Quotes sent this month")} value="14" note={tx("4 awaiting brand review")} tone="green" />
-                <FactoryMetricCard label={tx("Active production orders")} value="5" note={tx("2 need sample updates")} tone="amber" />
+                {(metrics ?? [
+                  { label: "Open RFQs", value: "7", note: "+3 invited this week", tone: "blue" },
+                  { label: "Quotes sent this month", value: "14", note: "4 awaiting brand review", tone: "green" },
+                  { label: "Active production orders", value: "5", note: "2 need sample updates", tone: "amber" }
+                ]).map((metric) => (
+                  <FactoryMetricCard label={tx(metric.label)} value={metric.value} note={tx(metric.note)} tone={metric.tone} key={metric.label} />
+                ))}
               </div>
             )}
 
@@ -2460,19 +2482,22 @@ function FactoryDashboardPage({ companyType = "factory", dashboardState, languag
               action={language === "zh" ? (isNewcomer ? "浏览全部" : "查看全部") : (isNewcomer ? "Browse all" : "View all")}
               onAction={isNewcomer ? onBrowseRfqs : onViewRfqs}
             >
-              {factoryRfqs.slice(0, isNewcomer ? 3 : 4).map((rfq) => (
-                <FactoryDashboardRfqRow rfq={rfq} language={language} onView={onViewRfqDetail} key={rfq.title} />
+              {(rfqs ?? factoryRfqs).slice(0, isNewcomer ? 3 : 4).map((rfq) => (
+                <FactoryDashboardRfqRow rfq={rfq} language={language} onView={() => onViewRfqDetail?.(rfq)} key={rfq.id ?? rfq.title} />
               ))}
+              {rfqs && rfqs.length === 0 && (
+                <p className="factory-dashboard-empty">{tx("No matched RFQs yet. New requests appear here as brands publish them.")}</p>
+              )}
             </FactoryDashboardPanel>
           </div>
 
           <div className="factory-dashboard-side-stack">
             {!isTradingCompany && (
               <section className="factory-dashboard-capacity">
-                <span>{tx("August capacity")}</span>
-                <strong>{tx("Mostly open")}</strong>
+                <span>{capacity?.title ?? tx("August capacity")}</span>
+                <strong>{capacity?.level ?? tx("Mostly open")}</strong>
                 <div className="capacity-chip-row">
-                  <span>{tx("Open August")}</span>
+                  <span>{capacity?.chip ?? tx("Open August")}</span>
                   <span>{language === "zh" ? `产能 ${capacityUnits} 件` : `Capacity ${capacityUnits} units`}</span>
                 </div>
                 <button className="primary-btn" type="button" onClick={onUpdateCapacity}>{tx("Update capacity")}</button>
@@ -2497,9 +2522,11 @@ function FactoryDashboardPage({ companyType = "factory", dashboardState, languag
               subtitle={isNewcomer
                 ? tx(isTradingCompany ? "Complete the essentials that help brands understand your sourcing network and oversight." : "Finish the essentials that help brands trust and contact your factory.")
                 : tx("Priority RFQs, messages, and production steps.")}
-              preHeader={isNewcomer ? null : <FactoryDashboardCallCard language={language} />}
+              preHeader={isNewcomer || attention ? null : <FactoryDashboardCallCard language={language} />}
             >
-              {isNewcomer ? (
+              {attention ? (
+                attention.map((item) => <FactoryAttentionCard {...item} key={item.title} />)
+              ) : isNewcomer ? (
                 <>
                   <FactoryAttentionCard
                     type={tx("Profile")}
@@ -2571,8 +2598,8 @@ function FactoryDashboardPage({ companyType = "factory", dashboardState, languag
               action="View all"
               onAction={onViewProjects}
             >
-              {factoryProjects.slice(0, 2).map((project) => (
-                <FactoryProjectDashboardRow project={project} language={language} onView={onViewProjects} key={project.title} />
+              {(projects ?? factoryProjects).slice(0, 2).map((project) => (
+                <FactoryProjectDashboardRow project={project} language={language} onView={() => onViewProjects?.(project)} key={project.id ?? project.title} />
               ))}
             </FactoryDashboardPanel>
           )}
@@ -4030,13 +4057,17 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const [primaryImage] = rfq.images || [];
-  const dashboardPhoto = dashboardRfqPhotos[rfq.initials];
+  // A live request carries an id; its initials must never pick a mock photo.
+  const dashboardPhoto = rfq.id ? null : dashboardRfqPhotos[rfq.initials];
   const inviteFacts = [
     ["Unit target", rfq.facts.find(([label]) => label === "Unit target")?.[1] || ""],
     ["Quantity", rfq.facts.find(([label]) => label === "Quantity")?.[1] || ""]
   ];
-  const fit = rfq.statusTone === "warning" ? "Good fit" : rfq.statusTone === "danger" ? "Potential fit" : "Strong fit";
+  // Fit is a per-pair score nothing computes yet; a live row shows none rather
+  // than a badge that came from nowhere.
+  const fit = rfq.id ? null : rfq.statusTone === "warning" ? "Good fit" : rfq.statusTone === "danger" ? "Potential fit" : "Strong fit";
   const fitTone = rfq.statusTone === "warning" ? "good" : rfq.statusTone === "danger" ? "warn" : "strong";
+  const meta = [rfq.brand, rfq.location, rfq.trust].filter(Boolean).join(" · ");
 
   return (
     <article className="factory-request-card factory-dashboard-mini-card factory-dashboard-rfq-row shared-responsive-card">
@@ -4055,12 +4086,12 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
           <div>
             <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(rfq.title) : rfq.title}</h2>
             <p data-no-translate>
-              {isZh ? getTranslatedListMeta(`${rfq.brand} · ${rfq.location} · ${rfq.trust}`) : `${rfq.brand} · ${rfq.location} · ${rfq.trust}`}
+              {isZh ? getTranslatedListMeta(meta) : meta}
             </p>
           </div>
         </div>
         <div className="factory-request-card-actions shared-card-actions">
-          <span className={`factory-project-fit shared-card-status ${fitTone}`}>{tx(fit)}</span>
+          {fit && <span className={`factory-project-fit shared-card-status ${fitTone}`}>{tx(fit)}</span>}
           <button className="primary-btn" type="button" onClick={onView}>{tx("View RFQ")}</button>
         </div>
       </header>
@@ -4149,7 +4180,7 @@ function FactoryMessageRow({ brand, message, time, unread = false, brandAuthored
 
 function FactoryProjectDashboardRow({ project, language, onView }) {
   const isZh = language === "zh";
-  const dashboardPhoto = dashboardOrderPhotos[project.initials];
+  const dashboardPhoto = project.id ? null : dashboardOrderPhotos[project.initials];
   const [primaryImage] = project.images || [];
   const statusLabel = {
     "Waiting for sample approval": "Sample approval",
@@ -4198,25 +4229,27 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
   );
 }
 
-function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote }) {
+export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote, rfqsByTab }) {
   const [activeTab, setActiveTab] = useState("active");
+  // Live, the counts are counts of real rows; the drawn ones are an example.
+  const countFor = (key, drawn) => (rfqsByTab ? (rfqsByTab[key] ?? []).length : drawn);
   const [rfqTabs, setRfqTabs] = useState([
-    { key: "active", label: "Active RFQs (4)", locked: true },
-    { key: "drafts", label: "Drafts (3)", locked: true },
-    { key: "invited", label: "Invited (2)", locked: true },
-    { key: "closed", label: "Closed (6)", locked: true }
+    { key: "active", label: `Active RFQs (${countFor("active", 4)})`, locked: true },
+    { key: "drafts", label: `Drafts (${countFor("drafts", 3)})`, locked: true },
+    { key: "invited", label: `Invited (${countFor("invited", 2)})`, locked: true },
+    { key: "closed", label: `Closed (${countFor("closed", 6)})`, locked: true }
   ]);
   const [isAddingTab, setIsAddingTab] = useState(false);
   const [newTabName, setNewTabName] = useState("");
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
   const [draftTabs, setDraftTabs] = useState(rfqTabs);
-  const rfqDataByTab = {
+  const rfqDataByTab = rfqsByTab ?? {
     active: factoryRfqs,
     drafts: factoryDraftRfqs,
     invited: factoryInvitedRfqs,
     closed: factoryClosedRfqs
   };
-  const activeRfqs = rfqDataByTab[activeTab] || factoryRfqs;
+  const activeRfqs = rfqDataByTab[activeTab] || (rfqsByTab ? [] : factoryRfqs);
 
   function openManageTabs() {
     setDraftTabs(rfqTabs);
@@ -4399,11 +4432,16 @@ function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote })
             <FactoryRfqCard
               rfq={rfq}
               language={language}
-              key={rfq.title}
-              onViewRequest={onViewRequest}
-              onEditQuote={onEditQuote}
+              key={rfq.id ?? rfq.title}
+              onViewRequest={() => onViewRequest?.(rfq)}
+              onEditQuote={() => onEditQuote?.(rfq)}
             />
           ))}
+          {rfqsByTab && activeRfqs.length === 0 && (
+            <p className="factory-dashboard-empty">
+              {language === "zh" ? "这个标签下暂时没有询价。" : "Nothing in this tab yet."}
+            </p>
+          )}
         </section>
       </div>
     </main>
@@ -5094,7 +5132,11 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, language
 function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
-  const meta = `${rfq.brand} · ${rfq.location} · Payment verified · ${rfq.trust}`;
+  // Nothing verifies a brand's payment before an order exists, so a live card
+  // carries neither the claim nor the trust line beneath it.
+  const meta = rfq.id
+    ? [rfq.brand, rfq.location, rfq.trust].filter(Boolean).join(" · ")
+    : `${rfq.brand} · ${rfq.location} · Payment verified · ${rfq.trust}`;
   const visibleTags = rfq.tags.slice(0, 4);
   const [primaryImage, ...supportImages] = rfq.images || [];
   const hasGallery = (rfq.images || []).length > 1;
@@ -5140,11 +5182,13 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
           </div>
           <p className="rfq-description" data-no-translate>{isZh ? getTranslatedListDescription(rfq) : rfq.description}</p>
           {isZh && <ListTranslationMeta />}
-          <div className="factory-request-trust">
-            <span className="factory-request-trust-icon" aria-hidden="true">$</span>
-            <strong>{tx("Payment verified")}</strong>
-            <span>{tx(rfq.trust)}</span>
-          </div>
+          {!rfq.id && (
+            <div className="factory-request-trust">
+              <span className="factory-request-trust-icon" aria-hidden="true">$</span>
+              <strong>{tx("Payment verified")}</strong>
+              <span>{tx(rfq.trust)}</span>
+            </div>
+          )}
           <div className="factory-request-tags">
             <span className="marketplace-tag-label">{tx("Request tags")}</span>
             <div className="tag-row compact-tags rfq-tags">
@@ -5790,14 +5834,16 @@ const FACTORY_CAPACITY_CATEGORIES = [
   }
 ];
 
-function FactoryCapacityDrawer({ language, initialCapacity, onClose, onSaveCapacity }) {
+// Live mounts pass `initial` (what is saved) and `months` (the real rolling
+// window); the prototype passes neither and keeps its drawn example.
+export function FactoryCapacityDrawer({ language, initialCapacity, onClose, onSaveCapacity, initial, months: liveMonths }) {
   const isZh = language === "zh";
-  const [lineHours, setLineHours] = useState(initialCapacity || "2400");
-  const [capacityUnits, setCapacityUnits] = useState("7200");
-  const [capacityInputMode, setCapacityInputMode] = useState("units");
-  const [selectedCategory, setSelectedCategory] = useState("wovens");
+  const [lineHours, setLineHours] = useState(initial ? initial.lineHours ?? "" : initialCapacity || "2400");
+  const [capacityUnits, setCapacityUnits] = useState(initial ? initial.units ?? "" : "7200");
+  const [capacityInputMode, setCapacityInputMode] = useState(initial?.inputMode ?? "units");
+  const [selectedCategory, setSelectedCategory] = useState(initial ? initial.category ?? "" : "wovens");
   const [monthOffset, setMonthOffset] = useState(0);
-  const [monthSelections, setMonthSelections] = useState({
+  const [monthSelections, setMonthSelections] = useState(initial ? initial.months ?? {} : {
     Aug: "open",
     Sep: "partial",
     Oct: "full",
@@ -5805,7 +5851,7 @@ function FactoryCapacityDrawer({ language, initialCapacity, onClose, onSaveCapac
     Dec: "open",
     Jan: "open"
   });
-  const monthNames = ["Aug", "Sep", "Oct", "Nov", "Dec", "Jan"];
+  const monthNames = liveMonths ?? ["Aug", "Sep", "Oct", "Nov", "Dec", "Jan"];
   const visibleMonths = monthNames.slice(monthOffset, monthOffset + 3);
   const monthPageSize = 3;
   const currentMonth = visibleMonths[0];
@@ -5866,6 +5912,7 @@ function FactoryCapacityDrawer({ language, initialCapacity, onClose, onSaveCapac
           <h3>{isZh ? "品类" : "Category"}</h3>
           <label className="capacity-select-field">
             <select value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)} aria-label={isZh ? "选择品类" : "Select category"}>
+              {initial && <option value="" disabled>{isZh ? "选择品类" : "Select a category"}</option>}
               {categoryOptions.map((category) => (
                 <option value={category.key} key={category.key}>{isZh ? category.labelZh : category.label}</option>
               ))}
@@ -5953,7 +6000,19 @@ function FactoryCapacityDrawer({ language, initialCapacity, onClose, onSaveCapac
             <strong>{previewTitle}</strong>
             <p>{previewFormula}</p>
           </div>
-          <button className="primary-btn" type="button" onClick={() => onSaveCapacity(String(estimatedHours))}>{isZh ? "保存更改" : "Save changes"}</button>
+          <button
+            className="primary-btn"
+            type="button"
+            onClick={() => onSaveCapacity(String(estimatedHours), {
+              inputMode: capacityInputMode,
+              lineHours,
+              units: capacityUnits,
+              category: selectedCategory,
+              months: monthSelections
+            })}
+          >
+            {isZh ? "保存更改" : "Save changes"}
+          </button>
         </footer>
       </aside>
     </div>
@@ -6500,8 +6559,13 @@ function readFactoryCard(card) {
     // A File is not a string, so it is handed over as itself rather than as
     // the browser's "C:\\fakepath\\" version of control.value.
     if (control.type === "file") {
-      const file = control.files?.[0];
-      if (file) values[key] = file;
+      if (control.multiple) {
+        const files = [...(control.files ?? [])];
+        if (files.length) values[key] = files;
+      } else {
+        const file = control.files?.[0];
+        if (file) values[key] = file;
+      }
     } else if (control.type === "checkbox") values[key] = control.checked;
     else if (control.dataset.multi !== undefined) values[key] = String(control.value || "").split("\u001f").filter(Boolean);
     else values[key] = control.value;
@@ -6524,6 +6588,13 @@ export function FactoryOnboarding({
   values: savedValues,
   busy = false,
   error = null,
+  onSaveAndExit,
+  certificationOptions,
+  certifications,
+  onAddCertification,
+  onUploadCertificate,
+  onDeleteCertificate,
+  registrationFileName,
 }) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
@@ -6546,7 +6617,7 @@ export function FactoryOnboarding({
     });
 
     invalidFields.forEach((field) => {
-      field.closest(".factory-onboarding-field, .onboarding-chip-group, .factory-terms-required")?.classList.add("has-onboarding-error");
+      field.closest(".factory-onboarding-field, .onboarding-chip-group, .factory-terms-required, .onboarding-company-type")?.classList.add("has-onboarding-error");
     });
 
     if (invalidFields.length) {
@@ -6591,11 +6662,24 @@ export function FactoryOnboarding({
           onEditSection={onEditSection}
           optionsByLabel={optionsByLabel}
           values={savedValues}
+          certificationOptions={certificationOptions}
+          certifications={certifications}
+          onAddCertification={onAddCertification}
+          onUploadCertificate={onUploadCertificate}
+          onDeleteCertificate={onDeleteCertificate}
+          registrationFileName={registrationFileName}
         />
 
         {error && <p className="factory-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
 
         <footer className="factory-onboarding-actions">
+          {/* Live only. Saves what is on the card without demanding the
+              required fields, because leaving half-way is the point. */}
+          {onSaveAndExit && (
+            <button className="secondary-btn onboarding-save-exit" type="button" disabled={busy} onClick={() => onSaveAndExit(readFactoryCard(cardRef.current))}>
+              {language === "zh" ? "保存并退出" : "Save & log out"}
+            </button>
+          )}
           {!isFirst && !isLast && (
             <button className="secondary-btn" type="button" onClick={onBack}>
               {copy.back}
@@ -6618,8 +6702,10 @@ export function FactoryOnboarding({
   );
 }
 
-function FactoryOnboardingStep({ step, content, companyType, language, onLanguageChange, onCompanyTypeChange, onEditSection, optionsByLabel, values = {} }) {
-  const [registrationName, setRegistrationName] = useState("");
+function FactoryOnboardingStep({
+  step, content, companyType, language, onLanguageChange, onCompanyTypeChange, onEditSection, optionsByLabel, values = {},
+  certificationOptions, certifications, onAddCertification, onUploadCertificate, onDeleteCertificate, registrationFileName,
+}) {
   // Keys and option lists both resolve through the English copy, so neither
   // depends on the language the form happens to be displayed in.
   const nameAt = (kind, index) => {
@@ -6628,6 +6714,9 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
   };
   const valueAt = (kind, index) => values?.[nameAt(kind, index)];
   const optionsAt = (kind, index, fallback) => optionsByLabel?.[englishLabel(companyType, step, kind, index)] ?? fallback;
+  // A live signup starts blank. The design's pre-picked examples are there to
+  // show the prototype populated, not to answer on a real vendor's behalf.
+  const isLive = optionsByLabel !== undefined;
   const stepType = content.type || ["welcome", "fields", "context", "chipsBalanced", "chipsWithField", "capacity", "verification", "walkthrough", "review", "terms", "complete"][step];
 
   if (stepType === "welcome") {
@@ -6652,6 +6741,16 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
               </span>
             </label>
           </div>
+          {/* Live, neither is chosen until the vendor says so — this answer
+              decides the whole flow, so it must not be answered for them. */}
+          {isLive && (
+            <>
+              <input type="hidden" data-onboarding-required="true" data-valid={companyType ? "true" : "false"} readOnly />
+              <small className="factory-onboarding-validation-message">
+                {language === "zh" ? "请选择公司类型后继续。" : "Choose your company type to continue."}
+              </small>
+            </>
+          )}
         </fieldset>
         <label className="factory-onboarding-field">
           <span>{content.languageLabel}</span>
@@ -6682,14 +6781,14 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
   }
 
   if (stepType === "capacity") {
-    return <OnboardingCapacitySetup content={content} language={language} />;
+    return <OnboardingCapacitySetup content={content} language={language} live={isLive} values={values} />;
   }
 
   if (stepType === "chipsBalanced") {
     return (
       <div className="factory-onboarding-section production-fit-section">
         {content.groups.map(([label, options, selected, required], index) => (
-          <OnboardingChipGroup label={label} options={optionsAt("groups", index, options)} selected={valueAt("groups", index) ?? selected} required={required} balanced language={language} companyType={companyType} name={nameAt("groups", index)} key={label} />
+          <OnboardingChipGroup label={label} options={optionsAt("groups", index, options)} selected={valueAt("groups", index) ?? (isLive ? [] : selected)} required={required} balanced language={language} companyType={companyType} name={nameAt("groups", index)} key={label} />
         ))}
       </div>
     );
@@ -6699,7 +6798,7 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
     return (
       <div className="factory-onboarding-section production-fit-section">
         {content.groups.map(([label, options, selected, required], index) => (
-          <OnboardingChipGroup label={label} options={optionsAt("groups", index, options)} selected={valueAt("groups", index) ?? selected} required={required} language={language} companyType={companyType} name={nameAt("groups", index)} key={label} />
+          <OnboardingChipGroup label={label} options={optionsAt("groups", index, options)} selected={valueAt("groups", index) ?? (isLive ? [] : selected)} required={required} language={language} companyType={companyType} name={nameAt("groups", index)} key={label} />
         ))}
         <OnboardingField label={content.equipmentLabel} placeholder={content.equipmentPlaceholder} name="equipment" defaultValue={values?.equipment} />
       </div>
@@ -6708,72 +6807,18 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
 
   if (stepType === "verification") {
     return (
-      <div className="factory-onboarding-section verification-step">
-        <div className="verification-upload-block">
-          <strong>{content.businessLabel}</strong>
-          {/* The design draws an upload affordance with nothing behind it —
-              fine in a prototype, where no file is ever read. The button is
-              untouched; it now opens a real picker, and the chosen file's name
-              replaces its label so the vendor can see what they attached. */}
-          <button
-            className="onboarding-file-upload"
-            type="button"
-            onClick={(event) => event.currentTarget.parentElement.querySelector('input[type="file"]')?.click()}
-          >
-            {registrationName || content.businessUpload}
-          </button>
-          <input
-            type="file"
-            name="business-registration"
-            accept=".pdf,.png,.jpg,.jpeg"
-            hidden
-            onChange={(event) => setRegistrationName(event.target.files?.[0]?.name ?? "")}
-          />
-          <small>{content.businessHelper}</small>
-        </div>
-        <div className="certification-add-control">
-          <label className="factory-onboarding-field">
-            <span>{content.certificationLabel}</span>
-            <input placeholder={content.search} />
-          </label>
-          <button className="secondary-btn" type="button">{content.add}</button>
-        </div>
-        <div className="certification-upload-list">
-          {content.certifications.map(([name, status]) => (
-            <div className="certification-upload-row" key={name}>
-              <div className="certification-upload-heading">
-                <strong>{name}</strong>
-              </div>
-              {status === "uploaded" ? (
-                <div className="certification-file-row">
-                  <div>
-                    <span>{language === "zh" ? `${name}-证书.pdf` : `${name.replace(/\s+/g, "-").toLowerCase()}-certificate.pdf`}</span>
-                    <small>{content.uploadedCertificate}</small>
-                  </div>
-                  <button type="button">
-                    <img src="/assets/prototype-icons/trash.svg" alt="" />
-                    {content.deleteCertificate}
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <button className="onboarding-file-upload certification-file-upload" type="button">{content.uploadCertificate}</button>
-                  <small>{content.certificateHelper}</small>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="onboarding-reference-row compact">
-          <strong>{content.reference}</strong>
-          <div>
-            <input placeholder={language === "zh" ? "公司名称" : "Company name"} />
-            <input placeholder={language === "zh" ? "联系人或公开链接" : "Contact or public link"} />
-          </div>
-          <button className="onboarding-text-action muted" type="button">{content.addReference}</button>
-          <small>{content.referenceHelper}</small>
-        </div>
-      </div>
+      <OnboardingVerification
+        content={content}
+        language={language}
+        live={isLive}
+        values={values}
+        certificationOptions={certificationOptions}
+        certifications={certifications}
+        onAddCertification={onAddCertification}
+        onUploadCertificate={onUploadCertificate}
+        onDeleteCertificate={onDeleteCertificate}
+        registrationFileName={registrationFileName}
+      />
     );
   }
 
@@ -6816,6 +6861,60 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
   if (stepType === "review") {
     const reviewEditSteps = content.reviewEditSteps || [1, 2, 3, 4, 5, 6, 7];
     const editLabel = language === "zh" ? "编辑" : "Edit";
+    // The drawn rows are an example profile. Live, each row reads what this
+    // vendor actually entered, found through the English copy's label so the
+    // lookup does not depend on the display language.
+    const englishSections = (companyType === "trading" ? tradingOnboardingCopy : onboardingCopy).en.steps[step]?.sections ?? [];
+    const reviewAlias = {
+      Location: "Factory Location",
+      "Production Type": "Production type",
+      "Product Categories": "Product categories",
+      "Market Level & Retail Price": "Market level",
+      "3D & digital tools": "3D & digital tools (optional)",
+      "Key machines or equipment": "Equipment",
+      MOQ: "Minimum Order Quantity",
+      "Bulk production lead time": "Bulk Production Lead Time",
+      "Typical sample lead time": "Typical Sample Lead Time",
+    };
+    const staticRows = new Set(["Target length", "Required areas", "Reference style"]);
+    const reviewValue = (sectionIndex, rowIndex, drawn) => {
+      if (!isLive) return drawn;
+      const english = englishSections[sectionIndex]?.[1]?.[rowIndex]?.[0] ?? "";
+      if (staticRows.has(english)) return drawn;
+      if (english === "Business registration") return registrationFileName ? "Uploaded" : "Not uploaded yet";
+      if (english === "Factory logo" || english === "Company logo") return values?.["uploaded-logo"] ? "Uploaded" : "Not uploaded yet";
+      if (/catalogue|samples|portfolio/i.test(english)) {
+        const count = Number(values?.["uploaded-samples"]) || 0;
+        return count ? `${count} upload${count === 1 ? "" : "s"}` : "Not uploaded yet";
+      }
+      if (english === "Certifications") {
+        return certifications?.length
+          ? certifications.map((cert) => `${cert.name} ${cert.fileName ? "uploaded" : "pending"}`).join("; ")
+          : "None added";
+      }
+      if (english === "Client references") {
+        let references = [];
+        try { references = JSON.parse(values?.["client-references"] ?? "[]"); } catch { references = []; }
+        return references.length ? references.map((ref) => [ref.company, ref.contact].filter(Boolean).join(" · ")).join("; ") : "None added";
+      }
+      if (english === "Capacity category") {
+        const category = FACTORY_CAPACITY_CATEGORIES.find((item) => item.key === values?.["capacity-category"]);
+        return category ? category.label : "Not added yet";
+      }
+      if (english === "Line-hours") return values?.["capacity-line-hours"] ? `${Number(values["capacity-line-hours"]).toLocaleString()} hours / month` : "Not added yet";
+      if (english === "Estimated units") return values?.["capacity-units"] ? `${Number(values["capacity-units"]).toLocaleString()} units / month` : "Not added yet";
+      if (english === "Booking level") {
+        let months = {};
+        try { months = JSON.parse(values?.["capacity-months"] ?? "{}"); } catch { months = {}; }
+        const names = { open: "mostly open", partial: "partly booked", full: "mostly full" };
+        const entries = Object.entries(months);
+        return entries.length ? entries.map(([month, level]) => `${month} ${names[level] ?? level}`).join("; ") : "Not added yet";
+      }
+      const actual = values?.[factoryFieldName(reviewAlias[english] ?? english)];
+      if (Array.isArray(actual)) return actual.length ? actual.join(", ") : "None selected";
+      if (actual == null || String(actual).trim() === "") return "Not added yet";
+      return String(actual);
+    };
 
     return (
       <div className="factory-review-grid">
@@ -6833,8 +6932,8 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
               </button>
             </div>
             <div className="factory-onboarding-review-rows">
-              {rows.map(([label, value]) => (
-                <ProfileDetailPair label={label} value={value} key={label} />
+              {rows.map(([label, value], rowIndex) => (
+                <ProfileDetailPair label={label} value={reviewValue(index, rowIndex, value)} key={label} />
               ))}
             </div>
           </section>
@@ -6854,7 +6953,7 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
         ))}
         <div className="factory-terms-required">
           <label className="directory-check terms-check">
-            <input type="checkbox" defaultChecked required data-onboarding-required="true" />
+            <input type="checkbox" defaultChecked={!isLive} required data-onboarding-required="true" />
             <span>{content.agreement}</span>
           </label>
           <small className="factory-onboarding-validation-message">
@@ -6880,6 +6979,214 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
   );
 }
 
+/**
+ * "Get verified, get found". The design draws three certifications already on
+ * the list, one of them uploaded, with every control inert. Here the list
+ * starts with what the vendor has actually added (the drawn example in the
+ * prototype), a certification is picked first and only then offered an
+ * upload, Delete removes it, and each client reference is its own row.
+ */
+function OnboardingVerification({
+  content, language, live, values = {},
+  certificationOptions, certifications: savedCertifications, onAddCertification, onUploadCertificate, onDeleteCertificate, registrationFileName,
+}) {
+  const isZh = language === "zh";
+  const [registrationName, setRegistrationName] = useState(registrationFileName ?? "");
+  const [certs, setCerts] = useState(() => live
+    ? savedCertifications ?? []
+    : content.certifications.map(([name, status]) => ({
+        name,
+        fileName: status === "uploaded" ? (isZh ? `${name}-证书.pdf` : `${name.replace(/\s+/g, "-").toLowerCase()}-certificate.pdf`) : ""
+      })));
+  const [query, setQuery] = useState("");
+  const [pending, setPending] = useState(null);
+  const [problem, setProblem] = useState(null);
+  const [references, setReferences] = useState(() => {
+    try {
+      const saved = JSON.parse(values?.["client-references"] ?? "[]");
+      return saved.length ? saved : [{ company: "", contact: "" }];
+    } catch {
+      return [{ company: "", contact: "" }];
+    }
+  });
+
+  useEffect(() => {
+    if (live && savedCertifications) setCerts(savedCertifications);
+  }, [live, savedCertifications]);
+  useEffect(() => {
+    if (registrationFileName) setRegistrationName(registrationFileName);
+  }, [registrationFileName]);
+
+  const options = certificationOptions ?? ["GOTS", "OEKO-TEX Standard 100", "BSCI", "GRS", "WRAP", "Fair Trade", "ISO 9001", "Sedex"];
+  const available = options.filter((option) => !certs.some((cert) => cert.name === option));
+
+  const run = async (name, work) => {
+    setPending(name);
+    setProblem(null);
+    try {
+      await work();
+    } catch (failure) {
+      setProblem(failure?.message ?? String(failure));
+    } finally {
+      setPending(null);
+    }
+  };
+
+  const addCertification = () => {
+    const typed = query.trim();
+    if (!typed) return;
+    const match = options.find((option) => option.toLowerCase() === typed.toLowerCase());
+    if (certs.some((cert) => cert.name.toLowerCase() === typed.toLowerCase())) {
+      setQuery("");
+      return;
+    }
+    if (live && !match) {
+      setProblem(isZh ? "请从列表中选择认证。" : "Choose a certification from the list.");
+      return;
+    }
+    const name = match ?? typed;
+    run(name, async () => {
+      await onAddCertification?.(name);
+      setCerts((current) => [...current, { name, fileName: "" }]);
+      setQuery("");
+    });
+  };
+
+  const uploadCertificate = (name, file) => {
+    if (!file) return;
+    run(name, async () => {
+      const stored = onUploadCertificate ? await onUploadCertificate(name, file) : null;
+      setCerts((current) => current.map((cert) => (cert.name === name ? { ...cert, fileName: stored ?? file.name } : cert)));
+    });
+  };
+
+  const removeCertification = (name) => {
+    run(name, async () => {
+      await onDeleteCertificate?.(name);
+      setCerts((current) => current.filter((cert) => cert.name !== name));
+    });
+  };
+
+  const updateReference = (index, key, value) => {
+    setReferences((current) => current.map((reference, referenceIndex) => (referenceIndex === index ? { ...reference, [key]: value } : reference)));
+  };
+
+  return (
+    <div className="factory-onboarding-section verification-step">
+      <div className="verification-upload-block">
+        <strong>{content.businessLabel}</strong>
+        <button
+          className="onboarding-file-upload"
+          type="button"
+          onClick={(event) => event.currentTarget.parentElement.querySelector('input[type="file"]')?.click()}
+        >
+          {registrationName || content.businessUpload}
+        </button>
+        <input
+          type="file"
+          name="business-registration"
+          accept=".pdf,.png,.jpg,.jpeg"
+          multiple
+          hidden
+          onChange={(event) => {
+            const files = [...(event.target.files ?? [])];
+            setRegistrationName(files.length > 1 ? `${files.length} files selected` : files[0]?.name ?? "");
+          }}
+        />
+        <small>{content.businessHelper}</small>
+      </div>
+      <div className="certification-add-control">
+        <label className="factory-onboarding-field">
+          <span>{content.certificationLabel}</span>
+          <input
+            list="onboarding-certification-options"
+            placeholder={content.search}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addCertification();
+              }
+            }}
+          />
+          <datalist id="onboarding-certification-options">
+            {available.map((option) => <option value={option} key={option} />)}
+          </datalist>
+        </label>
+        <button className="secondary-btn" type="button" disabled={!query.trim() || Boolean(pending)} onClick={addCertification}>{content.add}</button>
+      </div>
+      {problem && <small className="factory-onboarding-save-error" role="alert">{problem}</small>}
+      {certs.length > 0 && (
+        <div className="certification-upload-list">
+          {certs.map(({ name, fileName }) => (
+            <div className="certification-upload-row" key={name}>
+              <div className="certification-upload-heading">
+                <strong>{name}</strong>
+                {!fileName && (
+                  <button className="onboarding-text-action muted" type="button" disabled={pending === name} onClick={() => removeCertification(name)}>
+                    {isZh ? "移除" : "Remove"}
+                  </button>
+                )}
+              </div>
+              {fileName ? (
+                <div className="certification-file-row">
+                  <div>
+                    <span>{fileName}</span>
+                    <small>{content.uploadedCertificate}</small>
+                  </div>
+                  <button type="button" disabled={pending === name} onClick={() => removeCertification(name)}>
+                    <img src="/assets/prototype-icons/trash.svg" alt="" />
+                    {content.deleteCertificate}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    className="onboarding-file-upload certification-file-upload"
+                    type="button"
+                    disabled={pending === name}
+                    onClick={(event) => event.currentTarget.parentElement.querySelector('input[type="file"]')?.click()}
+                  >
+                    {pending === name ? (isZh ? "上传中…" : "Uploading…") : content.uploadCertificate}
+                  </button>
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    hidden
+                    onChange={(event) => {
+                      uploadCertificate(name, event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                  />
+                  <small>{content.certificateHelper}</small>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="onboarding-reference-row compact">
+        <strong>{content.reference}</strong>
+        {references.map((reference, index) => (
+          <div key={index}>
+            <input placeholder={isZh ? "公司名称" : "Company name"} value={reference.company} onChange={(event) => updateReference(index, "company", event.target.value)} />
+            <input placeholder={isZh ? "联系人或公开链接" : "Contact or public link"} value={reference.contact} onChange={(event) => updateReference(index, "contact", event.target.value)} />
+          </div>
+        ))}
+        <button className="onboarding-text-action muted" type="button" onClick={() => setReferences((current) => [...current, { company: "", contact: "" }])}>{content.addReference}</button>
+        <small>{content.referenceHelper}</small>
+        <input
+          type="hidden"
+          name="client-references"
+          value={JSON.stringify(references.filter((reference) => reference.company.trim() || reference.contact.trim()))}
+          readOnly
+        />
+      </div>
+    </div>
+  );
+}
+
 function OnboardingBrandContext({ content, language, values = {} }) {
   return (
     <div className="factory-brand-context-step">
@@ -6894,26 +7201,53 @@ function OnboardingBrandContext({ content, language, values = {} }) {
           helper={content.logoHelper}
           accept={content.logoAccept}
           uploadLabel={language === "zh" ? "点击或拖拽文件上传" : "Click or drag files to upload"}
+          name="factory-logo"
+          fileTypes=".svg,.png,.jpg,.jpeg"
+          uploadedLabel={values?.["uploaded-logo"] ? (language === "zh" ? "已上传" : "Uploaded") : ""}
         />
         <OnboardingAssetUploadCard
           title={content.imagesTitle}
           helper={content.imagesHelper}
           accept={content.imagesAccept}
           uploadLabel={language === "zh" ? "点击或拖拽文件上传" : "Click or drag files to upload"}
+          name="factory-samples"
+          fileTypes=".png,.jpg,.jpeg,.pdf"
+          multiple
+          uploadedLabel={values?.["uploaded-samples"] ? (language === "zh" ? `已上传 ${values["uploaded-samples"]} 个文件` : `${values["uploaded-samples"]} uploaded`) : ""}
         />
       </div>
     </div>
   );
 }
 
-function OnboardingAssetUploadCard({ title, helper, accept, uploadLabel }) {
+// The drawn button opens a real picker, and what was chosen replaces its label
+// — the same treatment the business registration upload gets.
+function OnboardingAssetUploadCard({ title, helper, accept, uploadLabel, name, fileTypes, multiple = false, uploadedLabel = "" }) {
+  const [chosen, setChosen] = useState("");
   return (
     <section className="factory-brand-asset-card">
       <div>
         <strong>{title}</strong>
         <span>{helper}</span>
       </div>
-      <button className="onboarding-file-upload factory-brand-asset-upload" type="button">{uploadLabel}</button>
+      <button
+        className="onboarding-file-upload factory-brand-asset-upload"
+        type="button"
+        onClick={(event) => event.currentTarget.parentElement.querySelector('input[type="file"]')?.click()}
+      >
+        {chosen || uploadedLabel || uploadLabel}
+      </button>
+      <input
+        type="file"
+        name={name}
+        accept={fileTypes}
+        multiple={multiple}
+        hidden
+        onChange={(event) => {
+          const files = [...(event.target.files ?? [])];
+          setChosen(files.length > 1 ? `${files.length} files selected` : files[0]?.name ?? "");
+        }}
+      />
       <small>{accept}</small>
     </section>
   );
@@ -6933,13 +7267,13 @@ function OnboardingField({ label, placeholder, required = false, language = "en"
   );
 }
 
-function OnboardingCapacitySetup({ content, language }) {
-  const [lineHours, setLineHours] = useState("2400");
-  const [capacityUnits, setCapacityUnits] = useState("7200");
-  const [capacityInputMode, setCapacityInputMode] = useState("units");
-  const [selectedCategory, setSelectedCategory] = useState("wovens");
+function OnboardingCapacitySetup({ content, language, live = false, values = {} }) {
+  const [lineHours, setLineHours] = useState(live ? values?.["capacity-line-hours"] ?? "" : "2400");
+  const [capacityUnits, setCapacityUnits] = useState(live ? values?.["capacity-units"] ?? "" : "7200");
+  const [capacityInputMode, setCapacityInputMode] = useState(values?.["capacity-input-mode"] ?? "units");
+  const [selectedCategory, setSelectedCategory] = useState(values?.["capacity-category"] ?? (live ? "" : "wovens"));
   const [monthOffset, setMonthOffset] = useState(0);
-  const [monthSelections, setMonthSelections] = useState({
+  const [monthSelections, setMonthSelections] = useState(live ? values?.["capacity-months"] ?? {} : {
     Aug: "open",
     Sep: "partial",
     Oct: "full",
@@ -6947,7 +7281,15 @@ function OnboardingCapacitySetup({ content, language }) {
     Dec: "open",
     Jan: "open"
   });
-  const months = ["Aug", "Sep", "Oct", "Nov", "Dec", "Jan"];
+  // The drawn months are an example; a live vendor marks up the real next six.
+  const months = live
+    ? Array.from({ length: 6 }, (_, index) => {
+        const date = new Date();
+        date.setDate(1);
+        date.setMonth(date.getMonth() + index);
+        return date.toLocaleString("en", { month: "short" });
+      })
+    : ["Aug", "Sep", "Oct", "Nov", "Dec", "Jan"];
   const monthPageSize = 3;
   const visibleMonths = months.slice(monthOffset, monthOffset + monthPageSize);
   const currentMonth = visibleMonths[0];
@@ -6979,15 +7321,19 @@ function OnboardingCapacitySetup({ content, language }) {
   const pieceSummary = minPieces === maxPieces ? maxPieces.toLocaleString() : `${minPieces.toLocaleString()}-${maxPieces.toLocaleString()}`;
   const categoryLabel = language === "zh" ? activeCategory.labelZh : activeCategory.label;
   const monthLabel = language === "zh" ? translateFactoryMainText(currentMonth) : currentMonth;
-  const brandPreview = language === "zh"
-    ? `品牌将看到：${categoryLabel} · ${monthLabel} 可开始 · 当月约 ${pieceSummary} 件`
-    : `Brands will see: ${categoryLabel} · ${currentMonth} start · roughly ${pieceSummary} pieces that month`;
+  // With no category chosen there is no reference style, so there is no
+  // estimate to show — and showing one category's numbers would be a guess.
+  const brandPreview = live && !selectedCategory
+    ? (language === "zh" ? "选择品类后即可看到品牌将看到的估算。" : "Choose a category to see the estimate brands will see.")
+    : language === "zh"
+      ? `品牌将看到：${categoryLabel} · ${monthLabel} 可开始 · 当月约 ${pieceSummary} 件`
+      : `Brands will see: ${categoryLabel} · ${currentMonth} start · roughly ${pieceSummary} pieces that month`;
 
   return (
     <div className="onboarding-capacity-setup">
       <div className="factory-onboarding-form-grid">
         {content.fields.map(([label, placeholder, required]) => (
-          <OnboardingField label={label} placeholder={placeholder} required={required} key={label} />
+          <OnboardingField label={label} placeholder={placeholder} required={required} defaultValue={values?.[factoryFieldName(label)]} key={label} />
         ))}
       </div>
 
@@ -6996,6 +7342,7 @@ function OnboardingCapacitySetup({ content, language }) {
           <span>{language === "zh" ? "品类" : "Category"}</span>
           <label className="capacity-select-field onboarding-capacity-select">
             <select name="capacity-category" value={selectedCategory} onChange={(event) => setSelectedCategory(event.target.value)} aria-label={language === "zh" ? "选择品类" : "Select category"}>
+              {live && <option value="" disabled>{language === "zh" ? "选择品类" : "Select a category"}</option>}
               {FACTORY_CAPACITY_CATEGORIES.map((category) => (
                 <option value={category.key} key={category.key}>{language === "zh" ? category.labelZh : category.label}</option>
               ))}
@@ -7038,6 +7385,7 @@ function OnboardingCapacitySetup({ content, language }) {
           <input type="hidden" name="capacity-input-mode" value={capacityInputMode} readOnly />
           <input type="hidden" name="capacity-line-hours" value={lineHours ?? ""} readOnly />
           <input type="hidden" name="capacity-units" value={capacityUnits ?? ""} readOnly />
+          <input type="hidden" name="capacity-months" value={JSON.stringify(monthSelections)} readOnly />
         </label>
 
         {capacityInputMode === "hours" && (
