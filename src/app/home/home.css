@@ -1,0 +1,79 @@
+/* The home screen. */
+
+.home {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+.home-head { display: flex; flex-direction: column; gap: 4px; }
+.home-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--blue, #2458ff);
+  font-weight: 600;
+}
+.home-head h1 { margin: 0; font-size: 28px; }
+.home-sub { margin: 0; font-size: 13px; color: var(--muted, #6b7280); }
+
+.home-block { display: flex; flex-direction: column; gap: 12px; }
+.home-block h2 { margin: 0; font-size: 15px; }
+
+/* What is waiting on you. Deliberately the loudest thing on the page: this is
+   the question a person opens the app to answer. */
+.home-waiting-row { display: flex; flex-wrap: wrap; gap: 12px; }
+
+.home-waiting {
+  flex: 1 1 200px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--line, #e5e7eb);
+  background: var(--card, #fff);
+  cursor: pointer;
+}
+.home-waiting:hover { border-color: var(--blue, #2458ff); }
+.home-waiting strong { font-size: 24px; font-variant-numeric: tabular-nums; }
+.home-waiting-label { font-size: 13px; font-weight: 500; }
+.home-waiting-detail { font-size: 12px; color: var(--muted, #6b7280); }
+
+.home-waiting.tone-warning { background: #fff8e6; border-color: #f5d98a; }
+.home-waiting.tone-danger  { background: #fff1ea; border-color: #f2a48a; }
+.home-waiting.tone-ready   { background: #eef2ff; border-color: #c7d2fe; }
+
+.home-clear {
+  margin: 0;
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px dashed var(--line, #e5e7eb);
+  font-size: 14px;
+  color: var(--muted, #6b7280);
+}
+
+.home-figures { display: flex; flex-wrap: wrap; gap: 12px; }
+.home-figure {
+  flex: 1 1 180px;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--line, #e5e7eb);
+  background: var(--card, #fff);
+  cursor: pointer;
+}
+.home-figure:hover { border-color: var(--blue, #2458ff); }
+.home-figure-value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.home-figure-label { font-size: 12px; color: var(--muted, #6b7280); }
+.home-figure-detail { font-size: 11px; color: var(--muted, #6b7280); }
+
+.home-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 4px; }
+.home-note { margin: 0; font-size: 13px; color: var(--muted, #6b7280); }

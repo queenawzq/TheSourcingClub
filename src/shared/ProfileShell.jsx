@@ -8,7 +8,10 @@ export function PrototypeSideNav({
   navItems,
   onNav,
   onProfile,
-  onToggle
+  onToggle,
+  // Live mounts pass this; the prototypes pass nothing and draw no button.
+  onSignOut,
+  signOutLabel = "Log out"
 }) {
   return (
     <aside className={collapsed ? "side-nav collapsed" : "side-nav"}>
@@ -39,6 +42,15 @@ export function PrototypeSideNav({
             </button>
           </React.Fragment>
         ))}
+        {onSignOut && (
+          <>
+            <span className="nav-divider" />
+            <button type="button" onClick={onSignOut} aria-label={signOutLabel} title={collapsed ? signOutLabel : undefined}>
+              <img className="nav-icon" src="/assets/prototype-icons/expand.svg" alt="" />
+              <span className="nav-label">{signOutLabel}</span>
+            </button>
+          </>
+        )}
       </nav>
     </aside>
   );
