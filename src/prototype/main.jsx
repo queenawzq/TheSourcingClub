@@ -1027,9 +1027,9 @@ const brandOnboardingSteps = [
     intro: "Set the regions, certifications, and services you care about most.",
     type: "chips",
     groups: [
-      ["Preferred regions", ["Portugal", "China", "Korea", "India", "Turkey", "United States"], ["Portugal", "China", "Korea"]],
-      ["Certifications", ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP", "No preference"], ["GOTS", "OEKO-TEX"]],
-      ["Services needed", ["Full package", "CMT", "Pattern making", "Sample development", "Fabric sourcing"], ["Full package", "Sample development"]]
+      ["Preferred regions", ["Portugal", "China", "Korea", "India", "Turkey", "United States"], []],
+      ["Certifications", ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP", "No preference"], []],
+      ["Services needed", ["Full package", "CMT", "Pattern making", "Sample development", "Fabric sourcing"], []]
     ]
   },
   {
@@ -1260,6 +1260,12 @@ function App() {
       <BrandOnboarding
         step={brandOnboardingStep}
         isReviewEdit={brandOnboardingReviewEdit}
+        onLogout={() => {
+          setAuthMode("login");
+          setBrandOnboardingStep(0);
+          setBrandOnboardingReviewEdit(false);
+          window.history.replaceState(null, "", `${window.location.pathname}?screen=login`);
+        }}
         onEditSection={(targetStep) => {
           setBrandOnboardingReviewEdit(true);
           setBrandOnboardingStep(targetStep);
@@ -2306,7 +2312,7 @@ function SettingsScreen({ accountType = "brand" }) {
   );
 }
 
-function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext }) {
+function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext, onLogout }) {
   const current = brandOnboardingSteps[step];
   const isFirst = step === 0;
   const isLast = step === brandOnboardingSteps.length - 1;
@@ -2348,7 +2354,10 @@ function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext }) 
     <main className="brand-onboarding-page">
       <header className="brand-onboarding-topbar">
         <img src="/assets/logo.svg" alt="The Sourcing Club" />
-        <span>Step {step + 1} of {brandOnboardingSteps.length}</span>
+        <div className="brand-onboarding-topbar-actions">
+          <span>Step {step + 1} of {brandOnboardingSteps.length}</span>
+          <button className="onboarding-logout-button" type="button" onClick={onLogout}>Log out</button>
+        </div>
       </header>
 
       <section className={`brand-onboarding-card ${current.type}`} aria-label={current.title} onInput={clearFieldError} onChange={clearFieldError}>
@@ -2382,10 +2391,7 @@ function BrandOnboarding({ step, isReviewEdit, onEditSection, onBack, onNext }) 
 }
 
 function BrandOnboardingStep({ content, step, onEditSection }) {
-  const [onboardingStakeholders, setOnboardingStakeholders] = useState([
-    { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder" },
-    { name: "Maya Lee", email: "maya@maisonrue.com", role: "Production lead" }
-  ]);
+  const [onboardingStakeholders, setOnboardingStakeholders] = useState([]);
   const [stakeholderModalOpen, setStakeholderModalOpen] = useState(false);
   const [stakeholderDraft, setStakeholderDraft] = useState({ name: "", email: "", role: "Stakeholder" });
 
@@ -2456,12 +2462,12 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
   if (content.type === "sourcingPlan") {
     return (
       <div className="brand-onboarding-form-grid brand-sourcing-volume-grid">
-        {content.fields.map(([label, optionsOrPlaceholder, defaultValue]) => (
+        {content.fields.map(([label, optionsOrPlaceholder]) => (
           <label className="brand-onboarding-field" key={label}>
             <span>{label}<OnboardingRequirement /></span>
             {Array.isArray(optionsOrPlaceholder) ? (
-              <select defaultValue={defaultValue || ""}>
-                <option value="" disabled />
+              <select defaultValue="">
+                <option value="" disabled>Select an option</option>
                 {optionsOrPlaceholder.map((option) => (
                   <option key={option}>{option}</option>
                 ))}
@@ -2484,8 +2490,8 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
         </label>
 
         <div className="brand-context-upload-grid">
-          <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" optional />
-          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want vendors to understand." accept="PNG, JPG, or PDF" optional />
+          <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" fileAccept=".svg,.png,.jpg,.jpeg,image/svg+xml,image/png,image/jpeg" optional />
+          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want vendors to understand." accept="PNG, JPG, or PDF" fileAccept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf" optional />
         </div>
       </div>
     );
@@ -2521,18 +2527,20 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
             <strong>Decision makers<OnboardingRequirement /></strong>
             <button className="secondary-btn compact-btn" type="button" onClick={() => setStakeholderModalOpen(true)}>+ Add stakeholder</button>
           </div>
-          <div className="brand-onboarding-stakeholder-list">
-            {onboardingStakeholders.map((stakeholder, index) => (
-              <article className="brand-onboarding-stakeholder-card" key={`${stakeholder.email}-${index}`}>
-                <span>{(stakeholder.name || "Stakeholder").slice(0, 2).toUpperCase()}</span>
-                <div>
-                  <strong>{stakeholder.name || "Stakeholder"}</strong>
-                  <p>{stakeholder.role}{stakeholder.email ? ` · ${stakeholder.email}` : ""}</p>
-                </div>
-                <button className="text-link" type="button" onClick={() => removeOnboardingStakeholder(index)}>Remove</button>
-              </article>
-            ))}
-          </div>
+          {onboardingStakeholders.length > 0 && (
+            <div className="brand-onboarding-stakeholder-list">
+              {onboardingStakeholders.map((stakeholder, index) => (
+                <article className="brand-onboarding-stakeholder-card" key={`${stakeholder.email}-${index}`}>
+                  <span>{(stakeholder.name || "Stakeholder").slice(0, 2).toUpperCase()}</span>
+                  <div>
+                    <strong>{stakeholder.name || "Stakeholder"}</strong>
+                    <p>{stakeholder.role}{stakeholder.email ? ` · ${stakeholder.email}` : ""}</p>
+                  </div>
+                  <button className="text-link" type="button" onClick={() => removeOnboardingStakeholder(index)}>Remove</button>
+                </article>
+              ))}
+            </div>
+          )}
           <p>Founders or decision-makers. We use this to verify your team.</p>
         </section>
 
@@ -2559,13 +2567,13 @@ function BrandOnboardingStep({ content, step, onEditSection }) {
           document.body
         )}
 
-        <label className="brand-onboarding-field full">
-          <span>Business registration or resale certificate<OnboardingRequirement /></span>
-          <button className="brand-onboarding-upload-row" type="button">
-            <img src="/assets/prototype-icons/upload.svg" alt="" />
-            <strong>Click or drag files to upload</strong>
-          </button>
-        </label>
+        <BrandAssetUploadCard
+          className="wide brand-business-certificate-upload"
+          title="Business registration or resale certificate"
+          helper=""
+          accept="PDF, PNG, or JPG"
+          fileAccept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+        />
       </div>
     );
   }
@@ -2777,16 +2785,66 @@ function BrandOnboardingChipGroup({ label, options, selected = [], required = fa
   );
 }
 
-function BrandAssetUploadCard({ title, helper, accept, className = "", optional = false }) {
+function BrandAssetUploadCard({ title, helper, accept, fileAccept = "image/*,.pdf", className = "", optional = false }) {
+  const [files, setFiles] = useState([]);
+  const inputRef = useRef(null);
+  const addFiles = (fileList) => {
+    const incomingFiles = Array.from(fileList || []).map((file) => ({
+      id: `${file.name}-${file.size}-${file.lastModified}`,
+      name: file.name
+    }));
+
+    setFiles((current) => {
+      const existingIds = new Set(current.map((file) => file.id));
+      return [...current, ...incomingFiles.filter((file) => !existingIds.has(file.id))];
+    });
+  };
+
   return (
     <section className={className ? `brand-asset-card ${className}` : "brand-asset-card"}>
       <div>
         <strong>{title}{optional && <OnboardingRequirement />}</strong>
-        <span>{helper}</span>
+        {helper && <span>{helper}</span>}
       </div>
-      <button className="brand-onboarding-upload-row" type="button">
+      {files.length > 0 && (
+        <div className="brand-uploaded-files" aria-live="polite">
+          {files.map((file) => (
+            <div className="brand-uploaded-file" key={file.id}>
+              <div>
+                <span>{file.name}</span>
+                <small>Uploaded</small>
+              </div>
+              <button type="button" onClick={() => setFiles((current) => current.filter((item) => item.id !== file.id))}>
+                <img src="/assets/prototype-icons/trash.svg" alt="" />
+                Delete
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        className="brand-onboarding-file-input"
+        type="file"
+        accept={fileAccept}
+        multiple
+        onChange={(event) => {
+          addFiles(event.target.files);
+          event.target.value = "";
+        }}
+      />
+      <button
+        className={`brand-onboarding-upload-row${files.length ? " has-files" : ""}`}
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          addFiles(event.dataTransfer.files);
+        }}
+      >
         <img src="/assets/prototype-icons/upload.svg" alt="" />
-        <strong>Click or drag files to upload</strong>
+        <strong>{files.length ? "Upload more" : "Click or drag files to upload"}</strong>
       </button>
       <small>{accept}</small>
     </section>

@@ -1483,20 +1483,20 @@ const onboardingCopy = {
         title: "What type of production does your factory specialize in?",
         intro: "Start with the production method, then choose the garment categories you can reliably make.",
         groups: [
-          ["Manufacturing model", ["OEM / made to specification", "ODM / design + manufacture", "Full package production (FPP)", "CMT / cut, make & trim", "Private label / white label", "OBM / own-brand manufacturing"], ["OEM / made to specification", "Full package production (FPP)"], true],
-          ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"], ["Cut & sew knits", "Wovens"], true],
-          ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"], ["Tops", "Bottoms"], true],
-          ["Makes", ["Button-down shirts", "Poplin blouses", "Woven dresses", "Linen co-ords", "Lightweight jackets", "Pleated skirts", "Rib tops", "Canvas totes", "Denim jackets", "Swim sets"], ["Button-down shirts", "Poplin blouses", "Woven dresses"]],
-          ["Market level", ["Luxury / high-end (retail $500+)", "Premium / contemporary (retail $100-$500)", "Mid range (retail $50-$100)", "Mass market (retail under $50)"], ["Premium / contemporary (retail $100-$500)"]]
+          ["Manufacturing model", ["OEM / made to specification", "ODM / design + manufacture", "Full package production (FPP)", "CMT / cut, make & trim", "Private label / white label", "OBM / own-brand manufacturing"], [], true],
+          ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"], [], true],
+          ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"], [], true],
+          ["Makes", ["Button-down shirts", "Poplin blouses", "Woven dresses", "Linen co-ords", "Lightweight jackets", "Pleated skirts", "Rib tops", "Canvas totes", "Denim jackets", "Swim sets"], []],
+          ["Market level", ["Luxury / high-end (retail $500+)", "Premium / contemporary (retail $100-$500)", "Mid range (retail $50-$100)", "Mass market (retail under $50)"], []]
         ],
       },
       {
         title: "Specialty, services, markets, and tools",
         intro: "Add the capabilities and export experience brands use to understand your sampling support and production setup.",
         groups: [
-          ["Specializes in", ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton", "Wash development", "Trim sourcing", "QC photo updates", "Low-MOQ sampling"], ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton"], true],
-          ["Design Services", ["Pattern making", "Grading", "Sample development", "Tech pack support", "Material sourcing", "Trim sourcing", "Packaging development"], ["Pattern making", "Sample development"]],
-          ["Primary export markets", ["United States & Canada", "United Kingdom", "European Union", "Eastern Europe", "Australia & New Zealand", "Japan & South Korea", "Southeast Asia", "Greater China", "Middle East", "Latin America", "Africa", "Domestic market"], ["United States & Canada", "European Union"], true],
+          ["Specializes in", ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton", "Wash development", "Trim sourcing", "QC photo updates", "Low-MOQ sampling"], [], true],
+          ["Design Services", ["Pattern making", "Grading", "Sample development", "Tech pack support", "Material sourcing", "Trim sourcing", "Packaging development"], []],
+          ["Primary export markets", ["United States & Canada", "United Kingdom", "European Union", "Eastern Europe", "Australia & New Zealand", "Japan & South Korea", "Southeast Asia", "Greater China", "Middle East", "Latin America", "Africa", "Domestic market"], [], true],
           ["3D & digital tools (optional)", ["CLO 3D", "Browzwear", "Lectra", "Gerber"], []]
         ],
         equipmentLabel: "Key machines or equipment",
@@ -1527,7 +1527,7 @@ const onboardingCopy = {
         certificationLabel: "Add certifications you hold",
         search: "Search or select a certification",
         add: "Add certification",
-        certifications: [["GOTS", "pending"], ["OEKO-TEX Standard 100", "uploaded"], ["BSCI", "pending"]],
+        certifications: [],
         uploadCertificate: "Click or drag certificate to upload",
         uploadedCertificate: "Certificate uploaded",
         deleteCertificate: "Delete",
@@ -1614,20 +1614,20 @@ const onboardingCopy = {
         title: "你的工厂擅长哪类生产？",
         intro: "先选择生产工艺，再选择可稳定生产的品类。",
         groups: [
-          ["合作生产模式", ["OEM / 按品牌规格生产", "ODM / 设计与生产", "全包生产 FPP", "CMT / 来料加工", "Private label / 白牌", "OBM / 自有品牌生产"], ["OEM / 按品牌规格生产", "全包生产 FPP"], true],
-          ["生产类型", ["针织裁剪缝制", "梭织", "毛衫 / 针织成衣", "牛仔", "无缝 / 圆机针织", "内衣 / 精细工艺", "皮革 / 麂皮", "包袋 / 软配件", "其他"], ["针织裁剪缝制", "梭织"], true],
-          ["产品品类", ["上装", "下装", "连衣裙 / 连体衣", "外套", "运动服", "内衣", "泳装", "睡衣 / 家居服", "童装 / 婴童", "制服 / 工装", "配饰", "其他"], ["上装", "下装"], true],
-          ["可生产款式", ["纽扣衬衫", "府绸上衣", "梭织连衣裙", "亚麻套装", "轻薄外套", "百褶裙", "罗纹上衣", "帆布托特包", "牛仔夹克", "泳装套装"], ["纽扣衬衫", "府绸上衣", "梭织连衣裙"]],
-          ["市场层级", ["奢侈 / 高端（成品零售价 $500+）", "高级成衣 / 当代品牌（成品零售价 $100-$500）", "中端市场（成品零售价 $50-$100）", "大众市场（成品零售价低于 $50）"], ["高级成衣 / 当代品牌（成品零售价 $100-$500）"]]
+          ["合作生产模式", ["OEM / 按品牌规格生产", "ODM / 设计与生产", "全包生产 FPP", "CMT / 来料加工", "Private label / 白牌", "OBM / 自有品牌生产"], [], true],
+          ["生产类型", ["针织裁剪缝制", "梭织", "毛衫 / 针织成衣", "牛仔", "无缝 / 圆机针织", "内衣 / 精细工艺", "皮革 / 麂皮", "包袋 / 软配件", "其他"], [], true],
+          ["产品品类", ["上装", "下装", "连衣裙 / 连体衣", "外套", "运动服", "内衣", "泳装", "睡衣 / 家居服", "童装 / 婴童", "制服 / 工装", "配饰", "其他"], [], true],
+          ["可生产款式", ["纽扣衬衫", "府绸上衣", "梭织连衣裙", "亚麻套装", "轻薄外套", "百褶裙", "罗纹上衣", "帆布托特包", "牛仔夹克", "泳装套装"], []],
+          ["市场层级", ["奢侈 / 高端（成品零售价 $500+）", "高级成衣 / 当代品牌（成品零售价 $100-$500）", "中端市场（成品零售价 $50-$100）", "大众市场（成品零售价低于 $50）"], []]
         ],
       },
       {
         title: "专长、服务、市场与工具",
         intro: "补充品牌会用于判断打样支持、出口经验和生产配置的能力信息。",
         groups: [
-          ["专长", ["内部制版房", "试身样 + 产前样", "小批量出口", "GOTS 棉", "水洗开发", "辅料采购", "QC 图片更新", "低起订量打样"], ["内部制版房", "试身样 + 产前样", "小批量出口", "GOTS 棉"], true],
-          ["设计服务", ["制版", "放码", "样衣开发", "Tech pack 支持", "面料采购", "辅料采购", "包装开发"], ["制版", "样衣开发"]],
-          ["主要出口市场", ["美国与加拿大", "英国", "欧盟", "东欧", "澳大利亚与新西兰", "日本与韩国", "东南亚", "大中华区", "中东", "拉丁美洲", "非洲", "本地市场"], ["美国与加拿大", "欧盟"], true],
+          ["专长", ["内部制版房", "试身样 + 产前样", "小批量出口", "GOTS 棉", "水洗开发", "辅料采购", "QC 图片更新", "低起订量打样"], [], true],
+          ["设计服务", ["制版", "放码", "样衣开发", "Tech pack 支持", "面料采购", "辅料采购", "包装开发"], []],
+          ["主要出口市场", ["美国与加拿大", "英国", "欧盟", "东欧", "澳大利亚与新西兰", "日本与韩国", "东南亚", "大中华区", "中东", "拉丁美洲", "非洲", "本地市场"], [], true],
           ["3D 和数字工具（选填）", ["CLO 3D", "Browzwear", "Lectra", "Gerber"], []]
         ],
         equipmentLabel: "关键机器或设备",
@@ -1654,7 +1654,7 @@ const onboardingCopy = {
         certificationLabel: "添加你已持有的认证",
         search: "搜索或选择认证",
         add: "添加认证",
-        certifications: [["GOTS", "pending"], ["OEKO-TEX Standard 100", "uploaded"], ["BSCI", "pending"]],
+        certifications: [],
         uploadCertificate: "点击或拖拽证书上传",
         uploadedCertificate: "证书已上传",
         deleteCertificate: "删除",
@@ -1750,12 +1750,12 @@ const tradingOnboardingCopy = {
         title: "What does your sourcing network specialize in?",
         intro: "Choose the production methods, product categories, and regions covered by your partner network.",
         groups: [
-          ["Production programs supported", ["OEM / made to specification", "ODM / design + manufacture", "Full package production (FPP)", "CMT / cut, make & trim", "Private label / white label", "Small-batch / low MOQ"], ["OEM / made to specification", "Full package production (FPP)"], true],
-          ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"], ["Cut & sew knits", "Wovens"], true],
-          ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"], ["Tops", "Bottoms"], true],
-          ["Makes", ["Button-down shirts", "Poplin blouses", "Woven dresses", "Linen co-ords", "Lightweight jackets", "Pleated skirts", "Rib tops", "Canvas totes", "Denim jackets", "Swim sets"], ["Button-down shirts", "Poplin blouses", "Woven dresses"]],
-          ["Sourcing regions", ["China", "Portugal", "South Korea", "India", "Turkey", "Vietnam", "Bangladesh", "Cambodia", "Indonesia", "Pakistan", "Sri Lanka", "Morocco / Tunisia", "Mexico", "United States"], ["China", "Portugal"]],
-          ["Market level", ["Luxury / high-end (retail $500+)", "Premium / contemporary (retail $100-$500)", "Mid range (retail $50-$100)", "Mass market (retail under $50)"], ["Premium / contemporary (retail $100-$500)"]]
+          ["Production programs supported", ["OEM / made to specification", "ODM / design + manufacture", "Full package production (FPP)", "CMT / cut, make & trim", "Private label / white label", "Small-batch / low MOQ"], [], true],
+          ["Production type", ["Cut & sew knits", "Wovens", "Sweaters / knitwear", "Denim", "Seamless / circular knit", "Intimates / delicate garments", "Leather / suede", "Bags / soft goods"], [], true],
+          ["Product categories", ["Tops", "Bottoms", "Dresses & jumpsuits", "Outerwear", "Activewear", "Intimates / underwear", "Swimwear", "Sleepwear / loungewear", "Childrenswear / baby", "Uniforms / workwear", "Accessories"], [], true],
+          ["Makes", ["Button-down shirts", "Poplin blouses", "Woven dresses", "Linen co-ords", "Lightweight jackets", "Pleated skirts", "Rib tops", "Canvas totes", "Denim jackets", "Swim sets"], []],
+          ["Sourcing regions", ["China", "Portugal", "South Korea", "India", "Turkey", "Vietnam", "Bangladesh", "Cambodia", "Indonesia", "Pakistan", "Sri Lanka", "Morocco / Tunisia", "Mexico", "United States"], []],
+          ["Market level", ["Luxury / high-end (retail $500+)", "Premium / contemporary (retail $100-$500)", "Mid range (retail $50-$100)", "Mass market (retail under $50)"], []]
         ]
       },
       {
@@ -1763,10 +1763,10 @@ const tradingOnboardingCopy = {
         title: "Services and supplier management",
         intro: "Show brands what your team manages directly across development and production.",
         groups: [
-          ["Core services", ["Supplier matching", "Costing & negotiation", "Merchandising", "Sample management", "Production management", "Order consolidation", "Logistics coordination"], ["Supplier matching", "Sample management", "Production management"], true],
-          ["Product development", ["Design support", "Tech pack support", "Pattern making", "Grading", "Sample development", "Material sourcing", "Trim sourcing", "Packaging development"], ["Tech pack support", "Sample development", "Material sourcing"]],
-          ["Quality & compliance", ["Factory verification", "In-line inspection", "Final inspection", "Third-party inspection", "Lab testing coordination", "Certification validation", "Social compliance checks", "Traceability support"], ["Factory verification", "In-line inspection", "Final inspection"], true],
-          ["Primary destination markets", ["United States & Canada", "United Kingdom", "European Union", "Eastern Europe", "Australia & New Zealand", "Japan & South Korea", "Southeast Asia", "Greater China", "Middle East", "Latin America", "Africa", "Domestic market"], ["United States & Canada", "European Union"], true],
+          ["Core services", ["Supplier matching", "Costing & negotiation", "Merchandising", "Sample management", "Production management", "Order consolidation", "Logistics coordination"], [], true],
+          ["Product development", ["Design support", "Tech pack support", "Pattern making", "Grading", "Sample development", "Material sourcing", "Trim sourcing", "Packaging development"], []],
+          ["Quality & compliance", ["Factory verification", "In-line inspection", "Final inspection", "Third-party inspection", "Lab testing coordination", "Certification validation", "Social compliance checks", "Traceability support"], [], true],
+          ["Primary destination markets", ["United States & Canada", "United Kingdom", "European Union", "Eastern Europe", "Australia & New Zealand", "Japan & South Korea", "Southeast Asia", "Greater China", "Middle East", "Latin America", "Africa", "Domestic market"], [], true],
           ["Digital tools (optional)", ["PLM", "ERP / order tracking", "CLO 3D", "Browzwear", "Lectra", "Gerber"], []]
         ],
         equipmentLabel: "Other capabilities",
@@ -1788,7 +1788,7 @@ const tradingOnboardingCopy = {
         certificationLabel: "Add certifications or memberships",
         search: "Search or add a certification",
         add: "Add certification",
-        certifications: [["ISO 9001", "pending"], ["Sedex", "uploaded"], ["BSCI", "pending"]],
+        certifications: [],
         uploadCertificate: "Click or drag certificate to upload",
         uploadedCertificate: "Certificate uploaded",
         deleteCertificate: "Delete",
@@ -1872,12 +1872,12 @@ tradingOnboardingCopy.zh = {
       title: "你的供应商网络擅长什么？",
       intro: "选择合作供应商网络覆盖的生产方式、产品品类和采购地区。",
       groups: [
-        ["支持的生产合作模式", ["OEM / 按品牌规格生产", "ODM / 设计与生产", "全包生产 FPP", "CMT / 来料加工", "自有标签 / 白牌", "小批量 / 低起订量"], ["OEM / 按品牌规格生产", "全包生产 FPP"], true],
-        ["生产类型", ["针织裁剪缝制", "梭织", "毛衫 / 针织成衣", "牛仔", "无缝 / 圆机针织", "内衣 / 精细工艺", "皮革 / 麂皮", "包袋 / 软配件"], ["针织裁剪缝制", "梭织"], true],
-        ["产品品类", ["上装", "下装", "连衣裙 / 连体衣", "外套", "运动服", "内衣", "泳装", "睡衣 / 家居服", "童装 / 婴童", "制服 / 工装", "配饰"], ["上装", "下装"], true],
-        ["采购产品", ["纽扣衬衫", "府绸上衣", "梭织连衣裙", "亚麻套装", "轻薄外套", "百褶裙", "罗纹上衣", "帆布托特包", "牛仔夹克", "泳装套装"], ["纽扣衬衫", "府绸上衣", "梭织连衣裙"]],
-        ["采购地区", ["中国", "葡萄牙", "韩国", "印度", "土耳其", "越南", "孟加拉国", "柬埔寨", "印度尼西亚", "巴基斯坦", "斯里兰卡", "摩洛哥 / 突尼斯", "墨西哥", "美国"], ["中国", "葡萄牙"]],
-        ["市场层级", ["奢侈 / 高端（成品零售价 $500+）", "高级成衣 / 当代品牌（成品零售价 $100-$500）", "中端市场（成品零售价 $50-$100）", "大众市场（成品零售价低于 $50）"], ["高级成衣 / 当代品牌（成品零售价 $100-$500）"]]
+        ["支持的生产合作模式", ["OEM / 按品牌规格生产", "ODM / 设计与生产", "全包生产 FPP", "CMT / 来料加工", "自有标签 / 白牌", "小批量 / 低起订量"], [], true],
+        ["生产类型", ["针织裁剪缝制", "梭织", "毛衫 / 针织成衣", "牛仔", "无缝 / 圆机针织", "内衣 / 精细工艺", "皮革 / 麂皮", "包袋 / 软配件"], [], true],
+        ["产品品类", ["上装", "下装", "连衣裙 / 连体衣", "外套", "运动服", "内衣", "泳装", "睡衣 / 家居服", "童装 / 婴童", "制服 / 工装", "配饰"], [], true],
+        ["采购产品", ["纽扣衬衫", "府绸上衣", "梭织连衣裙", "亚麻套装", "轻薄外套", "百褶裙", "罗纹上衣", "帆布托特包", "牛仔夹克", "泳装套装"], []],
+        ["采购地区", ["中国", "葡萄牙", "韩国", "印度", "土耳其", "越南", "孟加拉国", "柬埔寨", "印度尼西亚", "巴基斯坦", "斯里兰卡", "摩洛哥 / 突尼斯", "墨西哥", "美国"], []],
+        ["市场层级", ["奢侈 / 高端（成品零售价 $500+）", "高级成衣 / 当代品牌（成品零售价 $100-$500）", "中端市场（成品零售价 $50-$100）", "大众市场（成品零售价低于 $50）"], []]
       ]
     },
     {
@@ -1885,10 +1885,10 @@ tradingOnboardingCopy.zh = {
       title: "服务与供应商管理",
       intro: "向品牌展示团队在开发和生产过程中直接负责的工作。",
       groups: [
-        ["核心服务", ["供应商匹配", "成本核算与谈判", "跟单管理", "样品管理", "生产管理", "订单整合", "物流协调"], ["供应商匹配", "样品管理", "生产管理"], true],
-        ["产品开发", ["设计支持", "技术包支持", "制版", "放码", "样衣开发", "面料采购", "辅料采购", "包装开发"], ["技术包支持", "样衣开发", "面料采购"]],
-        ["质量与合规", ["工厂验证", "中期验货", "终期验货", "第三方验货", "实验室测试协调", "认证核验", "社会责任合规检查", "可追溯性支持"], ["工厂验证", "中期验货", "终期验货"], true],
-        ["主要目的地市场", ["美国与加拿大", "英国", "欧盟", "东欧", "澳大利亚与新西兰", "日本与韩国", "东南亚", "大中华区", "中东", "拉丁美洲", "非洲", "本地市场"], ["美国与加拿大", "欧盟"], true],
+        ["核心服务", ["供应商匹配", "成本核算与谈判", "跟单管理", "样品管理", "生产管理", "订单整合", "物流协调"], [], true],
+        ["产品开发", ["设计支持", "技术包支持", "制版", "放码", "样衣开发", "面料采购", "辅料采购", "包装开发"], []],
+        ["质量与合规", ["工厂验证", "中期验货", "终期验货", "第三方验货", "实验室测试协调", "认证核验", "社会责任合规检查", "可追溯性支持"], [], true],
+        ["主要目的地市场", ["美国与加拿大", "英国", "欧盟", "东欧", "澳大利亚与新西兰", "日本与韩国", "东南亚", "大中华区", "中东", "拉丁美洲", "非洲", "本地市场"], [], true],
         ["数字工具（选填）", ["PLM", "ERP / 订单跟踪", "CLO 3D", "Browzwear", "Lectra", "Gerber"], []]
       ],
       equipmentLabel: "其他能力",
@@ -1910,7 +1910,7 @@ tradingOnboardingCopy.zh = {
       certificationLabel: "添加认证或会员资质",
       search: "搜索或添加认证",
       add: "添加认证",
-      certifications: [["ISO 9001", "pending"], ["Sedex", "uploaded"], ["BSCI", "pending"]],
+      certifications: [],
       uploadCertificate: "点击或拖拽证书上传",
       uploadedCertificate: "证书已上传",
       deleteCertificate: "删除",
@@ -2150,6 +2150,13 @@ function App() {
         language={onboardingLanguage}
         step={onboardingStep}
         isReviewEdit={onboardingReviewEdit}
+        onLogout={() => {
+          window.localStorage.removeItem("tscFactoryPrototypeScreen");
+          setAuthMode("login");
+          setOnboardingStep(0);
+          setOnboardingReviewEdit(false);
+          window.history.replaceState(null, "", `${window.location.pathname}?screen=login`);
+        }}
         onLanguageChange={(nextLanguage) => {
           setOnboardingLanguage(nextLanguage);
           window.localStorage.setItem("tscFactoryPrototypeLanguage", nextLanguage);
@@ -6449,7 +6456,7 @@ function FactorySettingsScreen({ companyType = "factory", language = "en" }) {
   );
 }
 
-function FactoryOnboarding({ companyType = "factory", language, step, isReviewEdit, onLanguageChange, onCompanyTypeChange, onEditSection, onBack, onNext }) {
+function FactoryOnboarding({ companyType = "factory", language, step, isReviewEdit, onLanguageChange, onCompanyTypeChange, onEditSection, onBack, onNext, onLogout }) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
   const current = copy.steps[step];
@@ -6487,7 +6494,10 @@ function FactoryOnboarding({ companyType = "factory", language, step, isReviewEd
     <main className="factory-onboarding-page">
       <header className="factory-onboarding-topbar">
         <img src="/assets/logo.svg" alt="The Sourcing Club" />
-        <span>{language === "zh" ? `第 ${step + 1} 步 / 共 ${copy.steps.length} 步` : `Step ${step + 1} of ${copy.steps.length}`}</span>
+        <div className="factory-onboarding-topbar-actions">
+          <span>{language === "zh" ? `第 ${step + 1} 步 / 共 ${copy.steps.length} 步` : `Step ${step + 1} of ${copy.steps.length}`}</span>
+          <button className="onboarding-logout-button" type="button" onClick={onLogout}>{language === "zh" ? "退出登录" : "Log out"}</button>
+        </div>
       </header>
 
       <section
@@ -6545,6 +6555,81 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
   const [certificateName, setCertificateName] = useState("");
   const [clientReferenceRows, setClientReferenceRows] = useState([0]);
   const nextClientReferenceId = useRef(1);
+  const [walkthroughVideo, setWalkthroughVideo] = useState(null);
+  const walkthroughVideoInputRef = useRef(null);
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
+  const [cameraError, setCameraError] = useState("");
+  const [cameraRecording, setCameraRecording] = useState(false);
+  const cameraVideoRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+
+  useEffect(() => {
+    if (cameraVideoRef.current && cameraStream) cameraVideoRef.current.srcObject = cameraStream;
+    return () => cameraStream?.getTracks().forEach((track) => track.stop());
+  }, [cameraStream]);
+
+  const closeCamera = () => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+    }
+    cameraStream?.getTracks().forEach((track) => track.stop());
+    mediaRecorderRef.current = null;
+    setCameraStream(null);
+    setCameraRecording(false);
+    setCameraOpen(false);
+  };
+
+  const openCamera = async () => {
+    setCameraOpen(true);
+    setCameraError("");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: true
+      });
+      setCameraStream(stream);
+    } catch {
+      setCameraError(language === "zh" ? "无法打开摄像头。请允许摄像头和麦克风访问。" : "Unable to open the camera. Allow camera and microphone access, then try again.");
+    }
+  };
+
+  const startCameraRecording = () => {
+    if (!cameraStream || typeof MediaRecorder === "undefined") {
+      setCameraError(language === "zh" ? "此浏览器不支持视频录制。" : "Video recording is not supported in this browser.");
+      return;
+    }
+
+    const mimeType = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]
+      .find((type) => MediaRecorder.isTypeSupported(type));
+    const recorder = new MediaRecorder(cameraStream, mimeType ? { mimeType } : undefined);
+    const chunks = [];
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size) chunks.push(event.data);
+    };
+    recorder.onstop = () => {
+      const videoType = recorder.mimeType || mimeType || "video/webm";
+      const extension = videoType.includes("mp4") ? "mp4" : "webm";
+      const blob = new Blob(chunks, { type: videoType });
+      setWalkthroughVideo(new File([blob], `factory-walkthrough.${extension}`, { type: videoType }));
+      cameraStream.getTracks().forEach((track) => track.stop());
+      mediaRecorderRef.current = null;
+      setCameraStream(null);
+      setCameraRecording(false);
+      setCameraOpen(false);
+    };
+
+    mediaRecorderRef.current = recorder;
+    recorder.start();
+    setCameraRecording(true);
+  };
+
+  const stopCameraRecording = () => {
+    if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+  };
 
   const removeCertificateUpload = (name) => {
     setRemovedCertificates((current) => current.includes(name) ? current : [...current, name]);
@@ -6640,11 +6725,16 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
   if (stepType === "verification") {
     return (
       <div className="factory-onboarding-section verification-step">
-        <div className="verification-upload-block">
-          <strong>{content.businessLabel}</strong>
-          <button className="onboarding-file-upload" type="button">{content.businessUpload}</button>
-          <small>{content.businessHelper}</small>
-        </div>
+        <OnboardingAssetUploadCard
+          title={content.businessLabel}
+          helper=""
+          accept={content.businessHelper}
+          fileAccept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+          uploadLabel={content.businessUpload}
+          uploadMoreLabel={language === "zh" ? "上传更多" : "Upload more"}
+          uploadedLabel={language === "zh" ? "已上传" : "Uploaded"}
+          deleteLabel={content.deleteCertificate}
+        />
         <form className="certification-add-control" onSubmit={addCertificate}>
           <label className="factory-onboarding-field">
             <span>{content.certificationLabel}</span>
@@ -6747,14 +6837,74 @@ function FactoryOnboardingStep({ step, content, companyType, language, onLanguag
         </section>
         <section className="walkthrough-options">
           <strong>{content.optionTitle}</strong>
-          <div>
-            {content.options.map(([title, helper]) => (
-              <button className="walkthrough-option" type="button" key={title}>
-                <strong>{title}</strong>
-                <small>{helper}</small>
+          <div className="walkthrough-option-grid">
+            {content.options.map(([title, helper], index) => (
+              <button
+                className={`walkthrough-option${index === 1 && walkthroughVideo ? " selected" : ""}`}
+                type="button"
+                key={title}
+                onClick={index === 0 ? openCamera : () => walkthroughVideoInputRef.current?.click()}
+                onDragOver={index === 1 ? (event) => event.preventDefault() : undefined}
+                onDrop={index === 1 ? (event) => {
+                  event.preventDefault();
+                  const [file] = event.dataTransfer.files;
+                  if (file?.type.startsWith("video/")) setWalkthroughVideo(file);
+                } : undefined}
+              >
+                <strong>{index === 1 && walkthroughVideo ? (language === "zh" ? "上传其他视频" : "Upload another video") : title}</strong>
+                <small>{index === 1 && walkthroughVideo ? (language === "zh" ? "选择其他文件以替换当前视频。" : "Choose another file to replace the current video.") : helper}</small>
               </button>
             ))}
           </div>
+          <input
+            ref={walkthroughVideoInputRef}
+            className="onboarding-file-input"
+            type="file"
+            accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm"
+            onChange={(event) => {
+              const [file] = event.target.files || [];
+              if (file) setWalkthroughVideo(file);
+              event.target.value = "";
+            }}
+          />
+          {walkthroughVideo && (
+            <div className="onboarding-uploaded-file walkthrough-video-file" aria-live="polite">
+              <div>
+                <span>{walkthroughVideo.name}</span>
+                <small>{language === "zh" ? "视频已上传" : "Video uploaded"}</small>
+              </div>
+              <button type="button" onClick={() => setWalkthroughVideo(null)}>
+                <img src="/assets/prototype-icons/trash.svg" alt="" />
+                {language === "zh" ? "删除" : "Delete"}
+              </button>
+            </div>
+          )}
+          {cameraOpen && (
+            <div className="walkthrough-camera-layer" role="presentation">
+              <button className="walkthrough-camera-scrim" type="button" aria-label={language === "zh" ? "关闭摄像头" : "Close camera"} onClick={closeCamera} />
+              <section className="walkthrough-camera-dialog" role="dialog" aria-modal="true" aria-labelledby="walkthrough-camera-title">
+                <header>
+                  <div>
+                    <h2 id="walkthrough-camera-title">{language === "zh" ? "录制工厂介绍视频" : "Record factory walkthrough"}</h2>
+                    <p>{language === "zh" ? "准备好后开始录制。录制时请缓慢移动设备。" : "Start when ready and move the device slowly while recording."}</p>
+                  </div>
+                  <CloseIconButton className="walkthrough-camera-close" label={language === "zh" ? "关闭摄像头" : "Close camera"} onClick={closeCamera} />
+                </header>
+                <div className="walkthrough-camera-preview">
+                  {cameraStream ? <video ref={cameraVideoRef} autoPlay muted playsInline /> : <span>{language === "zh" ? "正在打开摄像头…" : "Opening camera…"}</span>}
+                </div>
+                {cameraError && <p className="walkthrough-camera-error">{cameraError}</p>}
+                <footer>
+                  <button className="secondary-btn" type="button" onClick={closeCamera}>{language === "zh" ? "取消" : "Cancel"}</button>
+                  {cameraRecording ? (
+                    <button className="primary-btn walkthrough-recording-button" type="button" onClick={stopCameraRecording}>{language === "zh" ? "停止并使用视频" : "Stop & use video"}</button>
+                  ) : (
+                    <button className="primary-btn" type="button" disabled={!cameraStream} onClick={startCameraRecording}>{language === "zh" ? "开始录制" : "Start recording"}</button>
+                  )}
+                </footer>
+              </section>
+            </div>
+          )}
         </section>
       </div>
     );
@@ -6840,27 +6990,87 @@ function OnboardingBrandContext({ content, language }) {
           title={content.logoTitle}
           helper={content.logoHelper}
           accept={content.logoAccept}
+          fileAccept=".svg,.png,.jpg,.jpeg,image/svg+xml,image/png,image/jpeg"
           uploadLabel={language === "zh" ? "点击或拖拽文件上传" : "Click or drag files to upload"}
+          uploadMoreLabel={language === "zh" ? "上传更多" : "Upload more"}
+          uploadedLabel={language === "zh" ? "已上传" : "Uploaded"}
+          deleteLabel={language === "zh" ? "删除" : "Delete"}
         />
         <OnboardingAssetUploadCard
           title={content.imagesTitle}
           helper={content.imagesHelper}
           accept={content.imagesAccept}
+          fileAccept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf"
           uploadLabel={language === "zh" ? "点击或拖拽文件上传" : "Click or drag files to upload"}
+          uploadMoreLabel={language === "zh" ? "上传更多" : "Upload more"}
+          uploadedLabel={language === "zh" ? "已上传" : "Uploaded"}
+          deleteLabel={language === "zh" ? "删除" : "Delete"}
         />
       </div>
     </div>
   );
 }
 
-function OnboardingAssetUploadCard({ title, helper, accept, uploadLabel }) {
+function OnboardingAssetUploadCard({ title, helper, accept, fileAccept, uploadLabel, uploadMoreLabel, uploadedLabel, deleteLabel }) {
+  const [files, setFiles] = useState([]);
+  const inputRef = useRef(null);
+  const addFiles = (fileList) => {
+    const incomingFiles = Array.from(fileList || []).map((file) => ({
+      id: `${file.name}-${file.size}-${file.lastModified}`,
+      name: file.name
+    }));
+
+    setFiles((current) => {
+      const existingIds = new Set(current.map((file) => file.id));
+      return [...current, ...incomingFiles.filter((file) => !existingIds.has(file.id))];
+    });
+  };
+
   return (
     <section className="factory-brand-asset-card">
       <div>
         <strong>{title}</strong>
-        <span>{helper}</span>
+        {helper && <span>{helper}</span>}
       </div>
-      <button className="onboarding-file-upload factory-brand-asset-upload" type="button">{uploadLabel}</button>
+      {files.length > 0 && (
+        <div className="factory-brand-uploaded-files" aria-live="polite">
+          {files.map((file) => (
+            <div className="onboarding-uploaded-file" key={file.id}>
+              <div>
+                <span>{file.name}</span>
+                <small>{uploadedLabel}</small>
+              </div>
+              <button type="button" onClick={() => setFiles((current) => current.filter((item) => item.id !== file.id))}>
+                <img src="/assets/prototype-icons/trash.svg" alt="" />
+                {deleteLabel}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      <input
+        ref={inputRef}
+        className="onboarding-file-input"
+        type="file"
+        accept={fileAccept}
+        multiple
+        onChange={(event) => {
+          addFiles(event.target.files);
+          event.target.value = "";
+        }}
+      />
+      <button
+        className={`onboarding-file-upload factory-brand-asset-upload${files.length ? " has-files" : ""}`}
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          addFiles(event.dataTransfer.files);
+        }}
+      >
+        {files.length ? uploadMoreLabel : uploadLabel}
+      </button>
       <small>{accept}</small>
     </section>
   );
@@ -6886,14 +7096,7 @@ function OnboardingCapacitySetup({ content, language }) {
   const [capacityInputMode, setCapacityInputMode] = useState("units");
   const [selectedCategory, setSelectedCategory] = useState("wovens");
   const [monthOffset, setMonthOffset] = useState(0);
-  const [monthSelections, setMonthSelections] = useState({
-    Aug: "open",
-    Sep: "partial",
-    Oct: "full",
-    Nov: "partial",
-    Dec: "open",
-    Jan: "open"
-  });
+  const [monthSelections, setMonthSelections] = useState({});
   const months = ["Aug", "Sep", "Oct", "Nov", "Dec", "Jan"];
   const monthPageSize = 3;
   const visibleMonths = months.slice(monthOffset, monthOffset + monthPageSize);
@@ -7025,10 +7228,12 @@ function OnboardingCapacitySetup({ content, language }) {
           </div>
         </div>
 
-        <div className="capacity-brand-preview onboarding-capacity-preview">
-          <span>{language === "zh" ? "品牌将看到" : "BRANDS WILL SEE"}</span>
-          <strong>{brandPreview}</strong>
-        </div>
+        {monthSelections[currentMonth] && (
+          <div className="capacity-brand-preview onboarding-capacity-preview">
+            <span>{language === "zh" ? "品牌将看到" : "BRANDS WILL SEE"}</span>
+            <strong>{brandPreview}</strong>
+          </div>
+        )}
       </section>
     </div>
   );

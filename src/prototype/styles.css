@@ -10845,6 +10845,33 @@ body:has(.brand-onboarding-page) {
   text-transform: uppercase;
 }
 
+.brand-onboarding-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.onboarding-logout-button {
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  background: #fff;
+  color: #45556c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.onboarding-logout-button:hover {
+  border-color: #8db7ff;
+  color: #174df2;
+}
+
+.onboarding-logout-button:focus-visible {
+  outline: 2px solid #174df2;
+  outline-offset: 2px;
+}
+
 .brand-onboarding-card {
   display: grid;
   gap: 24px;
@@ -10996,6 +11023,7 @@ body:has(.brand-onboarding-page) {
 
 .brand-onboarding-field {
   display: grid;
+  align-self: start;
   gap: 8px;
 }
 
@@ -11529,6 +11557,81 @@ body:has(.brand-onboarding-page) {
   font-size: inherit;
   font-weight: inherit;
   line-height: inherit;
+}
+
+.brand-onboarding-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.brand-uploaded-files {
+  display: grid;
+  gap: 8px;
+}
+
+.brand-asset-card .brand-uploaded-file {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.brand-asset-card .brand-uploaded-file > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.brand-uploaded-file span {
+  overflow: hidden;
+  color: #0e1118;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-uploaded-file small {
+  color: #08768d;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.brand-uploaded-file button {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #d7e0ea;
+  border-radius: 999px;
+  background: #fff;
+  color: #45556c;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.brand-uploaded-file button img {
+  width: 14px;
+  height: 14px;
+}
+
+.brand-onboarding-upload-row.has-files {
+  min-height: 48px;
+  border-style: dashed;
+  background: #fff;
 }
 
 .brand-onboarding-check {
