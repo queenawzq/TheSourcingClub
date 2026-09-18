@@ -1027,9 +1027,9 @@ const brandOnboardingSteps = [
     intro: "Set the regions, certifications, and services you care about most.",
     type: "chips",
     groups: [
-      ["Preferred regions", ["Portugal", "China", "Korea", "India", "Turkey", "United States"], ["Portugal", "China", "Korea"]],
-      ["Certifications", ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP", "No preference"], ["GOTS", "OEKO-TEX"]],
-      ["Services needed", ["Full package", "CMT", "Pattern making", "Sample development", "Fabric sourcing"], ["Full package", "Sample development"]]
+      ["Preferred regions", ["Portugal", "China", "Korea", "India", "Turkey", "United States"], []],
+      ["Certifications", ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP", "No preference"], []],
+      ["Services needed", ["Full package", "CMT", "Pattern making", "Sample development", "Fabric sourcing"], []]
     ]
   },
   {
@@ -1320,6 +1320,12 @@ function App() {
       <BrandOnboarding
         step={brandOnboardingStep}
         isReviewEdit={brandOnboardingReviewEdit}
+        onLogout={() => {
+          setAuthMode("login");
+          setBrandOnboardingStep(0);
+          setBrandOnboardingReviewEdit(false);
+          window.history.replaceState(null, "", `${window.location.pathname}?screen=login`);
+        }}
         onEditSection={(targetStep) => {
           setBrandOnboardingReviewEdit(true);
           setBrandOnboardingStep(targetStep);
@@ -2495,7 +2501,7 @@ export function BrandOnboarding({
   busy = false,
   error = null,
   onSaveAndExit,
-  onSignOut,
+  onLogout,
   documents,
   onDeleteDocument,
 }) {
@@ -2540,16 +2546,9 @@ export function BrandOnboarding({
     <main className="brand-onboarding-page">
       <header className="brand-onboarding-topbar">
         <img src="/assets/logo.svg" alt="The Sourcing Club" />
-        <div className="onboarding-topbar-end">
+        <div className="brand-onboarding-topbar-actions">
           <span>Step {step + 1} of {brandOnboardingSteps.length}</span>
-          {/* Live only. Leaving without saving is a legitimate thing to want,
-              and burying it in the footer beside Save made it look like the
-              same button. */}
-          {onSignOut && (
-            <button className="secondary-btn onboarding-topbar-logout" type="button" onClick={onSignOut}>
-              Log out
-            </button>
-          )}
+          <button className="onboarding-logout-button" type="button" onClick={onLogout}>Log out</button>
         </div>
       </header>
 
@@ -2646,10 +2645,11 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
     if (Array.isArray(actual)) return actual.length ? actual.join(", ") : empty;
     return String(actual).trim() === "" ? empty : actual;
   };
-  const [onboardingStakeholders, setOnboardingStakeholders] = useState(optionsByLabel !== undefined ? (valueFor("Decision makers") ?? []).map((email) => ({ name: email.split("@")[0], email, role: "Stakeholder" })) : [
-    { name: "Ari Chen", email: "ari@maisonrue.com", role: "Founder" },
-    { name: "Maya Lee", email: "maya@maisonrue.com", role: "Production lead" }
-  ]);
+  // Nobody is a stakeholder until someone is added. The drawn examples read
+  // as this brand's actual team, live or not.
+  const [onboardingStakeholders, setOnboardingStakeholders] = useState(
+    (valueFor("Decision makers") ?? []).map((email) => ({ name: email.split("@")[0], email, role: "Stakeholder" })),
+  );
   const [stakeholderModalOpen, setStakeholderModalOpen] = useState(false);
   const [stakeholderDraft, setStakeholderDraft] = useState({ name: "", email: "", role: "Stakeholder" });
 
@@ -2725,12 +2725,12 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
   if (content.type === "sourcingPlan") {
     return (
       <div className="brand-onboarding-form-grid brand-sourcing-volume-grid">
-        {content.fields.map(([label, optionsOrPlaceholder, defaultValue]) => (
+        {content.fields.map(([label, optionsOrPlaceholder]) => (
           <label className="brand-onboarding-field" key={label}>
             <span>{label}<OnboardingRequirement /></span>
             {Array.isArray(optionsOrPlaceholder) ? (
               <select name={onboardingFieldName(label)} defaultValue={valueFor(label) ?? (isLive ? "" : defaultValue ?? "")}>
-                <option value="" disabled />
+                <option value="" disabled>Select an option</option>
                 {optionsFor(label, optionsOrPlaceholder).map((option) => (
                   <option key={option}>{option}</option>
                 ))}
@@ -2753,8 +2753,8 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
         </label>
 
         <div className="brand-context-upload-grid">
-          <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" optional name="brand-logo" fileTypes=".svg,.png,.jpg,.jpeg" documents={documents["brand-logo"] ?? []} onDeleteDocument={onDeleteDocument} />
-          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want vendors to understand." accept="PNG, JPG, or PDF" optional name="brand-images" fileTypes=".png,.jpg,.jpeg,.pdf" multiple documents={documents["brand-images"] ?? []} onDeleteDocument={onDeleteDocument} />
+          <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" fileAccept=".svg,.png,.jpg,.jpeg,image/svg+xml,image/png,image/jpeg" optional name="brand-logo" documents={documents["brand-logo"] ?? []} onDeleteDocument={onDeleteDocument} />
+          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want vendors to understand." accept="PNG, JPG, or PDF" fileAccept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf" optional name="brand-images" documents={documents["brand-images"] ?? []} onDeleteDocument={onDeleteDocument} />
         </div>
       </div>
     );
@@ -2790,18 +2790,20 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
             <strong>Decision makers<OnboardingRequirement /></strong>
             <button className="secondary-btn compact-btn" type="button" onClick={() => setStakeholderModalOpen(true)}>+ Add stakeholder</button>
           </div>
-          <div className="brand-onboarding-stakeholder-list">
-            {onboardingStakeholders.map((stakeholder, index) => (
-              <article className="brand-onboarding-stakeholder-card" key={`${stakeholder.email}-${index}`}>
-                <span>{(stakeholder.name || "Stakeholder").slice(0, 2).toUpperCase()}</span>
-                <div>
-                  <strong>{stakeholder.name || "Stakeholder"}</strong>
-                  <p>{stakeholder.role}{stakeholder.email ? ` · ${stakeholder.email}` : ""}</p>
-                </div>
-                <button className="text-link" type="button" onClick={() => removeOnboardingStakeholder(index)}>Remove</button>
-              </article>
-            ))}
-          </div>
+          {onboardingStakeholders.length > 0 && (
+            <div className="brand-onboarding-stakeholder-list">
+              {onboardingStakeholders.map((stakeholder, index) => (
+                <article className="brand-onboarding-stakeholder-card" key={`${stakeholder.email}-${index}`}>
+                  <span>{(stakeholder.name || "Stakeholder").slice(0, 2).toUpperCase()}</span>
+                  <div>
+                    <strong>{stakeholder.name || "Stakeholder"}</strong>
+                    <p>{stakeholder.role}{stakeholder.email ? ` · ${stakeholder.email}` : ""}</p>
+                  </div>
+                  <button className="text-link" type="button" onClick={() => removeOnboardingStakeholder(index)}>Remove</button>
+                </article>
+              ))}
+            </div>
+          )}
           <p>Founders or decision-makers. We use this to verify your team.</p>
           {/* The list lives in this component's state; this is how it leaves. */}
           <input
@@ -2836,10 +2838,16 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
           document.body
         )}
 
-        <label className="brand-onboarding-field full">
-          <span>Business registration or resale certificate<OnboardingRequirement /></span>
-          <BrandUploadRow name="brand-business-registration" fileTypes=".pdf,.png,.jpg,.jpeg" multiple documents={documents["brand-business-registration"] ?? []} onDeleteDocument={onDeleteDocument} />
-        </label>
+        <BrandAssetUploadCard
+          className="wide brand-business-certificate-upload"
+          title="Business registration or resale certificate"
+          helper=""
+          accept="PDF, PNG, or JPG"
+          fileAccept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+          name="brand-business-registration"
+          documents={documents["brand-business-registration"] ?? []}
+          onDeleteDocument={onDeleteDocument}
+        />
       </div>
     );
   }
@@ -3061,39 +3069,40 @@ function BrandOnboardingChipGroup({ label, options, selected = [], required = fa
   );
 }
 
-function BrandAssetUploadCard({ title, helper, accept, className = "", optional = false, name, fileTypes, multiple = false, documents = [], onDeleteDocument }) {
-  return (
-    <section className={className ? `brand-asset-card ${className}` : "brand-asset-card"}>
-      <div>
-        <strong>{title}{optional && <OnboardingRequirement />}</strong>
-        <span>{helper}</span>
-      </div>
-      <BrandUploadRow name={name} fileTypes={fileTypes} multiple={multiple} documents={documents} onDeleteDocument={onDeleteDocument} />
-      <small>{accept}</small>
-    </section>
-  );
-}
-
-// Every file that has been added is listed, each with its own Delete, and the
-// dropzone underneath says "Upload more" once there is something to add to.
-//
-// Two kinds of row share it. `documents` are files already in storage, which
-// only a live mount has and which Delete removes for real; the rest are files
-// picked on this card and not yet sent, which Delete simply un-picks. Unnamed
-// (the prototype's own use) nothing is read back and both still work.
-function BrandUploadRow({ name, fileTypes, multiple = false, documents = [], onDeleteDocument }) {
-  const [chosen, setChosen] = useState([]);
-  const inputRef = useRef(null);
+/**
+ * Her card, with the File kept.
+ *
+ * The drawn version holds `{id, name}` and clears the input after every pick,
+ * which is right for a prototype and loses the only thing a live mount needs.
+ * Keeping the File and writing the list back into the input means the card
+ * looks and behaves exactly as designed and still submits what was chosen.
+ *
+ * `documents` are files already in storage, which only a live mount has; their
+ * Delete removes the object and the row. The rest are files picked here and
+ * not yet sent, whose Delete simply un-picks them.
+ */
+function BrandAssetUploadCard({ title, helper, accept, fileAccept = "image/*,.pdf", className = "", optional = false, name, documents = [], onDeleteDocument }) {
+  const [files, setFiles] = useState([]);
   const [busyId, setBusyId] = useState(null);
+  const inputRef = useRef(null);
 
-  // The file input is the thing that gets submitted, so un-picking a file has
-  // to rewrite its list rather than just the label above it.
-  function setFiles(files) {
+  const publish = (next) => {
     const transfer = new DataTransfer();
-    files.forEach((file) => transfer.items.add(file));
+    next.forEach((item) => transfer.items.add(item.file));
     if (inputRef.current) inputRef.current.files = transfer.files;
-    setChosen(files);
-  }
+    setFiles(next);
+  };
+
+  const addFiles = (fileList) => {
+    const incomingFiles = Array.from(fileList || []).map((file) => ({
+      id: `${file.name}-${file.size}-${file.lastModified}`,
+      name: file.name,
+      file
+    }));
+
+    const existingIds = new Set(files.map((item) => item.id));
+    publish([...files, ...incomingFiles.filter((item) => !existingIds.has(item.id))]);
+  };
 
   async function removeDocument(doc) {
     if (!onDeleteDocument) return;
@@ -3105,64 +3114,66 @@ function BrandUploadRow({ name, fileTypes, multiple = false, documents = [], onD
     }
   }
 
-  const hasFiles = documents.length > 0 || chosen.length > 0;
+  const hasFiles = documents.length > 0 || files.length > 0;
 
   return (
-    <>
+    <section className={className ? `brand-asset-card ${className}` : "brand-asset-card"}>
+      <div>
+        <strong>{title}{optional && <OnboardingRequirement />}</strong>
+        {helper && <span>{helper}</span>}
+      </div>
       {hasFiles && (
-        <ul className="brand-onboarding-upload-list">
+        <div className="brand-uploaded-files" aria-live="polite">
           {documents.map((doc) => (
-            <li key={doc.id}>
+            <div className="brand-uploaded-file" key={doc.id}>
               <div>
-                <strong>{doc.file_name}</strong>
-                <span>Uploaded</span>
+                <span>{doc.file_name}</span>
+                <small>Uploaded</small>
               </div>
-              <button className="secondary-btn upload-delete" type="button" disabled={busyId === doc.id} onClick={() => removeDocument(doc)}>
+              <button type="button" disabled={busyId === doc.id} onClick={() => removeDocument(doc)}>
                 <img src="/assets/prototype-icons/trash.svg" alt="" />
                 {busyId === doc.id ? "Deleting…" : "Delete"}
               </button>
-            </li>
+            </div>
           ))}
-          {chosen.map((file, index) => (
-            <li key={`${file.name}-${index}`}>
+          {files.map((file) => (
+            <div className="brand-uploaded-file" key={file.id}>
               <div>
-                <strong>{file.name}</strong>
-                <span className="is-pending">Ready to upload</span>
+                <span>{file.name}</span>
+                <small className="is-pending">Ready to upload</small>
               </div>
-              <button
-                className="secondary-btn upload-delete"
-                type="button"
-                onClick={() => setFiles(chosen.filter((_, position) => position !== index))}
-              >
+              <button type="button" onClick={() => publish(files.filter((item) => item.id !== file.id))}>
                 <img src="/assets/prototype-icons/trash.svg" alt="" />
                 Delete
               </button>
-            </li>
+            </div>
           ))}
-        </ul>
+        </div>
       )}
-
+      <input
+        ref={inputRef}
+        className="brand-onboarding-file-input"
+        type="file"
+        name={name}
+        accept={fileAccept}
+        multiple
+        onChange={(event) => addFiles(event.target.files)}
+      />
       <button
-        className={`brand-onboarding-upload-row${hasFiles ? " is-more" : ""}`}
+        className={`brand-onboarding-upload-row${hasFiles ? " has-files" : ""}`}
         type="button"
         onClick={() => inputRef.current?.click()}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          addFiles(event.dataTransfer.files);
+        }}
       >
         <img src="/assets/prototype-icons/upload.svg" alt="" />
         <strong>{hasFiles ? "Upload more" : "Click or drag files to upload"}</strong>
       </button>
-      <input
-        ref={inputRef}
-        type="file"
-        name={name}
-        accept={fileTypes}
-        multiple={multiple}
-        hidden
-        onChange={(event) => {
-          const picked = [...(event.target.files ?? [])];
-          setFiles(multiple ? [...chosen, ...picked] : picked);
-        }}
-      />
-    </>
+      <small>{accept}</small>
+    </section>
   );
 }
 

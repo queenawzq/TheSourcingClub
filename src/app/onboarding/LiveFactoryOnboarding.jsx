@@ -529,7 +529,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       onBack={() => setStep((current) => Math.max(0, current - 1))}
       onNext={next}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
-      onSignOut={onSignOut}
+      onLogout={onSignOut}
       onEditSection={(target) => typeof target === "number" && setStep(target)}
       optionsByLabel={optionsByLabel}
       values={values}

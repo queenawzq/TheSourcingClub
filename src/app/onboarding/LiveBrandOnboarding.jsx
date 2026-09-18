@@ -342,7 +342,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }
       onBack={() => setStep((current) => Math.max(0, current - 1))}
       onNext={next}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
-      onSignOut={onSignOut}
+      onLogout={onSignOut}
       documents={documents}
       onDeleteDocument={removeDocument}
       onEditSection={(target) => typeof target === "number" && setStep(target)}

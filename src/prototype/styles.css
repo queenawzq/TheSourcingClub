@@ -10845,19 +10845,31 @@ body:has(.brand-onboarding-page) {
   text-transform: uppercase;
 }
 
-/* The step counter and the way out sit together on the right. Shared by both
-   onboarding flows; the factory sheet only redeclares the counter. */
-.onboarding-topbar-end {
+.brand-onboarding-topbar-actions {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
 }
 
-.onboarding-topbar-logout {
-  height: 34px;
-  padding: 0 18px;
+.onboarding-logout-button {
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid #cbd5e1;
   border-radius: 999px;
-  font-size: 14px;
+  background: #fff;
+  color: #45556c;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.onboarding-logout-button:hover {
+  border-color: #8db7ff;
+  color: #174df2;
+}
+
+.onboarding-logout-button:focus-visible {
+  outline: 2px solid #174df2;
+  outline-offset: 2px;
 }
 
 .brand-onboarding-card {
@@ -11011,6 +11023,7 @@ body:has(.brand-onboarding-page) {
 
 .brand-onboarding-field {
   display: grid;
+  align-self: start;
   gap: 8px;
   /* Its row grows when the category list opens beside it. Without this the
      label and the input in the other column drift apart to fill the gap. */
@@ -11551,72 +11564,78 @@ body:has(.brand-onboarding-page) {
   line-height: inherit;
 }
 
-/* Files already added, each with its own Delete. The dropzone below turns
-   into "Upload more" whenever this list has anything in it. */
-.brand-onboarding-upload-list {
-  display: grid;
-  gap: 8px;
-  margin: 0 0 8px;
-  padding: 0;
-  list-style: none;
+.brand-onboarding-file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
-.brand-onboarding-upload-list li {
+.brand-uploaded-files {
+  display: grid;
+  gap: 8px;
+}
+
+.brand-asset-card .brand-uploaded-file {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 14px 16px;
-  border: 1px solid #e2e8f0;
+  gap: 12px;
+  align-items: center;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #d7e0ea;
   border-radius: 8px;
   background: #f8fafc;
 }
 
-.brand-onboarding-upload-list li > div {
+.brand-asset-card .brand-uploaded-file > div {
+  min-width: 0;
   display: grid;
   gap: 2px;
-  min-width: 0;
 }
 
-.brand-onboarding-upload-list strong {
+.brand-uploaded-file span {
   overflow: hidden;
-  color: #0b1020;
-  font-size: 14px;
+  color: #0e1118;
+  font-size: 13px;
   font-weight: 700;
-  line-height: 20px;
+  line-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.brand-onboarding-upload-list span {
-  color: #174df2;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 18px;
+.brand-uploaded-file small {
+  color: #08768d;
+  font-size: 12px;
+  line-height: 16px;
 }
 
-.brand-onboarding-upload-list span.is-pending {
-  color: #62748e;
-}
-
-.secondary-btn.upload-delete {
-  display: inline-flex;
+.brand-uploaded-file button {
   flex: 0 0 auto;
-  gap: 8px;
+  display: inline-flex;
   align-items: center;
-  height: 34px;
-  padding: 0 16px;
+  gap: 6px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #d7e0ea;
   border-radius: 999px;
-  font-size: 14px;
+  background: #fff;
+  color: #45556c;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.secondary-btn.upload-delete img {
-  width: 16px;
-  height: 16px;
+.brand-uploaded-file button img {
+  width: 14px;
+  height: 14px;
 }
 
-.brand-onboarding-upload-row.is-more {
-  border: 1px dashed #cbd5e1;
+.brand-onboarding-upload-row.has-files {
+  min-height: 48px;
+  border-style: dashed;
   background: #fff;
 }
 
@@ -17611,4 +17630,10 @@ textarea.note-field {
   outline: 2px solid var(--blue, #2458ff);
   outline-offset: 3px;
   border-radius: 4px;
+}
+
+/* A file chosen but not yet sent reads as a smaller claim than one that is
+   stored. Same row, quieter status. */
+.brand-uploaded-file small.is-pending {
+  color: #62748e;
 }
