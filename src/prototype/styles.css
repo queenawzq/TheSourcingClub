@@ -11012,6 +11012,9 @@ body:has(.brand-onboarding-page) {
 .brand-onboarding-field {
   display: grid;
   gap: 8px;
+  /* Its row grows when the category list opens beside it. Without this the
+     label and the input in the other column drift apart to fill the gap. */
+  align-content: start;
 }
 
 .brand-terms-required {
@@ -11171,13 +11174,15 @@ body:has(.brand-onboarding-page) {
   box-shadow: 0 0 0 1px #155dfc;
 }
 
+/* In the flow, not floating over it. Absolutely positioned, the open list
+   covered Previous and Next — the card's only way forward — so choosing a
+   category and then continuing took a click nobody could see they needed.
+   Opening it pushes the rest of the card down instead. */
 .brand-category-multiselect-menu {
-  position: absolute;
   z-index: 20;
-  top: calc(100% + 6px);
-  left: 0;
   display: grid;
   width: 100%;
+  margin-top: 6px;
   max-height: 316px;
   padding: 6px;
   border: 1px solid #d7e0ea;

@@ -2945,10 +2945,14 @@ function BrandCategoryMultiSelect({ required = false, name, options: providedOpt
       }
     }
 
-    document.addEventListener("pointerdown", closeOnOutsideClick);
+    // `click`, not `pointerdown`. The open list sits in the flow of the card,
+    // so closing it moves everything below back up — including Previous and
+    // Next. On pointerdown that happened between press and release, the button
+    // slid out from under the cursor, and the first click on it did nothing.
+    document.addEventListener("click", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("click", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, []);

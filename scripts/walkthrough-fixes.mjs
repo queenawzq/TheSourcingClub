@@ -102,9 +102,23 @@ async function nextCard(page) {
   while (Date.now() < ready && (await page.locator(`${primary}[disabled]`).count()) > 0) await page.waitForTimeout(250);
   const before = await heading(page);
   await page.locator(primary).first().click();
-  const deadline = Date.now() + 25000;
+  const started = Date.now();
+  const deadline = started + 45000;
   while (Date.now() < deadline && (await heading(page)) === before) await page.waitForTimeout(250);
+  const elapsed = Date.now() - started;
+  if (elapsed > 4000) console.log(`     … "${before}" took ${(elapsed / 1000).toFixed(1)}s to save`);
   await page.waitForTimeout(700);
+  const after = await heading(page);
+  // A card that refused to advance is the single most confusing way this run
+  // fails: every later check then reports the wrong card's contents.
+  if (after === before) {
+    const banner = await page
+      .locator(".brand-onboarding-save-error, .factory-onboarding-save-error")
+      .first()
+      .innerText()
+      .catch(() => "");
+    console.log(`     ! stayed on "${before}"${banner ? ` — ${banner}` : " — no error shown"}`);
+  }
 }
 
 /** Every chip group on the card: how many chips are selected in each. */
@@ -262,6 +276,15 @@ async function main() {
       { name: "business-registration.pdf", mimeType: "application/pdf", buffer: await fs.readFile(FIXTURE) },
       { name: "trading-licence.pdf", mimeType: "application/pdf", buffer: await fs.readFile(FIXTURE) },
     ]);
+    await page.waitForTimeout(500);
+    check(
+      (await page.locator(".verification-upload-block .onboarding-upload-list li").count()) === 2,
+      "both picked registration files are listed, not just a count",
+    );
+    check(
+      (await page.locator(".verification-upload-block .onboarding-file-upload").first().innerText()).trim().toLowerCase() === "upload more",
+      'the dropzone becomes "Upload more" once a file is on the card',
+    );
     await record(page, "references and registration filled");
 
     // Save & log out mid-flow.
@@ -284,6 +307,22 @@ async function main() {
     await record(page, "resumed verification keeps certification and references");
     check((await page.locator(".certification-upload-row").count()) === 1, "certification row restored");
     check((await page.locator(".onboarding-reference-row > div").count()) === 2, "reference rows restored");
+    check(
+      (await page.locator(".verification-upload-block .onboarding-upload-list li").count()) === 2,
+      "and both stored registration files are listed by name",
+    );
+
+    // Delete on a stored file is a real delete: the row and the object behind
+    // it. A list that only looked right would pass every check above.
+    await page.locator(".verification-upload-block .onboarding-upload-list li button").first().click();
+    await page.waitForTimeout(2500);
+    check(
+      (await page.locator(".verification-upload-block .onboarding-upload-list li").count()) === 1,
+      "Delete removes an uploaded registration file from the card",
+    );
+    const { data: left } = await q(() => db.from("documents").select("id").eq("org_id", factoryOrg).eq("kind", "business_registration"));
+    check(db ? left.length === 1 : undefined, `and from the database (${left?.length} left)`);
+    await record(page, "registration file deleted");
     await nextCard(page); // → walkthrough
     await nextCard(page); // → review
     await record(page, "review shows real values");
@@ -339,14 +378,46 @@ async function main() {
     const brandEmail = `fixes-brand-${stamp}@example.com`;
     await signUp(page, { email: brandEmail, fullName: "Ari Chen", companyName: `Fixes Brand ${stamp}`, portal: "brand" });
     check((await page.locator(".onboarding-save-exit").count()) === 1, "brand onboarding offers Save & log out");
+    check((await page.locator(".onboarding-topbar-logout").count()) === 1, "and a Log out beside the step counter");
     await nextCard(page); // basics
     await page.locator(".brand-onboarding-form-grid input").first().fill(`Fixes Brand ${stamp}`);
-    await page.evaluate(() => {
-      const details = document.querySelector(".brand-category-multiselect");
-      details?.setAttribute("open", "");
-    });
-    await page.locator(".brand-category-multiselect-menu input").first().click();
-    await nextCard(page); // context
+
+    // The design's eight options, from taxonomy_terms and not from the
+    // hardcoded array beside them. The four the seed shipped with were words
+    // the design had stopped using.
+    await page.locator(".brand-category-multiselect summary").first().click();
+    const categories = await page.evaluate(() =>
+      [...document.querySelectorAll(".brand-category-multiselect-menu label")].map((l) => l.innerText.trim()),
+    );
+    await record(page, "brand category offers the designed options");
+    for (const wanted of ["Direct-to-consumer brand", "E-commerce retailer", "Wholesale brand", "Distributor / importer"]) {
+      check(categories.includes(wanted), `brand category offers "${wanted}"`);
+    }
+
+    // Two of them, because the field says "select all that apply" and used to
+    // keep only the first.
+    await page.locator(".brand-category-multiselect-menu input").nth(0).click();
+    await page.locator(".brand-category-multiselect-menu input").nth(1).click();
+
+    // Closing the open list moves Next back up the card. Clicking Next while
+    // it is open must still reach the button, not the space it left behind.
+    const cardBefore = await heading(page);
+    await page.locator(".brand-onboarding-actions .primary-btn").first().click();
+    await page.waitForTimeout(3000);
+    check(
+      (await heading(page)) !== cardBefore,
+      "Next works on the first click with the category list open",
+    );
+    if (db) {
+      const org = await orgFor(brandEmail);
+      const { data: links } = await q(() => db
+        .from("taxonomy_links")
+        .select("taxonomy_terms (kind, slug)")
+        .eq("subject_type", "brand_profile")
+        .eq("subject_id", org));
+      const chosen = (links ?? []).filter((row) => row.taxonomy_terms?.kind === "brand_category");
+      check(chosen.length === 2, `both brand categories saved (${JSON.stringify(chosen.map((r) => r.taxonomy_terms.slug))})`);
+    }
     await nextCard(page); // chips
     const brandChips = await selectedChipCounts(page);
     await record(page, "brand chips start blank");
