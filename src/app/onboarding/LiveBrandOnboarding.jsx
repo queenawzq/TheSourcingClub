@@ -27,7 +27,7 @@ import { completeOnboarding, getSelectedTerms, saveBrandProfile } from "../../li
 import { inviteMember } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { toCents } from "../../lib/money.js";
-import { listDocuments, uploadDocument } from "../../lib/domain/documents.js";
+import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 
 /** Uploads on the designed cards → document kind. The kind decides the bucket. */
 const UPLOAD_KINDS = {
@@ -36,13 +36,18 @@ const UPLOAD_KINDS = {
   "brand-business-registration": "business_registration",
 };
 
+/** The reverse of UPLOAD_KINDS: document kind → the designed card's field. */
+const FIELD_FOR_KIND = Object.fromEntries(
+  Object.entries(UPLOAD_KINDS).map(([field, kind]) => [kind, field]),
+);
+
 const UPLOADED_FLAG = {
   logo: "uploaded-logo",
   product_image: "uploaded-images",
   business_registration: "uploaded-registration",
 };
 
-const TERMS_VERSION = "2026-09-15";
+const TERMS_VERSION = "2026-09-18";
 
 /** Index of the designed "You're all set" card, the last of the ten. */
 const LAST_STEP = 9;
@@ -74,7 +79,11 @@ const KIND_FOR_LABEL = {
   "Services needed": "service",
 };
 
-/** The one single-choice group stored as a slug column rather than a link. */
+/**
+ * "Select all that apply", so it is stored as links like the other groups. The
+ * `brand_category` column keeps the first choice, because migration 011 made
+ * it a single slug and several things still read it that way.
+ */
 const CATEGORY_LABEL = "Brand category";
 const CATEGORY_KIND = "brand_category";
 
@@ -98,6 +107,10 @@ function parsePriceRange(text) {
 export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }) {
   const [step, setStep] = useState(0);
   const [values, setValues] = useState({});
+  // Files already in storage, keyed by the designed card's field name. The
+  // card lists them with a working Delete; without this it could only say how
+  // many there were.
+  const [documents, setDocuments] = useState({});
   const [terms, setTerms] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -129,9 +142,12 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }
         const restored = {};
         const invitedEmails = (invitations.data ?? []).map((row) => row.email);
         if (invitedEmails.length) restored[onboardingFieldName("Decision makers")] = invitedEmails;
-        Object.values(UPLOADED_FLAG).forEach((flag, index) => {
+        const byField = {};
+        Object.entries(UPLOADED_FLAG).forEach(([kind, flag], index) => {
           if (uploaded[index]?.length) restored[flag] = String(uploaded[index].length);
+          byField[FIELD_FOR_KIND[kind]] = uploaded[index] ?? [];
         });
+        setDocuments(byField);
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
           if (profile[column] != null) restored[onboardingFieldName(label)] = String(profile[column]);
         }
@@ -143,7 +159,13 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }
             .map((term) => termLabel(term));
           if (labels.length) restored[onboardingFieldName(label)] = labels;
         }
-        if (profile.brand_category) {
+        // Links first, because they hold the full answer. The column is the
+        // fallback for a profile saved before the field became multi-choice.
+        const categoryIds = selected?.[CATEGORY_KIND] ?? [];
+        const categories = (byKind[CATEGORY_KIND] ?? []).filter((term) => categoryIds.includes(term.id));
+        if (categories.length) {
+          restored[onboardingFieldName(CATEGORY_LABEL)] = categories.map((term) => termLabel(term));
+        } else if (profile.brand_category) {
           const term = (byKind[CATEGORY_KIND] ?? []).find((t) => t.slug === profile.brand_category);
           if (term) restored[onboardingFieldName(CATEGORY_LABEL)] = [termLabel(term)];
         }
@@ -177,6 +199,21 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }
     [terms],
   );
 
+  /**
+   * Delete is a real delete: the storage object and the documents row both go.
+   * The count the review card reads is kept in step, or the summary keeps
+   * claiming a file that is no longer there.
+   */
+  async function removeDocument(doc) {
+    await deleteDocument(doc);
+    const field = FIELD_FOR_KIND[doc.kind] ?? Object.keys(UPLOAD_KINDS).find((key) => (documents[key] ?? []).some((row) => row.id === doc.id));
+    const kind = UPLOAD_KINDS[field];
+    if (!field || !kind) return;
+    const fresh = await listDocuments(org.id, kind);
+    setDocuments((current) => ({ ...current, [field]: fresh }));
+    setValues((current) => ({ ...current, [UPLOADED_FLAG[kind]]: fresh.length ? String(fresh.length) : "" }));
+  }
+
   async function persist(submitted) {
     const patch = {};
     const links = [];
@@ -197,10 +234,14 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }
       links.push({ kind, termIds: termsFor(kind, chosen) });
     }
 
+    // "Select all that apply". The whole answer goes to taxonomy_links like
+    // every other multi-choice group; the column keeps the first choice, which
+    // is what the review card, the admin queue and match scoring already read.
     const category = submitted[onboardingFieldName(CATEGORY_LABEL)];
     if (category !== undefined) {
-      const term = (terms[CATEGORY_KIND] ?? []).find((t) => category.includes(termLabel(t)));
-      patch.brand_category = term?.slug ?? null;
+      const chosen = (terms[CATEGORY_KIND] ?? []).filter((t) => category.includes(termLabel(t)));
+      patch.brand_category = chosen[0]?.slug ?? null;
+      links.push({ kind: CATEGORY_KIND, termIds: chosen.map((t) => t.id) });
     }
 
     if (Object.keys(patch).length) await saveBrandProfile(org.id, patch);
@@ -210,7 +251,11 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }
       const chosen = submitted[field];
       const files = Array.isArray(chosen) ? chosen : chosen instanceof File ? [chosen] : [];
       for (const file of files) await uploadDocument({ orgId: org.id, kind, file });
-      if (files.length) flags[UPLOADED_FLAG[kind]] = String((Number(values[UPLOADED_FLAG[kind]]) || 0) + files.length);
+      if (files.length) {
+        flags[UPLOADED_FLAG[kind]] = String((Number(values[UPLOADED_FLAG[kind]]) || 0) + files.length);
+        const fresh = await listDocuments(org.id, kind);
+        setDocuments((current) => ({ ...current, [field]: fresh }));
+      }
     }
     if (Object.keys(flags).length) setValues((current) => ({ ...current, ...flags }));
 
@@ -297,6 +342,9 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }
       onBack={() => setStep((current) => Math.max(0, current - 1))}
       onNext={next}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
+      onSignOut={onSignOut}
+      documents={documents}
+      onDeleteDocument={removeDocument}
       onEditSection={(target) => typeof target === "number" && setStep(target)}
       optionsByLabel={optionsByLabel}
       values={values}

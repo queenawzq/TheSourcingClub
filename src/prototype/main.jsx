@@ -1053,6 +1053,10 @@ const brandOnboardingSteps = [
       ["Brand Responsibilities", "Keep your profile, project briefs, payment status, and decision-maker details accurate so vendors can quote and plan production confidently."],
       ["Verification", "We review your business registration or resale certificate. Documents must be genuine and current, and an account whose documents cannot be verified may be paused."],
       ["Quotes, Orders & Payments", "Awarding a quote records its terms as a production order with that vendor. You pay the vendor by bank transfer for each agreed step; The Sourcing Club records every payment but never holds or moves funds."],
+      ["Who the Agreement Is With", "The production order is between you and the vendor. The Sourcing Club introduces you, records what you both agreed, and keeps the trail — it is not a party to your contract, does not manufacture, inspect, ship, or take title to goods, and does not guarantee quality, timing, or payment."],
+      ["Messages and Translation", "Conversations are stored so both sides have the same record, and messages may be machine-translated between English and Chinese. The translation is a convenience — the message as it was typed is always kept and shown, and it is the version that counts."],
+      ["Credits, Discounts and Referrals", "Welcome discounts, referral rewards, and credits are promotional, have no cash value, and may be changed or withdrawn. They never reduce what you owe a vendor."],
+      ["Your Account", "You are responsible for what is done under your login and for the people you invite to your organisation. We may pause or close an account that cannot be verified, misrepresents a company, or is used to work around these terms; you can ask us to close yours at any time, and records of orders and payments are kept where we are required to keep them."],
       ["Changes to These Terms", "We may update these terms. When we do, we will ask you to review and accept the new version before you continue."]
     ],
     agreement: "I have read and agree to the Terms and Conditions",
@@ -2491,6 +2495,9 @@ export function BrandOnboarding({
   busy = false,
   error = null,
   onSaveAndExit,
+  onSignOut,
+  documents,
+  onDeleteDocument,
 }) {
   const current = brandOnboardingSteps[step];
   const isFirst = step === 0;
@@ -2533,7 +2540,17 @@ export function BrandOnboarding({
     <main className="brand-onboarding-page">
       <header className="brand-onboarding-topbar">
         <img src="/assets/logo.svg" alt="The Sourcing Club" />
-        <span>Step {step + 1} of {brandOnboardingSteps.length}</span>
+        <div className="onboarding-topbar-end">
+          <span>Step {step + 1} of {brandOnboardingSteps.length}</span>
+          {/* Live only. Leaving without saving is a legitimate thing to want,
+              and burying it in the footer beside Save made it look like the
+              same button. */}
+          {onSignOut && (
+            <button className="secondary-btn onboarding-topbar-logout" type="button" onClick={onSignOut}>
+              Log out
+            </button>
+          )}
+        </div>
       </header>
 
       <section className={`brand-onboarding-card ${current.type}`} aria-label={current.title} onInput={clearFieldError} onChange={clearFieldError}>
@@ -2551,6 +2568,8 @@ export function BrandOnboarding({
           onEditSection={onEditSection}
           optionsByLabel={optionsByLabel}
           values={savedValues}
+          documents={documents}
+          onDeleteDocument={onDeleteDocument}
         />
 
         {error && <p className="brand-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
@@ -2582,7 +2601,7 @@ export function BrandOnboarding({
   );
 }
 
-function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, values = {} }) {
+function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, values = {}, documents = {}, onDeleteDocument }) {
   // Live mounts replace a hardcoded option list with the taxonomy; the
   // prototype passes nothing and keeps its own. The design is the UI, never
   // the data source.
@@ -2734,8 +2753,8 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
         </label>
 
         <div className="brand-context-upload-grid">
-          <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" optional name="brand-logo" fileTypes=".svg,.png,.jpg,.jpeg" uploadedLabel={values?.["uploaded-logo"] ? "Uploaded" : ""} />
-          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want vendors to understand." accept="PNG, JPG, or PDF" optional name="brand-images" fileTypes=".png,.jpg,.jpeg,.pdf" multiple uploadedLabel={values?.["uploaded-images"] ? `${values["uploaded-images"]} uploaded` : ""} />
+          <BrandAssetUploadCard className="wide" title="Logo" helper="Upload your logo, wordmark, or icon mark." accept="SVG, PNG, or JPG" optional name="brand-logo" fileTypes=".svg,.png,.jpg,.jpeg" documents={documents["brand-logo"] ?? []} onDeleteDocument={onDeleteDocument} />
+          <BrandAssetUploadCard className="wide" title="Product or production images" helper="Upload product references, production examples, construction details, material direction, or finished pieces you want vendors to understand." accept="PNG, JPG, or PDF" optional name="brand-images" fileTypes=".png,.jpg,.jpeg,.pdf" multiple documents={documents["brand-images"] ?? []} onDeleteDocument={onDeleteDocument} />
         </div>
       </div>
     );
@@ -2819,7 +2838,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
 
         <label className="brand-onboarding-field full">
           <span>Business registration or resale certificate<OnboardingRequirement /></span>
-          <BrandUploadRow name="brand-business-registration" fileTypes=".pdf,.png,.jpg,.jpeg" multiple uploadedLabel={values?.["uploaded-registration"] ? `${values["uploaded-registration"]} uploaded` : ""} />
+          <BrandUploadRow name="brand-business-registration" fileTypes=".pdf,.png,.jpg,.jpeg" multiple documents={documents["brand-business-registration"] ?? []} onDeleteDocument={onDeleteDocument} />
         </label>
       </div>
     );
@@ -3038,42 +3057,105 @@ function BrandOnboardingChipGroup({ label, options, selected = [], required = fa
   );
 }
 
-function BrandAssetUploadCard({ title, helper, accept, className = "", optional = false, name, fileTypes, multiple = false, uploadedLabel = "" }) {
+function BrandAssetUploadCard({ title, helper, accept, className = "", optional = false, name, fileTypes, multiple = false, documents = [], onDeleteDocument }) {
   return (
     <section className={className ? `brand-asset-card ${className}` : "brand-asset-card"}>
       <div>
         <strong>{title}{optional && <OnboardingRequirement />}</strong>
         <span>{helper}</span>
       </div>
-      <BrandUploadRow name={name} fileTypes={fileTypes} multiple={multiple} uploadedLabel={uploadedLabel} />
+      <BrandUploadRow name={name} fileTypes={fileTypes} multiple={multiple} documents={documents} onDeleteDocument={onDeleteDocument} />
       <small>{accept}</small>
     </section>
   );
 }
 
-// The drawn upload row opens a real picker, and what was chosen replaces its
-// label. Unnamed (the prototype's own use) it reads nothing back.
-function BrandUploadRow({ name, fileTypes, multiple = false, uploadedLabel = "" }) {
-  const [chosen, setChosen] = useState("");
+// Every file that has been added is listed, each with its own Delete, and the
+// dropzone underneath says "Upload more" once there is something to add to.
+//
+// Two kinds of row share it. `documents` are files already in storage, which
+// only a live mount has and which Delete removes for real; the rest are files
+// picked on this card and not yet sent, which Delete simply un-picks. Unnamed
+// (the prototype's own use) nothing is read back and both still work.
+function BrandUploadRow({ name, fileTypes, multiple = false, documents = [], onDeleteDocument }) {
+  const [chosen, setChosen] = useState([]);
+  const inputRef = useRef(null);
+  const [busyId, setBusyId] = useState(null);
+
+  // The file input is the thing that gets submitted, so un-picking a file has
+  // to rewrite its list rather than just the label above it.
+  function setFiles(files) {
+    const transfer = new DataTransfer();
+    files.forEach((file) => transfer.items.add(file));
+    if (inputRef.current) inputRef.current.files = transfer.files;
+    setChosen(files);
+  }
+
+  async function removeDocument(doc) {
+    if (!onDeleteDocument) return;
+    setBusyId(doc.id);
+    try {
+      await onDeleteDocument(doc);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const hasFiles = documents.length > 0 || chosen.length > 0;
+
   return (
     <>
+      {hasFiles && (
+        <ul className="brand-onboarding-upload-list">
+          {documents.map((doc) => (
+            <li key={doc.id}>
+              <div>
+                <strong>{doc.file_name}</strong>
+                <span>Uploaded</span>
+              </div>
+              <button className="secondary-btn upload-delete" type="button" disabled={busyId === doc.id} onClick={() => removeDocument(doc)}>
+                <img src="/assets/prototype-icons/trash.svg" alt="" />
+                {busyId === doc.id ? "Deleting…" : "Delete"}
+              </button>
+            </li>
+          ))}
+          {chosen.map((file, index) => (
+            <li key={`${file.name}-${index}`}>
+              <div>
+                <strong>{file.name}</strong>
+                <span className="is-pending">Ready to upload</span>
+              </div>
+              <button
+                className="secondary-btn upload-delete"
+                type="button"
+                onClick={() => setFiles(chosen.filter((_, position) => position !== index))}
+              >
+                <img src="/assets/prototype-icons/trash.svg" alt="" />
+                Delete
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <button
-        className="brand-onboarding-upload-row"
+        className={`brand-onboarding-upload-row${hasFiles ? " is-more" : ""}`}
         type="button"
-        onClick={(event) => event.currentTarget.parentElement.querySelector('input[type="file"]')?.click()}
+        onClick={() => inputRef.current?.click()}
       >
         <img src="/assets/prototype-icons/upload.svg" alt="" />
-        <strong>{chosen || uploadedLabel || "Click or drag files to upload"}</strong>
+        <strong>{hasFiles ? "Upload more" : "Click or drag files to upload"}</strong>
       </button>
       <input
+        ref={inputRef}
         type="file"
         name={name}
         accept={fileTypes}
         multiple={multiple}
         hidden
         onChange={(event) => {
-          const files = [...(event.target.files ?? [])];
-          setChosen(files.length > 1 ? `${files.length} files selected` : files[0]?.name ?? "");
+          const picked = [...(event.target.files ?? [])];
+          setFiles(multiple ? [...chosen, ...picked] : picked);
         }}
       />
     </>

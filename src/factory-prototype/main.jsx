@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
@@ -1571,6 +1571,10 @@ const onboardingCopy = {
           ["Factory Responsibilities", "Keep your profile, capacity, certifications, and contact details up to date. Quotes, lead times, and production commitments should reflect what your factory can realistically deliver."],
           ["Verification", "We review your business registration and any certificates you upload before you can quote. Documents must be genuine and current, and a profile whose documents cannot be verified may be paused."],
           ["Quotes, Orders & Payments", "A quote you send is an offer on the terms shown. When a brand awards it, those terms are recorded as the production order. Brands pay you by bank transfer for each agreed step; The Sourcing Club records every payment but never holds or moves funds."],
+          ["Who the Agreement Is With", "The production order is between you and the brand. The Sourcing Club introduces you, records what you both agreed, and keeps the trail — it is not a party to your contract, does not buy or take title to goods, and does not guarantee that a brand will pay or that an order will proceed."],
+          ["Messages and Translation", "Conversations are stored so both sides have the same record, and messages may be machine-translated between English and Chinese. The translation is a convenience — the message as it was typed is always kept and shown, and it is the version that counts."],
+          ["Credits, Discounts and Referrals", "Credits, referral rewards, and promotional discounts have no cash value and may be changed or withdrawn. They never change what a brand owes you."],
+          ["Your Account", "You are responsible for what is done under your login and for the people you invite to your organisation. We may pause or close an account that cannot be verified, misrepresents a company, or is used to work around these terms; you can ask us to close yours at any time, and records of orders and payments are kept where we are required to keep them."],
           ["Changes to These Terms", "We may update these terms. When we do, we will ask you to review and accept the new version before you continue."]
         ],
         agreement: "I have read and agree to the Terms and Conditions",
@@ -1701,6 +1705,10 @@ const onboardingCopy = {
           ["工厂责任", "请及时更新工厂资料、产能、认证和联系方式。报价、交期和生产承诺应符合工厂实际可交付能力。"],
           ["资质验证", "在你可以报价之前，我们会审核你的营业执照和上传的证书。文件必须真实有效；无法验证文件的资料可能会被暂停。"],
           ["报价、订单与付款", "你发送的报价即为按所示条款提出的报价。品牌授予后，这些条款将记录为生产订单。品牌按每个约定步骤通过银行转账向你付款；The Sourcing Club 记录每笔付款，但从不持有或转移资金。"],
+          ["合同主体", "生产订单是你与品牌之间的合同。The Sourcing Club 负责撮合双方、记录双方约定并保存记录，但不是你们合同的当事方，不采购货物也不取得货物所有权，且不担保品牌一定付款或订单一定履行。"],
+          ["消息与翻译", "对话会被保存，使双方持有同一份记录；消息可能会在中英文之间机器翻译。翻译仅为便利功能——你输入的原文始终会被保存并展示，并以原文为准。"],
+          ["积分、折扣与推荐奖励", "积分、推荐奖励和促销折扣没有现金价值，可能被调整或取消，且不会改变品牌应付给你的金额。"],
+          ["你的账户", "你需对以你的账号所做的操作，以及你邀请加入组织的成员负责。若账户无法通过验证、虚假陈述公司信息，或被用于规避本条款，我们可能暂停或关闭该账户；你也可以随时要求我们关闭账户，订单与付款记录将在法律要求的范围内保留。"],
           ["条款变更", "我们可能会更新本条款。届时我们会请你在继续使用前查看并接受新版本。"]
         ],
         agreement: "我已阅读并同意条款与条件",
@@ -1828,6 +1836,10 @@ const tradingOnboardingCopy = {
           ["Trading Company Responsibilities", "Disclose your role clearly, keep partner-factory information current, and ensure quotes and production commitments reflect what your network can deliver."],
           ["Verification", "We review your business registration and any certificates you upload before you can quote. Documents must be genuine and current, and a profile whose documents cannot be verified may be paused."],
           ["Quotes, Orders & Payments", "A quote you send is an offer on the terms shown. When a brand awards it, those terms are recorded as the production order. Brands pay you by bank transfer for each agreed step; The Sourcing Club records every payment but never holds or moves funds."],
+          ["Who the Agreement Is With", "The production order is between you and the brand. The Sourcing Club introduces you, records what you both agreed, and keeps the trail — it is not a party to your contract, does not buy or take title to goods, and does not guarantee that a brand will pay or that an order will proceed."],
+          ["Messages and Translation", "Conversations are stored so both sides have the same record, and messages may be machine-translated between English and Chinese. The translation is a convenience — the message as it was typed is always kept and shown, and it is the version that counts."],
+          ["Credits, Discounts and Referrals", "Credits, referral rewards, and promotional discounts have no cash value and may be changed or withdrawn. They never change what a brand owes you."],
+          ["Your Account", "You are responsible for what is done under your login and for the people you invite to your organisation. We may pause or close an account that cannot be verified, misrepresents a company, or is used to work around these terms; you can ask us to close yours at any time, and records of orders and payments are kept where we are required to keep them."],
           ["Changes to These Terms", "We may update these terms. When we do, we will ask you to review and accept the new version before you continue."]
         ],
         agreement: "I have read and agree to the Terms and Conditions",
@@ -1953,6 +1965,10 @@ tradingOnboardingCopy.zh = {
         ["贸易公司责任", "清楚披露你的角色，及时更新合作工厂信息，并确保报价和生产承诺符合供应商网络的实际交付能力。"],
         ["资质验证", "在你可以报价之前，我们会审核你的营业执照和上传的证书。文件必须真实有效；无法验证文件的资料可能会被暂停。"],
         ["报价、订单与付款", "你发送的报价即为按所示条款提出的报价。品牌授予后，这些条款将记录为生产订单。品牌按每个约定步骤通过银行转账向你付款；The Sourcing Club 记录每笔付款，但从不持有或转移资金。"],
+        ["合同主体", "生产订单是你与品牌之间的合同。The Sourcing Club 负责撮合双方、记录双方约定并保存记录，但不是你们合同的当事方，不采购货物也不取得货物所有权，且不担保品牌一定付款或订单一定履行。"],
+        ["消息与翻译", "对话会被保存，使双方持有同一份记录；消息可能会在中英文之间机器翻译。翻译仅为便利功能——你输入的原文始终会被保存并展示，并以原文为准。"],
+        ["积分、折扣与推荐奖励", "积分、推荐奖励和促销折扣没有现金价值，可能被调整或取消，且不会改变品牌应付给你的金额。"],
+        ["你的账户", "你需对以你的账号所做的操作，以及你邀请加入组织的成员负责。若账户无法通过验证、虚假陈述公司信息，或被用于规避本条款，我们可能暂停或关闭该账户；你也可以随时要求我们关闭账户，订单与付款记录将在法律要求的范围内保留。"],
         ["条款变更", "我们可能会更新本条款。届时我们会请你在继续使用前查看并接受新版本。"]
       ],
       agreement: "我已阅读并同意条款与条件",
@@ -6589,6 +6605,9 @@ export function FactoryOnboarding({
   busy = false,
   error = null,
   onSaveAndExit,
+  onSignOut,
+  documents,
+  onDeleteDocument,
   certificationOptions,
   certifications,
   onAddCertification,
@@ -6633,7 +6652,15 @@ export function FactoryOnboarding({
     <main className="factory-onboarding-page">
       <header className="factory-onboarding-topbar">
         <img src="/assets/logo.svg" alt="The Sourcing Club" />
-        <span>{language === "zh" ? `第 ${step + 1} 步 / 共 ${copy.steps.length} 步` : `Step ${step + 1} of ${copy.steps.length}`}</span>
+        <div className="onboarding-topbar-end">
+          <span>{language === "zh" ? `第 ${step + 1} 步 / 共 ${copy.steps.length} 步` : `Step ${step + 1} of ${copy.steps.length}`}</span>
+          {/* Live only. See the brand flow's copy of this. */}
+          {onSignOut && (
+            <button className="secondary-btn onboarding-topbar-logout" type="button" onClick={onSignOut}>
+              {language === "zh" ? "退出登录" : "Log out"}
+            </button>
+          )}
+        </div>
       </header>
 
       <section
@@ -6668,6 +6695,8 @@ export function FactoryOnboarding({
           onUploadCertificate={onUploadCertificate}
           onDeleteCertificate={onDeleteCertificate}
           registrationFileName={registrationFileName}
+          documents={documents}
+          onDeleteDocument={onDeleteDocument}
         />
 
         {error && <p className="factory-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
@@ -6705,6 +6734,7 @@ export function FactoryOnboarding({
 function FactoryOnboardingStep({
   step, content, companyType, language, onLanguageChange, onCompanyTypeChange, onEditSection, optionsByLabel, values = {},
   certificationOptions, certifications, onAddCertification, onUploadCertificate, onDeleteCertificate, registrationFileName,
+  documents = {}, onDeleteDocument,
 }) {
   // Keys and option lists both resolve through the English copy, so neither
   // depends on the language the form happens to be displayed in.
@@ -6777,7 +6807,7 @@ function FactoryOnboardingStep({
   }
 
   if (stepType === "context") {
-    return <OnboardingBrandContext content={content} language={language} values={values} />;
+    return <OnboardingBrandContext content={content} language={language} values={values} documents={documents} onDeleteDocument={onDeleteDocument} />;
   }
 
   if (stepType === "capacity") {
@@ -6817,7 +6847,8 @@ function FactoryOnboardingStep({
         onAddCertification={onAddCertification}
         onUploadCertificate={onUploadCertificate}
         onDeleteCertificate={onDeleteCertificate}
-        registrationFileName={registrationFileName}
+        registrationDocuments={documents["business-registration"] ?? []}
+        onDeleteRegistration={onDeleteDocument}
       />
     );
   }
@@ -6843,17 +6874,12 @@ function FactoryOnboardingStep({
             ))}
           </div>
         </section>
-        <section className="walkthrough-options">
-          <strong>{content.optionTitle}</strong>
-          <div>
-            {content.options.map(([title, helper]) => (
-              <button className="walkthrough-option" type="button" key={title}>
-                <strong>{title}</strong>
-                <small>{helper}</small>
-              </button>
-            ))}
-          </div>
-        </section>
+        <WalkthroughVideo
+          content={content}
+          language={language}
+          documents={documents["factory-walkthrough"] ?? []}
+          onDeleteDocument={onDeleteDocument}
+        />
       </div>
     );
   }
@@ -6988,10 +7014,10 @@ function FactoryOnboardingStep({
  */
 function OnboardingVerification({
   content, language, live, values = {},
-  certificationOptions, certifications: savedCertifications, onAddCertification, onUploadCertificate, onDeleteCertificate, registrationFileName,
+  certificationOptions, certifications: savedCertifications, onAddCertification, onUploadCertificate, onDeleteCertificate,
+  registrationDocuments = [], onDeleteRegistration,
 }) {
   const isZh = language === "zh";
-  const [registrationName, setRegistrationName] = useState(registrationFileName ?? "");
   const [certs, setCerts] = useState(() => live
     ? savedCertifications ?? []
     : content.certifications.map(([name, status]) => ({
@@ -7013,9 +7039,6 @@ function OnboardingVerification({
   useEffect(() => {
     if (live && savedCertifications) setCerts(savedCertifications);
   }, [live, savedCertifications]);
-  useEffect(() => {
-    if (registrationFileName) setRegistrationName(registrationFileName);
-  }, [registrationFileName]);
 
   const options = certificationOptions ?? ["GOTS", "OEKO-TEX Standard 100", "BSCI", "GRS", "WRAP", "Fair Trade", "ISO 9001", "Sedex"];
   const available = options.filter((option) => !certs.some((cert) => cert.name === option));
@@ -7075,23 +7098,14 @@ function OnboardingVerification({
     <div className="factory-onboarding-section verification-step">
       <div className="verification-upload-block">
         <strong>{content.businessLabel}</strong>
-        <button
-          className="onboarding-file-upload"
-          type="button"
-          onClick={(event) => event.currentTarget.parentElement.querySelector('input[type="file"]')?.click()}
-        >
-          {registrationName || content.businessUpload}
-        </button>
-        <input
-          type="file"
+        <OnboardingFileList
           name="business-registration"
-          accept=".pdf,.png,.jpg,.jpeg"
+          fileTypes=".pdf,.png,.jpg,.jpeg"
           multiple
-          hidden
-          onChange={(event) => {
-            const files = [...(event.target.files ?? [])];
-            setRegistrationName(files.length > 1 ? `${files.length} files selected` : files[0]?.name ?? "");
-          }}
+          uploadLabel={content.businessUpload}
+          documents={registrationDocuments}
+          onDeleteDocument={onDeleteRegistration}
+          language={language}
         />
         <small>{content.businessHelper}</small>
       </div>
@@ -7187,7 +7201,7 @@ function OnboardingVerification({
   );
 }
 
-function OnboardingBrandContext({ content, language, values = {} }) {
+function OnboardingBrandContext({ content, language, values = {}, documents = {}, onDeleteDocument }) {
   return (
     <div className="factory-brand-context-step">
       <label className="factory-onboarding-field full-width">
@@ -7203,7 +7217,9 @@ function OnboardingBrandContext({ content, language, values = {} }) {
           uploadLabel={language === "zh" ? "点击或拖拽文件上传" : "Click or drag files to upload"}
           name="factory-logo"
           fileTypes=".svg,.png,.jpg,.jpeg"
-          uploadedLabel={values?.["uploaded-logo"] ? (language === "zh" ? "已上传" : "Uploaded") : ""}
+          language={language}
+          documents={documents["factory-logo"] ?? []}
+          onDeleteDocument={onDeleteDocument}
         />
         <OnboardingAssetUploadCard
           title={content.imagesTitle}
@@ -7213,40 +7229,317 @@ function OnboardingBrandContext({ content, language, values = {} }) {
           name="factory-samples"
           fileTypes=".png,.jpg,.jpeg,.pdf"
           multiple
-          uploadedLabel={values?.["uploaded-samples"] ? (language === "zh" ? `已上传 ${values["uploaded-samples"]} 个文件` : `${values["uploaded-samples"]} uploaded`) : ""}
+          language={language}
+          documents={documents["factory-samples"] ?? []}
+          onDeleteDocument={onDeleteDocument}
         />
       </div>
     </div>
   );
 }
 
-// The drawn button opens a real picker, and what was chosen replaces its label
-// — the same treatment the business registration upload gets.
-function OnboardingAssetUploadCard({ title, helper, accept, uploadLabel, name, fileTypes, multiple = false, uploadedLabel = "" }) {
-  const [chosen, setChosen] = useState("");
+/**
+ * The walkthrough video: the two drawn choices, both of them real.
+ *
+ * "Upload video" is a file picker. "Record directly" opens the camera in the
+ * page, records with MediaRecorder, and hands back a file — the same file the
+ * picker would have produced, so both paths end in one hidden input and the
+ * live mount uploads whatever is in it without caring which was used.
+ *
+ * A browser that refuses the camera says so on the card. The drawn copy
+ * promises a recorder; an option that silently does nothing is worse than one
+ * that explains itself.
+ */
+function WalkthroughVideo({ content, language, documents = [], onDeleteDocument }) {
+  const isZh = language === "zh";
+  const [mode, setMode] = useState(null);
+  const [recording, setRecording] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [problem, setProblem] = useState(null);
+  const [captured, setCaptured] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  const inputRef = useRef(null);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const recorderRef = useRef(null);
+
+  // The camera stays on only while the recorder card is open. Leaving the step
+  // with the light still on is the kind of thing a factory notices.
+  const stopStream = useCallback(() => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+  }, []);
+
+  useEffect(() => stopStream, [stopStream]);
+
+  useEffect(() => {
+    if (!recording) return undefined;
+    const timer = setInterval(() => setSeconds((current) => current + 1), 1000);
+    return () => clearInterval(timer);
+  }, [recording]);
+
+  function publish(file) {
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    if (inputRef.current) inputRef.current.files = transfer.files;
+    setCaptured(file);
+  }
+
+  async function openRecorder() {
+    setProblem(null);
+    setMode("record");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.muted = true;
+        await videoRef.current.play().catch(() => {});
+      }
+    } catch {
+      setProblem(isZh
+        ? "无法使用摄像头。请在浏览器中允许摄像头权限，或改为上传已拍好的视频。"
+        : "The camera is not available. Allow camera access in your browser, or upload a video you have already recorded.");
+      setMode(null);
+    }
+  }
+
+  function startRecording() {
+    if (!streamRef.current) return;
+    const chunks = [];
+    const recorder = new MediaRecorder(streamRef.current);
+    recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: recorder.mimeType || "video/webm" });
+      publish(new File([blob], `factory-walkthrough-${Date.now()}.webm`, { type: blob.type }));
+      stopStream();
+      setMode(null);
+    };
+    recorderRef.current = recorder;
+    setSeconds(0);
+    setRecording(true);
+    recorder.start();
+  }
+
+  function stopRecording() {
+    recorderRef.current?.stop();
+    recorderRef.current = null;
+    setRecording(false);
+  }
+
+  async function removeDocument(doc) {
+    if (!onDeleteDocument) return;
+    setBusyId(doc.id);
+    try {
+      await onDeleteDocument(doc);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const clock = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const [recordOption, uploadOption] = content.options;
+
   return (
-    <section className="factory-brand-asset-card">
-      <div>
-        <strong>{title}</strong>
-        <span>{helper}</span>
-      </div>
+    <section className="walkthrough-options">
+      <strong>{content.optionTitle}</strong>
+
+      {(documents.length > 0 || captured) && (
+        <ul className="onboarding-upload-list">
+          {documents.map((doc) => (
+            <li key={doc.id}>
+              <div>
+                <strong>{doc.file_name}</strong>
+                <span>{isZh ? "已上传" : "Uploaded"}</span>
+              </div>
+              <button type="button" disabled={busyId === doc.id} onClick={() => removeDocument(doc)}>
+                <img src="/assets/prototype-icons/trash.svg" alt="" />
+                {busyId === doc.id ? (isZh ? "删除中…" : "Deleting…") : (isZh ? "删除" : "Delete")}
+              </button>
+            </li>
+          ))}
+          {captured && (
+            <li>
+              <div>
+                <strong>{captured.name}</strong>
+                <span className="is-pending">{isZh ? "待上传" : "Ready to upload"}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (inputRef.current) inputRef.current.value = "";
+                  setCaptured(null);
+                }}
+              >
+                <img src="/assets/prototype-icons/trash.svg" alt="" />
+                {isZh ? "删除" : "Delete"}
+              </button>
+            </li>
+          )}
+        </ul>
+      )}
+
+      {mode === "record" ? (
+        <div className="walkthrough-recorder">
+          <video ref={videoRef} playsInline muted />
+          <div>
+            {recording && <span className="walkthrough-clock">{clock}</span>}
+            {recording ? (
+              <button className="primary-btn" type="button" onClick={stopRecording}>
+                {isZh ? "停止录制" : "Stop recording"}
+              </button>
+            ) : (
+              <button className="primary-btn" type="button" onClick={startRecording}>
+                {isZh ? "开始录制" : "Start recording"}
+              </button>
+            )}
+            <button
+              className="secondary-btn"
+              type="button"
+              onClick={() => { stopRecording(); stopStream(); setMode(null); }}
+            >
+              {isZh ? "取消" : "Cancel"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <button className="walkthrough-option" type="button" onClick={openRecorder}>
+            <strong>{recordOption[0]}</strong>
+            <small>{recordOption[1]}</small>
+          </button>
+          <button className="walkthrough-option" type="button" onClick={() => inputRef.current?.click()}>
+            <strong>{uploadOption[0]}</strong>
+            <small>{uploadOption[1]}</small>
+          </button>
+        </div>
+      )}
+
+      {problem && <small className="factory-onboarding-save-error" role="alert">{problem}</small>}
+
+      <input
+        ref={inputRef}
+        type="file"
+        name="factory-walkthrough"
+        accept="video/*"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          setCaptured(file ?? null);
+        }}
+      />
+    </section>
+  );
+}
+
+/**
+ * Every file added to one upload, listed, each with its own Delete, and a
+ * dropzone underneath that says "Upload more" once the list has something in
+ * it. The brand flow's BrandUploadRow is the same control drawn the same way.
+ *
+ * `documents` are files already in storage, which only a live mount has and
+ * whose Delete removes them for real. The rest were picked on this card and
+ * have not been sent yet, so their Delete just un-picks them — which means
+ * rewriting the file input, since that input is what gets submitted.
+ */
+function OnboardingFileList({ name, fileTypes, multiple = false, uploadLabel, documents = [], onDeleteDocument, language = "en", className = "" }) {
+  const [chosen, setChosen] = useState([]);
+  const [busyId, setBusyId] = useState(null);
+  const inputRef = useRef(null);
+  const isZh = language === "zh";
+
+  function setFiles(files) {
+    const transfer = new DataTransfer();
+    files.forEach((file) => transfer.items.add(file));
+    if (inputRef.current) inputRef.current.files = transfer.files;
+    setChosen(files);
+  }
+
+  async function removeDocument(doc) {
+    if (!onDeleteDocument) return;
+    setBusyId(doc.id);
+    try {
+      await onDeleteDocument(doc);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const hasFiles = documents.length > 0 || chosen.length > 0;
+  const deleteLabel = isZh ? "删除" : "Delete";
+
+  return (
+    <>
+      {hasFiles && (
+        <ul className="onboarding-upload-list">
+          {documents.map((doc) => (
+            <li key={doc.id}>
+              <div>
+                <strong>{doc.file_name}</strong>
+                <span>{isZh ? "已上传" : "Uploaded"}</span>
+              </div>
+              <button type="button" disabled={busyId === doc.id} onClick={() => removeDocument(doc)}>
+                <img src="/assets/prototype-icons/trash.svg" alt="" />
+                {busyId === doc.id ? (isZh ? "删除中…" : "Deleting…") : deleteLabel}
+              </button>
+            </li>
+          ))}
+          {chosen.map((file, index) => (
+            <li key={`${file.name}-${index}`}>
+              <div>
+                <strong>{file.name}</strong>
+                <span className="is-pending">{isZh ? "待上传" : "Ready to upload"}</span>
+              </div>
+              <button type="button" onClick={() => setFiles(chosen.filter((_, position) => position !== index))}>
+                <img src="/assets/prototype-icons/trash.svg" alt="" />
+                {deleteLabel}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
       <button
-        className="onboarding-file-upload factory-brand-asset-upload"
+        className={`onboarding-file-upload${className ? ` ${className}` : ""}${hasFiles ? " is-more" : ""}`}
         type="button"
-        onClick={(event) => event.currentTarget.parentElement.querySelector('input[type="file"]')?.click()}
+        onClick={() => inputRef.current?.click()}
       >
-        {chosen || uploadedLabel || uploadLabel}
+        {hasFiles ? (isZh ? "上传更多" : "Upload more") : uploadLabel}
       </button>
       <input
+        ref={inputRef}
         type="file"
         name={name}
         accept={fileTypes}
         multiple={multiple}
         hidden
         onChange={(event) => {
-          const files = [...(event.target.files ?? [])];
-          setChosen(files.length > 1 ? `${files.length} files selected` : files[0]?.name ?? "");
+          const picked = [...(event.target.files ?? [])];
+          setFiles(multiple ? [...chosen, ...picked] : picked);
         }}
+      />
+    </>
+  );
+}
+
+function OnboardingAssetUploadCard({ title, helper, accept, uploadLabel, name, fileTypes, multiple = false, language = "en", documents = [], onDeleteDocument }) {
+  return (
+    <section className="factory-brand-asset-card">
+      <div>
+        <strong>{title}</strong>
+        <span>{helper}</span>
+      </div>
+      <OnboardingFileList
+        className="factory-brand-asset-upload"
+        name={name}
+        fileTypes={fileTypes}
+        multiple={multiple}
+        uploadLabel={uploadLabel}
+        documents={documents}
+        onDeleteDocument={onDeleteDocument}
+        language={language}
       />
       <small>{accept}</small>
     </section>

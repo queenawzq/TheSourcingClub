@@ -10845,6 +10845,21 @@ body:has(.brand-onboarding-page) {
   text-transform: uppercase;
 }
 
+/* The step counter and the way out sit together on the right. Shared by both
+   onboarding flows; the factory sheet only redeclares the counter. */
+.onboarding-topbar-end {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.onboarding-topbar-logout {
+  height: 34px;
+  padding: 0 18px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
 .brand-onboarding-card {
   display: grid;
   gap: 24px;
@@ -11529,6 +11544,75 @@ body:has(.brand-onboarding-page) {
   font-size: inherit;
   font-weight: inherit;
   line-height: inherit;
+}
+
+/* Files already added, each with its own Delete. The dropzone below turns
+   into "Upload more" whenever this list has anything in it. */
+.brand-onboarding-upload-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+
+.brand-onboarding-upload-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.brand-onboarding-upload-list li > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.brand-onboarding-upload-list strong {
+  overflow: hidden;
+  color: #0b1020;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-onboarding-upload-list span {
+  color: #174df2;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.brand-onboarding-upload-list span.is-pending {
+  color: #62748e;
+}
+
+.secondary-btn.upload-delete {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 999px;
+  font-size: 14px;
+}
+
+.secondary-btn.upload-delete img {
+  width: 16px;
+  height: 16px;
+}
+
+.brand-onboarding-upload-row.is-more {
+  border: 1px dashed #cbd5e1;
+  background: #fff;
 }
 
 .brand-onboarding-check {

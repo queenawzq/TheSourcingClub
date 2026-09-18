@@ -24,7 +24,7 @@ import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/
 import { getCapacity, saveCapacity } from "../../lib/domain/capacity-store.js";
 import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
 
-const TERMS_VERSION = "2026-09-15";
+const TERMS_VERSION = "2026-09-18";
 
 /** Index of the designed "You're all set" card, the last of the eleven. */
 const LAST_STEP = 10;
@@ -101,6 +101,9 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   const [error, setError] = useState(null);
   const [certifications, setCertifications] = useState([]);
   const [registrationFileName, setRegistrationFileName] = useState("");
+  // Files already in storage, keyed by the designed card's field name, so each
+  // card can list them with a Delete that works.
+  const [documents, setDocuments] = useState({});
 
   const kinds = useMemo(
     () => [...new Set([...Object.values(KIND_FOR_LABEL), "capacity_category", "country", "certification"])],
@@ -131,7 +134,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
     (async () => {
       try {
-        const [byKind, selected, existing, capacity, references, registrations, logos, samples] = await Promise.all([
+        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs] = await Promise.all([
           listTermsByKind(kinds),
           getSelectedTerms("factory_profile", org.id),
           supabase.from("factory_profiles").select("*").eq("org_id", org.id).maybeSingle(),
@@ -140,6 +143,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           listDocuments(org.id, "business_registration"),
           listDocuments(org.id, "logo"),
           listDocuments(org.id, "product_image"),
+          listDocuments(org.id, "walkthrough"),
         ]);
         const certs = await loadCertifications(byKind);
         if (cancelled) return;
@@ -149,6 +153,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         setRegistrationFileName(
           registrations?.length > 1 ? `${registrations.length} files uploaded` : registrations?.[0]?.file_name ?? "",
         );
+        setDocuments({
+          "business-registration": registrations ?? [],
+          "factory-logo": logos ?? [],
+          "factory-samples": samples ?? [],
+          "factory-walkthrough": walkthroughs ?? [],
+        });
 
         const profile = existing.data ?? {};
         if (profile.vendor_kind === "trading_company") setCompanyType("trading");
@@ -293,6 +303,32 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     setCertifications(await loadCertifications(terms));
   }
 
+  /** Document kind → the designed card that shows it. */
+  const FIELD_FOR_KIND = {
+    business_registration: "business-registration",
+    logo: "factory-logo",
+    product_image: "factory-samples",
+    walkthrough: "factory-walkthrough",
+  };
+
+  /**
+   * Delete is a real delete: the storage object and the documents row both go.
+   * The review card's summary reads the same counts, so they are refreshed
+   * with it rather than left claiming a file that is gone.
+   */
+  async function removeDocument(doc) {
+    await deleteDocument(doc);
+    const field = FIELD_FOR_KIND[doc.kind];
+    if (!field) return;
+    const fresh = await listDocuments(org.id, doc.kind);
+    setDocuments((current) => ({ ...current, [field]: fresh }));
+    if (doc.kind === "business_registration") {
+      setRegistrationFileName(fresh.length > 1 ? `${fresh.length} files uploaded` : fresh[0]?.file_name ?? "");
+    }
+    if (doc.kind === "logo") setValues((current) => ({ ...current, "uploaded-logo": fresh.length ? String(fresh.length) : "" }));
+    if (doc.kind === "product_image") setValues((current) => ({ ...current, "uploaded-samples": fresh.length ? String(fresh.length) : "" }));
+  }
+
   async function persist(submitted) {
     const patch = {};
     if (companyType) patch.vendor_kind = companyType === "trading" ? "trading_company" : "manufacturer";
@@ -332,21 +368,39 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       }
       const stored = await listDocuments(org.id, "business_registration");
       setRegistrationFileName(stored.length > 1 ? `${stored.length} files uploaded` : stored[0]?.file_name ?? "");
+      setDocuments((current) => ({ ...current, "business-registration": stored }));
     }
 
     // Logo and samples are what a brand looks at, so they are public by kind.
     const uploads = {};
+    const refresh = [];
     const logo = submitted["factory-logo"];
     if (logo instanceof File) {
       await uploadDocument({ orgId: org.id, kind: "logo", file: logo });
       uploads["uploaded-logo"] = "1";
+      setDocuments((current) => ({ ...current, "factory-logo": [] }));
+      refresh.push(["factory-logo", "logo"]);
     }
+    // The walkthrough is shown on the public profile, so it is public by kind
+    // like the logo. Recorded in the page or picked from disk, it arrives here
+    // as the same File.
+    const walkthrough = submitted["factory-walkthrough"];
+    if (walkthrough instanceof File) {
+      await uploadDocument({ orgId: org.id, kind: "walkthrough", file: walkthrough });
+      refresh.push(["factory-walkthrough", "walkthrough"]);
+    }
+
     const samples = submitted["factory-samples"];
     if (Array.isArray(samples) && samples.length) {
       for (const file of samples) await uploadDocument({ orgId: org.id, kind: "product_image", file });
       uploads["uploaded-samples"] = String((Number(values["uploaded-samples"]) || 0) + samples.length);
+      refresh.push(["factory-samples", "product_image"]);
     }
     if (Object.keys(uploads).length) setValues((current) => ({ ...current, ...uploads }));
+    for (const [field, kind] of refresh) {
+      const fresh = await listDocuments(org.id, kind);
+      setDocuments((current) => ({ ...current, [field]: fresh }));
+    }
 
     const location = submitted[factoryFieldName("Factory Location")];
     if (location !== undefined) {
@@ -412,7 +466,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     try {
       await persist(submitted);
       // Files are not answers to restore; the upload counts persist() set are.
-      const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, ...answers } = submitted;
+      const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, ...answers } = submitted;
       setValues((current) => ({ ...current, ...answers }));
 
       if (submitted.signature) {
@@ -475,6 +529,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       onBack={() => setStep((current) => Math.max(0, current - 1))}
       onNext={next}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
+      onSignOut={onSignOut}
       onEditSection={(target) => typeof target === "number" && setStep(target)}
       optionsByLabel={optionsByLabel}
       values={values}
@@ -486,6 +541,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       onUploadCertificate={uploadCertificate}
       onDeleteCertificate={deleteCertificate}
       registrationFileName={registrationFileName}
+      documents={documents}
+      onDeleteDocument={removeDocument}
     />
   );
 }
