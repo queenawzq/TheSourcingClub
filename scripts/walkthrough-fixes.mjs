@@ -278,11 +278,11 @@ async function main() {
     ]);
     await page.waitForTimeout(500);
     check(
-      (await page.locator(".verification-upload-block .onboarding-upload-list li").count()) === 2,
+      (await page.locator(".verification-step .factory-brand-asset-card:has(input[name='business-registration']) .onboarding-uploaded-file").count()) === 2,
       "both picked registration files are listed, not just a count",
     );
     check(
-      (await page.locator(".verification-upload-block .onboarding-file-upload").first().innerText()).trim().toLowerCase() === "upload more",
+      (await page.locator(".verification-step .factory-brand-asset-card:has(input[name='business-registration']) .onboarding-file-upload").first().innerText()).trim().toLowerCase() === "upload more",
       'the dropzone becomes "Upload more" once a file is on the card',
     );
     await record(page, "references and registration filled");
@@ -308,16 +308,16 @@ async function main() {
     check((await page.locator(".certification-upload-row").count()) === 1, "certification row restored");
     check((await page.locator(".onboarding-reference-row > div").count()) === 2, "reference rows restored");
     check(
-      (await page.locator(".verification-upload-block .onboarding-upload-list li").count()) === 2,
+      (await page.locator(".verification-step .factory-brand-asset-card:has(input[name='business-registration']) .onboarding-uploaded-file").count()) === 2,
       "and both stored registration files are listed by name",
     );
 
     // Delete on a stored file is a real delete: the row and the object behind
     // it. A list that only looked right would pass every check above.
-    await page.locator(".verification-upload-block .onboarding-upload-list li button").first().click();
+    await page.locator(".verification-step .factory-brand-asset-card:has(input[name='business-registration']) .onboarding-uploaded-file button").first().click();
     await page.waitForTimeout(2500);
     check(
-      (await page.locator(".verification-upload-block .onboarding-upload-list li").count()) === 1,
+      (await page.locator(".verification-step .factory-brand-asset-card:has(input[name='business-registration']) .onboarding-uploaded-file").count()) === 1,
       "Delete removes an uploaded registration file from the card",
     );
     const { data: left } = await q(() => db.from("documents").select("id").eq("org_id", factoryOrg).eq("kind", "business_registration"));
@@ -378,7 +378,7 @@ async function main() {
     const brandEmail = `fixes-brand-${stamp}@example.com`;
     await signUp(page, { email: brandEmail, fullName: "Ari Chen", companyName: `Fixes Brand ${stamp}`, portal: "brand" });
     check((await page.locator(".onboarding-save-exit").count()) === 1, "brand onboarding offers Save & log out");
-    check((await page.locator(".onboarding-topbar-logout").count()) === 1, "and a Log out beside the step counter");
+    check((await page.locator(".onboarding-logout-button").count()) === 1, "and a Log out beside the step counter");
     await nextCard(page); // basics
     await page.locator(".brand-onboarding-form-grid input").first().fill(`Fixes Brand ${stamp}`);
 
