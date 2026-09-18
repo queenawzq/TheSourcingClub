@@ -1,3 +1,15 @@
+# Netlify hosts the MARKETING SITE and the design prototypes.
+#
+# The app (app.html) is not built here — see the comment in vite.config.js.
+# It needs a rewrite for deep links, serverless functions in Vercel's handler
+# format, and an auth redirect allowlist, none of which exist on this host.
+# The app lives on Vercel.
+
 [build]
 command = "npm run build"
 publish = "dist"
+
+# The marketing pages are plain HTML with no client router, so they need no
+# rewrites. If the app is ever hosted here, it needs one for /app.html/* plus
+# Netlify-format functions plus a Supabase redirect-allowlist entry — all three,
+# or it fails quietly rather than loudly.

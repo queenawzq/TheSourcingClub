@@ -1,0 +1,14 @@
+# The deploy needs the site source and api/ only. Everything below is either
+# regenerated, local-only, or several megabytes of things a CDN should never
+# be asked to hold.
+node_modules
+dist
+.vite
+e2e-evidence
+supabase
+*.log
+
+# scripts/ is NOT excluded: `npm run build` begins with
+# `node scripts/check-css-tokens.mjs`, so excluding it fails the deploy with
+# MODULE_NOT_FOUND. It did, between the commit that added this file and the
+# commit that added the check.

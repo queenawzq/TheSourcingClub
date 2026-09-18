@@ -1,0 +1,174 @@
+/* Production orders. Layers on the RFQ styles rather than restating them. */
+
+.order-card {
+  align-items: flex-start;
+}
+
+.order-card-figures {
+  display: flex;
+  gap: 24px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.order-card-figures div { display: flex; flex-direction: column; gap: 2px; }
+.order-card-figures dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #6b7280);
+}
+.order-card-figures dd {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px;
+  background: var(--line, #e5e7eb);
+  border: 1px solid var(--line, #e5e7eb);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.order-metric {
+  background: var(--card, #fff);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.order-metric strong { font-size: 20px; font-variant-numeric: tabular-nums; }
+.order-metric span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted, #6b7280);
+}
+.order-metric.highlight strong { color: var(--blue, #2458ff); }
+
+.order-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.order-agree { border-color: var(--blue, #2458ff); }
+.order-cancel-notice { border-color: #f0b429; }
+.order-gate-card { background: #fff8e6; }
+.order-quiet-footer { margin-top: 24px; }
+
+/* Timeline ---------------------------------------------------------------- */
+
+.milestone-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+
+.milestone-item {
+  display: grid;
+  grid-template-columns: 28px 1fr auto auto;
+  gap: 16px;
+  align-items: start;
+  padding: 16px 0;
+  border-top: 1px solid var(--line, #e5e7eb);
+}
+.milestone-item:first-child { border-top: 0; }
+.milestone-item.state-complete .milestone-body h3 { color: var(--muted, #6b7280); }
+
+.milestone-number {
+  width: 28px; height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--line, #e5e7eb);
+  display: grid; place-items: center;
+  font-size: 12px; font-weight: 600;
+}
+.milestone-item.state-active .milestone-number,
+.milestone-item.state-submitted .milestone-number {
+  border-color: var(--blue, #2458ff);
+  color: var(--blue, #2458ff);
+}
+.milestone-item.state-complete .milestone-number {
+  background: var(--blue, #2458ff);
+  border-color: var(--blue, #2458ff);
+  color: #fff;
+}
+
+.milestone-body h3 { margin: 0 0 2px; font-size: 15px; }
+.milestone-meta { margin: 0; font-size: 13px; color: var(--muted, #6b7280); }
+.milestone-description { margin: 6px 0 0; font-size: 13px; }
+
+/* The reason a factory may not start yet. Deliberately prominent: a gate the
+   person cannot see reads as a broken screen. */
+.milestone-gate {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fff8e6;
+  border: 1px solid #f5d98a;
+  font-size: 13px;
+}
+
+.milestone-amount { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.milestone-actions { display: flex; gap: 8px; align-items: center; }
+
+/* Updates ----------------------------------------------------------------- */
+
+.update-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 20px; }
+.update-item { display: flex; flex-direction: column; gap: 8px; }
+.update-item header { display: flex; gap: 12px; align-items: baseline; }
+.update-item header span { font-size: 12px; color: var(--muted, #6b7280); }
+
+.update-photos { display: flex; gap: 8px; flex-wrap: wrap; }
+.update-photo {
+  width: 120px; height: 120px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--line, #e5e7eb);
+  display: block;
+  background: var(--paper, #f6f6f4);
+}
+.update-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.update-photo.is-loading { display: inline-block; }
+
+/* Schedule editor --------------------------------------------------------- */
+
+.schedule-rows { display: flex; flex-direction: column; gap: 12px; }
+.schedule-row {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--line, #e5e7eb);
+  border-radius: 8px;
+  background: var(--card, #fff);
+}
+.schedule-row-main, .schedule-row-side { display: flex; flex-direction: column; gap: 4px; }
+
+@media (max-width: 720px) {
+  .schedule-row { grid-template-columns: 1fr; }
+  .milestone-item { grid-template-columns: 28px 1fr; }
+  .milestone-amount, .milestone-actions { grid-column: 2; }
+}
+
+/* Approval modal ---------------------------------------------------------- */
+
+.order-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 17, 17, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  z-index: 50;
+}
+.order-modal {
+  background: var(--card, #fff);
+  border-radius: 8px;
+  padding: 24px;
+  width: min(480px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.order-modal h2 { margin: 0; }

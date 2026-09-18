@@ -1,0 +1,13 @@
+.team-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.team-list li {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-top: 1px solid var(--line, #e5e7eb);
+}
+.team-list li:first-child { border-top: 0; }
+.team-list li > div { display: flex; flex-direction: column; gap: 2px; }
+.team-sub { font-size: 12px; color: var(--muted, #6b7280); }
+.team-invites { border-color: var(--blue, #2458ff); }
