@@ -891,6 +891,13 @@ body:has(.factory-onboarding-page) {
   height: 20px;
 }
 
+.factory-brand-asset-upload.is-dragging {
+  border-color: #155dfc;
+  background: #eef4ff;
+  color: #174df2;
+  box-shadow: 0 0 0 1px #155dfc;
+}
+
 .onboarding-file-input {
   position: absolute;
   width: 1px;
@@ -995,7 +1002,77 @@ body:has(.factory-onboarding-page) {
 }
 
 .certification-add-control .factory-onboarding-field input {
+  padding-right: 42px;
+}
+
+.certification-combobox {
+  position: relative;
   grid-column: 1;
+  min-width: 0;
+}
+
+.certification-combobox-toggle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.certification-combobox-toggle img {
+  width: 16px;
+  height: 16px;
+}
+
+.certification-combobox-menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  width: 100%;
+  max-height: 264px;
+  padding: 6px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14);
+  overflow-y: auto;
+}
+
+.certification-combobox-menu button {
+  min-height: 38px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #1d293d;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.certification-combobox-menu button:hover,
+.certification-combobox-menu button:focus-visible {
+  background: #f4f7fb;
+  outline: none;
+}
+
+.certification-combobox-menu p {
+  margin: 0;
+  padding: 9px;
+  color: #62748e;
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .certification-add-control .secondary-btn {
@@ -1340,6 +1417,12 @@ body:has(.factory-onboarding-page) {
 .walkthrough-option.selected {
   border-color: #8db7ff;
   background: #f4f8ff;
+}
+
+.walkthrough-option.is-dragging {
+  border-color: #155dfc;
+  background: #eef4ff;
+  box-shadow: 0 0 0 1px #155dfc;
 }
 
 .walkthrough-video-file {

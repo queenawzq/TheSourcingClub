@@ -1028,7 +1028,7 @@ const brandOnboardingSteps = [
     type: "chips",
     groups: [
       ["Preferred regions", ["Portugal", "China", "Korea", "India", "Turkey", "United States"], []],
-      ["Certifications", ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP", "No preference"], []],
+      ["Certifications", ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP"], []],
       ["Services needed", ["Full package", "CMT", "Pattern making", "Sample development", "Fabric sourcing"], []]
     ]
   },
@@ -1045,19 +1045,14 @@ const brandOnboardingSteps = [
   },
   {
     title: "Terms & Conditions",
-    intro: "Please read and sign our terms before continuing.",
+    intro: "Please review these key terms before signing.",
     type: "terms",
     terms: [
-      ["Platform Usage", "Use The Sourcing Club to share accurate brand information, submit real sourcing needs, and communicate with vendors in good faith."],
-      ["Data Privacy & Confidentiality", "Only upload assets, product references, and company documents you are allowed to share. Vendor quotes, pricing, and private project details should remain confidential."],
-      ["Brand Responsibilities", "Keep your profile, project briefs, payment status, and decision-maker details accurate so vendors can quote and plan production confidently."],
-      ["Verification", "We review your business registration or resale certificate. Documents must be genuine and current, and an account whose documents cannot be verified may be paused."],
-      ["Quotes, Orders & Payments", "Awarding a quote records its terms as a production order with that vendor. You pay the vendor by bank transfer for each agreed step; The Sourcing Club records every payment but never holds or moves funds."],
-      ["Who the Agreement Is With", "The production order is between you and the vendor. The Sourcing Club introduces you, records what you both agreed, and keeps the trail — it is not a party to your contract, does not manufacture, inspect, ship, or take title to goods, and does not guarantee quality, timing, or payment."],
-      ["Messages and Translation", "Conversations are stored so both sides have the same record, and messages may be machine-translated between English and Chinese. The translation is a convenience — the message as it was typed is always kept and shown, and it is the version that counts."],
-      ["Credits, Discounts and Referrals", "Welcome discounts, referral rewards, and credits are promotional, have no cash value, and may be changed or withdrawn. They never reduce what you owe a vendor."],
-      ["Your Account", "You are responsible for what is done under your login and for the people you invite to your organisation. We may pause or close an account that cannot be verified, misrepresents a company, or is used to work around these terms; you can ask us to close yours at any time, and records of orders and payments are kept where we are required to keep them."],
-      ["Changes to These Terms", "We may update these terms. When we do, we will ask you to review and accept the new version before you continue."]
+      ["Accurate information", "Provide accurate, current brand, project, and contact information. Any registration or resale documents you submit must be genuine; accounts that cannot be verified may be paused."],
+      ["Confidentiality", "Only share content you are authorized to use. Keep vendor quotes, pricing, messages, and private project details confidential."],
+      ["Escrow payments", "Orders are agreements between you and the vendor. You fund agreed milestones through The Sourcing Club escrow; we hold the funds until the milestone is approved or a dispute is resolved, then release them to the vendor. We do not manufacture goods or guarantee quality or timing."],
+      ["Messages and translation", "Platform conversations are stored as a shared record and may be machine-translated. Translations are provided for convenience; the original message remains the authoritative version."],
+      ["Your account", "You are responsible for activity under your account and for invited team members. We may restrict accounts used for misleading, unlawful, or abusive activity, and material updates to these terms may require you to accept them again."]
     ],
     agreement: "I have read and agree to the Terms and Conditions",
     signature: "Type your full name to sign electronically",
@@ -1065,7 +1060,7 @@ const brandOnboardingSteps = [
   },
   {
     title: "You're all set",
-    intro: "Your brand profile has been submitted. We'll review your verification documents and let you know when your profile is ready for vendors to discover.",
+    intro: "Your brand profile has been submitted and is awaiting verification. We'll email you when verification is complete and you can log back in to access your dashboard.",
     cta: "Go to Dashboard",
     type: "complete"
   }
@@ -2504,6 +2499,7 @@ export function BrandOnboarding({
   onLogout,
   documents,
   onDeleteDocument,
+  completionPending = false,
 }) {
   const current = brandOnboardingSteps[step];
   const isFirst = step === 0;
@@ -2574,20 +2570,15 @@ export function BrandOnboarding({
         {error && <p className="brand-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
 
         <footer className="brand-onboarding-actions">
-          {/* Live only. Saves what is on the card without demanding the
-              required fields, because leaving half-way is the point. */}
-          {onSaveAndExit && (
-            <button
-              className="secondary-btn onboarding-save-exit"
-              type="button"
-              disabled={busy}
-              onClick={(event) => onSaveAndExit(readOnboardingCard(event.currentTarget.closest(".brand-onboarding-card")))}
-            >
-              Save &amp; log out
-            </button>
-          )}
           {!isFirst && !isLast && <button className="secondary-btn" type="button" onClick={onBack}>Previous</button>}
-          <button className="primary-btn" type="button" disabled={busy} onClick={continueOnboarding}>{busy ? "Saving…" : isReviewEdit ? "Save" : current.cta || "Next"}</button>
+          <button
+            className="primary-btn"
+            type="button"
+            disabled={busy || (isLast && completionPending)}
+            onClick={continueOnboarding}
+          >
+            {busy ? "Saving…" : isLast && completionPending ? "Verification pending" : isReviewEdit ? "Save" : current.cta || "Next"}
+          </button>
         </footer>
       </section>
 
@@ -2953,10 +2944,8 @@ function BrandCategoryMultiSelect({ required = false, name, options: providedOpt
       }
     }
 
-    // `click`, not `pointerdown`. The open list sits in the flow of the card,
-    // so closing it moves everything below back up — including Previous and
-    // Next. On pointerdown that happened between press and release, the button
-    // slid out from under the cursor, and the first click on it did nothing.
+    // Close after a completed click so selecting a checkbox inside the menu is
+    // handled before an outside interaction dismisses the overlay.
     document.addEventListener("click", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
@@ -3084,7 +3073,9 @@ function BrandOnboardingChipGroup({ label, options, selected = [], required = fa
 function BrandAssetUploadCard({ title, helper, accept, fileAccept = "image/*,.pdf", className = "", optional = false, name, documents = [], onDeleteDocument }) {
   const [files, setFiles] = useState([]);
   const [busyId, setBusyId] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef(null);
+  const dragDepthRef = useRef(0);
 
   const publish = (next) => {
     const transfer = new DataTransfer();
@@ -3115,6 +3106,11 @@ function BrandAssetUploadCard({ title, helper, accept, fileAccept = "image/*,.pd
   }
 
   const hasFiles = documents.length > 0 || files.length > 0;
+
+  const clearDragState = () => {
+    dragDepthRef.current = 0;
+    setIsDragging(false);
+  };
 
   return (
     <section className={className ? `brand-asset-card ${className}` : "brand-asset-card"}>
@@ -3160,14 +3156,33 @@ function BrandAssetUploadCard({ title, helper, accept, fileAccept = "image/*,.pd
         onChange={(event) => addFiles(event.target.files)}
       />
       <button
-        className={`brand-onboarding-upload-row${hasFiles ? " has-files" : ""}`}
+        className={`brand-onboarding-upload-row${hasFiles ? " has-files" : ""}${isDragging ? " is-dragging" : ""}`}
         type="button"
         onClick={() => inputRef.current?.click()}
-        onDragOver={(event) => event.preventDefault()}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          dragDepthRef.current += 1;
+          setIsDragging(true);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          event.dataTransfer.dropEffect = "copy";
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+          if (dragDepthRef.current === 0) setIsDragging(false);
+        }}
         onDrop={(event) => {
           event.preventDefault();
+          event.stopPropagation();
+          clearDragState();
           addFiles(event.dataTransfer.files);
         }}
+        onDragEnd={clearDragState}
       >
         <img src="/assets/prototype-icons/upload.svg" alt="" />
         <strong>{hasFiles ? "Upload more" : "Click or drag files to upload"}</strong>
@@ -4434,7 +4449,7 @@ const brandProfileEditorOptions = {
   products: brandProductOptions,
   marketLevel: ["Luxury ($500+)", "Premium / contemporary ($100-$500)", "Mid range ($50-$100)", "Mass market (under $50)"],
   preferredRegions: ["Portugal", "China", "Korea", "India", "Turkey", "United States"],
-  certifications: ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP", "No preference"],
+  certifications: ["GOTS", "OEKO-TEX", "BSCI", "GRS", "WRAP"],
   services: ["Full package", "CMT", "Pattern making", "Sample development", "Fabric sourcing"]
 };
 

@@ -559,6 +559,20 @@ function Shell() {
     return <Onboarding org={activeOrg} user={user} onComplete={loadProfile} onSignOut={signOut} />;
   }
 
+  if (profile.verification_status !== "verified") {
+    const Onboarding = isFactory ? FactoryOnboarding : BrandOnboarding;
+    return (
+      <Onboarding
+        org={activeOrg}
+        user={user}
+        onComplete={loadProfile}
+        onSignOut={signOut}
+        initialStep={isFactory ? 10 : 9}
+        initialCompanyType={profile.vendor_kind === "trading_company" ? "trading" : "factory"}
+      />
+    );
+  }
+
   return (
     <DesignFrame
       activeOrg={activeOrg}

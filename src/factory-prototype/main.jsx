@@ -1564,18 +1564,13 @@ const onboardingCopy = {
       },
       {
         title: "Terms & Conditions",
-        intro: "Please read and sign our terms before continuing.",
+        intro: "Please review these key terms before signing.",
         terms: [
-          ["Platform Usage", "Use The Sourcing Club to share accurate factory information, respond to brand enquiries professionally, and keep communication related to sourcing opportunities."],
-          ["Data Privacy & Confidentiality", "Only upload documents and media you are allowed to share. Brand enquiries, tech packs, pricing, and project details should be kept confidential unless both sides agree otherwise."],
-          ["Factory Responsibilities", "Keep your profile, capacity, certifications, and contact details up to date. Quotes, lead times, and production commitments should reflect what your factory can realistically deliver."],
-          ["Verification", "We review your business registration and any certificates you upload before you can quote. Documents must be genuine and current, and a profile whose documents cannot be verified may be paused."],
-          ["Quotes, Orders & Payments", "A quote you send is an offer on the terms shown. When a brand awards it, those terms are recorded as the production order. Brands pay you by bank transfer for each agreed step; The Sourcing Club records every payment but never holds or moves funds."],
-          ["Who the Agreement Is With", "The production order is between you and the brand. The Sourcing Club introduces you, records what you both agreed, and keeps the trail — it is not a party to your contract, does not buy or take title to goods, and does not guarantee that a brand will pay or that an order will proceed."],
-          ["Messages and Translation", "Conversations are stored so both sides have the same record, and messages may be machine-translated between English and Chinese. The translation is a convenience — the message as it was typed is always kept and shown, and it is the version that counts."],
-          ["Credits, Discounts and Referrals", "Credits, referral rewards, and promotional discounts have no cash value and may be changed or withdrawn. They never change what a brand owes you."],
-          ["Your Account", "You are responsible for what is done under your login and for the people you invite to your organisation. We may pause or close an account that cannot be verified, misrepresents a company, or is used to work around these terms; you can ask us to close yours at any time, and records of orders and payments are kept where we are required to keep them."],
-          ["Changes to These Terms", "We may update these terms. When we do, we will ask you to review and accept the new version before you continue."]
+          ["Accurate information", "Keep your factory profile, capacity, certifications, and contact details accurate and current. Verification documents must be genuine; accounts that cannot be verified may be paused."],
+          ["Confidentiality", "Only share content you are authorized to use. Keep brand enquiries, tech packs, pricing, messages, and private project details confidential."],
+          ["Production commitments", "Quotes, lead times, quality requirements, and production commitments must reflect what your factory can realistically deliver. An awarded quote becomes a production order between you and the brand."],
+          ["Escrow payments", "The brand funds agreed milestones through The Sourcing Club escrow. We hold the funds until a milestone is approved or a dispute is resolved, then release them to you."],
+          ["Your account", "You are responsible for activity under your account and for invited team members. Platform messages are stored as a shared record and may be machine-translated; the original message remains authoritative."]
         ],
         agreement: "I have read and agree to the Terms and Conditions",
         signature: "Type your full name to sign electronically",
@@ -1583,7 +1578,7 @@ const onboardingCopy = {
       },
       {
         title: "You're all set",
-        intro: "Your factory profile has been submitted. We'll review your verification documents and let you know when your profile is ready for brands to discover.",
+        intro: "Your factory profile has been submitted and is awaiting verification. We'll email you when verification is complete and you can log back in to access your dashboard.",
         cta: "Go to Dashboard"
       }
     ],
@@ -1622,8 +1617,8 @@ const onboardingCopy = {
         intro: "先选择生产工艺，再选择可稳定生产的品类。",
         groups: [
           ["合作生产模式", ["OEM / 按品牌规格生产", "ODM / 设计与生产", "全包生产 FPP", "CMT / 来料加工", "Private label / 白牌", "OBM / 自有品牌生产"], [], true],
-          ["生产类型", ["针织裁剪缝制", "梭织", "毛衫 / 针织成衣", "牛仔", "无缝 / 圆机针织", "内衣 / 精细工艺", "皮革 / 麂皮", "包袋 / 软配件", "其他"], [], true],
-          ["产品品类", ["上装", "下装", "连衣裙 / 连体衣", "外套", "运动服", "内衣", "泳装", "睡衣 / 家居服", "童装 / 婴童", "制服 / 工装", "配饰", "其他"], [], true],
+          ["生产类型", ["针织裁剪缝制", "梭织", "毛衫 / 针织成衣", "牛仔", "无缝 / 圆机针织", "内衣 / 精细工艺", "皮革 / 麂皮", "包袋 / 软配件"], [], true],
+          ["产品品类", ["上装", "下装", "连衣裙 / 连体衣", "外套", "运动服", "内衣", "泳装", "睡衣 / 家居服", "童装 / 婴童", "制服 / 工装", "配饰"], [], true],
           ["可生产款式", ["纽扣衬衫", "府绸上衣", "梭织连衣裙", "亚麻套装", "轻薄外套", "百褶裙", "罗纹上衣", "帆布托特包", "牛仔夹克", "泳装套装"], []],
           ["市场层级", ["奢侈 / 高端（成品零售价 $500+）", "高级成衣 / 当代品牌（成品零售价 $100-$500）", "中端市场（成品零售价 $50-$100）", "大众市场（成品零售价低于 $50）"], []]
         ],
@@ -1698,18 +1693,13 @@ const onboardingCopy = {
       },
       {
         title: "条款与条件",
-        intro: "继续前请阅读并签署平台条款。",
+        intro: "签署前请阅读以下重要条款。",
         terms: [
-          ["平台使用", "请在 The Sourcing Club 上提供真实准确的工厂信息，专业回复品牌询盘，并将沟通内容用于相关采购合作机会。"],
-          ["数据隐私与保密", "只上传你有权分享的文件和媒体。品牌询盘、技术包、报价和项目细节应予以保密，除非双方另有约定。"],
-          ["工厂责任", "请及时更新工厂资料、产能、认证和联系方式。报价、交期和生产承诺应符合工厂实际可交付能力。"],
-          ["资质验证", "在你可以报价之前，我们会审核你的营业执照和上传的证书。文件必须真实有效；无法验证文件的资料可能会被暂停。"],
-          ["报价、订单与付款", "你发送的报价即为按所示条款提出的报价。品牌授予后，这些条款将记录为生产订单。品牌按每个约定步骤通过银行转账向你付款；The Sourcing Club 记录每笔付款，但从不持有或转移资金。"],
-          ["合同主体", "生产订单是你与品牌之间的合同。The Sourcing Club 负责撮合双方、记录双方约定并保存记录，但不是你们合同的当事方，不采购货物也不取得货物所有权，且不担保品牌一定付款或订单一定履行。"],
-          ["消息与翻译", "对话会被保存，使双方持有同一份记录；消息可能会在中英文之间机器翻译。翻译仅为便利功能——你输入的原文始终会被保存并展示，并以原文为准。"],
-          ["积分、折扣与推荐奖励", "积分、推荐奖励和促销折扣没有现金价值，可能被调整或取消，且不会改变品牌应付给你的金额。"],
-          ["你的账户", "你需对以你的账号所做的操作，以及你邀请加入组织的成员负责。若账户无法通过验证、虚假陈述公司信息，或被用于规避本条款，我们可能暂停或关闭该账户；你也可以随时要求我们关闭账户，订单与付款记录将在法律要求的范围内保留。"],
-          ["条款变更", "我们可能会更新本条款。届时我们会请你在继续使用前查看并接受新版本。"]
+          ["准确信息", "请保持工厂资料、产能、认证和联系方式真实且最新。验证文件必须真实有效；无法通过验证的账户可能被暂停。"],
+          ["保密", "只分享你有权使用的内容。对品牌询盘、技术包、价格、消息和私密项目资料保密。"],
+          ["生产承诺", "报价、交期、质量要求和生产承诺必须符合工厂的实际交付能力。获选的报价将成为你与品牌之间的生产订单。"],
+          ["托管付款", "品牌通过 The Sourcing Club 托管为约定的里程碑提供资金。我们持有资金，直至里程碑获得批准或争议解决，然后将资金释放给你。"],
+          ["你的账户", "你需对账户活动和受邀团队成员负责。平台消息会作为双方共享记录保存，并可能进行机器翻译；以原文为准。"]
         ],
         agreement: "我已阅读并同意条款与条件",
         signature: "输入你的全名作为电子签名",
@@ -1717,7 +1707,7 @@ const onboardingCopy = {
       },
       {
         title: "全部完成",
-        intro: "你的工厂资料已提交。我们会审核你的验证文件，并在资料准备好后通知你，让品牌可以找到你的工厂。",
+        intro: "你的工厂资料已提交。验证完成后，我们会发送邮件通知你重新登录并访问控制台。",
         cta: "进入控制台"
       }
     ],
@@ -1829,18 +1819,13 @@ const tradingOnboardingCopy = {
       {
         type: "terms",
         title: "Terms & Conditions",
-        intro: "Please read and sign our terms before continuing.",
+        intro: "Please review these key terms before signing.",
         terms: [
-          ["Platform Usage", "Share accurate company, sourcing-network, and production information, and communicate with brands in good faith."],
-          ["Data Privacy & Confidentiality", "Only upload documents and media you are allowed to share. Keep brand enquiries, tech packs, pricing, and supplier details confidential."],
-          ["Trading Company Responsibilities", "Disclose your role clearly, keep partner-factory information current, and ensure quotes and production commitments reflect what your network can deliver."],
-          ["Verification", "We review your business registration and any certificates you upload before you can quote. Documents must be genuine and current, and a profile whose documents cannot be verified may be paused."],
-          ["Quotes, Orders & Payments", "A quote you send is an offer on the terms shown. When a brand awards it, those terms are recorded as the production order. Brands pay you by bank transfer for each agreed step; The Sourcing Club records every payment but never holds or moves funds."],
-          ["Who the Agreement Is With", "The production order is between you and the brand. The Sourcing Club introduces you, records what you both agreed, and keeps the trail — it is not a party to your contract, does not buy or take title to goods, and does not guarantee that a brand will pay or that an order will proceed."],
-          ["Messages and Translation", "Conversations are stored so both sides have the same record, and messages may be machine-translated between English and Chinese. The translation is a convenience — the message as it was typed is always kept and shown, and it is the version that counts."],
-          ["Credits, Discounts and Referrals", "Credits, referral rewards, and promotional discounts have no cash value and may be changed or withdrawn. They never change what a brand owes you."],
-          ["Your Account", "You are responsible for what is done under your login and for the people you invite to your organisation. We may pause or close an account that cannot be verified, misrepresents a company, or is used to work around these terms; you can ask us to close yours at any time, and records of orders and payments are kept where we are required to keep them."],
-          ["Changes to These Terms", "We may update these terms. When we do, we will ask you to review and accept the new version before you continue."]
+          ["Accurate information", "Clearly identify your role and keep your company, supplier-network, certifications, and contact information accurate. Verification documents must be genuine; accounts that cannot be verified may be paused."],
+          ["Confidentiality", "Only share content you are authorized to use. Keep brand enquiries, tech packs, pricing, supplier details, messages, and private project information confidential."],
+          ["Production commitments", "Quotes, lead times, quality requirements, and production commitments must reflect what your partner network can realistically deliver. An awarded quote becomes a production order between you and the brand."],
+          ["Escrow payments", "The brand funds agreed milestones through The Sourcing Club escrow. We hold the funds until a milestone is approved or a dispute is resolved, then release them to you."],
+          ["Your account", "You are responsible for activity under your account and for invited team members. Platform messages are stored as a shared record and may be machine-translated; the original message remains authoritative."]
         ],
         agreement: "I have read and agree to the Terms and Conditions",
         signature: "Type your full name to sign electronically",
@@ -1849,7 +1834,7 @@ const tradingOnboardingCopy = {
       {
         type: "complete",
         title: "You're all set",
-        intro: "Your trading company profile has been submitted. We'll review your verification documents and let you know when brands can discover your profile.",
+        intro: "Your trading company profile has been submitted and is awaiting verification. We'll email you when verification is complete and you can log back in to access your dashboard.",
         cta: "Go to Dashboard"
       }
     ]
@@ -1958,18 +1943,13 @@ tradingOnboardingCopy.zh = {
     {
       type: "terms",
       title: "条款与条件",
-      intro: "继续前请阅读并签署平台条款。",
+      intro: "签署前请阅读以下重要条款。",
       terms: [
-        ["平台使用", "请提供真实准确的公司、供应商网络和生产信息，并诚信地与品牌沟通。"],
-        ["数据隐私与保密", "只上传你有权分享的文件和媒体。请对品牌询盘、技术包、价格和供应商信息保密。"],
-        ["贸易公司责任", "清楚披露你的角色，及时更新合作工厂信息，并确保报价和生产承诺符合供应商网络的实际交付能力。"],
-        ["资质验证", "在你可以报价之前，我们会审核你的营业执照和上传的证书。文件必须真实有效；无法验证文件的资料可能会被暂停。"],
-        ["报价、订单与付款", "你发送的报价即为按所示条款提出的报价。品牌授予后，这些条款将记录为生产订单。品牌按每个约定步骤通过银行转账向你付款；The Sourcing Club 记录每笔付款，但从不持有或转移资金。"],
-        ["合同主体", "生产订单是你与品牌之间的合同。The Sourcing Club 负责撮合双方、记录双方约定并保存记录，但不是你们合同的当事方，不采购货物也不取得货物所有权，且不担保品牌一定付款或订单一定履行。"],
-        ["消息与翻译", "对话会被保存，使双方持有同一份记录；消息可能会在中英文之间机器翻译。翻译仅为便利功能——你输入的原文始终会被保存并展示，并以原文为准。"],
-        ["积分、折扣与推荐奖励", "积分、推荐奖励和促销折扣没有现金价值，可能被调整或取消，且不会改变品牌应付给你的金额。"],
-        ["你的账户", "你需对以你的账号所做的操作，以及你邀请加入组织的成员负责。若账户无法通过验证、虚假陈述公司信息，或被用于规避本条款，我们可能暂停或关闭该账户；你也可以随时要求我们关闭账户，订单与付款记录将在法律要求的范围内保留。"],
-        ["条款变更", "我们可能会更新本条款。届时我们会请你在继续使用前查看并接受新版本。"]
+        ["准确信息", "请清楚说明你的角色，并保持公司、供应商网络、认证和联系信息真实且最新。验证文件必须真实有效；无法通过验证的账户可能被暂停。"],
+        ["保密", "只分享你有权使用的内容。对品牌询盘、技术包、价格、供应商资料、消息和私密项目信息保密。"],
+        ["生产承诺", "报价、交期、质量要求和生产承诺必须符合合作供应商网络的实际交付能力。获选的报价将成为你与品牌之间的生产订单。"],
+        ["托管付款", "品牌通过 The Sourcing Club 托管为约定的里程碑提供资金。我们持有资金，直至里程碑获得批准或争议解决，然后将资金释放给你。"],
+        ["你的账户", "你需对账户活动和受邀团队成员负责。平台消息会作为双方共享记录保存，并可能进行机器翻译；以原文为准。"]
       ],
       agreement: "我已阅读并同意条款与条件",
       signature: "输入你的全名作为电子签名",
@@ -1978,7 +1958,7 @@ tradingOnboardingCopy.zh = {
     {
       type: "complete",
       title: "全部完成",
-      intro: "你的贸易公司资料已提交。我们会审核验证文件，并在品牌可以发现你的资料时通知你。",
+      intro: "你的贸易公司资料已提交。验证完成后，我们会发送邮件通知你重新登录并访问控制台。",
       cta: "进入控制台"
     }
   ]
@@ -2883,7 +2863,7 @@ const factoryProfileEditorOptions = {
   marketLevel: ["Luxury / high-end", "Premium / contemporary", "Mid range", "Mass market"],
   services: ["Pattern making", "Grading", "Sample development", "Tech pack support", "Full package (FPP)", "CMT only"],
   specialties: ["In-house pattern room", "Fit sample + PP sample", "Small-batch export", "GOTS cotton", "Wash development", "Trim sourcing", "QC photo updates", "Low-MOQ sampling", "Organic poplin shirts", "Low-MOQ woven tops"],
-  tools: ["CLO 3D", "Browzwear", "Lectra", "Gerber", "None"],
+  tools: ["CLO 3D", "Browzwear", "Lectra", "Gerber"],
   exportMarkets: ["United States & Canada", "United Kingdom", "European Union", "Eastern Europe", "Australia & New Zealand", "Japan & South Korea", "Southeast Asia", "Greater China", "Middle East", "Latin America", "Africa", "Domestic market"],
   equipment: ["Flatlock", "Linking", "Embroidery", "Washing", "Laser cutting"]
 };
@@ -6621,6 +6601,7 @@ export function FactoryOnboarding({
   onUploadCertificate,
   onDeleteCertificate,
   registrationFileName,
+  completionPending = false,
 }) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
@@ -6704,21 +6685,15 @@ export function FactoryOnboarding({
         {error && <p className="factory-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
 
         <footer className="factory-onboarding-actions">
-          {/* Live only. Saves what is on the card without demanding the
-              required fields, because leaving half-way is the point. */}
-          {onSaveAndExit && (
-            <button className="secondary-btn onboarding-save-exit" type="button" disabled={busy} onClick={() => onSaveAndExit(readFactoryCard(cardRef.current))}>
-              {language === "zh" ? "保存并退出" : "Save & log out"}
-            </button>
-          )}
           {!isFirst && !isLast && (
             <button className="secondary-btn" type="button" onClick={onBack}>
               {copy.back}
             </button>
           )}
-          <button className="primary-btn" type="button" disabled={busy} onClick={handleNext}>
+          <button className="primary-btn" type="button" disabled={busy || (isLast && completionPending)} onClick={handleNext}>
             {busy
               ? (language === "zh" ? "保存中…" : "Saving…")
+              : isLast && completionPending ? (language === "zh" ? "等待验证" : "Verification pending")
               : isReviewEdit ? (language === "zh" ? "保存" : "Save") : current.cta || (isLast ? copy.steps[copy.steps.length - 1].cta : copy.next)}
           </button>
         </footer>
@@ -6758,7 +6733,9 @@ function FactoryOnboardingStep({
   const [clientReferenceRows, setClientReferenceRows] = useState([0]);
   const nextClientReferenceId = useRef(1);
   const [walkthroughVideo, setWalkthroughVideo] = useState(null);
+  const [walkthroughDragging, setWalkthroughDragging] = useState(false);
   const walkthroughVideoInputRef = useRef(null);
+  const walkthroughDropDepthRef = useRef(0);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [cameraStream, setCameraStream] = useState(null);
   const [cameraError, setCameraError] = useState("");
@@ -6837,6 +6814,19 @@ function FactoryOnboardingStep({
 
   const stopCameraRecording = () => {
     if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
+  };
+
+  const chooseWalkthroughVideo = (file) => {
+    if (!file?.type.startsWith("video/")) return;
+    const transfer = new DataTransfer();
+    transfer.items.add(file);
+    if (walkthroughVideoInputRef.current) walkthroughVideoInputRef.current.files = transfer.files;
+    setWalkthroughVideo(file);
+  };
+
+  const clearWalkthroughDragState = () => {
+    walkthroughDropDepthRef.current = 0;
+    setWalkthroughDragging(false);
   };
 
   const removeCertificateUpload = (name) => {
@@ -6984,16 +6974,35 @@ function FactoryOnboardingStep({
           <div className="walkthrough-option-grid">
             {content.options.map(([title, helper], index) => (
               <button
-                className={`walkthrough-option${index === 1 && walkthroughVideo ? " selected" : ""}`}
+                className={`walkthrough-option${index === 1 && walkthroughVideo ? " selected" : ""}${index === 1 && walkthroughDragging ? " is-dragging" : ""}`}
                 type="button"
                 key={title}
                 onClick={index === 0 ? openCamera : () => walkthroughVideoInputRef.current?.click()}
-                onDragOver={index === 1 ? (event) => event.preventDefault() : undefined}
+                onDragEnter={index === 1 ? (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  walkthroughDropDepthRef.current += 1;
+                  setWalkthroughDragging(true);
+                } : undefined}
+                onDragOver={index === 1 ? (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  event.dataTransfer.dropEffect = "copy";
+                } : undefined}
+                onDragLeave={index === 1 ? (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  walkthroughDropDepthRef.current = Math.max(0, walkthroughDropDepthRef.current - 1);
+                  if (walkthroughDropDepthRef.current === 0) setWalkthroughDragging(false);
+                } : undefined}
                 onDrop={index === 1 ? (event) => {
                   event.preventDefault();
+                  event.stopPropagation();
+                  clearWalkthroughDragState();
                   const [file] = event.dataTransfer.files;
-                  if (file?.type.startsWith("video/")) setWalkthroughVideo(file);
+                  chooseWalkthroughVideo(file);
                 } : undefined}
+                onDragEnd={index === 1 ? clearWalkthroughDragState : undefined}
               >
                 <strong>{index === 1 && walkthroughVideo ? (language === "zh" ? "上传其他视频" : "Upload another video") : title}</strong>
                 <small>{index === 1 && walkthroughVideo ? (language === "zh" ? "选择其他文件以替换当前视频。" : "Choose another file to replace the current video.") : helper}</small>
@@ -7011,7 +7020,7 @@ function FactoryOnboardingStep({
             accept=".mp4,.mov,.webm,video/mp4,video/quicktime,video/webm"
             onChange={(event) => {
               const [file] = event.target.files || [];
-              if (file) setWalkthroughVideo(file);
+              if (file) chooseWalkthroughVideo(file);
             }}
           />
           {walkthroughDocuments.map((doc) => (
@@ -7216,8 +7225,10 @@ function OnboardingVerification({
         fileName: status === "uploaded" ? (isZh ? `${name}-证书.pdf` : `${name.replace(/\s+/g, "-").toLowerCase()}-certificate.pdf`) : ""
       })));
   const [query, setQuery] = useState("");
+  const [certificationMenuOpen, setCertificationMenuOpen] = useState(false);
   const [pending, setPending] = useState(null);
   const [problem, setProblem] = useState(null);
+  const certificationComboboxRef = useRef(null);
   const [references, setReferences] = useState(() => {
     try {
       const saved = JSON.parse(values?.["client-references"] ?? "[]");
@@ -7231,8 +7242,24 @@ function OnboardingVerification({
     if (live && savedCertifications) setCerts(savedCertifications);
   }, [live, savedCertifications]);
 
+  useEffect(() => {
+    const closeMenu = (event) => {
+      if (!certificationComboboxRef.current?.contains(event.target)) setCertificationMenuOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setCertificationMenuOpen(false);
+    };
+    document.addEventListener("click", closeMenu);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("click", closeMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
   const options = certificationOptions ?? ["GOTS", "OEKO-TEX Standard 100", "BSCI", "GRS", "WRAP", "Fair Trade", "ISO 9001", "Sedex"];
   const available = options.filter((option) => !certs.some((cert) => cert.name === option));
+  const filteredAvailable = available.filter((option) => option.toLowerCase().includes(query.trim().toLowerCase()));
 
   const run = async (name, work) => {
     setPending(name);
@@ -7254,15 +7281,12 @@ function OnboardingVerification({
       setQuery("");
       return;
     }
-    if (live && !match) {
-      setProblem(isZh ? "请从列表中选择认证。" : "Choose a certification from the list.");
-      return;
-    }
     const name = match ?? typed;
     run(name, async () => {
       await onAddCertification?.(name);
       setCerts((current) => [...current, { name, fileName: "" }]);
       setQuery("");
+      setCertificationMenuOpen(false);
     });
   };
 
@@ -7303,21 +7327,56 @@ function OnboardingVerification({
       <div className="certification-add-control">
         <label className="factory-onboarding-field">
           <span>{content.certificationLabel}</span>
-          <input
-            list="onboarding-certification-options"
-            placeholder={content.search}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                addCertification();
-              }
-            }}
-          />
-          <datalist id="onboarding-certification-options">
-            {available.map((option) => <option value={option} key={option} />)}
-          </datalist>
+          <div className="certification-combobox" ref={certificationComboboxRef}>
+            <input
+              className="certification-combobox-input"
+              placeholder={content.search}
+              value={query}
+              role="combobox"
+              aria-expanded={certificationMenuOpen}
+              aria-controls="onboarding-certification-options"
+              aria-autocomplete="list"
+              onFocus={() => setCertificationMenuOpen(true)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setCertificationMenuOpen(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  addCertification();
+                }
+              }}
+            />
+            <button
+              className="certification-combobox-toggle"
+              type="button"
+              aria-label={isZh ? "显示认证选项" : "Show certification options"}
+              onClick={() => setCertificationMenuOpen((open) => !open)}
+            >
+              <img src="/assets/prototype-icons/dropdown.svg" alt="" />
+            </button>
+            {certificationMenuOpen && (
+              <div className="certification-combobox-menu" id="onboarding-certification-options" role="listbox">
+                {filteredAvailable.length ? filteredAvailable.map((option) => (
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={query === option}
+                    key={option}
+                    onClick={() => {
+                      setQuery(option);
+                      setCertificationMenuOpen(false);
+                    }}
+                  >
+                    {option}
+                  </button>
+                )) : (
+                  <p>{isZh ? "使用下方按钮添加自定义认证。" : "Use Add certification to add this custom name."}</p>
+                )}
+              </div>
+            )}
+          </div>
         </label>
         <button className="secondary-btn" type="button" disabled={!query.trim() || Boolean(pending)} onClick={addCertification}>{content.add}</button>
       </div>
@@ -7374,9 +7433,14 @@ function OnboardingVerification({
       <div className="onboarding-reference-row compact">
         <strong>{content.reference}</strong>
         {references.map((reference, index) => (
-          <div key={index}>
+          <div className="onboarding-client-reference-fields" key={index}>
             <input placeholder={isZh ? "公司名称" : "Company name"} value={reference.company} onChange={(event) => updateReference(index, "company", event.target.value)} />
             <input placeholder={isZh ? "联系人或公开链接" : "Contact or public link"} value={reference.contact} onChange={(event) => updateReference(index, "contact", event.target.value)} />
+            <CloseIconButton
+              className="client-reference-close"
+              label={isZh ? `移除客户参考 ${index + 1}` : `Remove client reference ${index + 1}`}
+              onClick={() => setReferences((current) => current.filter((_, referenceIndex) => referenceIndex !== index))}
+            />
           </div>
         ))}
         <button className="onboarding-text-action muted" type="button" onClick={() => setReferences((current) => [...current, { company: "", contact: "" }])}>{content.addReference}</button>
@@ -7405,7 +7469,6 @@ function OnboardingBrandContext({ content, language, values = {}, documents = {}
           title={content.logoTitle}
           helper={content.logoHelper}
           accept={content.logoAccept}
-          fileAccept=".svg,.png,.jpg,.jpeg,image/svg+xml,image/png,image/jpeg"
           uploadLabel={language === "zh" ? "点击或拖拽文件上传" : "Click or drag files to upload"}
           name="factory-logo"
           fileAccept=".svg,.png,.jpg,.jpeg,image/svg+xml,image/png,image/jpeg"
@@ -7420,7 +7483,6 @@ function OnboardingBrandContext({ content, language, values = {}, documents = {}
           title={content.imagesTitle}
           helper={content.imagesHelper}
           accept={content.imagesAccept}
-          fileAccept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf"
           uploadLabel={language === "zh" ? "点击或拖拽文件上传" : "Click or drag files to upload"}
           name="factory-samples"
           fileAccept=".png,.jpg,.jpeg,.pdf,image/png,image/jpeg,application/pdf"
@@ -7441,7 +7503,9 @@ function OnboardingAssetUploadCard({
 }) {
   const [files, setFiles] = useState([]);
   const [busyId, setBusyId] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const inputRef = useRef(null);
+  const dragDepthRef = useRef(0);
 
   const publish = (next) => {
     const transfer = new DataTransfer();
@@ -7473,6 +7537,11 @@ function OnboardingAssetUploadCard({
   }
 
   const hasFiles = documents.length > 0 || files.length > 0;
+
+  const clearDragState = () => {
+    dragDepthRef.current = 0;
+    setIsDragging(false);
+  };
 
   return (
     <section className="factory-brand-asset-card">
@@ -7518,14 +7587,33 @@ function OnboardingAssetUploadCard({
         onChange={(event) => addFiles(event.target.files)}
       />
       <button
-        className={`onboarding-file-upload factory-brand-asset-upload${hasFiles ? " has-files" : ""}`}
+        className={`onboarding-file-upload factory-brand-asset-upload${hasFiles ? " has-files" : ""}${isDragging ? " is-dragging" : ""}`}
         type="button"
         onClick={() => inputRef.current?.click()}
-        onDragOver={(event) => event.preventDefault()}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          dragDepthRef.current += 1;
+          setIsDragging(true);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          event.dataTransfer.dropEffect = "copy";
+        }}
+        onDragLeave={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+          if (dragDepthRef.current === 0) setIsDragging(false);
+        }}
         onDrop={(event) => {
           event.preventDefault();
+          event.stopPropagation();
+          clearDragState();
           addFiles(event.dataTransfer.files);
         }}
+        onDragEnd={clearDragState}
       >
         {hasFiles ? uploadMoreLabel : uploadLabel}
       </button>

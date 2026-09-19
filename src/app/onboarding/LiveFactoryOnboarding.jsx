@@ -17,17 +17,20 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/main.jsx";
-import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
+import { addCustomTerm, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { completeOnboarding, getSelectedTerms, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import { getCapacity, saveCapacity } from "../../lib/domain/capacity-store.js";
 import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
 
-const TERMS_VERSION = "2026-09-18";
+const TERMS_VERSION = "2026-09-18-v4";
 
 /** Index of the designed "You're all set" card, the last of the eleven. */
 const LAST_STEP = 10;
+
+/** Index of the designed profile review card. */
+const REVIEW_STEP = 8;
 
 /** Designed English label → factory_profiles column. */
 const COLUMN_FOR_LABEL = {
@@ -89,13 +92,14 @@ const firstNumber = (text) => {
  */
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
-export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut }) {
-  const [step, setStep] = useState(0);
+export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, initialCompanyType = null }) {
+  const [step, setStep] = useState(initialStep);
+  const [reviewEditStep, setReviewEditStep] = useState(null);
   const [values, setValues] = useState({});
   const [terms, setTerms] = useState({});
   // Nothing is chosen until the vendor chooses it. This answer decides which
   // copy, which questions and which profile kind they get.
-  const [companyType, setCompanyType] = useState(null);
+  const [companyType, setCompanyType] = useState(initialCompanyType);
   const [language, setLanguage] = useState("en");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -264,15 +268,20 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     (terms.certification ?? []).find((term) => termLabel(term, "en") === name || termLabel(term, language) === name);
 
   async function addCertification(name) {
-    const term = certificationTerm(name);
-    if (!term) throw new Error(`${name} is not a certification we recognise.`);
+    let term = certificationTerm(name);
+    let nextTerms = terms;
+    if (!term) {
+      term = await addCustomTerm(org.id, "certification", name);
+      nextTerms = { ...terms, certification: [...(terms.certification ?? []), term] };
+      setTerms(nextTerms);
+    }
     unwrap(
       await supabase
         .from("factory_certifications")
         .upsert({ org_id: org.id, term_id: term.id }, { onConflict: "org_id,term_id", ignoreDuplicates: true }),
       "add the certification",
     );
-    setCertifications(await loadCertifications(terms));
+    setCertifications(await loadCertifications(nextTerms));
   }
 
   /** Certificates are reviewed, so a new file goes back into the queue as pending. */
@@ -481,6 +490,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         );
       }
 
+      if (reviewEditStep !== null) {
+        setReviewEditStep(null);
+        setStep(REVIEW_STEP);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+
       if (step === LAST_STEP - 1) {
         // The designed finish card says brands can now find you, so finishing
         // publishes. Verification stays separate: publishing controls
@@ -524,13 +540,27 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       companyType={companyType}
       language={language}
       step={step}
+      isReviewEdit={reviewEditStep !== null}
       onLanguageChange={setLanguage}
       onCompanyTypeChange={setCompanyType}
-      onBack={() => setStep((current) => Math.max(0, current - 1))}
+      onBack={() => {
+        if (reviewEditStep !== null) {
+          setReviewEditStep(null);
+          setStep(REVIEW_STEP);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          return;
+        }
+        setStep((current) => Math.max(0, current - 1));
+      }}
       onNext={next}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
       onLogout={onSignOut}
-      onEditSection={(target) => typeof target === "number" && setStep(target)}
+      onEditSection={(target) => {
+        if (typeof target !== "number") return;
+        setReviewEditStep(target);
+        setStep(target);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }}
       optionsByLabel={optionsByLabel}
       values={values}
       busy={busy}
@@ -543,6 +573,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       registrationFileName={registrationFileName}
       documents={documents}
       onDeleteDocument={removeDocument}
+      completionPending
     />
   );
 }

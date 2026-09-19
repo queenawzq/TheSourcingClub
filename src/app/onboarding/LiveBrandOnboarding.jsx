@@ -47,10 +47,13 @@ const UPLOADED_FLAG = {
   business_registration: "uploaded-registration",
 };
 
-const TERMS_VERSION = "2026-09-18";
+const TERMS_VERSION = "2026-09-18-v3";
 
 /** Index of the designed "You're all set" card, the last of the ten. */
 const LAST_STEP = 9;
+
+/** Index of the designed profile review card. */
+const REVIEW_STEP = 7;
 
 /** Designed label → brand_profiles column. */
 const COLUMN_FOR_LABEL = {
@@ -104,8 +107,9 @@ function parsePriceRange(text) {
   };
 }
 
-export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }) {
-  const [step, setStep] = useState(0);
+export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, initialStep = 0 }) {
+  const [step, setStep] = useState(initialStep);
+  const [reviewEditStep, setReviewEditStep] = useState(null);
   const [values, setValues] = useState({});
   // Files already in storage, keyed by the designed card's field name. The
   // card lists them with a working Delete; without this it could only say how
@@ -302,6 +306,13 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }
         }
       }
 
+      if (reviewEditStep !== null) {
+        setReviewEditStep(null);
+        setStep(REVIEW_STEP);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        return;
+      }
+
       // The last designed card is "You're all set"; leaving it is what ends
       // onboarding, so the profile is marked complete on the way in.
       if (step === LAST_STEP - 1) await completeOnboarding(org.id, "brand");
@@ -339,17 +350,32 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut }
   return (
     <BrandOnboarding
       step={step}
-      onBack={() => setStep((current) => Math.max(0, current - 1))}
+      isReviewEdit={reviewEditStep !== null}
+      onBack={() => {
+        if (reviewEditStep !== null) {
+          setReviewEditStep(null);
+          setStep(REVIEW_STEP);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+          return;
+        }
+        setStep((current) => Math.max(0, current - 1));
+      }}
       onNext={next}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
       onLogout={onSignOut}
       documents={documents}
       onDeleteDocument={removeDocument}
-      onEditSection={(target) => typeof target === "number" && setStep(target)}
+      onEditSection={(target) => {
+        if (typeof target !== "number") return;
+        setReviewEditStep(target);
+        setStep(target);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }}
       optionsByLabel={optionsByLabel}
       values={values}
       busy={busy}
       error={error}
+      completionPending
     />
   );
 }

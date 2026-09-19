@@ -11187,15 +11187,14 @@ body:has(.brand-onboarding-page) {
   box-shadow: 0 0 0 1px #155dfc;
 }
 
-/* In the flow, not floating over it. Absolutely positioned, the open list
-   covered Previous and Next — the card's only way forward — so choosing a
-   category and then continuing took a click nobody could see they needed.
-   Opening it pushes the rest of the card down instead. */
 .brand-category-multiselect-menu {
-  z-index: 20;
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 6px);
+  left: 0;
   display: grid;
   width: 100%;
-  margin-top: 6px;
+  margin: 0;
   max-height: 316px;
   padding: 6px;
   border: 1px solid #d7e0ea;
@@ -11637,6 +11636,13 @@ body:has(.brand-onboarding-page) {
   min-height: 48px;
   border-style: dashed;
   background: #fff;
+}
+
+.brand-onboarding-upload-row.is-dragging {
+  border-color: #155dfc;
+  background: #eef4ff;
+  color: #174df2;
+  box-shadow: 0 0 0 1px #155dfc;
 }
 
 .brand-onboarding-check {
