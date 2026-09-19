@@ -122,7 +122,7 @@ export async function claimReview(orgId, assignTo = null) {
  * reaches them as a notification written in the same transaction.
  */
 export async function decideReview(orgId, decision, note = null, risk = null) {
-  return unwrap(
+  const review = unwrap(
     await supabase.rpc("admin_review_decision", {
       target_org: orgId,
       decision,
@@ -131,6 +131,24 @@ export async function decideReview(orgId, decision, note = null, risk = null) {
     }),
     `record the ${decision.replace(/_/g, " ")} decision`,
   );
+
+  if (decision !== "approved") return review;
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch("/api/send-verification-approved", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token ?? ""}`,
+      },
+      body: JSON.stringify({ orgId }),
+    });
+    const result = await response.json();
+    return { ...review, approvalEmail: result };
+  } catch (error) {
+    return { ...review, approvalEmail: { sent: 0, error: error.message } };
+  }
 }
 
 /**

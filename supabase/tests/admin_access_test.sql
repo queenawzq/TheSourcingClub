@@ -18,7 +18,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(25);
+select plan(27);
 
 insert into auth.users (id, email) values
   ('c5000000-0000-0000-0000-000000000001', 'p5-admin@example.com'),
@@ -114,6 +114,11 @@ select is(
     where org_id = 'd5000000-0000-0000-0000-0000000000f1'),
   0,
   'and cannot see the review record about their own company'
+);
+
+select is(
+  (select count(*)::int from public.verification_approval_email_outbox),
+  0, 'and cannot read the private approval-email queue'
 );
 
 -- ---------------------------------------------------------------------------
@@ -224,6 +229,19 @@ select is(
   'verified',
   'approval verifies the profile, which is the gate on quoting'
 );
+
+set local role postgres;
+
+select is(
+  (select count(*)::int from public.verification_approval_email_outbox
+    where org_id = 'd5000000-0000-0000-0000-0000000000f1'
+      and recipient_email = 'p5-factory@example.com'
+      and status = 'pending'),
+  1,
+  'approval queues one email for the company owner'
+);
+
+set local role authenticated;
 
 select isnt(
   (select decided_at from public.org_reviews

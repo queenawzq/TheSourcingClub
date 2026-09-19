@@ -638,7 +638,7 @@ function VerificationDetail({ profile, onBack, onDecision }) {
         <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setRequestOpen(false)}>
           <section className="approve-fund-modal admin-review-modal" role="dialog" aria-modal="true" aria-labelledby="request-info-title">
             <button className="settings-drawer-close" type="button" aria-label="Close" onClick={() => setRequestOpen(false)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
-            <header><div><span>Profile review</span><h2 id="request-info-title">Request more information</h2><p>Tell {profile.name} what is needed to complete verification.</p></div></header>
+            <header><div><span>Profile review</span><h2 id="request-info-title">Request more information</h2></div></header>
             <div className="admin-request-options">
               {["Business registration document", "Certification scope or validity", "Facility or product evidence", "Company ownership details"].map((label) => <label key={label}><input type="checkbox" /> <span>{label}</span></label>)}
             </div>
@@ -1132,8 +1132,9 @@ function App() {
   };
   const decide = async (id, status, note = null) => {
     const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
+    let result;
     try {
-      await actions.decideReview?.(id, status, note);
+      result = await actions.decideReview?.(id, status, note);
     } catch (error) {
       setToast(error.message || "That decision could not be recorded");
       window.setTimeout(() => setToast(""), 4000);
@@ -1145,7 +1146,20 @@ function App() {
     setSelectedProfile((current) => current?.id === id ? { ...current, status, tone } : current);
     reloadQueue();
     reloadMetrics();
-    setToast(status === "Approved" ? "Profile approved" : status === "Declined" ? "Profile declined" : "Information request sent");
+    const approvalEmail = result?.approvalEmail;
+    setToast(
+      status === "Approved"
+        ? !approvalEmail
+          ? "Profile approved"
+          : approvalEmail.error
+          ? "Profile approved; approval email is queued for retry"
+          : approvalEmail.alreadySent
+            ? "Profile approved; approval email was already sent"
+            : "Profile approved and approval email sent"
+        : status === "Declined"
+          ? "Profile declined"
+          : "Information request sent"
+    );
     window.setTimeout(() => setToast(""), 2400);
   };
   const toggleUserStatus = (id) => {
