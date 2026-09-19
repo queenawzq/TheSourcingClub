@@ -2,7 +2,7 @@
   "kinds": [
     {
       "kind": "production_type",
-      "note": "Canonical 8-item list (factory-side factoryProfileEditorOptions.productionTypes and both files' onboarding chip groups agree) reconciled against brand-side brandProfileEditorOptions.garmentFocus (a 6-item variant: Wovens, Cut & sew knits, Knitwear, Denim, Outerwear, Intimates). 'Knitwear' aliased to 'Sweaters / knitwear'; 'Intimates' aliased to 'Intimates / delicate garments'; 'Outerwear' was excluded here because it is actually a product_category value (garmentFocus conflates the two axes). 'Other' was added because the zh onboarding step groups include an extra '其他' item that the English arrays omit.",
+      "note": "Canonical 8-item list (factory-side factoryProfileEditorOptions.productionTypes and both files' onboarding chip groups agree) reconciled against brand-side brandProfileEditorOptions.garmentFocus (a 6-item variant: Wovens, Cut & sew knits, Knitwear, Denim, Outerwear, Intimates). 'Knitwear' aliased to 'Sweaters / knitwear'; 'Intimates' aliased to 'Intimates / delicate garments'; 'Outerwear' was excluded here because it is actually a product_category value (garmentFocus conflates the two axes).",
       "terms": [
         {
           "slug": "cut-sew-knits",
@@ -57,18 +57,12 @@
           "label_en": "Bags / soft goods",
           "label_zh": "包袋 / 软配件",
           "sort": 8
-        },
-        {
-          "slug": "other",
-          "label_en": "Other",
-          "label_zh": "其他",
-          "sort": 9
         }
       ]
     },
     {
       "kind": "product_category",
-      "note": "Canonical 11-item garment-type list (matches factory-side and both files' onboarding chip groups exactly) reconciled against brandProfileEditorOptions.productCategories, a 6-item demographic-segment variant (Womenswear, Menswear, Childrenswear, Activewear, Swimwear, Accessories). Activewear/Swimwear/Accessories were exact duplicates; Childrenswear aliased to 'Childrenswear / baby'; Womenswear and Menswear added as new terms since they describe a buyer-segment axis the garment-type list doesn't cover. 'Other' added because the zh onboarding step groups include an extra '其他' item that the English arrays omit.",
+      "note": "Canonical garment-type list reconciled against brandProfileEditorOptions.productCategories, a demographic-segment variant (Womenswear, Menswear, Childrenswear, Activewear, Swimwear, Accessories). Activewear/Swimwear/Accessories were exact duplicates; Childrenswear aliased to 'Childrenswear / baby'; Womenswear and Menswear added as new terms since they describe a buyer-segment axis the garment-type list doesn't cover.",
       "terms": [
         {
           "slug": "tops",
@@ -142,20 +136,14 @@
         {
           "slug": "womenswear",
           "label_en": "Womenswear",
-          "label_zh": null,
+          "label_zh": "女装",
           "sort": 12
         },
         {
           "slug": "menswear",
           "label_en": "Menswear",
-          "label_zh": null,
+          "label_zh": "男装",
           "sort": 13
-        },
-        {
-          "slug": "other",
-          "label_en": "Other",
-          "label_zh": "其他",
-          "sort": 14
         }
       ]
     },
@@ -204,11 +192,12 @@
     },
     {
       "kind": "region",
-      "note": "Brand onboarding/profile-editor chip list (6 items, 'United States') reconciled against the directory/marketplace filter panels in both files (7 items, includes 'Europe', uses 'USA'). Canonical uses the fuller 'United States' country name; 'Europe' merged in from the filter list as an additional region. No zh translations of country names were found in either file.",
+      "note": "Brand onboarding/profile-editor chip list (6 items, 'United States') reconciled against the directory/marketplace filter panels in both files (7 items, includes 'Europe', uses 'USA'). Canonical uses the fuller 'United States' country name; 'Europe' merged in from the filter list as an additional region.",
       "terms": [
         {
           "slug": "china",
           "label_en": "China",
+          "label_zh": "中国",
           "sort": 1,
           "extra": {
             "countries": [
@@ -219,6 +208,7 @@
         {
           "slug": "portugal",
           "label_en": "Portugal",
+          "label_zh": "葡萄牙",
           "sort": 2,
           "extra": {
             "countries": [
@@ -229,6 +219,7 @@
         {
           "slug": "korea",
           "label_en": "Korea",
+          "label_zh": "韩国",
           "sort": 3,
           "extra": {
             "countries": [
@@ -239,6 +230,7 @@
         {
           "slug": "europe",
           "label_en": "Europe",
+          "label_zh": "欧洲",
           "sort": 4,
           "extra": {
             "countries": [
@@ -263,6 +255,7 @@
         {
           "slug": "india",
           "label_en": "India",
+          "label_zh": "印度",
           "sort": 5,
           "extra": {
             "countries": [
@@ -273,6 +266,7 @@
         {
           "slug": "turkey",
           "label_en": "Turkey",
+          "label_zh": "土耳其",
           "sort": 6,
           "extra": {
             "countries": [
@@ -283,6 +277,7 @@
         {
           "slug": "united-states",
           "label_en": "United States",
+          "label_zh": "美国",
           "sort": 7,
           "aliases": [
             "USA"
@@ -297,7 +292,7 @@
     },
     {
       "kind": "certification",
-      "note": "Reconciled 4 divergent lists: brand onboarding/profile-editor (GOTS, OEKO-TEX, BSCI, GRS, WRAP, No preference), directory/marketplace filter panels in both files (GOTS, OEKO-TEX, BSCI, WRAP, Fair Trade -- no GRS or No preference), and factory onboarding's actual-certs-held list (GOTS, OEKO-TEX Standard 100, BSCI). Canonical label uses the fuller 'OEKO-TEX Standard 100'; 'OEKO-TEX' recorded as an alias. 'Business registration' (factory legal/account verification) was intentionally excluded -- it is a verification checkbox, not a product or labor certification. No zh translations exist; certification acronyms are kept in English even on the zh onboarding screen.",
+      "note": "Reconciled certification lists across onboarding, profile editing, marketplace filters, and factory-held certifications. Canonical label uses the fuller 'OEKO-TEX Standard 100'; 'OEKO-TEX' is recorded as an alias. 'No preference' is intentionally omitted because leaving the group empty expresses that state. 'Business registration' is excluded because it is legal verification, not a certification.",
       "terms": [
         {
           "slug": "gots",
@@ -337,12 +332,6 @@
           "label_en": "Fair Trade",
           "label_zh": null,
           "sort": 6
-        },
-        {
-          "slug": "no-preference",
-          "label_en": "No preference",
-          "label_zh": null,
-          "sort": 7
         }
       ]
     },
@@ -432,7 +421,7 @@
     },
     {
       "kind": "digital_tool",
-      "note": "Factory-side only (factoryProfileEditorOptions.tools and onboarding '3D & digital tools' group), single source, no conflicts.",
+      "note": "Optional digital-tool choices shared by factory and trading-company onboarding. An empty selection represents no tools.",
       "terms": [
         {
           "slug": "clo-3d",
@@ -457,12 +446,6 @@
           "label_en": "Gerber",
           "label_zh": "Gerber",
           "sort": 4
-        },
-        {
-          "slug": "none",
-          "label_en": "None",
-          "label_zh": "无",
-          "sort": 5
         }
       ]
     },
@@ -1137,8 +1120,8 @@
     },
     {
       "kind": "certification",
-      "issue": "Four divergent lists: brand onboarding/profile-editor (6: GOTS, OEKO-TEX, BSCI, GRS, WRAP, No preference), directory/marketplace filters in both files (5: GOTS, OEKO-TEX, BSCI, WRAP, Fair Trade -- no GRS/No preference), factory onboarding's held-certs list (3: GOTS, OEKO-TEX Standard 100, BSCI)",
-      "resolution": "Union of 7 terms. Canonical label 'OEKO-TEX Standard 100' (fuller), alias 'OEKO-TEX'. 'Business registration' excluded as a legal-verification item, not a certification."
+      "issue": "Certification lists differed across onboarding, profile editing, marketplace filters, and factory-held certifications.",
+      "resolution": "Canonical label 'OEKO-TEX Standard 100' uses alias 'OEKO-TEX'. 'No preference' is represented by an empty selection, and 'Business registration' remains a separate legal-verification item."
     },
     {
       "kind": "market_level",
@@ -1154,11 +1137,6 @@
       "kind": "production_type",
       "issue": "8-item canonical list (factory-side + both onboarding chip groups) vs brandProfileEditorOptions.garmentFocus, a 6-item variant (Wovens, Cut & sew knits, Knitwear, Denim, Outerwear, Intimates)",
       "resolution": "Wovens/Cut & sew knits/Denim were exact duplicates. 'Knitwear' aliased to 'Sweaters / knitwear'; 'Intimates' aliased to 'Intimates / delicate garments'. 'Outerwear' was NOT added here -- it is a product_category value; garmentFocus conflates production type and product category."
-    },
-    {
-      "kind": "production_type / product_category",
-      "issue": "The zh onboarding step groups (src/factory-prototype/main.jsx ~lines 1123-1124) include an extra '其他' (Other) item at the end of both the production-type and product-category chip groups that the English chip-group arrays (~lines 1006-1007) omit",
-      "resolution": "Added an 'Other' term (label_en 'Other', label_zh '其他', sourced from factoryMainZhText) to both kinds."
     },
     {
       "kind": "service / design_service",
