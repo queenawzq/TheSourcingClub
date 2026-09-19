@@ -7086,7 +7086,17 @@ function FactoryOnboardingStep({
 
   if (stepType === "review") {
     const reviewEditSteps = content.reviewEditSteps || [1, 2, 3, 4, 5, 6, 7];
-    const editLabel = language === "zh" ? "编辑" : "Edit";
+    const isChinese = language === "zh";
+    const editLabel = isChinese ? "编辑" : "Edit";
+    const reviewStatus = {
+      notAdded: isChinese ? "尚未添加" : "Not added yet",
+      notUploaded: isChinese ? "尚未上传" : "Not uploaded yet",
+      uploaded: isChinese ? "已上传" : "Uploaded",
+      noneSelected: isChinese ? "未选择" : "None selected",
+      noneAdded: isChinese ? "未添加" : "None added",
+      pending: isChinese ? "待补充" : "pending",
+    };
+    const listSeparator = isChinese ? "；" : "; ";
     // The drawn rows are an example profile. Live, each row reads what this
     // vendor actually entered, found through the English copy's label so the
     // lookup does not depend on the display language.
@@ -7107,38 +7117,53 @@ function FactoryOnboardingStep({
       if (!isLive) return drawn;
       const english = englishSections[sectionIndex]?.[1]?.[rowIndex]?.[0] ?? "";
       if (staticRows.has(english)) return drawn;
-      if (english === "Business registration") return registrationFileName ? "Uploaded" : "Not uploaded yet";
-      if (english === "Factory logo" || english === "Company logo") return values?.["uploaded-logo"] ? "Uploaded" : "Not uploaded yet";
+      if (english === "Business registration") return registrationFileName ? reviewStatus.uploaded : reviewStatus.notUploaded;
+      if (english === "Factory logo" || english === "Company logo") return values?.["uploaded-logo"] ? reviewStatus.uploaded : reviewStatus.notUploaded;
       if (/catalogue|samples|portfolio/i.test(english)) {
         const count = Number(values?.["uploaded-samples"]) || 0;
-        return count ? `${count} upload${count === 1 ? "" : "s"}` : "Not uploaded yet";
+        return count
+          ? (isChinese ? `已上传 ${count} 个文件` : `${count} upload${count === 1 ? "" : "s"}`)
+          : reviewStatus.notUploaded;
       }
       if (english === "Certifications") {
         return certifications?.length
-          ? certifications.map((cert) => `${cert.name} ${cert.fileName ? "uploaded" : "pending"}`).join("; ")
-          : "None added";
+          ? certifications.map((cert) => `${cert.name} ${cert.fileName ? reviewStatus.uploaded : reviewStatus.pending}`).join(listSeparator)
+          : reviewStatus.noneAdded;
       }
       if (english === "Client references") {
         let references = [];
         try { references = JSON.parse(values?.["client-references"] ?? "[]"); } catch { references = []; }
-        return references.length ? references.map((ref) => [ref.company, ref.contact].filter(Boolean).join(" · ")).join("; ") : "None added";
+        return references.length ? references.map((ref) => [ref.company, ref.contact].filter(Boolean).join(" · ")).join(listSeparator) : reviewStatus.noneAdded;
       }
       if (english === "Capacity category") {
         const category = FACTORY_CAPACITY_CATEGORIES.find((item) => item.key === values?.["capacity-category"]);
-        return category ? category.label : "Not added yet";
+        return category ? (isChinese ? category.labelZh : category.label) : reviewStatus.notAdded;
       }
-      if (english === "Line-hours") return values?.["capacity-line-hours"] ? `${Number(values["capacity-line-hours"]).toLocaleString()} hours / month` : "Not added yet";
-      if (english === "Estimated units") return values?.["capacity-units"] ? `${Number(values["capacity-units"]).toLocaleString()} units / month` : "Not added yet";
+      if (english === "Line-hours") {
+        if (!values?.["capacity-line-hours"]) return reviewStatus.notAdded;
+        const amount = Number(values["capacity-line-hours"]).toLocaleString();
+        return isChinese ? `${amount} 小时 / 月` : `${amount} hours / month`;
+      }
+      if (english === "Estimated units") {
+        if (!values?.["capacity-units"]) return reviewStatus.notAdded;
+        const amount = Number(values["capacity-units"]).toLocaleString();
+        return isChinese ? `${amount} 件 / 月` : `${amount} units / month`;
+      }
       if (english === "Booking level") {
         let months = {};
         try { months = JSON.parse(values?.["capacity-months"] ?? "{}"); } catch { months = {}; }
-        const names = { open: "mostly open", partial: "partly booked", full: "mostly full" };
+        const names = isChinese
+          ? { open: "较空", partial: "部分已订", full: "较满" }
+          : { open: "mostly open", partial: "partly booked", full: "mostly full" };
+        const monthNames = { Jan: "1 月", Feb: "2 月", Mar: "3 月", Apr: "4 月", May: "5 月", Jun: "6 月", Jul: "7 月", Aug: "8 月", Sep: "9 月", Oct: "10 月", Nov: "11 月", Dec: "12 月" };
         const entries = Object.entries(months);
-        return entries.length ? entries.map(([month, level]) => `${month} ${names[level] ?? level}`).join("; ") : "Not added yet";
+        return entries.length
+          ? entries.map(([month, level]) => `${isChinese ? (monthNames[month] ?? month) : month} ${names[level] ?? level}`).join(listSeparator)
+          : reviewStatus.notAdded;
       }
       const actual = values?.[factoryFieldName(reviewAlias[english] ?? english)];
-      if (Array.isArray(actual)) return actual.length ? actual.join(", ") : "None selected";
-      if (actual == null || String(actual).trim() === "") return "Not added yet";
+      if (Array.isArray(actual)) return actual.length ? actual.join(isChinese ? "，" : ", ") : reviewStatus.noneSelected;
+      if (actual == null || String(actual).trim() === "") return reviewStatus.notAdded;
       return String(actual);
     };
 
