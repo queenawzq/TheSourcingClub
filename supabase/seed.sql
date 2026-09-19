@@ -1,0 +1,5 @@
+-- Local development seed entrypoint.
+--
+-- Shared reference data is installed by the checked-in migrations, including
+-- 20260901000700_taxonomy_seed.sql. Keep this file present because
+-- supabase/config.toml enables database seeding and points here.

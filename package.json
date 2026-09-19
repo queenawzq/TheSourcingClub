@@ -20,6 +20,7 @@
   },
   "devDependencies": {
     "@browserbasehq/stagehand": "^4.0.2",
+    "supabase": "^2.117.0",
     "zod": "^4.5.4"
   }
 }
