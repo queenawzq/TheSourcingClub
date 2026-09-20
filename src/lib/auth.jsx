@@ -130,7 +130,14 @@ export function AuthProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id]);
+    // `session === undefined` has to be its own dependency. Keying only on the
+    // user id meant the restore finishing for a SIGNED-OUT visitor moved
+    // session from undefined to null while `session?.user?.id` stayed
+    // undefined — an unchanged dependency, so React never re-ran this effect
+    // and the status never left "loading". Every signed-out visitor sat on
+    // "Checking your session…" forever. A signed-in one was fine, because
+    // their id did change, which is why it survived a quick look.
+  }, [session === undefined, session?.user?.id]);
 
   // Keep the remembered org valid: drop it if the user lost access.
   useEffect(() => {
