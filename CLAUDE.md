@@ -303,9 +303,18 @@ and the backend answers to it rather than the other way round.
   page — and anyone navigating in that gap was previously signed back in by
   the token still on disk. `signOutFully` in `scripts/e2e.mjs` now polls
   storage rather than trusting the login form to have appeared.
-- **"Forgot password" always reports success.** Saying "no account with that
-  email" turns the form into a way to ask whether a company is a customer, one
-  address at a time.
+- **"Forgot password" says whether the account exists**, as of 2026-09-20.
+  It previously always reported success. John changed it knowing the cost: a
+  user who mistypes their address otherwise waits for an email that never
+  comes, and that was judged to outweigh the leak. The leak is real, though —
+  the form is now a way to ask whether a company is a customer, one address at
+  a time, with no login. `/api/account-exists` is therefore rate-limited per
+  client IP in the database (10 per 10 minutes, `claim_email_probe`), and that
+  limiter is part of the feature, not a refinement. `auth.users` stays
+  unreachable from the browser: the lookup is a definer function granted to
+  `service_role` alone. If the lookup is unconfigured, limited or down, the
+  screen falls back to the old hedged wording and the reset still sends —
+  the lookup decides what we *say*, never what we *do*.
 - **A one-time code is still emailed, but only for recovery.** Nothing signs in
   with a code any more. The reset link lands on `app.html?reset=1`, which is
   allow-listed in `config.toml` as an exact URL.

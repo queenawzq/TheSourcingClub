@@ -234,16 +234,37 @@ export function AuthProvider({ children }) {
       /**
        * "Forgot password?".
        *
-       * Always reports success, whatever the address. Saying "no account with
-       * that email" turns this form into a way to ask whether a company is a
-       * customer, one address at a time.
+       * Reports whether the address actually has an account, so someone who
+       * mistyped theirs is told rather than left waiting for an email that is
+       * never coming. John's call on 2026-09-20, knowing what it costs: this
+       * is what lets anyone ask whether a company is a customer, one address
+       * at a time. /api/account-exists rate-limits per client for that reason.
+       *
+       * The reset itself is always requested and its result never inspected —
+       * the lookup decides what we SAY, not what we do. So a lookup that is
+       * unconfigured, rate-limited or simply down degrades to the old neutral
+       * message instead of breaking the reset.
        */
       async requestPasswordReset(email) {
         setError(null);
-        await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+        const address = email.trim().toLowerCase();
+
+        await supabase.auth.resetPasswordForEmail(address, {
           redirectTo: `${window.location.origin}${window.location.pathname}?reset=1`,
         });
-        return true;
+
+        try {
+          const response = await fetch("/api/account-exists", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: address }),
+          });
+          if (!response.ok) return { sent: true, exists: null };
+          const { exists } = await response.json();
+          return { sent: true, exists: typeof exists === "boolean" ? exists : null };
+        } catch {
+          return { sent: true, exists: null };
+        }
       },
 
       /** Set a new password, on the session the reset link established. */
@@ -266,12 +287,15 @@ export function AuthProvider({ children }) {
        * whichever is easier works — the code matters most on a preview deploy
        * behind SSO, where following the link lands somewhere useless.
        */
-      async sendEmailCode(email) {
+      async sendEmailCode(email, { createUser = false } = {}) {
         setError(null);
         const { error: otpError } = await supabase.auth.signInWithOtp({
           email: email.trim().toLowerCase(),
           options: {
-            shouldCreateUser: true,
+            // Defaults to false. Called from a SIGN-IN screen, creating a user
+            // for whatever address was typed would mint an org-less account
+            // and bypass the one-step signup the design specifies.
+            shouldCreateUser: createUser,
             emailRedirectTo: window.location.origin + window.location.pathname,
           },
         });

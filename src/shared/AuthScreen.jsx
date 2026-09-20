@@ -41,15 +41,21 @@ export function AuthScreen({
   // rather than dropping a signed-up user into a mock.
   homeHref,
   switchPortalHref,
+  // Platform staff. Login only: staff accounts are not self-serve, so the
+  // signup toggle and the brand/vendor portal switch are both wrong here, and
+  // the screen says whose workspace you are entering so nobody has to guess
+  // which account they just used.
+  staff = false,
 }) {
   const [mode, setMode] = useState(initialMode);
   const [showPassword, setShowPassword] = useState(false);
-  const isSignup = mode === "signup";
+  // Staff never sign up, so the mode is pinned however the component is driven.
+  const isSignup = !staff && mode === "signup";
   const isFactory = accountType === "factory";
   const home = homeHref ?? (isFactory ? "/factory-prototype.html?screen=login" : "/prototype.html?screen=login");
   const otherPortal = switchPortalHref ?? (isFactory ? "/prototype.html?screen=login" : "/factory-prototype.html?screen=login");
-  const audience = isFactory ? "factory" : "brand";
-  const audienceLabel = isFactory ? "vendor" : "brand";
+  const audience = staff ? "staff" : isFactory ? "factory" : "brand";
+  const audienceLabel = staff ? "staff" : isFactory ? "vendor" : "brand";
 
   const changeMode = (nextMode) => {
     setMode(nextMode);
@@ -82,27 +88,27 @@ export function AuthScreen({
           <img src="/assets/logo.svg" alt="The Sourcing Club" />
         </a>
         <div className="auth-story-copy">
-          <span>{isFactory ? "The vendor workspace" : "The brand workspace"}</span>
-          <h1>{isFactory ? "Meet serious brands. Grow the right partnerships." : "Find the right factory. Build with confidence."}</h1>
-          <p>{isFactory ? "Manage enquiries, quotes, capacity, and production relationships in one trusted workspace." : "Create clear briefs, compare trusted factories, and keep every production step in one place."}</p>
+          <span>{staff ? "The operations workspace" : isFactory ? "The vendor workspace" : "The brand workspace"}</span>
+          <h1>{staff ? "Platform staff sign-in." : isFactory ? "Meet serious brands. Grow the right partnerships." : "Find the right factory. Build with confidence."}</h1>
+          <p>{staff ? "Review companies, work the verification queue, and confirm payments." : isFactory ? "Manage enquiries, quotes, capacity, and production relationships in one trusted workspace." : "Create clear briefs, compare trusted factories, and keep every production step in one place."}</p>
         </div>
         <div className="auth-story-proof">
-          <strong>{isFactory ? "Built for production partners" : "Built for growing brands"}</strong>
-          <span>{isFactory ? "Show your capabilities and connect with better-fit opportunities." : "Move from idea to production with clearer decisions and fewer surprises."}</span>
+          <strong>{staff ? "Internal use only" : isFactory ? "Built for production partners" : "Built for growing brands"}</strong>
+          <span>{staff ? "This workspace is restricted to The Sourcing Club staff accounts." : isFactory ? "Show your capabilities and connect with better-fit opportunities." : "Move from idea to production with clearer decisions and fewer surprises."}</span>
         </div>
       </section>
 
       <section className="auth-workspace">
         <div className="auth-mobile-logo">
           <img src="/assets/logo.svg" alt="The Sourcing Club" />
-          <span>{isFactory ? "Vendor portal" : "Brand portal"}</span>
+          <span>{staff ? "Admin portal" : isFactory ? "Vendor portal" : "Brand portal"}</span>
         </div>
 
         <div className="auth-card">
           <header className="auth-card-header">
-            <span className="auth-account-pill">{isFactory ? "For vendors" : "For brands"}</span>
-            <h2>{isSignup ? `Create your ${audienceLabel} account` : "Welcome back"}</h2>
-            <p>{isSignup ? `Set up your ${audienceLabel} workspace and continue to your profile.` : `Log in to continue to your ${audienceLabel} workspace.`}</p>
+            <span className="auth-account-pill">{staff ? "For platform staff" : isFactory ? "For vendors" : "For brands"}</span>
+            <h2>{staff ? "Admin sign-in" : isSignup ? `Create your ${audienceLabel} account` : "Welcome back"}</h2>
+            <p>{staff ? "Sign in with your staff account to open the operations workspace." : isSignup ? `Set up your ${audienceLabel} workspace and continue to your profile.` : `Log in to continue to your ${audienceLabel} workspace.`}</p>
           </header>
 
           {googleEnabled && (
@@ -160,15 +166,23 @@ export function AuthScreen({
 
           {isSignup && <p className="auth-legal">By creating an account, you agree to our <a href="#terms">Terms</a> and <a href="#privacy">Privacy Policy</a>.</p>}
 
-          <p className="auth-switch">
-            {isSignup ? "Already have an account?" : "New to The Sourcing Club?"}
-            <button type="button" onClick={() => changeMode(isSignup ? "login" : "signup")}>{isSignup ? "Log in" : "Create an account"}</button>
-          </p>
+          {!staff && (
+            <p className="auth-switch">
+              {isSignup ? "Already have an account?" : "New to The Sourcing Club?"}
+              <button type="button" onClick={() => changeMode(isSignup ? "login" : "signup")}>{isSignup ? "Log in" : "Create an account"}</button>
+            </p>
+          )}
         </div>
 
-        <a className="auth-portal-switch" href={otherPortal}>
-          {isFactory ? "Looking for the brand portal?" : "Are you a factory or trading company?"} <strong>Switch portal</strong>
-        </a>
+        {staff ? (
+          <a className="auth-portal-switch" href="/app.html">
+            Not staff? <strong>Go to the main app</strong>
+          </a>
+        ) : (
+          <a className="auth-portal-switch" href={otherPortal}>
+            {isFactory ? "Looking for the brand portal?" : "Are you a factory or trading company?"} <strong>Switch portal</strong>
+          </a>
+        )}
       </section>
     </main>
   );

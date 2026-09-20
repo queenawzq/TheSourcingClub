@@ -16,7 +16,8 @@
  */
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { AuthProvider, useAuth } from "../../lib/auth.jsx";
+import { AuthProvider, useAuth, MIN_PASSWORD_LENGTH } from "../../lib/auth.jsx";
+import { AuthScreen } from "../../shared/AuthScreen.jsx";
 import { isConfigured } from "../../lib/supabase.js";
 import { isPlatformAdmin } from "../../lib/domain/admin.js";
 import { DataProvider } from "../../lib/data/DataProvider.jsx";
@@ -37,14 +38,90 @@ function Gate({ title, children }) {
   );
 }
 
-function SignInPrompt() {
+/**
+ * Staff sign in here, not on the brand portal and then back.
+ *
+ * This page previously sent people to /app.html to sign in and return, which
+ * left no way to tell which account you had used — the complaint that
+ * prompted this. Mounting the designed AuthScreen in its `staff` variant says
+ * "Admin sign-in" on the screen you are typing into.
+ *
+ * Google is off here regardless of the flag: a staff account is created by
+ * someone with database access, not by whoever happens to hold a Google
+ * account with that address.
+ */
+function StaffSignIn() {
+  const { signInWithPassword, requestPasswordReset, error, clearError } = useAuth();
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const [resetFor, setResetFor] = useState(null);
+
+  async function authenticate(submitted) {
+    setBusy(true);
+    setNotice(null);
+    await signInWithPassword({
+      email: submitted.email,
+      password: submitted.password,
+      keepSignedIn: submitted.keepSignedIn,
+    });
+    // No navigation on success: the session changes and AdminConsole re-renders.
+    setBusy(false);
+  }
+
+  async function sendReset(email) {
+    setBusy(true);
+    const { exists } = await requestPasswordReset(email);
+    setBusy(false);
+    setResetFor(null);
+    setNotice(
+      exists === true
+        ? `A reset link is on its way to ${email}.`
+        : exists === false
+          ? `There is no account for ${email}. Check the address.`
+          : `If an account exists for ${email}, a reset link is on its way.`
+    );
+  }
+
+  if (resetFor !== null) {
+    return (
+      <Gate title="Reset your password">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            sendReset(new FormData(event.currentTarget).get("email"));
+          }}
+        >
+          <label className="gate-field">
+            <span>Work email</span>
+            <input name="email" type="email" required autoFocus defaultValue={resetFor} />
+          </label>
+          <button className="primary-btn" type="submit" disabled={busy}>
+            {busy ? "Sending…" : "Send reset link"}
+          </button>
+          <button className="secondary-btn" type="button" onClick={() => setResetFor(null)}>
+            Back
+          </button>
+        </form>
+      </Gate>
+    );
+  }
+
   return (
-    <Gate title="Staff sign-in">
-      <p className="gate-note">
-        The operations workspace is reached with the same account you use everywhere
-        else. Sign in on the <a href="/app.html">main app</a> and come back to this page.
-      </p>
-    </Gate>
+    <AuthScreen
+      staff
+      initialMode="login"
+      busy={busy}
+      error={error}
+      notice={notice}
+      googleEnabled={false}
+      minPasswordLength={MIN_PASSWORD_LENGTH}
+      homeHref="/"
+      onForgotPassword={() => {
+        clearError();
+        setResetFor("");
+      }}
+      onAuthenticate={authenticate}
+    />
   );
 }
 
@@ -84,7 +161,7 @@ function AdminConsole() {
     );
   }
   if (status === "loading") return <Gate title="Checking your session…" />;
-  if (status === "signed-out") return <SignInPrompt />;
+  if (status === "signed-out") return <StaffSignIn />;
   if (status === "error") {
     return (
       <Gate title="Something went wrong">

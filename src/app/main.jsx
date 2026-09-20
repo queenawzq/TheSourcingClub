@@ -103,6 +103,8 @@ function SignIn() {
     signInWithPassword,
     signUpWithPassword,
     requestPasswordReset,
+    sendEmailCode,
+    verifyEmailCode,
     signInWithGoogle,
     googleEnabled,
     minPasswordLength,
@@ -117,6 +119,8 @@ function SignIn() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
   const [resetFor, setResetFor] = useState(null);
+  // The address a sign-in code was emailed to, and so the code-entry screen.
+  const [codeFor, setCodeFor] = useState(null);
 
   async function authenticate(submitted) {
     if (submitted.provider === "google") {
@@ -148,12 +152,97 @@ function SignIn() {
 
   async function sendReset(email) {
     setBusy(true);
-    await requestPasswordReset(email);
+    const { exists } = await requestPasswordReset(email);
     setBusy(false);
     setResetFor(null);
-    // Deliberately the same message whether or not an account exists. Saying
-    // otherwise turns this box into a way to ask who your customers are.
-    setNotice(`If an account exists for ${email}, a reset link is on its way.`);
+    // `exists === null` means the lookup could not answer — unconfigured, rate
+    // limited, or down. That is the one case that still gets the old hedged
+    // wording, because saying either thing definitely would be a guess.
+    setNotice(
+      exists === true
+        ? `A reset link is on its way to ${email}.`
+        : exists === false
+          ? `There is no account for ${email}. Check the address, or sign up to create one.`
+          : `If an account exists for ${email}, a reset link is on its way.`
+    );
+  }
+
+  /**
+   * "Email me a sign-in code instead."
+   *
+   * Offered beside the reset link because forgetting a password is exactly
+   * when a second way in is worth having. `shouldCreateUser` is false: on a
+   * sign-in screen, creating an account for whatever address was typed would
+   * mint an org-less user and quietly bypass the one-step signup the design
+   * specifies.
+   */
+  async function sendCode(email) {
+    setBusy(true);
+    setNotice(null);
+    const ok = await sendEmailCode(email, { createUser: false });
+    setBusy(false);
+    if (ok) {
+      setResetFor(null);
+      setCodeFor(email);
+    }
+  }
+
+  async function submitCode(code) {
+    setBusy(true);
+    await verifyEmailCode(codeFor, code);
+    // On success the session changes and App re-renders; on failure `error`
+    // is set by the provider and this screen stays put showing it.
+    setBusy(false);
+  }
+
+  if (codeFor !== null) {
+    return (
+      <div className="gate">
+        <form
+          className="gate-card"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const code = new FormData(event.currentTarget).get("code");
+            if (!busy && String(code).trim()) submitCode(String(code).trim());
+          }}
+        >
+          <p className="gate-eyebrow">The Sourcing Club</p>
+          <h1>Enter your sign-in code</h1>
+          <p className="gate-note">
+            We emailed a code to {codeFor}. The same email also has a link, so whichever
+            is easier works.
+          </p>
+
+          <label className="field">
+            <span>Six-digit code</span>
+            <input
+              name="code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              placeholder="123456"
+            />
+          </label>
+
+          <button type="submit" className="primary-btn" disabled={busy}>
+            {busy ? "Checking…" : "Log in"}
+          </button>
+
+          <button
+            type="button"
+            className="quiet-btn"
+            onClick={() => {
+              setCodeFor(null);
+              clearError();
+            }}
+          >
+            Back to log in
+          </button>
+
+          {error ? <p className="gate-error">{error.message}</p> : null}
+        </form>
+      </div>
+    );
   }
 
   if (resetFor !== null) {
@@ -187,6 +276,15 @@ function SignIn() {
 
           <button type="submit" className="primary-btn" disabled={busy || !resetFor.includes("@")}>
             {busy ? "Sending…" : "Email me a reset link"}
+          </button>
+
+          <button
+            type="button"
+            className="secondary-btn"
+            disabled={busy || !resetFor.includes("@")}
+            onClick={() => sendCode(resetFor)}
+          >
+            Email me a sign-in code instead
           </button>
 
           <button
