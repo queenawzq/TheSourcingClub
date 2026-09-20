@@ -31,6 +31,10 @@ export function AuthScreen({
   onModeChange,
   onAuthenticate,
   onForgotPassword,
+  // Optional. When given, login mode offers a passwordless way in beside the
+  // password form. The prototypes do not pass it, so their screens are
+  // unchanged; only the live portals and the admin page show it.
+  onEmailCode,
   busy = false,
   error = null,
   notice = null,
@@ -162,6 +166,24 @@ export function AuthScreen({
             <button className="auth-submit" type="submit" disabled={busy}>
               {busy ? (isSignup ? "Creating your account…" : "Logging in…") : isSignup ? "Create account" : "Log in"}
             </button>
+
+            {!isSignup && onEmailCode && (
+              <p className="auth-alt-signin">
+                <span>or</span>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={(event) => {
+                    // Reuse whatever is already typed in the email field
+                    // rather than asking for it a second time.
+                    const form = event.currentTarget.closest("form");
+                    onEmailCode(String(new FormData(form).get("email") ?? "").trim());
+                  }}
+                >
+                  Email me a sign-in code
+                </button>
+              </p>
+            )}
           </form>
 
           {isSignup && <p className="auth-legal">By creating an account, you agree to our <a href="#terms">Terms</a> and <a href="#privacy">Privacy Policy</a>.</p>}

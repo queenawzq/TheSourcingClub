@@ -324,6 +324,14 @@ function SignIn() {
         clearError();
         setResetFor("");
       }}
+      onEmailCode={(email) => {
+        clearError();
+        if (!email.includes("@")) {
+          setNotice("Enter your work email first, then ask for a code.");
+          return;
+        }
+        sendCode(email);
+      }}
       onAuthenticate={authenticate}
     />
   );

@@ -440,3 +440,32 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/* The passwordless way in, under the password form. Only rendered when the
+   host passes onEmailCode, so the prototypes are untouched. Matches
+   .auth-switch rather than inventing a third link treatment. */
+.auth-alt-signin {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 0;
+  color: #5a6b87;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.auth-alt-signin button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #174df2;
+  font-size: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auth-alt-signin button:disabled {
+  color: #9aa8bf;
+  cursor: default;
+}

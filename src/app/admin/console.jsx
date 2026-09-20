@@ -51,10 +51,14 @@ function Gate({ title, children }) {
  * account with that address.
  */
 function StaffSignIn() {
-  const { signInWithPassword, requestPasswordReset, error, clearError } = useAuth();
+  const {
+    signInWithPassword, requestPasswordReset, sendEmailCode, verifyEmailCode,
+    error, clearError,
+  } = useAuth();
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
   const [resetFor, setResetFor] = useState(null);
+  const [codeFor, setCodeFor] = useState(null);
 
   async function authenticate(submitted) {
     setBusy(true);
@@ -79,6 +83,52 @@ function StaffSignIn() {
         : exists === false
           ? `There is no account for ${email}. Check the address.`
           : `If an account exists for ${email}, a reset link is on its way.`
+    );
+  }
+
+  async function sendCode(email) {
+    setBusy(true);
+    setNotice(null);
+    // shouldCreateUser is false by default: this is a sign-in screen, and an
+    // admin page is the last place that should mint an account on a typo.
+    const ok = await sendEmailCode(email);
+    setBusy(false);
+    if (ok) {
+      setResetFor(null);
+      setCodeFor(email);
+    }
+  }
+
+  async function submitCode(code) {
+    setBusy(true);
+    await verifyEmailCode(codeFor, code);
+    setBusy(false);
+  }
+
+  if (codeFor !== null) {
+    return (
+      <Gate title="Enter your sign-in code">
+        <p className="gate-note">We emailed a code to {codeFor}.</p>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const code = String(new FormData(event.currentTarget).get("code") ?? "").trim();
+            if (!busy && code) submitCode(code);
+          }}
+        >
+          <label className="field">
+            <span>Six-digit code</span>
+            <input name="code" inputMode="numeric" autoComplete="one-time-code" autoFocus placeholder="123456" />
+          </label>
+          <button className="primary-btn" type="submit" disabled={busy}>
+            {busy ? "Checking…" : "Log in"}
+          </button>
+          <button className="secondary-btn" type="button" onClick={() => { setCodeFor(null); clearError(); }}>
+            Back
+          </button>
+        </form>
+        {error ? <p className="gate-error">{error.message}</p> : null}
+      </Gate>
     );
   }
 
@@ -119,6 +169,14 @@ function StaffSignIn() {
       onForgotPassword={() => {
         clearError();
         setResetFor("");
+      }}
+      onEmailCode={(email) => {
+        clearError();
+        if (!email.includes("@")) {
+          setNotice("Enter your work email first, then ask for a code.");
+          return;
+        }
+        sendCode(email);
       }}
       onAuthenticate={authenticate}
     />

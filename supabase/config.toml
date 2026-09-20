@@ -264,33 +264,24 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
-# Custom SMTP, via Resend. NOT ENABLED YET, on purpose.
+# Custom SMTP, via Resend. ENABLED 2026-09-20, once
+# contact.sourcing-club.com was verified at resend.com/domains.
 #
-# Resend will only deliver to the account owner's own address until a domain is
-# verified at resend.com/domains. Turning this on before then would be a
-# regression, not a fix: sign-in would work for that one address and fail with
-# a 403 for everyone else, where today the built-in sender reaches everybody —
-# just slowly, at roughly two emails an hour.
+# This is what lifts the free tier's two-emails-an-hour cap on the built-in
+# sender, and its refusal of custom email templates. Both mattered: a sign-in
+# code is worthless if the mail arrives an hour later, and the template below
+# is what puts the code in the email at all.
 #
-# To enable, once a domain is verified:
-#   1. set `from` to an address on that domain
-#   2. uncomment this block
-#   3. drop the template-stripping in scripts/push-config.sh — custom SMTP is
-#      exactly what lifts the free tier's refusal of custom email templates, so
-#      hosted sign-in emails get the six-digit code back
-#   4. ./scripts/push-config.sh --project-ref <ref>
-#
-# The key already lives in supabase/.env (git-ignored).
-#
-# [auth.email.smtp]
-# enabled = true
-# host = "smtp.resend.com"
-# port = 465
-# user = "resend"
-# pass = "env(RESEND_API_KEY)"
-# admin_email = "noreply@<your-verified-domain>"
-# sender_name = "The Sourcing Club"
+# The key lives in supabase/.env (git-ignored) and is the same Resend account
+# that sends review-decision mail from api/send-review-decision.js.
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(RESEND_API_KEY)"
+admin_email = "noreply@contact.sourcing-club.com"
+sender_name = "The Sourcing Club"
 
 # Local only. Supabase rejects template changes on a free-tier project using the
 # default email provider, so scripts/push-config.sh strips this block before
