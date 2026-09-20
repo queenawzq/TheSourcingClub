@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>TSC onboarding emails</title>
+    <style>
+      @font-face{font-family:Satoshi;src:url(../assets/fonts/Satoshi-Regular.otf)}
+      @font-face{font-family:Satoshi;src:url(../assets/fonts/Satoshi-Bold.otf);font-weight:700}
+      @font-face{font-family:Satoshi;src:url(../assets/fonts/Satoshi-Black.otf);font-weight:900}
+      *{box-sizing:border-box}body{margin:0;background:#0B1020;color:#fff;font-family:Satoshi,Arial,sans-serif}.shell{max-width:1120px;margin:0 auto;padding:48px 28px 64px}.kicker{margin:0 0 12px;color:#8DB7FF;font-size:12px;font-weight:700}.heading{max-width:760px;margin:0;font-size:38px;line-height:44px;font-weight:900}.intro{max-width:700px;margin:12px 0 30px;color:#B8C4D6;font-size:15px;line-height:23px}.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px}.tab{appearance:none;border:1px solid #33415B;border-radius:8px;background:#141C2D;color:#fff;padding:16px;text-align:left;font:inherit;cursor:pointer}.tab span{display:block;font-size:14px;font-weight:700}.tab small{display:block;margin-top:4px;color:#91A0B8;font-size:11px;line-height:15px}.tab.active{background:#1A4DF2;border-color:#8DB7FF}.tab.active small{color:#DCE6FF}.stage{padding:24px;background:#E5EAF1;border-radius:12px;box-shadow:0 28px 80px rgba(0,0,0,.3)}.email-frame{display:none;width:100%;height:1020px;border:0;border-radius:8px;background:#F1F4F8}.email-frame.active{display:block}.note{margin:18px 4px 0;color:#91A0B8;font-size:12px;line-height:18px}@media(max-width:720px){.shell{padding:30px 14px}.heading{font-size:30px;line-height:35px}.tabs{grid-template-columns:1fr}.stage{padding:8px}.email-frame{height:1100px}}
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <p class="kicker">TSC · TRANSACTIONAL EMAIL SYSTEM</p>
+      <h1 class="heading">Onboarding submission confirmation</h1>
+      <p class="intro">Three audience-specific designs built from the same TSC components and the final onboarding state. Select a recipient type to review the send-ready email.</p>
+      <div class="tabs" role="tablist" aria-label="Email recipient type">
+          <button class="tab active" data-template="brand" type="button" role="tab" aria-selected="true">
+            <span>Brand</span>
+            <small>We’ve received your brand profile</small>
+          </button>
+          <button class="tab" data-template="factory" type="button" role="tab" aria-selected="false">
+            <span>Factory</span>
+            <small>We’ve received your factory profile</small>
+          </button>
+          <button class="tab" data-template="trading-company" type="button" role="tab" aria-selected="false">
+            <span>Trading company</span>
+            <small>We’ve received your trading company profile</small>
+          </button>
+      </div>
+      <section class="stage">
+        <iframe class="email-frame active" data-frame="brand" src="./onboarding-complete-brand.html" title="brand onboarding completion email"></iframe>
+        <iframe class="email-frame" data-frame="factory" src="./onboarding-complete-factory.html" title="factory onboarding completion email"></iframe>
+        <iframe class="email-frame" data-frame="trading-company" src="./onboarding-complete-trading-company.html" title="trading-company onboarding completion email"></iframe>
+      </section>
+      <p class="note">Template variables: recipient/company name, dashboard URL, support email, and company address. All production templates use table layout and inline styles for broad email-client support.</p>
+    </main>
+    <script>
+      const tabs = [...document.querySelectorAll('.tab')];
+      const frames = [...document.querySelectorAll('.email-frame')];
+      const demoNames = { brand: 'Maison Rue', factory: 'Golden Thread Manufacturing', 'trading-company': 'Pacific Source Partners' };
+      frames.forEach((frame) => frame.addEventListener('load', () => {
+        const html = frame.contentDocument.body.innerHTML
+          .replaceAll('{{ brand_name }}', demoNames.brand)
+          .replaceAll('{{ company_name }}', demoNames[frame.dataset.frame])
+          .replaceAll('{{ support_email }}', 'operations@thesourcingclub.com')
+          .replaceAll('{{ company_address }}', 'New York, USA');
+        frame.contentDocument.body.innerHTML = html;
+      }));
+      tabs.forEach((tab) => tab.addEventListener('click', () => {
+        tabs.forEach((item) => item.classList.toggle('active', item === tab));
+        tabs.forEach((item) => item.setAttribute('aria-selected', item === tab ? 'true' : 'false'));
+        frames.forEach((frame) => frame.classList.toggle('active', frame.dataset.frame === tab.dataset.template));
+      }));
+    </script>
+  </body>
+</html>
