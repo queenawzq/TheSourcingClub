@@ -91,7 +91,7 @@ function StaffSignIn() {
             sendReset(new FormData(event.currentTarget).get("email"));
           }}
         >
-          <label className="gate-field">
+          <label className="field">
             <span>Work email</span>
             <input name="email" type="email" required autoFocus defaultValue={resetFor} />
           </label>
