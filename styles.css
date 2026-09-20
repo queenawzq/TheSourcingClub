@@ -1419,6 +1419,15 @@ td:nth-child(2) {
   line-height: 1.08;
 }
 
+.factory-page .button[data-i18n="cta.apply"],
+.factory-page .button[data-i18n="cta.join"] {
+  font-style: normal;
+}
+
+.button[href*="mode=signup"] {
+  font-style: normal;
+}
+
 .rfq-bar em {
   margin-left: 12px;
   font-style: normal;

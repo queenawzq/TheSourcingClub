@@ -31,9 +31,6 @@ export function AuthScreen({
   onModeChange,
   onAuthenticate,
   onForgotPassword,
-  // Optional. When given, login mode offers a passwordless way in beside the
-  // password form. The prototypes do not pass it, so their screens are
-  // unchanged; only the live portals and the admin page show it.
   onEmailCode,
   busy = false,
   error = null,
@@ -45,21 +42,63 @@ export function AuthScreen({
   // rather than dropping a signed-up user into a mock.
   homeHref,
   switchPortalHref,
-  // Platform staff. Login only: staff accounts are not self-serve, so the
-  // signup toggle and the brand/vendor portal switch are both wrong here, and
-  // the screen says whose workspace you are entering so nobody has to guess
-  // which account they just used.
+  // Staff accounts are provisioned by an administrator, so this variant is
+  // login-only and does not offer the public account or portal switches.
   staff = false,
 }) {
   const [mode, setMode] = useState(initialMode);
   const [showPassword, setShowPassword] = useState(false);
-  // Staff never sign up, so the mode is pinned however the component is driven.
   const isSignup = !staff && mode === "signup";
   const isFactory = accountType === "factory";
   const home = homeHref ?? (isFactory ? "/factory-prototype.html?screen=login" : "/prototype.html?screen=login");
   const otherPortal = switchPortalHref ?? (isFactory ? "/prototype.html?screen=login" : "/factory-prototype.html?screen=login");
   const audience = staff ? "staff" : isFactory ? "factory" : "brand";
   const audienceLabel = staff ? "staff" : isFactory ? "vendor" : "brand";
+  const isZh = !staff && isFactory && (
+    new URLSearchParams(window.location.search).get("lang") === "zh"
+    || window.localStorage.getItem("factoryLang") === "zh"
+  );
+  const copy = isZh ? {
+    close: "关闭并返回首页",
+    storyLabel: "供应商工作台",
+    storyTitle: "对接优质品牌，建立合适的长期合作。",
+    storyBody: "在一个可信赖的工作台中管理询盘、报价、产能和生产合作。",
+    proofTitle: "为生产合作伙伴打造",
+    proofBody: "展示你的生产能力，对接更匹配的合作机会。",
+    mobilePortal: "供应商入口",
+    accountPill: "供应商",
+    signupTitle: "创建供应商账户",
+    loginTitle: "欢迎回来",
+    signupIntro: "设置供应商工作台并继续完善资料。",
+    loginIntro: "登录以继续进入供应商工作台。",
+    google: "使用 Google 继续",
+    divider: "或使用邮箱继续",
+    name: "姓名",
+    namePlaceholder: "你的姓名",
+    company: "公司名称",
+    companyPlaceholder: "你的公司",
+    email: "工作邮箱",
+    password: "密码",
+    newPasswordPlaceholder: `至少 ${minPasswordLength} 个字符`,
+    passwordPlaceholder: "输入密码",
+    show: "显示",
+    hide: "隐藏",
+    keepSignedIn: "保持登录状态",
+    forgot: "忘记密码？",
+    emailCode: "邮件发送登录验证码",
+    creating: "正在创建账户…",
+    loggingIn: "正在登录…",
+    createAccount: "创建账户",
+    login: "登录",
+    legalPrefix: "创建账户即表示你同意我们的",
+    terms: "条款",
+    and: "和",
+    privacy: "隐私政策",
+    existing: "已有账户？",
+    newUser: "第一次使用 The Sourcing Club？",
+    brandPortalPrompt: "寻找品牌入口？",
+    switchPortal: "切换入口",
+  } : null;
 
   const changeMode = (nextMode) => {
     setMode(nextMode);
@@ -92,37 +131,41 @@ export function AuthScreen({
           <img src="/assets/logo.svg" alt="The Sourcing Club" />
         </a>
         <div className="auth-story-copy">
-          <span>{staff ? "The operations workspace" : isFactory ? "The vendor workspace" : "The brand workspace"}</span>
-          <h1>{staff ? "Platform staff sign-in." : isFactory ? "Meet serious brands. Grow the right partnerships." : "Find the right factory. Build with confidence."}</h1>
-          <p>{staff ? "Review companies, work the verification queue, and confirm payments." : isFactory ? "Manage enquiries, quotes, capacity, and production relationships in one trusted workspace." : "Create clear briefs, compare trusted factories, and keep every production step in one place."}</p>
+          <span>{staff ? "The operations workspace" : copy?.storyLabel ?? (isFactory ? "The vendor workspace" : "The brand workspace")}</span>
+          <h1>{staff ? "Platform staff sign-in." : copy?.storyTitle ?? (isFactory ? "Meet serious brands. Grow the right partnerships." : "Find the right factory. Build with confidence.")}</h1>
+          <p>{staff ? "Review companies, work the verification queue, and confirm payments." : copy?.storyBody ?? (isFactory ? "Manage enquiries, quotes, capacity, and production relationships in one trusted workspace." : "Create clear briefs, compare trusted factories, and keep every production step in one place.")}</p>
         </div>
         <div className="auth-story-proof">
-          <strong>{staff ? "Internal use only" : isFactory ? "Built for production partners" : "Built for growing brands"}</strong>
-          <span>{staff ? "This workspace is restricted to The Sourcing Club staff accounts." : isFactory ? "Show your capabilities and connect with better-fit opportunities." : "Move from idea to production with clearer decisions and fewer surprises."}</span>
+          <strong>{staff ? "Internal use only" : copy?.proofTitle ?? (isFactory ? "Built for production partners" : "Built for growing brands")}</strong>
+          <span>{staff ? "This workspace is restricted to The Sourcing Club staff accounts." : copy?.proofBody ?? (isFactory ? "Show your capabilities and connect with better-fit opportunities." : "Move from idea to production with clearer decisions and fewer surprises.")}</span>
         </div>
       </section>
 
       <section className="auth-workspace">
+        <a className="auth-close" href={home} aria-label={copy?.close ?? "Close and return to homepage"}>
+          <img src="/assets/prototype-icons/close.svg" alt="" />
+        </a>
+
         <div className="auth-mobile-logo">
           <img src="/assets/logo.svg" alt="The Sourcing Club" />
-          <span>{staff ? "Admin portal" : isFactory ? "Vendor portal" : "Brand portal"}</span>
+          <span>{staff ? "Admin portal" : copy?.mobilePortal ?? (isFactory ? "Vendor portal" : "Brand portal")}</span>
         </div>
 
         <div className="auth-card">
           <header className="auth-card-header">
-            <span className="auth-account-pill">{staff ? "For platform staff" : isFactory ? "For vendors" : "For brands"}</span>
-            <h2>{staff ? "Admin sign-in" : isSignup ? `Create your ${audienceLabel} account` : "Welcome back"}</h2>
-            <p>{staff ? "Sign in with your staff account to open the operations workspace." : isSignup ? `Set up your ${audienceLabel} workspace and continue to your profile.` : `Log in to continue to your ${audienceLabel} workspace.`}</p>
+            <span className="auth-account-pill">{staff ? "For platform staff" : copy?.accountPill ?? (isFactory ? "For vendors" : "For brands")}</span>
+            <h2>{staff ? "Admin sign-in" : copy ? (isSignup ? copy.signupTitle : copy.loginTitle) : (isSignup ? `Create your ${audienceLabel} account` : "Welcome back")}</h2>
+            <p>{staff ? "Sign in with your staff account to open the operations workspace." : copy ? (isSignup ? copy.signupIntro : copy.loginIntro) : (isSignup ? `Set up your ${audienceLabel} workspace and continue to your profile.` : `Log in to continue to your ${audienceLabel} workspace.`)}</p>
           </header>
 
           {googleEnabled && (
             <>
               <button className="auth-google-button" type="button" disabled={busy} onClick={() => onAuthenticate?.({ mode, accountType, provider: "google" })}>
                 <GoogleMark />
-                Continue with Google
+                {copy?.google ?? "Continue with Google"}
               </button>
 
-              <div className="auth-divider"><span>or continue with email</span></div>
+              <div className="auth-divider"><span>{copy?.divider ?? "or continue with email"}</span></div>
             </>
           )}
 
@@ -130,33 +173,33 @@ export function AuthScreen({
             {isSignup && (
               <div className="auth-field-row">
                 <label className="auth-field">
-                  <span>Your name</span>
-                  <input type="text" name="fullName" placeholder="Your full name" autoComplete="name" required />
+                  <span>{copy?.name ?? "Your name"}</span>
+                  <input type="text" name="fullName" placeholder={copy?.namePlaceholder ?? "Your full name"} autoComplete="name" required />
                 </label>
                 <label className="auth-field">
-                  <span>{isFactory ? "Company name" : "Brand name"}</span>
-                  <input type="text" name="companyName" placeholder={isFactory ? "Your company" : "Your brand"} autoComplete="organization" required />
+                  <span>{copy?.company ?? (isFactory ? "Company name" : "Brand name")}</span>
+                  <input type="text" name="companyName" placeholder={copy?.companyPlaceholder ?? (isFactory ? "Your company" : "Your brand")} autoComplete="organization" required />
                 </label>
               </div>
             )}
 
             <label className="auth-field">
-              <span>Work email</span>
+              <span>{copy?.email ?? "Work email"}</span>
               <input type="email" name="email" placeholder="you@company.com" autoComplete="email" required />
             </label>
 
             <label className="auth-field">
-              <span>Password</span>
+              <span>{copy?.password ?? "Password"}</span>
               <span className="auth-password-control">
-                <input type={showPassword ? "text" : "password"} name="password" placeholder={isSignup ? `At least ${minPasswordLength} characters` : "Enter your password"} minLength={isSignup ? minPasswordLength : undefined} autoComplete={isSignup ? "new-password" : "current-password"} required />
-                <button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? "Hide" : "Show"}</button>
+                <input type={showPassword ? "text" : "password"} name="password" placeholder={isSignup ? (copy?.newPasswordPlaceholder ?? `At least ${minPasswordLength} characters`) : (copy?.passwordPlaceholder ?? "Enter your password")} minLength={isSignup ? minPasswordLength : undefined} autoComplete={isSignup ? "new-password" : "current-password"} required />
+                <button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? (copy?.hide ?? "Hide") : (copy?.show ?? "Show")}</button>
               </span>
             </label>
 
             {!isSignup && (
               <div className="auth-form-options">
-                <label><input type="checkbox" name="keepSignedIn" defaultChecked /> <span>Keep me logged in</span></label>
-                <button type="button" onClick={() => onForgotPassword?.()}>Forgot password?</button>
+                <label><input type="checkbox" name="keepSignedIn" defaultChecked /> <span>{copy?.keepSignedIn ?? "Keep me logged in"}</span></label>
+                <button type="button" onClick={() => onForgotPassword?.()}>{copy?.forgot ?? "Forgot password?"}</button>
               </div>
             )}
 
@@ -164,34 +207,32 @@ export function AuthScreen({
             {error && <p className="auth-error" role="alert">{error.message ?? String(error)}</p>}
 
             <button className="auth-submit" type="submit" disabled={busy}>
-              {busy ? (isSignup ? "Creating your account…" : "Logging in…") : isSignup ? "Create account" : "Log in"}
+              {busy ? (isSignup ? (copy?.creating ?? "Creating your account…") : (copy?.loggingIn ?? "Logging in…")) : isSignup ? (copy?.createAccount ?? "Create account") : (copy?.login ?? "Log in")}
             </button>
 
             {!isSignup && onEmailCode && (
               <p className="auth-alt-signin">
-                <span>or</span>
+                <span>{isZh ? "或" : "or"}</span>
                 <button
                   type="button"
                   disabled={busy}
                   onClick={(event) => {
-                    // Reuse whatever is already typed in the email field
-                    // rather than asking for it a second time.
                     const form = event.currentTarget.closest("form");
                     onEmailCode(String(new FormData(form).get("email") ?? "").trim());
                   }}
                 >
-                  Email me a sign-in code
+                  {copy?.emailCode ?? "Email me a sign-in code"}
                 </button>
               </p>
             )}
           </form>
 
-          {isSignup && <p className="auth-legal">By creating an account, you agree to our <a href="#terms">Terms</a> and <a href="#privacy">Privacy Policy</a>.</p>}
+          {isSignup && <p className="auth-legal">{copy?.legalPrefix ?? "By creating an account, you agree to our"} <a href="#terms">{copy?.terms ?? "Terms"}</a> {copy?.and ?? "and"} <a href="#privacy">{copy?.privacy ?? "Privacy Policy"}</a>.</p>}
 
           {!staff && (
             <p className="auth-switch">
-              {isSignup ? "Already have an account?" : "New to The Sourcing Club?"}
-              <button type="button" onClick={() => changeMode(isSignup ? "login" : "signup")}>{isSignup ? "Log in" : "Create an account"}</button>
+              {isSignup ? (copy?.existing ?? "Already have an account?") : (copy?.newUser ?? "New to The Sourcing Club?")}
+              <button type="button" onClick={() => changeMode(isSignup ? "login" : "signup")}>{isSignup ? (copy?.login ?? "Log in") : (copy?.createAccount ?? "Create an account")}</button>
             </p>
           )}
         </div>
@@ -202,7 +243,7 @@ export function AuthScreen({
           </a>
         ) : (
           <a className="auth-portal-switch" href={otherPortal}>
-            {isFactory ? "Looking for the brand portal?" : "Are you a factory or trading company?"} <strong>Switch portal</strong>
+            {copy?.brandPortalPrompt ?? (isFactory ? "Looking for the brand portal?" : "Are you a factory or trading company?")} <strong>{copy?.switchPortal ?? "Switch portal"}</strong>
           </a>
         )}
       </section>

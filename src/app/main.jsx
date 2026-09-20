@@ -313,8 +313,8 @@ function SignIn() {
       notice={notice}
       googleEnabled={googleEnabled}
       minPasswordLength={minPasswordLength}
-      homeHref="/"
-      switchPortalHref={accountType === "factory" ? "/app.html" : "/app.html?portal=factory"}
+      homeHref={accountType === "factory" ? "/factories.html" : "/"}
+      switchPortalHref={accountType === "factory" ? "/app.html?mode=login" : "/app.html?portal=factory&mode=login"}
       onModeChange={(next) => {
         setMode(next);
         setNotice(null);

@@ -241,3 +241,77 @@ export async function overviewMetrics() {
     paymentsAwaitingConfirmation: row.payments_awaiting_confirmation ?? 0,
   };
 }
+
+async function adminUserRequest(options = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const response = await fetch("/api/admin-users", {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session?.access_token ?? ""}`,
+      ...options.headers,
+    },
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "the user directory could not be loaded");
+  return result;
+}
+
+async function directUserDirectory() {
+  const [{ data: auth }, profiles, members, admins, factories] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.from("user_profiles").select("id, email, full_name, created_at"),
+    supabase.from("org_members").select("user_id, org_id, orgs (name, type)"),
+    supabase.from("platform_admins").select("user_id"),
+    supabase.from("factory_profiles").select("org_id, vendor_kind"),
+  ]);
+  for (const result of [profiles, members, admins, factories]) {
+    if (result.error) throw result.error;
+  }
+
+  const memberships = new Map();
+  for (const membership of members.data ?? []) {
+    if (!memberships.has(membership.user_id)) memberships.set(membership.user_id, membership);
+  }
+  const adminIds = new Set((admins.data ?? []).map((admin) => admin.user_id));
+  const vendorKinds = new Map((factories.data ?? []).map((profile) => [profile.org_id, profile.vendor_kind]));
+
+  return (profiles.data ?? []).map((profile) => {
+    const membership = memberships.get(profile.id);
+    const org = Array.isArray(membership?.orgs) ? membership.orgs[0] : membership?.orgs;
+    const isAdmin = adminIds.has(profile.id);
+    return {
+      id: profile.id,
+      email: profile.email || "",
+      name: profile.full_name || profile.email?.split("@")[0] || "Unnamed user",
+      company: isAdmin ? "The Sourcing Club" : org?.name || "No company",
+      orgType: isAdmin ? "admin" : org?.type || null,
+      vendorKind: membership?.org_id ? vendorKinds.get(membership.org_id) ?? null : null,
+      createdAt: profile.created_at,
+      lastActiveAt: null,
+      disabled: false,
+      protected: profile.id === auth?.user?.id,
+    };
+  });
+}
+
+/** Real Supabase Auth users, visible only to platform staff. */
+export async function userDirectory() {
+  try {
+    const result = await adminUserRequest();
+    return result.users ?? [];
+  } catch {
+    // Vite serves the app locally without Vercel's api/ functions. The same
+    // signed-in admin can still read the real directory through RLS; only
+    // Auth-only fields such as last sign-in and ban state are unavailable.
+    return directUserDirectory();
+  }
+}
+
+/** Disable or restore a real Supabase Auth account. */
+export async function setUserDisabled(userId, disabled) {
+  return adminUserRequest({
+    method: "PATCH",
+    body: JSON.stringify({ userId, disabled }),
+  });
+}

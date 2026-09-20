@@ -10,7 +10,7 @@
  */
 import React from "react";
 import { createRoot } from "react-dom/client";
-import App, { initialProfiles, quotes, rfqs } from "./main.jsx";
+import App, { initialProfiles, initialUsers, quotes, rfqs } from "./main.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 
 /**
@@ -24,6 +24,7 @@ import { DataProvider } from "../lib/data/DataProvider.jsx";
  * then reload.
  */
 let profiles = initialProfiles;
+let users = initialUsers;
 
 const mockAdapter = {
   viewer: { isAdmin: true, org: null, user: null },
@@ -37,10 +38,16 @@ const mockAdapter = {
     quotesSubmittedToday: 19,
     paymentsAwaitingConfirmation: 3,
   }),
+  adminUsers: () => users,
   actions: {
     decideReview: (id, status) => {
       const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
       profiles = profiles.map((profile) => (profile.id === id ? { ...profile, status, tone } : profile));
+    },
+    toggleUserAccess: (userId, disabled) => {
+      users = users.map((user) => user.id === userId
+        ? { ...user, status: disabled ? "Disabled" : "Active" }
+        : user);
     },
   },
 };

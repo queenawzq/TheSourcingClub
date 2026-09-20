@@ -16,8 +16,7 @@
  */
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { AuthProvider, useAuth, MIN_PASSWORD_LENGTH } from "../../lib/auth.jsx";
-import { AuthScreen } from "../../shared/AuthScreen.jsx";
+import { AuthProvider, useAuth } from "../../lib/auth.jsx";
 import { isConfigured } from "../../lib/supabase.js";
 import { isPlatformAdmin } from "../../lib/domain/admin.js";
 import { DataProvider } from "../../lib/data/DataProvider.jsx";
@@ -38,148 +37,14 @@ function Gate({ title, children }) {
   );
 }
 
-/**
- * Staff sign in here, not on the brand portal and then back.
- *
- * This page previously sent people to /app.html to sign in and return, which
- * left no way to tell which account you had used — the complaint that
- * prompted this. Mounting the designed AuthScreen in its `staff` variant says
- * "Admin sign-in" on the screen you are typing into.
- *
- * Google is off here regardless of the flag: a staff account is created by
- * someone with database access, not by whoever happens to hold a Google
- * account with that address.
- */
-function StaffSignIn() {
-  const {
-    signInWithPassword, requestPasswordReset, sendEmailCode, verifyEmailCode,
-    error, clearError,
-  } = useAuth();
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState(null);
-  const [resetFor, setResetFor] = useState(null);
-  const [codeFor, setCodeFor] = useState(null);
-
-  async function authenticate(submitted) {
-    setBusy(true);
-    setNotice(null);
-    await signInWithPassword({
-      email: submitted.email,
-      password: submitted.password,
-      keepSignedIn: submitted.keepSignedIn,
-    });
-    // No navigation on success: the session changes and AdminConsole re-renders.
-    setBusy(false);
-  }
-
-  async function sendReset(email) {
-    setBusy(true);
-    const { exists } = await requestPasswordReset(email);
-    setBusy(false);
-    setResetFor(null);
-    setNotice(
-      exists === true
-        ? `A reset link is on its way to ${email}.`
-        : exists === false
-          ? `There is no account for ${email}. Check the address.`
-          : `If an account exists for ${email}, a reset link is on its way.`
-    );
-  }
-
-  async function sendCode(email) {
-    setBusy(true);
-    setNotice(null);
-    // shouldCreateUser is false by default: this is a sign-in screen, and an
-    // admin page is the last place that should mint an account on a typo.
-    const ok = await sendEmailCode(email);
-    setBusy(false);
-    if (ok) {
-      setResetFor(null);
-      setCodeFor(email);
-    }
-  }
-
-  async function submitCode(code) {
-    setBusy(true);
-    await verifyEmailCode(codeFor, code);
-    setBusy(false);
-  }
-
-  if (codeFor !== null) {
-    return (
-      <Gate title="Enter your sign-in code">
-        <p className="gate-note">We emailed a code to {codeFor}.</p>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            const code = String(new FormData(event.currentTarget).get("code") ?? "").trim();
-            if (!busy && code) submitCode(code);
-          }}
-        >
-          <label className="field">
-            <span>Six-digit code</span>
-            <input name="code" inputMode="numeric" autoComplete="one-time-code" autoFocus placeholder="123456" />
-          </label>
-          <button className="primary-btn" type="submit" disabled={busy}>
-            {busy ? "Checking…" : "Log in"}
-          </button>
-          <button className="secondary-btn" type="button" onClick={() => { setCodeFor(null); clearError(); }}>
-            Back
-          </button>
-        </form>
-        {error ? <p className="gate-error">{error.message}</p> : null}
-      </Gate>
-    );
-  }
-
-  if (resetFor !== null) {
-    return (
-      <Gate title="Reset your password">
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            sendReset(new FormData(event.currentTarget).get("email"));
-          }}
-        >
-          <label className="field">
-            <span>Work email</span>
-            <input name="email" type="email" required autoFocus defaultValue={resetFor} />
-          </label>
-          <button className="primary-btn" type="submit" disabled={busy}>
-            {busy ? "Sending…" : "Send reset link"}
-          </button>
-          <button className="secondary-btn" type="button" onClick={() => setResetFor(null)}>
-            Back
-          </button>
-        </form>
-      </Gate>
-    );
-  }
+function SignInPrompt() {
+  useEffect(() => {
+    const next = encodeURIComponent(`${window.location.pathname}${window.location.search}`);
+    window.location.replace(`/admin-login.html?next=${next}`);
+  }, []);
 
   return (
-    <AuthScreen
-      staff
-      initialMode="login"
-      busy={busy}
-      error={error}
-      notice={notice}
-      googleEnabled={false}
-      minPasswordLength={MIN_PASSWORD_LENGTH}
-      homeHref="/"
-      onForgotPassword={() => {
-        clearError();
-        setResetFor("");
-      }}
-      onEmailCode={(email) => {
-        clearError();
-        if (!email.includes("@")) {
-          setNotice("Enter your work email first, then ask for a code.");
-          return;
-        }
-        sendCode(email);
-      }}
-      onAuthenticate={authenticate}
-    />
+    <Gate title="Opening staff sign-in…" />
   );
 }
 
@@ -219,7 +84,7 @@ function AdminConsole() {
     );
   }
   if (status === "loading") return <Gate title="Checking your session…" />;
-  if (status === "signed-out") return <StaffSignIn />;
+  if (status === "signed-out") return <SignInPrompt />;
   if (status === "error") {
     return (
       <Gate title="Something went wrong">

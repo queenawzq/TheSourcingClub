@@ -26,8 +26,7 @@
           <span>EN</span>
           <span>中文</span>
         </button>
-        <a class="header-signin" href="./app.html?portal=factory" data-i18n="nav.signin">Sign in</a>
-        <button class="button button-small js-open-modal" type="button" data-i18n="cta.apply">Apply to join</button>
+        <a class="button button-small" href="./app.html?portal=factory&amp;mode=login" data-i18n="cta.join">Join us</a>
       </div>
     </header>
 
@@ -48,7 +47,7 @@
           <p data-i18n="hero.body">
             The Sourcing Club brings you qualified, production-ready orders from vetted US and European fashion brands. No bidding wars, no tire-kickers, no middlemen taking your margin.
           </p>
-          <button class="button button-small js-open-modal" type="button" data-i18n="cta.apply">Apply to join</button>
+          <a class="button button-small" href="./app.html?portal=factory&amp;mode=signup" data-i18n="cta.join">Join us</a>
           <p class="tiny" data-i18n="hero.tiny">✧ Free to join. First vetted factories get early access to qualified RFQs.</p>
         </div>
       </section>
@@ -175,7 +174,7 @@
         <div class="factory-section-copy">
           <p class="eyebrow" data-i18n="join.eyebrow">How to join</p>
           <h2 data-i18n="join.title">Apply once. Quote only projects that fit.</h2>
-          <button class="button button-small js-open-modal" type="button" data-i18n="cta.apply">Apply to join</button>
+          <a class="button button-small" href="./app.html?portal=factory&amp;mode=signup" data-i18n="cta.join">Join us</a>
         </div>
         <div class="steps factory-steps">
           <article><span>01</span><div><h3 data-i18n="join.step1.title">Apply</h3><p data-i18n="join.step1.body">Submit factory details, capabilities, production categories, region, and contact language.</p></div></article>
@@ -210,7 +209,7 @@
       <section class="factory-final-cta">
         <div class="final-copy">
           <h2 data-i18n="final.title">Ready for better-fit brand orders?</h2>
-          <button class="button button-small white js-open-modal" type="button" data-i18n="cta.apply">Apply to join</button>
+          <a class="button button-small white" href="./app.html?portal=factory&amp;mode=signup" data-i18n="cta.join">Join us</a>
           <p class="tiny" data-i18n="hero.tiny">✧ Free to join. First vetted factories get early access to qualified RFQs.</p>
           <nav class="social-links" aria-label="Social links">
             <a href="https://www.instagram.com/the_sourcing_club/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
@@ -236,34 +235,6 @@
         </div>
       </section>
     </main>
-
-    <div class="modal" id="waitlistModal" aria-hidden="true">
-      <div class="modal-backdrop js-close-modal"></div>
-      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-        <div class="modal-left">
-          <p class="eyebrow" data-i18n="modal.leftEyebrow">Factory partner<br />application</p>
-          <h2 data-i18n="modal.leftTitle">Bring better-fit brand orders to your line.</h2>
-          <p class="modal-left-copy" data-i18n="modal.leftBody">
-            Apply to join the Club network and get access to structured quote requests from production-ready fashion brands.
-          </p>
-          <img class="modal-factory-label" src="./assets/factory-label.png" alt="" />
-        </div>
-        <div class="modal-right">
-          <button class="close js-close-modal" type="button" aria-label="Close application form" data-i18n-attr="aria-label:modal.close">×</button>
-          <h2 id="modalTitle" data-i18n="modal.title">Apply to join as a factory</h2>
-          <p data-i18n="modal.body">Leave your contact details now. When onboarding opens, we will guide you through factory verification, capability review, and the Club Standard process.</p>
-          <form data-signup-form data-source="factory">
-            <label><span data-i18n="modal.nameLabel">Contact name</span><input type="text" name="name" placeholder="Your name" data-i18n-attr="placeholder:modal.namePlaceholder" required /></label>
-            <label><span data-i18n="modal.emailLabel">Work email</span><input type="email" name="email" placeholder="you@factory.com" data-i18n-attr="placeholder:modal.emailPlaceholder" required /></label>
-            <label class="wide"><span data-i18n="modal.companyLabel">Factory / company name</span><input type="text" name="company" placeholder="Company name" data-i18n-attr="placeholder:modal.companyPlaceholder" /></label>
-            <label><span data-i18n="modal.regionLabel">Country / region</span><input type="text" name="region" placeholder="China, Portugal, India..." data-i18n-attr="placeholder:modal.regionPlaceholder" /></label>
-            <label><span data-i18n="modal.categoryLabel">Main product category</span><input type="text" name="category" placeholder="Knitwear, denim, cut & sew..." data-i18n-attr="placeholder:modal.categoryPlaceholder" /></label>
-            <button class="button modal-submit" type="submit" data-i18n="cta.apply">Apply to join</button>
-            <p class="form-note" data-i18n="modal.note">We will only contact you about factory onboarding and relevant Club opportunities.</p>
-          </form>
-        </div>
-      </section>
-    </div>
 
     <script type="module" src="./script.js"></script>
   </body>

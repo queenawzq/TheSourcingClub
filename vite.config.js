@@ -102,7 +102,7 @@ export default defineConfig({
         main: "index.html",
         // admin.html rides with app.html for the same reason: it is an
         // authenticated page, and a magic link cannot come back on Netlify.
-        ...(deployTarget === "netlify" ? {} : { app: "app.html", admin: "admin.html" }),
+        ...(deployTarget === "netlify" ? {} : { app: "app.html", admin: "admin.html", adminLogin: "admin-login.html" }),
         caseStudy: "case-study.html",
         factories: "factories.html",
         factorySearch: "factory-search.html",

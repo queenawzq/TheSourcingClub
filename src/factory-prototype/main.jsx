@@ -1,5 +1,4 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
 import { createPortal } from "react-dom";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
@@ -9355,4 +9354,4 @@ function DetailCard({ title, children }) {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App />);
+export default App;

@@ -23,6 +23,8 @@ import {
   overviewMetrics,
   quoteQueue,
   rfqQueue,
+  setUserDisabled,
+  userDirectory,
   verificationQueue,
 } from "../../lib/domain/admin.js";
 import { formatMoney } from "../../lib/money.js";
@@ -78,6 +80,13 @@ const initials = (name) =>
     .slice(0, 2)
     .map((word) => word[0].toUpperCase())
     .join("") || "??";
+
+const USER_TYPE = {
+  admin: "Admin",
+  brand: "Brand",
+  factory: "Factory",
+  trading_company: "Trading company",
+};
 
 /** "18 min ago" in the design; derived here, so it cannot describe a stale time. */
 function ago(value) {
@@ -155,6 +164,24 @@ export function toQuoteRow(quote) {
   ];
 }
 
+export function toAdminUser(user) {
+  const typeKey = user.orgType === "factory" && user.vendorKind === "trading_company"
+    ? "trading_company"
+    : user.orgType;
+  return {
+    id: user.id,
+    initials: initials(user.name),
+    name: user.name,
+    email: user.email,
+    type: USER_TYPE[typeKey] ?? "No company",
+    company: user.company,
+    joined: shortDate(user.createdAt),
+    lastActive: user.lastActiveAt ? ago(user.lastActiveAt) : "Never",
+    status: user.disabled ? "Disabled" : "Active",
+    protected: user.protected,
+  };
+}
+
 export function createAdminAdapter({ user }) {
   return {
     viewer: { isAdmin: true, org: null, user },
@@ -163,6 +190,7 @@ export function createAdminAdapter({ user }) {
     adminRfqs: () => rfqQueue().then((rows) => rows.map(toRfqRow)),
     adminQuotes: () => quoteQueue().then((rows) => rows.map(toQuoteRow)),
     adminMetrics: () => overviewMetrics(),
+    adminUsers: () => userDirectory().then((rows) => rows.map(toAdminUser)),
 
     actions: {
       claimReview,
@@ -176,6 +204,7 @@ export function createAdminAdapter({ user }) {
         if (!decision) throw new Error(`unknown review decision "${status}"`);
         return decideReview(orgId, decision, note ?? null);
       },
+      toggleUserAccess: (userId, disabled) => setUserDisabled(userId, disabled),
     },
   };
 }

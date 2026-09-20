@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { PrototypeSideNav, ProfileChipSection, ProfileDetailPair } from "../shared/ProfileShell.jsx";
-import { useActions, useAdminMetrics, useAdminQuotes, useAdminRfqs, useVerificationQueue } from "../lib/data/DataProvider.jsx";
+import { useActions, useAdminMetrics, useAdminQuotes, useAdminRfqs, useAdminUsers, useVerificationQueue } from "../lib/data/DataProvider.jsx";
 import "../prototype/styles.css";
 import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
@@ -132,6 +132,8 @@ const initialUsers = [
   { id: "user-leo", initials: "LP", name: "Leo Park", email: "leo@seoulknitworks.kr", type: "Factory", company: "Seoul Knit Works", joined: "Aug 8, 2026", lastActive: "Yesterday", status: "Active" },
   { id: "user-tsc", initials: "TS", name: "TSC Operations", email: "operations@thesourcingclub.com", type: "Admin", company: "The Sourcing Club", joined: "Jun 3, 2026", lastActive: "Now", status: "Active", protected: true }
 ];
+
+export { initialUsers };
 
 export const rfqs = [
   ["RFQ-1048", "Organic cotton woven shirt", "Maison Rue", "Aug 12", "6 vendors", "Open", "info"],
@@ -1051,14 +1053,16 @@ function App() {
   const { data: rfqRows, loading: rfqsLoading, error: rfqsError } = useAdminRfqs();
   const { data: quoteRows, loading: quotesLoading, error: quotesError } = useAdminQuotes();
   const { data: metricRow, reload: reloadMetrics } = useAdminMetrics();
+  const { data: userRows, loading: usersLoading, error: usersError, reload: reloadUsers } = useAdminUsers();
   const actions = useActions();
 
   const profiles = queue ?? [];
   const rfqList = rfqRows ?? [];
   const quoteList = quoteRows ?? [];
+  const users = userRows ?? [];
   const metrics = metricRow ?? {};
-  const loading = queueLoading || rfqsLoading || quotesLoading;
-  const loadError = queueError || rfqsError || quotesError;
+  const loading = queueLoading || rfqsLoading || quotesLoading || usersLoading;
+  const loadError = queueError || rfqsError || quotesError || usersError;
 
   const query = new URLSearchParams(window.location.search);
   const requested = query.get("screen") || "overview";
@@ -1067,9 +1071,6 @@ function App() {
   const requestedQuote = quoteList.find((quote) => quote[0] === query.get("quote")) || quoteList.find((quote) => quote[3] === requestedRfq?.[0]) || quoteList[0];
   const screenLabel = { overview: "Overview", rfqs: "RFQs", quotes: "Quotes", users: "Users", brands: "Verification", vendors: "Verification", verification: "Verification", review: "Review", "rfq-detail": "RFQ detail", "quote-detail": "Quote detail", settings: "Settings" }[requested] || "Overview";
   const [screen, setScreen] = useState(screenLabel);
-  // Still local state: nothing backs the user list yet, so this is the mock
-  // list in both mounts. See the note above UsersPage.
-  const [users, setUsers] = useState(initialUsers);
   const [selectedProfile, setSelectedProfile] = useState(requestedProfile);
   const [selectedRfq, setSelectedRfq] = useState(requestedRfq);
   const [selectedQuote, setSelectedQuote] = useState(requestedQuote);
@@ -1161,12 +1162,17 @@ function App() {
     );
     window.setTimeout(() => setToast(""), 2400);
   };
-  const toggleUserStatus = (id) => {
+  const toggleUserStatus = async (id) => {
     const user = users.find((item) => item.id === id);
     if (!user || user.protected) return;
     const nextStatus = user.status === "Active" ? "Disabled" : "Active";
-    setUsers((current) => current.map((item) => item.id === id ? { ...item, status: nextStatus } : item));
-    setToast(`${user.name} ${nextStatus === "Active" ? "enabled" : "disabled"}`);
+    try {
+      await actions.toggleUserAccess?.(id, nextStatus === "Disabled");
+      reloadUsers();
+      setToast(`${user.name} ${nextStatus === "Active" ? "enabled" : "disabled"}`);
+    } catch (error) {
+      setToast(error.message || "That account could not be updated");
+    }
     window.setTimeout(() => setToast(""), 2400);
   };
   const navigate = (label) => { setScreen(label); window.scrollTo({ top: 0, behavior: "smooth" }); };

@@ -56,7 +56,11 @@ function readable(authError) {
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(null);
+  // `undefined` means Supabase has not finished restoring the browser session
+  // yet; `null` means that restoration finished and there is no signed-in
+  // user. Keeping those states separate prevents protected pages from briefly
+  // redirecting to sign-in before an existing session has been recovered.
+  const [session, setSession] = useState(undefined);
   const [orgs, setOrgs] = useState([]);
   const [activeOrgId, setActiveOrgId] = useState(
     () => window.localStorage.getItem("tscActiveOrg") || null,
@@ -70,8 +74,14 @@ export function AuthProvider({ children }) {
 
     let cancelled = false;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!cancelled) setSession(data.session ?? null);
+    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (cancelled) return;
+      if (sessionError) {
+        setError(readable(sessionError));
+        setStatus("error");
+        return;
+      }
+      setSession(data.session ?? null);
     });
 
     const {
@@ -89,6 +99,11 @@ export function AuthProvider({ children }) {
   // Load memberships whenever the signed-in user changes.
   useEffect(() => {
     if (!isConfigured) return;
+
+    if (session === undefined) {
+      setStatus("loading");
+      return;
+    }
 
     if (!session) {
       setOrgs([]);
