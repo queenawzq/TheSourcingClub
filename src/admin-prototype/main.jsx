@@ -1146,19 +1146,18 @@ function App() {
     setSelectedProfile((current) => current?.id === id ? { ...current, status, tone } : current);
     reloadQueue();
     reloadMetrics();
-    const approvalEmail = result?.approvalEmail;
+    // What happened to the decision, and what happened to the email, are two
+    // separate facts: the decision is recorded either way, so the toast says
+    // so plainly rather than letting a mail failure read as a lost decision.
+    const decisionEmail = result?.decisionEmail;
+    const outcome = status === "Approved" ? "Profile approved"
+      : status === "Declined" ? "Profile declined"
+      : "Information request sent";
     setToast(
-      status === "Approved"
-        ? !approvalEmail
-          ? "Profile approved"
-          : approvalEmail.error
-          ? "Profile approved; approval email is queued for retry"
-          : approvalEmail.alreadySent
-            ? "Profile approved; approval email was already sent"
-            : "Profile approved and approval email sent"
-        : status === "Declined"
-          ? "Profile declined"
-          : "Information request sent"
+      !decisionEmail ? outcome
+        : decisionEmail.error ? `${outcome}; email is queued for retry`
+        : decisionEmail.alreadySent ? `${outcome}; email was already sent`
+        : `${outcome} and email sent`
     );
     window.setTimeout(() => setToast(""), 2400);
   };

@@ -18,7 +18,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(27);
+select plan(29);
 
 insert into auth.users (id, email) values
   ('c5000000-0000-0000-0000-000000000001', 'p5-admin@example.com'),
@@ -116,9 +116,13 @@ select is(
   'and cannot see the review record about their own company'
 );
 
-select is(
-  (select count(*)::int from public.verification_approval_email_outbox),
-  0, 'and cannot read the private approval-email queue'
+-- Not "returns no rows": the table carries no grant to authenticated at all,
+-- so a signed-in user is refused by the grant before RLS is ever consulted.
+-- Asserting a count of 0 here instead read as a pass only because the error
+-- aborted the whole suite on the statement before it.
+select throws_ok(
+  $$select count(*) from public.verification_approval_email_outbox$$,
+  '42501', null, 'and cannot read the private review-email queue at all'
 );
 
 -- ---------------------------------------------------------------------------
@@ -236,9 +240,31 @@ select is(
   (select count(*)::int from public.verification_approval_email_outbox
     where org_id = 'd5000000-0000-0000-0000-0000000000f1'
       and recipient_email = 'p5-factory@example.com'
+      and decision = 'approved'
       and status = 'pending'),
   1,
   'approval queues one email for the company owner'
+);
+
+-- The decision that asks the company to DO something is the one that most
+-- needs to leave the app. An in-app notification alone is only seen by
+-- someone already looking.
+select is(
+  (select count(*)::int from public.verification_approval_email_outbox
+    where org_id = 'd5000000-0000-0000-0000-0000000000f1'
+      and recipient_email = 'p5-factory@example.com'
+      and decision = 'needs_information'
+      and status = 'pending'),
+  1,
+  'and returning a review queues its own email, separately from the approval'
+);
+
+select is(
+  (select note from public.verification_approval_email_outbox
+    where org_id = 'd5000000-0000-0000-0000-0000000000f1'
+      and decision = 'needs_information'),
+  'Please upload your business registration.',
+  'carrying the note, which on this decision is the whole actionable content'
 );
 
 set local role authenticated;

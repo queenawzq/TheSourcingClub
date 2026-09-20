@@ -115,11 +115,20 @@ export async function claimReview(orgId, assignTo = null) {
 }
 
 /**
+ * The three states the company hears about. 'in_review' and
+ * 'ready_for_review' are internal movements and deliberately send nothing —
+ * telling a factory "someone opened your file" is noise.
+ */
+const NOTIFIES_COMPANY = new Set(["approved", "needs_information", "declined"]);
+
+/**
  * Approve, decline, or send it back.
  *
  * `needs_information` requires a note and the database enforces that — a
  * factory told only "Needs information" has nothing to act on. The note
- * reaches them as a notification written in the same transaction.
+ * reaches them as a notification written in the same transaction, and as an
+ * email: a company that never opens the app would otherwise never learn its
+ * review moved, which defeats the one decision that asks them to act.
  */
 export async function decideReview(orgId, decision, note = null, risk = null) {
   const review = unwrap(
@@ -132,11 +141,11 @@ export async function decideReview(orgId, decision, note = null, risk = null) {
     `record the ${decision.replace(/_/g, " ")} decision`,
   );
 
-  if (decision !== "approved") return review;
+  if (!NOTIFIES_COMPANY.has(decision)) return review;
 
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch("/api/send-verification-approved", {
+    const response = await fetch("/api/send-review-decision", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -145,9 +154,9 @@ export async function decideReview(orgId, decision, note = null, risk = null) {
       body: JSON.stringify({ orgId }),
     });
     const result = await response.json();
-    return { ...review, approvalEmail: result };
+    return { ...review, decisionEmail: result };
   } catch (error) {
-    return { ...review, approvalEmail: { sent: 0, error: error.message } };
+    return { ...review, decisionEmail: { sent: 0, error: error.message } };
   }
 }
 
