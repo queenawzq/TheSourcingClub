@@ -1,5 +1,4 @@
 import { createClient } from "@supabase/supabase-js";
-import { onboardingEmail } from "../scripts/generate-onboarding-emails.mjs";
 import { messageFor } from "./send-review-decision.js";
 
 /**
@@ -12,6 +11,12 @@ import { messageFor } from "./send-review-decision.js";
  * must never become a way to send mail to anyone else.
  */
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
+
+// Loaded with import(), not a static import: Vercel compiles api/*.js to
+// CommonJS, and a static import of this .mjs becomes a require() that
+// crashes the function before it runs (ERR_REQUIRE_ESM, a bare 500).
+const loadOnboardingEmail = () =>
+  import("../scripts/generate-onboarding-emails.mjs").then((module) => module.onboardingEmail);
 
 const jsonBody = (request) =>
   typeof request.body === "string" ? JSON.parse(request.body) : request.body ?? {};
@@ -27,9 +32,9 @@ function appUrl() {
 const SAMPLE_NOTE = "This is a sample note from a reviewer. In a real email it is whatever the reviewer wrote.";
 
 const TEMPLATES = {
-  "onboarding-brand": () => onboardingEmail("brand", sampleOnboarding("Sample Brand Co.", "/app.html")),
-  "onboarding-factory": () => onboardingEmail("factory", sampleOnboarding("Sample Factory Ltd.", "/app.html?portal=factory")),
-  "onboarding-trading-company": () => onboardingEmail("trading-company", sampleOnboarding("Sample Trading Co.", "/app.html?portal=factory")),
+  "onboarding-brand": async () => (await loadOnboardingEmail())("brand", sampleOnboarding("Sample Brand Co.", "/app.html")),
+  "onboarding-factory": async () => (await loadOnboardingEmail())("factory", sampleOnboarding("Sample Factory Ltd.", "/app.html?portal=factory")),
+  "onboarding-trading-company": async () => (await loadOnboardingEmail())("trading-company", sampleOnboarding("Sample Trading Co.", "/app.html?portal=factory")),
   "review-approved": (locale, name) => review("approved", locale, name, ""),
   "review-needs-information": (locale, name) => review("needs_information", locale, name, SAMPLE_NOTE),
   "review-declined": (locale, name) => review("declined", locale, name, SAMPLE_NOTE),
@@ -90,7 +95,7 @@ export default async function handler(request, response) {
   }
 
   const name = auth.user.user_metadata?.full_name || auth.user.user_metadata?.name || "";
-  const message = build(locale === "zh" ? "zh" : "en", name);
+  const message = await build(locale === "zh" ? "zh" : "en", name);
   const to = auth.user.email;
 
   try {

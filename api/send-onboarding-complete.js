@@ -1,5 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
-import { onboardingEmail } from "../scripts/generate-onboarding-emails.mjs";
+// Loaded with import(), not a static import: Vercel compiles api/*.js to
+// CommonJS, and a static import of this .mjs becomes a require() that
+// crashes the function before it runs (ERR_REQUIRE_ESM, a bare 500).
+const loadOnboardingEmail = () =>
+  import("../scripts/generate-onboarding-emails.mjs").then((module) => module.onboardingEmail);
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
@@ -74,6 +78,7 @@ export default async function handler(request, response) {
     return;
   }
 
+  const onboardingEmail = await loadOnboardingEmail();
   let sent = 0;
   const failures = [];
   for (const row of queued) {
