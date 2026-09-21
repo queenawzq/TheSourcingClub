@@ -1,7 +1,7 @@
 {
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "node scripts/check-css-tokens.mjs && vite build && cp script.js dist/script.js && cp -R assets/* dist/assets/",
+    "build": "node scripts/check-css-tokens.mjs && node scripts/check-adapters.mjs && vite build && cp script.js dist/script.js && cp -R assets/* dist/assets/",
     "emails": "node scripts/generate-onboarding-emails.mjs",
     "smoke": "node scripts/smoke-test.mjs",
     "db:reset": "supabase db reset",
@@ -9,6 +9,7 @@
     "taxonomy": "python3 scripts/build-taxonomy.py",
     "e2e": "node scripts/e2e.mjs",
     "check:css": "node scripts/check-css-tokens.mjs",
+    "check:adapters": "node scripts/check-adapters.mjs",
     "check:prototype": "node scripts/check-prototype.mjs"
   },
   "dependencies": {
