@@ -10,7 +10,7 @@
  * only in the prototypes at their own URLs, and is reached from there rather
  * than being half-linked from here.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { acceptInvitation, createOrg, listMyInvitations } from "../lib/domain/org.js";
@@ -50,6 +50,10 @@ import LiveSettings from "./settings/LiveSettings.jsx";
 import NotificationList from "./NotificationList.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
 import "./shell.css";
+
+// Lazy, so the admin stylesheet its document render brings along loads only
+// on the Terms and Privacy pages.
+const LegalPage = lazy(() => import("./LegalPage.jsx"));
 
 function Loading({ label }) {
   return (
@@ -1041,6 +1045,11 @@ function App() {
   );
 
   if (status === "unconfigured") return <SetupNeeded />;
+  // Terms and Privacy are public: signup links here before an account exists,
+  // and a signed-in reader should land on the same page, not the dashboard.
+  if (new URLSearchParams(window.location.search).has("legal")) {
+    return <Suspense fallback={<Loading label="Opening the document…" />}><LegalPage /></Suspense>;
+  }
   if (status === "loading") return <Loading label="Checking your session…" />;
   if (status === "signed-out") return <SignIn />;
   if (resetting) {

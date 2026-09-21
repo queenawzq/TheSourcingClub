@@ -29,6 +29,7 @@ import {
   userDirectory,
   verificationQueue,
 } from "../../lib/domain/admin.js";
+import { LEGAL_KINDS, listCurrentLegalDocuments, publishLegalDocument } from "../../lib/domain/legal.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import { formatMoney } from "../../lib/money.js";
 
@@ -197,6 +198,29 @@ export function toAdminUser(user) {
   };
 }
 
+/**
+ * The settings editor's shape: one entry per tab, named as the design names
+ * them. The database kind rides along so a save knows where to go.
+ */
+function toLegalTabs(byKind) {
+  return Object.fromEntries(
+    Object.entries(LEGAL_KINDS)
+      .filter(([kind]) => byKind[kind])
+      .map(([kind, tab]) => {
+        const doc = byKind[kind];
+        return [tab, {
+          kind,
+          version: doc.version,
+          onboarding: doc.onboarding_en,
+          onboardingZh: doc.onboarding_zh ?? "",
+          full: doc.full_en,
+          fullZh: doc.full_zh ?? "",
+          updated: new Date(doc.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+        }];
+      }),
+  );
+}
+
 export function createAdminAdapter({ user }) {
   return {
     viewer: { isAdmin: true, org: null, user },
@@ -206,6 +230,7 @@ export function createAdminAdapter({ user }) {
     adminQuotes: () => quoteQueue().then((rows) => rows.map(toQuoteRow)),
     adminMetrics: () => overviewMetrics(),
     adminUsers: () => userDirectory().then((rows) => rows.map(toAdminUser)),
+    legalDocuments: () => listCurrentLegalDocuments().then(toLegalTabs),
 
     actions: {
       claimReview,
@@ -220,6 +245,17 @@ export function createAdminAdapter({ user }) {
         return decideReview(orgId, decision, note ?? null);
       },
       toggleUserAccess: (userId, disabled) => setUserDisabled(userId, disabled),
+      // Every save publishes a new version; nothing already signed changes.
+      saveLegalDocument: (tab, draft) => {
+        const kind = Object.keys(LEGAL_KINDS).find((key) => LEGAL_KINDS[key] === tab);
+        if (!kind) throw new Error(`unknown legal document "${tab}"`);
+        return publishLegalDocument(kind, {
+          onboardingEn: draft.onboarding,
+          onboardingZh: draft.onboardingZh,
+          fullEn: draft.full,
+          fullZh: draft.fullZh,
+        });
+      },
 
       /**
        * What the company submitted, and a way to open the files.

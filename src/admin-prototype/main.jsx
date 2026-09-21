@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { PrototypeSideNav, ProfileChipSection, ProfileDetailPair } from "../shared/ProfileShell.jsx";
-import { useActions, useAdminMetrics, useAdminQuotes, useAdminRfqs, useAdminUsers, useVerificationQueue } from "../lib/data/DataProvider.jsx";
+import { useActions, useAdminMetrics, useAdminQuotes, useAdminRfqs, useAdminUsers, useLegalDocuments, useVerificationQueue } from "../lib/data/DataProvider.jsx";
 import "../prototype/styles.css";
 import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
@@ -1109,42 +1109,77 @@ function UsersPage({ users, onToggleStatus }) {
   );
 }
 
+// The legal documents, as the settings editor shows them. Exported so the
+// mock adapter can serve them; admin.html reads the published versions.
+const buildFullAgreement = ({ accountType, usage, confidentiality, responsibilityTitle, responsibilities }) => `The Sourcing Club ${accountType} Terms and Conditions\nEffective August 12, 2026\n\n1. Acceptance of Terms\nThese Terms and Conditions govern your access to and use of The Sourcing Club marketplace. By creating an account, signing electronically, or continuing to use the platform, you agree to these terms and confirm that you are authorized to act for the company connected to your account.\n\n2. Account Eligibility and Authority\nYou must provide complete and accurate registration information, maintain a valid business identity, and ensure that every person using the account has appropriate authority. You are responsible for account credentials and all activity completed through your account.\n\n3. Platform Usage\n${usage}\n\n4. Profile and Verification Information\nYou must keep company, contact, verification, and operational information current. The Sourcing Club may request supporting evidence, review submitted information, and identify whether verification is complete, pending, or requires additional review.\n\n5. Data Privacy and Confidentiality\n${confidentiality}\n\n6. ${responsibilityTitle}\n${responsibilities}\n\n7. Marketplace Communications and Transactions\nUsers must communicate professionally and provide commercially accurate information. Quotes, requests, specifications, samples, production orders, approvals, and other marketplace records may form part of agreements between participating businesses. Each party is responsible for reviewing and accepting its own commercial obligations.\n\n8. Fees, Credits, and Payments\nApplicable platform fees, quotation credits, payment schedules, deposits, and transaction charges will be shown before confirmation. Users are responsible for authorized charges, accurate billing information, and any taxes or duties that apply to their activity.\n\n9. Prohibited Conduct\nYou may not submit false or misleading information, misuse confidential materials, infringe intellectual property rights, circumvent platform safeguards, interfere with marketplace operation, or use the service for unlawful, abusive, or fraudulent activity.\n\n10. Suspension and Termination\nThe Sourcing Club may restrict, suspend, or terminate access when these terms are breached, required verification is not completed, marketplace activity creates material risk, or continued access could harm users or the platform. Where appropriate, users may be given notice and an opportunity to correct the issue.\n\n11. Platform Role and Disclaimers\nThe Sourcing Club provides marketplace, communication, verification-support, and workflow tools. Unless expressly stated otherwise, it is not a party to manufacturing, sourcing, supply, shipping, or payment agreements between users and does not guarantee commercial performance or product outcomes.\n\n12. Limitation of Liability\nTo the fullest extent permitted by applicable law, The Sourcing Club will not be liable for indirect, incidental, special, or consequential losses arising from marketplace transactions, third-party conduct, production delays, or reliance on user-submitted information.\n\n13. Changes to These Terms\nThe Sourcing Club may update these terms to reflect legal, operational, or product changes. The effective date will be updated when a revised version is published, and material changes may require renewed acceptance.\n\n14. Contact\nQuestions about these terms may be directed to The Sourcing Club operations team through the support channels provided in your account.`;
+const brandUsage = "Use The Sourcing Club to share accurate brand information, submit real sourcing needs, and communicate with vendors in good faith.";
+const brandPrivacy = "Only upload assets, product references, and company documents you are allowed to share. Vendor quotes, pricing, and private project details should remain confidential.";
+const brandResponsibilities = "Keep your profile, project briefs, payment status, and decision-maker details accurate so vendors can quote and plan production confidently.";
+const factoryUsage = "Use The Sourcing Club to share accurate factory information, respond to brand enquiries professionally, and keep communication related to sourcing opportunities.";
+const factoryPrivacy = "Only upload documents and media you are allowed to share. Brand enquiries, tech packs, pricing, and project details should be kept confidential unless both sides agree otherwise.";
+const factoryResponsibilities = "Keep your profile, capacity, certifications, and contact details up to date. Quotes, lead times, and production commitments should reflect what your factory can realistically deliver.";
+const tradingUsage = "Share accurate company, sourcing-network, and production information, and communicate with brands in good faith.";
+const tradingPrivacy = "Only upload documents and media you are allowed to share. Keep brand enquiries, tech packs, pricing, and supplier details confidential.";
+const tradingResponsibilities = "Disclose your role clearly, keep partner-factory information current, and ensure quotes and production commitments reflect what your network can deliver.";
+export const initialTerms = {
+  Brand: {
+    onboarding: `Platform Usage\n${brandUsage}\n\nData Privacy & Confidentiality\n${brandPrivacy}\n\nBrand Responsibilities\n${brandResponsibilities}`,
+    full: buildFullAgreement({ accountType: "Brand", usage: brandUsage, confidentiality: brandPrivacy, responsibilityTitle: "Brand Responsibilities", responsibilities: brandResponsibilities }),
+    onboardingZh: "",
+    fullZh: "",
+    updated: "Aug 12, 2026"
+  },
+  Factory: {
+    onboarding: `Platform Usage\n${factoryUsage}\n\nData Privacy & Confidentiality\n${factoryPrivacy}\n\nFactory Responsibilities\n${factoryResponsibilities}`,
+    full: buildFullAgreement({ accountType: "Factory", usage: factoryUsage, confidentiality: factoryPrivacy, responsibilityTitle: "Factory Responsibilities", responsibilities: factoryResponsibilities }),
+    onboardingZh: "",
+    fullZh: "",
+    updated: "Aug 12, 2026"
+  },
+  "Trading company": {
+    onboarding: `Platform Usage\n${tradingUsage}\n\nData Privacy & Confidentiality\n${tradingPrivacy}\n\nTrading Company Responsibilities\n${tradingResponsibilities}`,
+    full: buildFullAgreement({ accountType: "Trading Company", usage: tradingUsage, confidentiality: tradingPrivacy, responsibilityTitle: "Trading Company Responsibilities", responsibilities: tradingResponsibilities }),
+    onboardingZh: "",
+    fullZh: "",
+    updated: "Aug 12, 2026"
+  },
+  "Privacy policy": {
+    onboarding: null,
+    onboardingZh: "",
+    full: "The Sourcing Club Privacy Policy\nPlaceholder — not yet published\n\nThis policy has not been published yet\nThe Sourcing Club has not yet published its Privacy Policy. This placeholder will be replaced by the published policy.",
+    fullZh: "",
+    updated: "Aug 12, 2026"
+  }
+};
+
+// The full legal page as a reader sees it. Exported because the public
+// Terms and Privacy pages in app.html render the same document.
+export function LegalDocumentBody({ text }) {
+  return (
+    <div className="admin-terms-document-body">
+      {String(text ?? "").split("\n\n").map((paragraph, index) => {
+        const [heading, ...copy] = paragraph.split("\n");
+        return index === 0
+          ? <header key={heading}><h3>{heading}</h3><p>{copy.join(" ")}</p></header>
+          : <div className="admin-terms-preview-section" key={heading}><strong>{heading}</strong><p>{copy.join(" ")}</p></div>;
+      })}
+    </div>
+  );
+}
+
 function SettingsPage() {
   const initialThresholds = { autoClear: "95", manualMin: "80", manualMax: "94", moreInformation: "80", authority: "TSC operations" };
-  const buildFullAgreement = ({ accountType, usage, confidentiality, responsibilityTitle, responsibilities }) => `The Sourcing Club ${accountType} Terms and Conditions\nEffective August 12, 2026\n\n1. Acceptance of Terms\nThese Terms and Conditions govern your access to and use of The Sourcing Club marketplace. By creating an account, signing electronically, or continuing to use the platform, you agree to these terms and confirm that you are authorized to act for the company connected to your account.\n\n2. Account Eligibility and Authority\nYou must provide complete and accurate registration information, maintain a valid business identity, and ensure that every person using the account has appropriate authority. You are responsible for account credentials and all activity completed through your account.\n\n3. Platform Usage\n${usage}\n\n4. Profile and Verification Information\nYou must keep company, contact, verification, and operational information current. The Sourcing Club may request supporting evidence, review submitted information, and identify whether verification is complete, pending, or requires additional review.\n\n5. Data Privacy and Confidentiality\n${confidentiality}\n\n6. ${responsibilityTitle}\n${responsibilities}\n\n7. Marketplace Communications and Transactions\nUsers must communicate professionally and provide commercially accurate information. Quotes, requests, specifications, samples, production orders, approvals, and other marketplace records may form part of agreements between participating businesses. Each party is responsible for reviewing and accepting its own commercial obligations.\n\n8. Fees, Credits, and Payments\nApplicable platform fees, quotation credits, payment schedules, deposits, and transaction charges will be shown before confirmation. Users are responsible for authorized charges, accurate billing information, and any taxes or duties that apply to their activity.\n\n9. Prohibited Conduct\nYou may not submit false or misleading information, misuse confidential materials, infringe intellectual property rights, circumvent platform safeguards, interfere with marketplace operation, or use the service for unlawful, abusive, or fraudulent activity.\n\n10. Suspension and Termination\nThe Sourcing Club may restrict, suspend, or terminate access when these terms are breached, required verification is not completed, marketplace activity creates material risk, or continued access could harm users or the platform. Where appropriate, users may be given notice and an opportunity to correct the issue.\n\n11. Platform Role and Disclaimers\nThe Sourcing Club provides marketplace, communication, verification-support, and workflow tools. Unless expressly stated otherwise, it is not a party to manufacturing, sourcing, supply, shipping, or payment agreements between users and does not guarantee commercial performance or product outcomes.\n\n12. Limitation of Liability\nTo the fullest extent permitted by applicable law, The Sourcing Club will not be liable for indirect, incidental, special, or consequential losses arising from marketplace transactions, third-party conduct, production delays, or reliance on user-submitted information.\n\n13. Changes to These Terms\nThe Sourcing Club may update these terms to reflect legal, operational, or product changes. The effective date will be updated when a revised version is published, and material changes may require renewed acceptance.\n\n14. Contact\nQuestions about these terms may be directed to The Sourcing Club operations team through the support channels provided in your account.`;
-  const brandUsage = "Use The Sourcing Club to share accurate brand information, submit real sourcing needs, and communicate with vendors in good faith.";
-  const brandPrivacy = "Only upload assets, product references, and company documents you are allowed to share. Vendor quotes, pricing, and private project details should remain confidential.";
-  const brandResponsibilities = "Keep your profile, project briefs, payment status, and decision-maker details accurate so vendors can quote and plan production confidently.";
-  const factoryUsage = "Use The Sourcing Club to share accurate factory information, respond to brand enquiries professionally, and keep communication related to sourcing opportunities.";
-  const factoryPrivacy = "Only upload documents and media you are allowed to share. Brand enquiries, tech packs, pricing, and project details should be kept confidential unless both sides agree otherwise.";
-  const factoryResponsibilities = "Keep your profile, capacity, certifications, and contact details up to date. Quotes, lead times, and production commitments should reflect what your factory can realistically deliver.";
-  const tradingUsage = "Share accurate company, sourcing-network, and production information, and communicate with brands in good faith.";
-  const tradingPrivacy = "Only upload documents and media you are allowed to share. Keep brand enquiries, tech packs, pricing, and supplier details confidential.";
-  const tradingResponsibilities = "Disclose your role clearly, keep partner-factory information current, and ensure quotes and production commitments reflect what your network can deliver.";
-  const initialTerms = {
-    Brand: {
-      onboarding: `Platform Usage\n${brandUsage}\n\nData Privacy & Confidentiality\n${brandPrivacy}\n\nBrand Responsibilities\n${brandResponsibilities}`,
-      full: buildFullAgreement({ accountType: "Brand", usage: brandUsage, confidentiality: brandPrivacy, responsibilityTitle: "Brand Responsibilities", responsibilities: brandResponsibilities }),
-      updated: "Aug 12, 2026"
-    },
-    Factory: {
-      onboarding: `Platform Usage\n${factoryUsage}\n\nData Privacy & Confidentiality\n${factoryPrivacy}\n\nFactory Responsibilities\n${factoryResponsibilities}`,
-      full: buildFullAgreement({ accountType: "Factory", usage: factoryUsage, confidentiality: factoryPrivacy, responsibilityTitle: "Factory Responsibilities", responsibilities: factoryResponsibilities }),
-      updated: "Aug 12, 2026"
-    },
-    "Trading company": {
-      onboarding: `Platform Usage\n${tradingUsage}\n\nData Privacy & Confidentiality\n${tradingPrivacy}\n\nTrading Company Responsibilities\n${tradingResponsibilities}`,
-      full: buildFullAgreement({ accountType: "Trading Company", usage: tradingUsage, confidentiality: tradingPrivacy, responsibilityTitle: "Trading Company Responsibilities", responsibilities: tradingResponsibilities }),
-      updated: "Aug 12, 2026"
-    }
-  };
   const [thresholds, setThresholds] = useState(initialThresholds);
   const [draft, setDraft] = useState(initialThresholds);
   const [isEditing, setIsEditing] = useState(false);
-  const [terms, setTerms] = useState(initialTerms);
+  // Published versions on admin.html, the constants above in the prototype.
+  const { data: terms, loading: termsLoading, error: termsError, reload: reloadTerms } = useLegalDocuments();
+  const actions = useActions();
   const [activeTermsType, setActiveTermsType] = useState("Brand");
-  const [termsDraft, setTermsDraft] = useState(initialTerms.Brand);
+  const [termsDraft, setTermsDraft] = useState(null);
   const [isEditingTerms, setIsEditingTerms] = useState(false);
+  const [termsSaving, setTermsSaving] = useState(false);
+  const [termsSaveError, setTermsSaveError] = useState(null);
   const updateDraft = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
   const startEditing = () => { setDraft(thresholds); setIsEditing(true); };
   const cancelEditing = () => { setDraft(thresholds); setIsEditing(false); };
@@ -1153,18 +1188,28 @@ function SettingsPage() {
     setThresholds(draft);
     setIsEditing(false);
   };
-  const activeTerms = terms[activeTermsType];
+  const activeTerms = terms?.[activeTermsType];
   const selectTermsType = (type) => {
     if (isEditingTerms) return;
     setActiveTermsType(type);
-    setTermsDraft(terms[type]);
   };
-  const startEditingTerms = () => { setTermsDraft(activeTerms); setIsEditingTerms(true); };
-  const cancelEditingTerms = () => { setTermsDraft(activeTerms); setIsEditingTerms(false); };
-  const saveTerms = (event) => {
+  const startEditingTerms = () => { setTermsDraft(activeTerms); setTermsSaveError(null); setIsEditingTerms(true); };
+  const cancelEditingTerms = () => { setTermsDraft(null); setTermsSaveError(null); setIsEditingTerms(false); };
+  // Every save publishes a new version; what a company already signed stays.
+  const saveTerms = async (event) => {
     event.preventDefault();
-    setTerms((current) => ({ ...current, [activeTermsType]: { ...termsDraft, updated: "Just now" } }));
-    setIsEditingTerms(false);
+    setTermsSaving(true);
+    setTermsSaveError(null);
+    try {
+      await actions.saveLegalDocument(activeTermsType, termsDraft);
+      await reloadTerms();
+      setIsEditingTerms(false);
+      setTermsDraft(null);
+    } catch (error) {
+      setTermsSaveError(error.message);
+    } finally {
+      setTermsSaving(false);
+    }
   };
 
   return (
@@ -1220,11 +1265,17 @@ function SettingsPage() {
       </Panel>
       <Panel
         title="Terms and conditions"
-        subtitle={isEditingTerms ? `Update the ${activeTermsType.toLowerCase()} onboarding summary and complete legal page together.` : `Manage account-specific onboarding summaries and full legal pages · ${activeTermsType} updated ${activeTerms.updated}`}
-        action={isEditingTerms ? null : "Edit terms"}
+        subtitle={isEditingTerms ? `Update the ${activeTermsType.toLowerCase()} onboarding summary and complete legal page together.` : activeTerms ? `Manage account-specific onboarding summaries and full legal pages · ${activeTermsType}${activeTerms.version ? ` v${activeTerms.version}` : ""} updated ${activeTerms.updated}` : "Manage account-specific onboarding summaries and full legal pages"}
+        action={isEditingTerms || !activeTerms ? null : "Edit terms"}
         onAction={startEditingTerms}
         className={isEditingTerms ? "admin-settings-card admin-terms-card is-editing" : "admin-settings-card admin-terms-card"}
       >
+        {!terms ? (
+          termsError
+            ? <div className="admin-empty-state admin-load-error"><strong>The terms could not load</strong><p>{termsError.message}</p></div>
+            : <div className="admin-empty-state"><strong>{termsLoading ? "Loading the terms…" : "No terms published"}</strong></div>
+        ) : (
+        <>
         <nav className="admin-terms-tabs" aria-label="Terms account type">
           {Object.keys(terms).map((type) => (
             <button className={activeTermsType === type ? "active" : ""} type="button" aria-current={activeTermsType === type ? "page" : undefined} disabled={isEditingTerms && activeTermsType !== type} onClick={() => selectTermsType(type)} key={type}>{type}</button>
@@ -1232,42 +1283,54 @@ function SettingsPage() {
         </nav>
         {isEditingTerms ? (
           <form className="admin-terms-form" onSubmit={saveTerms}>
-            <div className="admin-terms-field">
-              <label htmlFor="admin-onboarding-terms">Onboarding version</label>
-              <small id="admin-onboarding-terms-help">The concise policy sections displayed directly during {activeTermsType.toLowerCase()} onboarding.</small>
-              <textarea id="admin-onboarding-terms" aria-describedby="admin-onboarding-terms-help" className="admin-terms-onboarding-text" required value={termsDraft.onboarding} onChange={(event) => setTermsDraft((current) => ({ ...current, onboarding: event.target.value }))} />
-            </div>
+            {termsDraft.onboarding != null && (
+              <div className="admin-terms-field">
+                <label htmlFor="admin-onboarding-terms">Onboarding version</label>
+                <small id="admin-onboarding-terms-help">The concise policy sections displayed directly during {activeTermsType.toLowerCase()} onboarding.</small>
+                <textarea id="admin-onboarding-terms" aria-describedby="admin-onboarding-terms-help" className="admin-terms-onboarding-text" required value={termsDraft.onboarding} onChange={(event) => setTermsDraft((current) => ({ ...current, onboarding: event.target.value }))} />
+              </div>
+            )}
+            {termsDraft.onboarding != null && (
+              <div className="admin-terms-field">
+                <label htmlFor="admin-onboarding-terms-zh">Onboarding version · 中文</label>
+                <small id="admin-onboarding-terms-zh-help">Shown to users who read onboarding in Chinese. Leave blank to show the English version.</small>
+                <textarea id="admin-onboarding-terms-zh" aria-describedby="admin-onboarding-terms-zh-help" className="admin-terms-onboarding-text" value={termsDraft.onboardingZh ?? ""} onChange={(event) => setTermsDraft((current) => ({ ...current, onboardingZh: event.target.value }))} />
+              </div>
+            )}
             <div className="admin-terms-field">
               <label htmlFor="admin-full-terms">Full legal page</label>
               <small id="admin-full-terms-help">The complete standalone agreement opened from onboarding or the user’s account.</small>
               <textarea id="admin-full-terms" aria-describedby="admin-full-terms-help" className="admin-terms-full-text" required value={termsDraft.full} onChange={(event) => setTermsDraft((current) => ({ ...current, full: event.target.value }))} />
             </div>
+            <div className="admin-terms-field">
+              <label htmlFor="admin-full-terms-zh">Full legal page · 中文</label>
+              <small id="admin-full-terms-zh-help">Leave blank to show the English page to Chinese readers.</small>
+              <textarea id="admin-full-terms-zh" aria-describedby="admin-full-terms-zh-help" className="admin-terms-full-text" value={termsDraft.fullZh ?? ""} onChange={(event) => setTermsDraft((current) => ({ ...current, fullZh: event.target.value }))} />
+            </div>
+            {termsSaveError && <p className="admin-error" role="alert">{termsSaveError}</p>}
             <div className="admin-settings-actions">
-              <button className="secondary-btn" type="button" onClick={cancelEditingTerms}>Cancel</button>
-              <button className="primary-btn" type="submit">Save terms</button>
+              <button className="secondary-btn" type="button" onClick={cancelEditingTerms} disabled={termsSaving}>Cancel</button>
+              <button className="primary-btn" type="submit" disabled={termsSaving}>{termsSaving ? "Saving…" : "Save terms"}</button>
             </div>
           </form>
         ) : (
           <div className="admin-terms-preview">
-            <section>
-              <div><span>Onboarding version</span><small>Displayed inside {activeTermsType.toLowerCase()} onboarding</small></div>
-              {activeTerms.onboarding.split("\n\n").map((paragraph) => {
-                const [heading, ...copy] = paragraph.split("\n");
-                return <div className="admin-terms-preview-section" key={heading}><strong>{heading}</strong><p>{copy.join(" ")}</p></div>;
-              })}
-            </section>
+            {activeTerms.onboarding != null && (
+              <section>
+                <div><span>Onboarding version</span><small>Displayed inside {activeTermsType.toLowerCase()} onboarding</small></div>
+                {activeTerms.onboarding.split("\n\n").map((paragraph) => {
+                  const [heading, ...copy] = paragraph.split("\n");
+                  return <div className="admin-terms-preview-section" key={heading}><strong>{heading}</strong><p>{copy.join(" ")}</p></div>;
+                })}
+              </section>
+            )}
             <section className="admin-terms-document">
               <div><span>Full legal page</span><small>Standalone document · {activeTerms.full.split("\n\n").length - 1} sections</small></div>
-              <div className="admin-terms-document-body">
-                {activeTerms.full.split("\n\n").map((paragraph, index) => {
-                  const [heading, ...copy] = paragraph.split("\n");
-                  return index === 0
-                    ? <header key={heading}><h3>{heading}</h3><p>{copy.join(" ")}</p></header>
-                    : <div className="admin-terms-preview-section" key={heading}><strong>{heading}</strong><p>{copy.join(" ")}</p></div>;
-                })}
-              </div>
+              <LegalDocumentBody text={activeTerms.full} />
             </section>
           </div>
+        )}
+        </>
         )}
       </Panel>
     </main>

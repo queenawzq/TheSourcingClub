@@ -336,6 +336,61 @@ console.log("\nterms acceptance");
     : fail("LEAK: signature was editable after the fact");
 }
 
+console.log("\nlegal documents");
+{
+  // The one function granted to anon: signup links to the terms before the
+  // visitor has an account to read them with.
+  const signedOut = createClient(URL, ANON, { auth: { persistSession: false } });
+  const { data: current, error: currentError } = await signedOut.rpc("current_legal_documents");
+  const byKind = Object.fromEntries((current ?? []).map((row) => [row.kind, row]));
+  if (currentError) fail("a signed-out visitor can read the current terms", currentError);
+  else ["terms_brand", "terms_factory", "terms_trading", "privacy"].every((kind) => byKind[kind])
+    ? ok("a signed-out visitor reads the current version of all four documents")
+    : fail(`current documents incomplete: ${Object.keys(byKind).join(", ")}`);
+
+  const { error: tableLeak } = await signedOut.from("legal_documents").select("id");
+  tableLeak ? ok("but NOT the table behind them")
+            : fail("LEAK: legal_documents is readable signed out");
+
+  const { error: signError } = await brand.client.from("terms_acceptances").insert({
+    org_id: org.id, terms_version: `terms_brand v${byKind.terms_brand?.version}`,
+    signature: "John Maheswaran", accepted_by: brand.id, legal_document_id: byKind.terms_brand?.id,
+  });
+  signError ? fail("sign against the exact published version", signError)
+            : ok("a signature records the exact version signed");
+
+  const { error: privacySign } = await brand.client.from("terms_acceptances").insert({
+    org_id: org.id, terms_version: "privacy", signature: "John Maheswaran",
+    accepted_by: brand.id, legal_document_id: byKind.privacy?.id,
+  });
+  privacySign ? ok("a privacy policy cannot be 'signed'")
+              : fail("a signature was recorded against the privacy policy");
+
+  const { error: publishLeak } = await brand.client.rpc("publish_legal_document", {
+    p_kind: "terms_brand", p_onboarding_en: "Heading\nBody", p_onboarding_zh: null,
+    p_full_en: "Title\nSub", p_full_zh: null,
+  });
+  publishLeak ? ok("a brand CANNOT publish the terms it signs")
+              : fail("LEAK: a brand published the terms");
+
+  const staff = await signedInUser(`legal-admin-${stamp}@example.com`);
+  await admin.from("platform_admins").insert({ user_id: staff.id });
+  const { data: published, error: publishError } = await staff.client.rpc("publish_legal_document", {
+    p_kind: "privacy", p_onboarding_en: null, p_onboarding_zh: null,
+    p_full_en: `Smoke privacy ${stamp}\nSub`, p_full_zh: null,
+  });
+  if (publishError) fail("staff can publish a new version", publishError);
+  else {
+    const { data: after } = await signedOut.rpc("current_legal_documents");
+    const privacy = (after ?? []).find((row) => row.kind === "privacy");
+    privacy?.id === published.id && published.version === byKind.privacy.version + 1
+      ? ok(`staff publish privacy v${published.version} and signed-out readers see it at once`)
+      : fail("the published version is not the current one");
+    // Leave the local stack's documents as they were.
+    await admin.from("legal_documents").delete().eq("id", published.id);
+  }
+}
+
 console.log("\nprivate documents");
 {
   const { error } = await brand.client.from("documents").insert({

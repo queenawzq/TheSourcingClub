@@ -90,6 +90,21 @@ try {
     queueBody.includes("Porto Stitch Studio"),
     "the quote table still reads its rows after they moved to a prop",
   );
+
+  // The terms editor reads through the seam too; the mock serves the
+  // constants in main.jsx, including the privacy policy tab.
+  const adminSettings = await stagehand.browser.context.newPage(
+    `${BASE}/admin-prototype.html?screen=settings`,
+  );
+  await adminSettings.setViewportSize(1440, 1100);
+  await adminSettings.waitForTimeout(3500);
+  const settingsBody = await adminSettings.locator("body").innerText();
+  check(
+    ["Brand", "Factory", "Trading company", "Privacy policy"].every((tab) => settingsBody.includes(tab))
+      && settingsBody.includes("Terms and Conditions"),
+    "the terms editor shows every document, the privacy policy included",
+  );
+  check(!/loading the terms|could not load/i.test(settingsBody), "with no loading or error state");
 } finally {
   await stagehand.close();
   await browser.close().catch(() => {});

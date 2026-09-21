@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
+import { AgreementText } from "../shared/AgreementText.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import "./styles.css";
 import "../shared/profile-shell.css";
@@ -2500,8 +2501,14 @@ export function BrandOnboarding({
   documents,
   onDeleteDocument,
   completionPending = false,
+  // The published terms and their full page. Absent, the designed copy shows.
+  terms,
+  termsHref,
 }) {
-  const current = brandOnboardingSteps[step];
+  const designedStep = brandOnboardingSteps[step];
+  const current = designedStep.type === "terms" && (terms || termsHref)
+    ? { ...designedStep, terms: terms ?? designedStep.terms, termsHref }
+    : designedStep;
   const isFirst = step === 0;
   const isLast = step === brandOnboardingSteps.length - 1;
 
@@ -2894,7 +2901,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
         <div className="brand-terms-required">
           <label className="brand-onboarding-check brand-terms-check">
             <input type="checkbox" data-onboarding-required="true" />
-            <span>{content.agreement} <OnboardingRequirement required /></span>
+            <span><AgreementText text={content.agreement} href={content.termsHref} /> <OnboardingRequirement required /></span>
           </label>
           <small className="brand-onboarding-validation-message">Please accept the terms to continue.</small>
         </div>

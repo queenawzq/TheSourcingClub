@@ -23,14 +23,17 @@ import { supabase, unwrap } from "../../lib/supabase.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import { getCapacity, saveCapacity } from "../../lib/domain/capacity-store.js";
 import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
+import { useSignableTerms } from "./useSignableTerms.js";
 
-const TERMS_VERSION = "2026-09-18-v4";
 
 /** Index of the designed "You're all set" card, the last of the eleven. */
 const LAST_STEP = 10;
 
 /** Index of the designed profile review card. */
 const REVIEW_STEP = 8;
+
+/** Index of the designed terms card. */
+const TERMS_STEP = 9;
 
 /**
  * Designed English label → factory_profiles column.
@@ -130,6 +133,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // copy, which questions and which profile kind they get.
   const [companyType, setCompanyType] = useState(initialCompanyType);
   const [language, setLanguage] = useState("en");
+  // Trading companies sign different terms, chosen on the welcome card.
+  const signable = useSignableTerms(companyType === "trading" ? "terms_trading" : "terms_factory", language);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [certifications, setCertifications] = useState([]);
@@ -508,10 +513,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       setValues((current) => ({ ...current, ...answers }));
 
       if (submitted.signature) {
+        // The exact version on screen, so the record says what was agreed to.
+        const signed = await signable.ensure();
         unwrap(
           await supabase.from("terms_acceptances").insert({
             org_id: org.id,
-            terms_version: TERMS_VERSION,
+            terms_version: `${signed.kind} v${signed.version}`,
+            legal_document_id: signed.id,
             signature: String(submitted.signature).trim(),
             accepted_by: user.id,
           }),
@@ -593,7 +601,9 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       optionsByLabel={optionsByLabel}
       values={values}
       busy={busy}
-      error={error}
+      error={error ?? (step === TERMS_STEP ? signable.error : null)}
+      terms={signable.sections}
+      termsHref={signable.href}
       certificationOptions={certificationOptions}
       certifications={certifications}
       onAddCertification={addCertification}

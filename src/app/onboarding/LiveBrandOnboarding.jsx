@@ -28,6 +28,7 @@ import { inviteMember } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { toCents } from "../../lib/money.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
+import { useSignableTerms } from "./useSignableTerms.js";
 
 /** Uploads on the designed cards → document kind. The kind decides the bucket. */
 const UPLOAD_KINDS = {
@@ -47,10 +48,11 @@ const UPLOADED_FLAG = {
   business_registration: "uploaded-registration",
 };
 
-const TERMS_VERSION = "2026-09-18-v3";
-
 /** Index of the designed "You're all set" card, the last of the ten. */
 const LAST_STEP = 9;
+
+/** Index of the designed terms card. */
+const TERMS_STEP = 8;
 
 /** Index of the designed profile review card. */
 const REVIEW_STEP = 7;
@@ -118,6 +120,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
   const [terms, setTerms] = useState({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const signable = useSignableTerms("terms_brand");
 
   const kinds = useMemo(
     () => [...new Set([...Object.values(KIND_FOR_LABEL), CATEGORY_KIND])],
@@ -283,10 +286,13 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
 
       const signature = submitted[onboardingFieldName("Signature")];
       if (signature) {
+        // The exact version on screen, so the record says what was agreed to.
+        const signed = await signable.ensure();
         unwrap(
           await supabase.from("terms_acceptances").insert({
             org_id: org.id,
-            terms_version: TERMS_VERSION,
+            terms_version: `${signed.kind} v${signed.version}`,
+            legal_document_id: signed.id,
             signature: String(signature).trim(),
             accepted_by: user.id,
           }),
@@ -374,7 +380,9 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       optionsByLabel={optionsByLabel}
       values={values}
       busy={busy}
-      error={error}
+      error={error ?? (step === TERMS_STEP ? signable.error : null)}
+      terms={signable.sections}
+      termsHref={signable.href}
       completionPending
     />
   );

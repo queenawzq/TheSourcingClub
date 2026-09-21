@@ -150,7 +150,7 @@ Phase 1 of the backend lives on `feature/supabase-backend`. Schema, access rules
 ```bash
 supabase start        # local stack in Docker; prints the URL + keys
 npm run db:reset      # re-apply every migration from scratch
-npm run db:test       # pgTAP access-rule suites (180 assertions, five files)
+npm run db:test       # pgTAP access-rule suites (207 assertions, six files)
 npm run smoke         # 138 checks through supabase-js: embeds, RPC signatures, grants
 npm run check:css     # fails on a CSS variable used but never defined (runs in build)
 npm run check:prototype  # the prototype must still render with NO database
@@ -163,7 +163,7 @@ Put the local URL and publishable key in `.env.local` as `VITE_SUPABASE_URL` and
 
 The browser talks to Postgres directly with the publishable key, and **row level security is the entire authorisation layer** — there is no server tier to enforce anything a second time. A mistake in a policy is a data breach, not a bug, which is why `supabase/tests/access_rules_test.sql` is mostly *negative* assertions: a policy that accidentally grants everything still passes every positive test.
 
-Two roles matter. `authenticated` and `anon` hold the publishable key and are fully governed by RLS; `anon` deliberately has no table grants at all, so a signed-out visitor is refused before RLS is consulted. `service_role` carries `BYPASSRLS` and is only ever used by server code holding the secret key — never anything bundled into the browser.
+Two roles matter. `authenticated` and `anon` hold the publishable key and are fully governed by RLS; `anon` deliberately has no table grants at all, so a signed-out visitor is refused before RLS is consulted. The one exception is `current_legal_documents()`, granted to `anon` so signup can link to the terms before an account exists (see **Legal documents**). `service_role` carries `BYPASSRLS` and is only ever used by server code holding the secret key — never anything bundled into the browser.
 
 Migrations are numbered and immutable once pushed. `007` is generated from `supabase/seed/taxonomy.json` by `scripts/build-taxonomy.py`; edit the JSON, never the SQL.
 
@@ -257,6 +257,33 @@ a company-level verdict and a file-level one cannot contradict each other.
   into a stranger's workspace mid-onboarding, with their org id written to
   `localStorage`. Any query whose name says "my" needs its own `user_id`
   filter, whatever the policy happens to allow.
+
+### Legal documents
+
+The terms each kind of company signs (brand, factory, trading company) and the
+privacy policy live in `legal_documents`, edited in the admin console's
+Settings → Terms and conditions, and shown at `app.html?legal=terms&type=…` and
+`app.html?legal=privacy`. The signup links and the onboarding terms step both
+point there.
+
+- **Every save is a new version; no version is ever updated.** There is no
+  write grant; `publish_legal_document()` is the only way in, admin-gated as
+  its first statement. `terms_acceptances.legal_document_id` points at the
+  exact row signed, and a signature is only evidence if that text cannot
+  change under it.
+- **Onboarding shows the published text and signs that version**, with no
+  fallback to the designed copy: a signature against text that is not stored
+  proves nothing. If the terms fail to load, signing refuses with the reason.
+- **`current_legal_documents()` is the only thing granted to `anon`**, and it
+  returns only the current text. The table itself stays unreadable to
+  everyone but staff.
+- Chinese is a separate hand-written field per document, falling back to
+  English when blank — never machine-translated, same rule as the taxonomy.
+- **Version 1 still promises escrow** ("we hold the funds"), copied verbatim
+  from the designed onboarding. That contradicts track-only payments and needs
+  correcting through the editor, which publishes a v2.
+- The prototypes pass no terms to the designed onboarding components, so they
+  keep rendering the designed copy.
 
 ### Wiring a designed screen to live data
 

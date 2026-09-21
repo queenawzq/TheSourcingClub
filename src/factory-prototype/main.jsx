@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
+import { AgreementText } from "../shared/AgreementText.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import "../prototype/styles.css";
 import "./styles.css";
@@ -6601,10 +6602,16 @@ export function FactoryOnboarding({
   onDeleteCertificate,
   registrationFileName,
   completionPending = false,
+  // The published terms and their full page. Absent, the designed copy shows.
+  terms,
+  termsHref,
 }) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
-  const current = copy.steps[step];
+  const designedStep = copy.steps[step];
+  const current = designedStep.terms && (terms || termsHref)
+    ? { ...designedStep, terms: terms ?? designedStep.terms, termsHref }
+    : designedStep;
   const isFirst = step === 0;
   const isLast = step === copy.steps.length - 1;
   const cardStepClass = current.type === "complete" ? "step-11" : `step-${step + 1}`;
@@ -7204,7 +7211,7 @@ function FactoryOnboardingStep({
         <div className="factory-terms-required">
           <label className="directory-check terms-check">
             <input type="checkbox" defaultChecked={!isLive} required data-onboarding-required="true" />
-            <span>{content.agreement}</span>
+            <span><AgreementText text={content.agreement} href={content.termsHref} /></span>
           </label>
           <small className="factory-onboarding-validation-message">
             {language === "zh" ? "请接受条款后继续。" : "Please accept the terms to continue."}

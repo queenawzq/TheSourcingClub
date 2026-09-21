@@ -10,7 +10,7 @@
  */
 import React from "react";
 import { createRoot } from "react-dom/client";
-import App, { initialProfiles, initialUsers, quotes, rfqs } from "./main.jsx";
+import App, { initialProfiles, initialTerms, initialUsers, quotes, rfqs } from "./main.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 
 /**
@@ -25,6 +25,7 @@ import { DataProvider } from "../lib/data/DataProvider.jsx";
  */
 let profiles = initialProfiles;
 let users = initialUsers;
+let legalDocuments = initialTerms;
 
 /**
  * Stand-in uploads, so the review screen's document rows are populated with
@@ -79,6 +80,7 @@ const mockAdapter = {
     paymentsAwaitingConfirmation: 3,
   }),
   adminUsers: () => users,
+  legalDocuments: () => legalDocuments,
   actions: {
     orgDocuments: () => mockDocuments,
     orgSubmission: () => mockSubmission,
@@ -90,6 +92,9 @@ const mockAdapter = {
       users = users.map((user) => user.id === userId
         ? { ...user, status: disabled ? "Disabled" : "Active" }
         : user);
+    },
+    saveLegalDocument: (tab, draft) => {
+      legalDocuments = { ...legalDocuments, [tab]: { ...draft, updated: "Just now" } };
     },
   },
 };

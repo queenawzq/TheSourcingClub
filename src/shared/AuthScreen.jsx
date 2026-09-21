@@ -42,6 +42,10 @@ export function AuthScreen({
   // rather than dropping a signed-up user into a mock.
   homeHref,
   switchPortalHref,
+  // The published Terms and Privacy pages live in app.html, which reads them
+  // from the database; override only to point somewhere else.
+  termsHref,
+  privacyHref,
   // Staff accounts are provisioned by an administrator, so this variant is
   // login-only and does not offer the public account or portal switches.
   staff = false,
@@ -227,7 +231,7 @@ export function AuthScreen({
             )}
           </form>
 
-          {isSignup && <p className="auth-legal">{copy?.legalPrefix ?? "By creating an account, you agree to our"} <a href="#terms">{copy?.terms ?? "Terms"}</a> {copy?.and ?? "and"} <a href="#privacy">{copy?.privacy ?? "Privacy Policy"}</a>.</p>}
+          {isSignup && <p className="auth-legal">{copy?.legalPrefix ?? "By creating an account, you agree to our"} <a href={termsHref ?? `/app.html?legal=terms&type=${isFactory ? "factory" : "brand"}${isZh ? "&lang=zh" : ""}`} target="_blank" rel="noopener">{copy?.terms ?? "Terms"}</a> {copy?.and ?? "and"} <a href={privacyHref ?? `/app.html?legal=privacy${isZh ? "&lang=zh" : ""}`} target="_blank" rel="noopener">{copy?.privacy ?? "Privacy Policy"}</a>.</p>}
 
           {!staff && (
             <p className="auth-switch">

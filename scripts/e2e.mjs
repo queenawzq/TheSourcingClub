@@ -268,6 +268,17 @@ async function signUp(page, { email, fullName, companyName, accountType, who }) 
   await clickButton(page, "create an account");
   await waitFor(page, 'input[name="companyName"]', 10000);
 
+  // The Terms and Privacy links used to be "#terms" and "#privacy", which
+  // went nowhere. They open the published documents in a new tab, so the
+  // half-filled form survives.
+  const legalLinks = await page.evaluate(() =>
+    [...document.querySelectorAll(".auth-legal a")].map((a) => ({ href: a.getAttribute("href"), target: a.target })));
+  const type = accountType === "factory" ? "factory" : "brand";
+  check(legalLinks[0]?.href?.includes(`legal=terms&type=${type}`) && legalLinks[0]?.target === "_blank",
+    `${who}: the Terms link opens the ${type} terms in a new tab (${legalLinks[0]?.href})`);
+  check(legalLinks[1]?.href?.includes("legal=privacy") && legalLinks[1]?.target === "_blank",
+    `${who}: the Privacy link opens the privacy policy in a new tab (${legalLinks[1]?.href})`);
+
   await page.locator('input[name="fullName"]').first().fill(fullName);
   await page.locator('input[name="companyName"]').first().fill(companyName);
   await page.locator('input[name="email"]').first().fill(email);
@@ -455,6 +466,23 @@ async function main() {
   const brandName = `Maison E2E ${stamp}`;
 
   try {
+    // ================= TERMS AND PRIVACY, SIGNED OUT =================
+    console.log("\nTERMS AND PRIVACY");
+    await page.goto(`${APP}?legal=terms&type=brand`);
+    await waitFor(page, ".admin-terms-document-body", 30000);
+    check((await page.locator(".admin-terms-document-body").innerText()).includes("Brand Terms and Conditions"),
+      "the brand terms are readable signed out");
+    await clickButton(page, "trading company");
+    await page.waitForTimeout(500);
+    check((await page.locator(".admin-terms-document-body").innerText()).includes("Trading Company Terms and Conditions"),
+      "and the switch shows a trading company's terms");
+    await record(page, "Public terms", "the published terms, readable before an account exists");
+    await page.goto(`${APP}?legal=privacy`);
+    await waitFor(page, ".admin-terms-document-body", 30000);
+    check((await page.locator(".admin-terms-document-body").innerText()).includes("Privacy Policy"),
+      "the privacy policy is readable signed out");
+    await record(page, "Public privacy policy");
+
     // ================= FACTORY =================
     console.log("\nFACTORY");
     await signUp(page, {
@@ -468,6 +496,8 @@ async function main() {
     // DATABASE rather than the screen: what matters is that the designed card
     // wrote the right column, not what the card looked like while doing it.
     await waitFor(page, ".factory-onboarding-card", 30000);
+    // Required since the welcome card stopped answering it on the vendor's behalf.
+    await page.locator('input[name="onboarding-company-type"][value="factory"]').first().click();
     await record(page, "Factory welcome", "the designed card, with the manufacturer / trading-company choice");
     await nextCard(page);
 
@@ -521,6 +551,8 @@ async function main() {
 
     await acceptTerms(page);
     await fillNamed(page, "signature", "Ana Factory");
+    check(Boolean(await page.locator('.factory-onboarding-card a[href*="legal=terms&type=factory"]').count()),
+      "the factory terms step links to the full published terms");
     await record(page, "Factory terms");
     await nextCard(page);
 
@@ -530,6 +562,11 @@ async function main() {
     await page.waitForTimeout(2500);
 
     const { data: factoryOrg } = await db.from("orgs").select("id").eq("name", factoryName).single();
+
+    const { data: factorySigned } = await db.from("terms_acceptances")
+      .select("terms_version, legal_document_id").eq("org_id", factoryOrg.id).single();
+    check(Boolean(factorySigned?.legal_document_id) && /^terms_factory v\d+$/.test(factorySigned?.terms_version),
+      `the factory's signature points at the exact version shown (${factorySigned?.terms_version})`);
 
     const { data: factoryProfile } = await db
       .from("factory_profiles")
@@ -639,6 +676,8 @@ async function main() {
 
     await acceptTerms(page);
     await fillNamed(page, "signature", "E2E Brand Founder");
+    check(Boolean(await page.locator('.brand-onboarding-card a[href*="legal=terms&type=brand"]').count()),
+      "the brand terms step links to the full published terms");
     await record(page, "Brand terms");
     await nextCard(page);
 
@@ -648,6 +687,11 @@ async function main() {
     await waitFor(page, ".home-stack", 30000);
 
     const { data: brandOrg } = await db.from("orgs").select("id").eq("name", brandName).single();
+
+    const { data: brandSigned } = await db.from("terms_acceptances")
+      .select("terms_version, legal_document_id").eq("org_id", brandOrg.id).single();
+    check(Boolean(brandSigned?.legal_document_id) && /^terms_brand v\d+$/.test(brandSigned?.terms_version),
+      `the brand's signature points at the exact version shown (${brandSigned?.terms_version})`);
     const { data: brandProfile } = await db
       .from("brand_profiles")
       .select("hq_location, target_price_min_cents, target_price_max_cents, onboarding_completed_at")

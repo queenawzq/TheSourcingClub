@@ -334,9 +334,24 @@ async function main() {
     await record(page, "terms not pre-accepted");
     check(termsChecked === false, "terms checkbox starts unticked");
     check((await page.locator(".terms-section article").count()) >= 6, "updated terms include verification, payments and changes");
+    // The card shows the published terms, and links to the full document.
+    if (db) {
+      const { data: published } = await db.rpc("current_legal_documents");
+      const factoryTerms = (published ?? []).find((row) => row.kind === "terms_factory");
+      const firstHeading = factoryTerms?.onboarding_en.split("\n")[0];
+      check((await page.locator(".terms-section article h2").first().innerText()).includes(firstHeading),
+        `the terms card shows the published factory terms (v${factoryTerms?.version})`);
+    }
+    check((await page.locator('.factory-onboarding-card a[href*="legal=terms&type=factory"]').count()) === 1,
+      "and links to the full factory terms");
     await page.locator(".factory-onboarding-card input[type=checkbox]").first().click();
     await page.locator('input[name="signature"]').first().fill("Wen Li");
     await nextCard(page); // → complete
+    if (db) {
+      const { data: signed } = await q(() => db.from("terms_acceptances").select("terms_version, legal_document_id").eq("org_id", factoryOrg).single());
+      check(Boolean(signed?.legal_document_id) && /^terms_factory v\d+$/.test(signed?.terms_version ?? ""),
+        `the signature points at the exact version shown (${signed?.terms_version})`);
+    }
     await nextCard(page); // → dashboard
 
     await waitFor(page, ".factory-dashboard-page", 40000);
