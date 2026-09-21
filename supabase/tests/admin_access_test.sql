@@ -18,7 +18,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(29);
+select plan(32);
 
 insert into auth.users (id, email) values
   ('c5000000-0000-0000-0000-000000000001', 'p5-admin@example.com'),
@@ -123,6 +123,27 @@ select is(
 select throws_ok(
   $$select count(*) from public.verification_approval_email_outbox$$,
   '42501', null, 'and cannot read the private review-email queue at all'
+);
+
+-- The new evidence surface is security definer with no policy behind it, so
+-- the guard is the only thing between a signed-in stranger and every
+-- company's submitted files.
+select throws_ok(
+  $$select * from public.admin_org_documents('d5000000-0000-0000-0000-0000000000f1')$$,
+  '42501', null, 'nor read another company''s uploaded documents'
+);
+
+-- org_verification_checks and friends are NOT granted to authenticated at
+-- all: they are definer, so a grant would let anyone score any company and
+-- read back its profile gaps. Refused at the grant, before the function runs.
+select throws_ok(
+  $$select public.org_verification_checks('d5000000-0000-0000-0000-0000000000f1')$$,
+  '42501', null, 'and cannot run the evidence checks directly'
+);
+
+select throws_ok(
+  $$select public.org_verification_score('d5000000-0000-0000-0000-0000000000f1')$$,
+  '42501', null, 'nor the score built from them'
 );
 
 -- ---------------------------------------------------------------------------

@@ -26,6 +26,24 @@ import { DataProvider } from "../lib/data/DataProvider.jsx";
 let profiles = initialProfiles;
 let users = initialUsers;
 
+/**
+ * Stand-in uploads, so the review screen's document rows are populated with
+ * no database. They are obviously samples and they open nothing: the mock has
+ * no storage behind it, and the adapter deliberately supplies no
+ * `documentUrl`, so DocumentLink renders plain text rather than a button that
+ * could only fail.
+ */
+const mockDocuments = [
+  { id: "doc-reg", kind: "business_registration", file_name: "business-registration.pdf",
+    mime_type: "application/pdf", size_bytes: 482000, status: "verified" },
+  { id: "doc-cert", kind: "certificate", file_name: "gots-certificate.pdf",
+    mime_type: "application/pdf", size_bytes: 318000, status: "pending" },
+  { id: "doc-logo", kind: "logo", file_name: "company-logo.png",
+    mime_type: "image/png", size_bytes: 24000, status: "unverified" },
+  { id: "doc-line", kind: "product_image", file_name: "production-line.jpg",
+    mime_type: "image/jpeg", size_bytes: 1650000, status: "unverified" },
+];
+
 const mockAdapter = {
   viewer: { isAdmin: true, org: null, user: null },
   verificationQueue: () => profiles,
@@ -40,6 +58,7 @@ const mockAdapter = {
   }),
   adminUsers: () => users,
   actions: {
+    orgDocuments: () => mockDocuments,
     decideReview: (id, status) => {
       const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
       profiles = profiles.map((profile) => (profile.id === id ? { ...profile, status, tone } : profile));

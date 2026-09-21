@@ -995,7 +995,9 @@
 
 .admin-evidence-file-row {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  /* Third column is the open action; auto so it collapses to nothing when a
+     row has no link behind it, which is how the mock renders. */
+  grid-template-columns: 38px minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
   padding: 12px;
@@ -1656,4 +1658,80 @@
   .admin-submission-section:nth-child(2) .admin-submission-grid .factory-detail-pair:first-child {
     grid-column: auto;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   Submitted files
+   ---------------------------------------------------------------------------
+   The review screen lists what a company actually uploaded, and opens it. The
+   link is a button rather than an anchor because a private file's URL is
+   signed on click and lives five minutes; one baked into an href at render
+   time is usually dead before anyone uses it.
+   --------------------------------------------------------------------------- */
+.admin-document-open {
+  padding: 6px 12px;
+  border: 1px solid #cddae8;
+  border-radius: 999px;
+  background: #fff;
+  color: #174df2;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.admin-document-open:hover:not(:disabled) {
+  border-color: #174df2;
+  background: #f3f6ff;
+}
+
+.admin-document-open:disabled {
+  color: #8494ab;
+  cursor: default;
+}
+
+/* No adapter link — the prototype with no storage behind it. */
+.admin-document-static {
+  color: #8494ab;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.admin-submission-files {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.admin-submission-files > span {
+  color: #5a6b87;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.admin-submission-empty {
+  margin: 0;
+  padding: 12px;
+  border: 1px dashed #d7e0ea;
+  border-radius: 7px;
+  color: #8494ab;
+  font-size: 12px;
+}
+
+.admin-evidence-caption {
+  color: #5a6b87;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* The viewer no longer draws a document; it describes the real one. */
+.admin-evidence-empty {
+  gap: 10px;
 }

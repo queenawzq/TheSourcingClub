@@ -20,6 +20,7 @@
 import {
   claimReview,
   decideReview,
+  orgDocuments,
   overviewMetrics,
   quoteQueue,
   rfqQueue,
@@ -27,6 +28,7 @@ import {
   userDirectory,
   verificationQueue,
 } from "../../lib/domain/admin.js";
+import { urlFor } from "../../lib/domain/documents.js";
 import { formatMoney } from "../../lib/money.js";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -102,10 +104,12 @@ function ago(value) {
 /**
  * One company in the verification queue.
  *
- * `confidence`, `completion` and `checks` are absent on purpose, and the
- * screens render conditionally around them. They are the output of an
- * automated registry check that does not exist; a number invented here would
- * be trusted by the person deciding whether a company may trade.
+ * `confidence`, `completion` and `checks` were absent on purpose until
+ * 20260920000300, because they had been drawn as the output of an automated
+ * registry check that does not exist. They now come from SQL and measure
+ * evidence completeness — how much of what we asked for has arrived — which
+ * is a real thing to know and is what the screen now says. Nothing is
+ * computed here; this maps the row onto the shape the design renders.
  */
 export function toReviewProfile(row) {
   const [status, tone] = REVIEW_LABEL[row.state] ?? ["Ready for review", "info"];
@@ -113,7 +117,11 @@ export function toReviewProfile(row) {
     id: row.orgId,
     initials: initials(row.name),
     name: row.name,
-    entityType: row.type === "factory" ? "Factory" : "Brand",
+    // orgs.type has two values; the design filters on three. A trading
+    // company is a factory profile carrying vendor_kind.
+    entityType: row.type !== "factory"
+      ? "Brand"
+      : row.vendorKind === "trading_company" ? "Trading company" : "Factory",
     location: row.location ?? "Location not given",
     submitted: ago(row.submittedAt),
     status,
@@ -130,7 +138,13 @@ export function toReviewProfile(row) {
       ["Last note", row.note ?? "—"],
       ["Decided", row.decidedAt ? shortDate(row.decidedAt) : "Not yet"],
     ],
-    capabilities: [],
+    capabilities: row.capabilities ?? [],
+    confidence: row.verificationScore ?? null,
+    completion: row.profileCompletion ?? null,
+    // The designed panel renders [label, result, value, detail] tuples.
+    checks: (row.verificationChecks ?? []).map(
+      (check) => [check.label, check.result, check.value, check.detail],
+    ),
   };
 }
 

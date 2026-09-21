@@ -72,11 +72,15 @@ export async function reviewDocument(documentId, decision, note = null) {
 /**
  * Every company waiting on, or already carrying, a decision.
  *
- * Shaped for the design's queue rows. Note what is NOT here: a confidence
- * percentage and a per-check score breakdown. Those come from an automated
- * registry check that does not exist, and a fabricated number on a reviewer's
- * screen is worse than a blank one. What a reviewer has is the evidence, and
- * it is counted honestly.
+ * `verificationChecks` and `verificationScore` arrive on the row rather than
+ * from a second call. The designed screen loads this queue once and hands the
+ * review screen a member of the array — there is no detail fetch to hang them
+ * off — and the queue is staff-sized.
+ *
+ * Nothing here is computed in JavaScript. The score is a weighted mean of the
+ * checks and both come from SQL, because the same arithmetic in two places
+ * drifts; see the capacity note in CLAUDE.md. This layer reshapes, it does not
+ * calculate.
  */
 export async function verificationQueue() {
   const rows = await unwrap(
@@ -102,8 +106,28 @@ export async function verificationQueue() {
     verificationStatus: row.verification_status,
     evidenceReceived: row.evidence_received,
     evidenceExpected: row.evidence_expected,
+    vendorKind: row.vendor_kind,
+    profileCompletion: row.profile_completion,
+    verificationScore: row.verification_score,
+    verificationChecks: row.verification_checks ?? [],
+    capabilities: row.capabilities ?? [],
     decidedAt: row.decided_at,
   }));
+}
+
+/**
+ * The files a company uploaded about itself.
+ *
+ * Scoped by the RPC to what belongs to the company rather than to a deal, so
+ * order, quote and message attachments stay out. Reading the rows and minting
+ * a signed URL both work through ordinary RLS: `documents_own` and the
+ * org-private storage read policy each end in `or is_platform_admin()`.
+ */
+export async function orgDocuments(orgId) {
+  return unwrap(
+    await supabase.rpc("admin_org_documents", { target_org: orgId }),
+    "load the submitted documents",
+  );
 }
 
 /** Take a review, or hand it to another admin. */

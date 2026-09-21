@@ -210,7 +210,7 @@ function VerificationRow({ profile, onReview }) {
         <div><strong>{profile.name}</strong><small>{profile.entityType} · {profile.location}</small></div>
       </div>
       {profile.confidence != null
-        ? <div className="admin-row-stat"><span>Confidence</span><strong>{profile.confidence}%</strong></div>
+        ? <div className="admin-row-stat"><span>Evidence</span><strong>{profile.confidence}%</strong></div>
         : <div className="admin-row-stat"><span>Assigned</span><strong>{profile.owner || "Unassigned"}</strong></div>}
       <div className="admin-row-stat"><span>Evidence</span><strong>{profile.evidence}</strong></div>
       <StatusPill tone={profile.tone}>{profile.status}</StatusPill>
@@ -413,18 +413,39 @@ function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, on
   );
 }
 
+/**
+ * How much of the evidence we asked for has arrived.
+ *
+ * Named for what it measures. It was drawn as "overall confidence", which
+ * reads as a judgement about whether the company is real — and a reviewer who
+ * believes a registry was checked approves things they should not. Nothing
+ * here contacts a registry, a sanctions list or a certifier, and nothing reads
+ * a file's contents, so a forged document that is present scores the same as a
+ * genuine one. It is a triage number, never a verdict.
+ */
 function ConfidenceCard({ score }) {
   const tone = score >= 90 ? "success" : score >= 80 ? "warning" : "danger";
   return (
     <section className="factory-profile-card admin-confidence-card">
-      <div><span>Overall confidence</span><strong>{score}%</strong><StatusPill tone={tone}>{score >= 90 ? "High confidence" : score >= 80 ? "Review recommended" : "More evidence needed"}</StatusPill></div>
+      <div><span>Evidence completeness</span><strong>{score}%</strong><StatusPill tone={tone}>{score >= 90 ? "Evidence complete" : score >= 80 ? "Minor gaps" : "Evidence missing"}</StatusPill></div>
       <div className="admin-confidence-scale"><span style={{ width: `${score}%` }} /></div>
-      <p>Confidence summarizes automated checks and submitted evidence. The final decision always remains with TSC operations.</p>
+      <p>The share of the checks below that pass: what this company submitted, and whether it is internally consistent. Nothing is checked against a company registry, sanctions list or certification body, so this is not a verification and it cannot tell you a document is genuine. The decision is yours.</p>
     </section>
   );
 }
 
-function FullSubmissionModal({ profile, onClose }) {
+/**
+ * Everything the company submitted, including the files.
+ *
+ * The document rows were fixed strings — "Uploaded", "PDF uploaded",
+ * "6 files uploaded" — with nothing behind them, so a reviewer could read
+ * that a registration existed and had no way to open it, or to find out that
+ * it did not. Real uploads are listed when there are any; the strings remain
+ * as the empty state so the screen still reads as designed with no backend.
+ */
+function FullSubmissionModal({ profile, documents, onDocumentUrl, onClose }) {
+  const files = documents ?? [];
+  const ofKind = (...kinds) => files.filter((file) => kinds.includes(file.kind));
   const details = Object.fromEntries(profile.details);
   const isBrand = profile.entityType === "Brand";
   const companyNameLabel = isBrand ? "Brand name" : profile.entityType === "Trading company" ? "Company name" : "Factory name";
@@ -445,10 +466,12 @@ function FullSubmissionModal({ profile, onClose }) {
       title: isBrand ? "Brand context and sourcing needs" : "Company context and uploaded work",
       fields: [
         ["About", profile.summary],
-        [isBrand ? "Brand logo" : "Company logo", "Uploaded"],
-        [isBrand ? "Reference products" : "Product catalogue", "PDF uploaded"],
-        [isBrand ? "Design references" : "Production examples", "6 files uploaded"]
-      ]
+      ],
+      documents: [
+        [isBrand ? "Brand logo" : "Company logo", ofKind("logo")],
+        [isBrand ? "Design references" : "Production examples",
+         ofKind("brand_direction", "product_image", "walkthrough")],
+      ],
     },
     {
       title: isBrand ? "Product and sourcing profile" : "Capabilities and market fit",
@@ -463,11 +486,12 @@ function FullSubmissionModal({ profile, onClose }) {
     {
       title: "Verification documents and declaration",
       fields: [
-        ["Business registration", "Uploaded"],
         ["Certification evidence", profile.evidence],
-        ["Authorized signatory", isBrand ? "Maya Reynolds" : "Ana Martins"],
-        ["Declaration", "Signed electronically · Aug 12"]
-      ]
+      ],
+      documents: [
+        ["Business registration", ofKind("business_registration")],
+        ["Certificates", ofKind("certificate")],
+      ],
     }
   ];
   return (
@@ -482,6 +506,14 @@ function FullSubmissionModal({ profile, onClose }) {
               <div className="admin-submission-grid">
                 {section.fields.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
+              {section.documents?.map(([label, group]) => (
+                <div className="admin-submission-files" key={label}>
+                  <span>{label}</span>
+                  {group.length
+                    ? group.map((file) => <DocumentRow key={file.id ?? file.file_name} document={file} onDocumentUrl={onDocumentUrl} />)
+                    : <p className="admin-submission-empty">Nothing uploaded</p>}
+                </div>
+              ))}
               {section.chips && <ProfileChipSection label="Selected capabilities" items={section.chips} />}
             </section>
           ))}
@@ -491,12 +523,96 @@ function FullSubmissionModal({ profile, onClose }) {
   );
 }
 
-function EvidenceDetailModal({ profile, check, onClose }) {
+/**
+ * Which uploaded files stand behind a given check.
+ *
+ * Keyed on the check's label because that is what the check carries. A check
+ * with no file behind it — a domain comparison, a duplicate scan — returns
+ * nothing, and the viewer says so rather than drawing something.
+ */
+const CHECK_DOCUMENT_KINDS = {
+  "Business registration": ["business_registration"],
+  "Certification evidence": ["certificate"],
+  "Production evidence": ["walkthrough", "product_image"],
+  "Brand evidence": ["brand_direction", "product_image", "logo"],
+};
+
+const formatBytes = (bytes) => {
+  if (!bytes && bytes !== 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+/**
+ * Opens a submitted file.
+ *
+ * The link is minted when it is asked for, not when the list renders: a
+ * private file's signed URL lives five minutes, so one handed out at render
+ * time is usually dead by the time anyone clicks it.
+ */
+function DocumentLink({ document, onDocumentUrl, children }) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(null);
+
+  if (!onDocumentUrl) return <span className="admin-document-static">{children}</span>;
+
+  return (
+    <button
+      type="button"
+      className="admin-document-open"
+      disabled={busy}
+      onClick={async () => {
+        setBusy(true);
+        setFailed(null);
+        try {
+          const url = await onDocumentUrl(document);
+          window.open(url, "_blank", "noopener,noreferrer");
+        } catch (error) {
+          setFailed(error.message || "That file could not be opened");
+        } finally {
+          setBusy(false);
+        }
+      }}
+    >
+      {busy ? "Opening…" : failed ?? children}
+    </button>
+  );
+}
+
+function DocumentRow({ document, onDocumentUrl }) {
+  const meta = [document.mime_type, formatBytes(document.size_bytes)].filter(Boolean).join(" · ");
+  return (
+    <div className="admin-evidence-file-row">
+      <img src="/assets/prototype-icons/rfq.svg" alt="" />
+      <div>
+        <strong>{document.file_name}</strong>
+        <span>{meta || document.kind}</span>
+      </div>
+      <DocumentLink document={document} onDocumentUrl={onDocumentUrl}>Open</DocumentLink>
+    </div>
+  );
+}
+
+/**
+ * One check, and the file it rests on.
+ *
+ * This used to draw a GOTS certificate for Atelier Minho — certificate number,
+ * issuer, validity dates and all — for whichever company was on screen. Under
+ * mock data that was set dressing; wired to the marketplace it put an invented
+ * document in front of a reviewer deciding whether a real company may trade,
+ * which is the same failure as an invented score and a worse one, because it
+ * looks like evidence. The viewer now shows the actual upload or says plainly
+ * that there is not one.
+ */
+function EvidenceDetailModal({ profile, check, documents, onDocumentUrl, onClose }) {
   if (!check) return null;
   const [label, result, confidence, detail] = check;
-  const tone = result === "Verified" || result === "Clear" ? "success" : result === "Missing" ? "danger" : "warning";
-  const isCertification = label === "Certification evidence";
-  const fileName = isCertification ? "Atelier-Minho-GOTS-certificate.pdf" : `${label.toLowerCase().replaceAll(" ", "-")}-evidence.pdf`;
+  const tone = result === "Verified" || result === "Clear" ? "success" : result === "Missing" || result === "Rejected" ? "danger" : "warning";
+  const kinds = CHECK_DOCUMENT_KINDS[label] ?? [];
+  const files = (documents ?? []).filter((item) => kinds.includes(item.kind));
+  const primary = files[0] ?? null;
+
   return (
     <div className="approve-fund-modal-layer admin-evidence-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="approve-fund-modal admin-review-modal admin-evidence-modal" role="dialog" aria-modal="true" aria-labelledby="evidence-detail-title">
@@ -504,49 +620,43 @@ function EvidenceDetailModal({ profile, check, onClose }) {
         <header><div><span>Submitted evidence</span><h2 id="evidence-detail-title">{label}</h2></div></header>
         <div className="admin-evidence-layout">
           <aside className="admin-evidence-summary">
-            <div className="admin-evidence-file-row"><img src="/assets/prototype-icons/rfq.svg" alt="" /><div><strong>{fileName}</strong><span>PDF · 1 page · 482 KB</span></div></div>
+            {files.length
+              ? files.map((file) => <DocumentRow key={file.id ?? file.file_name} document={file} onDocumentUrl={onDocumentUrl} />)
+              : <div className="admin-evidence-file-row"><div><strong>No file</strong><span>This check does not rest on an upload</span></div></div>}
             <div className="admin-evidence-meta-grid">
-              <ProfileDetailPair label="Uploaded by" value={profile.name} />
+              <ProfileDetailPair label="Company" value={profile.name} />
               <ProfileDetailPair label="Received" value={profile.submitted} />
-              <ProfileDetailPair label="Automated result" value={`${confidence}% confidence`} />
+              <ProfileDetailPair label="Evidence" value={`${confidence}% complete`} />
               <ProfileDetailPair label="Review status" value={result} />
             </div>
             <div className="admin-evidence-note"><span>Check summary</span><p>{detail}</p><StatusPill tone={tone}>{result}</StatusPill></div>
           </aside>
 
-          <div className="admin-document-viewer" aria-label={`${fileName} preview`}>
-            <div className="admin-document-toolbar"><span>{fileName}</span><strong>Page 1 of 1</strong></div>
-            <article className="admin-certificate-page">
-              {isCertification ? (
+          <div className="admin-document-viewer" aria-label={primary ? `${primary.file_name} preview` : "No document"}>
+            <div className="admin-document-toolbar">
+              <span>{primary ? primary.file_name : "No document"}</span>
+              {primary ? <DocumentLink document={primary} onDocumentUrl={onDocumentUrl}>Open in a new tab</DocumentLink> : null}
+            </div>
+            <article className="admin-certificate-page admin-evidence-empty">
+              <div className="admin-certificate-mark">TSC</div>
+              {primary ? (
                 <>
-                  <div className="admin-certificate-mark">GOTS</div>
-                  <p>Global Organic Textile Standard</p>
-                  <h3>Certificate of Compliance</h3>
+                  <h3>{primary.file_name}</h3>
                   <div className="admin-certificate-rule" />
-                  <span>This certifies that</span>
-                  <h4>Atelier Minho Lda.</h4>
-                  <p>Porto, Portugal</p>
+                  <p>Submitted by {profile.name}.</p>
                   <div className="admin-certificate-fields">
-                    <div><span>Certificate number</span><strong>GOTS-PT-2026-1842</strong></div>
-                    <div><span>Scope</span><strong>Cutting, sewing and finishing</strong></div>
-                    <div><span>Certified products</span><strong>Organic cotton woven apparel</strong></div>
-                    <div><span>Valid through</span><strong>31 August 2027</strong></div>
+                    <div><span>Type</span><strong>{primary.mime_type || primary.kind}</strong></div>
+                    <div><span>Size</span><strong>{formatBytes(primary.size_bytes) || "Unknown"}</strong></div>
+                    <div><span>Review status</span><strong>{primary.status ?? "unverified"}</strong></div>
                   </div>
-                  <div className="admin-certificate-signature"><span>Authorized certification body</span><strong>Textile Standards Europe</strong></div>
+                  <p className="admin-evidence-caption">Open it to read the file. Its contents are not checked against any registry or certifier.</p>
                 </>
               ) : (
                 <>
-                  <div className="admin-certificate-mark">TSC</div>
-                  <p>Marketplace verification evidence</p>
-                  <h3>{label}</h3>
+                  <h3>Nothing to open</h3>
                   <div className="admin-certificate-rule" />
-                  <span>Submitted by</span>
-                  <h4>{profile.name}</h4>
-                  <p>{profile.location}</p>
-                  <div className="admin-certificate-fields">
-                    <div><span>Evidence type</span><strong>{label}</strong></div>
-                    <div><span>Automated assessment</span><strong>{detail}</strong></div>
-                  </div>
+                  <p>{detail}</p>
+                  <p className="admin-evidence-caption">This check compares what is already on file. There is no uploaded document behind it.</p>
                 </>
               )}
             </article>
@@ -557,7 +667,7 @@ function EvidenceDetailModal({ profile, check, onClose }) {
   );
 }
 
-function VerificationDetail({ profile, onBack, onDecision }) {
+function VerificationDetail({ profile, documents, onDocumentUrl, onBack, onDecision }) {
   const [requestOpen, setRequestOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   // Both modals had a textarea whose value was dropped on the floor: the
@@ -585,10 +695,10 @@ function VerificationDetail({ profile, onBack, onDecision }) {
               <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} />
             </Panel>
             {profile.checks?.length ? (
-            <Panel title="Verification checks" subtitle="Backend checks are shown with their evidence, result, and confidence so the final decision is explainable.">
+            <Panel title="Verification checks" subtitle="Each check reads what this company submitted and what TSC already holds. None of them contacts an outside registry or certifier.">
               <div className="admin-check-list">
                 {profile.checks.map(([label, result, confidence, detail]) => {
-                  const tone = result === "Verified" || result === "Clear" ? "success" : result === "Missing" ? "danger" : "warning";
+                  const tone = result === "Verified" || result === "Clear" ? "success" : result === "Missing" || result === "Rejected" ? "danger" : "warning";
                   return (
                     <article
                       className="admin-check-row"
@@ -604,9 +714,9 @@ function VerificationDetail({ profile, onBack, onDecision }) {
                       }}
                       key={label}
                     >
-                      <div className="admin-check-copy"><strong>{label}</strong><p>{detail}</p><span>Source: submitted evidence + registry checks</span></div>
+                      <div className="admin-check-copy"><strong>{label}</strong><p>{detail}</p><span>Source: submitted evidence</span></div>
                       <div className="admin-check-result">
-                        <div className="admin-check-confidence"><strong>{confidence}%</strong><span>confidence</span></div>
+                        <div className="admin-check-confidence"><strong>{confidence}%</strong><span>complete</span></div>
                         <StatusPill tone={tone}>{result}</StatusPill>
                       </div>
                     </article>
@@ -649,8 +759,8 @@ function VerificationDetail({ profile, onBack, onDecision }) {
           </section>
         </div>
       )}
-      {fullProfileOpen && <FullSubmissionModal profile={profile} onClose={() => setFullProfileOpen(false)} />}
-      {selectedCheck && <EvidenceDetailModal profile={profile} check={selectedCheck} onClose={() => setSelectedCheck(null)} />}
+      {fullProfileOpen && <FullSubmissionModal profile={profile} documents={documents} onDocumentUrl={onDocumentUrl} onClose={() => setFullProfileOpen(false)} />}
+      {selectedCheck && <EvidenceDetailModal profile={profile} check={selectedCheck} documents={documents} onDocumentUrl={onDocumentUrl} onClose={() => setSelectedCheck(null)} />}
       {declineOpen && (
         <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setDeclineOpen(false)}>
           <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="decline-title">
@@ -943,7 +1053,7 @@ function SettingsPage() {
       <header className="rfqs-header"><div><p className="admin-eyebrow">Admin</p><h1>Admin settings</h1><p>Manage verification rules and the legal content presented to marketplace users.</p></div></header>
       <Panel
         title="Review thresholds"
-        subtitle={isEditing ? "Update the confidence ranges and decision ownership." : "These controls are placeholders for the verification procedure that will be connected later."}
+        subtitle={isEditing ? "Update the evidence ranges and decision ownership." : "Guidance for reviewers, shown beside each profile. No profile is ever approved automatically."}
         action={isEditing ? null : "Edit"}
         onAction={startEditing}
         className={isEditing ? "admin-settings-card is-editing" : "admin-settings-card"}
@@ -951,8 +1061,8 @@ function SettingsPage() {
         {isEditing ? (
           <form className="admin-threshold-form" onSubmit={saveThresholds}>
             <label className="admin-threshold-field">
-              <span>Auto-clear threshold</span>
-              <div className="admin-number-input"><input type="number" min="0" max="100" required value={draft.autoClear} onChange={(event) => updateDraft("autoClear", event.target.value)} /><span>% confidence</span></div>
+              <span>Ready to approve above</span>
+              <div className="admin-number-input"><input type="number" min="0" max="100" required value={draft.autoClear} onChange={(event) => updateDraft("autoClear", event.target.value)} /><span>% complete</span></div>
             </label>
             <label className="admin-threshold-field">
               <span>Manual review range</span>
@@ -982,8 +1092,8 @@ function SettingsPage() {
           </form>
         ) : (
           <div className="admin-settings-grid">
-            <ProfileDetailPair label="Auto-clear threshold" value={`${thresholds.autoClear}% confidence`} />
-            <ProfileDetailPair label="Manual review range" value={`${thresholds.manualMin}-${thresholds.manualMax}% confidence`} />
+            <ProfileDetailPair label="Ready to approve above" value={`${thresholds.autoClear}% complete`} />
+            <ProfileDetailPair label="Manual review range" value={`${thresholds.manualMin}-${thresholds.manualMax}% complete`} />
             <ProfileDetailPair label="More information threshold" value={`Below ${thresholds.moreInformation}%`} />
             <ProfileDetailPair label="Final decision authority" value={thresholds.authority} />
           </div>
@@ -1078,6 +1188,10 @@ function App() {
   const [rfqBack, setRfqBack] = useState(requested === "rfq-detail" ? "RFQs" : "Overview");
   const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [toast, setToast] = useState("");
+  // The files the company under review uploaded. Fetched per company rather
+  // than carried on every queue row, because only the review screen opens
+  // them and the list is only read once someone is looking at that company.
+  const [reviewDocuments, setReviewDocuments] = useState([]);
 
   // Against the mock every list is populated on the first render, so these
   // seeds are no-ops. Against the network the first render has nothing, and a
@@ -1085,6 +1199,20 @@ function App() {
   useEffect(() => {
     if (!selectedProfile && profiles.length) setSelectedProfile(profiles[0]);
   }, [profiles, selectedProfile]);
+
+  useEffect(() => {
+    if (!selectedProfile?.id || !actions.orgDocuments) {
+      setReviewDocuments([]);
+      return undefined;
+    }
+    let cancelled = false;
+    Promise.resolve(actions.orgDocuments(selectedProfile.id))
+      .then((rows) => { if (!cancelled) setReviewDocuments(rows ?? []); })
+      // A failed document list must not take the review screen down with it:
+      // the decision buttons still work, and the modal says there is no file.
+      .catch(() => { if (!cancelled) setReviewDocuments([]); });
+    return () => { cancelled = true; };
+  }, [selectedProfile?.id, actions]);
   useEffect(() => {
     if (!selectedRfq && rfqList.length) setSelectedRfq(rfqList[0]);
   }, [rfqList, selectedRfq]);
@@ -1199,7 +1327,7 @@ function App() {
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
-      {screen === "Review" && <VerificationDetail profile={selectedProfile} onBack={() => navigate(reviewBack)} onDecision={decide} />}
+      {screen === "Review" && <VerificationDetail profile={selectedProfile} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate("RFQ detail")} />}
       {screen === "Settings" && <SettingsPage />}
