@@ -54,6 +54,8 @@ function readable(authError) {
 }
 
 const AuthContext = createContext(null);
+const SESSION_RESTORE_TIMEOUT_MS = 4000;
+const ORG_LOAD_TIMEOUT_MS = 8000;
 
 export function AuthProvider({ children }) {
   // `undefined` means Supabase has not finished restoring the browser session
@@ -73,25 +75,53 @@ export function AuthProvider({ children }) {
     if (!isConfigured) return undefined;
 
     let cancelled = false;
+    let restored = false;
+
+    const finishRestore = (nextSession) => {
+      if (cancelled) return;
+      restored = true;
+      window.clearTimeout(restoreTimeout);
+      setSession(nextSession ?? null);
+    };
+
+    // A stale refresh token or a browser lock held by another tab can leave
+    // Supabase's initial getSession() pending indefinitely. Authentication may
+    // still recover through onAuthStateChange, but the public login/signup
+    // screen must not be hidden behind a permanent spinner in the meantime.
+    const restoreTimeout = window.setTimeout(() => {
+      if (cancelled || restored) return;
+      restored = true;
+      setSession(null);
+    }, SESSION_RESTORE_TIMEOUT_MS);
 
     supabase.auth.getSession().then(({ data, error: sessionError }) => {
       if (cancelled) return;
       if (sessionError) {
+        if (restored) return;
+        restored = true;
+        window.clearTimeout(restoreTimeout);
         setError(readable(sessionError));
         setStatus("error");
         return;
       }
-      setSession(data.session ?? null);
+      finishRestore(data.session);
+    }).catch((sessionError) => {
+      if (cancelled || restored) return;
+      restored = true;
+      window.clearTimeout(restoreTimeout);
+      setError(readable(sessionError));
+      setStatus("error");
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
+      finishRestore(nextSession);
     });
 
     return () => {
       cancelled = true;
+      window.clearTimeout(restoreTimeout);
       subscription.unsubscribe();
     };
   }, []);
@@ -112,23 +142,40 @@ export function AuthProvider({ children }) {
     }
 
     let cancelled = false;
+    let loadFinished = false;
     setStatus("loading");
 
-    listMyOrgs()
+    const loadTimeout = window.setTimeout(() => {
+      if (cancelled || loadFinished) return;
+      // Treat a session whose membership lookup cannot finish as recoverable.
+      // The public auth screen is useful; an infinite loading gate is not.
+      loadFinished = true;
+      setOrgs([]);
+      setSession(null);
+      setError(null);
+      setStatus("signed-out");
+    }, ORG_LOAD_TIMEOUT_MS);
+
+    listMyOrgs(session.user.id)
       .then((rows) => {
-        if (cancelled) return;
+        if (cancelled || loadFinished) return;
+        loadFinished = true;
+        window.clearTimeout(loadTimeout);
         setOrgs(rows);
         setStatus(rows.length ? "ready" : "no-org");
         setError(null);
       })
       .catch((loadError) => {
-        if (cancelled) return;
+        if (cancelled || loadFinished) return;
+        loadFinished = true;
+        window.clearTimeout(loadTimeout);
         setError(loadError);
         setStatus("error");
       });
 
     return () => {
       cancelled = true;
+      window.clearTimeout(loadTimeout);
     };
     // `session === undefined` has to be its own dependency. Keying only on the
     // user id meant the restore finishing for a SIGNED-OUT visitor moved
@@ -150,11 +197,11 @@ export function AuthProvider({ children }) {
   }, [orgs, activeOrgId]);
 
   const reloadOrgs = useCallback(async () => {
-    const rows = await listMyOrgs();
+    const rows = await listMyOrgs(session?.user?.id);
     setOrgs(rows);
     setStatus(rows.length ? "ready" : "no-org");
     return rows;
-  }, []);
+  }, [session?.user?.id]);
 
   const value = useMemo(() => {
     const activeOrg = orgs.find((org) => org.id === activeOrgId) ?? orgs[0] ?? null;

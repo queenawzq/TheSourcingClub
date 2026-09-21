@@ -20,9 +20,16 @@ import { supabase, unwrap } from "../supabase.js";
  * RLS says what a user may read. It does not say what a query means. This one
  * means "mine", so it says so.
  */
-export async function listMyOrgs() {
-  const { data: auth } = await supabase.auth.getUser();
-  const userId = auth?.user?.id;
+export async function listMyOrgs(knownUserId = null) {
+  // AuthProvider already has the restored session. Revalidating it with
+  // getUser() here adds another auth request and can wait behind a stale token
+  // refresh lock, leaving the whole app on "Checking your session…". Callers
+  // without a restored session may still use the validated fallback.
+  let userId = knownUserId;
+  if (!userId) {
+    const { data: auth } = await supabase.auth.getUser();
+    userId = auth?.user?.id;
+  }
   if (!userId) return [];
 
   return unwrap(

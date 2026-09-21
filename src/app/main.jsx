@@ -1027,6 +1027,8 @@ function AdminConsoleRedirect() {
 
 function App() {
   const { status, error, activeOrg } = useAuth();
+  const requestedAuthMode = new URLSearchParams(window.location.search).get("mode");
+  const isPublicAuthEntry = requestedAuthMode === "login" || requestedAuthMode === "signup";
 
   /**
    * A password-reset link signs the user in and comes back with ?reset=1.
@@ -1041,6 +1043,12 @@ function App() {
   );
 
   if (status === "unconfigured") return <SetupNeeded />;
+  // Landing-page CTAs explicitly ask for a public login or signup screen.
+  // Render that screen immediately while Supabase restores any old browser
+  // session in the background; a stale refresh token must not turn the public
+  // account-creation route into an endless loading gate. Once authentication
+  // succeeds and the provider becomes ready, the normal workspace still wins.
+  if (status === "loading" && isPublicAuthEntry) return <SignIn />;
   if (status === "loading") return <Loading label="Checking your session…" />;
   if (status === "signed-out") return <SignIn />;
   if (resetting) {

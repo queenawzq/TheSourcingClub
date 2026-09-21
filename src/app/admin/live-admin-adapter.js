@@ -197,7 +197,7 @@ export function toAdminUser(user) {
   };
 }
 
-export function createAdminAdapter({ user }) {
+export function createAdminAdapter({ user, signOut }) {
   return {
     viewer: { isAdmin: true, org: null, user },
 
@@ -209,6 +209,7 @@ export function createAdminAdapter({ user }) {
 
     actions: {
       claimReview,
+      signOut,
       /**
        * The screen speaks in the design's three labels; the database speaks in
        * five states. Translating here rather than in the screen keeps the

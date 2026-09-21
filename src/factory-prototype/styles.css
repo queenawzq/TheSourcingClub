@@ -1748,26 +1748,54 @@ body:has(.factory-onboarding-page) {
 .factory-onboarding-progress {
   display: flex;
   justify-content: center;
-  gap: 10px;
+  /* Each clickable button is 18px wide; zero gap preserves the deployed
+     dots' original 18px centre-to-centre rhythm (8px dot + 10px gap). */
+  gap: 0;
   margin-top: 24px;
 }
 
-.factory-onboarding-progress span {
+.factory-onboarding-progress button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.factory-onboarding-progress button::before {
   width: 8px;
   height: 8px;
   border-radius: 999px;
   background: #dce7f4;
+  content: "";
+  transition: transform 140ms ease, box-shadow 140ms ease;
 }
 
-.factory-onboarding-progress span.complete {
+.factory-onboarding-progress button.complete {
+  cursor: pointer;
+}
+
+.factory-onboarding-progress button.complete::before {
   background: #b8ccff;
 }
 
-.factory-onboarding-progress span.current {
+.factory-onboarding-progress button.complete:hover::before {
+  transform: scale(1.35);
+  box-shadow: 0 0 0 3px rgba(23, 77, 242, 0.12);
+}
+
+.factory-onboarding-progress button.current::before {
   width: 10px;
   height: 10px;
-  margin-top: -1px;
   background: #174df2;
+}
+
+.factory-onboarding-progress button:focus-visible {
+  outline: 2px solid #174df2;
+  outline-offset: 2px;
 }
 
 .factory-filter-note {

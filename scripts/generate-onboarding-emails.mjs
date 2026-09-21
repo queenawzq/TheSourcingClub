@@ -5,7 +5,7 @@ import path from "node:path";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const outputDir = path.join(root, "email-templates");
 
-const variants = {
+export const variants = {
   brand: {
     eyebrow: "BRAND ONBOARDING",
     subject: "We’ve received your brand profile",
@@ -99,7 +99,7 @@ function rewardBlock(enabled) {
                 </tr>`;
 }
 
-function emailHtml(key, data) {
+export function emailHtml(key, data) {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -242,10 +242,43 @@ function previewHtml() {
 </html>`;
 }
 
-await mkdir(outputDir, { recursive: true });
-for (const [key, data] of Object.entries(variants)) {
-  await writeFile(path.join(outputDir, `onboarding-complete-${key}.html`), emailHtml(key, data));
-}
-await writeFile(path.join(outputDir, "preview.html"), previewHtml());
+export function onboardingEmail(key, variables = {}) {
+  const data = variants[key];
+  if (!data) throw new Error(`unknown onboarding email variant: ${key}`);
 
-console.log(`Generated ${Object.keys(variants).length} onboarding emails in ${outputDir}`);
+  const companyName = variables.companyName || (key === "brand" ? "your brand" : "your company");
+  const dashboardUrl = variables.dashboardUrl || "https://the-sourcing-club.vercel.app/app.html";
+  const supportEmail = variables.supportEmail || "operations@thesourcingclub.com";
+  const companyAddress = variables.companyAddress || "New York, USA";
+  const html = emailHtml(key, data)
+    .replaceAll("{{ brand_name }}", escapeHtml(companyName))
+    .replaceAll("{{ company_name }}", escapeHtml(companyName))
+    .replaceAll("{{ dashboard_url }}", escapeHtml(dashboardUrl))
+    .replaceAll("{{ support_email }}", escapeHtml(supportEmail))
+    .replaceAll("{{ company_address }}", escapeHtml(companyAddress));
+  const review = data.reviewItems.map(([title, copy], index) => `${index + 1}. ${title}\n   ${copy}`).join("\n");
+  const reward = data.reward
+    ? "\nWelcome discount\n$50 off an eligible order\nIt’ll be waiting in your account after verification. Invite another brand to earn another $50 discount.\n"
+    : "";
+
+  return {
+    subject: data.subject,
+    html,
+    text: `${data.title}\n\n${data.intro
+      .replaceAll("{{ brand_name }}", companyName)
+      .replaceAll("{{ company_name }}", companyName)}\n\n${data.reviewTitle}\n${review}\n${reward}\n${data.nextTitle}\n${data.nextCopy}\n\n${data.cta}: ${dashboardUrl}\n\nNo action is needed right now. If we need anything else, we’ll email you with clear next steps.\n\nQuestions? Reply to this email or contact ${supportEmail}.\n${data.footerLine}\nThe Sourcing Club · ${companyAddress}`,
+  };
+}
+
+const isDirectRun = process.argv[1]
+  && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isDirectRun) {
+  await mkdir(outputDir, { recursive: true });
+  for (const [key, data] of Object.entries(variants)) {
+    await writeFile(path.join(outputDir, `onboarding-complete-${key}.html`), emailHtml(key, data));
+  }
+  await writeFile(path.join(outputDir, "preview.html"), previewHtml());
+
+  console.log(`Generated ${Object.keys(variants).length} onboarding emails in ${outputDir}`);
+}

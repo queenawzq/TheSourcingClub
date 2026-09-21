@@ -23,6 +23,7 @@ import { supabase, unwrap } from "../../lib/supabase.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import { getCapacity, saveCapacity } from "../../lib/domain/capacity-store.js";
 import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
+import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 
 const TERMS_VERSION = "2026-09-18-v4";
 
@@ -126,6 +127,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   const [reviewEditStep, setReviewEditStep] = useState(null);
   const [values, setValues] = useState({});
   const [terms, setTerms] = useState({});
+  const [termsAcceptance, setTermsAcceptance] = useState(null);
   // Nothing is chosen until the vendor chooses it. This answer decides which
   // copy, which questions and which profile kind they get.
   const [companyType, setCompanyType] = useState(initialCompanyType);
@@ -167,12 +169,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
     (async () => {
       try {
-        const [byKind, selected, existing, capacity, references, registrations, logos, samples, walkthroughs] = await Promise.all([
+        const [byKind, selected, existing, capacity, references, acceptance, registrations, logos, samples, walkthroughs] = await Promise.all([
           listTermsByKind(kinds),
           getSelectedTerms("factory_profile", org.id),
           supabase.from("factory_profiles").select("*").eq("org_id", org.id).maybeSingle(),
           getCapacity(org.id),
           supabase.from("profile_references").select("title, counterparty, sort").eq("org_id", org.id).order("sort"),
+          getTermsAcceptance(org.id, TERMS_VERSION),
           listDocuments(org.id, "business_registration"),
           listDocuments(org.id, "logo"),
           listDocuments(org.id, "product_image"),
@@ -182,6 +185,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         if (cancelled) return;
 
         setTerms(byKind);
+        setTermsAcceptance(acceptance);
         setCertifications(certs);
         setRegistrationFileName(
           registrations?.length > 1 ? `${registrations.length} files uploaded` : registrations?.[0]?.file_name ?? "",
@@ -507,16 +511,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, ...answers } = submitted;
       setValues((current) => ({ ...current, ...answers }));
 
-      if (submitted.signature) {
-        unwrap(
-          await supabase.from("terms_acceptances").insert({
-            org_id: org.id,
-            terms_version: TERMS_VERSION,
-            signature: String(submitted.signature).trim(),
-            accepted_by: user.id,
-          }),
-          "record your agreement",
-        );
+      if (submitted.signature && !termsAcceptance) {
+        setTermsAcceptance(await acceptTerms({
+          orgId: org.id,
+          termsVersion: TERMS_VERSION,
+          signature: submitted.signature,
+          userId: user.id,
+        }));
       }
 
       if (reviewEditStep !== null) {
@@ -581,6 +582,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         }
         setStep((current) => Math.max(0, current - 1));
       }}
+      onGoToStep={(target) => {
+        if (typeof target !== "number" || target >= step) return;
+        setReviewEditStep(null);
+        setStep(target);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }}
       onNext={next}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
       onLogout={onSignOut}
@@ -592,6 +599,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       }}
       optionsByLabel={optionsByLabel}
       values={values}
+      termsAcceptance={termsAcceptance}
       busy={busy}
       error={error}
       certificationOptions={certificationOptions}

@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
+import { TermsDialog } from "../shared/TermsDialog.jsx";
 import "../prototype/styles.css";
 import "./styles.css";
 import "../shared/profile-shell.css";
@@ -2185,6 +2186,12 @@ function App() {
           } else {
             setOnboardingStep((value) => Math.max(0, value - 1));
           }
+        }}
+        onGoToStep={(target) => {
+          if (target >= onboardingStep) return;
+          setOnboardingReviewEdit(false);
+          setOnboardingStep(target);
+          window.scrollTo({ top: 0, behavior: "smooth" });
         }}
         onNext={() => {
           if (onboardingReviewEdit) {
@@ -6584,6 +6591,7 @@ export function FactoryOnboarding({
   onCompanyTypeChange,
   onEditSection,
   onBack,
+  onGoToStep,
   onNext,
   // Live mounts pass these; the prototype passes none and is unchanged.
   optionsByLabel,
@@ -6600,6 +6608,7 @@ export function FactoryOnboarding({
   onUploadCertificate,
   onDeleteCertificate,
   registrationFileName,
+  termsAcceptance = null,
   completionPending = false,
 }) {
   const cardRef = useRef(null);
@@ -6679,6 +6688,7 @@ export function FactoryOnboarding({
           registrationFileName={registrationFileName}
           documents={documents}
           onDeleteDocument={onDeleteDocument}
+          termsAcceptance={termsAcceptance}
         />
 
         {error && <p className="factory-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
@@ -6700,7 +6710,18 @@ export function FactoryOnboarding({
 
       <div className="factory-onboarding-progress" aria-label="Onboarding progress">
         {copy.steps.map((item, index) => (
-          <span className={index === step ? "current" : index < step ? "complete" : ""} key={item.title} />
+          <button
+            className={index === step ? "current" : index < step ? "complete" : ""}
+            type="button"
+            key={item.title}
+            disabled={busy || index >= step}
+            aria-current={index === step ? "step" : undefined}
+            aria-label={index < step
+              ? (language === "zh" ? `返回第 ${index + 1} 步：${item.title}` : `Go back to Step ${index + 1}: ${item.title}`)
+              : (language === "zh" ? `第 ${index + 1} 步：${item.title}` : `Step ${index + 1}: ${item.title}`)}
+            title={index < step ? (language === "zh" ? `返回${item.title}` : `Go back to ${item.title}`) : item.title}
+            onClick={() => onGoToStep?.(index)}
+          />
         ))}
       </div>
     </main>
@@ -6710,7 +6731,7 @@ export function FactoryOnboarding({
 function FactoryOnboardingStep({
   step, content, companyType, language, onLanguageChange, onCompanyTypeChange, onEditSection, optionsByLabel, values = {},
   certificationOptions, certifications, onAddCertification, onUploadCertificate, onDeleteCertificate, registrationFileName,
-  documents = {}, onDeleteDocument,
+  documents = {}, onDeleteDocument, termsAcceptance,
 }) {
   const walkthroughDocuments = documents["factory-walkthrough"] ?? [];
   // Keys and option lists both resolve through the English copy, so neither
@@ -6728,6 +6749,7 @@ function FactoryOnboardingStep({
   const [removedCertificates, setRemovedCertificates] = useState([]);
   const [hiddenCertificates, setHiddenCertificates] = useState([]);
   const [customCertificates, setCustomCertificates] = useState([]);
+  const [termsOpen, setTermsOpen] = useState(false);
   const [certificateName, setCertificateName] = useState("");
   const [clientReferenceRows, setClientReferenceRows] = useState([0]);
   const nextClientReferenceId = useRef(1);
@@ -7202,15 +7224,42 @@ function FactoryOnboardingStep({
           </article>
         ))}
         <div className="factory-terms-required">
-          <label className="directory-check terms-check">
-            <input type="checkbox" defaultChecked={!isLive} required data-onboarding-required="true" />
-            <span>{content.agreement}</span>
-          </label>
+          <div className="terms-consent-row terms-check">
+            <label className="directory-check">
+              <input
+                type="checkbox"
+                defaultChecked={!isLive || Boolean(termsAcceptance)}
+                disabled={Boolean(termsAcceptance)}
+                required
+                data-onboarding-required="true"
+              />
+              <span>{language === "zh" ? "我已阅读并同意" : "I have read and agree to the"}</span>
+            </label>
+            <button className="terms-consent-link" type="button" onClick={() => setTermsOpen(true)}>
+              {language === "zh" ? "条款与条件" : "Terms and Conditions"}
+            </button>
+          </div>
           <small className="factory-onboarding-validation-message">
             {language === "zh" ? "请接受条款后继续。" : "Please accept the terms to continue."}
           </small>
         </div>
-        <OnboardingField label={language === "zh" ? "签名" : "Signature"} placeholder={content.signature} required language={language} name="signature" />
+        <OnboardingField
+          label={language === "zh" ? "签名" : "Signature"}
+          placeholder={content.signature}
+          required
+          language={language}
+          name="signature"
+          defaultValue={termsAcceptance?.signature}
+          readOnly={Boolean(termsAcceptance)}
+        />
+        {termsAcceptance && (
+          <p className="terms-acceptance-locked">
+            {language === "zh"
+              ? `已于 ${new Date(termsAcceptance.accepted_at).toLocaleDateString("zh-CN", { dateStyle: "long" })} 接受。签署记录为只读。`
+              : `Accepted on ${new Date(termsAcceptance.accepted_at).toLocaleDateString("en-US", { dateStyle: "long" })}. Your signed acceptance is read-only.`}
+          </p>
+        )}
+        {termsOpen && <TermsDialog accountType="factory" language={language} onClose={() => setTermsOpen(false)} />}
       </div>
     );
   }
@@ -7646,11 +7695,11 @@ function OnboardingAssetUploadCard({
   );
 }
 
-function OnboardingField({ label, placeholder, required = false, language = "en", name, defaultValue }) {
+function OnboardingField({ label, placeholder, required = false, language = "en", name, defaultValue, readOnly = false }) {
   return (
     <label className="factory-onboarding-field">
       <span>{label}{required && <b className="onboarding-required-mark" aria-hidden="true"> *</b>}</span>
-      <input name={name ?? factoryFieldName(label)} defaultValue={defaultValue ?? ""} placeholder={placeholder} required={required} data-onboarding-required={required ? "true" : undefined} />
+      <input name={name ?? factoryFieldName(label)} defaultValue={defaultValue ?? ""} placeholder={placeholder} required={required} readOnly={readOnly} data-onboarding-required={required ? "true" : undefined} />
       {required && (
         <small className="factory-onboarding-validation-message">
           {language === "zh" ? `请输入${label}后继续。` : `Enter your ${label.toLowerCase()} to continue.`}

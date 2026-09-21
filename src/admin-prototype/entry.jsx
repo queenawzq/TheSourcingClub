@@ -67,7 +67,14 @@ const mockSubmission = {
 };
 
 const mockAdapter = {
-  viewer: { isAdmin: true, org: null, user: null },
+  viewer: {
+    isAdmin: true,
+    org: null,
+    user: {
+      email: "operations@thesourcingclub.com",
+      user_metadata: { full_name: "TSC Operations" },
+    },
+  },
   verificationQueue: () => profiles,
   adminRfqs: () => rfqs,
   adminQuotes: () => quotes,
@@ -82,6 +89,7 @@ const mockAdapter = {
   actions: {
     orgDocuments: () => mockDocuments,
     orgSubmission: () => mockSubmission,
+    signOut: () => {},
     decideReview: (id, status) => {
       const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
       profiles = profiles.map((profile) => (profile.id === id ? { ...profile, status, tone } : profile));

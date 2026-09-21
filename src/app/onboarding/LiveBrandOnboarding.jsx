@@ -28,6 +28,7 @@ import { inviteMember } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { toCents } from "../../lib/money.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
+import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 
 /** Uploads on the designed cards → document kind. The kind decides the bucket. */
 const UPLOAD_KINDS = {
@@ -116,6 +117,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
   // many there were.
   const [documents, setDocuments] = useState({});
   const [terms, setTerms] = useState({});
+  const [termsAcceptance, setTermsAcceptance] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -131,16 +133,18 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
 
     (async () => {
       try {
-        const [byKind, selected, existing, invitations, ...uploaded] = await Promise.all([
+        const [byKind, selected, existing, invitations, acceptance, ...uploaded] = await Promise.all([
           listTermsByKind(kinds),
           getSelectedTerms("brand_profile", org.id),
           supabase.from("brand_profiles").select("*").eq("org_id", org.id).maybeSingle(),
           supabase.from("org_invitations").select("email, role").eq("org_id", org.id).order("created_at"),
+          getTermsAcceptance(org.id, TERMS_VERSION),
           ...Object.keys(UPLOADED_FLAG).map((kind) => listDocuments(org.id, kind)),
         ]);
         if (cancelled) return;
 
         setTerms(byKind);
+        setTermsAcceptance(acceptance);
 
         const profile = existing.data ?? {};
         const restored = {};
@@ -282,16 +286,13 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       setValues((current) => ({ ...current, ...answers }));
 
       const signature = submitted[onboardingFieldName("Signature")];
-      if (signature) {
-        unwrap(
-          await supabase.from("terms_acceptances").insert({
-            org_id: org.id,
-            terms_version: TERMS_VERSION,
-            signature: String(signature).trim(),
-            accepted_by: user.id,
-          }),
-          "record your agreement",
-        );
+      if (signature && !termsAcceptance) {
+        setTermsAcceptance(await acceptTerms({
+          orgId: org.id,
+          termsVersion: TERMS_VERSION,
+          signature,
+          userId: user.id,
+        }));
       }
 
       // Leaving and returning to this card re-submits the whole list, so only
@@ -360,6 +361,12 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
         }
         setStep((current) => Math.max(0, current - 1));
       }}
+      onGoToStep={(target) => {
+        if (typeof target !== "number" || target >= step) return;
+        setReviewEditStep(null);
+        setStep(target);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }}
       onNext={next}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
       onLogout={onSignOut}
@@ -373,6 +380,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       }}
       optionsByLabel={optionsByLabel}
       values={values}
+      termsAcceptance={termsAcceptance}
       busy={busy}
       error={error}
       completionPending

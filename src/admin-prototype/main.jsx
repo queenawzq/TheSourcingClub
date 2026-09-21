@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { PrototypeSideNav, ProfileChipSection, ProfileDetailPair } from "../shared/ProfileShell.jsx";
-import { useActions, useAdminMetrics, useAdminQuotes, useAdminRfqs, useAdminUsers, useVerificationQueue } from "../lib/data/DataProvider.jsx";
+import { useActions, useAdminMetrics, useAdminQuotes, useAdminRfqs, useAdminUsers, useVerificationQueue, useViewer } from "../lib/data/DataProvider.jsx";
 import "../prototype/styles.css";
 import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
@@ -204,13 +204,17 @@ function Panel({ title, subtitle, action, onAction, children, className = "" }) 
 
 function VerificationRow({ profile, onReview }) {
   return (
-    <article className="admin-verification-row">
+    <article className={`admin-verification-row${profile.confidence != null ? " has-confidence" : ""}`}>
       <div className="admin-entity-identity">
         <span>{profile.initials}</span>
-        <div><strong>{profile.name}</strong><small>{profile.entityType} · {profile.location}</small></div>
+        <div>
+          <strong>{profile.name}</strong>
+          <small>{profile.entityType} · {profile.location}</small>
+          <small className="admin-entity-submitted">Submitted {profile.submitted}</small>
+        </div>
       </div>
       {profile.confidence != null
-        ? <div className="admin-row-stat"><span>Evidence</span><strong>{profile.confidence}%</strong></div>
+        ? <div className="admin-row-stat"><span>Confidence</span><strong>{profile.confidence}%</strong></div>
         : <div className="admin-row-stat"><span>Assigned</span><strong>{profile.owner || "Unassigned"}</strong></div>}
       <div className="admin-row-stat"><span>Evidence</span><strong>{profile.evidence}</strong></div>
       <StatusPill tone={profile.tone}>{profile.status}</StatusPill>
@@ -852,7 +856,6 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               {profile.completion != null && <ProfileDetailPair label="Profile completeness" value={`${profile.completion}%`} />}
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
-              <ProfileDetailPair label="Assigned to" value={profile.owner || "Unassigned"} />
             </section>
             <section className="factory-profile-card admin-decision-card">
               <span>Final decision</span>
@@ -1109,42 +1112,19 @@ function UsersPage({ users, onToggleStatus }) {
   );
 }
 
-function SettingsPage() {
+function SettingsPage({ user, account, onSignOut }) {
   const initialThresholds = { autoClear: "95", manualMin: "80", manualMax: "94", moreInformation: "80", authority: "TSC operations" };
-  const buildFullAgreement = ({ accountType, usage, confidentiality, responsibilityTitle, responsibilities }) => `The Sourcing Club ${accountType} Terms and Conditions\nEffective August 12, 2026\n\n1. Acceptance of Terms\nThese Terms and Conditions govern your access to and use of The Sourcing Club marketplace. By creating an account, signing electronically, or continuing to use the platform, you agree to these terms and confirm that you are authorized to act for the company connected to your account.\n\n2. Account Eligibility and Authority\nYou must provide complete and accurate registration information, maintain a valid business identity, and ensure that every person using the account has appropriate authority. You are responsible for account credentials and all activity completed through your account.\n\n3. Platform Usage\n${usage}\n\n4. Profile and Verification Information\nYou must keep company, contact, verification, and operational information current. The Sourcing Club may request supporting evidence, review submitted information, and identify whether verification is complete, pending, or requires additional review.\n\n5. Data Privacy and Confidentiality\n${confidentiality}\n\n6. ${responsibilityTitle}\n${responsibilities}\n\n7. Marketplace Communications and Transactions\nUsers must communicate professionally and provide commercially accurate information. Quotes, requests, specifications, samples, production orders, approvals, and other marketplace records may form part of agreements between participating businesses. Each party is responsible for reviewing and accepting its own commercial obligations.\n\n8. Fees, Credits, and Payments\nApplicable platform fees, quotation credits, payment schedules, deposits, and transaction charges will be shown before confirmation. Users are responsible for authorized charges, accurate billing information, and any taxes or duties that apply to their activity.\n\n9. Prohibited Conduct\nYou may not submit false or misleading information, misuse confidential materials, infringe intellectual property rights, circumvent platform safeguards, interfere with marketplace operation, or use the service for unlawful, abusive, or fraudulent activity.\n\n10. Suspension and Termination\nThe Sourcing Club may restrict, suspend, or terminate access when these terms are breached, required verification is not completed, marketplace activity creates material risk, or continued access could harm users or the platform. Where appropriate, users may be given notice and an opportunity to correct the issue.\n\n11. Platform Role and Disclaimers\nThe Sourcing Club provides marketplace, communication, verification-support, and workflow tools. Unless expressly stated otherwise, it is not a party to manufacturing, sourcing, supply, shipping, or payment agreements between users and does not guarantee commercial performance or product outcomes.\n\n12. Limitation of Liability\nTo the fullest extent permitted by applicable law, The Sourcing Club will not be liable for indirect, incidental, special, or consequential losses arising from marketplace transactions, third-party conduct, production delays, or reliance on user-submitted information.\n\n13. Changes to These Terms\nThe Sourcing Club may update these terms to reflect legal, operational, or product changes. The effective date will be updated when a revised version is published, and material changes may require renewed acceptance.\n\n14. Contact\nQuestions about these terms may be directed to The Sourcing Club operations team through the support channels provided in your account.`;
-  const brandUsage = "Use The Sourcing Club to share accurate brand information, submit real sourcing needs, and communicate with vendors in good faith.";
-  const brandPrivacy = "Only upload assets, product references, and company documents you are allowed to share. Vendor quotes, pricing, and private project details should remain confidential.";
-  const brandResponsibilities = "Keep your profile, project briefs, payment status, and decision-maker details accurate so vendors can quote and plan production confidently.";
-  const factoryUsage = "Use The Sourcing Club to share accurate factory information, respond to brand enquiries professionally, and keep communication related to sourcing opportunities.";
-  const factoryPrivacy = "Only upload documents and media you are allowed to share. Brand enquiries, tech packs, pricing, and project details should be kept confidential unless both sides agree otherwise.";
-  const factoryResponsibilities = "Keep your profile, capacity, certifications, and contact details up to date. Quotes, lead times, and production commitments should reflect what your factory can realistically deliver.";
-  const tradingUsage = "Share accurate company, sourcing-network, and production information, and communicate with brands in good faith.";
-  const tradingPrivacy = "Only upload documents and media you are allowed to share. Keep brand enquiries, tech packs, pricing, and supplier details confidential.";
-  const tradingResponsibilities = "Disclose your role clearly, keep partner-factory information current, and ensure quotes and production commitments reflect what your network can deliver.";
-  const initialTerms = {
-    Brand: {
-      onboarding: `Platform Usage\n${brandUsage}\n\nData Privacy & Confidentiality\n${brandPrivacy}\n\nBrand Responsibilities\n${brandResponsibilities}`,
-      full: buildFullAgreement({ accountType: "Brand", usage: brandUsage, confidentiality: brandPrivacy, responsibilityTitle: "Brand Responsibilities", responsibilities: brandResponsibilities }),
-      updated: "Aug 12, 2026"
-    },
-    Factory: {
-      onboarding: `Platform Usage\n${factoryUsage}\n\nData Privacy & Confidentiality\n${factoryPrivacy}\n\nFactory Responsibilities\n${factoryResponsibilities}`,
-      full: buildFullAgreement({ accountType: "Factory", usage: factoryUsage, confidentiality: factoryPrivacy, responsibilityTitle: "Factory Responsibilities", responsibilities: factoryResponsibilities }),
-      updated: "Aug 12, 2026"
-    },
-    "Trading company": {
-      onboarding: `Platform Usage\n${tradingUsage}\n\nData Privacy & Confidentiality\n${tradingPrivacy}\n\nTrading Company Responsibilities\n${tradingResponsibilities}`,
-      full: buildFullAgreement({ accountType: "Trading Company", usage: tradingUsage, confidentiality: tradingPrivacy, responsibilityTitle: "Trading Company Responsibilities", responsibilities: tradingResponsibilities }),
-      updated: "Aug 12, 2026"
-    }
-  };
+  const email = user?.email ?? account?.email ?? "operations@thesourcingclub.com";
+  const name = account?.name ?? user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? "TSC Operations";
+  const accountInitials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0].toUpperCase())
+    .join("") || "TS";
   const [thresholds, setThresholds] = useState(initialThresholds);
   const [draft, setDraft] = useState(initialThresholds);
   const [isEditing, setIsEditing] = useState(false);
-  const [terms, setTerms] = useState(initialTerms);
-  const [activeTermsType, setActiveTermsType] = useState("Brand");
-  const [termsDraft, setTermsDraft] = useState(initialTerms.Brand);
-  const [isEditingTerms, setIsEditingTerms] = useState(false);
   const updateDraft = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
   const startEditing = () => { setDraft(thresholds); setIsEditing(true); };
   const cancelEditing = () => { setDraft(thresholds); setIsEditing(false); };
@@ -1153,23 +1133,22 @@ function SettingsPage() {
     setThresholds(draft);
     setIsEditing(false);
   };
-  const activeTerms = terms[activeTermsType];
-  const selectTermsType = (type) => {
-    if (isEditingTerms) return;
-    setActiveTermsType(type);
-    setTermsDraft(terms[type]);
-  };
-  const startEditingTerms = () => { setTermsDraft(activeTerms); setIsEditingTerms(true); };
-  const cancelEditingTerms = () => { setTermsDraft(activeTerms); setIsEditingTerms(false); };
-  const saveTerms = (event) => {
-    event.preventDefault();
-    setTerms((current) => ({ ...current, [activeTermsType]: { ...termsDraft, updated: "Just now" } }));
-    setIsEditingTerms(false);
-  };
-
   return (
     <main className="settings-page-shell admin-page admin-settings-page">
-      <header className="rfqs-header"><div><p className="admin-eyebrow">Admin</p><h1>Admin settings</h1><p>Manage verification rules and the legal content presented to marketplace users.</p></div></header>
+      <header className="rfqs-header"><div><p className="admin-eyebrow">Admin</p><h1>Admin settings</h1><p>Manage the verification rules used across the marketplace.</p></div></header>
+      <Panel
+        title="Admin account"
+        subtitle="The account currently signed in to this operations workspace."
+        className="admin-settings-card admin-account-card"
+      >
+        <div className="admin-account-summary">
+          <div className="admin-account-identity">
+            <span aria-hidden="true">{accountInitials}</span>
+            <div><strong>{name}</strong><small>{email}</small></div>
+          </div>
+          <button className="secondary-btn" type="button" onClick={onSignOut}>Log out</button>
+        </div>
+      </Panel>
       <Panel
         title="Review thresholds"
         subtitle={isEditing ? "Update the evidence ranges and decision ownership." : "Guidance for reviewers, shown beside each profile. No profile is ever approved automatically."}
@@ -1218,58 +1197,6 @@ function SettingsPage() {
           </div>
         )}
       </Panel>
-      <Panel
-        title="Terms and conditions"
-        subtitle={isEditingTerms ? `Update the ${activeTermsType.toLowerCase()} onboarding summary and complete legal page together.` : `Manage account-specific onboarding summaries and full legal pages · ${activeTermsType} updated ${activeTerms.updated}`}
-        action={isEditingTerms ? null : "Edit terms"}
-        onAction={startEditingTerms}
-        className={isEditingTerms ? "admin-settings-card admin-terms-card is-editing" : "admin-settings-card admin-terms-card"}
-      >
-        <nav className="admin-terms-tabs" aria-label="Terms account type">
-          {Object.keys(terms).map((type) => (
-            <button className={activeTermsType === type ? "active" : ""} type="button" aria-current={activeTermsType === type ? "page" : undefined} disabled={isEditingTerms && activeTermsType !== type} onClick={() => selectTermsType(type)} key={type}>{type}</button>
-          ))}
-        </nav>
-        {isEditingTerms ? (
-          <form className="admin-terms-form" onSubmit={saveTerms}>
-            <div className="admin-terms-field">
-              <label htmlFor="admin-onboarding-terms">Onboarding version</label>
-              <small id="admin-onboarding-terms-help">The concise policy sections displayed directly during {activeTermsType.toLowerCase()} onboarding.</small>
-              <textarea id="admin-onboarding-terms" aria-describedby="admin-onboarding-terms-help" className="admin-terms-onboarding-text" required value={termsDraft.onboarding} onChange={(event) => setTermsDraft((current) => ({ ...current, onboarding: event.target.value }))} />
-            </div>
-            <div className="admin-terms-field">
-              <label htmlFor="admin-full-terms">Full legal page</label>
-              <small id="admin-full-terms-help">The complete standalone agreement opened from onboarding or the user’s account.</small>
-              <textarea id="admin-full-terms" aria-describedby="admin-full-terms-help" className="admin-terms-full-text" required value={termsDraft.full} onChange={(event) => setTermsDraft((current) => ({ ...current, full: event.target.value }))} />
-            </div>
-            <div className="admin-settings-actions">
-              <button className="secondary-btn" type="button" onClick={cancelEditingTerms}>Cancel</button>
-              <button className="primary-btn" type="submit">Save terms</button>
-            </div>
-          </form>
-        ) : (
-          <div className="admin-terms-preview">
-            <section>
-              <div><span>Onboarding version</span><small>Displayed inside {activeTermsType.toLowerCase()} onboarding</small></div>
-              {activeTerms.onboarding.split("\n\n").map((paragraph) => {
-                const [heading, ...copy] = paragraph.split("\n");
-                return <div className="admin-terms-preview-section" key={heading}><strong>{heading}</strong><p>{copy.join(" ")}</p></div>;
-              })}
-            </section>
-            <section className="admin-terms-document">
-              <div><span>Full legal page</span><small>Standalone document · {activeTerms.full.split("\n\n").length - 1} sections</small></div>
-              <div className="admin-terms-document-body">
-                {activeTerms.full.split("\n\n").map((paragraph, index) => {
-                  const [heading, ...copy] = paragraph.split("\n");
-                  return index === 0
-                    ? <header key={heading}><h3>{heading}</h3><p>{copy.join(" ")}</p></header>
-                    : <div className="admin-terms-preview-section" key={heading}><strong>{heading}</strong><p>{copy.join(" ")}</p></div>;
-                })}
-              </div>
-            </section>
-          </div>
-        )}
-      </Panel>
     </main>
   );
 }
@@ -1284,11 +1211,13 @@ function App() {
   const { data: metricRow, reload: reloadMetrics } = useAdminMetrics();
   const { data: userRows, loading: usersLoading, error: usersError, reload: reloadUsers } = useAdminUsers();
   const actions = useActions();
+  const viewer = useViewer();
 
   const profiles = queue ?? [];
   const rfqList = rfqRows ?? [];
   const quoteList = quoteRows ?? [];
   const users = userRows ?? [];
+  const currentAdmin = users.find((user) => user.protected) ?? null;
   const metrics = metricRow ?? {};
   const loading = queueLoading || rfqsLoading || quotesLoading || usersLoading;
   const loadError = queueError || rfqsError || quotesError || usersError;
@@ -1455,7 +1384,7 @@ function App() {
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate("RFQ detail")} />}
-      {screen === "Settings" && <SettingsPage />}
+      {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} />}
             </>}
       {toast && <div className="app-toast admin-toast" role="status">{toast}</div>}
     </div>
