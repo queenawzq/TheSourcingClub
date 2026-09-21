@@ -44,6 +44,28 @@ const mockDocuments = [
     mime_type: "image/jpeg", size_bytes: 1650000, status: "unverified" },
 ];
 
+/** A populated submission, so the review modal reads as designed with no database. */
+const mockSubmission = {
+  profile: {
+    legal_name: "Atelier Minho Lda", location: "Porto, Portugal", country_code: "PT",
+    founded_year: 2016, employee_count: 120, website_url: "https://ateliermlinho.pt",
+    intro: "Woven and cut-and-sew factory specializing in premium small-batch shirts.",
+    moq: 150, typical_lead_days: 25, sample_lead_days: 12, vendor_kind: "manufacturer",
+    equipment_notes: "24 single-needle lines, 2 automated cutters",
+  },
+  selections: {
+    "Production type": ["Cut & sew", "Wovens"],
+    "Product categories": ["Shirts", "Dresses"],
+    "Certifications": ["GOTS"],
+  },
+  capacity: { inputMode: "units", monthlyUnits: 7200, lineHours: null, category: "Woven shirt" },
+  certifications: [{ label: "GOTS", status: "pending", documentId: "doc-cert", expiresAt: "2027-08-31" }],
+  references: [{ id: "ref-1", title: "Capsule knitwear", counterparty: "A Brand", period: "2025", outcome: "Delivered on time" }],
+  members: [{ name: "Ana Martins", email: "ana@ateliermlinho.pt", role: "owner" }],
+  invitations: [],
+  terms: { signature: "Ana Martins", version: "2026-09-18-v4", acceptedAt: "2026-09-12T10:00:00Z" },
+};
+
 const mockAdapter = {
   viewer: { isAdmin: true, org: null, user: null },
   verificationQueue: () => profiles,
@@ -59,6 +81,7 @@ const mockAdapter = {
   adminUsers: () => users,
   actions: {
     orgDocuments: () => mockDocuments,
+    orgSubmission: () => mockSubmission,
     decideReview: (id, status) => {
       const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
       profiles = profiles.map((profile) => (profile.id === id ? { ...profile, status, tone } : profile));

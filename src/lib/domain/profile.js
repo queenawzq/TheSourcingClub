@@ -17,10 +17,17 @@ const BRAND_COLUMNS = `
   verification_status, onboarding_completed_at, created_at, updated_at
 `;
 
+// Every column onboarding writes has to be listed here, or resuming the flow
+// shows an empty field for an answer that was saved — the value is in the
+// database and the form looks like it was never filled in. equipment_notes
+// and vendor_kind were written and not read back for exactly that reason.
 const FACTORY_COLUMNS = `
   org_id, legal_name, website_url, location, country_code, nearest_port,
   founded_year, registration_date, employee_count, registered_capital, intro,
-  moq, typical_lead_days, verification_status, published_at,
+  moq, typical_lead_days, sample_lead_days, equipment_notes, vendor_kind,
+  languages_supported, typical_order_value_band, partner_factory_count,
+  supported_incoterms, typical_payment_terms,
+  verification_status, published_at,
   onboarding_completed_at, created_at, updated_at
 `;
 

@@ -35,11 +35,11 @@ export const initialProfiles = [
     capabilities: ["Wovens", "Cut & sew", "GOTS cotton", "Small-batch export"],
     checks: [
       ["Business identity", "Verified", 99, "Registration name and address match the submitted profile."],
-      ["Registration document", "Verified", 98, "Document is legible, current, and matches public registry data."],
+      ["Registration document", "Verified", 98, "Registration document uploaded and marked verified by a reviewer."],
       ["Website and domain", "Verified", 91, "Domain history and business contact details are consistent."],
       ["Certification evidence", "Review", 82, "GOTS certificate is valid; scope should be confirmed manually."],
       ["Production evidence", "Verified", 94, "Uploaded samples and facility video support stated capabilities."],
-      ["Risk screening", "Clear", 99, "No material sanctions, adverse media, or duplicate-account signals found."]
+      ["Duplicate company signal", "Clear", 100, "No other company on the platform shares this legal name or website domain."]
     ]
   },
   {
@@ -65,7 +65,7 @@ export const initialProfiles = [
       ["Business registration", "Missing", 48, "A current registration document has not been uploaded."],
       ["Brand ownership", "Review", 71, "Trademark ownership could not be confirmed automatically."],
       ["Product evidence", "Verified", 90, "Uploaded collection images align with the stated product focus."],
-      ["Risk screening", "Clear", 98, "No material sanctions or adverse media signals found."]
+      ["Duplicate company signal", "Clear", 100, "No other company on the platform shares this legal name or website domain."]
     ]
   },
   {
@@ -91,7 +91,7 @@ export const initialProfiles = [
       ["Website and domain", "Review", 78, "The public website does not show a matching street address."],
       ["Certification evidence", "Verified", 92, "OEKO-TEX certificate number and holder match."],
       ["Production evidence", "Verified", 89, "Samples support the stated knitwear capabilities."],
-      ["Risk screening", "Clear", 99, "No material risk signals found."]
+      ["Duplicate company signal", "Clear", 100, "No other company on the platform shares this legal name or website domain."]
     ]
   },
   {
@@ -117,7 +117,7 @@ export const initialProfiles = [
       ["Website and domain", "Verified", 90, "Website, email domain, and office details are consistent."],
       ["Supplier network evidence", "Review", 83, "Three partner relationships are documented; sample-check one reference."],
       ["Client reference", "Verified", 88, "One reference has confirmed a completed production program."],
-      ["Risk screening", "Clear", 99, "No material sanctions or adverse media signals found."]
+      ["Duplicate company signal", "Clear", 100, "No other company on the platform shares this legal name or website domain."]
     ]
   }
 ];
@@ -434,89 +434,208 @@ function ConfidenceCard({ score }) {
   );
 }
 
+/** Column name → the words the onboarding form used. */
+const SUBMISSION_LABELS = {
+  legal_name: "Registered name", website_url: "Website", location: "Location",
+  hq_location: "Headquarters", country_code: "Country", nearest_port: "Nearest port",
+  founded_year: "Year founded", employee_count: "Team size", intro: "About",
+  moq: "Minimum order quantity", typical_lead_days: "Bulk lead time (days)",
+  sample_lead_days: "Sample lead time (days)", equipment_notes: "Key machines or equipment",
+  vendor_kind: "Company type", business_email: "Business email",
+  brand_category: "Brand category", annual_revenue_band: "Annual revenue",
+  pieces_per_year_band: "Pieces per year", order_size_band: "Order size per style",
+  collections_per_year: "Collections per year", reorder_cadence: "Reorder cadence",
+  sourcing_stage: "Sourcing stage", languages_supported: "Languages supported",
+  typical_order_value_band: "Typical order value",
+  partner_factory_count: "Active partner factories",
+  supported_incoterms: "Supported Incoterms", typical_payment_terms: "Typical payment terms",
+  registration_date: "Registration date", registered_capital: "Registered capital",
+};
+
 /**
- * Everything the company submitted, including the files.
- *
- * The document rows were fixed strings — "Uploaded", "PDF uploaded",
- * "6 files uploaded" — with nothing behind them, so a reviewer could read
- * that a registration existed and had no way to open it, or to find out that
- * it did not. Real uploads are listed when there are any; the strings remain
- * as the empty state so the screen still reads as designed with no backend.
+ * Bookkeeping, not answers. Shown elsewhere on the screen or meaningless to a
+ * reviewer, so they are kept out of the submitted-fields grid.
  */
-function FullSubmissionModal({ profile, documents, onDocumentUrl, onClose }) {
+const SUBMISSION_SKIP = new Set([
+  "org_id", "created_at", "updated_at", "verification_status",
+  "published_at", "onboarding_completed_at",
+]);
+
+/** A column nobody has labelled still has to appear. */
+const humanise = (key) => SUBMISSION_LABELS[key]
+  ?? key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+
+const showValue = (value) => {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value);
+};
+
+const centsRange = (profile) => {
+  const min = profile.target_price_min_cents;
+  const max = profile.target_price_max_cents;
+  if (min == null && max == null) return null;
+  const money = (c) => `$${(c / 100).toFixed(2)}`;
+  if (min != null && max != null) return `${money(min)} – ${money(max)}`;
+  return money(min ?? max);
+};
+
+/**
+ * Everything the company submitted.
+ *
+ * It renders whatever the backend returns rather than a hand-picked list of
+ * fields. The previous version picked six, looked up eight keys that were
+ * never among them — year founded, team size, MOQ, lead time, business type,
+ * target FOB, annual volume — and drew an em dash for every one, beside four
+ * literals ("10–14 days", "7,200 units", "$15,000–$40,000", "North America")
+ * that were markup rather than data. A reviewer reading that modal was
+ * reading a fabricated capacity figure and a row of dashes where the answers
+ * should have been.
+ *
+ * Unknown columns are shown with a humanised name, so a field added to
+ * onboarding appears here without anyone remembering to come back.
+ */
+function FullSubmissionModal({ profile, submission, documents, onDocumentUrl, onClose }) {
   const files = documents ?? [];
-  const ofKind = (...kinds) => files.filter((file) => kinds.includes(file.kind));
-  const details = Object.fromEntries(profile.details);
-  const isBrand = profile.entityType === "Brand";
-  const companyNameLabel = isBrand ? "Brand name" : profile.entityType === "Trading company" ? "Company name" : "Factory name";
-  const locationLabel = isBrand ? "Headquarters" : profile.entityType === "Trading company" ? "Primary sourcing office" : "Factory location";
-  const sections = [
-    {
-      title: "Company details",
-      fields: [
-        [companyNameLabel, profile.name],
-        ["Company type", profile.entityType],
-        ["Year founded", details["Year founded"] || "—"],
-        ["Website", details.Website || "—"],
-        [locationLabel, profile.location],
-        [isBrand ? "Business type" : "Team size", details[isBrand ? "Business type" : "Team size"] || "—"]
-      ]
-    },
-    {
-      title: isBrand ? "Brand context and sourcing needs" : "Company context and uploaded work",
-      fields: [
-        ["About", profile.summary],
-      ],
-      documents: [
-        [isBrand ? "Brand logo" : "Company logo", ofKind("logo")],
-        [isBrand ? "Design references" : "Production examples",
-         ofKind("brand_direction", "product_image", "walkthrough")],
-      ],
-    },
-    {
-      title: isBrand ? "Product and sourcing profile" : "Capabilities and market fit",
-      fields: [
-        [isBrand ? "Target FOB" : "Typical MOQ", details[isBrand ? "Target FOB" : "Typical MOQ"] || "—"],
-        [isBrand ? "Annual volume" : "Production lead time", details[isBrand ? "Annual volume" : "Lead time"] || "—"],
-        [isBrand ? "Preferred markets" : "Typical sampling time", isBrand ? (details["Primary market"] || "North America") : "10–14 days"],
-        [isBrand ? "Preferred order size" : "Monthly capacity", isBrand ? "$15,000–$40,000" : "7,200 units"]
-      ],
-      chips: profile.capabilities
-    },
-    {
-      title: "Verification documents and declaration",
-      fields: [
-        ["Certification evidence", profile.evidence],
-      ],
-      documents: [
-        ["Business registration", ofKind("business_registration")],
-        ["Certificates", ofKind("certificate")],
-      ],
-    }
-  ];
+  const data = submission ?? {};
+  const submitted = data.profile ?? {};
+  const selections = data.selections ?? {};
+  const capacity = data.capacity ?? null;
+  const certifications = data.certifications ?? [];
+  const references = data.references ?? [];
+  const members = data.members ?? [];
+  const invitations = data.invitations ?? [];
+  const terms = data.terms ?? null;
+
+  const priceRange = centsRange(submitted);
+  const fields = Object.entries(submitted)
+    .filter(([key]) => !SUBMISSION_SKIP.has(key) && !key.startsWith("target_price_"))
+    .map(([key, value]) => [humanise(key), showValue(value)])
+    .filter(([, value]) => value !== null);
+  if (priceRange) fields.push(["Target price range", priceRange]);
+
+  const fileGroups = [
+    ["Business registration", files.filter((f) => f.kind === "business_registration")],
+    ["Certificates", files.filter((f) => f.kind === "certificate")],
+    ["Logo", files.filter((f) => f.kind === "logo")],
+    ["Product and production images", files.filter((f) => ["product_image", "brand_direction"].includes(f.kind))],
+    ["Factory walkthrough", files.filter((f) => f.kind === "walkthrough")],
+  ].filter(([, group]) => group.length);
+
   return (
     <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
       <section className="approve-fund-modal admin-review-modal admin-full-submission-modal" role="dialog" aria-modal="true" aria-labelledby="full-submission-title">
         <button className="settings-drawer-close" type="button" aria-label="Close" onClick={onClose}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
         <header><div><span>Submitted profile</span><h2 id="full-submission-title">Full onboarding submission</h2></div></header>
         <div className="admin-submission-sections">
-          {sections.map((section) => (
-            <section className="admin-submission-section" key={section.title}>
-              <h3>{section.title}</h3>
-              <div className="admin-submission-grid">
-                {section.fields.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
-              </div>
-              {section.documents?.map(([label, group]) => (
-                <div className="admin-submission-files" key={label}>
-                  <span>{label}</span>
-                  {group.length
-                    ? group.map((file) => <DocumentRow key={file.id ?? file.file_name} document={file} onDocumentUrl={onDocumentUrl} />)
-                    : <p className="admin-submission-empty">Nothing uploaded</p>}
-                </div>
+
+          <section className="admin-submission-section">
+            <h3>Account</h3>
+            <div className="admin-submission-grid">
+              <ProfileDetailPair label="Account name" value={profile.name} />
+              <ProfileDetailPair label="Company type" value={profile.entityType} />
+              {members.map((member) => (
+                <ProfileDetailPair
+                  key={member.email}
+                  label={member.role === "owner" ? "Owner" : "Member"}
+                  value={[member.name, member.email].filter(Boolean).join(" · ")}
+                />
               ))}
-              {section.chips && <ProfileChipSection label="Selected capabilities" items={section.chips} />}
+              {invitations.map((invite) => (
+                <ProfileDetailPair key={invite.email} label="Invited" value={`${invite.email} · ${invite.status}`} />
+              ))}
+            </div>
+          </section>
+
+          {fields.length ? (
+            <section className="admin-submission-section">
+              <h3>Submitted details</h3>
+              <div className="admin-submission-grid">
+                {fields.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
+              </div>
             </section>
-          ))}
+          ) : null}
+
+          {Object.keys(selections).length ? (
+            <section className="admin-submission-section">
+              <h3>Selections</h3>
+              {/* Grouped by the question that was asked. One undifferentiated
+                  chip row cannot tell a certification they hold from a product
+                  category they make. */}
+              {Object.entries(selections).map(([kind, labels]) => (
+                <ProfileChipSection key={kind} label={kind} items={labels} />
+              ))}
+            </section>
+          ) : null}
+
+          {capacity && (capacity.monthlyUnits != null || capacity.lineHours != null) ? (
+            <section className="admin-submission-section">
+              <h3>Declared capacity</h3>
+              <div className="admin-submission-grid">
+                <ProfileDetailPair label="Reference category" value={capacity.category ?? "Not given"} />
+                <ProfileDetailPair label="Answered in" value={capacity.inputMode === "hours" ? "Line hours" : "Units"} />
+                {capacity.lineHours != null && <ProfileDetailPair label="Line hours per month" value={String(capacity.lineHours)} />}
+                {capacity.monthlyUnits != null && <ProfileDetailPair label="Units per month" value={String(capacity.monthlyUnits)} />}
+              </div>
+            </section>
+          ) : null}
+
+          {certifications.length ? (
+            <section className="admin-submission-section">
+              <h3>Certifications claimed</h3>
+              <div className="admin-submission-grid">
+                {certifications.map((cert) => (
+                  <ProfileDetailPair
+                    key={cert.label}
+                    label={cert.label}
+                    value={[cert.status, cert.documentId ? "document attached" : "no document",
+                            cert.expiresAt ? `expires ${cert.expiresAt}` : null].filter(Boolean).join(" · ")}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {references.length ? (
+            <section className="admin-submission-section">
+              <h3>Client references</h3>
+              <div className="admin-submission-grid">
+                {references.map((reference) => (
+                  <ProfileDetailPair
+                    key={reference.id ?? reference.title}
+                    label={reference.title}
+                    value={[reference.counterparty, reference.period, reference.outcome].filter(Boolean).join(" · ") || "No detail given"}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          <section className="admin-submission-section">
+            <h3>Uploaded files</h3>
+            {fileGroups.length
+              ? fileGroups.map(([label, group]) => (
+                  <div className="admin-submission-files" key={label}>
+                    <span>{label}</span>
+                    {group.map((file) => <DocumentRow key={file.id ?? file.file_name} document={file} onDocumentUrl={onDocumentUrl} />)}
+                  </div>
+                ))
+              : <p className="admin-submission-empty">Nothing uploaded</p>}
+          </section>
+
+          <section className="admin-submission-section">
+            <h3>Declaration</h3>
+            <div className="admin-submission-grid">
+              {terms
+                ? <>
+                    <ProfileDetailPair label="Signed" value={terms.signature} />
+                    <ProfileDetailPair label="Terms version" value={terms.version} />
+                    <ProfileDetailPair label="Accepted" value={terms.acceptedAt ? String(terms.acceptedAt).slice(0, 10) : "—"} />
+                  </>
+                : <ProfileDetailPair label="Signed" value="No terms acceptance on file" />}
+            </div>
+          </section>
+
         </div>
       </section>
     </div>
@@ -667,7 +786,7 @@ function EvidenceDetailModal({ profile, check, documents, onDocumentUrl, onClose
   );
 }
 
-function VerificationDetail({ profile, documents, onDocumentUrl, onBack, onDecision }) {
+function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision }) {
   const [requestOpen, setRequestOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   // Both modals had a textarea whose value was dropped on the floor: the
@@ -759,7 +878,7 @@ function VerificationDetail({ profile, documents, onDocumentUrl, onBack, onDecis
           </section>
         </div>
       )}
-      {fullProfileOpen && <FullSubmissionModal profile={profile} documents={documents} onDocumentUrl={onDocumentUrl} onClose={() => setFullProfileOpen(false)} />}
+      {fullProfileOpen && <FullSubmissionModal profile={profile} submission={submission} documents={documents} onDocumentUrl={onDocumentUrl} onClose={() => setFullProfileOpen(false)} />}
       {selectedCheck && <EvidenceDetailModal profile={profile} check={selectedCheck} documents={documents} onDocumentUrl={onDocumentUrl} onClose={() => setSelectedCheck(null)} />}
       {declineOpen && (
         <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setDeclineOpen(false)}>
@@ -1192,6 +1311,7 @@ function App() {
   // than carried on every queue row, because only the review screen opens
   // them and the list is only read once someone is looking at that company.
   const [reviewDocuments, setReviewDocuments] = useState([]);
+  const [reviewSubmission, setReviewSubmission] = useState(null);
 
   // Against the mock every list is populated on the first render, so these
   // seeds are no-ops. Against the network the first render has nothing, and a
@@ -1208,9 +1328,14 @@ function App() {
     let cancelled = false;
     Promise.resolve(actions.orgDocuments(selectedProfile.id))
       .then((rows) => { if (!cancelled) setReviewDocuments(rows ?? []); })
-      // A failed document list must not take the review screen down with it:
-      // the decision buttons still work, and the modal says there is no file.
+      // Neither fetch may take the review screen down with it: the decision
+      // buttons still work, and the modal says what it could not load.
       .catch(() => { if (!cancelled) setReviewDocuments([]); });
+
+    Promise.resolve(actions.orgSubmission?.(selectedProfile.id))
+      .then((row) => { if (!cancelled) setReviewSubmission(row ?? null); })
+      .catch(() => { if (!cancelled) setReviewSubmission(null); });
+
     return () => { cancelled = true; };
   }, [selectedProfile?.id, actions]);
   useEffect(() => {
@@ -1327,7 +1452,7 @@ function App() {
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
-      {screen === "Review" && <VerificationDetail profile={selectedProfile} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} />}
+      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate("RFQ detail")} />}
       {screen === "Settings" && <SettingsPage />}

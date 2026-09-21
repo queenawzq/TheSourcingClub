@@ -32,7 +32,18 @@ const LAST_STEP = 10;
 /** Index of the designed profile review card. */
 const REVIEW_STEP = 8;
 
-/** Designed English label → factory_profiles column. */
+/**
+ * Designed English label → factory_profiles column.
+ *
+ * BOTH copies of the flow belong here. Only the factory labels were listed,
+ * so every free-text answer on the trading-company copy was collected, shown
+ * back on its review step, and then dropped at save — including the company's
+ * name, which is why trading companies reached the verification queue with a
+ * blank legal name and looked like they had never filled the form in.
+ *
+ * A label missing from this map fails silently and looks like it worked. That
+ * is the failure mode to watch for when the design adds a field.
+ */
 const COLUMN_FOR_LABEL = {
   "Factory Name": "legal_name",
   "Year Founded": "founded_year",
@@ -43,10 +54,28 @@ const COLUMN_FOR_LABEL = {
   "About the factory": "intro",
   "Minimum Order Quantity": "moq",
   "Bulk Production Lead Time": "typical_lead_days",
+  "Typical Sample Lead Time": "sample_lead_days",
   Equipment: "equipment_notes",
+
+  // Trading-company copy. Six of these share a column with the factory
+  // question they mirror; the rest arrived with migration 20260920000500.
+  "Company Name": "legal_name",
+  "Headquarters / primary sourcing office": "location",
+  "Team size": "employee_count",
+  "About the trading company": "intro",
+  "Languages supported": "languages_supported",
+  "Typical minimum order": "moq",
+  "Typical lead time": "typical_lead_days",
+  "Typical order value": "typical_order_value_band",
+  "Number of active partner factories": "partner_factory_count",
+  "Supported Incoterms": "supported_incoterms",
+  "Typical payment terms": "typical_payment_terms",
 };
 
-const NUMERIC_COLUMNS = new Set(["founded_year", "employee_count", "moq", "typical_lead_days"]);
+const NUMERIC_COLUMNS = new Set([
+  "founded_year", "employee_count", "moq", "typical_lead_days",
+  "sample_lead_days", "partner_factory_count",
+]);
 
 /**
  * Designed English chip-group label → taxonomy kind.

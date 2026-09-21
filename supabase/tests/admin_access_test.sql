@@ -18,7 +18,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(32);
+select plan(34);
 
 insert into auth.users (id, email) values
   ('c5000000-0000-0000-0000-000000000001', 'p5-admin@example.com'),
@@ -144,6 +144,19 @@ select throws_ok(
 select throws_ok(
   $$select public.org_verification_score('d5000000-0000-0000-0000-0000000000f1')$$,
   '42501', null, 'nor the score built from them'
+);
+
+-- The whole submission: profile, capacity, references, contact addresses.
+-- The guard runs before the existence check, so a stranger probing a random
+-- uuid gets 42501 rather than learning from P0002 that it is not an org.
+select throws_ok(
+  $$select public.admin_verification_detail('d5000000-0000-0000-0000-0000000000f1')$$,
+  '42501', null, 'nor the whole submitted profile'
+);
+
+select throws_ok(
+  $$select public.admin_verification_detail('d5000000-0000-0000-0000-00000000dead')$$,
+  '42501', null, 'and a made-up org id is refused the same way, leaking nothing'
 );
 
 -- ---------------------------------------------------------------------------

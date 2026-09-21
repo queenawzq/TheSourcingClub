@@ -116,6 +116,21 @@ export async function verificationQueue() {
 }
 
 /**
+ * Everything a company submitted during onboarding.
+ *
+ * Whole rows rather than a picked list of columns: the review modal used a
+ * curated six-entry list and looked up eight keys that were never in it, so
+ * year founded, team size, MOQ, lead time and the rest all rendered as an em
+ * dash. A field added to onboarding tomorrow arrives here on its own.
+ */
+export async function orgSubmission(orgId) {
+  return unwrap(
+    await supabase.rpc("admin_verification_detail", { target_org: orgId }),
+    "load the submitted profile",
+  );
+}
+
+/**
  * The files a company uploaded about itself.
  *
  * Scoped by the RPC to what belongs to the company rather than to a deal, so

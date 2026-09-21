@@ -21,6 +21,7 @@ import {
   claimReview,
   decideReview,
   orgDocuments,
+  orgSubmission,
   overviewMetrics,
   quoteQueue,
   rfqQueue,
@@ -219,6 +220,18 @@ export function createAdminAdapter({ user }) {
         return decideReview(orgId, decision, note ?? null);
       },
       toggleUserAccess: (userId, disabled) => setUserDisabled(userId, disabled),
+
+      /**
+       * What the company submitted, and a way to open the files.
+       *
+       * Actions rather than hooks because the review screen asks for them
+       * when a company is selected, not on every queue render. The link is
+       * minted per click: a private file's signed URL lives five minutes, so
+       * one handed out at render time is usually dead before it is used.
+       */
+      orgDocuments: (orgId) => orgDocuments(orgId),
+      orgSubmission: (orgId) => orgSubmission(orgId),
+      documentUrl: (document) => urlFor(document),
     },
   };
 }
