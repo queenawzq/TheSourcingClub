@@ -34,7 +34,8 @@ const noteBlock = (note, heading) => {
   };
 };
 
-function messageFor(row) {
+// Exported for api/send-test-email.js, so a test is the real message.
+export function messageFor(row) {
   const loginUrl = `${appUrl()}/app.html`;
   const company = row.orgs?.name || "your company";
   const zh = row.locale === "zh";

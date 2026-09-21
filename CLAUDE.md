@@ -258,6 +258,18 @@ a company-level verdict and a file-level one cannot contradict each other.
   `localStorage`. Any query whose name says "my" needs its own `user_id`
   filter, whatever the policy happens to allow.
 
+### Test emails
+
+Admin Settings → Test emails sends any email the marketplace sends, with
+sample data, to the signed-in admin's **own** address and nobody else's
+(`api/send-test-email.js`). It builds the message with the same code as the
+real send — Queena's designed onboarding emails from
+`scripts/generate-onboarding-emails.mjs`, and `messageFor()` from
+`api/send-review-decision.js` — so a test cannot drift from what a company
+receives. A new email type needs adding to `TEMPLATES` there and
+`TEST_EMAILS` in `src/admin-prototype/main.jsx`. Password resets are sent by
+Supabase itself and cannot be tested this way.
+
 ### Legal documents
 
 The terms each kind of company signs (brand, factory, trading company) and the

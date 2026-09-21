@@ -1591,3 +1591,10 @@
 .admin-evidence-empty {
   gap: 10px;
 }
+
+.admin-test-email-status {
+  margin: 0;
+  color: #1f7a4d;
+  font-size: 13px;
+  font-weight: 500;
+}

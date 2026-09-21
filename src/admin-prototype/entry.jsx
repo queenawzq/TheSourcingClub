@@ -90,6 +90,8 @@ const mockAdapter = {
     orgDocuments: () => mockDocuments,
     orgSubmission: () => mockSubmission,
     signOut: () => {},
+    // No mail server behind the prototype; the panel shows where it would go.
+    sendTestEmail: () => ({ sent: true, to: "operations@thesourcingclub.com" }),
     decideReview: (id, status) => {
       const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
       profiles = profiles.map((profile) => (profile.id === id ? { ...profile, status, tone } : profile));

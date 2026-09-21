@@ -25,6 +25,7 @@ import {
   overviewMetrics,
   quoteQueue,
   rfqQueue,
+  sendTestEmail,
   setUserDisabled,
   userDirectory,
   verificationQueue,
@@ -210,6 +211,7 @@ export function createAdminAdapter({ user, signOut }) {
     actions: {
       claimReview,
       signOut,
+      sendTestEmail,
       /**
        * The screen speaks in the design's three labels; the database speaks in
        * five states. Translating here rather than in the screen keeps the

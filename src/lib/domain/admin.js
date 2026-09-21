@@ -354,3 +354,23 @@ export async function setUserDisabled(userId, disabled) {
     body: JSON.stringify({ userId, disabled }),
   });
 }
+
+/**
+ * Send one of the product's emails, with sample data, to the signed-in
+ * admin's own address. The server builds it with the same code as the real
+ * send and refuses anyone who is not staff.
+ */
+export async function sendTestEmail(template, locale = "en") {
+  const { data: { session } } = await supabase.auth.getSession();
+  const response = await fetch("/api/send-test-email", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session?.access_token ?? ""}`,
+    },
+    body: JSON.stringify({ template, locale }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.sent) throw new Error(result.error || "the test email could not be sent");
+  return result;
+}

@@ -1112,6 +1112,66 @@ function UsersPage({ users, onToggleStatus }) {
   );
 }
 
+// The emails staff can send themselves from Settings. Keys match
+// api/send-test-email.js; `localized` ones have a Chinese version.
+const TEST_EMAILS = [
+  { key: "onboarding-brand", label: "Onboarding received · Brand" },
+  { key: "onboarding-factory", label: "Onboarding received · Factory" },
+  { key: "onboarding-trading-company", label: "Onboarding received · Trading company" },
+  { key: "review-approved", label: "Review decision · Approved", localized: true },
+  { key: "review-needs-information", label: "Review decision · Needs information", localized: true },
+  { key: "review-declined", label: "Review decision · Declined", localized: true },
+];
+
+function TestEmailPanel({ email }) {
+  const actions = useActions();
+  const [template, setTemplate] = useState(TEST_EMAILS[0].key);
+  const [locale, setLocale] = useState("en");
+  const [status, setStatus] = useState({ state: "idle", message: "" });
+  const localized = TEST_EMAILS.find((option) => option.key === template)?.localized;
+
+  const send = async (event) => {
+    event.preventDefault();
+    setStatus({ state: "sending", message: "" });
+    try {
+      const result = await actions.sendTestEmail(template, localized ? locale : "en");
+      setStatus({ state: "sent", message: `Sent to ${result?.to ?? email}.` });
+    } catch (error) {
+      setStatus({ state: "error", message: error.message });
+    }
+  };
+
+  return (
+    <Panel
+      title="Test emails"
+      subtitle={`Send yourself any email the marketplace sends, filled with sample data. It goes only to ${email}.`}
+      className="admin-settings-card"
+    >
+      <form className="admin-threshold-form" onSubmit={send}>
+        <label className="admin-threshold-field">
+          <span>Email</span>
+          <select value={template} onChange={(event) => { setTemplate(event.target.value); setStatus({ state: "idle", message: "" }); }}>
+            {TEST_EMAILS.map((option) => <option value={option.key} key={option.key}>{option.label}</option>)}
+          </select>
+        </label>
+        {localized && (
+          <label className="admin-threshold-field">
+            <span>Language</span>
+            <select value={locale} onChange={(event) => setLocale(event.target.value)}>
+              <option value="en">English</option>
+              <option value="zh">中文</option>
+            </select>
+          </label>
+        )}
+        {status.message && <p className={status.state === "error" ? "admin-error" : "admin-test-email-status"} role={status.state === "error" ? "alert" : "status"}>{status.message}</p>}
+        <div className="admin-settings-actions">
+          <button className="primary-btn" type="submit" disabled={status.state === "sending"}>{status.state === "sending" ? "Sending…" : "Send test email"}</button>
+        </div>
+      </form>
+    </Panel>
+  );
+}
+
 function SettingsPage({ user, account, onSignOut }) {
   const initialThresholds = { autoClear: "95", manualMin: "80", manualMax: "94", moreInformation: "80", authority: "TSC operations" };
   const email = user?.email ?? account?.email ?? "operations@thesourcingclub.com";
@@ -1197,6 +1257,7 @@ function SettingsPage({ user, account, onSignOut }) {
           </div>
         )}
       </Panel>
+      <TestEmailPanel email={email} />
     </main>
   );
 }
