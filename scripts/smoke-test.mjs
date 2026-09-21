@@ -366,29 +366,11 @@ console.log("\nlegal documents");
   privacySign ? ok("a privacy policy cannot be 'signed'")
               : fail("a signature was recorded against the privacy policy");
 
-  const { error: publishLeak } = await brand.client.rpc("publish_legal_document", {
-    p_kind: "terms_brand", p_onboarding_en: "Heading\nBody", p_onboarding_zh: null,
-    p_full_en: "Title\nSub", p_full_zh: null,
+  const { error: publishLeak } = await brand.client.from("legal_documents").insert({
+    kind: "terms_brand", version: 999, onboarding_en: "Heading\nBody", full_en: "Title\nSub",
   });
-  publishLeak ? ok("a brand CANNOT publish the terms it signs")
-              : fail("LEAK: a brand published the terms");
-
-  const staff = await signedInUser(`legal-admin-${stamp}@example.com`);
-  await admin.from("platform_admins").insert({ user_id: staff.id });
-  const { data: published, error: publishError } = await staff.client.rpc("publish_legal_document", {
-    p_kind: "privacy", p_onboarding_en: null, p_onboarding_zh: null,
-    p_full_en: `Smoke privacy ${stamp}\nSub`, p_full_zh: null,
-  });
-  if (publishError) fail("staff can publish a new version", publishError);
-  else {
-    const { data: after } = await signedOut.rpc("current_legal_documents");
-    const privacy = (after ?? []).find((row) => row.kind === "privacy");
-    privacy?.id === published.id && published.version === byKind.privacy.version + 1
-      ? ok(`staff publish privacy v${published.version} and signed-out readers see it at once`)
-      : fail("the published version is not the current one");
-    // Leave the local stack's documents as they were.
-    await admin.from("legal_documents").delete().eq("id", published.id);
-  }
+  publishLeak ? ok("a brand CANNOT publish terms of its own")
+              : fail("LEAK: a brand wrote to legal_documents");
 }
 
 console.log("\nprivate documents");

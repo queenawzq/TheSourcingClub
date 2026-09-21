@@ -24,6 +24,8 @@ import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/
 import { getCapacity, saveCapacity } from "../../lib/domain/capacity-store.js";
 import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
 import { useSignableTerms } from "./useSignableTerms.js";
+import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
+import { termsVersionOf } from "../../lib/domain/legal.js";
 
 
 /** Index of the designed "You're all set" card, the last of the eleven. */
@@ -129,12 +131,25 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   const [reviewEditStep, setReviewEditStep] = useState(null);
   const [values, setValues] = useState({});
   const [terms, setTerms] = useState({});
+  const [termsAcceptance, setTermsAcceptance] = useState(null);
   // Nothing is chosen until the vendor chooses it. This answer decides which
   // copy, which questions and which profile kind they get.
   const [companyType, setCompanyType] = useState(initialCompanyType);
   const [language, setLanguage] = useState("en");
   // Trading companies sign different terms, chosen on the welcome card.
   const signable = useSignableTerms(companyType === "trading" ? "terms_trading" : "terms_factory", language);
+
+  // Already signed? Looked up by the version on screen, once it has loaded, so
+  // a returning company sees its read-only signature rather than a blank one.
+  useEffect(() => {
+    if (!signable.doc) return undefined;
+    let cancelled = false;
+    getTermsAcceptance(org.id, termsVersionOf(signable.doc)).then(
+      (acceptance) => !cancelled && setTermsAcceptance(acceptance),
+      (lookupError) => !cancelled && setError(lookupError),
+    );
+    return () => { cancelled = true; };
+  }, [org.id, signable.doc]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [certifications, setCertifications] = useState([]);
@@ -512,19 +527,16 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       const { "factory-logo": _logo, "factory-samples": _samples, "business-registration": _registration, "factory-walkthrough": _walkthrough, ...answers } = submitted;
       setValues((current) => ({ ...current, ...answers }));
 
-      if (submitted.signature) {
+      if (submitted.signature && !termsAcceptance) {
         // The exact version on screen, so the record says what was agreed to.
         const signed = await signable.ensure();
-        unwrap(
-          await supabase.from("terms_acceptances").insert({
-            org_id: org.id,
-            terms_version: `${signed.kind} v${signed.version}`,
-            legal_document_id: signed.id,
-            signature: String(submitted.signature).trim(),
-            accepted_by: user.id,
-          }),
-          "record your agreement",
-        );
+        setTermsAcceptance(await acceptTerms({
+          orgId: org.id,
+          termsVersion: termsVersionOf(signed),
+          legalDocumentId: signed.id,
+          signature: submitted.signature,
+          userId: user.id,
+        }));
       }
 
       if (reviewEditStep !== null) {
@@ -589,6 +601,12 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         }
         setStep((current) => Math.max(0, current - 1));
       }}
+      onGoToStep={(target) => {
+        if (typeof target !== "number" || target >= step) return;
+        setReviewEditStep(null);
+        setStep(target);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }}
       onNext={next}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
       onLogout={onSignOut}
@@ -600,10 +618,11 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       }}
       optionsByLabel={optionsByLabel}
       values={values}
+      termsAcceptance={termsAcceptance}
       busy={busy}
       error={error ?? (step === TERMS_STEP ? signable.error : null)}
       terms={signable.sections}
-      termsHref={signable.href}
+      fullTerms={signable.full}
       certificationOptions={certificationOptions}
       certifications={certifications}
       onAddCertification={addCertification}

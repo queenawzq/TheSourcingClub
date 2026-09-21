@@ -2,8 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
-import { AgreementText } from "../shared/AgreementText.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
+import { TermsDialog } from "../shared/TermsDialog.jsx";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
@@ -1335,6 +1335,12 @@ function App() {
             setBrandOnboardingStep((value) => Math.max(0, value - 1));
           }
         }}
+        onGoToStep={(target) => {
+          if (target >= brandOnboardingStep) return;
+          setBrandOnboardingReviewEdit(false);
+          setBrandOnboardingStep(target);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
         onNext={() => {
           if (brandOnboardingReviewEdit) {
             setBrandOnboardingReviewEdit(false);
@@ -2489,6 +2495,7 @@ export function BrandOnboarding({
   isReviewEdit,
   onEditSection,
   onBack,
+  onGoToStep,
   onNext,
   // Live mounts pass these. The prototype passes none of them and behaves
   // exactly as it always did.
@@ -2500,14 +2507,15 @@ export function BrandOnboarding({
   onLogout,
   documents,
   onDeleteDocument,
+  termsAcceptance = null,
   completionPending = false,
   // The published terms and their full page. Absent, the designed copy shows.
   terms,
-  termsHref,
+  fullTerms,
 }) {
   const designedStep = brandOnboardingSteps[step];
-  const current = designedStep.type === "terms" && (terms || termsHref)
-    ? { ...designedStep, terms: terms ?? designedStep.terms, termsHref }
+  const current = designedStep.type === "terms" && (terms || fullTerms)
+    ? { ...designedStep, terms: terms ?? designedStep.terms, fullTerms }
     : designedStep;
   const isFirst = step === 0;
   const isLast = step === brandOnboardingSteps.length - 1;
@@ -2572,6 +2580,7 @@ export function BrandOnboarding({
           values={savedValues}
           documents={documents}
           onDeleteDocument={onDeleteDocument}
+          termsAcceptance={termsAcceptance}
         />
 
         {error && <p className="brand-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
@@ -2591,14 +2600,23 @@ export function BrandOnboarding({
 
       <div className="brand-onboarding-progress" aria-label="Onboarding progress">
         {brandOnboardingSteps.map((item, index) => (
-          <span className={index === step ? "current" : index < step ? "complete" : ""} key={item.title} />
+          <button
+            className={index === step ? "current" : index < step ? "complete" : ""}
+            type="button"
+            key={item.title}
+            disabled={busy || index >= step}
+            aria-current={index === step ? "step" : undefined}
+            aria-label={index < step ? `Go back to Step ${index + 1}: ${item.title}` : `Step ${index + 1}: ${item.title}`}
+            title={index < step ? `Go back to ${item.title}` : item.title}
+            onClick={() => onGoToStep?.(index)}
+          />
         ))}
       </div>
     </main>
   );
 }
 
-function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, values = {}, documents = {}, onDeleteDocument }) {
+function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, values = {}, documents = {}, onDeleteDocument, termsAcceptance }) {
   // Live mounts replace a hardcoded option list with the taxonomy; the
   // prototype passes nothing and keeps its own. The design is the UI, never
   // the data source.
@@ -2649,6 +2667,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
     (valueFor("Decision makers") ?? []).map((email) => ({ name: email.split("@")[0], email, role: "Stakeholder" })),
   );
   const [stakeholderModalOpen, setStakeholderModalOpen] = useState(false);
+  const [termsOpen, setTermsOpen] = useState(false);
   const [stakeholderDraft, setStakeholderDraft] = useState({ name: "", email: "", role: "Stakeholder" });
 
   function updateStakeholderDraft(key, value) {
@@ -2727,7 +2746,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
           <label className="brand-onboarding-field" key={label}>
             <span>{label}<OnboardingRequirement /></span>
             {Array.isArray(optionsOrPlaceholder) ? (
-              <select name={onboardingFieldName(label)} defaultValue={valueFor(label) ?? (isLive ? "" : defaultValue ?? "")}>
+              <select name={onboardingFieldName(label)} defaultValue={valueFor(label) ?? ""}>
                 <option value="" disabled>Select an option</option>
                 {optionsFor(label, optionsOrPlaceholder).map((option) => (
                   <option key={option}>{option}</option>
@@ -2899,17 +2918,38 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
           </article>
         ))}
         <div className="brand-terms-required">
-          <label className="brand-onboarding-check brand-terms-check">
-            <input type="checkbox" data-onboarding-required="true" />
-            <span><AgreementText text={content.agreement} href={content.termsHref} /> <OnboardingRequirement required /></span>
-          </label>
+          <div className="terms-consent-row brand-terms-check">
+            <label className="brand-onboarding-check">
+              <input
+                type="checkbox"
+                defaultChecked={Boolean(termsAcceptance)}
+                disabled={Boolean(termsAcceptance)}
+                data-onboarding-required="true"
+              />
+              <span>I have read and agree to the</span>
+            </label>
+            <button className="terms-consent-link" type="button" onClick={() => setTermsOpen(true)}>Terms and Conditions</button>
+            <OnboardingRequirement required />
+          </div>
           <small className="brand-onboarding-validation-message">Please accept the terms to continue.</small>
         </div>
         <label className="brand-onboarding-field full">
           <span>Signature<OnboardingRequirement required /></span>
-          <input name={onboardingFieldName("Signature")} placeholder={content.signature} data-onboarding-required="true" />
+          <input
+            name={onboardingFieldName("Signature")}
+            defaultValue={termsAcceptance?.signature ?? ""}
+            placeholder={content.signature}
+            readOnly={Boolean(termsAcceptance)}
+            data-onboarding-required="true"
+          />
           <small className="brand-onboarding-validation-message">Type your full name to sign and continue.</small>
         </label>
+        {termsAcceptance && (
+          <p className="terms-acceptance-locked">
+            Accepted on {new Date(termsAcceptance.accepted_at).toLocaleDateString("en-US", { dateStyle: "long" })}. Your signed acceptance is read-only.
+          </p>
+        )}
+        {termsOpen && <TermsDialog accountType="brand" text={content.fullTerms} onClose={() => setTermsOpen(false)} />}
       </div>
     );
   }

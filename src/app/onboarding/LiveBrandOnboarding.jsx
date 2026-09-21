@@ -29,6 +29,8 @@ import { supabase, unwrap } from "../../lib/supabase.js";
 import { toCents } from "../../lib/money.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import { useSignableTerms } from "./useSignableTerms.js";
+import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
+import { termsVersionOf } from "../../lib/domain/legal.js";
 
 /** Uploads on the designed cards → document kind. The kind decides the bucket. */
 const UPLOAD_KINDS = {
@@ -118,9 +120,22 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
   // many there were.
   const [documents, setDocuments] = useState({});
   const [terms, setTerms] = useState({});
+  const [termsAcceptance, setTermsAcceptance] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const signable = useSignableTerms("terms_brand");
+
+  // Already signed? Looked up by the version on screen, once it has loaded, so
+  // a returning company sees its read-only signature rather than a blank one.
+  useEffect(() => {
+    if (!signable.doc) return undefined;
+    let cancelled = false;
+    getTermsAcceptance(org.id, termsVersionOf(signable.doc)).then(
+      (acceptance) => !cancelled && setTermsAcceptance(acceptance),
+      (lookupError) => !cancelled && setError(lookupError),
+    );
+    return () => { cancelled = true; };
+  }, [org.id, signable.doc]);
 
   const kinds = useMemo(
     () => [...new Set([...Object.values(KIND_FOR_LABEL), CATEGORY_KIND])],
@@ -285,19 +300,16 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       setValues((current) => ({ ...current, ...answers }));
 
       const signature = submitted[onboardingFieldName("Signature")];
-      if (signature) {
+      if (signature && !termsAcceptance) {
         // The exact version on screen, so the record says what was agreed to.
         const signed = await signable.ensure();
-        unwrap(
-          await supabase.from("terms_acceptances").insert({
-            org_id: org.id,
-            terms_version: `${signed.kind} v${signed.version}`,
-            legal_document_id: signed.id,
-            signature: String(signature).trim(),
-            accepted_by: user.id,
-          }),
-          "record your agreement",
-        );
+        setTermsAcceptance(await acceptTerms({
+          orgId: org.id,
+          termsVersion: termsVersionOf(signed),
+          legalDocumentId: signed.id,
+          signature,
+          userId: user.id,
+        }));
       }
 
       // Leaving and returning to this card re-submits the whole list, so only
@@ -366,6 +378,12 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
         }
         setStep((current) => Math.max(0, current - 1));
       }}
+      onGoToStep={(target) => {
+        if (typeof target !== "number" || target >= step) return;
+        setReviewEditStep(null);
+        setStep(target);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }}
       onNext={next}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
       onLogout={onSignOut}
@@ -379,10 +397,11 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       }}
       optionsByLabel={optionsByLabel}
       values={values}
+      termsAcceptance={termsAcceptance}
       busy={busy}
       error={error ?? (step === TERMS_STEP ? signable.error : null)}
       terms={signable.sections}
-      termsHref={signable.href}
+      fullTerms={signable.full}
       completionPending
     />
   );

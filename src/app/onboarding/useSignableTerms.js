@@ -7,7 +7,7 @@
  * `ensure()` retries, so pressing Sign again is the retry.
  */
 import { useCallback, useEffect, useState } from "react";
-import { legalHref, listCurrentLegalDocuments, parseSections, pickText } from "../../lib/domain/legal.js";
+import { listCurrentLegalDocuments, parseSections, pickText } from "../../lib/domain/legal.js";
 
 export function useSignableTerms(kind, language = "en") {
   const [doc, setDoc] = useState(null);
@@ -35,7 +35,8 @@ export function useSignableTerms(kind, language = "en") {
     doc,
     error,
     sections: doc ? parseSections(pickText(doc.onboarding_en, doc.onboarding_zh, language)) : [],
-    href: legalHref(kind, language),
+    /** The full document, for the designed Terms dialog. */
+    full: doc ? pickText(doc.full_en, doc.full_zh, language) : null,
     /** The document to sign — the one on screen, or a fresh attempt. */
     ensure: useCallback(() => (doc?.kind === kind ? doc : load()), [doc, kind, load]),
   };

@@ -11905,27 +11905,55 @@ body:has(.brand-onboarding-page) {
 .brand-onboarding-progress {
   display: flex;
   justify-content: center;
-  gap: 10px;
+  /* Each clickable button is 18px wide; zero gap preserves the deployed
+     dots' original 18px centre-to-centre rhythm (8px dot + 10px gap). */
+  gap: 0;
   margin-top: 24px;
   padding: 0;
 }
 
-.brand-onboarding-progress span {
+.brand-onboarding-progress button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.brand-onboarding-progress button::before {
   width: 8px;
   height: 8px;
   border-radius: 999px;
   background: #e2e8f0;
+  content: "";
+  transition: transform 140ms ease, box-shadow 140ms ease;
 }
 
-.brand-onboarding-progress span.current {
+.brand-onboarding-progress button.current::before {
   width: 10px;
   height: 10px;
-  margin-top: -1px;
   background: #174df2;
 }
 
-.brand-onboarding-progress span.complete {
+.brand-onboarding-progress button.complete {
+  cursor: pointer;
+}
+
+.brand-onboarding-progress button.complete::before {
   background: #bcd0ff;
+}
+
+.brand-onboarding-progress button.complete:hover::before {
+  transform: scale(1.35);
+  box-shadow: 0 0 0 3px rgba(23, 77, 242, 0.12);
+}
+
+.brand-onboarding-progress button:focus-visible {
+  outline: 2px solid #174df2;
+  outline-offset: 2px;
 }
 
 .messages-page {

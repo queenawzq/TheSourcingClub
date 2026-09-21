@@ -261,29 +261,32 @@ a company-level verdict and a file-level one cannot contradict each other.
 ### Legal documents
 
 The terms each kind of company signs (brand, factory, trading company) and the
-privacy policy live in `legal_documents`, edited in the admin console's
-Settings → Terms and conditions, and shown at `app.html?legal=terms&type=…` and
-`app.html?legal=privacy`. The signup links and the onboarding terms step both
-point there.
+privacy policy live in `legal_documents`, and are shown in Queena's Terms
+dialog (`src/shared/TermsDialog.jsx`) — from the onboarding checkbox, and at
+`app.html?legal=terms&type=…` / `app.html?legal=privacy`, where the signup
+links point.
 
-- **Every save is a new version; no version is ever updated.** There is no
-  write grant; `publish_legal_document()` is the only way in, admin-gated as
-  its first statement. `terms_acceptances.legal_document_id` points at the
-  exact row signed, and a signature is only evidence if that text cannot
-  change under it.
+- **No version is ever updated, and nothing writes through the API.** There
+  is no editor — the admin design dropped it on 2026-09-21 — so new wording is
+  a new row with the next version, added by migration.
+  `terms_acceptances.legal_document_id` points at the exact row signed, and a
+  signature is only evidence if that text cannot change under it.
 - **Onboarding shows the published text and signs that version**, with no
   fallback to the designed copy: a signature against text that is not stored
   proves nothing. If the terms fail to load, signing refuses with the reason.
+  The prototypes pass no text, so the dialog keeps its designed copy there —
+  keep the two in step when either changes.
 - **`current_legal_documents()` is the only thing granted to `anon`**, and it
   returns only the current text. The table itself stays unreadable to
   everyone but staff.
 - Chinese is a separate hand-written field per document, falling back to
   English when blank — never machine-translated, same rule as the taxonomy.
-- **Version 1 still promises escrow** ("we hold the funds"), copied verbatim
-  from the designed onboarding. That contradicts track-only payments and needs
-  correcting through the editor, which publishes a v2.
-- The prototypes pass no terms to the designed onboarding components, so they
-  keep rendering the designed copy.
+- **Version 1's onboarding summaries still promise escrow** ("we hold the
+  funds"), copied verbatim from the designed cards. That contradicts
+  track-only payments; a v2 is how it gets fixed.
+- **The privacy policy names every processor** (Supabase, Vercel, Resend,
+  OpenRouter, Google Sheets, Netlify Forms). Adding a service that touches
+  personal data means publishing a new version of it.
 
 ### Wiring a designed screen to live data
 

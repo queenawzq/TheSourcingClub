@@ -10,7 +10,7 @@
  */
 import React from "react";
 import { createRoot } from "react-dom/client";
-import App, { initialProfiles, initialTerms, initialUsers, quotes, rfqs } from "./main.jsx";
+import App, { initialProfiles, initialUsers, quotes, rfqs } from "./main.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 
 /**
@@ -25,7 +25,6 @@ import { DataProvider } from "../lib/data/DataProvider.jsx";
  */
 let profiles = initialProfiles;
 let users = initialUsers;
-let legalDocuments = initialTerms;
 
 /**
  * Stand-in uploads, so the review screen's document rows are populated with
@@ -68,7 +67,14 @@ const mockSubmission = {
 };
 
 const mockAdapter = {
-  viewer: { isAdmin: true, org: null, user: null },
+  viewer: {
+    isAdmin: true,
+    org: null,
+    user: {
+      email: "operations@thesourcingclub.com",
+      user_metadata: { full_name: "TSC Operations" },
+    },
+  },
   verificationQueue: () => profiles,
   adminRfqs: () => rfqs,
   adminQuotes: () => quotes,
@@ -80,10 +86,10 @@ const mockAdapter = {
     paymentsAwaitingConfirmation: 3,
   }),
   adminUsers: () => users,
-  legalDocuments: () => legalDocuments,
   actions: {
     orgDocuments: () => mockDocuments,
     orgSubmission: () => mockSubmission,
+    signOut: () => {},
     decideReview: (id, status) => {
       const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
       profiles = profiles.map((profile) => (profile.id === id ? { ...profile, status, tone } : profile));
@@ -92,9 +98,6 @@ const mockAdapter = {
       users = users.map((user) => user.id === userId
         ? { ...user, status: disabled ? "Disabled" : "Active" }
         : user);
-    },
-    saveLegalDocument: (tab, draft) => {
-      legalDocuments = { ...legalDocuments, [tab]: { ...draft, updated: "Just now" } };
     },
   },
 };

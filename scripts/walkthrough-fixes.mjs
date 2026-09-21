@@ -342,8 +342,8 @@ async function main() {
       check((await page.locator(".terms-section article h2").first().innerText()).includes(firstHeading),
         `the terms card shows the published factory terms (v${factoryTerms?.version})`);
     }
-    check((await page.locator('.factory-onboarding-card a[href*="legal=terms&type=factory"]').count()) === 1,
-      "and links to the full factory terms");
+    check((await page.locator(".factory-onboarding-card .terms-consent-link").count()) === 1,
+      "and opens the full terms");
     await page.locator(".factory-onboarding-card input[type=checkbox]").first().click();
     await page.locator('input[name="signature"]').first().fill("Wen Li");
     await nextCard(page); // → complete

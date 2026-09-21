@@ -469,17 +469,13 @@ async function main() {
     // ================= TERMS AND PRIVACY, SIGNED OUT =================
     console.log("\nTERMS AND PRIVACY");
     await page.goto(`${APP}?legal=terms&type=brand`);
-    await waitFor(page, ".admin-terms-document-body", 30000);
-    check((await page.locator(".admin-terms-document-body").innerText()).includes("Brand Terms and Conditions"),
-      "the brand terms are readable signed out");
-    await clickButton(page, "trading company");
-    await page.waitForTimeout(500);
-    check((await page.locator(".admin-terms-document-body").innerText()).includes("Trading Company Terms and Conditions"),
-      "and the switch shows a trading company's terms");
+    await waitFor(page, ".terms-dialog-body", 30000);
+    check(/brand agreement/i.test(await page.locator(".terms-dialog").innerText()),
+      "the brand terms are readable signed out, in the designed Terms dialog");
     await record(page, "Public terms", "the published terms, readable before an account exists");
     await page.goto(`${APP}?legal=privacy`);
-    await waitFor(page, ".admin-terms-document-body", 30000);
-    check((await page.locator(".admin-terms-document-body").innerText()).includes("Privacy Policy"),
+    await waitFor(page, ".terms-dialog-body", 30000);
+    check((await page.locator(".terms-dialog").innerText()).includes("Privacy Policy"),
       "the privacy policy is readable signed out");
     await record(page, "Public privacy policy");
 
@@ -551,8 +547,8 @@ async function main() {
 
     await acceptTerms(page);
     await fillNamed(page, "signature", "Ana Factory");
-    check(Boolean(await page.locator('.factory-onboarding-card a[href*="legal=terms&type=factory"]').count()),
-      "the factory terms step links to the full published terms");
+    check(Boolean(await page.locator(".factory-onboarding-card .terms-consent-link").count()),
+      "the factory terms step opens the full terms");
     await record(page, "Factory terms");
     await nextCard(page);
 
@@ -676,8 +672,11 @@ async function main() {
 
     await acceptTerms(page);
     await fillNamed(page, "signature", "E2E Brand Founder");
-    check(Boolean(await page.locator('.brand-onboarding-card a[href*="legal=terms&type=brand"]').count()),
-      "the brand terms step links to the full published terms");
+    await page.locator(".brand-onboarding-card .terms-consent-link").first().click();
+    await waitFor(page, ".terms-dialog-body", 10000);
+    check(/brand agreement/i.test(await page.locator(".terms-dialog").innerText()),
+      "the brand terms step opens the published agreement in the Terms dialog");
+    await clickButton(page, "done");
     await record(page, "Brand terms");
     await nextCard(page);
 

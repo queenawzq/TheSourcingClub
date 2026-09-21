@@ -116,7 +116,6 @@ export const useAdminRfqs = () => useResource("adminRfqs");
 export const useAdminQuotes = () => useResource("adminQuotes");
 export const useAdminMetrics = () => useResource("adminMetrics");
 export const useAdminUsers = () => useResource("adminUsers");
-export const useLegalDocuments = () => useResource("legalDocuments");
 
 /**
  * The one thing a screen calls that is not a read.

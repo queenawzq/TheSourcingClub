@@ -89,11 +89,28 @@ export async function saveFactoryProfile(orgId, patch) {
  */
 export async function completeOnboarding(orgId, orgType) {
   const now = new Date().toISOString();
+  const profile = orgType === "factory"
+    ? await saveFactoryProfile(orgId, { onboarding_completed_at: now, published_at: now })
+    : await saveBrandProfile(orgId, { onboarding_completed_at: now });
 
-  if (orgType === "factory") {
-    return saveFactoryProfile(orgId, { onboarding_completed_at: now, published_at: now });
+  // Completion itself must not be rolled back because the mail provider is
+  // briefly unavailable. The database trigger has already recorded a durable,
+  // deduplicated delivery intent; this request asks the server to drain it now.
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch("/api/send-onboarding-complete", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token ?? ""}`,
+      },
+      body: JSON.stringify({ orgId }),
+    });
+    const result = await response.json();
+    return { ...profile, onboardingEmail: result };
+  } catch (error) {
+    return { ...profile, onboardingEmail: { sent: 0, error: error.message } };
   }
-  return saveBrandProfile(orgId, { onboarding_completed_at: now });
 }
 
 /** Term ids currently linked to a subject, grouped by kind. */

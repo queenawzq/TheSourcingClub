@@ -1,26 +1,25 @@
 -- ============================================================================
--- 056  Legal documents: the terms people sign, and the privacy policy
+-- 057  Legal documents: the terms people sign, and the privacy policy
 -- ----------------------------------------------------------------------------
--- Until now the terms lived in three places that did not know about each
--- other: the admin console's editor (browser state, gone on refresh), the
--- onboarding screens (hardcoded copy), and a TERMS_VERSION constant bumped by
--- hand. What an admin edited and what a company signed were unrelated, and
--- the signup screen's Terms and Privacy links pointed at nothing.
+-- The signup screen's Terms and Privacy links pointed at nothing, and a
+-- signature recorded only a TERMS_VERSION string bumped by hand, with the
+-- text it referred to living in JavaScript that changes every deploy.
 --
--- One table now holds the text, and every save is a new version. Rows are
--- never updated: terms_acceptances points at the exact row a company signed,
--- and a signature is only evidence if the text it refers to cannot change
--- underneath it.
+-- One table now holds the text. Rows are never updated: terms_acceptances
+-- points at the exact row a company signed, and a signature is only evidence
+-- if the text it refers to cannot change underneath it. New wording is a new
+-- row with the next version, added by a later migration. There is no editor:
+-- the admin design dropped it, so nothing but a migration writes here.
 --
--- Text format is the one the admin editor already parses: blocks separated by
--- a blank line, the first line of each block its heading. The first block of
--- a full document is its title.
+-- Text format: blocks separated by a blank line, the first line of each block
+-- its heading. The first block of a full document is its title.
 --
--- Version 1 is seeded from the copy onboarding showed before this migration,
--- so nothing changes for anyone on the day it ships. NOTE: that copy promises
--- "Escrow payments … we hold the funds", which contradicts the track-only
--- payments decision. It is seeded verbatim and needs correcting through the
--- admin editor; it is not this migration's place to rewrite legal wording.
+-- Version 1 of each terms document is the copy the designs show today: the
+-- onboarding summaries from the onboarding cards, and the full agreements from
+-- the Terms dialog (src/shared/TermsDialog.jsx). NOTE: the onboarding summaries
+-- promise "Escrow payments … we hold the funds", which contradicts the
+-- track-only payments decision. They are seeded verbatim; correcting legal
+-- wording is not this migration's call, and a v2 is how it gets fixed.
 -- ============================================================================
 
 create table public.legal_documents (
@@ -39,7 +38,6 @@ create table public.legal_documents (
   full_en        text not null check (length(btrim(full_en)) > 0),
   full_zh        text,
 
-  published_by   uuid references auth.users (id) on delete set null,
   published_at   timestamptz not null default now(),
 
   unique (kind, version),
@@ -49,8 +47,8 @@ create table public.legal_documents (
 alter table public.legal_documents enable row level security;
 
 -- Staff can read the history. Everyone else reads only the current version,
--- through current_legal_documents() below. No write grant: publishing is a
--- function, and nothing may edit a published version.
+-- through current_legal_documents() below. No write grant to anyone: nothing
+-- may edit a published version.
 create policy legal_documents_admin_read on public.legal_documents
   for select to authenticated
   using (public.is_platform_admin());
@@ -58,69 +56,12 @@ create policy legal_documents_admin_read on public.legal_documents
 grant select on public.legal_documents to authenticated;
 
 -- ---------------------------------------------------------------------------
--- Publish a new version
--- ---------------------------------------------------------------------------
-create or replace function public.publish_legal_document(
-  p_kind          text,
-  p_onboarding_en text,
-  p_onboarding_zh text,
-  p_full_en       text,
-  p_full_zh       text
-)
-returns public.legal_documents
-language plpgsql
-security definer
-set search_path = public, pg_temp
-as $$
-declare
-  published public.legal_documents;
-begin
-  -- First, before any select: checking later leaks existence through error
-  -- codes, and there is no policy behind a definer function.
-  if not public.is_platform_admin() then
-    raise exception 'only platform staff can publish legal documents' using errcode = '42501';
-  end if;
-
-  if p_kind is null or p_kind not in ('terms_brand', 'terms_factory', 'terms_trading', 'privacy') then
-    raise exception 'unknown legal document %', p_kind using errcode = '22023';
-  end if;
-  if length(btrim(coalesce(p_full_en, ''))) = 0 then
-    raise exception 'the full English document is required' using errcode = '23514';
-  end if;
-  if p_kind <> 'privacy' and length(btrim(coalesce(p_onboarding_en, ''))) = 0 then
-    raise exception 'the English onboarding version is required' using errcode = '23514';
-  end if;
-
-  -- Two admins saving at once must not both claim the same version number.
-  perform pg_advisory_xact_lock(hashtext('legal_documents:' || p_kind));
-
-  insert into public.legal_documents
-    (kind, version, onboarding_en, onboarding_zh, full_en, full_zh, published_by)
-  select p_kind,
-         coalesce(max(version), 0) + 1,
-         case when p_kind = 'privacy' then null else p_onboarding_en end,
-         case when p_kind = 'privacy' then null else nullif(btrim(coalesce(p_onboarding_zh, '')), '') end,
-         p_full_en,
-         nullif(btrim(coalesce(p_full_zh, '')), ''),
-         auth.uid()
-    from public.legal_documents
-   where kind = p_kind
-  returning * into published;
-
-  return published;
-end;
-$$;
-
-revoke all on function public.publish_legal_document(text, text, text, text, text) from public;
-grant execute on function public.publish_legal_document(text, text, text, text, text) to authenticated;
-
--- ---------------------------------------------------------------------------
 -- The current version of each document — readable while signed out
 -- ---------------------------------------------------------------------------
 -- The one deliberate exception to migration 009. The signup screen links to
 -- the terms a visitor is agreeing to, before they have an account, so the text
 -- must be readable by anon. It goes through this function rather than a table
--- grant so that the table itself stays unreadable (and who published what
+-- grant so that the table itself stays unreadable (and the version history
 -- stays with staff). Legal text is public by definition; nothing else is.
 create or replace function public.current_legal_documents()
 returns table (
@@ -189,8 +130,10 @@ create policy terms_acceptances_insert on public.terms_acceptances
 -- ---------------------------------------------------------------------------
 -- Seed: version 1 of every document
 -- ---------------------------------------------------------------------------
+-- Factory and trading companies read the same vendor agreement, as the Terms
+-- dialog shows them; they remain separate kinds so either can change alone.
 insert into public.legal_documents
-  (kind, version, onboarding_en, onboarding_zh, full_en, published_by)
+  (kind, version, onboarding_en, onboarding_zh, full_en, full_zh)
 values
   ('terms_brand', 1,
    $legal$Accurate information
@@ -208,8 +151,8 @@ Platform conversations are stored as a shared record and may be machine-translat
 Your account
 You are responsible for activity under your account and for invited team members. We may restrict accounts used for misleading, unlawful, or abusive activity, and material updates to these terms may require you to accept them again.$legal$,
    null,
-   $legal$The Sourcing Club Brand Terms and Conditions
-Effective August 12, 2026
+   $legal$The Sourcing Club Brand Agreement
+Effective September 18, 2026
 
 1. Acceptance of Terms
 These Terms and Conditions govern your access to and use of The Sourcing Club marketplace. By creating an account, signing electronically, or continuing to use the platform, you agree to these terms and confirm that you are authorized to act for the company connected to your account.
@@ -218,19 +161,19 @@ These Terms and Conditions govern your access to and use of The Sourcing Club ma
 You must provide complete and accurate registration information, maintain a valid business identity, and ensure that every person using the account has appropriate authority. You are responsible for account credentials and all activity completed through your account.
 
 3. Platform Usage
-Use The Sourcing Club to share accurate brand information, submit real sourcing needs, and communicate with vendors in good faith.
+Use The Sourcing Club to create accurate sourcing briefs, discover and communicate with vendors, compare quotes, manage approvals, and coordinate legitimate sourcing opportunities.
 
 4. Profile and Verification Information
 You must keep company, contact, verification, and operational information current. The Sourcing Club may request supporting evidence, review submitted information, and identify whether verification is complete, pending, or requires additional review.
 
 5. Data Privacy and Confidentiality
-Only upload assets, product references, and company documents you are allowed to share. Vendor quotes, pricing, and private project details should remain confidential.
+Only upload documents and media you are authorized to share. Vendor profiles, quotes, private messages, samples, technical files, pricing, and project details must be kept confidential unless the relevant parties agree otherwise.
 
 6. Brand Responsibilities
-Keep your profile, project briefs, payment status, and decision-maker details accurate so vendors can quote and plan production confidently.
+Provide accurate product specifications, quantities, target dates, approval feedback, and payment information. Awards, approvals, and production commitments must reflect decisions your company is authorized and prepared to honour.
 
 7. Marketplace Communications and Transactions
-Users must communicate professionally and provide commercially accurate information. Quotes, requests, specifications, samples, production orders, approvals, and other marketplace records may form part of agreements between participating businesses. Each party is responsible for reviewing and accepting its own commercial obligations.
+Users must communicate professionally and provide commercially accurate information. Requests, quotes, specifications, samples, production orders, approvals, and other marketplace records may form part of agreements between participating businesses. Each party is responsible for reviewing and accepting its own commercial obligations.
 
 8. Fees, Credits, and Payments
 Applicable platform fees, quotation credits, payment schedules, deposits, and transaction charges will be shown before confirmation. Users are responsible for authorized charges, accurate billing information, and any taxes or duties that apply to their activity.
@@ -282,8 +225,8 @@ You are responsible for activity under your account and for invited team members
 
 你的账户
 你需对账户活动和受邀团队成员负责。平台消息会作为双方共享记录保存，并可能进行机器翻译；以原文为准。$legal$,
-   $legal$The Sourcing Club Factory Terms and Conditions
-Effective August 12, 2026
+   $legal$The Sourcing Club Vendor Agreement
+Effective September 18, 2026
 
 1. Acceptance of Terms
 These Terms and Conditions govern your access to and use of The Sourcing Club marketplace. By creating an account, signing electronically, or continuing to use the platform, you agree to these terms and confirm that you are authorized to act for the company connected to your account.
@@ -292,19 +235,19 @@ These Terms and Conditions govern your access to and use of The Sourcing Club ma
 You must provide complete and accurate registration information, maintain a valid business identity, and ensure that every person using the account has appropriate authority. You are responsible for account credentials and all activity completed through your account.
 
 3. Platform Usage
-Use The Sourcing Club to share accurate factory information, respond to brand enquiries professionally, and keep communication related to sourcing opportunities.
+Use The Sourcing Club to share accurate factory or trading-company information, respond to brand enquiries professionally, submit quotes, and communicate about legitimate sourcing opportunities.
 
 4. Profile and Verification Information
 You must keep company, contact, verification, and operational information current. The Sourcing Club may request supporting evidence, review submitted information, and identify whether verification is complete, pending, or requires additional review.
 
 5. Data Privacy and Confidentiality
-Only upload documents and media you are allowed to share. Brand enquiries, tech packs, pricing, and project details should be kept confidential unless both sides agree otherwise.
+Only upload documents and media you are authorized to share. Brand enquiries, tech packs, product designs, pricing, private messages, and project details must be kept confidential unless the relevant parties agree otherwise.
 
-6. Factory Responsibilities
-Keep your profile, capacity, certifications, and contact details up to date. Quotes, lead times, and production commitments should reflect what your factory can realistically deliver.
+6. Vendor Responsibilities
+Keep your profile, capacity, certifications, contacts, quotes, lead times, quality requirements, and production commitments accurate and current. Only accept work your business can realistically deliver.
 
 7. Marketplace Communications and Transactions
-Users must communicate professionally and provide commercially accurate information. Quotes, requests, specifications, samples, production orders, approvals, and other marketplace records may form part of agreements between participating businesses. Each party is responsible for reviewing and accepting its own commercial obligations.
+Users must communicate professionally and provide commercially accurate information. Requests, quotes, specifications, samples, production orders, approvals, and other marketplace records may form part of agreements between participating businesses. Each party is responsible for reviewing and accepting its own commercial obligations.
 
 8. Fees, Credits, and Payments
 Applicable platform fees, quotation credits, payment schedules, deposits, and transaction charges will be shown before confirmation. Users are responsible for authorized charges, accurate billing information, and any taxes or duties that apply to their activity.
@@ -326,7 +269,50 @@ The Sourcing Club may update these terms to reflect legal, operational, or produ
 
 14. Contact
 Questions about these terms may be directed to The Sourcing Club operations team through the support channels provided in your account.$legal$,
-   null),
+   $legal$The Sourcing Club 供应商协议
+生效日期：2026 年 9 月 18 日
+
+1. 接受条款
+本条款与条件适用于您访问及使用 The Sourcing Club 平台。创建账户、进行电子签名或继续使用平台，即表示您同意本条款，并确认您有权代表与账户关联的公司行事。
+
+2. 账户资格与授权
+您必须提供完整、准确的注册信息，维持有效的企业身份，并确保每位账户使用者均获得适当授权。您须对账户凭证及通过账户完成的所有活动负责。
+
+3. 平台使用
+请使用 The Sourcing Club 准确展示工厂或贸易公司的信息，专业回复品牌询盘、提交报价，并就真实的采购机会进行沟通。
+
+4. 资料与验证信息
+您必须及时更新公司、联系人、验证及运营信息。The Sourcing Club 可要求提供证明材料、审核已提交的信息，并标明验证状态为已完成、处理中或需要进一步审核。
+
+5. 数据隐私与保密
+仅上传您获准分享的文件和媒体。除非相关各方另有约定，品牌询盘、技术包、产品设计、定价、私人消息及项目详情均须保密。
+
+6. 供应商责任
+请确保您的资料、产能、认证、联系人、报价、交期、质量要求及生产承诺准确且最新。仅接受您的企业能够切实交付的工作。
+
+7. 平台沟通与交易
+用户须进行专业沟通并提供准确的商业信息。需求、报价、规格、样品、生产订单、审批及其他平台记录可能构成参与企业之间协议的一部分。各方须自行审阅并接受其商业义务。
+
+8. 费用、额度与付款
+适用的平台费用、报价额度、付款计划、定金及交易费用会在确认前显示。用户须对已授权费用、准确的账单信息以及适用的税费或关税负责。
+
+9. 禁止行为
+您不得提交虚假或误导性信息、滥用保密材料、侵犯知识产权、规避平台保障措施、干扰平台运行，或将服务用于违法、滥用或欺诈活动。
+
+10. 暂停与终止
+如违反本条款、未完成必要验证、平台活动造成重大风险，或继续访问可能损害用户或平台，The Sourcing Club 可限制、暂停或终止访问。在适当情况下，用户可能会收到通知并有机会纠正问题。
+
+11. 平台角色与免责声明
+The Sourcing Club 提供撮合、沟通、验证支持及工作流程工具。除非明确说明，平台并非用户之间制造、采购、供货、运输或付款协议的当事方，也不保证商业履约或产品结果。
+
+12. 责任限制
+在适用法律允许的最大范围内，The Sourcing Club 不对因平台交易、第三方行为、生产延误或依赖用户提交信息而产生的间接、附带、特殊或后果性损失承担责任。
+
+13. 条款变更
+The Sourcing Club 可为反映法律、运营或产品变化而更新本条款。发布修订版本时将更新生效日期，重大变更可能要求您重新确认同意。
+
+14. 联系我们
+如对本条款有疑问，请通过账户中提供的支持渠道联系 The Sourcing Club 运营团队。$legal$),
   ('terms_trading', 1,
    $legal$Accurate information
 Clearly identify your role and keep your company, supplier-network, certifications, and contact information accurate. Verification documents must be genuine; accounts that cannot be verified may be paused.
@@ -356,8 +342,8 @@ You are responsible for activity under your account and for invited team members
 
 你的账户
 你需对账户活动和受邀团队成员负责。平台消息会作为双方共享记录保存，并可能进行机器翻译；以原文为准。$legal$,
-   $legal$The Sourcing Club Trading Company Terms and Conditions
-Effective August 12, 2026
+   $legal$The Sourcing Club Vendor Agreement
+Effective September 18, 2026
 
 1. Acceptance of Terms
 These Terms and Conditions govern your access to and use of The Sourcing Club marketplace. By creating an account, signing electronically, or continuing to use the platform, you agree to these terms and confirm that you are authorized to act for the company connected to your account.
@@ -366,19 +352,19 @@ These Terms and Conditions govern your access to and use of The Sourcing Club ma
 You must provide complete and accurate registration information, maintain a valid business identity, and ensure that every person using the account has appropriate authority. You are responsible for account credentials and all activity completed through your account.
 
 3. Platform Usage
-Share accurate company, sourcing-network, and production information, and communicate with brands in good faith.
+Use The Sourcing Club to share accurate factory or trading-company information, respond to brand enquiries professionally, submit quotes, and communicate about legitimate sourcing opportunities.
 
 4. Profile and Verification Information
 You must keep company, contact, verification, and operational information current. The Sourcing Club may request supporting evidence, review submitted information, and identify whether verification is complete, pending, or requires additional review.
 
 5. Data Privacy and Confidentiality
-Only upload documents and media you are allowed to share. Keep brand enquiries, tech packs, pricing, and supplier details confidential.
+Only upload documents and media you are authorized to share. Brand enquiries, tech packs, product designs, pricing, private messages, and project details must be kept confidential unless the relevant parties agree otherwise.
 
-6. Trading Company Responsibilities
-Disclose your role clearly, keep partner-factory information current, and ensure quotes and production commitments reflect what your network can deliver.
+6. Vendor Responsibilities
+Keep your profile, capacity, certifications, contacts, quotes, lead times, quality requirements, and production commitments accurate and current. Only accept work your business can realistically deliver.
 
 7. Marketplace Communications and Transactions
-Users must communicate professionally and provide commercially accurate information. Quotes, requests, specifications, samples, production orders, approvals, and other marketplace records may form part of agreements between participating businesses. Each party is responsible for reviewing and accepting its own commercial obligations.
+Users must communicate professionally and provide commercially accurate information. Requests, quotes, specifications, samples, production orders, approvals, and other marketplace records may form part of agreements between participating businesses. Each party is responsible for reviewing and accepting its own commercial obligations.
 
 8. Fees, Credits, and Payments
 Applicable platform fees, quotation credits, payment schedules, deposits, and transaction charges will be shown before confirmation. Users are responsible for authorized charges, accurate billing information, and any taxes or duties that apply to their activity.
@@ -400,13 +386,92 @@ The Sourcing Club may update these terms to reflect legal, operational, or produ
 
 14. Contact
 Questions about these terms may be directed to The Sourcing Club operations team through the support channels provided in your account.$legal$,
-   null),
+   $legal$The Sourcing Club 供应商协议
+生效日期：2026 年 9 月 18 日
+
+1. 接受条款
+本条款与条件适用于您访问及使用 The Sourcing Club 平台。创建账户、进行电子签名或继续使用平台，即表示您同意本条款，并确认您有权代表与账户关联的公司行事。
+
+2. 账户资格与授权
+您必须提供完整、准确的注册信息，维持有效的企业身份，并确保每位账户使用者均获得适当授权。您须对账户凭证及通过账户完成的所有活动负责。
+
+3. 平台使用
+请使用 The Sourcing Club 准确展示工厂或贸易公司的信息，专业回复品牌询盘、提交报价，并就真实的采购机会进行沟通。
+
+4. 资料与验证信息
+您必须及时更新公司、联系人、验证及运营信息。The Sourcing Club 可要求提供证明材料、审核已提交的信息，并标明验证状态为已完成、处理中或需要进一步审核。
+
+5. 数据隐私与保密
+仅上传您获准分享的文件和媒体。除非相关各方另有约定，品牌询盘、技术包、产品设计、定价、私人消息及项目详情均须保密。
+
+6. 供应商责任
+请确保您的资料、产能、认证、联系人、报价、交期、质量要求及生产承诺准确且最新。仅接受您的企业能够切实交付的工作。
+
+7. 平台沟通与交易
+用户须进行专业沟通并提供准确的商业信息。需求、报价、规格、样品、生产订单、审批及其他平台记录可能构成参与企业之间协议的一部分。各方须自行审阅并接受其商业义务。
+
+8. 费用、额度与付款
+适用的平台费用、报价额度、付款计划、定金及交易费用会在确认前显示。用户须对已授权费用、准确的账单信息以及适用的税费或关税负责。
+
+9. 禁止行为
+您不得提交虚假或误导性信息、滥用保密材料、侵犯知识产权、规避平台保障措施、干扰平台运行，或将服务用于违法、滥用或欺诈活动。
+
+10. 暂停与终止
+如违反本条款、未完成必要验证、平台活动造成重大风险，或继续访问可能损害用户或平台，The Sourcing Club 可限制、暂停或终止访问。在适当情况下，用户可能会收到通知并有机会纠正问题。
+
+11. 平台角色与免责声明
+The Sourcing Club 提供撮合、沟通、验证支持及工作流程工具。除非明确说明，平台并非用户之间制造、采购、供货、运输或付款协议的当事方，也不保证商业履约或产品结果。
+
+12. 责任限制
+在适用法律允许的最大范围内，The Sourcing Club 不对因平台交易、第三方行为、生产延误或依赖用户提交信息而产生的间接、附带、特殊或后果性损失承担责任。
+
+13. 条款变更
+The Sourcing Club 可为反映法律、运营或产品变化而更新本条款。发布修订版本时将更新生效日期，重大变更可能要求您重新确认同意。
+
+14. 联系我们
+如对本条款有疑问，请通过账户中提供的支持渠道联系 The Sourcing Club 运营团队。$legal$),
   ('privacy', 1,
    null,
    null,
    $legal$The Sourcing Club Privacy Policy
-Placeholder — not yet published
+Effective September 21, 2026
 
-This policy has not been published yet
-The Sourcing Club has not yet published its Privacy Policy. This placeholder will be replaced by the published policy. Until then, questions about how your information is handled may be directed to The Sourcing Club operations team through the support channels provided in your account.$legal$,
+1. Who we are
+The Sourcing Club operates a marketplace that connects brands with factories and trading companies. This policy explains what information we collect when you use the platform, why we collect it, who processes it on our behalf, and the choices you have.
+
+2. Information you give us
+When you create an account we collect your name, work email address, password (stored only in hashed form by our authentication provider) and your company's name. During onboarding and while using the platform you may also provide company details, locations, capacity, certifications, product categories, sourcing requests, quotes, pricing, production schedules, messages, and files such as logos, product images, business registrations, certificates, walkthrough videos and milestone photos. Your electronic signature on our terms is recorded with the date, the signer and the exact version of the terms signed.
+
+3. Information collected automatically
+We keep you signed in using storage in your browser, and remember preferences such as your display language there. We record technical error reports from the app so that we can fix problems. We do not use advertising or analytics trackers.
+
+4. How we use information
+We use your information to provide the marketplace: to create and secure your account, verify your company, show your profile and requests to the parties you work with, match brands with suitable vendors, deliver messages, keep a record of quotes, orders, milestones and payments, and send you service emails such as password resets, onboarding confirmations and verification decisions. Our staff review submitted verification documents by hand.
+
+5. Who can see your information
+Your published company profile is visible to other signed-in members of the marketplace. Requests, quotes, orders, messages and their attachments are visible only to the companies taking part in them, and to The Sourcing Club staff who operate and support the platform. Business registrations and certificates are stored privately and are opened only by our staff during verification, through short-lived links.
+
+6. Translation and drafting features
+Messages may be automatically translated between English and Chinese, and a sourcing brief may be drafted from your description. To do this, the relevant text is sent to an AI model provider through OpenRouter. The original message is always kept, and a translation is provided for convenience only.
+
+7. Service providers
+We use service providers to run the platform: Supabase for our database, authentication and file storage (hosted in the United States); Vercel for hosting the application; Resend for sending email; OpenRouter for translation and drafting; and, on our marketing website, Google Sheets and Netlify Forms to receive sign-up and survey submissions. They process information only to provide their services to us.
+
+8. International transfers
+Our platform is hosted in the United States. If you use The Sourcing Club from another country, including China, your information will be transferred to and processed in the United States.
+
+9. Retention
+We keep your information for as long as your account is active and as long as needed to provide the service. Records of agreements, signatures, quotes, orders, payments and messages may be kept after an account closes where they are needed as a record between the parties or to meet legal obligations.
+
+10. Your choices and rights
+You can review and update your profile information in your account at any time. You may ask us to access, correct or delete your personal information; some records described above may need to be retained. Depending on where you live, you may have additional rights under local law.
+
+11. Security
+Access to data is enforced by the database itself, private files are served only through expiring links, and passwords are never stored in readable form. No system is perfectly secure, and we cannot guarantee absolute security.
+
+12. Changes to this policy
+We may update this policy as the platform changes. The effective date above will change when a new version is published, and we will tell you about material changes.
+
+13. Contact
+Questions or requests about this policy may be directed to The Sourcing Club operations team through the support channels provided in your account.$legal$,
    null);

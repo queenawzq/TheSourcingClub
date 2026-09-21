@@ -109,7 +109,7 @@ function AdminConsole() {
   }
 
   return (
-    <DataProvider adapter={createAdminAdapter({ user })}>
+    <DataProvider adapter={createAdminAdapter({ user, signOut })}>
       <App />
     </DataProvider>
   );

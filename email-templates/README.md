@@ -2,6 +2,11 @@
 
 These templates are sent immediately after a user finishes onboarding and submits a profile for verification. They do not imply that the account is already approved.
 
+`api/send-onboarding-complete.js` sends the generated design through Resend.
+The database migration `20260921000100_onboarding_submission_emails.sql`
+queues one message per organization owner when onboarding is first completed;
+subsequent saves cannot create duplicates.
+
 ## Templates
 
 - `onboarding-complete-brand.html`
@@ -10,6 +15,11 @@ These templates are sent immediately after a user finishes onboarding and submit
 - `preview.html` — browser review surface for all three versions
 
 Run `npm run emails` after editing the source in `scripts/generate-onboarding-emails.mjs`.
+
+Production delivery uses `RESEND_API_KEY`, `RESEND_FROM_EMAIL`,
+`SUPABASE_SERVICE_ROLE_KEY`, and the public Supabase URL/key already required
+by the other API functions. `PUBLIC_APP_URL`, `SUPPORT_EMAIL`, and
+`COMPANY_ADDRESS` are optional overrides.
 
 ## Template variables
 
