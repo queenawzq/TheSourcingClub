@@ -144,7 +144,7 @@ function reviewDecisionEmail({
               <tr><td style="height:4px;line-height:4px;background:#1A4DF2;font-size:0;">&nbsp;</td></tr>
               <tr><td class="email-pad" style="padding:38px 40px 24px;">
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
-                  <td style="padding:6px 10px;background:#EAF4FF;border:1px solid #8DB7FF;border-radius:5px;color:#1A4DF2;font-size:11px;line-height:14px;font-weight:700;">${escapeHtml(t.status)}</td>
+                  <td style="height:24px;padding:0 10px;background:${needsInformation ? "#FFF7E8" : "#EAFAF6"};border:1px solid ${needsInformation ? "#F2B253" : "#86D4C7"};border-radius:5px;color:${needsInformation ? "#A76500" : "#087467"};font-size:11px;line-height:24px;font-weight:700;">${escapeHtml(t.status)}</td>
                 </tr></table>
                 <p style="margin:22px 0 10px;font-size:12px;line-height:16px;font-weight:700;color:#5A6B87;text-transform:uppercase;">${escapeHtml(t.eyebrow)}</p>
                 <h1 class="email-title" style="margin:0 0 14px;font-size:34px;line-height:39px;font-weight:800;color:#0B1020;">${escapeHtml(t.title)}</h1>

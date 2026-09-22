@@ -18,10 +18,12 @@ for (const kind of ["brand", "factory", "trading-company"]) {
 const approved = accountApprovedEmail({ companyName: "Wonder Lab", recipientName: "Queena" });
 assert.match(approved.html, /Your account is approved/);
 assert.match(approved.html, /width="104" height="44"/);
+assert.match(approved.html, /background:#EAFAF6;border:1px solid #86D4C7/);
 
 const note = "Upload <registration> & tax ID.\nPlease reply if unavailable.";
 const followUp = needsInformationEmail({ companyName: "Wonder Lab", recipientName: "Queena", note });
 assert.match(followUp.html, /Upload &lt;registration&gt; &amp; tax ID\.<br>Please reply if unavailable\./);
+assert.match(followUp.html, /background:#FFF7E8;border:1px solid #F2B253/);
 assert.ok(followUp.text.includes(note));
 assert.throws(() => needsInformationEmail({ note: "  " }), /reviewer note is required/);
 
