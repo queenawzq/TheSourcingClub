@@ -47,6 +47,7 @@ function sampleOnboarding(companyName, path) {
   return {
     companyName,
     dashboardUrl: `${appUrl()}${path}`,
+    logoUrl: `${appUrl()}/assets/logo.png`,
     supportEmail: REPLY_TO,
     companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
   };

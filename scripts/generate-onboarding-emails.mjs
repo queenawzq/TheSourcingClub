@@ -219,6 +219,7 @@ function previewHtml() {
       <section class="stage">${frames}
       </section>
       <p class="note">Template variables: recipient/company name, dashboard URL, logo URL, support email, and company address. All production templates use table layout and inline styles for broad email-client support.</p>
+      <p class="note"><a href="./account-approved.html" style="color:#8DB7FF;">View the matching account approval email →</a></p>
     </main>
     <script>
       const tabs = [...document.querySelectorAll('.tab')];
@@ -249,12 +250,14 @@ export function onboardingEmail(key, variables = {}) {
 
   const companyName = variables.companyName || (key === "brand" ? "your brand" : "your company");
   const dashboardUrl = variables.dashboardUrl || "https://the-sourcing-club.vercel.app/app.html";
+  const logoUrl = variables.logoUrl || "https://the-sourcing-club.vercel.app/assets/logo.png";
   const supportEmail = variables.supportEmail || "operations@contact.sourcing-club.com";
   const companyAddress = variables.companyAddress || "New York, USA";
   const html = emailHtml(key, data)
     .replaceAll("{{ brand_name }}", escapeHtml(companyName))
     .replaceAll("{{ company_name }}", escapeHtml(companyName))
     .replaceAll("{{ dashboard_url }}", escapeHtml(dashboardUrl))
+    .replaceAll("{{ logo_url }}", escapeHtml(logoUrl))
     .replaceAll("{{ support_email }}", escapeHtml(supportEmail))
     .replaceAll("{{ company_address }}", escapeHtml(companyAddress));
   const review = data.reviewItems.map(([title, copy], index) => `${index + 1}. ${title}\n   ${copy}`).join("\n");

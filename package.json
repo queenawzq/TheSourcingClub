@@ -3,6 +3,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "node scripts/check-css-tokens.mjs && node scripts/check-adapters.mjs && vite build && cp script.js dist/script.js && cp -R assets/* dist/assets/",
     "emails": "node scripts/generate-onboarding-emails.mjs",
+    "emails:approved": "node scripts/generate-account-approved-email.mjs",
     "smoke": "node scripts/smoke-test.mjs",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",

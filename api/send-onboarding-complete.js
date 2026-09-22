@@ -102,6 +102,7 @@ export default async function handler(request, response) {
     const message = onboardingEmail(row.profile_kind, {
       companyName: row.company_name,
       dashboardUrl,
+      logoUrl: `${appUrl()}/assets/logo.png`,
       supportEmail: REPLY_TO,
       companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
     });

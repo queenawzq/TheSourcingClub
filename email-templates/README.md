@@ -13,8 +13,12 @@ subsequent saves cannot create duplicates.
 - `onboarding-complete-factory.html`
 - `onboarding-complete-trading-company.html`
 - `preview.html` — browser review surface for all three versions
+- `account-approved.html` — branded approval email sample based on the live sender
 
 Run `npm run emails` after editing the source in `scripts/generate-onboarding-emails.mjs`.
+Run `npm run emails:approved` after editing `scripts/generate-account-approved-email.mjs`.
+
+The approval message is sent by `api/send-review-decision.js` when a profile is approved. It uses the same TSC shell as these onboarding emails, supports English and Chinese copy, and includes an optional note from the reviewer.
 
 Production delivery uses `RESEND_API_KEY`, `RESEND_FROM_EMAIL`,
 `SUPABASE_SERVICE_ROLE_KEY`, and the public Supabase URL/key already required

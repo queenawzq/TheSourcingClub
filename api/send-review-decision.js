@@ -1,5 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
+// Vercel compiles api/*.js as CommonJS; import the ESM email builder lazily.
+const loadApprovedEmail = () =>
+  import("../scripts/generate-account-approved-email.mjs").then((module) => module.accountApprovedEmail);
+
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 // Replies land in the operations inbox (forwarded by api/inbound-email.js),
 // not at the noreply sender, which has no mailbox.
@@ -38,10 +42,23 @@ const noteBlock = (note, heading) => {
 };
 
 // Exported for api/send-test-email.js, so a test is the real message.
-export function messageFor(row) {
+export async function messageFor(row) {
   const loginUrl = `${appUrl()}/app.html`;
   const company = row.orgs?.name || "your company";
   const zh = row.locale === "zh";
+  if (row.decision === "approved") {
+    const accountApprovedEmail = await loadApprovedEmail();
+    return accountApprovedEmail({
+      companyName: company,
+      recipientName: row.recipient_name,
+      locale: row.locale,
+      loginUrl,
+      logoUrl: `${appUrl()}/assets/logo.png`,
+      supportEmail: REPLY_TO,
+      companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
+      note: row.note,
+    });
+  }
   const greeting = row.recipient_name
     ? (zh ? `${row.recipient_name} 你好，` : `Hi ${row.recipient_name},`)
     : (zh ? "你好，" : "Hi,");
@@ -193,7 +210,7 @@ export default async function handler(request, response) {
       continue;
     }
 
-    const message = messageFor(row);
+    const message = await messageFor(row);
     try {
       const delivery = await fetch(RESEND_ENDPOINT, {
         method: "POST",
