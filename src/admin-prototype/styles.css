@@ -1593,17 +1593,16 @@
 }
 
 .admin-test-email-status {
-  display: flex;
-  align-items: center;
-  margin: 0;
-  padding-top: 23px;
-  color: #1f7a4d;
+  align-self: end;
+  margin: 0 0 10px;
+  color: #087467;
   font-size: 13px;
   font-weight: 500;
+  line-height: 20px;
 }
 
 @media (max-width: 760px) {
   .admin-test-email-status {
-    padding-top: 0;
+    margin-bottom: 0;
   }
 }
