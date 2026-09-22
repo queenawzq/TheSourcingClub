@@ -1,8 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
-
 // Vercel compiles api/*.js as CommonJS; import the ESM email builder lazily.
-const loadApprovedEmail = () =>
-  import("../scripts/generate-account-approved-email.mjs").then((module) => module.accountApprovedEmail);
+const loadReviewEmail = () => import("../scripts/generate-account-approved-email.mjs");
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 // Replies land in the operations inbox (forwarded by api/inbound-email.js),
@@ -47,8 +45,21 @@ export async function messageFor(row) {
   const company = row.orgs?.name || "your company";
   const zh = row.locale === "zh";
   if (row.decision === "approved") {
-    const accountApprovedEmail = await loadApprovedEmail();
+    const { accountApprovedEmail } = await loadReviewEmail();
     return accountApprovedEmail({
+      companyName: company,
+      recipientName: row.recipient_name,
+      locale: row.locale,
+      loginUrl,
+      logoUrl: `${appUrl()}/assets/logo.png`,
+      supportEmail: REPLY_TO,
+      companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
+      note: row.note,
+    });
+  }
+  if (row.decision === "needs_information") {
+    const { needsInformationEmail } = await loadReviewEmail();
+    return needsInformationEmail({
       companyName: company,
       recipientName: row.recipient_name,
       locale: row.locale,
@@ -210,8 +221,8 @@ export default async function handler(request, response) {
       continue;
     }
 
-    const message = await messageFor(row);
     try {
+      const message = await messageFor(row);
       const delivery = await fetch(RESEND_ENDPOINT, {
         method: "POST",
         headers: {

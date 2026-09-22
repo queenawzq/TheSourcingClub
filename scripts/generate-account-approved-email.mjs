@@ -51,7 +51,42 @@ const copy = {
   },
 };
 
-export function accountApprovedEmail({
+const needsInformationCopy = {
+  en: {
+    subject: "We need a little more information",
+    preheader: "Our team has a question about your profile. See what is needed to continue review.",
+    eyebrow: "ACCOUNT VERIFICATION",
+    status: "ACTION NEEDED · PROFILE IN REVIEW",
+    title: "We need a little more information.",
+    greeting: (name) => name ? `Hi ${name},` : "Hi,",
+    intro: (company) => `We've reviewed ${company}'s profile. Before we can complete verification, please provide the information requested below.`,
+    cardEyebrow: "MESSAGE FROM OUR REVIEW TEAM",
+    cardTitle: "What we need from you",
+    nextTitle: "What happens next",
+    nextCopy: "Update your profile with the requested information. Our team will continue the review once you submit your changes.",
+    cta: "Update your profile",
+    help: "Questions? Reply to this email or contact",
+    footer: "You’re receiving this because our team needs more information to review your TSC profile.",
+  },
+  zh: {
+    subject: "我们还需要一些补充信息",
+    preheader: "我们的团队需要你补充资料，才能继续审核。",
+    eyebrow: "账户审核",
+    status: "需要操作 · 资料审核中",
+    title: "我们还需要一些补充信息。",
+    greeting: (name) => name ? `${name} 你好，` : "你好，",
+    intro: (company) => `我们已查看 ${company} 的资料。完成审核前，请提供以下所需信息。`,
+    cardEyebrow: "审核团队的留言",
+    cardTitle: "需要你提供的信息",
+    nextTitle: "接下来做什么",
+    nextCopy: "请按要求更新并提交资料。提交后，我们的团队会继续审核。",
+    cta: "更新你的资料",
+    help: "有疑问？直接回复这封邮件，或联系",
+    footer: "你收到这封邮件是因为我们的团队需要更多信息来审核你的 TSC 资料。",
+  },
+};
+
+function reviewDecisionEmail({
   companyName = "your company",
   recipientName = "",
   locale = "en",
@@ -60,10 +95,16 @@ export function accountApprovedEmail({
   supportEmail = "operations@contact.sourcing-club.com",
   companyAddress = "New York, USA",
   note = "",
+  decision = "approved",
 } = {}) {
-  const t = copy[locale === "zh" ? "zh" : "en"];
+  const needsInformation = decision === "needs_information";
+  const t = (needsInformation ? needsInformationCopy : copy)[locale === "zh" ? "zh" : "en"];
   const safeNote = String(note ?? "").trim();
-  const noteHtml = safeNote ? `
+  const noteHtmlText = escapeHtml(safeNote).replace(/\r?\n/g, "<br>");
+  if (needsInformation && !safeNote) {
+    throw new Error("A reviewer note is required for a more-information email");
+  }
+  const noteHtml = !needsInformation && safeNote ? `
                   <tr>
                     <td class="email-pad" style="padding:0 40px 24px;">
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#F8FAFC;border:1px solid #D7E0EA;border-radius:8px;">
@@ -96,7 +137,7 @@ export function accountApprovedEmail({
       <tr><td align="center" style="padding:36px 14px;">
         <table class="email-shell" role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:600px;max-width:600px;">
           <tr><td style="padding:0 0 16px 4px;">
-            <img src="${escapeHtml(logoUrl)}" width="124" height="52" alt="The Sourcing Club" style="display:block;width:124px;height:52px;border:0;outline:none;text-decoration:none;">
+            <img src="${escapeHtml(logoUrl)}" width="104" height="44" alt="The Sourcing Club" style="display:block;width:104px;height:44px;border:0;outline:none;text-decoration:none;">
           </td></tr>
           <tr><td style="background:#FFFFFF;border:1px solid #D7E0EA;border-radius:8px;overflow:hidden;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
@@ -115,7 +156,7 @@ export function accountApprovedEmail({
                   <tr><td style="padding:22px;">
                     <p style="margin:0 0 6px;font-size:11px;line-height:16px;font-weight:700;color:#5A6B87;text-transform:uppercase;">${escapeHtml(t.cardEyebrow)}</p>
                     <p style="margin:0 0 5px;font-size:17px;line-height:22px;font-weight:700;color:#0B1020;">${escapeHtml(t.cardTitle)}</p>
-                    <p style="margin:0;font-size:13px;line-height:19px;color:#5A6B87;">${escapeHtml(t.cardCopy)}</p>
+                    <p style="margin:0;font-size:${needsInformation ? "15px" : "13px"};line-height:${needsInformation ? "23px" : "19px"};color:${needsInformation ? "#0B1020" : "#5A6B87"};">${needsInformation ? noteHtmlText : escapeHtml(t.cardCopy)}</p>
                   </td></tr>
                 </table>
               </td></tr>${noteHtml}
@@ -140,10 +181,13 @@ export function accountApprovedEmail({
   </body>
 </html>`;
 
-  const noteText = safeNote ? `\n\n${t.noteTitle}:\n${safeNote}` : "";
+  const noteText = safeNote ? `\n\n${needsInformation ? t.cardTitle : t.noteTitle}:\n${safeNote}` : "";
   const text = `${t.greeting(recipientName)}\n\n${t.intro(companyName)}${noteText}\n\n${t.nextTitle}\n${t.nextCopy}\n\n${t.cta}: ${loginUrl}\n\n${t.help} ${supportEmail}.\nThe Sourcing Club · ${companyAddress}`;
   return { subject: t.subject, html, text };
 }
+
+export const accountApprovedEmail = (options) => reviewDecisionEmail({ ...options, decision: "approved" });
+export const needsInformationEmail = (options) => reviewDecisionEmail({ ...options, decision: "needs_information" });
 
 const isDirectRun = process.argv[1]
   && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
@@ -157,5 +201,13 @@ if (isDirectRun) {
     loginUrl: "https://the-sourcing-club.vercel.app/app.html",
   });
   await writeFile(path.join(outputDir, "account-approved.html"), sample.html);
-  console.log(`Generated account approval email in ${outputDir}`);
+  const needsInformationSample = needsInformationEmail({
+    recipientName: "Queena Wang",
+    companyName: "Wonder Lab",
+    logoUrl: "../assets/logo.png",
+    loginUrl: "https://the-sourcing-club.vercel.app/app.html",
+    note: "Please upload a current business registration document showing your company name and address. Once it is added to your profile, we can continue the review.",
+  });
+  await writeFile(path.join(outputDir, "more-information-needed.html"), needsInformationSample.html);
+  console.log(`Generated account review emails in ${outputDir}`);
 }

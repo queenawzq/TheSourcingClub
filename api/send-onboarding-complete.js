@@ -81,7 +81,6 @@ export default async function handler(request, response) {
     return;
   }
 
-  const onboardingEmail = await loadOnboardingEmail();
   let sent = 0;
   const failures = [];
   for (const row of queued) {
@@ -99,15 +98,15 @@ export default async function handler(request, response) {
     const dashboardUrl = row.profile_kind === "brand"
       ? `${appUrl()}/app.html`
       : `${appUrl()}/app.html?portal=factory`;
-    const message = onboardingEmail(row.profile_kind, {
-      companyName: row.company_name,
-      dashboardUrl,
-      logoUrl: `${appUrl()}/assets/logo.png`,
-      supportEmail: REPLY_TO,
-      companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
-    });
-
     try {
+      const onboardingEmail = await loadOnboardingEmail();
+      const message = onboardingEmail(row.profile_kind, {
+        companyName: row.company_name,
+        dashboardUrl,
+        logoUrl: `${appUrl()}/assets/logo.png`,
+        supportEmail: REPLY_TO,
+        companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
+      });
       const delivery = await fetch(RESEND_ENDPOINT, {
         method: "POST",
         headers: {

@@ -14,11 +14,14 @@ subsequent saves cannot create duplicates.
 - `onboarding-complete-trading-company.html`
 - `preview.html` — browser review surface for all three versions
 - `account-approved.html` — branded approval email sample based on the live sender
+- `more-information-needed.html` — branded review follow-up sample; its highlighted request is a sample admin note
 
 Run `npm run emails` after editing the source in `scripts/generate-onboarding-emails.mjs`.
-Run `npm run emails:approved` after editing `scripts/generate-account-approved-email.mjs`.
+Run `npm run emails:approved` after editing `scripts/generate-account-approved-email.mjs`; it regenerates both review-decision samples.
+Run `npm run emails:test` to verify all live template variants and the review sender's admin-note rendering.
 
-The approval message is sent by `api/send-review-decision.js` when a profile is approved. It uses the same TSC shell as these onboarding emails, supports English and Chinese copy, and includes an optional note from the reviewer.
+The review-decision messages are sent by `api/send-review-decision.js` to each queued recipient's email address. Approval and more-information messages share the same TSC design and support English and Chinese copy. For a more-information decision, the highlighted request is the admin's actual note, saved with that decision; sending fails if it is blank. The static preview contains sample text only.
+`api/send-onboarding-complete.js` renders the brand, factory, or trading-company design from the queued profile type. Both senders pass the TSC logo as an absolute URL and direct replies to the operations inbox.
 
 Production delivery uses `RESEND_API_KEY`, `RESEND_FROM_EMAIL`,
 `SUPABASE_SERVICE_ROLE_KEY`, and the public Supabase URL/key already required

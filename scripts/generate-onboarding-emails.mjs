@@ -124,7 +124,7 @@ export function emailHtml(key, data) {
           <table class="email-shell" role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:600px;max-width:600px;">
             <tr>
               <td style="padding:0 0 16px 4px;">
-                <img src="{{ logo_url }}" width="124" height="52" alt="The Sourcing Club" style="display:block;width:124px;height:52px;border:0;outline:none;text-decoration:none;object-fit:contain;">
+                <img src="{{ logo_url }}" width="104" height="44" alt="The Sourcing Club" style="display:block;width:104px;height:44px;border:0;outline:none;text-decoration:none;object-fit:contain;">
               </td>
             </tr>
             <tr>
