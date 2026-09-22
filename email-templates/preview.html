@@ -35,7 +35,7 @@
         <iframe class="email-frame" data-frame="factory" src="./onboarding-complete-factory.html" title="factory onboarding completion email"></iframe>
         <iframe class="email-frame" data-frame="trading-company" src="./onboarding-complete-trading-company.html" title="trading-company onboarding completion email"></iframe>
       </section>
-      <p class="note">Template variables: recipient/company name, dashboard URL, support email, and company address. All production templates use table layout and inline styles for broad email-client support.</p>
+      <p class="note">Template variables: recipient/company name, dashboard URL, logo URL, support email, and company address. All production templates use table layout and inline styles for broad email-client support.</p>
     </main>
     <script>
       const tabs = [...document.querySelectorAll('.tab')];
@@ -45,6 +45,7 @@
         const html = frame.contentDocument.body.innerHTML
           .replaceAll('{{ brand_name }}', demoNames.brand)
           .replaceAll('{{ company_name }}', demoNames[frame.dataset.frame])
+          .replaceAll('{{ logo_url }}', '../assets/logo.png')
           .replaceAll('{{ support_email }}', 'operations@contact.sourcing-club.com')
           .replaceAll('{{ company_address }}', 'New York, USA');
         frame.contentDocument.body.innerHTML = html;

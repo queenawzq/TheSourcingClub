@@ -124,7 +124,7 @@ export function emailHtml(key, data) {
           <table class="email-shell" role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:600px;max-width:600px;">
             <tr>
               <td style="padding:0 0 16px 4px;">
-                <p style="margin:0;font-size:12px;line-height:16px;font-weight:800;color:#0B1020;letter-spacing:.04em;text-transform:uppercase;">THE SOURCING CLUB<span style="color:#1A4DF2;">.</span></p>
+                <img src="{{ logo_url }}" width="124" height="52" alt="The Sourcing Club" style="display:block;width:124px;height:52px;border:0;outline:none;text-decoration:none;object-fit:contain;">
               </td>
             </tr>
             <tr>
@@ -218,7 +218,7 @@ function previewHtml() {
       </div>
       <section class="stage">${frames}
       </section>
-      <p class="note">Template variables: recipient/company name, dashboard URL, support email, and company address. All production templates use table layout and inline styles for broad email-client support.</p>
+      <p class="note">Template variables: recipient/company name, dashboard URL, logo URL, support email, and company address. All production templates use table layout and inline styles for broad email-client support.</p>
     </main>
     <script>
       const tabs = [...document.querySelectorAll('.tab')];
@@ -228,6 +228,7 @@ function previewHtml() {
         const html = frame.contentDocument.body.innerHTML
           .replaceAll('{{ brand_name }}', demoNames.brand)
           .replaceAll('{{ company_name }}', demoNames[frame.dataset.frame])
+          .replaceAll('{{ logo_url }}', '../assets/logo.png')
           .replaceAll('{{ support_email }}', 'operations@contact.sourcing-club.com')
           .replaceAll('{{ company_address }}', 'New York, USA');
         frame.contentDocument.body.innerHTML = html;

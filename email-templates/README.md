@@ -26,6 +26,7 @@ by the other API functions. `PUBLIC_APP_URL`, `SUPPORT_EMAIL`, and
 - `{{ brand_name }}` in the brand version
 - `{{ company_name }}` in the factory and trading-company versions
 - `{{ dashboard_url }}`
+- `{{ logo_url }}` — absolute HTTPS URL to the TSC logo image (`assets/logo.png`); email clients cannot use a relative site path
 - `{{ support_email }}`
 - `{{ company_address }}`
 
