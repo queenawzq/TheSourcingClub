@@ -270,6 +270,18 @@ receives. A new email type needs adding to `TEMPLATES` there and
 `TEST_EMAILS` in `src/admin-prototype/main.jsx`. Password resets are sent by
 Supabase itself and cannot be tested this way.
 
+### The operations inbox
+
+`operations@contact.sourcing-club.com` is the support address in every email
+and the Reply-To on every send. Resend receives mail for
+`contact.sourcing-club.com` (an MX record in the Netlify DNS zone for
+`sourcing-club.com`) and calls `api/inbound-email.js`, which verifies the Svix
+signature and re-sends the message, attachments included, to
+`INBOUND_FORWARD_TO` with Reply-To set to the original sender. Resend has no
+forwarding rule of its own. Received mail counts against the Resend quota
+(free tier: 100/day, sent plus received), and each forward costs one more.
+Needs `RESEND_WEBHOOK_SECRET` from the webhook's page in Resend.
+
 ### Legal documents
 
 The terms each kind of company signs (brand, factory, trading company) and the

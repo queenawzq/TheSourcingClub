@@ -11,6 +11,9 @@ import { messageFor } from "./send-review-decision.js";
  * must never become a way to send mail to anyone else.
  */
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
+// Replies land in the operations inbox (forwarded by api/inbound-email.js),
+// not at the noreply sender, which has no mailbox.
+const REPLY_TO = process.env.SUPPORT_EMAIL ?? "operations@contact.sourcing-club.com";
 
 // Loaded with import(), not a static import: Vercel compiles api/*.js to
 // CommonJS, and a static import of this .mjs becomes a require() that
@@ -44,7 +47,7 @@ function sampleOnboarding(companyName, path) {
   return {
     companyName,
     dashboardUrl: `${appUrl()}${path}`,
-    supportEmail: process.env.SUPPORT_EMAIL ?? "operations@thesourcingclub.com",
+    supportEmail: REPLY_TO,
     companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
   };
 }
@@ -102,7 +105,7 @@ export default async function handler(request, response) {
     const delivery = await fetch(RESEND_ENDPOINT, {
       method: "POST",
       headers: { Authorization: `Bearer ${resendKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from, to: [to], ...message, subject: `[Test] ${message.subject}` }),
+      body: JSON.stringify({ from, to: [to], reply_to: REPLY_TO, ...message, subject: `[Test] ${message.subject}` }),
     });
     const payload = await delivery.json().catch(() => ({}));
     if (!delivery.ok) throw new Error(payload.message || `email provider returned ${delivery.status}`);

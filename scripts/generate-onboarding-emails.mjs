@@ -228,7 +228,7 @@ function previewHtml() {
         const html = frame.contentDocument.body.innerHTML
           .replaceAll('{{ brand_name }}', demoNames.brand)
           .replaceAll('{{ company_name }}', demoNames[frame.dataset.frame])
-          .replaceAll('{{ support_email }}', 'operations@thesourcingclub.com')
+          .replaceAll('{{ support_email }}', 'operations@contact.sourcing-club.com')
           .replaceAll('{{ company_address }}', 'New York, USA');
         frame.contentDocument.body.innerHTML = html;
       }));
@@ -248,7 +248,7 @@ export function onboardingEmail(key, variables = {}) {
 
   const companyName = variables.companyName || (key === "brand" ? "your brand" : "your company");
   const dashboardUrl = variables.dashboardUrl || "https://the-sourcing-club.vercel.app/app.html";
-  const supportEmail = variables.supportEmail || "operations@thesourcingclub.com";
+  const supportEmail = variables.supportEmail || "operations@contact.sourcing-club.com";
   const companyAddress = variables.companyAddress || "New York, USA";
   const html = emailHtml(key, data)
     .replaceAll("{{ brand_name }}", escapeHtml(companyName))

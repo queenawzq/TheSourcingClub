@@ -6,6 +6,9 @@ const loadOnboardingEmail = () =>
   import("../scripts/generate-onboarding-emails.mjs").then((module) => module.onboardingEmail);
 
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
+// Replies land in the operations inbox (forwarded by api/inbound-email.js),
+// not at the noreply sender, which has no mailbox.
+const REPLY_TO = process.env.SUPPORT_EMAIL ?? "operations@contact.sourcing-club.com";
 
 const jsonBody = (request) =>
   typeof request.body === "string" ? JSON.parse(request.body) : request.body ?? {};
@@ -99,7 +102,7 @@ export default async function handler(request, response) {
     const message = onboardingEmail(row.profile_kind, {
       companyName: row.company_name,
       dashboardUrl,
-      supportEmail: process.env.SUPPORT_EMAIL ?? "operations@thesourcingclub.com",
+      supportEmail: REPLY_TO,
       companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
     });
 
@@ -111,7 +114,7 @@ export default async function handler(request, response) {
           "Content-Type": "application/json",
           "Idempotency-Key": `onboarding-${row.org_id}-${row.recipient_user_id}-${row.submitted_at}`,
         },
-        body: JSON.stringify({ from, to: [row.recipient_email], ...message }),
+        body: JSON.stringify({ from, to: [row.recipient_email], reply_to: REPLY_TO, ...message }),
       });
       const payload = await delivery.json().catch(() => ({}));
       if (!delivery.ok) throw new Error(payload.message || `email provider returned ${delivery.status}`);

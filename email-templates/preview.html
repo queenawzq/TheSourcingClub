@@ -45,7 +45,7 @@
         const html = frame.contentDocument.body.innerHTML
           .replaceAll('{{ brand_name }}', demoNames.brand)
           .replaceAll('{{ company_name }}', demoNames[frame.dataset.frame])
-          .replaceAll('{{ support_email }}', 'operations@thesourcingclub.com')
+          .replaceAll('{{ support_email }}', 'operations@contact.sourcing-club.com')
           .replaceAll('{{ company_address }}', 'New York, USA');
         frame.contentDocument.body.innerHTML = html;
       }));
