@@ -859,6 +859,10 @@
   min-height: 58px;
 }
 
+.admin-review-meta .factory-detail-pair strong {
+  overflow-wrap: anywhere;
+}
+
 .admin-decision-card > span {
   color: #174df2;
   font-size: 10px;
