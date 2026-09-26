@@ -3489,8 +3489,9 @@ export function HomeScreen({
   rfqs,
   projects,
   savings,
-  // Call scheduling has nothing behind it yet, so the live mount hides the
-  // card rather than showing a brand meetings that were never arranged.
+  // Live mounts hide what they have nothing for. The prototype passes
+  // neither and keeps the design's examples: a $50 discount and two calls.
+  showSavings = true,
   showCalls = true,
   onViewRfq,
   onViewProject,
@@ -3597,15 +3598,17 @@ export function HomeScreen({
                   <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse vendors</button>
                 </div>
               </section>
-              <section className="home-attention">
-                <header className="home-panel-header compact">
-                  <div>
-                    <h2>Savings</h2>
-                  </div>
-                  <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteBrandOpen(true)}>Invite brand</button>
-                </header>
-                <BrandDashboardDiscountCard savings={savings} onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
-              </section>
+              {showSavings && (
+                <section className="home-attention">
+                  <header className="home-panel-header compact">
+                    <div>
+                      <h2>Savings</h2>
+                    </div>
+                    <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteBrandOpen(true)}>Invite brand</button>
+                  </header>
+                  <BrandDashboardDiscountCard savings={savings} onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
+                </section>
+              )}
               <section className="home-attention">
                 <header className="home-panel-header compact">
                   <div>
@@ -3643,13 +3646,17 @@ export function HomeScreen({
               </div>
             </section>
             <section className="home-attention">
-              <header className="home-panel-header compact">
-                <div>
-                  <h2>Savings</h2>
-                </div>
-                <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteBrandOpen(true)}>Invite brand</button>
-              </header>
-              <BrandDashboardDiscountCard savings={savings} onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
+              {showSavings && (
+                <>
+                  <header className="home-panel-header compact">
+                    <div>
+                      <h2>Savings</h2>
+                    </div>
+                    <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteBrandOpen(true)}>Invite brand</button>
+                  </header>
+                  <BrandDashboardDiscountCard savings={savings} onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
+                </>
+              )}
               {showCalls && <HomeUpcomingCallCard />}
               <header className="home-panel-header compact">
                 <div>

@@ -157,6 +157,9 @@ export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewR
         rfqs={rfqs}
         projects={projects}
         savings={savings ? { ...savings, onInvite: (email) => inviteBrand(org.id, email) } : null}
+        // No credit and no codes means no Savings panel, rather than the
+        // design's $50 shown to a brand that has none.
+        showSavings={Boolean(savings)}
         showCalls={false}
         onViewRfq={onViewRfq}
         onViewProject={onViewProject}
