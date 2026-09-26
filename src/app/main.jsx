@@ -718,6 +718,15 @@ function navigateFromPrototype(screenKey, navigate) {
     factoryMarketplace: "/browse",
     profile: "/",
     notifications: "/notifications",
+    // Keys the designed cards emit that used to fall through to the
+    // dashboard, which read as a dead button. Without an id they can only
+    // reach the list; the cards that know their id call a navigate prop
+    // instead (see onViewRfq / onViewProject).
+    projectDetail: "/orders",
+    contract: "/orders",
+    review: "/rfqs",
+    invite: "/rfqs",
+    saved: "/browse",
   };
   navigate(paths[screenKey] ?? "/");
 }
@@ -752,7 +761,12 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
         ) : (
           <main className="rfqs-page brand-rfqs-page">
             <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
-              <RfqsScreen goTo={(next) => navigateFromPrototype(next, navigate)} />
+              <RfqsScreen
+                goTo={(next) => navigateFromPrototype(next, navigate)}
+                onViewQuotes={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/quotes` : "/rfqs")}
+                onEditRfq={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/edit` : "/rfqs")}
+                onInviteVendors={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/invite` : "/rfqs")}
+              />
             </DataProvider>
           </main>
         ),
@@ -821,7 +835,10 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       render: () => (
         <main className={isFactory ? "rfqs-page brand-projects-page factory-projects-page" : "rfqs-page brand-projects-page"}>
           <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
-            <ProjectsScreen goTo={(next) => navigateFromPrototype(next, navigate)} />
+            <ProjectsScreen
+              goTo={(next) => navigateFromPrototype(next, navigate)}
+              onViewOrder={(project) => navigate(project?.id ? `/orders/${project.id}` : "/orders")}
+            />
           </DataProvider>
         </main>
       ),
@@ -918,7 +935,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/browse/:id",
       render: (params) =>
         isFactory ? (
-          <LiveRequestView rfqId={params.id} profile={profile} />
+          <LiveRequestView org={activeOrg} rfqId={params.id} profile={profile} />
         ) : <NotForThisSide isFactory={false} />,
     },
     {
@@ -939,6 +956,10 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
               isFactory={isFactory}
               goTo={(next) => navigateFromPrototype(next, navigate)}
               onOpenActivity={() => navigate("/notifications")}
+              // The designed cards carry ids; the screen keys do not, which is
+              // why "View quote" used to land back on the list it came from.
+              onViewRfq={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/quotes` : "/rfqs")}
+              onViewProject={(project) => navigate(project?.id ? `/orders/${project.id}` : "/orders")}
             />
           </main>
         ),

@@ -16,7 +16,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { DescribeScreen, FlowShell, InviteScreen, ReviewScreen } from "../../prototype/main.jsx";
-import { createDraftRfq, getRfq, publishRfq, saveRfq, setColourSplits, setInvitations, setQuestions } from "../../lib/domain/rfq.js";
+import { createDraftRfq, getRfq, matchScoresForRfq, publishRfq, saveRfq, setColourSplits, setInvitations, setQuestions } from "../../lib/domain/rfq.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
@@ -241,7 +241,14 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
           .not("published_at", "is", null),
         "load vendors",
       );
-      setVendors(rows ?? []);
+      // The design ranks this list by fit. match_score_rfq() answers per
+      // pair, so score the vendors actually being shown and sort by it.
+      const scores = await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
+      setVendors(
+        (rows ?? [])
+          .map((row) => ({ ...row, matchPercent: scores.get(row.org_id) ?? null }))
+          .sort((a, b) => (b.matchPercent ?? -1) - (a.matchPercent ?? -1)),
+      );
       setStep("invite");
     } catch (failure) {
       setError(failure);
@@ -296,10 +303,9 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
       name: vendor.orgs?.name ?? "Vendor",
       location: vendor.location ?? "Location not given",
       trust: vendor.verification_status === "verified" ? "trusted" : "unverified",
-      // The design shows a fit percentage. There is a match_score RPC, but it
-      // is per pair and this list is unranked until it is called — so no
-      // number is shown rather than a made-up one.
-      fit: "",
+      // Scored against this request by match_score_rfq(); blank when the
+      // vendor's profile has too little in it to score.
+      fit: vendor.matchPercent === null ? "" : `${vendor.matchPercent}%`,
       fitType: vendor.vendor_kind === "trading_company" ? "Trading company" : "Factory",
       fitSummary: vendor.intro ?? "",
       factoryNote: "",

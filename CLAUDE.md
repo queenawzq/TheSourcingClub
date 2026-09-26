@@ -312,6 +312,29 @@ links point.
   OpenRouter, Google Sheets, Netlify Forms). Adding a service that touches
   personal data means publishing a new version of it.
 
+### Mock data leaking into the live app
+
+A designed component that falls back to its own constants when a prop is
+absent will show a real customer the prototype's world. This has happened
+three times and is the first thing to check on any newly wired screen:
+
+- **The brand dashboard** passed only `orgName`/`attention`, so `HomeScreen`
+  rendered `activeRfqs`, `activeProjects`, "Atelier Minho" and two scheduled
+  calls to whoever logged in. Every panel now takes a prop.
+- **The factory's request view** showed "visible to Maison Rue", a $18.40
+  quote and three brand attachments on a request with no files.
+- The fix is always the same: pass the real thing, and where there is nothing
+  behind it (scheduled calls, capacity windows on a quote that has none)
+  render conditionally. `?? mockConstant` is fine in the prototype and a bug
+  the moment `app.html` mounts it.
+
+**CSS collides globally, too.** `src/app/rfq/rfq.css` defined `.rfq-card`,
+`.rfq-list`, `.rfq-tabs` and `.rfq-status` for hand-built list screens that
+were later deleted. The names are Queena's, so those rules silently relaid the
+designed Quotes card — two columns, title and buttons stacked on each other —
+on a screen that imports none of them. Anything added under `src/app` needs a
+name that cannot collide with a prototype class.
+
 ### Wiring a designed screen to live data
 
 The pattern, used by every port so far:

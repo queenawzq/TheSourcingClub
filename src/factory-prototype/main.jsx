@@ -5232,7 +5232,7 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   );
 }
 
-export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, onEdit, quote }) {
+export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, onEdit, quote, status }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-rfq-read-page">
       <div className="factory-submit-content">
@@ -5256,13 +5256,21 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
           <aside className="factory-submit-side">
             <FactoryPriceTotalCard project={project} />
 
+            {/* `status` is what this vendor actually sent. Without it the
+                design's example stands, which live would show as a $18.40
+                quote to "Maison Rue" on a request the vendor may never have
+                quoted. */}
             <section className="factory-submit-card factory-status-card">
               <h2>RFQ status</h2>
-              <p>Your quote was submitted and is visible to Maison Rue.</p>
+              <p>
+                {status
+                  ? status.summary
+                  : `Your quote was submitted and is visible to ${project.brand || "the brand"}.`}
+              </p>
               <div className="factory-status-facts">
-                <ProfileDetailPair label="Your quote" value="$18.40" />
-                <ProfileDetailPair label="Quote sent" value="Jul 24" />
-                <ProfileDetailPair label="Status" value="Quote submitted" />
+                <ProfileDetailPair label="Your quote" value={status ? status.price : "$18.40"} />
+                <ProfileDetailPair label="Quote sent" value={status ? status.sent : "Jul 24"} />
+                <ProfileDetailPair label="Status" value={status ? status.label : "Quote submitted"} />
               </div>
             </section>
           </aside>
@@ -9065,11 +9073,16 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
         </div>
       </div>
 
-      <div className="factory-submit-attachments">
-        <span>Brand attachments</span>
-        <strong>Tech pack v3.pdf · Measurement chart · Reference photos</strong>
-        <button className="text-link" type="button">Download files</button>
-      </div>
+      {/* Live mounts pass project.files. The prototype passes none and keeps
+          the design's example list; a real request with no attachments shows
+          no attachment row rather than three files that do not exist. */}
+      {(project.files ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"]).length > 0 && (
+        <div className="factory-submit-attachments">
+          <span>Brand attachments</span>
+          <strong>{(project.files ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"]).join(" · ")}</strong>
+          <button className="text-link" type="button">Download files</button>
+        </div>
+      )}
     </article>
   );
 }
@@ -9130,7 +9143,15 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
           <QuoteField name="unitPrice" label="Unit price" value={values?.unitPrice ?? "$18.40 / unit"} {...reviewFieldProps} />
           <QuoteField name="quantity" label="Exact production quantity *" value={values?.quantity ?? "300 units"} {...reviewFieldProps} />
           <QuoteField name="leadTime" label="Bulk lead time *" value={values?.leadTime ?? "28 days after PP approval"} {...reviewFieldProps} />
-          <QuoteField label={companyType === "trading" ? "Partner production window *" : "Open capacity window *"} value={companyType === "trading" ? "Aug 12-30 · partner confirmed" : "Aug 12-30 · 420 units"} {...reviewFieldProps} />
+          {/* The capacity window is the vendor's own, and a live mount passes
+              it. Absent, the design's example stands in the prototype but the
+              field is left blank rather than quoting a window nobody opened. */}
+          <QuoteField
+            name="capacityWindow"
+            label={companyType === "trading" ? "Partner production window *" : "Open capacity window *"}
+            value={values?.capacityWindow ?? (values ? "" : (companyType === "trading" ? "Aug 12-30 · partner confirmed" : "Aug 12-30 · 420 units"))}
+            {...reviewFieldProps}
+          />
           <QuoteField name="paymentTerms" label="Payment terms" value={values?.paymentTerms ?? "30% deposit / 70% before shipment"} {...reviewFieldProps} />
           <QuoteField name="incoterms" label="Shipping / incoterms" value={values?.incoterms ?? "EXW quoted; shipping TBD"} {...reviewFieldProps} />
           <QuoteField name="validUntil" label="Quote valid until" value={values?.validUntil ?? "Aug 1, 2026"} {...reviewFieldProps} />

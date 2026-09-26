@@ -17,6 +17,7 @@ import { dashboardSnapshot } from "../../lib/domain/dashboard.js";
 import { listOpenRfqs } from "../../lib/domain/rfq.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { getCapacity, saveCapacity } from "../../lib/domain/capacity-store.js";
+import { creditBalance } from "../../lib/domain/credits.js";
 import { listTermsByKind } from "../../lib/domain/taxonomy.js";
 import { CAPACITY_LEVELS, availableRange, capacityWindow, minutesPerPieceFor, monthKey } from "../../lib/domain/capacity.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
@@ -65,11 +66,6 @@ async function quotesSentThisMonth(orgId) {
     .neq("status", "draft")
     .gte("submitted_at", start.toISOString());
   return error ? null : count ?? 0;
-}
-
-async function creditBalance(orgId) {
-  const { data, error } = await supabase.rpc("credit_balance", { org: orgId });
-  return error ? null : Number(data) || 0;
 }
 
 /** This month's booking level and the pieces it leaves, for the capacity card. */

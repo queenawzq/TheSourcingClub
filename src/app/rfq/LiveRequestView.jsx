@@ -13,26 +13,29 @@
 import React, { useEffect, useState } from "react";
 import { FactoryReadOnlyRfqPage } from "../../factory-prototype/main.jsx";
 import { getQuestions, getRfq } from "../../lib/domain/rfq.js";
-import { formatRange } from "../../lib/money.js";
+import { getMyQuote } from "../../lib/domain/quote.js";
+import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 
-export default function LiveRequestView({ rfqId, profile }) {
+export default function LiveRequestView({ org, rfqId, profile }) {
   const { navigate } = useRouter();
   const [rfq, setRfq] = useState(null);
   const [questions, setQuestions] = useState([]);
+  const [myQuote, setMyQuote] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getRfq(rfqId), getQuestions(rfqId)])
-      .then(([request, asked]) => {
+    Promise.all([getRfq(rfqId), getQuestions(rfqId), org?.id ? getMyQuote(rfqId, org.id) : null])
+      .then(([request, asked, quote]) => {
         if (cancelled) return;
         setRfq(request);
         setQuestions(asked ?? []);
+        setMyQuote(quote ?? null);
       })
       .catch((failure) => !cancelled && setError(failure));
     return () => { cancelled = true; };
-  }, [rfqId]);
+  }, [rfqId, org?.id]);
 
   if (error) return <p className="composer-error" role="alert">{error.message}</p>;
   if (!rfq) return null;
@@ -72,6 +75,8 @@ export default function LiveRequestView({ rfqId, profile }) {
           // factory: they are what it has to answer to quote.
           questions: questions.map((question) => question.prompt),
           tags: [],
+          // Real requests carry their own attachments; none means no row.
+          files: [],
           capacity: [],
           images: [],
           fitTone: "",
@@ -82,9 +87,35 @@ export default function LiveRequestView({ rfqId, profile }) {
         // blank rather than the design's example figures.
         quote={{
           brandQuestions: questions.map((question) => question.prompt),
-          unitPrice: "", quantity: "", leadTime: "", paymentTerms: "", incoterms: "", validUntil: "",
+          // This vendor's own quote where it has one, blank where it has not.
+          unitPrice: myQuote?.unit_price_cents ? formatMoney(myQuote.unit_price_cents) : "",
+          quantity: myQuote?.production_quantity ? `${myQuote.production_quantity} units` : "",
+          leadTime: myQuote?.bulk_lead_time_days ? `${myQuote.bulk_lead_time_days} days` : "",
+          capacityWindow: "",
+          paymentTerms: myQuote?.deposit_pct ? `${myQuote.deposit_pct}% deposit / ${myQuote.balance_pct ?? 100 - myQuote.deposit_pct}% balance` : "",
+          incoterms: "",
+          validUntil: myQuote?.valid_until
+            ? new Date(myQuote.valid_until).toLocaleDateString("en", { dateStyle: "medium" })
+            : "",
           "sample.0.stage": "", "sample.0.cost": "", "sample.0.timing": "", "sample.0.includes": "",
           "sample.1.stage": "", "sample.1.cost": "", "sample.1.timing": "", "sample.1.includes": "",
+        }}
+        // What this vendor actually sent, or nothing at all. The design's
+        // status card otherwise states a $18.40 quote to another brand.
+        status={myQuote ? {
+          summary: myQuote.status === "submitted"
+            ? `Your quote was submitted and is visible to ${rfq.orgs?.name ?? "the brand"}.`
+            : `Your quote is a ${myQuote.status} and has not been sent yet.`,
+          price: myQuote.unit_price_cents ? formatMoney(myQuote.unit_price_cents) : "—",
+          sent: myQuote.submitted_at
+            ? new Date(myQuote.submitted_at).toLocaleDateString("en", { month: "short", day: "numeric" })
+            : "—",
+          label: myQuote.status === "submitted" ? "Quote submitted" : myQuote.status,
+        } : {
+          summary: "You have not quoted this request yet.",
+          price: "—",
+          sent: "—",
+          label: "No quote",
         }}
         onBack={() => navigate("/browse")}
         onEdit={verified ? () => navigate(`/browse/${rfqId}/quote`) : undefined}
