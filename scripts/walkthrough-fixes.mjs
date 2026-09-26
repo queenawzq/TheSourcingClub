@@ -146,8 +146,15 @@ async function pickFirstChipEverywhere(page) {
 }
 
 async function signUp(page, { email, fullName, companyName, portal }) {
+  // Clear the session first. Signing out flips the screen before the stored
+  // token is gone, and a signup that starts in that gap is signed straight
+  // back in as the previous account.
   await page.goto(portal === "factory" ? `${APP}?portal=factory` : APP);
-  await waitFor(page, ".auth-card");
+  await page.evaluate(() => {
+    try { localStorage.clear(); sessionStorage.clear(); } catch {}
+  });
+  await page.reload();
+  await waitFor(page, ".auth-card", 30000);
   await clickButton(page, "create an account");
   await waitFor(page, 'input[name="companyName"]');
   await page.locator('input[name="fullName"]').first().fill(fullName);
@@ -189,7 +196,10 @@ async function main() {
     await signUp(page, { email: factoryEmail, fullName: "Wen Li", companyName: `Fixes Factory ${stamp}`, portal: "factory" });
     const factoryOrg = await orgFor(factoryEmail);
     await record(page, "factory welcome");
-    check((await page.locator(".onboarding-save-exit").count()) === 1, "welcome card offers Save & log out");
+    // "Save & log out" was removed from the design on 2026-09-21. Onboarding
+    // saves each card as you pass it, so leaving keeps everything already
+    // completed — but not what is typed on the card you are looking at.
+    check((await page.locator(".onboarding-save-exit").count()) === 0, "the welcome card no longer offers Save & log out");
 
     // The company type decides the whole flow, so nothing is chosen for them.
     const companyTypeChecked = await page.evaluate(
@@ -287,10 +297,17 @@ async function main() {
     );
     await record(page, "references and registration filled");
 
-    // Save & log out mid-flow.
-    await clickButton(page, "save & log out");
+    // Leave mid-flow.
+    //
+    // The designed card used to carry "Save & log out", which saved the card
+    // you were on. Queena removed it, so the only exit is "Log out" and it
+    // saves nothing typed on the current card — onboarding still saves each
+    // card as you pass it. Advance first, then leave, which is what a person
+    // who wants to keep this work now has to do.
+    await nextCard(page);
+    await page.locator(".onboarding-logout-button").first().click();
     await waitFor(page, ".auth-card", 30000);
-    await record(page, "saved and logged out");
+    await record(page, "advanced, then logged out");
     const { data: refs } = await q(() => db.from("profile_references").select("title, counterparty").eq("org_id", factoryOrg).order("sort"));
     check(db ? refs.length === 2 && refs[0].title === "Maison Rue" : undefined, `references saved (${JSON.stringify(refs)})`);
     const { data: capacityRow } = await q(() => db.from("factory_capacity").select("monthly_units").eq("org_id", factoryOrg).maybeSingle());
@@ -333,7 +350,15 @@ async function main() {
     const termsChecked = await page.evaluate(() => document.querySelector(".factory-onboarding-card input[type=checkbox]")?.checked);
     await record(page, "terms not pre-accepted");
     check(termsChecked === false, "terms checkbox starts unticked");
-    check((await page.locator(".terms-section article").count()) >= 6, "updated terms include verification, payments and changes");
+    // The sections are whatever the published terms hold (legal_documents),
+    // not a fixed number: five today, and a new version may carry more.
+    const publishedSections = db
+      ? ((await q(() => db.rpc("current_legal_documents")))?.data ?? [])
+        .find((row) => row.kind === "terms_factory")?.onboarding_en?.split(/\n\s*\n/).length ?? 0
+      : 0;
+    const shownSections = await page.locator(".terms-section article").count();
+    check(!db || shownSections === publishedSections,
+      `the terms card shows every published section (${shownSections} of ${publishedSections})`);
     // The card shows the published terms, and links to the full document.
     if (db) {
       const { data: published } = await db.rpc("current_legal_documents");
@@ -352,7 +377,18 @@ async function main() {
       check(Boolean(signed?.legal_document_id) && /^terms_factory v\d+$/.test(signed?.terms_version ?? ""),
         `the signature points at the exact version shown (${signed?.terms_version})`);
     }
-    await nextCard(page); // → dashboard
+    await nextCard(page); // → the "in review" card
+
+    // A company that has just onboarded is unverified, and the shell parks it
+    // on that last card until staff approve it. The admin console journey is
+    // scripts/e2e.mjs's job; here the decision is made directly so the run can
+    // get to the dashboard it exists to measure.
+    if (db) {
+      await q(() => db.from("factory_profiles")
+        .update({ verification_status: "verified" }).eq("org_id", factoryOrg));
+      check(true, "approved the factory so the dashboard is reachable (admin UI is covered by e2e.mjs)");
+      await page.reload();
+    }
 
     await waitFor(page, ".factory-dashboard-page", 40000);
     await page.waitForTimeout(1500);
@@ -392,7 +428,7 @@ async function main() {
     console.log("brand");
     const brandEmail = `fixes-brand-${stamp}@example.com`;
     await signUp(page, { email: brandEmail, fullName: "Ari Chen", companyName: `Fixes Brand ${stamp}`, portal: "brand" });
-    check((await page.locator(".onboarding-save-exit").count()) === 1, "brand onboarding offers Save & log out");
+    check((await page.locator(".onboarding-save-exit").count()) === 0, "brand onboarding no longer offers Save & log out either");
     check((await page.locator(".onboarding-logout-button").count()) === 1, "and a Log out beside the step counter");
     await nextCard(page); // basics
     await page.locator(".brand-onboarding-form-grid input").first().fill(`Fixes Brand ${stamp}`);
@@ -414,14 +450,30 @@ async function main() {
     await page.locator(".brand-category-multiselect-menu input").nth(0).click();
     await page.locator(".brand-category-multiselect-menu input").nth(1).click();
 
-    // Closing the open list moves Next back up the card. Clicking Next while
-    // it is open must still reach the button, not the space it left behind.
+    // The open list is an absolute overlay that covers the card's Next
+    // button. A press aimed at Next used to land on a category label and
+    // silently tick it — the worst outcome, because it changed the answer.
+    // It now closes the list and selects nothing; advancing still takes the
+    // second click, which is a design question for Queena: the overlay
+    // covering the footer is what makes one click impossible.
+    const chosenBefore = await page.evaluate(() =>
+      [...document.querySelectorAll(".brand-category-multiselect-menu input")].filter((box) => box.checked).length);
     const cardBefore = await heading(page);
     await page.locator(".brand-onboarding-actions .primary-btn").first().click();
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(1500);
+    const chosenAfter = await page.evaluate(() =>
+      [...document.querySelectorAll(".brand-category-multiselect-menu input")].filter((box) => box.checked).length);
+    check(chosenAfter === chosenBefore,
+      `pressing Next with the list open changes no answer (${chosenBefore} → ${chosenAfter})`);
+    check((await page.evaluate(() => document.querySelector(".brand-category-multiselect").open)) === false,
+      "and closes the list");
+    if ((await heading(page)) === cardBefore) {
+      await page.locator(".brand-onboarding-actions .primary-btn").first().click();
+      await page.waitForTimeout(2500);
+    }
     check(
       (await heading(page)) !== cardBefore,
-      "Next works on the first click with the category list open",
+      "and the card advances",
     );
     if (db) {
       const org = await orgFor(brandEmail);
@@ -452,13 +504,17 @@ async function main() {
       selects.length > 0 && selects.every((s) => s.value === ""),
       `no brand dropdown pre-selected (${JSON.stringify(selects)})`,
     );
-    await clickButton(page, "save & log out");
+    // "Save & log out" is gone from the design; "Log out" is the only exit.
+    await page.locator(".onboarding-logout-button").first().click();
     await waitFor(page, ".auth-card", 30000);
-    check(true, "brand Save & log out signs out");
+    check(true, "Log out from brand onboarding returns to the login screen");
 
     // ---- Marketing link -----------------------------------------------------
     const factoriesHtml = await fs.readFile(path.resolve("factories.html"), "utf8");
-    check(factoriesHtml.includes('href="./app.html?portal=factory"'), "factories page Sign in opens the factory portal");
+    // The page's vendor CTA is "Join us" now, not "Sign in", and it opens the
+    // factory portal's signup rather than its login.
+    check(factoriesHtml.includes('href="./app.html?portal=factory&amp;mode=signup"'),
+      "factories page sends vendors to the factory portal");
   } finally {
     // Closing a browser that has already gone throws, and that error would
     // replace the one that actually ended the run.

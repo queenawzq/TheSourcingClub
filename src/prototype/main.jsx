@@ -1823,8 +1823,13 @@ function MessageBubble({ message, showTranslation, onToggleTranslation, ownName,
       <p>{showTranslation && hasTranslation ? message.translation : message.body || message.original}</p>
       {hasTranslation && (
         <div className="message-translation-card">
+          {/* Live mounts pass their own labels. There the default text is
+              already the reader's language and the toggle reveals the
+              original, so "Translate to English" would be backwards. */}
           <button type="button" onClick={onToggleTranslation}>
-            {showTranslation ? "Show original" : "Translate to English"}
+            {showTranslation
+              ? (message.hideAltLabel ?? "Show original")
+              : (message.showAltLabel ?? "Translate to English")}
           </button>
         </div>
       )}
@@ -2991,12 +2996,18 @@ function BrandCategoryMultiSelect({ required = false, name, options: providedOpt
       }
     }
 
-    // Close after a completed click so selecting a checkbox inside the menu is
-    // handled before an outside interaction dismisses the overlay.
-    document.addEventListener("click", closeOnOutsideClick);
+    // Close on the press, not on the completed click.
+    //
+    // The menu is an absolute overlay sitting over the card's Next button, so
+    // closing it on `click` meant the first press on Next hit a category label
+    // instead and the card never advanced — a dead button until you clicked
+    // twice. Closing on pointerdown removes the overlay before the click is
+    // delivered, and the button does not move when it goes, so that click
+    // lands where the person aimed. A press inside the menu is untouched.
+    document.addEventListener("pointerdown", closeOnOutsideClick);
     document.addEventListener("keydown", closeOnEscape);
     return () => {
-      document.removeEventListener("click", closeOnOutsideClick);
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, []);

@@ -52,6 +52,9 @@ const db = createClient(
 
 const FIXTURE = path.join(OUT, "..", "e2e-fixture-registration.pdf");
 
+/** Either side's dashboard: the brand's stack, or the factory's own page. */
+const DASHBOARD = ".home-stack, .factory-dashboard-page";
+
 const steps = [];
 let shot = 0;
 let failures = 0;
@@ -326,7 +329,10 @@ async function signIn(page, email, who, accountType = "brand") {
       if (text.includes("which side are you on")) landed = "new";
       if (text.includes("you have been invited")) landed = "invited";
     }
-    if (!landed && (await page.locator(".home-stack").count()) > 0) landed = "returning";
+    // The brand's dashboard is .home-stack; the factory's is its own page, and
+    // an unverified company of either kind is parked on the onboarding card.
+    if (!landed && (await page.locator(".home-stack, .factory-dashboard-page").count()) > 0) landed = "returning";
+    if (!landed && (await page.locator(".factory-onboarding-card, .brand-onboarding-card").count()) > 0) landed = "onboarding";
     if (!landed && (await page.locator('[data-testid="accept-invitation"]').count()) > 0) landed = "invited";
     if (!landed) await page.waitForTimeout(250);
   }
@@ -416,13 +422,38 @@ async function acceptTerms(page) {
   });
 }
 
+/**
+ * Advance one designed card, and prove it advanced.
+ *
+ * Clicking and hoping is how this script used to fail six steps after the
+ * real problem: a required field left empty stops the card, the click does
+ * nothing, and the run carries on filling fields that are not on screen. Now
+ * an unmoved card fails here, quoting the validation message the card shows.
+ */
 async function nextCard(page, expectHeading) {
   const footerPrimary =
     ".factory-onboarding-actions .primary-btn, .brand-onboarding-actions .primary-btn";
+  const cardHeading = async () =>
+    (await page.locator(".factory-onboarding-card h1, .brand-onboarding-card h1").first().innerText().catch(() => "")).trim();
+
+  const before = await cardHeading();
   await waitFor(page, footerPrimary, 20000);
   await page.locator(footerPrimary).first().click();
+
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    const now = await cardHeading();
+    if (now && now !== before) break;
+    if ((await page.locator(".has-onboarding-error").count()) > 0) {
+      const complaint = await page
+        .locator(".has-onboarding-error .factory-onboarding-validation-message, .has-onboarding-error .brand-onboarding-validation-message")
+        .first().innerText().catch(() => "a required field is empty");
+      throw new Error(`the card "${before}" refused to advance: ${complaint.trim()}`);
+    }
+    await page.waitForTimeout(250);
+  }
   if (expectHeading) await waitForHeading(page, expectHeading);
-  await page.waitForTimeout(900);
+  await page.waitForTimeout(600);
 }
 
 async function advance(page, nextHeading) {
@@ -510,6 +541,9 @@ async function main() {
     await record(page, "Factory context");
     await nextCard(page);
 
+    // "Manufacturing model" is required and was added after this script was
+    // written, which is what stalled every run here.
+    await chooseDesignedChips(page, "manufacturing-model", 1);
     const productionTypes = await chooseDesignedChips(page, "production-type", 1);
     const categories = await chooseDesignedChips(page, "product-categories", 2);
     await chooseDesignedChips(page, "makes", 1);
@@ -527,6 +561,16 @@ async function main() {
     await fillNamed(page, "minimum-order-quantity", "150");
     await fillNamed(page, "bulk-production-lead-time", "28 days");
     await fillNamed(page, "typical-sample-lead-time", "10 days");
+    // The capacity panel holds its answer in its own state and publishes it
+    // through a hidden input. Nothing typed here means no factory_capacity
+    // row, which is what the two checks below were failing on.
+    const capacityBox = page.locator(
+      '.factory-onboarding-card input[aria-label="Line-hours available per month"], .factory-onboarding-card input[aria-label="Units available per month"]',
+    );
+    if (await capacityBox.count()) {
+      await capacityBox.first().fill("1200");
+      await page.waitForTimeout(400);
+    }
     await record(page, "Factory capacity and terms");
     await nextCard(page);
 
@@ -682,8 +726,11 @@ async function main() {
 
     await waitForHeading(page, "all set", 30000);
     await record(page, "Brand complete", "the designed finish card");
-    await nextCard(page);
-    await waitFor(page, ".home-stack", 30000);
+    // A company that has just onboarded is not verified yet, so the shell
+    // parks it on this card rather than the dashboard. The dashboard is
+    // reached further down, once an admin has approved both companies.
+    check((await page.locator(".home-stack").count()) === 0,
+      "an unverified brand waits on the designed finish card, not the dashboard");
 
     const { data: brandOrg } = await db.from("orgs").select("id").eq("name", brandName).single();
 
@@ -707,8 +754,113 @@ async function main() {
     await record(page, "Brand dashboard", `matches the new factory at ${(score * 100).toFixed(0)}% — ${tier}`);
 
 
+    // ================= VERIFICATION =================
+    console.log("\nADMIN VERIFIES");
+    const adminEmail = `e2e-admin-${stamp}@example.com`;
+    const { data: adminUser } = await db.auth.admin.createUser({
+      email: adminEmail, password: PASSWORD, email_confirm: true,
+    });
+    await db.from("platform_admins").insert({ user_id: adminUser.user.id });
+
+    await signOutFully(page);
+    await signIn(page, adminEmail, "Admin");
+
+    // Platform staff have no brand or factory org; the admin tool must be
+    // reachable anyway.
+    // Everything staff do is in the operations workspace now. Approving a
+    // company there is what verifies it, and verification is what unlocks
+    // quoting.
+    const ADMIN = APP.replace(/app\.html.*$/, "admin.html");
+    await page.goto(ADMIN);
+    await waitForHeading(page, "admin overview", 30000);
+    await record(page, "Verification queue", "an admin with no org of their own can still work");
+
+    const queueText = await page.locator("body").innerText();
+    check(queueText.includes(factoryName), "the factory is waiting for a decision in the live queue");
+
+    // Open the queue and approve this run's factory.
+    await page.goto(`${ADMIN}?screen=verification`);
+    await page.waitForTimeout(3000);
+    // Each queue row ends in a Review button. Addressed by position within the
+    // row rather than by text, so relabelling it does not break the run.
+    const reviewButtons = ".admin-verification-row button:last-child";
+    const rowCount = await page.locator(".admin-verification-row").count();
+    let approved = false;
+    for (let index = 0; index < rowCount; index += 1) {
+      const text = await page.locator(".admin-verification-row").nth(index).innerText().catch(() => "");
+      if (!text.includes(factoryName)) continue;
+      await page.locator(reviewButtons).nth(index).click();
+      approved = true;
+      break;
+    }
+    check(approved, "the queue row for this factory was found and opened");
+    await page.waitForTimeout(2500);
+
+    await clickButton(page, "approve profile");
+    await page.waitForTimeout(4000);
+    await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
+
+    const { data: verified } = await db
+      .from("factory_profiles").select("verification_status").eq("org_id", factoryOrg.id).single();
+    check(verified.verification_status === "verified", "the factory is now verified in the database");
+
+    // The brand needs the same decision: the shell parks any unverified
+    // company on the "in review" card, so nothing below this point — posting
+    // a request, comparing quotes, awarding — is reachable until it is made.
+    await page.goto(`${ADMIN}?screen=verification`);
+    await page.waitForTimeout(3000);
+    const brandRows = await page.locator(".admin-verification-row").count();
+    let brandOpened = false;
+    for (let index = 0; index < brandRows; index += 1) {
+      const text = await page.locator(".admin-verification-row").nth(index).innerText().catch(() => "");
+      if (!text.includes(brandName)) continue;
+      await page.locator(reviewButtons).nth(index).click();
+      brandOpened = true;
+      break;
+    }
+    check(brandOpened, "the queue row for this brand was found and opened");
+    await page.waitForTimeout(2500);
+    await clickButton(page, "approve profile");
+    await page.waitForTimeout(4000);
+    const { data: brandVerified } = await db
+      .from("brand_profiles").select("verification_status").eq("org_id", brandOrg.id).single();
+    check(brandVerified.verification_status === "verified", "the brand is now verified too");
+    await record(page, "Brand approved", "both sides verified before either can trade");
+
+    // ================= THE OPERATIONS WORKSPACE =================
+    // The designed admin console, on the same session. Same origin, so the
+    // session carries across the page boundary; everything it shows comes back
+    // through a security-definer RPC.
+    await page.goto(ADMIN);
+    await page.waitForTimeout(4000);
+    const consoleText = await page.locator("body").innerText();
+
+    check(/admin overview/i.test(consoleText), "the operations workspace opens for staff");
+    check(
+      !/not a staff account/i.test(consoleText),
+      "and does not turn away an account that is on the admin list",
+    );
+    check(
+      !consoleText.includes("could not load"),
+      "the verification queue reads the marketplace rather than erroring",
+    );
+    check(
+      !/could not load/i.test(consoleText),
+      "the queue loaded rather than erroring",
+    );
+    await record(page, "Operations workspace", "the designed admin console, on marketplace data");
+
+    await page.goto(`${ADMIN}?screen=quotes`);
+    await page.waitForTimeout(3500);
+    const quotesText = await page.locator("body").innerText();
+    check(/quotes/i.test(quotesText), "the marketplace-wide quote table opens");
+    await record(page, "Marketplace quotes", "every quote across the marketplace, staff only");
+
     // ================= RFQ =================
     console.log("\nREQUEST FOR QUOTES");
+    // The admin was the last account signed in, so come back as the brand.
+    await signOutFully(page);
+    await signIn(page, `e2e-brand-${stamp}@example.com`, "Brand returning");
     await page.goto(`${APP}/rfqs`);
     // Re-pointed at the DESIGNED requests screen, which now renders this route
     // against live data. Queena relabelled the brand's nav RFQs → Quotes, so
@@ -835,7 +987,7 @@ async function main() {
 
     const landed = await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory again", "factory");
     check(landed === "returning", "signing back in skips onboarding and lands on the dashboard");
-    await waitFor(page, ".home-stack", 30000);
+    await waitFor(page, DASHBOARD, 30000);
     await record(page, "Factory dashboard", "still unverified, so it may look but not bid");
 
     await page.goto(`${APP}/browse`);
@@ -850,9 +1002,11 @@ async function main() {
     check(cardText.includes("300"), "the quantity the brand typed reaches the factory's card");
     check(cardText.includes(brandName), "the brand is named, not anonymous — nobody quotes a stranger");
 
-    // Visibility and permission are deliberately different things.
+    // Visibility and permission are deliberately different things. This
+    // factory was approved in the admin console above, so the gate that stops
+    // an unverified vendor bidding must NOT be here.
     const gate = await page.locator(".browse-gate").count();
-    check(gate === 1, "an unverified factory is told it can look but not bid");
+    check(gate === 0, "an approved factory browses without the look-but-do-not-bid gate");
 
     // The card's affordance is its own View RFQ button, which is how the
     // design draws it.
@@ -869,88 +1023,9 @@ async function main() {
     check(!/business_email|hq_location.*private/i.test(detail), "no brand contact details leak into the factory's view");
 
     const gateText = await page.locator(".browse-gate").innerText().catch(() => "");
-    check(/not quote it yet/i.test(gateText),
-      "an unverified factory is told plainly it may read this but not quote it");
+    check(!/not quote it yet/i.test(gateText),
+      "and is not told it may read but not quote, because it may now do both");
 
-
-    // ================= VERIFICATION =================
-    console.log("\nADMIN VERIFIES");
-    const adminEmail = `e2e-admin-${stamp}@example.com`;
-    const { data: adminUser } = await db.auth.admin.createUser({
-      email: adminEmail, password: PASSWORD, email_confirm: true,
-    });
-    await db.from("platform_admins").insert({ user_id: adminUser.user.id });
-
-    await signOutFully(page);
-    await signIn(page, adminEmail, "Admin");
-
-    // Platform staff have no brand or factory org; the admin tool must be
-    // reachable anyway.
-    // Everything staff do is in the operations workspace now. Approving a
-    // company there is what verifies it, and verification is what unlocks
-    // quoting.
-    const ADMIN = APP.replace(/app\.html.*$/, "admin.html");
-    await page.goto(ADMIN);
-    await waitForHeading(page, "admin overview", 30000);
-    await record(page, "Verification queue", "an admin with no org of their own can still work");
-
-    const queueText = await page.locator("body").innerText();
-    check(queueText.includes(factoryName), "the factory is waiting for a decision in the live queue");
-
-    // Open the queue and approve this run's factory.
-    await page.goto(`${ADMIN}?screen=verification`);
-    await page.waitForTimeout(3000);
-    // Each queue row ends in a Review button. Addressed by position within the
-    // row rather than by text, so relabelling it does not break the run.
-    const reviewButtons = ".admin-verification-row button:last-child";
-    const rowCount = await page.locator(".admin-verification-row").count();
-    let approved = false;
-    for (let index = 0; index < rowCount; index += 1) {
-      const text = await page.locator(".admin-verification-row").nth(index).innerText().catch(() => "");
-      if (!text.includes(factoryName)) continue;
-      await page.locator(reviewButtons).nth(index).click();
-      approved = true;
-      break;
-    }
-    check(approved, "the queue row for this factory was found and opened");
-    await page.waitForTimeout(2500);
-
-    await clickButton(page, "approve profile");
-    await page.waitForTimeout(4000);
-    await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
-
-    const { data: verified } = await db
-      .from("factory_profiles").select("verification_status").eq("org_id", factoryOrg.id).single();
-    check(verified.verification_status === "verified", "the factory is now verified in the database");
-
-    // ================= THE OPERATIONS WORKSPACE =================
-    // The designed admin console, on the same session. Same origin, so the
-    // session carries across the page boundary; everything it shows comes back
-    // through a security-definer RPC.
-    await page.goto(ADMIN);
-    await page.waitForTimeout(4000);
-    const consoleText = await page.locator("body").innerText();
-
-    check(/admin overview/i.test(consoleText), "the operations workspace opens for staff");
-    check(
-      !/not a staff account/i.test(consoleText),
-      "and does not turn away an account that is on the admin list",
-    );
-    check(
-      consoleText.includes(brandName) || consoleText.includes(factoryName),
-      "a company from this run is in the live verification queue",
-    );
-    check(
-      !/could not load/i.test(consoleText),
-      "the queue loaded rather than erroring",
-    );
-    await record(page, "Operations workspace", "the designed admin console, on marketplace data");
-
-    await page.goto(`${ADMIN}?screen=quotes`);
-    await page.waitForTimeout(3500);
-    const quotesText = await page.locator("body").innerText();
-    check(/quotes/i.test(quotesText), "the marketplace-wide quote table opens");
-    await record(page, "Marketplace quotes", "every quote across the marketplace, staff only");
 
     // ================= THE QUOTE =================
     console.log("\nFACTORY QUOTES");
@@ -1103,7 +1178,7 @@ async function main() {
     // Click through rather than deep-linking. A URL navigation would not have
     // caught goTo() being broken inside the ported screen, and did not.
     await page.goto(APP);
-    await waitFor(page, ".home-stack", 25000);
+    await waitFor(page, DASHBOARD, 25000);
     await page.goto(`${APP}/orders`);
     await waitForHeading(page, "production orders", 25000);
     await record(page, "Production orders", "the brand's side of the work it just commissioned");
@@ -1168,7 +1243,7 @@ async function main() {
     console.log("\nTHE LOSER HEARS");
     await signOutFully(page);
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Winning factory", "factory");
-    await waitFor(page, ".home-stack", 30000);
+    await waitFor(page, DASHBOARD, 30000);
 
     // The hand-built home listed notifications inline. The designed one puts
     // them behind the activity button in its header, which is where a vendor
@@ -1458,14 +1533,39 @@ async function main() {
     await waitFor(page, '.message-thread-card', 25000);
     await record(page, "Conversations", "one per piece of work, not one per company");
 
-    await page.locator('.message-thread-card').first().click();
+    // This brand has more than one conversation by now — one per request, one
+    // per order. Open the order's, which is the one the factory wrote in.
+    const threadCards = await page.locator('.message-thread-card').count();
+    let openedThread = false;
+    for (let index = 0; index < threadCards; index += 1) {
+      const text = await page.locator('.message-thread-card').nth(index).innerText().catch(() => "");
+      if (!text.includes(bornOrder.order_number)) continue;
+      await page.locator('.message-thread-card').nth(index).click();
+      openedThread = true;
+      break;
+    }
+    if (!openedThread) await page.locator('.message-thread-card').first().click();
+    check(openedThread, `the order's own conversation is listed (${bornOrder.order_number})`);
     await waitFor(page, '.message-bubble', 25000);
 
-    const readerSees = await page.locator('.message-bubble').first().innerText();
+    // Every bubble in the thread, not the first: the conversation may already
+    // hold older messages, and the one under test is the newest.
+    //
+    // Selecting a thread loads its messages, so the bubbles on screen are the
+    // previous thread's for a moment. Wait for this message to actually be
+    // among them rather than reading whatever is there first.
+    const wanted = (sent.body_translated ?? sent.body).slice(0, 12);
+    const readDeadline = Date.now() + 20000;
+    let readerSees = "";
+    while (Date.now() < readDeadline) {
+      readerSees = (await eachText(page, ".message-bubble")).join("\n");
+      if (readerSees.includes(wanted)) break;
+      await page.waitForTimeout(300);
+    }
     if (sent.body_translated) {
       check(readerSees.includes(sent.body_translated.slice(0, 20)),
         "the brand is shown English first, not a sentence it cannot read");
-      check(/what they wrote/i.test(readerSees),
+      check(/show original/i.test(readerSees),
         "with the original always one click away — a translation is a convenience, not the record");
     } else {
       check(readerSees.includes(factoryLine.slice(0, 8)),
@@ -1591,11 +1691,15 @@ async function main() {
     // something is behind it, and no card when nothing is.
     const attentionCards = await page.locator(".home-attention-card").count();
     const newcomerLayout = await page.locator(".home-new-brand-card").count();
+    // The newcomer layout is for an account with nothing yet — not for one
+    // that merely has nothing outstanding today. This brand has requests and
+    // an order, so it gets the working dashboard whatever the rail says.
+    const activePanels = await page.locator(".home-active-rfqs, .home-active-orders").count();
     check(
-      (attentionCards > 0 && newcomerLayout === 0) || (attentionCards === 0 && newcomerLayout === 1),
+      newcomerLayout === 0 && activePanels > 0,
       attentionCards
         ? `the brand is told what is waiting on them (${attentionCards} card(s))`
-        : "with nothing outstanding, no attention card is invented and the newcomer layout shows instead",
+        : "a brand with requests and orders gets the working dashboard, and no attention card is invented",
     );
 
     check(!/Seoul Knit Works asked about yarn/i.test(homeText),

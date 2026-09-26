@@ -12,7 +12,7 @@
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { MessagesScreen } from "../../prototype/main.jsx";
-import { listMessages, listThreads, markRead, openOrderThread, readable, sendMessage } from "../../lib/domain/message.js";
+import { LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, sendMessage } from "../../lib/domain/message.js";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -155,10 +155,18 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         return {
           from: mine ? (isFactory ? "factory" : "brand") : (isFactory ? "brand" : "factory"),
           time: message.created_at ? TIME.format(new Date(message.created_at)) : "",
-          // The design shows the original behind a toggle when a translation
-          // exists, and the plain body when it does not.
+          // The reader's own language first, with the original one click
+          // away — the rule in CLAUDE.md. The designed bubble shows `body`
+          // by default and `translation` when toggled, so the readable text
+          // is the body and the toggle reveals what was actually typed.
           ...(view.isTranslation
-            ? { translation: view.text, original: view.original, language: view.originalLang }
+            ? {
+              body: view.text,
+              translation: view.original,
+              language: view.originalLang,
+              showAltLabel: `Show original${LANGUAGE_NAME[view.originalLang] ? ` (${LANGUAGE_NAME[view.originalLang]})` : ""}`,
+              hideAltLabel: "Show translation",
+            }
             : { body: view.text }),
           attachments: (message.documents ?? []).map((doc) => doc.file_name).filter(Boolean),
         };

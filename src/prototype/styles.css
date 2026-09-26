@@ -11204,6 +11204,21 @@ body:has(.brand-onboarding-page) {
   overflow-y: auto;
 }
 
+/*
+ * Inside the onboarding card the list opens in flow rather than over the top.
+ *
+ * As an overlay it covered the card's own Next button, so a press aimed at
+ * Next landed on whichever category happened to be under it and silently
+ * ticked it — the button looked dead and the answer changed behind your back.
+ * In flow the card grows and Next moves down with it, so both the options and
+ * the button are exactly where they appear to be.
+ */
+.brand-onboarding-card .brand-category-multiselect[open] .brand-category-multiselect-menu {
+  position: static;
+  box-shadow: none;
+  margin-top: 6px;
+}
+
 .brand-category-multiselect-menu label {
   display: flex;
   align-items: center;
