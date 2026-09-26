@@ -337,3 +337,17 @@
     justify-content: flex-start !important;
   }
 }
+
+/*
+ * A dashboard mini card with no reference image.
+ *
+ * The designed header is a two-column grid — image, then title — and the
+ * prototype's mock requests all carry a photograph. Real ones often do not,
+ * and the title was being squeezed into the 46px image slot: "Organic cotton
+ * shirting, SS27" rendered as "Organi cott…" across two lines. With no image
+ * to place, the title takes the whole row.
+ */
+.home-production-title:not(:has(img)),
+.home-rfq-card .home-production-title:not(:has(img)) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}

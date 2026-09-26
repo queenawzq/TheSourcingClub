@@ -11,6 +11,7 @@
  */
 import { listOrders, orderStatusLabel, statusTone } from "../lib/domain/order.js";
 import { listRfqs } from "../lib/domain/rfq.js";
+import { listThreads } from "../lib/domain/message.js";
 import { formatMoney, formatRange } from "../lib/money.js";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -65,6 +66,9 @@ function statusDetail(order, isFactory) {
 export function toProjectCard(order, isFactory) {
   return {
     id: order.id,
+    // The raw state, so a screen can tell an open order from a finished one
+    // without parsing the label it shows a human.
+    state: order.status,
     title: order.rfqs?.title ?? order.order_number,
     factory: counterparty(order, isFactory),
     location: order.order_number,
@@ -93,12 +97,15 @@ const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
  * A request row in the shape the designed card reads.
  *
  * The three metric cells are the interesting part: the prototype hardcodes
- * "3 quotes · 7 invited · 2 message" per mock request. Two of those are real
- * counts I already fetch; the third is not, and rather than invent a number
- * the cell is dropped. A card with two true figures beats one with three where
- * a reader cannot tell which is which.
+ * "3 quotes · 7 invited · 2 message" per mock request. All three are real
+ * here — quotes and invitations come back with the row, messages from the
+ * request's own conversations.
+ *
+ * The card destructures exactly three (RfqCard in src/prototype/main.jsx), so
+ * handing it two threw and the error boundary ate the whole Quotes screen.
+ * Count them, or the screen dies.
  */
-export function toRfqCard(rfq) {
+export function toRfqCard(rfq, messageCount = 0) {
   const quotes = rfq.quotes?.[0]?.count ?? 0;
   const invited = rfq.rfq_invitations?.[0]?.count ?? 0;
 
@@ -135,6 +142,7 @@ export function toRfqCard(rfq) {
     metrics: [
       [String(quotes), quotes === 1 ? "quote" : "quotes"],
       [String(invited), "invited"],
+      [String(messageCount), messageCount === 1 ? "message" : "messages"],
     ],
   };
 }
@@ -147,8 +155,19 @@ export function createLiveAdapter({ org, isFactory, user }) {
     // Split here rather than in the screen: which statuses count as "closed"
     // is a domain question, and the factory side will need the same answer.
     rfqs: async () => {
-      const rows = await listRfqs(org.id);
-      const bucket = (predicate) => rows.filter(predicate).map(toRfqCard);
+      // One read for every conversation, then counted per request — the
+      // alternative is a query per card.
+      const [rows, threads] = await Promise.all([listRfqs(org.id), listThreads(org.id)]);
+      const messagesByRfq = new Map();
+      for (const thread of threads ?? []) {
+        if (!thread.rfq_id) continue;
+        messagesByRfq.set(
+          thread.rfq_id,
+          (messagesByRfq.get(thread.rfq_id) ?? 0) + (Number(thread.message_count) || 0),
+        );
+      }
+      const bucket = (predicate) =>
+        rows.filter(predicate).map((row) => toRfqCard(row, messagesByRfq.get(row.id) ?? 0));
       return {
         active: bucket((r) => r.status === "open"),
         drafts: bucket((r) => r.status === "draft"),

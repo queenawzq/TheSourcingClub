@@ -4,6 +4,12 @@
  * `HomeScreen` is imported from src/prototype/main.jsx and mounted here with
  * live data. This file is the seam, not a screen.
  *
+ * Everything the design draws has to be passed in, because the component
+ * falls back to the prototype's constants otherwise — which is how a real
+ * brand came to see "Atelier Minho", a silk slip dress it never posted and
+ * two calls nobody arranged. Requests, orders and savings are this org's own;
+ * scheduled calls have nothing behind them at all, so the card is hidden.
+ *
  * The design's "needs your attention" rail is a fixed list of four examples.
  * Live, it is whatever `dashboard_snapshot` says is actually outstanding —
  * which means a card only appears when there is something behind it, and the
@@ -13,6 +19,11 @@
 import React, { useEffect, useState } from "react";
 import { HomeScreen } from "../../prototype/main.jsx";
 import { dashboardSnapshot } from "../../lib/domain/dashboard.js";
+import { listRfqs } from "../../lib/domain/rfq.js";
+import { listOrders } from "../../lib/domain/order.js";
+import { listThreads } from "../../lib/domain/message.js";
+import { inviteBrand, savingsFor } from "../../lib/domain/credits.js";
+import { toProjectCard, toRfqCard } from "../live-adapter.js";
 import { formatMoney } from "../../lib/money.js";
 
 /**
@@ -90,32 +101,65 @@ function attentionFrom(snapshot, isFactory, goTo) {
   return items;
 }
 
-export default function LiveHome({ org, isFactory, goTo, onOpenActivity }) {
-  const [snapshot, setSnapshot] = useState(null);
+export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewRfq, onViewProject }) {
+  const [state, setState] = useState({ snapshot: null, rfqs: [], projects: [], savings: null });
   const [error, setError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    dashboardSnapshot(org.id)
-      .then((row) => !cancelled && setSnapshot(row))
+    Promise.all([
+      dashboardSnapshot(org.id),
+      listRfqs(org.id),
+      listOrders(org.id),
+      listThreads(org.id),
+      savingsFor(org.id),
+    ])
+      .then(([snapshot, rfqs, orders, threads, savings]) => {
+        if (cancelled) return;
+        const messagesByRfq = new Map();
+        for (const thread of threads ?? []) {
+          if (!thread.rfq_id) continue;
+          messagesByRfq.set(
+            thread.rfq_id,
+            (messagesByRfq.get(thread.rfq_id) ?? 0) + (Number(thread.message_count) || 0),
+          );
+        }
+        setState({
+          snapshot,
+          // Open requests first: the design's "Active quotes" panel is about
+          // what is still being quoted, not the archive.
+          rfqs: (rfqs ?? [])
+            .filter((rfq) => rfq.status === "open")
+            .map((rfq) => toRfqCard(rfq, messagesByRfq.get(rfq.id) ?? 0)),
+          projects: (orders ?? []).map((order) => toProjectCard(order, false)),
+          savings,
+        });
+      })
       .catch((failure) => !cancelled && setError(failure));
     return () => { cancelled = true; };
   }, [org.id]);
 
+  const { snapshot, rfqs, projects, savings } = state;
   const attention = attentionFrom(snapshot, isFactory, goTo) ?? [];
 
   return (
     <>
       {error && <p className="home-load-error" role="alert">{error.message}</p>}
       <HomeScreen
-        // A brand with nothing outstanding gets the design's newcomer layout,
-        // which is the one that shows recommended vendors and "ready to start
-        // sourcing?" — exactly right for an account that has just onboarded.
-        dashboardState={attention.length ? "active" : "newcomer"}
+        // The newcomer layout — recommended vendors, "ready to start
+        // sourcing?" — is for an account that genuinely has nothing yet, not
+        // for one that simply has nothing outstanding today.
+        dashboardState={rfqs.length || projects.length ? "active" : "newcomer"}
         goTo={goTo}
         onOpenActivity={onOpenActivity}
         orgName={org.name}
         attention={attention}
+        rfqs={rfqs}
+        projects={projects}
+        savings={savings ? { ...savings, onInvite: (email) => inviteBrand(org.id, email) } : null}
+        showCalls={false}
+        onViewRfq={onViewRfq}
+        onViewProject={onViewProject}
         unreadCount={Number(snapshot?.unread_messages) || 0}
       />
     </>

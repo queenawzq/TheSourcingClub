@@ -35,7 +35,9 @@ export async function createDraftRfq(orgId) {
 
 export async function getRfq(rfqId) {
   return unwrap(
-    await supabase.from("rfqs").select(RFQ_COLUMNS).eq("id", rfqId).maybeSingle(),
+    // The brand's name comes along: a factory reading a request sees whose it
+    // is, and without it the designed screen falls back to its example brand.
+    await supabase.from("rfqs").select(`${RFQ_COLUMNS}, orgs (id, name)`).eq("id", rfqId).maybeSingle(),
     "load the request",
   );
 }
@@ -271,4 +273,23 @@ export function rfqGaps(rfq, selected, questions) {
     { key: "timeline", label: "Timeline and price", done: Boolean(rfq?.target_delivery_month) },
     { key: "questions", label: "Questions for factories", done: (questions?.length ?? 0) > 0 },
   ];
+}
+
+/**
+ * How well each vendor fits one request, as a percentage.
+ *
+ * match_score_rfq() is per pair, so a list of vendors means a call each. They
+ * go out together and a failure scores nothing rather than failing the screen:
+ * the design shows a fit badge, and a blank badge is honest where a made-up
+ * number is not.
+ */
+export async function matchScoresForRfq(rfqId, factoryOrgIds) {
+  const scores = await Promise.all(
+    factoryOrgIds.map(async (factoryOrgId) => {
+      const { data, error } = await supabase.rpc("match_score_rfq", { rfq_id: rfqId, factory_org: factoryOrgId });
+      if (error || data === null || data === undefined) return [factoryOrgId, null];
+      return [factoryOrgId, Math.round(Number(data) * 100)];
+    }),
+  );
+  return new Map(scores);
 }

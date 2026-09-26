@@ -3486,12 +3486,22 @@ export function HomeScreen({
   attention,
   factories,
   unreadCount,
+  rfqs,
+  projects,
+  savings,
+  // Call scheduling has nothing behind it yet, so the live mount hides the
+  // card rather than showing a brand meetings that were never arranged.
+  showCalls = true,
+  onViewRfq,
+  onViewProject,
 }) {
   const isNewcomer = dashboardState === "newcomer";
   const [inviteBrandOpen, setInviteBrandOpen] = useState(false);
   const [discountCodesOpen, setDiscountCodesOpen] = useState(false);
   const who = orgName ?? "Maison Rue";
   const recommended = factories ?? marketplaceFactories;
+  const rfqCards = rfqs ?? activeRfqs;
+  const projectCards = projects ?? activeProjects;
   const defaultAttentionItems = [
     {
       type: "Draft",
@@ -3594,7 +3604,7 @@ export function HomeScreen({
                   </div>
                   <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteBrandOpen(true)}>Invite brand</button>
                 </header>
-                <BrandDashboardDiscountCard onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
+                <BrandDashboardDiscountCard savings={savings} onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
               </section>
               <section className="home-attention">
                 <header className="home-panel-header compact">
@@ -3627,8 +3637,8 @@ export function HomeScreen({
                 <button className="secondary-btn" type="button" onClick={() => goTo("rfqs")}>View all</button>
               </header>
               <div className="home-rfq-list">
-                {activeRfqs.slice(0, 4).map((rfq) => (
-                  <HomeRfqMiniCard rfq={rfq} goTo={goTo} key={rfq.title} />
+                {rfqCards.slice(0, 4).map((rfq) => (
+                  <HomeRfqMiniCard rfq={rfq} goTo={goTo} onOpen={onViewRfq} key={rfq.id ?? rfq.title} />
                 ))}
               </div>
             </section>
@@ -3639,8 +3649,8 @@ export function HomeScreen({
                 </div>
                 <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteBrandOpen(true)}>Invite brand</button>
               </header>
-              <BrandDashboardDiscountCard onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
-              <HomeUpcomingCallCard />
+              <BrandDashboardDiscountCard savings={savings} onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
+              {showCalls && <HomeUpcomingCallCard />}
               <header className="home-panel-header compact">
                 <div>
                   <h2>Needs your attention</h2>
@@ -3663,18 +3673,18 @@ export function HomeScreen({
               <button className="secondary-btn" type="button" onClick={() => goTo("projects")}>View all</button>
             </header>
             <div className="projects-list home-projects-list">
-              {activeProjects.slice(0, 2).map((project) => (
-                <HomeProjectMiniCard project={project} goTo={goTo} key={project.title} />
+              {projectCards.slice(0, 2).map((project) => (
+                <HomeProjectMiniCard project={project} goTo={goTo} onOpen={onViewProject} key={project.id ?? project.title} />
               ))}
             </div>
           </section>
         </>
       )}
       {inviteBrandOpen && (
-        <InviteBrandModal onClose={() => setInviteBrandOpen(false)} />
+        <InviteBrandModal onInvite={savings?.onInvite} onClose={() => setInviteBrandOpen(false)} />
       )}
       {discountCodesOpen && (
-        <DiscountCodesModal onClose={() => setDiscountCodesOpen(false)} />
+        <DiscountCodesModal codes={savings?.codes} onClose={() => setDiscountCodesOpen(false)} />
       )}
     </div>
   );
@@ -3770,17 +3780,23 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
   );
 }
 
-function BrandDashboardDiscountCard({ onInvite, onViewCodes }) {
+// `savings` is the org's real credit balance and codes where a live mount
+// passes it; the prototype keeps the design's $50 example.
+function BrandDashboardDiscountCard({ savings, onInvite, onViewCodes }) {
+  const amount = savings?.amount ?? "$50";
+  const note = savings?.note ?? "For eligible orders. Invite a brand to earn another $50 discount.";
+  const hasCodes = savings ? Boolean(savings.codes?.length) : true;
+
   return (
     <section className="brand-dashboard-discount-card">
       <div className="brand-discount-card-topline">
         <span>Available discount</span>
-        <button className="brand-copy-code-btn" type="button" onClick={onViewCodes}>View discount codes</button>
+        {hasCodes && <button className="brand-copy-code-btn" type="button" onClick={onViewCodes}>View discount codes</button>}
       </div>
       <div className="brand-discount-card-body">
         <div>
-          <strong>$50</strong>
-          <p>For eligible orders. Invite a brand to earn another $50 discount.</p>
+          <strong>{amount}</strong>
+          <p>{note}</p>
         </div>
       </div>
     </section>
@@ -3793,7 +3809,8 @@ const brandDiscountCodes = [
   { code: "WELCOME-50", status: "Used", source: "First eligible order", value: "$50", usedOn: "Organic cotton woven shirt - Jul 18" }
 ];
 
-function DiscountCodesModal({ onClose }) {
+function DiscountCodesModal({ codes, onClose }) {
+  const rows = codes ?? brandDiscountCodes;
   return createPortal((
     <div className="brand-profile-modal-layer" role="presentation">
       <button className="brand-profile-modal-scrim" type="button" aria-label="Close discount codes" onClick={onClose} />
@@ -3806,7 +3823,7 @@ function DiscountCodesModal({ onClose }) {
           <p>Use an unused code at payment. Used codes stay here so finance can track order discounts.</p>
         </header>
         <div className="brand-discount-code-list">
-          {brandDiscountCodes.map((item) => (
+          {rows.map((item) => (
             <article className={item.status === "Used" ? "brand-discount-code-row used" : "brand-discount-code-row"} key={item.code}>
               <div>
                 <span>{item.source}</span>
@@ -3826,7 +3843,27 @@ function DiscountCodesModal({ onClose }) {
   ), document.body);
 }
 
-function InviteBrandModal({ onClose }) {
+function InviteBrandModal({ onInvite, onClose }) {
+  // The prototype's modal closes and nothing happens. A live mount passes
+  // onInvite, and then the address typed here becomes a real referral.
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const send = async () => {
+    if (!onInvite) return onClose();
+    setBusy(true);
+    setError(null);
+    try {
+      await onInvite(email.trim());
+      onClose();
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return createPortal((
     <div className="brand-profile-modal-layer brand-invite-modal-layer" role="presentation">
       <button className="brand-profile-modal-scrim" type="button" aria-label="Close invite brand" onClick={onClose} />
@@ -3840,15 +3877,16 @@ function InviteBrandModal({ onClose }) {
         </header>
         <label className="brand-profile-edit-field full-width">
           <span>Brand email</span>
-          <input type="email" placeholder="name@brand.com" />
+          <input type="email" placeholder="name@brand.com" value={onInvite ? email : undefined} onChange={onInvite ? (event) => setEmail(event.target.value) : undefined} />
         </label>
         <label className="brand-profile-edit-field full-width">
           <span>Message</span>
           <textarea defaultValue="I thought The Sourcing Club could be useful for your next production order. If you join and place an eligible order, we both get a $50 discount." />
         </label>
+        {error && <p className="auth-error" role="alert">{error}</p>}
         <div className="brand-profile-modal-actions">
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="primary-btn" type="button" onClick={onClose}>Send invite</button>
+          <button className="primary-btn" type="button" disabled={busy} onClick={send}>{busy ? "Sending…" : "Send invite"}</button>
         </div>
       </section>
     </div>
@@ -3951,7 +3989,7 @@ function HomeAttentionCard({ item }) {
   );
 }
 
-function HomeRfqMiniCard({ rfq, goTo }) {
+function HomeRfqMiniCard({ rfq, goTo, onOpen }) {
   const [quotesReceived, invitedCount] = rfq.metrics;
   const quoteDue = rfq.date.split("Quote due ")[1] || "TBD";
   const [primaryImage] = rfq.images || [];
@@ -3967,7 +4005,7 @@ function HomeRfqMiniCard({ rfq, goTo }) {
       </header>
       <div className="home-rfq-side shared-card-actions">
         <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{rfq.status}</span>
-        <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View quote</button>
+        <button className="primary-btn" type="button" onClick={() => (onOpen ? onOpen(rfq) : goTo("quotes"))}>View quote</button>
       </div>
       <div className="home-production-facts home-rfq-facts shared-card-body">
         <div>
@@ -3988,7 +4026,7 @@ function HomeRfqMiniCard({ rfq, goTo }) {
   );
 }
 
-function HomeProjectMiniCard({ project, goTo }) {
+function HomeProjectMiniCard({ project, goTo, onOpen }) {
   const compactStatus = project.statusTone === "warning" ? "Lab dip review" : project.statusTone === "ready" ? "Sample approval" : project.status;
 
   return (
@@ -4002,7 +4040,7 @@ function HomeProjectMiniCard({ project, goTo }) {
       </header>
       <div className="home-production-actions shared-card-actions">
         <span className={`project-status shared-card-status ${project.statusTone}`}>{compactStatus}</span>
-        <button className="primary-btn" type="button" onClick={() => goTo("projectDetail")}>View order</button>
+        <button className="primary-btn" type="button" onClick={() => (onOpen ? onOpen(project) : goTo("projectDetail"))}>View order</button>
       </div>
       <div className="home-production-facts shared-card-body">
         <div>
@@ -5855,7 +5893,15 @@ function SavedFactoryCard({ factory, goTo }) {
   );
 }
 
-export function RfqsScreen({ goTo }) {
+export function RfqsScreen({
+  goTo,
+  // Live mounts pass these; the prototype passes none and keeps using goTo.
+  // A screen key carries no id, so without them every card opens whichever
+  // request the router happens to land on — usually the list itself.
+  onViewQuotes,
+  onEditRfq,
+  onInviteVendors,
+}) {
   const [activeTab, setActiveTab] = useState("active");
   const [rfqTabs, setRfqTabs] = useState([
     { key: "active", label: "Active quotes (4)", locked: true },
@@ -6080,7 +6126,15 @@ export function RfqsScreen({ goTo }) {
           </p>
         ) : (
           activeRfqsForTab.map((rfq) => (
-            <RfqCard rfq={rfq} goTo={goTo} customTabs={customTabs} key={rfq.id ?? rfq.title} />
+            <RfqCard
+              rfq={rfq}
+              goTo={goTo}
+              customTabs={customTabs}
+              onViewQuotes={onViewQuotes}
+              onEdit={onEditRfq}
+              onInvite={onInviteVendors}
+              key={rfq.id ?? rfq.title}
+            />
           ))
         )}
       </section>
@@ -6088,10 +6142,12 @@ export function RfqsScreen({ goTo }) {
   );
 }
 
-function RfqCard({ rfq, goTo, customTabs = [] }) {
+function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
-  const [quotesReceived, invitedCount, messageCount] = rfq.metrics;
+  // Defaulted: a live mount that supplies fewer cells than the design draws
+  // must render a thinner card, not throw and take the screen with it.
+  const [quotesReceived = [], invitedCount = [], messageCount = []] = rfq.metrics ?? [];
   const quoteDue = rfq.date.split("Quote due ")[1] || "TBD";
   const [primaryImage] = rfq.images || [];
   const facts = [
@@ -6124,7 +6180,7 @@ function RfqCard({ rfq, goTo, customTabs = [] }) {
         </div>
         <div className="rfq-card-actions shared-card-actions">
           <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{rfq.status}</span>
-          <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>View quote</button>
+          <button className="primary-btn" type="button" onClick={() => (onViewQuotes ? onViewQuotes(rfq) : goTo("quotes"))}>View quote</button>
           <div className="project-overflow" ref={menuRef}>
             <button
               className="rfq-more"
@@ -6149,9 +6205,9 @@ function RfqCard({ rfq, goTo, customTabs = [] }) {
                     </div>
                   )}
                 </div>
-                <button type="button" role="menuitem" onClick={() => goTo("review")}>Edit quote</button>
+                <button type="button" role="menuitem" onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
                 <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate quote</button>
-                <button type="button" role="menuitem" onClick={() => goTo("invite")}>Invite more vendors</button>
+                <button type="button" role="menuitem" onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
                 <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive quote</button>
               </div>
             )}
@@ -6193,7 +6249,7 @@ function RfqCard({ rfq, goTo, customTabs = [] }) {
   );
 }
 
-export function ProjectsScreen({ goTo, setSelectedReorderProject }) {
+export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder }) {
   // Reads through the data seam rather than the module constant, so the same
   // screen serves mock data in prototype.html and real orders in app.html.
   const { data: orders, loading, error } = useOrders();
@@ -6208,6 +6264,28 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject }) {
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
   const [draftTabs, setDraftTabs] = useState(projectTabs);
   const customTabs = projectTabs.filter((tab) => !tab.locked).map((tab) => tab.label);
+
+  /**
+   * Real counts, where the rows can answer the question.
+   *
+   * The labels were literals — "Active orders (4)", "Closed (6)" — sitting
+   * above whatever the list actually held, which read as four orders to a
+   * brand that had none. Live rows carry their state; the prototype's mock
+   * projects do not, so there the design's own numbers stay.
+   */
+  const orderRows = orders ?? [];
+  const knowsState = orderRows.some((project) => project.state);
+  const isClosed = (project) => project.state === "completed" || project.state === "cancelled";
+  const ordersForTab = !knowsState
+    ? orderRows
+    : orderRows.filter((project) => (activeTab === "closed" ? isClosed(project) : !isClosed(project)));
+  const tabLabel = (tab) => {
+    if (!tab.locked || !knowsState) return tab.label;
+    const count = tab.key === "closed"
+      ? orderRows.filter(isClosed).length
+      : orderRows.filter((project) => !isClosed(project)).length;
+    return `${tab.label.replace(/\s*\(\d+\)\s*$/, "")} (${count})`;
+  };
 
   function openManageTabs() {
     setDraftTabs(projectTabs);
@@ -6317,7 +6395,7 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject }) {
                   aria-current={activeTab === tab.key ? "page" : undefined}
                   onClick={() => setActiveTab(tab.key)}
                 >
-                  {tab.label}
+                  {tabLabel(tab)}
                 </button>
               </div>
             ) : (
@@ -6328,7 +6406,7 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject }) {
                 onClick={() => setActiveTab(tab.key)}
                 key={tab.key}
               >
-                {tab.label}
+                {tabLabel(tab)}
               </button>
             )
           ))}
@@ -6411,16 +6489,19 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject }) {
           <p className="projects-empty projects-error" data-testid="orders-error">
             {error.message}
           </p>
-        ) : !orders?.length ? (
+        ) : !ordersForTab.length ? (
           <p className="projects-empty" data-testid="orders-empty">
-            No production orders yet. One appears here when a quote is awarded.
+            {activeTab === "closed"
+              ? "Nothing closed yet."
+              : "No production orders yet. One appears here when a quote is awarded."}
           </p>
         ) : (
-          orders.map((project) => (
+          ordersForTab.map((project) => (
             <ProjectListCard
               project={project}
               goTo={goTo}
               customTabs={customTabs}
+              onViewOrder={onViewOrder}
               setSelectedReorderProject={setSelectedReorderProject}
               key={project.id ?? project.title}
             />
@@ -6431,7 +6512,7 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject }) {
   );
 }
 
-function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], setSelectedReorderProject = null }) {
+function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], onViewOrder, setSelectedReorderProject = null }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const projectFacts = [
@@ -6460,7 +6541,7 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
         </div>
         <ProjectCardActions
           actionLabel={actionLabel}
-          onAction={() => goTo("projectDetail")}
+          onAction={() => (onViewOrder ? onViewOrder(project) : goTo("projectDetail"))}
           status={project.status}
           statusTone={project.statusTone}
         >
