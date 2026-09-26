@@ -802,6 +802,10 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState(null);
   if (!profile) return null;
+  const members = submission?.members ?? [];
+  const submitter = members.find((member) => member.role === "owner") ?? members[0] ?? null;
+  const submitterName = submitter?.name || "Not provided";
+  const submitterEmail = submitter?.email || "Not provided";
   return (
     <main className="factory-profile-page brand-profile-page admin-page admin-review-page">
       <div className="admin-review-shell">
@@ -853,6 +857,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             {profile.confidence != null && <ConfidenceCard score={profile.confidence} />}
             <section className="factory-profile-card admin-review-meta">
               <h2>Review details</h2>
+              {submission && <ProfileDetailPair label="Submitted by" value={submitterName} />}
+              {submission && <ProfileDetailPair label="Account email" value={submitterEmail} />}
               {profile.completion != null && <ProfileDetailPair label="Profile completeness" value={`${profile.completion}%`} />}
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
@@ -1313,9 +1319,13 @@ function App() {
   useEffect(() => {
     if (!selectedProfile?.id || !actions.orgDocuments) {
       setReviewDocuments([]);
+      setReviewSubmission(null);
       return undefined;
     }
     let cancelled = false;
+    // Never show the previous company's account contact while the next
+    // submission is loading.
+    setReviewSubmission(null);
     Promise.resolve(actions.orgDocuments(selectedProfile.id))
       .then((rows) => { if (!cancelled) setReviewDocuments(rows ?? []); })
       // Neither fetch may take the review screen down with it: the decision
