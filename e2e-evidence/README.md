@@ -1,8 +1,8 @@
 # End-to-end evidence
 
-Recorded 2026-09-13T20:35:25.483Z against `http://127.0.0.1:5173/app.html`.
+Recorded 2026-09-26T21:00:37.795Z against `http://127.0.0.1:5173/app.html`.
 
-**111 steps, 147 assertions, 0 failed.**
+**116 steps, 163 assertions, 0 failed.**
 
 A real browser, driven by Stagehand, against a real database. No mock data
 anywhere: every value below was typed into the interface and then read back
@@ -12,120 +12,131 @@ out of Postgres to confirm the screen and the database agree.
 
 | # | Step | What it shows | Screenshot |
 |---|---|---|---|
-| 1 | Factory sign-up | the designed vendor portal | [01-factory-sign-up.png](01-factory-sign-up.png) |
-| 2 | Factory account details | name, company, email and password on one form | [02-factory-account-details.png](02-factory-account-details.png) |
-| 3 | Factory signed up | an account, a name and a company in one submit | [03-factory-signed-up.png](03-factory-signed-up.png) |
-| 4 | Factory welcome | the designed card, with the manufacturer / trading-company choice | [04-factory-welcome.png](04-factory-welcome.png) |
-| 5 | Factory basics | one designed card, six fields | [05-factory-basics.png](05-factory-basics.png) |
-| 6 | Factory context |  | [06-factory-context.png](06-factory-context.png) |
-| 7 | Factory what you make | from taxonomy_terms: Cut & sew knits, Tops, Bottoms | [07-factory-what-you-make.png](07-factory-what-you-make.png) |
-| 8 | Factory specialty and services | equipment is free text on purpose | [08-factory-specialty-and-services.png](08-factory-specialty-and-services.png) |
-| 9 | Factory capacity and terms |  | [09-factory-capacity-and-terms.png](09-factory-capacity-and-terms.png) |
-| 10 | Factory verification | documents are reviewed by a human, not self-declared | [10-factory-verification.png](10-factory-verification.png) |
-| 11 | Factory walkthrough |  | [11-factory-walkthrough.png](11-factory-walkthrough.png) |
-| 12 | Factory review | what the vendor actually typed, read back | [12-factory-review.png](12-factory-review.png) |
-| 13 | Factory terms |  | [13-factory-terms.png](13-factory-terms.png) |
-| 14 | Factory complete | the designed finish card, not a hand-built one | [14-factory-complete.png](14-factory-complete.png) |
-| 15 | Brand sign-up | the designed brand portal | [15-brand-sign-up.png](15-brand-sign-up.png) |
-| 16 | Brand account details | name, company, email and password on one form | [16-brand-account-details.png](16-brand-account-details.png) |
-| 17 | Brand signed up | an account, a name and a company in one submit | [17-brand-signed-up.png](17-brand-signed-up.png) |
-| 18 | Brand welcome | the designed welcome card | [18-brand-welcome.png](18-brand-welcome.png) |
-| 19 | Brand basics | category options come from the taxonomy, not the mock list | [19-brand-basics.png](19-brand-basics.png) |
-| 20 | Brand context | logo and product imagery upload here, to the public bucket | [20-brand-context.png](20-brand-context.png) |
-| 21 | Brand what you make | same vocabulary the vendor picked from: Tops, Bottoms | [21-brand-what-you-make.png](21-brand-what-you-make.png) |
-| 22 | Brand sourcing volume | dollars on screen, minor units in the database | [22-brand-sourcing-volume.png](22-brand-sourcing-volume.png) |
-| 23 | Brand vendor preferences |  | [23-brand-vendor-preferences.png](23-brand-vendor-preferences.png) |
-| 24 | Brand trust | team invitations and the private registration upload | [24-brand-trust.png](24-brand-trust.png) |
-| 25 | Brand review | what was entered, not the mock | [25-brand-review.png](25-brand-review.png) |
-| 26 | Brand terms |  | [26-brand-terms.png](26-brand-terms.png) |
-| 27 | Brand complete | the designed finish card | [27-brand-complete.png](27-brand-complete.png) |
-| 28 | Brand dashboard | matches the new factory at 50% — weak | [28-brand-dashboard.png](28-brand-dashboard.png) |
-| 29 | Brand requests | the designed screen, empty until the first one is written | [29-brand-requests.png](29-brand-requests.png) |
-| 30 | Describe what you need | Queena's first flow card, on her chrome | [30-describe-what-you-need.png](30-describe-what-you-need.png) |
-| 31 | Review the brief | read back and correctable — Skip AI leaves it empty to fill | [31-review-the-brief.png](31-review-the-brief.png) |
-| 32 | The brief, corrected | every field is the brand's, not the model's | [32-the-brief-corrected.png](32-the-brief-corrected.png) |
-| 33 | Choose who sees it | the design's own toggle decides open or invite-only | [33-choose-who-sees-it.png](33-choose-who-sees-it.png) |
-| 34 | RFQ published |  | [34-rfq-published.png](34-rfq-published.png) |
-| 35 | Factory again sign-in | cold start, no session | [35-factory-again-sign-in.png](35-factory-again-sign-in.png) |
-| 36 | Factory again signed in | email and password, on the designed screen | [36-factory-again-signed-in.png](36-factory-again-signed-in.png) |
-| 37 | Factory dashboard | still unverified, so it may look but not bid | [37-factory-dashboard.png](37-factory-dashboard.png) |
-| 38 | Factory browse | the brand's request, found by a factory that was never invited | [38-factory-browse.png](38-factory-browse.png) |
-| 39 | Factory reads the request | every field traces to a stored column, none of it is copy | [39-factory-reads-the-request.png](39-factory-reads-the-request.png) |
-| 40 | Admin sign-in | cold start, no session | [40-admin-sign-in.png](40-admin-sign-in.png) |
-| 41 | Admin signed in | email and password, on the designed screen | [41-admin-signed-in.png](41-admin-signed-in.png) |
-| 42 | Verification queue | an admin with no org of their own can still work | [42-verification-queue.png](42-verification-queue.png) |
-| 43 | Factory approved | approving the company verifies it, which unlocks quoting | [43-factory-approved.png](43-factory-approved.png) |
-| 44 | Operations workspace | the designed admin console, on marketplace data | [44-operations-workspace.png](44-operations-workspace.png) |
-| 45 | Marketplace quotes | every quote across the marketplace, staff only | [45-marketplace-quotes.png](45-marketplace-quotes.png) |
-| 46 | Factory quoting sign-in | cold start, no session | [46-factory-quoting-sign-in.png](46-factory-quoting-sign-in.png) |
-| 47 | Factory quoting signed in | email and password, on the designed screen | [47-factory-quoting-signed-in.png](47-factory-quoting-signed-in.png) |
-| 48 | Factory can now bid | the verification notice is gone and the quote button is live | [48-factory-can-now-bid.png](48-factory-can-now-bid.png) |
-| 49 | The quote | Queena's submit screen, on a real draft row | [49-the-quote.png](49-the-quote.png) |
-| 50 | Factory quote | prose on screen, taxonomy ids and rows underneath | [50-factory-quote.png](50-factory-quote.png) |
-| 51 | Quote sent | and the factory is promised an answer either way | [51-quote-sent.png](51-quote-sent.png) |
-| 52 | Brand deciding sign-in | cold start, no session | [52-brand-deciding-sign-in.png](52-brand-deciding-sign-in.png) |
-| 53 | Brand deciding signed in | email and password, on the designed screen | [53-brand-deciding-signed-in.png](53-brand-deciding-signed-in.png) |
-| 54 | Quotes received | Queena's quote list, every figure derived from stored columns | [54-quotes-received.png](54-quotes-received.png) |
-| 55 | Awarded | the loop closes here | [55-awarded.png](55-awarded.png) |
-| 56 | Production orders | the brand's side of the work it just commissioned | [56-production-orders.png](56-production-orders.png) |
-| 57 | The order | before either side agrees, the schedule is the whole screen | [57-the-order.png](57-the-order.png) |
-| 58 | The schedule | drafted from the quote; either side may change it | [58-the-schedule.png](58-the-schedule.png) |
-| 59 | Brand agrees | one signature. The order has not started | [59-brand-agrees.png](59-brand-agrees.png) |
-| 60 | Winning factory sign-in | cold start, no session | [60-winning-factory-sign-in.png](60-winning-factory-sign-in.png) |
-| 61 | Winning factory signed in | email and password, on the designed screen | [61-winning-factory-signed-in.png](61-winning-factory-signed-in.png) |
-| 62 | Factory hears the outcome | award_quote wrote this row; now something shows it | [62-factory-hears-the-outcome.png](62-factory-hears-the-outcome.png) |
-| 63 | Factory sees the schedule | the same steps the brand read, nothing actionable yet | [63-factory-sees-the-schedule.png](63-factory-sees-the-schedule.png) |
-| 64 | Both agreed | the order is running | [64-both-agreed.png](64-both-agreed.png) |
-| 65 | The order, active | the designed header, on production_order_summary | [65-the-order-active.png](65-the-order-active.png) |
-| 66 | Posting an update | a note and photographs, which is the factory's only lever here | [66-posting-an-update.png](66-posting-an-update.png) |
-| 67 | Sent for approval | the brand decides; the factory does not mark its own work done | [67-sent-for-approval.png](67-sent-for-approval.png) |
-| 68 | Where the factory gets paid | no full account number is asked for, or stored | [68-where-the-factory-gets-paid.png](68-where-the-factory-gets-paid.png) |
-| 69 | Brand approving sign-in | cold start, no session | [69-brand-approving-sign-in.png](69-brand-approving-sign-in.png) |
-| 70 | Brand approving signed in | email and password, on the designed screen | [70-brand-approving-signed-in.png](70-brand-approving-signed-in.png) |
-| 71 | Waiting on the brand | the factory has sent a step for approval | [71-waiting-on-the-brand.png](71-waiting-on-the-brand.png) |
-| 72 | The brand reads the update | posted by the factory, readable by the brand, nobody else | [72-the-brand-reads-the-update.png](72-the-brand-reads-the-update.png) |
-| 73 | Approved | from the row, on the state that row is actually in | [73-approved.png](73-approved.png) |
-| 74 | How to pay | amount, destination, and the reference an admin will match | [74-how-to-pay.png](74-how-to-pay.png) |
-| 75 | Marked sent | the brand's claim — not yet an arrival | [75-marked-sent.png](75-marked-sent.png) |
-| 76 | Factory waiting sign-in | cold start, no session | [76-factory-waiting-sign-in.png](76-factory-waiting-sign-in.png) |
-| 77 | Factory waiting signed in | email and password, on the designed screen | [77-factory-waiting-signed-in.png](77-factory-waiting-signed-in.png) |
-| 78 | The factory waits | the brand says it paid. That is not enough, and the screen says so | [78-the-factory-waits.png](78-the-factory-waits.png) |
-| 79 | Admin confirming sign-in | cold start, no session | [79-admin-confirming-sign-in.png](79-admin-confirming-sign-in.png) |
-| 80 | Admin confirming signed in | email and password, on the designed screen | [80-admin-confirming-signed-in.png](80-admin-confirming-signed-in.png) |
-| 81 | The payment queue | a required step, not a convenience: staff have no org to notify | [81-the-payment-queue.png](81-the-payment-queue.png) |
-| 82 | Confirmed | this click is what a factory on the other side of the world is relying on | [82-confirmed.png](82-confirmed.png) |
-| 83 | Factory told to start sign-in | cold start, no session | [83-factory-told-to-start-sign-in.png](83-factory-told-to-start-sign-in.png) |
-| 84 | Factory told to start signed in | email and password, on the designed screen | [84-factory-told-to-start-signed-in.png](84-factory-told-to-start-signed-in.png) |
-| 85 | Cleared to work | nothing changed but an admin confirming the money arrived | [85-cleared-to-work.png](85-cleared-to-work.png) |
-| 86 | The conversation | kept with the order, so it is there when someone asks what was agreed | [86-the-conversation.png](86-the-conversation.png) |
-| 87 | The factory writes in Chinese | and does not have to think about who reads it | [87-the-factory-writes-in-chinese.png](87-the-factory-writes-in-chinese.png) |
-| 88 | Brand reading sign-in | cold start, no session | [88-brand-reading-sign-in.png](88-brand-reading-sign-in.png) |
-| 89 | Brand reading signed in | email and password, on the designed screen | [89-brand-reading-signed-in.png](89-brand-reading-signed-in.png) |
-| 90 | Conversations | one per piece of work, not one per company | [90-conversations.png](90-conversations.png) |
-| 91 | The brand reads it | in its own language, with the original one click away | [91-the-brand-reads-it.png](91-the-brand-reads-it.png) |
-| 92 | A reply | the first conversation either prototype could not actually have | [92-a-reply.png](92-a-reply.png) |
-| 93 | Brand again sign-in | cold start, no session | [93-brand-again-sign-in.png](93-brand-again-sign-in.png) |
-| 94 | Brand again signed in | email and password, on the designed screen | [94-brand-again-signed-in.png](94-brand-again-signed-in.png) |
-| 95 | Invite-only chosen | publishing this without inviting anyone used to strand it | [95-invite-only-chosen.png](95-invite-only-chosen.png) |
-| 96 | Choose who sees it | ranked by fit against this request, same score the factory sees | [96-choose-who-sees-it.png](96-choose-who-sees-it.png) |
-| 97 | Invitations saved |  | [97-invitations-saved.png](97-invitations-saved.png) |
-| 98 | Brand at home sign-in | cold start, no session | [98-brand-at-home-sign-in.png](98-brand-at-home-sign-in.png) |
-| 99 | Brand at home signed in | email and password, on the designed screen | [99-brand-at-home-signed-in.png](99-brand-at-home-signed-in.png) |
-| 100 | Brand home | what needs you, before anything else | [100-brand-home.png](100-brand-home.png) |
-| 101 | The team | who else acts as this brand | [101-the-team.png](101-the-team.png) |
-| 102 | Invited | they see it the next time they sign in | [102-invited.png](102-invited.png) |
-| 103 | Colleague sign-in | cold start, no session | [103-colleague-sign-in.png](103-colleague-sign-in.png) |
-| 104 | Colleague signed in | email and password, on the designed screen | [104-colleague-signed-in.png](104-colleague-signed-in.png) |
-| 105 | You have been invited | the invitation was in the database from the start; nothing ever showed it | [105-you-have-been-invited.png](105-you-have-been-invited.png) |
-| 106 | Joined | straight into the brand they were invited to, with no onboarding to redo | [106-joined.png](106-joined.png) |
-| 107 | When it breaks | the reference on screen is the one in the database | [107-when-it-breaks.png](107-when-it-breaks.png) |
-| 108 | Deep link survives a hard refresh | the rewrite works, in dev and in production | [108-deep-link-survives-a-hard-refresh.png](108-deep-link-survives-a-hard-refresh.png) |
-| 109 | Session survives reload | onboarding not shown again | [109-session-survives-reload.png](109-session-survives-reload.png) |
-| 110 | Forgot password | asked for, without confirming who is a customer | [110-forgot-password.png](110-forgot-password.png) |
-| 111 | Choose a new password | the link lands here, not on the dashboard | [111-choose-a-new-password.png](111-choose-a-new-password.png) |
+| 1 | Public terms | the published terms, readable before an account exists | [01-public-terms.png](01-public-terms.png) |
+| 2 | Public privacy policy |  | [02-public-privacy-policy.png](02-public-privacy-policy.png) |
+| 3 | Factory sign-up | the designed vendor portal | [03-factory-sign-up.png](03-factory-sign-up.png) |
+| 4 | Factory account details | name, company, email and password on one form | [04-factory-account-details.png](04-factory-account-details.png) |
+| 5 | Factory signed up | an account, a name and a company in one submit | [05-factory-signed-up.png](05-factory-signed-up.png) |
+| 6 | Factory welcome | the designed card, with the manufacturer / trading-company choice | [06-factory-welcome.png](06-factory-welcome.png) |
+| 7 | Factory basics | one designed card, six fields | [07-factory-basics.png](07-factory-basics.png) |
+| 8 | Factory context |  | [08-factory-context.png](08-factory-context.png) |
+| 9 | Factory what you make | from taxonomy_terms: Cut & sew knits, Tops, Bottoms | [09-factory-what-you-make.png](09-factory-what-you-make.png) |
+| 10 | Factory specialty and services | equipment is free text on purpose | [10-factory-specialty-and-services.png](10-factory-specialty-and-services.png) |
+| 11 | Factory capacity and terms |  | [11-factory-capacity-and-terms.png](11-factory-capacity-and-terms.png) |
+| 12 | Factory verification | documents are reviewed by a human, not self-declared | [12-factory-verification.png](12-factory-verification.png) |
+| 13 | Factory walkthrough |  | [13-factory-walkthrough.png](13-factory-walkthrough.png) |
+| 14 | Factory review | what the vendor actually typed, read back | [14-factory-review.png](14-factory-review.png) |
+| 15 | Factory terms |  | [15-factory-terms.png](15-factory-terms.png) |
+| 16 | Factory complete | the designed finish card, not a hand-built one | [16-factory-complete.png](16-factory-complete.png) |
+| 17 | Brand sign-up | the designed brand portal | [17-brand-sign-up.png](17-brand-sign-up.png) |
+| 18 | Brand account details | name, company, email and password on one form | [18-brand-account-details.png](18-brand-account-details.png) |
+| 19 | Brand signed up | an account, a name and a company in one submit | [19-brand-signed-up.png](19-brand-signed-up.png) |
+| 20 | Brand welcome | the designed welcome card | [20-brand-welcome.png](20-brand-welcome.png) |
+| 21 | Brand basics | category options come from the taxonomy, not the mock list | [21-brand-basics.png](21-brand-basics.png) |
+| 22 | Brand context | logo and product imagery upload here, to the public bucket | [22-brand-context.png](22-brand-context.png) |
+| 23 | Brand what you make | same vocabulary the vendor picked from: Tops, Bottoms | [23-brand-what-you-make.png](23-brand-what-you-make.png) |
+| 24 | Brand sourcing volume | dollars on screen, minor units in the database | [24-brand-sourcing-volume.png](24-brand-sourcing-volume.png) |
+| 25 | Brand vendor preferences |  | [25-brand-vendor-preferences.png](25-brand-vendor-preferences.png) |
+| 26 | Brand trust | team invitations and the private registration upload | [26-brand-trust.png](26-brand-trust.png) |
+| 27 | Brand review | what was entered, not the mock | [27-brand-review.png](27-brand-review.png) |
+| 28 | Brand terms |  | [28-brand-terms.png](28-brand-terms.png) |
+| 29 | Brand complete | the designed finish card | [29-brand-complete.png](29-brand-complete.png) |
+| 30 | Brand dashboard | matches the new factory at 57% — weak | [30-brand-dashboard.png](30-brand-dashboard.png) |
+| 31 | Admin sign-in | cold start, no session | [31-admin-sign-in.png](31-admin-sign-in.png) |
+| 32 | Admin signed in | email and password, on the designed screen | [32-admin-signed-in.png](32-admin-signed-in.png) |
+| 33 | Verification queue | an admin with no org of their own can still work | [33-verification-queue.png](33-verification-queue.png) |
+| 34 | Factory approved | approving the company verifies it, which unlocks quoting | [34-factory-approved.png](34-factory-approved.png) |
+| 35 | Brand approved | both sides verified before either can trade | [35-brand-approved.png](35-brand-approved.png) |
+| 36 | Operations workspace | the designed admin console, on marketplace data | [36-operations-workspace.png](36-operations-workspace.png) |
+| 37 | Marketplace quotes | every quote across the marketplace, staff only | [37-marketplace-quotes.png](37-marketplace-quotes.png) |
+| 38 | Brand returning sign-in | cold start, no session | [38-brand-returning-sign-in.png](38-brand-returning-sign-in.png) |
+| 39 | Brand returning signed in | email and password, on the designed screen | [39-brand-returning-signed-in.png](39-brand-returning-signed-in.png) |
+| 40 | Brand requests | the designed screen, empty until the first one is written | [40-brand-requests.png](40-brand-requests.png) |
+| 41 | Describe what you need | Queena's first flow card, on her chrome | [41-describe-what-you-need.png](41-describe-what-you-need.png) |
+| 42 | Review the brief | read back and correctable — Skip AI leaves it empty to fill | [42-review-the-brief.png](42-review-the-brief.png) |
+| 43 | The brief, corrected | every field is the brand's, not the model's | [43-the-brief-corrected.png](43-the-brief-corrected.png) |
+| 44 | Choose who sees it | the design's own toggle decides open or invite-only | [44-choose-who-sees-it.png](44-choose-who-sees-it.png) |
+| 45 | RFQ published |  | [45-rfq-published.png](45-rfq-published.png) |
+| 46 | Factory again sign-in | cold start, no session | [46-factory-again-sign-in.png](46-factory-again-sign-in.png) |
+| 47 | Factory again signed in | email and password, on the designed screen | [47-factory-again-signed-in.png](47-factory-again-signed-in.png) |
+| 48 | Factory dashboard | still unverified, so it may look but not bid | [48-factory-dashboard.png](48-factory-dashboard.png) |
+| 49 | Factory browse | the brand's request, found by a factory that was never invited | [49-factory-browse.png](49-factory-browse.png) |
+| 50 | Factory reads the request | every field traces to a stored column, none of it is copy | [50-factory-reads-the-request.png](50-factory-reads-the-request.png) |
+| 51 | Factory quoting sign-in | cold start, no session | [51-factory-quoting-sign-in.png](51-factory-quoting-sign-in.png) |
+| 52 | Factory quoting signed in | email and password, on the designed screen | [52-factory-quoting-signed-in.png](52-factory-quoting-signed-in.png) |
+| 53 | Factory can now bid | the verification notice is gone and the quote button is live | [53-factory-can-now-bid.png](53-factory-can-now-bid.png) |
+| 54 | The quote | Queena's submit screen, on a real draft row | [54-the-quote.png](54-the-quote.png) |
+| 55 | Factory quote | prose on screen, taxonomy ids and rows underneath | [55-factory-quote.png](55-factory-quote.png) |
+| 56 | Quote sent | and the factory is promised an answer either way | [56-quote-sent.png](56-quote-sent.png) |
+| 57 | Brand deciding sign-in | cold start, no session | [57-brand-deciding-sign-in.png](57-brand-deciding-sign-in.png) |
+| 58 | Brand deciding signed in | email and password, on the designed screen | [58-brand-deciding-signed-in.png](58-brand-deciding-signed-in.png) |
+| 59 | Quotes received | Queena's quote list, every figure derived from stored columns | [59-quotes-received.png](59-quotes-received.png) |
+| 60 | Awarded | the loop closes here | [60-awarded.png](60-awarded.png) |
+| 61 | Production orders | the brand's side of the work it just commissioned | [61-production-orders.png](61-production-orders.png) |
+| 62 | The order | before either side agrees, the schedule is the whole screen | [62-the-order.png](62-the-order.png) |
+| 63 | The schedule | drafted from the quote; either side may change it | [63-the-schedule.png](63-the-schedule.png) |
+| 64 | Brand agrees | one signature. The order has not started | [64-brand-agrees.png](64-brand-agrees.png) |
+| 65 | Winning factory sign-in | cold start, no session | [65-winning-factory-sign-in.png](65-winning-factory-sign-in.png) |
+| 66 | Winning factory signed in | email and password, on the designed screen | [66-winning-factory-signed-in.png](66-winning-factory-signed-in.png) |
+| 67 | Factory hears the outcome | award_quote wrote this row; now something shows it | [67-factory-hears-the-outcome.png](67-factory-hears-the-outcome.png) |
+| 68 | Factory sees the schedule | the same steps the brand read, nothing actionable yet | [68-factory-sees-the-schedule.png](68-factory-sees-the-schedule.png) |
+| 69 | Both agreed | the order is running | [69-both-agreed.png](69-both-agreed.png) |
+| 70 | The order, active | the designed header, on production_order_summary | [70-the-order-active.png](70-the-order-active.png) |
+| 71 | Posting an update | a note and photographs, which is the factory's only lever here | [71-posting-an-update.png](71-posting-an-update.png) |
+| 72 | Sent for approval | the brand decides; the factory does not mark its own work done | [72-sent-for-approval.png](72-sent-for-approval.png) |
+| 73 | Where the factory gets paid | no full account number is asked for, or stored | [73-where-the-factory-gets-paid.png](73-where-the-factory-gets-paid.png) |
+| 74 | Brand approving sign-in | cold start, no session | [74-brand-approving-sign-in.png](74-brand-approving-sign-in.png) |
+| 75 | Brand approving signed in | email and password, on the designed screen | [75-brand-approving-signed-in.png](75-brand-approving-signed-in.png) |
+| 76 | Waiting on the brand | the factory has sent a step for approval | [76-waiting-on-the-brand.png](76-waiting-on-the-brand.png) |
+| 77 | The brand reads the update | posted by the factory, readable by the brand, nobody else | [77-the-brand-reads-the-update.png](77-the-brand-reads-the-update.png) |
+| 78 | Approved | from the row, on the state that row is actually in | [78-approved.png](78-approved.png) |
+| 79 | How to pay | amount, destination, and the reference an admin will match | [79-how-to-pay.png](79-how-to-pay.png) |
+| 80 | Marked sent | the brand's claim — not yet an arrival | [80-marked-sent.png](80-marked-sent.png) |
+| 81 | Factory waiting sign-in | cold start, no session | [81-factory-waiting-sign-in.png](81-factory-waiting-sign-in.png) |
+| 82 | Factory waiting signed in | email and password, on the designed screen | [82-factory-waiting-signed-in.png](82-factory-waiting-signed-in.png) |
+| 83 | The factory waits | the brand says it paid. That is not enough, and the screen says so | [83-the-factory-waits.png](83-the-factory-waits.png) |
+| 84 | Admin confirming sign-in | cold start, no session | [84-admin-confirming-sign-in.png](84-admin-confirming-sign-in.png) |
+| 85 | Admin confirming signed in | email and password, on the designed screen | [85-admin-confirming-signed-in.png](85-admin-confirming-signed-in.png) |
+| 86 | The payment queue | a required step, not a convenience: staff have no org to notify | [86-the-payment-queue.png](86-the-payment-queue.png) |
+| 87 | Confirmed | this click is what a factory on the other side of the world is relying on | [87-confirmed.png](87-confirmed.png) |
+| 88 | Factory told to start sign-in | cold start, no session | [88-factory-told-to-start-sign-in.png](88-factory-told-to-start-sign-in.png) |
+| 89 | Factory told to start signed in | email and password, on the designed screen | [89-factory-told-to-start-signed-in.png](89-factory-told-to-start-signed-in.png) |
+| 90 | Cleared to work | nothing changed but an admin confirming the money arrived | [90-cleared-to-work.png](90-cleared-to-work.png) |
+| 91 | The conversation | kept with the order, so it is there when someone asks what was agreed | [91-the-conversation.png](91-the-conversation.png) |
+| 92 | The factory writes in Chinese | and does not have to think about who reads it | [92-the-factory-writes-in-chinese.png](92-the-factory-writes-in-chinese.png) |
+| 93 | Brand reading sign-in | cold start, no session | [93-brand-reading-sign-in.png](93-brand-reading-sign-in.png) |
+| 94 | Brand reading signed in | email and password, on the designed screen | [94-brand-reading-signed-in.png](94-brand-reading-signed-in.png) |
+| 95 | Conversations | one per piece of work, not one per company | [95-conversations.png](95-conversations.png) |
+| 96 | The brand reads it | in its own language, with the original one click away | [96-the-brand-reads-it.png](96-the-brand-reads-it.png) |
+| 97 | A reply | the first conversation either prototype could not actually have | [97-a-reply.png](97-a-reply.png) |
+| 98 | Brand again sign-in | cold start, no session | [98-brand-again-sign-in.png](98-brand-again-sign-in.png) |
+| 99 | Brand again signed in | email and password, on the designed screen | [99-brand-again-signed-in.png](99-brand-again-signed-in.png) |
+| 100 | Invite-only chosen | publishing this without inviting anyone used to strand it | [100-invite-only-chosen.png](100-invite-only-chosen.png) |
+| 101 | Choose who sees it | ranked by fit against this request, same score the factory sees | [101-choose-who-sees-it.png](101-choose-who-sees-it.png) |
+| 102 | Invitations saved |  | [102-invitations-saved.png](102-invitations-saved.png) |
+| 103 | Brand at home sign-in | cold start, no session | [103-brand-at-home-sign-in.png](103-brand-at-home-sign-in.png) |
+| 104 | Brand at home signed in | email and password, on the designed screen | [104-brand-at-home-signed-in.png](104-brand-at-home-signed-in.png) |
+| 105 | Brand home | what needs you, before anything else | [105-brand-home.png](105-brand-home.png) |
+| 106 | The team | who else acts as this brand | [106-the-team.png](106-the-team.png) |
+| 107 | Invited | they see it the next time they sign in | [107-invited.png](107-invited.png) |
+| 108 | Colleague sign-in | cold start, no session | [108-colleague-sign-in.png](108-colleague-sign-in.png) |
+| 109 | Colleague signed in | email and password, on the designed screen | [109-colleague-signed-in.png](109-colleague-signed-in.png) |
+| 110 | You have been invited | the invitation was in the database from the start; nothing ever showed it | [110-you-have-been-invited.png](110-you-have-been-invited.png) |
+| 111 | Joined | straight into the brand they were invited to, with no onboarding to redo | [111-joined.png](111-joined.png) |
+| 112 | When it breaks | the reference on screen is the one in the database | [112-when-it-breaks.png](112-when-it-breaks.png) |
+| 113 | Deep link survives a hard refresh | the rewrite works, in dev and in production | [113-deep-link-survives-a-hard-refresh.png](113-deep-link-survives-a-hard-refresh.png) |
+| 114 | Session survives reload | onboarding not shown again | [114-session-survives-reload.png](114-session-survives-reload.png) |
+| 115 | Forgot password | asked for, without confirming who is a customer | [115-forgot-password.png](115-forgot-password.png) |
+| 116 | Choose a new password | the link lands here, not on the dashboard | [116-choose-a-new-password.png](116-choose-a-new-password.png) |
 
 ## Assertions
 
+- ✅ the brand terms are readable signed out, in the designed Terms dialog
+- ✅ the privacy policy is readable signed out
+- ✅ Factory: the Terms link opens the factory terms in a new tab (/app.html?legal=terms&type=factory)
+- ✅ Factory: the Privacy link opens the privacy policy in a new tab (/app.html?legal=privacy)
+- ✅ the factory terms step opens the full terms
+- ✅ the factory's signature points at the exact version shown (terms_factory v1)
 - ✅ "Porto, Portugal" resolved to ISO PT for matching (got PT)
 - ✅ MOQ persisted as a number
 - ✅ "28 days" typed as free text stored as the number 28 (got 28)
@@ -134,13 +145,28 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ publishing did not self-verify — quoting stays gated on an admin review
 - ✅ equipment free text kept verbatim
 - ✅ the designed capacity panel wrote a factory_capacity row
-- ✅ the database computes monthly units from it (got 7200)
-- ✅ taxonomy selections saved as 9 links, not free text
+- ✅ the database computes monthly units from it (got 1200)
+- ✅ taxonomy selections saved as 10 links, not free text
+- ✅ Brand: the Terms link opens the brand terms in a new tab (/app.html?legal=terms&type=brand)
+- ✅ Brand: the Privacy link opens the privacy policy in a new tab (/app.html?legal=privacy)
 - ✅ the review card reads back the brand that was actually typed
 - ✅ and no longer shows the design's example brand
+- ✅ the brand terms step opens the published agreement in the Terms dialog
+- ✅ an unverified brand waits on the designed finish card, not the dashboard
+- ✅ the brand's signature points at the exact version shown (terms_brand v1)
 - ✅ "$18" stored as 1800 minor units (got 1800)
 - ✅ brand onboarding marked complete
-- ✅ match score computed between the two orgs just created: 50% (weak)
+- ✅ match score computed between the two orgs just created: 57% (weak)
+- ✅ the factory is waiting for a decision in the live queue
+- ✅ the queue row for this factory was found and opened
+- ✅ the factory is now verified in the database
+- ✅ the queue row for this brand was found and opened
+- ✅ the brand is now verified too
+- ✅ the operations workspace opens for staff
+- ✅ and does not turn away an account that is on the admin list
+- ✅ the verification queue reads the marketplace rather than erroring
+- ✅ the queue loaded rather than erroring
+- ✅ the marketplace-wide quote table opens
 - ✅ a brand with no requests is told so, not shown a blank panel
 - ✅ the tab counts are real, not the mock's literals (Active quotes (0))
 - ✅ a draft row exists before the review card is filled in
@@ -159,20 +185,12 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the request a brand published minutes ago is visible to a factory
 - ✅ the quantity the brand typed reaches the factory's card
 - ✅ the brand is named, not anonymous — nobody quotes a stranger
-- ✅ an unverified factory is told it can look but not bid
+- ✅ an approved factory browses without the look-but-do-not-bid gate
 - ✅ the request the brand published is the one on screen
 - ✅ the quantity the brand typed is what the factory reads
 - ✅ the brand's question reaches the factory
 - ✅ no brand contact details leak into the factory's view
-- ✅ an unverified factory is told plainly it may read this but not quote it
-- ✅ the factory is waiting for a decision in the live queue
-- ✅ the queue row for this factory was found and opened
-- ✅ the factory is now verified in the database
-- ✅ the operations workspace opens for staff
-- ✅ and does not turn away an account that is on the admin list
-- ✅ a company from this run is in the live verification queue
-- ✅ the queue loaded rather than erroring
-- ✅ the marketplace-wide quote table opens
+- ✅ and is not told it may read but not quote, because it may now do both
 - ✅ the quote field "unitPrice" exists on the designed screen
 - ✅ the quote field "quantity" exists on the designed screen
 - ✅ the quote field "leadTime" exists on the designed screen
@@ -224,7 +242,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the factory can say where its money goes — without which nobody can pay it
 - ✅ the brand can read the factory's update across the org boundary
 - ✅ approving the sample made its payment due
-- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000051)
+- ✅ the reference on screen is the stored order number, not one composed in the browser (TSC-000007)
 - ✅ the platform fee is shown and charged at zero ($0.00)
 - ✅ the payment is recorded as sent
 - ✅ the brand saying it paid does NOT count as funded
@@ -240,9 +258,12 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the header moved because a payment row moved (9500)
 - ✅ the message is stored exactly as it was typed, character for character
 - ✅ and attributed to the factory that sent it, not to whoever the screen assumed
-- ✅ no translation was produced, and the message went anyway — as it must
+- ✅ it was translated for the brand: "The cuffs have been made according to the new size chart, pl"
+- ✅ the translation is not simply a copy of the original
 - ✅ the brand has not read this conversation yet
-- ✅ with no translation available, the brand sees exactly what was written
+- ✅ the order's own conversation is listed (TSC-000007)
+- ✅ the brand is shown English first, not a sentence it cannot read
+- ✅ with the original always one click away — a translation is a convenience, not the record
 - ✅ opening the conversation recorded that it was read — the count cannot get stuck
 - ✅ both sides have now said something (2 messages on this thread)
 - ✅ the open-to-all toggle is off before publishing
@@ -253,7 +274,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ the designed home greets the org by name, from the database
 - ✅ and no longer greets every brand as the design's example one
 - ✅ the snapshot counts the order that exists (1)
-- ✅ with nothing outstanding, no attention card is invented and the newcomer layout shows instead
+- ✅ a brand with requests and orders gets the working dashboard, and no attention card is invented
 - ✅ and the design's example alerts are not shown as if they were real
 - ✅ the invitation is stored and waiting
 - ✅ an invited person is offered the organisation, not asked to create one
@@ -262,7 +283,7 @@ out of Postgres to confirm the screen and the database agree.
 - ✅ and they land in that organisation, not one of their own
 - ✅ a crash says what is and is not lost, rather than showing a blank page
 - ✅ and offers a way out — reload, or back to the start
-- ✅ the crash was reported, under the reference shown (31CA66A7)
+- ✅ the crash was reported, under the reference shown (3175219F)
 - ✅ with the real error message, not a generic one
 - ✅ and the screen it happened on
 - ✅ navigating away clears the crash — one broken screen does not poison the next
