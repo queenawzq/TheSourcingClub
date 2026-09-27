@@ -5757,8 +5757,21 @@ export function FactoryBrowsePage({
           </header>
           <div className="directory-summary">
             <div>
-              <strong>24 open requests</strong>
-              <span>{isTradingCompany ? "matching supplier coverage, sourcing services, compliance, and order fit" : "matching wovens, low MOQ, GOTS, and available August capacity"}</span>
+              {/* Live mounts pass the requests, so the count is theirs. The
+                  prototype keeps the design's example: 24 with the criteria
+                  line beneath it. */}
+              <strong>
+                {liveProjects
+                  ? `${liveProjects.length} open request${liveProjects.length === 1 ? "" : "s"}`
+                  : "24 open requests"}
+              </strong>
+              <span>
+                {liveProjects
+                  ? "open to quote right now"
+                  : isTradingCompany
+                    ? "matching supplier coverage, sourcing services, compliance, and order fit"
+                    : "matching wovens, low MOQ, GOTS, and available August capacity"}
+              </span>
             </div>
             <div className="directory-summary-actions">
               <button
