@@ -417,6 +417,13 @@ let losingFactory = null;   // its own client: RPCs key on auth.uid(), so
   const factoryOrgId = (await admin.from("orgs").select("id").eq("name", `Atelier ${stamp}`).maybeSingle()).data?.id;
   const orgs = [factoryOrgId, f2org.id].filter(Boolean);
 
+  // Quoting costs credits now; every fixture factory starts with a grant.
+  for (const id of orgs) {
+    await admin.from("credit_ledger").insert({
+      org_id: id, delta: 500, reason: "onboarding_grant", note: "smoke fixture",
+    });
+  }
+
   for (const id of orgs) {
     await admin.from("factory_profiles").upsert(
       { org_id: id, country_code: "PT", moq: 100, published_at: new Date().toISOString() },
@@ -481,6 +488,11 @@ console.log("\nphase 2 — the loop");
     org_id: f1org.id, country_code: "PT", moq: 100,
     published_at: new Date().toISOString(), verification_status: "verified",
   }, { onConflict: "org_id" });
+  // Sending a quote costs credits, so a fixture factory needs a balance the
+  // way a real one gets an onboarding grant.
+  await admin.from("credit_ledger").insert({
+    org_id: f1org.id, delta: 500, reason: "onboarding_grant", note: "smoke fixture",
+  });
 
   const { data: q } = await f1.client.from("quotes").insert({
     rfq_id: rfqId, factory_org_id: f1org.id, unit_price_cents: 1710,

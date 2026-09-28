@@ -26,6 +26,8 @@ import LiveFactoryRfqs from "./rfq/LiveFactoryRfqs.jsx";
 import LiveRequestView from "./rfq/LiveRequestView.jsx";
 import LiveQuoteForm from "./quote/LiveQuoteForm.jsx";
 import LiveQuoteSent from "./quote/LiveQuoteSent.jsx";
+import LiveQuoteReview from "./quote/LiveQuoteReview.jsx";
+import LiveSaved from "./rfq/LiveSaved.jsx";
 import LiveQuotes from "./quote/LiveQuotes.jsx";
 // The designed screens, mounted against live data through the seam. Importing
 // them pulls in the prototype stylesheet, which is the point — the design is
@@ -546,6 +548,7 @@ const FACTORY_NAV_PATHS = {
   RFQs: "/rfqs",
   "Production orders": "/orders",
   "Browse RFQs": "/browse",
+  Saved: "/saved",
   Conversations: "/messages",
   Payments: "/payout",
   Settings: "/team",
@@ -557,6 +560,7 @@ function activeNavFor(path, isFactory) {
   if (path.startsWith("/messages")) return "Conversations";
   if (path.startsWith("/team")) return "Settings";
   if (isFactory && path.startsWith("/browse")) return "Browse RFQs";
+  if (isFactory && path.startsWith("/saved")) return "Saved";
   if (isFactory && path.startsWith("/payout")) return "Payments";
   if (isFactory && path.startsWith("/rfqs")) return "RFQs";
   if (!isFactory && path.startsWith("/rfqs")) return "Quotes";
@@ -822,9 +826,23 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
         isFactory ? <LiveQuoteForm org={activeOrg} rfqId={params.id} profile={profile} /> : <NotForThisSide isFactory={false} />,
     },
     {
+      path: "/saved",
+      render: () =>
+        isFactory ? <LiveSaved org={activeOrg} /> : <NotForThisSide isFactory={false} />,
+    },
+    {
+      // The design's third step: the total the brand will see, and what
+      // sending costs, before either happens.
+      path: "/browse/:id/quote/review",
+      render: (params) =>
+        isFactory
+          ? <LiveQuoteReview org={activeOrg} rfqId={params.id} profile={profile} />
+          : <NotForThisSide isFactory={false} />,
+    },
+    {
       path: "/browse/:id/quote/sent",
       render: (params) =>
-        isFactory ? <LiveQuoteSent rfqId={params.id} profile={profile} /> : <NotForThisSide isFactory={false} />,
+        isFactory ? <LiveQuoteSent org={activeOrg} rfqId={params.id} profile={profile} /> : <NotForThisSide isFactory={false} />,
     },
     {
       // Production orders are ONE namespace for both sides, unlike /rfqs and
@@ -935,7 +953,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/browse/:id",
       render: (params) =>
         isFactory ? (
-          <LiveRequestView org={activeOrg} rfqId={params.id} profile={profile} />
+          <LiveRequestView org={activeOrg} user={user} rfqId={params.id} profile={profile} />
         ) : <NotForThisSide isFactory={false} />,
     },
     {

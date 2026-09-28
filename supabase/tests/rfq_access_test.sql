@@ -53,6 +53,13 @@ insert into public.factory_profiles (org_id, country_code, moq, published_at, ve
   ('d0000000-0000-0000-0000-0000000000f2', 'CN', 100, now(), 'verified'),
   ('d0000000-0000-0000-0000-0000000000f3', 'CN', 100, now(), 'unverified');
 
+-- Sending a quote costs credits (migration 061), so these factories start
+-- with the grant a verified vendor gets. Without it every submit_quote below
+-- fails on the balance rather than on the rule under test.
+insert into public.credit_ledger (org_id, delta, reason, note)
+select id, 500, 'onboarding_grant', 'pgtap2 fixture'
+  from public.orgs where type = 'factory' and slug like 'pgtap2-%';
+
 -- Three requests covering every visibility case.
 insert into public.rfqs (id, brand_org_id, title, status, visibility, quantity_total) values
   ('e0000000-0000-0000-0000-000000000001', 'd0000000-0000-0000-0000-00000000000b',

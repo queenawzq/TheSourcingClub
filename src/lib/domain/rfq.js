@@ -37,7 +37,13 @@ export async function getRfq(rfqId) {
   return unwrap(
     // The brand's name comes along: a factory reading a request sees whose it
     // is, and without it the designed screen falls back to its example brand.
-    await supabase.from("rfqs").select(`${RFQ_COLUMNS}, orgs (id, name)`).eq("id", rfqId).maybeSingle(),
+    // The FK is named because saved_rfqs made a second path between rfqs and
+    // orgs, and PostgREST refuses an ambiguous embed rather than guessing.
+    await supabase
+      .from("rfqs")
+      .select(`${RFQ_COLUMNS}, orgs!rfqs_brand_org_id_fkey (id, name)`)
+      .eq("id", rfqId)
+      .maybeSingle(),
     "load the request",
   );
 }
@@ -292,4 +298,68 @@ export async function matchScoresForRfq(rfqId, factoryOrgIds) {
     }),
   );
   return new Map(scores);
+}
+
+/**
+ * Saved requests.
+ *
+ * A vendor's shortlist of things to come back to. Its own org's business —
+ * the brand whose request it is never learns it was saved.
+ */
+export async function listSavedRequests(orgId) {
+  return unwrap(
+    await supabase
+      .from("saved_rfqs")
+      .select("rfq_id, created_at, rfqs (id, title, brief, quantity_total, quote_deadline, target_unit_price_min_cents, target_unit_price_max_cents, requires_sample, status, published_at, orgs!rfqs_brand_org_id_fkey (id, name))")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false }),
+    "load your saved requests",
+  );
+}
+
+export async function saveRequest(orgId, rfqId, userId) {
+  return unwrap(
+    await supabase.from("saved_rfqs").insert({ org_id: orgId, rfq_id: rfqId, saved_by: userId }),
+    "save this request",
+  );
+}
+
+export async function unsaveRequest(orgId, rfqId) {
+  return unwrap(
+    await supabase.from("saved_rfqs").delete().eq("org_id", orgId).eq("rfq_id", rfqId),
+    "remove this saved request",
+  );
+}
+
+export async function isRequestSaved(orgId, rfqId) {
+  const row = unwrap(
+    await supabase.from("saved_rfqs").select("rfq_id").eq("org_id", orgId).eq("rfq_id", rfqId).maybeSingle(),
+    "check your saved requests",
+  );
+  return Boolean(row);
+}
+
+/**
+ * Stamp that the brand looked at its own request, and read back when it last
+ * did. The write is ignored for anyone but the owning brand, so a vendor
+ * opening a request cannot make itself look like brand attention.
+ */
+export async function recordRfqView(rfqId) {
+  const { error } = await supabase.rpc("record_rfq_view", { target_rfq: rfqId });
+  if (error) return null;
+  return true;
+}
+
+export async function lastBrandView(rfqId) {
+  const { data, error } = await supabase.rpc("rfq_last_brand_view", { target_rfq: rfqId });
+  return error ? null : data;
+}
+
+/** The brand behind a request, as a vendor may see it. */
+export async function brandSummary(brandOrgId) {
+  const rows = unwrap(
+    await supabase.rpc("brand_summary_for_factory", { brand_org: brandOrgId }),
+    "load the brand summary",
+  );
+  return Array.isArray(rows) ? rows[0] ?? null : rows ?? null;
 }

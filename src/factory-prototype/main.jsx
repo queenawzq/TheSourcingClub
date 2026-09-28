@@ -4568,8 +4568,16 @@ function FactoryBrandPublicProfilePage({ brandName, language = "en", onBack }) {
   );
 }
 
-function FactorySavedPage({ language, onViewBrand, onViewRfq }) {
-  const [tab, setTab] = useState("brands");
+export function FactorySavedPage({
+  language,
+  onViewBrand,
+  onViewRfq,
+  // Live mounts pass the vendor's own saved requests; the prototype passes
+  // none and keeps the design's examples. Saved brands has nothing behind it
+  // yet, so a live mount opens on the RFQ tab.
+  rfqs,
+}) {
+  const [tab, setTab] = useState(rfqs ? "rfqs" : "brands");
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const savedBrands = brandProjects.slice(0, 3).map((project) => {
@@ -4584,7 +4592,7 @@ function FactorySavedPage({ language, onViewBrand, onViewRfq }) {
       tags: profile.tags
     };
   });
-  const savedRfqs = brandProjects.slice(0, 3);
+  const savedRfqs = rfqs ?? brandProjects.slice(0, 3);
 
   return (
     <main className="rfqs-page factory-saved-page">
@@ -4597,7 +4605,11 @@ function FactorySavedPage({ language, onViewBrand, onViewRfq }) {
         </header>
 
         <nav className="rfqs-tabs saved-tabs" aria-label="Saved lists">
-          <button className={tab === "brands" ? "active" : ""} type="button" onClick={() => setTab("brands")}>{tx(`Saved brands (${savedBrands.length})`)}</button>
+          {/* Saving a brand has nothing behind it yet, so the live mount
+              shows only the tab that does. */}
+          {!rfqs && (
+            <button className={tab === "brands" ? "active" : ""} type="button" onClick={() => setTab("brands")}>{tx(`Saved brands (${savedBrands.length})`)}</button>
+          )}
           <button className={tab === "rfqs" ? "active" : ""} type="button" onClick={() => setTab("rfqs")}>{tx(`Saved RFQs (${savedRfqs.length})`)}</button>
         </nav>
 
@@ -5232,7 +5244,7 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   );
 }
 
-export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, onEdit, quote, status }) {
+export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, onEdit, quote, status, priceTotal }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-rfq-read-page">
       <div className="factory-submit-content">
@@ -5254,7 +5266,7 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
           </section>
 
           <aside className="factory-submit-side">
-            <FactoryPriceTotalCard project={project} />
+            <FactoryPriceTotalCard project={project} total={priceTotal} />
 
             {/* `status` is what this vendor actually sent. Without it the
                 design's example stands, which live would show as a $18.40
@@ -5280,21 +5292,34 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
   );
 }
 
-function FactoryPriceTotalCard({ project }) {
-  const rows = [
-    ["Unit price", "$18.40"],
-    ["Quantity", "300 units"],
-    ["Production subtotal", "$5,520"],
-    ["Sample plan", "Fit + PP · $260"],
-    ["Sample shipping", "TBD"],
-    ["Payment terms", "30% / 70%"],
-  ];
+// `total` is the quote's own arithmetic where a live mount passes it. The
+// prototype passes none and keeps the design's example figures; live, a card
+// that invented a $5,780 total for a vendor with no quote is worse than no
+// card at all.
+function FactoryPriceTotalCard({ project, total }) {
+  const rows = total
+    ? [
+      ["Unit price", total.unitPrice],
+      ["Quantity", total.quantity],
+      ["Production subtotal", total.productionSubtotal],
+      ["Sample plan", total.samplePlan === "—" ? "—" : `${total.samplePlan} · ${total.sampleTotal}`],
+      ["Sample shipping", "TBD"],
+      ["Payment terms", total.paymentTerms],
+    ]
+    : [
+      ["Unit price", "$18.40"],
+      ["Quantity", "300 units"],
+      ["Production subtotal", "$5,520"],
+      ["Sample plan", "Fit + PP · $260"],
+      ["Sample shipping", "TBD"],
+      ["Payment terms", "30% / 70%"],
+    ];
 
   return (
     <section className="factory-submit-card factory-review-card">
       <header className="factory-review-card-header">
         <h2>Price total</h2>
-        <p>{project.brand} · {project.location}</p>
+        <p>{[total?.brand ?? project.brand, total?.location ?? project.location].filter(Boolean).join(" · ")}</p>
       </header>
 
       <div className="factory-review-rows">
@@ -5308,7 +5333,7 @@ function FactoryPriceTotalCard({ project }) {
 
       <div className="factory-review-total">
         <span>Brand sees</span>
-        <strong>$5,780</strong>
+        <strong>{total ? total.brandSees : "$5,780"}</strong>
       </div>
     </section>
   );
@@ -8345,18 +8370,38 @@ function getTranslatedProjectSummary(project) {
   return translatedSummaries[project.title] || project.specialty;
 }
 
-function FactoryProjectDetail({ project, companyType = "factory", language, onBack, onSendQuote }) {
+export function FactoryProjectDetail({
+  project,
+  companyType = "factory",
+  language,
+  onBack,
+  onSendQuote,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  brief,
+  details,
+  materials,
+  attachments,
+  questions,
+  capabilities,
+  match,
+  brand,
+  activity,
+  saved,
+  onToggleSave,
+}) {
   const isZh = language === "zh";
   const translatedTitle = getTranslatedProjectTitle(project.title);
   const requestImages = project.images || [];
   const [primaryImage, ...supportImages] = requestImages;
   const hasGallery = requestImages.length >= 3;
+  // A live request need not carry every fact — a deadline is optional. An empty
+  // tile reads as a missing value, so the row is dropped rather than drawn blank.
   const requestFacts = [
     ["Unit target", project.budget],
     ["Quantity", project.quantity],
     ["Samples", project.samples],
     ["Quote due", project.quoteDue]
-  ];
+  ].filter(([, value]) => value);
 
   return (
     <main className="factory-detail-page factory-rfq-detail-page">
@@ -8403,11 +8448,14 @@ function FactoryProjectDetail({ project, companyType = "factory", language, onBa
                 ) : (
                   <p data-no-translate>{project.specialty}</p>
                 )}
-                <div className="factory-request-trust">
-                  <span className="factory-request-trust-icon" aria-hidden="true">$</span>
-                  <strong>Payment verified</strong>
-                  <span>{project.trust}</span>
-                </div>
+                {(project.paymentVerified ?? true) && (
+                  <div className="factory-request-trust">
+                    <span className="factory-request-trust-icon" aria-hidden="true">$</span>
+                    <strong>Payment verified</strong>
+                    <span>{project.trust}</span>
+                  </div>
+                )}
+                {project.tags?.length > 0 && (
                 <div className="factory-request-tags">
                   <span className="marketplace-tag-label">Request tags</span>
                   <div className="tag-row compact-tags">
@@ -8416,6 +8464,7 @@ function FactoryProjectDetail({ project, companyType = "factory", language, onBa
                     ))}
                   </div>
                 </div>
+                )}
               </aside>
 
               <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${project.brand} request references`}>
@@ -8440,110 +8489,158 @@ function FactoryProjectDetail({ project, companyType = "factory", language, onBa
             </div>
           </article>
 
-          <DetailCard title="Project brief">
-            <BrandBrief language={language} />
-          </DetailCard>
+          {(brief === undefined || brief) && (
+            <DetailCard title="Project brief">
+              {brief
+                ? <p className="factory-detail-brief" data-no-translate>{brief}</p>
+                : <BrandBrief language={language} />}
+            </DetailCard>
+          )}
 
           <DetailCard title="Quote-ready details">
             <div className="factory-detail-grid">
-              <ProfileDetailPair label="Target unit price" value={project.budget} />
-              <ProfileDetailPair label="Quantity" value={project.quantity} />
-              <ProfileDetailPair label="Color split" value="3 colors · 100 each" />
-              <ProfileDetailPair label="Sample plan" value={project.samples} />
-              <ProfileDetailPair label="Bulk timeline" value="Late September" />
+              {[
+                ["Target unit price", project.budget],
+                ["Quantity", project.quantity],
+                ["Color split", details?.colorSplit ?? "3 colors · 100 each"],
+                ["Sample plan", project.samples],
+                ["Bulk timeline", details?.bulkTimeline ?? "Late September"],
+              ].filter(([, value]) => value).map(([label, value]) => (
+                <ProfileDetailPair label={label} value={value} key={label} />
+              ))}
             </div>
           </DetailCard>
 
+          {(!materials || Object.values(materials).some(Boolean)) && (
           <DetailCard title="Materials and requirements">
             <div className="factory-materials-summary">
-              <ProfileDetailPair label="Main material" value="Organic cotton poplin, mid-weight" />
-              <ProfileDetailPair label="Quality preference" value="GOTS preferred; brand can confirm certification path" />
+              {[
+                ["Main material", materials?.mainMaterial ?? "Organic cotton poplin, mid-weight"],
+                ["Quality preference", materials?.quality ?? "GOTS preferred; brand can confirm certification path"],
+              ].filter(([, value]) => value).map(([label, value]) => (
+                <ProfileDetailPair label={label} value={value} key={label} />
+              ))}
             </div>
+            {(!materials || materials.factorySources || materials.brandProvides || materials.confirmInQuote) && (
             <section className="factory-sourcing-responsibility">
               <h3>Material sourcing responsibility</h3>
               <div>
                 <span>Factory should source</span>
-                <p>Organic cotton poplin and button trims from the brand-approved direction.</p>
+                <p>{materials?.factorySources ?? "Organic cotton poplin and button trims from the brand-approved direction."}</p>
               </div>
               <div>
                 <span>Brand will provide</span>
-                <p>Labels, packaging, final color standards, and approval on material direction.</p>
+                <p>{materials?.brandProvides ?? "Labels, packaging, final color standards, and approval on material direction."}</p>
               </div>
               <div>
                 <span>Confirm in quote</span>
-                <p>Which fabric, trim, or component costs are included, plus any MOQ or lead-time assumptions.</p>
+                <p>{materials?.confirmInQuote ?? "Which fabric, trim, or component costs are included, plus any MOQ or lead-time assumptions."}</p>
               </div>
             </section>
+            )}
           </DetailCard>
+          )}
 
-          <DetailCard title="Brand attachments">
-            <div className="factory-card-header-row">
-              <p>Review these before quoting. Files open in the brand request workspace.</p>
-              <button className="text-link" type="button">Download files</button>
-            </div>
-            <div className="factory-attachment-row">
-              {["Tech pack v3.pdf", "Measurement chart", "Reference photos"].map((file) => (
-                <button type="button" key={file}>
-                  {file}
-                  <img src="/assets/prototype-icons/download.svg" alt="" />
-                </button>
-              ))}
-            </div>
-          </DetailCard>
+          {(attachments ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"]).length > 0 && (
+            <DetailCard title="Brand attachments">
+              <div className="factory-card-header-row">
+                <p>Review these before quoting. Files open in the brand request workspace.</p>
+                {!attachments && <button className="text-link" type="button">Download files</button>}
+              </div>
+              <div className="factory-attachment-row">
+                {(attachments ?? [
+                  { name: "Tech pack v3.pdf" },
+                  { name: "Measurement chart" },
+                  { name: "Reference photos" },
+                ]).map((file) => (
+                  <button type="button" key={file.name ?? file} onClick={file.onOpen}>
+                    {file.name ?? file}
+                    <img src="/assets/prototype-icons/download.svg" alt="" />
+                  </button>
+                ))}
+              </div>
+            </DetailCard>
+          )}
 
-          <DetailCard title="Questions to answer in your quote">
-            <ol className="factory-detail-list" data-no-translate>
-              <li>Can you quote fit sample and PP sample separately?</li>
-              <li>Can you support 3 colors at 100 units each?</li>
-              <li>Which materials or components can you source, and what do you need the brand to provide?</li>
-            </ol>
-          </DetailCard>
+          {(questions ?? ["x"]).length > 0 && (
+            <DetailCard title="Questions to answer in your quote">
+              <ol className="factory-detail-list" data-no-translate>
+                {questions
+                  ? questions.map((question) => <li key={question}>{question}</li>)
+                  : (
+                    <>
+                      <li>Can you quote fit sample and PP sample separately?</li>
+                      <li>Can you support 3 colors at 100 units each?</li>
+                      <li>Which materials or components can you source, and what do you need the brand to provide?</li>
+                    </>
+                  )}
+              </ol>
+            </DetailCard>
+          )}
 
+          {(capabilities ?? ["x"]).length > 0 && (
           <DetailCard title="Required capabilities">
             <div className="tag-row compact-tags factory-detail-tags">
-              {["Cut & sew", "GOTS preferred", "Pattern support", "Sample-room support"].map((tag) => (
+              {(capabilities ?? ["Cut & sew", "GOTS preferred", "Pattern support", "Sample-room support"]).map((tag) => (
                 <span className="tag" key={tag}>{tag}</span>
               ))}
             </div>
           </DetailCard>
+          )}
         </section>
 
         <aside className="factory-detail-side factory-detail-top-side">
           <section className="factory-side-card project-fit-card">
             <h2>Request match</h2>
-            <p>{companyType === "trading" ? "Your supplier coverage, woven sourcing experience, and low-MOQ support match the brand request." : "Your August capacity and low-MOQ woven experience match the brand request."}</p>
-            <span className="factory-project-fit strong">Strong fit</span>
+            <p>{match?.summary ?? (companyType === "trading" ? "Your supplier coverage, woven sourcing experience, and low-MOQ support match the brand request." : "Your August capacity and low-MOQ woven experience match the brand request.")}</p>
+            {/* The band comes from match_score_rfq() live. A vendor whose
+                profile cannot be scored gets no badge rather than a guess. */}
+            {(match ? match.label : "Strong fit") && (
+              <span className={`factory-project-fit ${match?.tone ?? "strong"}`}>
+                {match ? match.label : "Strong fit"}
+              </span>
+            )}
             <div className="factory-side-actions">
               <button className="primary-btn" type="button" onClick={onSendQuote}>Send quote</button>
-              <button className="secondary-btn" type="button">Save request</button>
+              <button className="secondary-btn" type="button" onClick={onToggleSave}>
+                {saved ? "Saved" : "Save request"}
+              </button>
             </div>
           </section>
 
           <section className="factory-side-card">
             <div className="factory-client-row">
-              <span>MR</span>
+              <span>{brand?.initials ?? "MR"}</span>
               <div>
-                <h2>Maison Rue</h2>
-                <p>New York, USA</p>
+                <h2>{brand?.name ?? "Maison Rue"}</h2>
+                <p>{brand?.location ?? "New York, USA"}</p>
               </div>
             </div>
             <div className="factory-client-facts">
-              <ProfileDetailPair label="Verified brand" value="Yes" />
-              <ProfileDetailPair label="Club orders" value="4" />
-              <ProfileDetailPair label="Avg. response" value="1 day" />
-              <ProfileDetailPair label="Payment status" value="Verified" />
+              <ProfileDetailPair label="Verified brand" value={brand?.verified ?? "Yes"} />
+              <ProfileDetailPair label="Club orders" value={brand?.clubOrders ?? "4"} />
+              <ProfileDetailPair label="Avg. response" value={brand?.avgResponse ?? "1 day"} />
+              <ProfileDetailPair label="Payment status" value={brand?.paymentStatus ?? "Verified"} />
             </div>
           </section>
 
-          <section className="factory-side-card activity-card">
-            <h2>Activity on this request</h2>
-            <ul>
-              <li>Activity on this request</li>
-              <li>3 quotes received</li>
-              <li>Last viewed by brand: 12 min ago</li>
-              <li>Shortlist starts after Jul 24</li>
-            </ul>
-          </section>
+          {(activity ?? ["x"]).length > 0 && (
+            <section className="factory-side-card activity-card">
+              <h2>Activity on this request</h2>
+              <ul>
+                {activity
+                  ? activity.map((line) => <li key={line}>{line}</li>)
+                  : (
+                    <>
+                      <li>Activity on this request</li>
+                      <li>3 quotes received</li>
+                      <li>Last viewed by brand: 12 min ago</li>
+                      <li>Shortlist starts after Jul 24</li>
+                    </>
+                  )}
+              </ul>
+            </section>
+          )}
         </aside>
       </div>
     </main>
@@ -8928,7 +9025,9 @@ export function FactorySubmitQuote({
             type="button"
             data-testid="submit-quote"
             disabled={busy}
-            onClick={() => (onSubmit ? onSubmit(readQuote()) : onReviewTotal?.())}
+            // Review is handed the same card the send would be: a live mount
+            // saves it there, and the prototype's handler ignores the argument.
+            onClick={() => (onSubmit ? onSubmit(readQuote()) : onReviewTotal?.(readQuote()))}
           >
             {busy ? (isZh ? "提交中…" : "Sending…") : onSubmit ? (isZh ? "发送报价" : "Send quote") : "Review quote"}
           </button>
@@ -8938,11 +9037,32 @@ export function FactorySubmitQuote({
   );
 }
 
-function FactoryReviewTotal({ project, companyType = "factory", language, creditBalance, onBack, onEdit, onPurchaseCredits, onSendQuote }) {
+export function FactoryReviewTotal({
+  project,
+  companyType = "factory",
+  language,
+  creditBalance,
+  onBack,
+  onEdit,
+  onPurchaseCredits,
+  onSendQuote,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  creditCost,
+  priceTotal,
+  // What the vendor actually typed, read back. Without it the review step
+  // shows the design's example quote — and then charges for it.
+  quoteValues,
+  busy = false,
+  error = null,
+}) {
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const creditUnit = isZh ? "额度" : "credits";
-  const sendForCredits = isZh ? `发送报价，使用 ${factoryQuoteCreditCost.credits} 额度` : `Send for ${factoryQuoteCreditCost.credits} credits`;
+  const cost = creditCost ?? factoryQuoteCreditCost.credits;
+  const short = creditBalance != null && creditBalance < cost;
+  const sendForCredits = busy
+    ? (isZh ? "发送中…" : "Sending…")
+    : isZh ? `发送报价，使用 ${cost} 额度` : `Send for ${cost} credits`;
   return (
     <main className="factory-detail-page factory-submit-page factory-review-page">
       <div className="factory-submit-content">
@@ -8956,11 +9076,19 @@ function FactoryReviewTotal({ project, companyType = "factory", language, credit
         <div className="factory-review-layout">
           <section className="factory-review-main">
             <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} />
-            <FactoryQuoteSections companyType={companyType} language={language} readOnly />
+            <FactoryQuoteSections companyType={companyType} language={language} readOnly values={quoteValues} />
           </section>
 
           <aside className="factory-review-side">
-            <FactoryPriceTotalCard project={project} />
+            <FactoryPriceTotalCard project={project} total={priceTotal} />
+
+            {(short || error) && (
+              <p className="factory-credit-short" role="alert">
+                {error
+                  ? error
+                  : `Sending costs ${cost} credits and you have ${creditBalance}. Buy more to send this quote.`}
+              </p>
+            )}
 
             <section className="factory-submit-card factory-credit-cost-card">
               <div className="factory-credit-card-header">
@@ -8969,7 +9097,7 @@ function FactoryReviewTotal({ project, companyType = "factory", language, credit
               </div>
               <div className="factory-credit-required">
                 <span>{tx("Required to send")}</span>
-                <strong>{factoryQuoteCreditCost.credits} {creditUnit}</strong>
+                <strong>{cost} {creditUnit}</strong>
               </div>
               <div className="factory-credit-summary">
                 <div>
@@ -8989,7 +9117,7 @@ function FactoryReviewTotal({ project, companyType = "factory", language, credit
                 <p>Confirm the quote is complete before it appears in the brand comparison page.</p>
               </div>
               <div className="factory-ready-actions">
-                <button className="primary-btn" type="button" onClick={onSendQuote}>{sendForCredits}</button>
+                <button className="primary-btn" type="button" disabled={busy || short} onClick={onSendQuote}>{sendForCredits}</button>
                 <button className="secondary-btn" type="button">Save draft</button>
               </div>
             </section>
@@ -9000,7 +9128,7 @@ function FactoryReviewTotal({ project, companyType = "factory", language, credit
         <button className="secondary-btn" type="button" onClick={onBack}>Back</button>
         <div className="factory-submit-bottom-actions">
           <button className="secondary-btn" type="button">Save draft</button>
-          <button className="primary-btn" type="button" onClick={onSendQuote}>{sendForCredits}</button>
+          <button className="primary-btn" type="button" disabled={busy || short} onClick={onSendQuote}>{sendForCredits}</button>
         </div>
       </footer>
     </main>
@@ -9027,7 +9155,7 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
           <div className="factory-avatar">{project.initials}</div>
           <div>
             <h2 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h2>
-            <p data-no-translate>{isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : `${project.brand} · ${project.location} · ${project.posted}`}</p>
+            <p data-no-translate>{isZh ? getTranslatedListMeta([project.brand, project.location, project.posted].filter(Boolean).join(" · ")) : [project.brand, project.location, project.posted].filter(Boolean).join(" · ")}</p>
           </div>
         </div>
         <div className="factory-request-card-actions">
@@ -9050,11 +9178,14 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
           ) : (
             <p data-no-translate>{project.specialty}</p>
           )}
-          <div className="factory-request-trust">
-            <span className="factory-request-trust-icon" aria-hidden="true">$</span>
-            <strong>Payment verified</strong>
-            <span>{project.trust}</span>
-          </div>
+          {/* A claim about the brand, so it shows only where it is true. */}
+          {(project.paymentVerified ?? true) && (
+            <div className="factory-request-trust">
+              <span className="factory-request-trust-icon" aria-hidden="true">$</span>
+              <strong>Payment verified</strong>
+              <span>{project.trust}</span>
+            </div>
+          )}
           <div className="factory-request-tags">
             <span className="marketplace-tag-label">Request tags</span>
             <div className="tag-row compact-tags factory-submit-tags">
@@ -9268,7 +9399,16 @@ function FactoryQuoteReminder({ companyType = "factory" }) {
   );
 }
 
-export function FactoryQuoteSent({ project, companyType = "factory", language = "en", onBack, onDashboard }) {
+export function FactoryQuoteSent({
+  project,
+  companyType = "factory",
+  language = "en",
+  onBack,
+  onDashboard,
+  // Live mounts pass the quote that was actually sent; the prototype passes
+  // none and keeps the design's example figures.
+  sent,
+}) {
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
 
@@ -9294,10 +9434,10 @@ export function FactoryQuoteSent({ project, companyType = "factory", language = 
             </div>
 
             <section className="success-next-panel factory-sent-metrics">
-              <Metric label={tx("unit price")} value="$18.40" />
-              <Metric label={tx("quantity")} value={isZh ? "300 件" : "300 units"} />
-              <Metric label={tx("bulk lead")} value={isZh ? "28 天" : "28 days"} />
-              <Metric label={tx("quote total")} value="$5,780" />
+              <Metric label={tx("unit price")} value={sent?.unitPrice ?? "$18.40"} />
+              <Metric label={tx("quantity")} value={sent?.quantity ?? (isZh ? "300 件" : "300 units")} />
+              <Metric label={tx("bulk lead")} value={sent?.leadTime ?? (isZh ? "28 天" : "28 days")} />
+              <Metric label={tx("quote total")} value={sent?.total ?? "$5,780"} />
             </section>
 
             <div className="success-actions">
@@ -9310,12 +9450,12 @@ export function FactoryQuoteSent({ project, companyType = "factory", language = 
             <section className="factory-submit-card factory-status-card">
               <h2>{tx("Quote status")}</h2>
               <p>{tx(companyType === "trading"
-                ? "Maison Rue has been notified. Your quote appears on their comparison page with your company notes and assumptions."
-                : "Maison Rue has been notified. Your quote appears on their comparison page with your factory notes and assumptions.")}</p>
+                ? `${project.brand || "Maison Rue"} has been notified. Your quote appears on their comparison page with your company notes and assumptions.`
+                : `${project.brand || "Maison Rue"} has been notified. Your quote appears on their comparison page with your factory notes and assumptions.`)}</p>
               <div className="factory-status-facts">
                 <ProfileDetailPair label="Brand" value={project.brand} />
-                <ProfileDetailPair label="Quote due" value="Jul 24" />
-                <ProfileDetailPair label="Shown total" value="$5,780" />
+                <ProfileDetailPair label="Quote due" value={sent?.quoteDue ?? "Jul 24"} />
+                <ProfileDetailPair label="Shown total" value={sent?.total ?? "$5,780"} />
               </div>
             </section>
 

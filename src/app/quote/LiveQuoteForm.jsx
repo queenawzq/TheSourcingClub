@@ -99,7 +99,14 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
 
   useEffect(() => { load(); }, [load]);
 
-  async function send(values) {
+  /**
+   * Save what is on the card, then go to the design's Review step.
+   *
+   * The flow is four screens — details, prepare, review, sent — and review is
+   * where the vendor sees the computed total and what sending costs before it
+   * is charged. Submitting straight from the form skipped both.
+   */
+  async function saveAndReview(values) {
     if (busy || !quote) return;
     setBusy(true);
     setError(null);
@@ -144,8 +151,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         .filter((row) => row.stage && row.cost_cents != null);
       if (stages.length) await setSampleLines(quote.id, stages);
 
-      await submitQuote(quote.id);
-      navigate(`/browse/${rfqId}/quote/sent`);
+      navigate(`/browse/${rfqId}/quote/review`);
     } catch (failure) {
       setError(failure);
     } finally {
@@ -178,28 +184,40 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         samples: rfq.requires_sample ? "Sample required" : "No sample",
         quoteDue: "",
         fitTone: "",
+        // Absent, the card prints "undefined" beside the brand name and the
+        // design's three example attachments.
+        location: "",
+        posted: "",
+        files: [],
+        paymentVerified: false,
+        trust: "",
       }}
       values={{
         brandQuestions: questions.map((question) => question.prompt),
-        unitPrice: quote.unit_price_cents ? `${money(quote.unit_price_cents)} / unit` : undefined,
+        unitPrice: quote.unit_price_cents ? `${money(quote.unit_price_cents)} / unit` : "",
         quantity: quote.production_quantity
           ? `${quote.production_quantity} units`
           : rfq.quantity_total
             ? `${rfq.quantity_total} units`
-            : undefined,
-        leadTime: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : undefined,
-        validUntil: quote.valid_until ?? undefined,
-        "sample.0.stage": line(0)?.stage,
-        "sample.0.cost": line(0) ? money(line(0).cost_cents) : undefined,
-        "sample.0.timing": line(0)?.timing_days ? `${line(0).timing_days} days` : undefined,
-        "sample.0.includes": line(0)?.includes,
-        "sample.1.stage": line(1)?.stage,
-        "sample.1.cost": line(1) ? money(line(1).cost_cents) : undefined,
-        "sample.1.timing": line(1)?.timing_days ? `${line(1).timing_days} days` : undefined,
-        "sample.1.includes": line(1)?.includes,
+            : "",
+        leadTime: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "",
+        // Every field the vendor has not filled is blank, never the design's
+        // example: readQuote() submits whatever these hold.
+        capacityWindow: "",
+        paymentTerms: "",
+        incoterms: "",
+        validUntil: quote.valid_until ?? "",
+        "sample.0.stage": line(0)?.stage ?? "",
+        "sample.0.cost": line(0) ? money(line(0).cost_cents) : "",
+        "sample.0.timing": line(0)?.timing_days ? `${line(0).timing_days} days` : "",
+        "sample.0.includes": line(0)?.includes ?? "",
+        "sample.1.stage": line(1)?.stage ?? "",
+        "sample.1.cost": line(1) ? money(line(1).cost_cents) : "",
+        "sample.1.timing": line(1)?.timing_days ? `${line(1).timing_days} days` : "",
+        "sample.1.includes": line(1)?.includes ?? "",
       }}
       onBack={() => navigate(`/browse/${rfqId}`)}
-      onSubmit={send}
+      onReviewTotal={saveAndReview}
       busy={busy}
       error={error}
     />

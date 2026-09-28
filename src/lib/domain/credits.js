@@ -99,3 +99,8 @@ export async function savingsFor(orgId) {
     codes,
   };
 }
+
+/** What sending one quote costs, from the database rather than the screen. */
+export async function quoteCreditCost() {
+  return Number(unwrap(await supabase.rpc("quote_credit_cost"), "load the quote price")) || 0;
+}
