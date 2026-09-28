@@ -150,7 +150,7 @@ Phase 1 of the backend lives on `feature/supabase-backend`. Schema, access rules
 ```bash
 supabase start        # local stack in Docker; prints the URL + keys
 npm run db:reset      # re-apply every migration from scratch
-npm run db:test       # pgTAP access-rule suites (207 assertions, six files)
+npm run db:test       # pgTAP access-rule suites (217 assertions, seven files)
 npm run smoke         # 138 checks through supabase-js: embeds, RPC signatures, grants
 npm run check:css     # fails on a CSS variable used but never defined (runs in build)
 npm run check:prototype  # the prototype must still render with NO database
@@ -312,6 +312,43 @@ links point.
   OpenRouter, Google Sheets, Netlify Forms). Adding a service that touches
   personal data means publishing a new version of it.
 
+### The factory's request screens, and what a quote costs
+
+A vendor opening a request gets one of two designed screens, and which one is
+right depends on whether it has quoted:
+
+- **no quote → `FactoryProjectDetail`** ("RFQ details"): the request, the
+  brand behind it (`brand_summary_for_factory()`), how well it matches
+  (`match_score_rfq()` banded by `match_tier()`), what is happening on it, and
+  the primary action — Send quote. Only the read-back was ever mounted, so a
+  vendor that had never quoted was shown a read-back of a quote that did not
+  exist.
+- **a draft or submitted quote → `FactoryReadOnlyRfqPage`**, which reads back
+  the terms and sample plan it sent.
+
+The flow after that is the design's four steps, and live now matches it:
+details → **Prepare quote** (saves a draft) → **Review quote** (the computed
+total and the credit price) → **Quote sent**. Review is where sending happens;
+the form behind it only saves.
+
+- **Sending costs 25 credits, charged inside `submit_quote()`.** One
+  transaction flips the status and writes the `quote_submission` ledger line,
+  so a quote can never be sent unpaid or paid unsent. A vendor short of the
+  price is refused before the status changes, and the message names the
+  shortfall because the screen offers to buy more. The unique index from
+  migration 005 makes the charge idempotent per quote; a revision is a new
+  quote row and therefore a new charge, which is intended.
+- **`saved_rfqs` is the vendor's own list** — the brand whose request it is
+  cannot see that it was saved, and neither can another vendor.
+- **`rfq_views` records the brand looking at its own request**, one row per
+  request per org, stamped forward. A vendor reads only the time, through
+  `rfq_last_brand_view()`; the table itself is unreadable to it. A vendor
+  opening a request is not "the brand looked at it", and `record_rfq_view()`
+  ignores anyone but the owning brand.
+- **`saved_rfqs` made the `rfqs` → `orgs` embed ambiguous**, so every such
+  embed names its foreign key (`orgs!rfqs_brand_org_id_fkey`). PostgREST
+  refuses an ambiguous embed rather than guessing.
+
 ### Mock data leaking into the live app
 
 A designed component that falls back to its own constants when a prop is
@@ -323,6 +360,13 @@ three times and is the first thing to check on any newly wired screen:
   calls to whoever logged in. Every panel now takes a prop.
 - **The factory's request view** showed "visible to Maison Rue", a $18.40
   quote and three brand attachments on a request with no files.
+- **The quote form prefilled the design's example terms** — $18.40/unit, 300
+  units, 28 days, 30/70, EXW, "Aug 1, 2026" — and `readQuote()` submits
+  whatever the field holds, so an unedited form sent the prototype's numbers
+  as a real quote. Live passes `""` for every unset field, never `undefined`.
+- **The price total, the quote-sent figures and "Payment verified"** were all
+  literals on the factory's screens: a vendor with no quote was shown a
+  $5,780 total, and every confirmation said $18.40 to "Maison Rue".
 - The fix is always the same: pass the real thing, and where there is nothing
   behind it (scheduled calls, capacity windows on a quote that has none)
   render conditionally. `?? mockConstant` is fine in the prototype and a bug

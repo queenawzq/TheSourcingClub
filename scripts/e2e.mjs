@@ -804,6 +804,12 @@ async function main() {
       .from("factory_profiles").select("verification_status").eq("org_id", factoryOrg.id).single();
     check(verified.verification_status === "verified", "the factory is now verified in the database");
 
+    // Sending a quote costs credits, so an approved vendor gets the grant a
+    // real one would. Without it the quote below fails on the balance.
+    await db.from("credit_ledger").insert({
+      org_id: factoryOrg.id, delta: 500, reason: "onboarding_grant", note: "e2e fixture",
+    });
+
     // The brand needs the same decision: the shell parks any unverified
     // company on the "in review" card, so nothing below this point — posting
     // a request, comparing quotes, awarding — is reachable until it is made.
@@ -931,8 +937,14 @@ async function main() {
     // control over who can see the request.
     await page.locator(".bottom-bar .primary-btn").first().click();
     await waitFor(page, ".invite-results", 30000);
+    // The vendor list is scored against this request before it renders, so
+    // the footer arrives a beat after the cards do.
+    await waitFor(page, ".bottom-bar .primary-btn", 30000);
+    await page.waitForTimeout(1200);
     await record(page, "Choose who sees it", "the design's own toggle decides open or invite-only");
-    await clickButton(page, "invite vendors");
+    check(/\d+%/.test(await page.locator(".invite-results").innerText()),
+      "each vendor carries a real fit score against this request");
+    await page.locator(".bottom-bar .primary-btn").first().click();
     await page.waitForTimeout(4500);
     await record(page, "RFQ published");
 
@@ -1011,12 +1023,13 @@ async function main() {
     // The card's affordance is its own View RFQ button, which is how the
     // design draws it.
     await page.locator('[data-testid="open-rfq-card"] .primary-btn').first().click();
-    // The designed page is headed "View RFQ"; the request's own title is on
-    // the card inside it.
-    await waitForHeading(page, "view rfq", 25000);
+    // This vendor has not quoted yet, so the designed page is "RFQ details" —
+    // the one with Send quote on it. "View RFQ" is the read-back it gets
+    // afterwards.
+    await waitForHeading(page, "rfq details", 25000);
     await record(page, "Factory reads the request", "every field traces to a stored column, none of it is copy");
 
-    const detail = await page.locator(".factory-rfq-read-page").first().innerText();
+    const detail = await page.locator(".factory-detail-page").first().innerText();
     check(detail.includes(rfqTitle), "the request the brand published is the one on screen");
     check(detail.includes("300"), "the quantity the brand typed is what the factory reads");
     check(/Can you quote fit and PP samples separately/.test(detail), "the brand's question reaches the factory");
@@ -1033,10 +1046,30 @@ async function main() {
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory quoting", "factory");
 
     await page.goto(`${APP}/browse/${publishedRfq.id}`);
-    await waitForHeading(page, "view rfq", 25000);
-    await record(page, "Factory can now bid", "the verification notice is gone and the quote button is live");
+    // A vendor that has not quoted yet gets the design's RFQ details screen —
+    // the request, the brand, the fit, and Send quote. It used to get the
+    // read-back of a quote that did not exist.
+    await waitForHeading(page, "rfq details", 25000);
+    const detailText = await page.locator(".factory-detail-page").innerText();
+    check(/Request match/i.test(detailText), "the request match panel is on the designed detail screen");
+    check(detailText.includes(brandName), "the brand behind the request is named from the database");
+    check(!/Maison Rue/.test(detailText), "and the design's example brand is nowhere on it");
+    check((await page.locator(".factory-side-actions .primary-btn").count()) === 1,
+      "with Send quote as the primary action");
+    await record(page, "RFQ details", "the screen a vendor gets before it has quoted");
 
-    await clickButton(page, "edit quote");
+    // Saving it puts it on the Saved page, which had no storage behind it.
+    await clickButton(page, "save request");
+    await page.waitForTimeout(1500);
+    await page.goto(`${APP}/saved`);
+    await waitFor(page, ".factory-saved-page", 20000);
+    check((await page.locator(".factory-saved-page").innerText()).includes(publishedRfq.title ?? "P"),
+      "the saved request is on the Saved page");
+    await record(page, "Saved", "one nav item that used to go nowhere");
+    await page.goto(`${APP}/browse/${publishedRfq.id}`);
+    await waitForHeading(page, "rfq details", 25000);
+
+    await clickButton(page, "send quote");
     await waitFor(page, ".factory-submit-page", 25000);
     await record(page, "The quote", "Queena's submit screen, on a real draft row");
 
@@ -1067,11 +1100,28 @@ async function main() {
     await setQuoteField("sample.1.cost", "$165");
     await record(page, "Factory quote", "prose on screen, taxonomy ids and rows underneath");
 
+    // The design's third step: the total the brand will see, and the price of
+    // sending it, before either happens.
     await page.locator('[data-testid="submit-quote"]').click();
+    await waitForHeading(page, "review quote", 25000);
+    const quoteReviewText = await page.locator(".factory-review-page").innerText();
+    check(/Send for \d+ credits/i.test(quoteReviewText), "the review step names what sending costs");
+    check(quoteReviewText.includes("$17.10"), "and totals the quote that was actually typed");
+    check(!quoteReviewText.includes("$18.40"), "not the design's example price");
+    await record(page, "Review quote", "totals and the credit price, before paying it");
+
+    const { data: beforeCredits } = await db.rpc("credit_balance", { org: factoryOrg.id });
+    await clickButton(page, "send for");
     await page.waitForTimeout(6000);
 
     const quoteError = await page.locator(".composer-error").innerText().catch(() => "");
     check(!quoteError, quoteError ? `the quote was refused: ${quoteError}` : "the quote was accepted");
+    const { data: afterCredits } = await db.rpc("credit_balance", { org: factoryOrg.id });
+    check(Number(beforeCredits) - Number(afterCredits) === 25,
+      `sending charged 25 credits (${beforeCredits} → ${afterCredits})`);
+    const sentText = await page.locator("main").innerText();
+    check(sentText.includes("$17.10") && !sentText.includes("$18.40"),
+      "the confirmation shows the vendor's own figures");
     await record(page, "Quote sent", "and the factory is promised an answer either way");
 
     // The prose was matched onto the vocabulary, not stored as a sentence.

@@ -184,3 +184,21 @@ export async function deleteDocument(document) {
     "remove the file record",
   );
 }
+
+/**
+ * The files a brand attached to a request.
+ *
+ * A vendor reading a request needs the tech pack and the measurement chart to
+ * quote it at all, and `documents_read` already answers who may see them —
+ * the rfq_id link is what carries that permission.
+ */
+export async function listRfqDocuments(rfqId) {
+  return unwrap(
+    await supabase
+      .from("documents")
+      .select("id, kind, bucket, storage_path, file_name, mime_type, size_bytes, created_at")
+      .eq("rfq_id", rfqId)
+      .order("created_at"),
+    "load the request's attachments",
+  );
+}

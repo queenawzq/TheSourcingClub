@@ -95,6 +95,12 @@ const paymentTermId = await termId("payment_term", "deposit-30-70");
 const incotermId = await termId("incoterm", "exw");
 const validUntil = new Date(Date.now() + 21 * 864e5).toISOString();
 
+// Sending a quote costs credits now, so the factory starts with the grant a
+// verified vendor gets.
+must(await admin.from("credit_ledger").insert({
+  org_id: factoryOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
+}), "factory credits");
+
 console.log("requests and quotes");
 const rfqs = [];
 for (const [title, brief, quantity] of [

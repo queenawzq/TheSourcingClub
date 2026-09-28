@@ -11,7 +11,7 @@
  * and none of it survives here.
  */
 import React, { useEffect, useState } from "react";
-import { getColourSplits, getInvitations, getQuestions, getRfq } from "../../lib/domain/rfq.js";
+import { getColourSplits, getInvitations, getQuestions, getRfq, recordRfqView } from "../../lib/domain/rfq.js";
 import { listDocuments, urlFor } from "../../lib/domain/documents.js";
 import { orderForQuote } from "../../lib/domain/quote.js";
 import { openRfqThread } from "../../lib/domain/message.js";
@@ -43,6 +43,11 @@ export default function RfqDetail({ org, rfqId, isFactory, profile }) {
     async function load() {
       const rfq = await getRfq(rfqId);
       if (!rfq) throw new Error("this request is not available to you");
+
+      // Stamp that the brand looked at its own request. Vendors deciding
+      // whether to spend credits on a quote are shown how recently it was,
+      // and the function ignores anyone who is not the owning brand.
+      if (!isFactory) recordRfqView(rfqId);
 
       const [colours, questions, docs, links, brandRow] = await Promise.all([
         getColourSplits(rfqId),
