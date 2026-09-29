@@ -19,8 +19,10 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FactorySubmitQuote } from "../../factory-prototype/main.jsx";
 import {
   createDraftQuote,
+  formatCapacityWindow,
   getMyQuote,
   getSampleLines,
+  parseCapacityWindow,
   saveQuote,
   setSampleLines,
   submitQuote,
@@ -123,6 +125,10 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         bulk_lead_time_days: firstNumber(values.leadTime),
         payment_term_id: payment?.id ?? null,
         incoterm_id: incoterm?.id ?? null,
+        shipping_notes: values.incoterms?.trim() || null,
+        // The window the vendor typed, as far as it parses. Nothing was written
+        // here before, so reopening a draft lost it and Review showed it blank.
+        ...parseCapacityWindow(values.capacityWindow),
         // deposit_pct is nullable and submit_quote does not require it, but an
         // order generated from a quote without one gets milestones totalling
         // only the sample lines, agree_schedule refuses that forever, and the
@@ -202,10 +208,13 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
             : "",
         leadTime: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "",
         // Every field the vendor has not filled is blank, never the design's
-        // example: readQuote() submits whatever these hold.
-        capacityWindow: "",
-        paymentTerms: "",
-        incoterms: "",
+        // example: readQuote() submits whatever these hold. What it HAS filled
+        // comes back, or reopening a draft silently drops it.
+        capacityWindow: formatCapacityWindow(quote),
+        paymentTerms: quote.deposit_pct
+          ? `${Number(quote.deposit_pct)}% deposit / ${Number(quote.balance_pct ?? 100 - quote.deposit_pct)}% before shipment`
+          : "",
+        incoterms: quote.shipping_notes ?? "",
         validUntil: quote.valid_until ?? "",
         "sample.0.stage": line(0)?.stage ?? "",
         "sample.0.cost": line(0) ? money(line(0).cost_cents) : "",

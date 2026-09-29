@@ -231,3 +231,45 @@ export async function orderForQuote(quoteId) {
     "find the production order",
   );
 }
+
+/**
+ * The designed quote form writes the capacity window as prose — "Oct 15 - Nov
+ * 20 · 300 units" — where the schema keeps two dates and a count. Same rule as
+ * the payment split and the incoterm: what parses is stored, and what does not
+ * stores nothing rather than a guess.
+ */
+export function parseCapacityWindow(text, now = new Date()) {
+  const said = String(text ?? "").trim();
+  if (!said) return { capacity_window_start: null, capacity_window_end: null, capacity_window_units: null };
+
+  // Two dates, in whatever order the vendor wrote them, with the year assumed
+  // to be the coming one when it is left off.
+  const dates = (said.match(/(?:\d{4}-\d{2}-\d{2})|(?:[A-Za-z]{3,9}\.?\s+\d{1,2}(?:,\s*\d{4})?)|(?:\d{1,2}\s+[A-Za-z]{3,9}(?:,?\s*\d{4})?)/g) ?? [])
+    .map((piece) => {
+      const withYear = /\d{4}/.test(piece) ? piece : `${piece}, ${now.getFullYear()}`;
+      const at = Date.parse(withYear);
+      return Number.isNaN(at) ? null : new Date(at);
+    })
+    .filter(Boolean)
+    .sort((a, b) => a - b);
+
+  // A units figure, but never one of the numbers already claimed by a date.
+  const units = said.match(/(\d[\d,]*)\s*(?:units?|pcs|pieces)/i);
+
+  return {
+    capacity_window_start: dates[0] ? dates[0].toISOString().slice(0, 10) : null,
+    capacity_window_end: dates[1] ? dates[1].toISOString().slice(0, 10) : null,
+    capacity_window_units: units ? Number(units[1].replace(/,/g, "")) : null,
+  };
+}
+
+/** The same window read back as the sentence the vendor typed. */
+export function formatCapacityWindow(quote) {
+  if (!quote) return "";
+  const day = (value) => (value
+    ? new Date(`${value}T00:00:00`).toLocaleDateString("en", { month: "short", day: "numeric" })
+    : "");
+  const span = [day(quote.capacity_window_start), day(quote.capacity_window_end)].filter(Boolean).join(" - ");
+  const units = quote.capacity_window_units ? `${quote.capacity_window_units} units` : "";
+  return [span, units].filter(Boolean).join(" · ");
+}
