@@ -14,7 +14,7 @@
 import React, { useEffect, useState } from "react";
 import { FactoryReviewTotal } from "../../factory-prototype/main.jsx";
 import { getRfq } from "../../lib/domain/rfq.js";
-import { getMyQuote, getSampleLines, submitQuote } from "../../lib/domain/quote.js";
+import { formatCapacityWindow, getMyQuote, getSampleLines, submitQuote } from "../../lib/domain/quote.js";
 import { creditBalance, quoteCreditCost } from "../../lib/domain/credits.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -86,13 +86,16 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
         unitPrice: quote.unit_price_cents ? formatMoney(quote.unit_price_cents) : "",
         quantity: quote.production_quantity ? `${quote.production_quantity} units` : "",
         leadTime: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "",
-        capacityWindow: "",
+        capacityWindow: formatCapacityWindow(quote),
         paymentTerms: quote.deposit_pct
           ? `${quote.deposit_pct}% deposit / ${quote.balance_pct ?? 100 - quote.deposit_pct}% balance`
           : "",
-        incoterms: "",
+        incoterms: quote.shipping_notes ?? "",
         validUntil: quote.valid_until
-          ? new Date(quote.valid_until).toLocaleDateString("en", { dateStyle: "medium" })
+          // A bare date parses as UTC midnight and renders a day early west
+          // of Greenwich — a quote typed as valid to the 30th expiring on the
+          // 29th. Pinning the time makes it local.
+          ? new Date(`${quote.valid_until}T00:00:00`).toLocaleDateString("en", { dateStyle: "medium" })
           : "",
         ...Object.fromEntries(lines.flatMap((line, index) => [
           [`sample.${index}.stage`, line.stage ?? ""],

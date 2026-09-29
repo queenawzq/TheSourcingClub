@@ -9069,7 +9069,12 @@ export function FactoryReviewTotal({
         <header className="factory-detail-header factory-submit-header factory-review-header">
           <button className="text-link" type="button" onClick={onEdit}>‹ Back to edit quote</button>
           <h1>Review quote</h1>
-          <p>Totals are calculated after saving the quote. Review the breakdown before sending it to Maison Rue.</p>
+          {/* The brand this quote is going to, not the one the design was drawn
+              against. A vendor reading "Maison Rue" on its own quote has been
+              told the wrong counterparty. */}
+          <p data-no-translate={project?.brand ? true : undefined}>
+            Totals are calculated after saving the quote. Review the breakdown before sending it to {project?.brand ?? "Maison Rue"}.
+          </p>
           {isZh && <small className="submit-page-language-hint">以下英文发送版本已自动翻译，可直接在原字段中编辑。</small>}
         </header>
 
@@ -9234,8 +9239,18 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
 function FactoryQuoteSections({ companyType = "factory", language = "en", readOnly = false, values }) {
   const isZh = language === "zh";
   const reviewEnglish = isZh && readOnly;
-  const reviewFieldProps = reviewEnglish ? { valueNoTranslate: true, editable: true } : {};
-  const [materialCosts, setMaterialCosts] = useState([
+  // `readOnly` is the read-back and the review step; anything else is the form
+  // itself, and a form whose fields cannot be typed into is not a form. These
+  // are contentEditable rather than inputs because that is how the design
+  // draws them, and `readQuote()` reads them back by their text on submit.
+  const canType = !readOnly;
+  const reviewFieldProps = reviewEnglish
+    ? { valueNoTranslate: true, editable: true }
+    : canType ? { editable: true } : {};
+  // `values` is how a live mount identifies itself. The three rows below are
+  // the design's worked example; a real vendor has not costed anything yet, and
+  // showing it poplin at $8.64 states a price it never quoted.
+  const [materialCosts, setMaterialCosts] = useState(values ? [] : [
     {
       id: "poplin",
       material: "Organic cotton poplin",
@@ -9303,14 +9318,21 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
       </SubmitSection>
 
       <SubmitSection title="Material sourcing and cost breakdown" description="Show who supplies each material, what it costs, and whether it is included in the unit price.">
+        {!values && (
         <section className="factory-sourcing-brand-provided">
           <div>
             <span>Brand provides separately</span>
             <p data-no-translate={reviewEnglish || undefined}>Labels, packaging, final color standards, and special branded trims.</p>
           </div>
         </section>
+        )}
         <div className="factory-sourcing-input-grid">
-          <QuoteField label={companyType === "trading" ? "Supplier network includes" : "Factory includes"} value="Main production materials and standard components from approved direction, included in unit price" {...reviewFieldProps} />
+          <QuoteField
+            name="sourcingIncludes"
+            label={companyType === "trading" ? "Supplier network includes" : "Factory includes"}
+            value={values?.sourcingIncludes ?? (values ? "" : "Main production materials and standard components from approved direction, included in unit price")}
+            {...reviewFieldProps}
+          />
         </div>
         <div className="factory-material-cost-heading">
           <div>
@@ -9345,8 +9367,8 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
 
       <SubmitSection title="Sample plan" description="Break out sample stages so the brand can compare quotes clearly.">
         <div className="factory-submit-sample-rows">
-          <SamplePlanRow index={0} stage={values?.["sample.0.stage"] ?? "Fit sample"} cost={values?.["sample.0.cost"] ?? "$95"} timing={values?.["sample.0.timing"] ?? "10 days"} includes={values?.["sample.0.includes"] ?? "1 revision round"} readOnly={readOnly} reviewEnglish={reviewEnglish} />
-          <SamplePlanRow index={1} stage={values?.["sample.1.stage"] ?? "PP sample"} cost={values?.["sample.1.cost"] ?? "$165"} timing={values?.["sample.1.timing"] ?? "11 days"} includes={values?.["sample.1.includes"] ?? "1 revision round"} readOnly={readOnly} reviewEnglish={reviewEnglish} />
+          <SamplePlanRow index={0} stage={values?.["sample.0.stage"] ?? (values ? "" : "Fit sample")} cost={values?.["sample.0.cost"] ?? (values ? "" : "$95")} timing={values?.["sample.0.timing"] ?? (values ? "" : "10 days")} includes={values?.["sample.0.includes"] ?? (values ? "" : "1 revision round")} readOnly={readOnly} reviewEnglish={reviewEnglish} />
+          <SamplePlanRow index={1} stage={values?.["sample.1.stage"] ?? (values ? "" : "PP sample")} cost={values?.["sample.1.cost"] ?? (values ? "" : "$165")} timing={values?.["sample.1.timing"] ?? (values ? "" : "11 days")} includes={values?.["sample.1.includes"] ?? (values ? "" : "1 revision round")} readOnly={readOnly} reviewEnglish={reviewEnglish} />
         </div>
         {!readOnly && <button className="factory-add-stage" type="button">+ Add sample stage</button>}
       </SubmitSection>
@@ -9363,23 +9385,26 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
         }
         descriptionNoTranslate
       >
+        {/* The design writes the answer out as an example. Live it is blank —
+            an answer to the brand's question has to be the vendor's own. */}
         <QuoteTextarea
-          value={isZh && !readOnly
+          name="factoryResponse"
+          value={values?.factoryResponse ?? (values ? "" : (isZh && !readOnly
             ? "可以。我们可以分别报价试身样和 PP 样，并支持 3 个颜色、每色 100 件。最终成本取决于确认后的 GSM、纽扣辅料、认证路径和最终尺码规格。"
-            : "Yes. We can quote fit and PP samples separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec."}
+            : "Yes. We can quote fit and PP samples separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec."))}
           label={companyType === "trading" ? "Trading company response" : "Factory response"}
-          editable={reviewEnglish}
+          editable={reviewEnglish || canType}
         />
       </SubmitSection>
 
       <SubmitSection title="Additional details and questions" description="Add supporting files or questions regarding the quote.">
-        <QuoteTextarea editable={reviewEnglish} value={isZh && !readOnly
+        <QuoteTextarea name="factoryNotes" editable={reviewEnglish || canType} value={values?.factoryNotes ?? (values ? "" : (isZh && !readOnly
           ? (companyType === "trading"
               ? "技术包确认后，合作工厂即可开始试身样。生产窗口已确认至 8 月 30 日。"
               : "技术包确认后即可开始试身样。大货产能可保留至 8 月 30 日。")
           : (companyType === "trading"
               ? "Our partner factory can start the fit sample after tech pack confirmation. The production window is confirmed through Aug 30."
-              : "We can start fit sample immediately after tech pack confirmation. Bulk capacity is held through Aug 30.")} />
+              : "We can start fit sample immediately after tech pack confirmation. Bulk capacity is held through Aug 30.")))} />
       </SubmitSection>
     </>
   );
@@ -9498,11 +9523,12 @@ function QuoteField({ label, value, helper, valueNoTranslate = false, editable =
   );
 }
 
-function QuoteTextarea({ value, label, editable = false }) {
+function QuoteTextarea({ value, label, editable = false, name }) {
   return (
     <div className="factory-quote-textarea">
       {label && <span className="factory-quote-textarea-label">{label}</span>}
       <strong
+        data-quote-field={name}
         data-no-translate
         contentEditable={editable || undefined}
         suppressContentEditableWarning={editable || undefined}
@@ -9512,7 +9538,9 @@ function QuoteTextarea({ value, label, editable = false }) {
 }
 
 function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, reviewEnglish = false, index }) {
-  const reviewFieldProps = reviewEnglish ? { valueNoTranslate: true, editable: true } : {};
+  const reviewFieldProps = reviewEnglish
+    ? { valueNoTranslate: true, editable: true }
+    : !readOnly ? { editable: true } : {};
   // Each stage becomes a quote_sample_lines row, and the quote total is
   // computed from them — so every cell is named and read back rather than
   // being a drawn plan.

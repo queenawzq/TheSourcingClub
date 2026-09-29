@@ -257,7 +257,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
             : "",
           incoterms: "",
           validUntil: myQuote.valid_until
-            ? new Date(myQuote.valid_until).toLocaleDateString("en", { dateStyle: "medium" })
+            ? new Date(`${myQuote.valid_until}T00:00:00`).toLocaleDateString("en", { dateStyle: "medium" })
             : "",
           ...Object.fromEntries(sampleLines.flatMap((line, index) => [
             [`sample.${index}.stage`, line.stage ?? ""],

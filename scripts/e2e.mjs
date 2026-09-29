@@ -1073,17 +1073,21 @@ async function main() {
     await waitFor(page, ".factory-submit-page", 25000);
     await record(page, "The quote", "Queena's submit screen, on a real draft row");
 
-    // The design's fields are contentEditable rather than inputs, so they are
-    // typed into by setting their text the way a person would.
+    // The design's fields are contentEditable rather than inputs. Writing
+    // textContent into them passes whether or not a person could have typed
+    // it, and that is exactly how the whole form shipped unfillable: every
+    // field was contentEditable={undefined} in English, so a vendor could not
+    // enter a price. So click and type, and assert the caret went in.
     const setQuoteField = async (name, value) => {
-      const ok = await page.evaluate(`(() => {
-        const node = document.querySelector('[data-quote-field="${name}"]');
-        if (!node) return false;
-        node.textContent = ${JSON.stringify(value)};
-        node.dispatchEvent(new Event("input", { bubbles: true }));
-        return true;
-      })()`);
-      check(ok !== false, `the quote field "${name}" exists on the designed screen`);
+      const field = page.locator(`[data-quote-field="${name}"]`).first();
+      const editable = await field.evaluate((node) => node.isContentEditable).catch(() => false);
+      check(editable, `the quote field "${name}" can actually be typed into`);
+      if (!editable) return;
+      await field.click();
+      await page.keyboard.press("ControlOrMeta+a");
+      await page.keyboard.type(value);
+      const got = (await field.innerText()).trim();
+      check(got === value, `"${name}" holds what was typed (${got || "empty"})`);
     };
 
     await setQuoteField("unitPrice", "$17.10 / unit");
