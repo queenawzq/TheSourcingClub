@@ -586,6 +586,34 @@ console.log("\nphase 2 — the loop");
   rfqRow.status === "awarded" && rfqRow.awarded_quote_id === revised.id
     ? ok("the rfq closed and points at the winning quote")
     : fail(`rfq is ${rfqRow.status}`);
+
+  // The exact embed listFactoryRfqs() sends. Unqualified, `rfqs (...)` from
+  // quotes is ambiguous (quotes.rfq_id and rfqs.awarded_quote_id) and the
+  // factory's whole RFQs page failed to load.
+  const { data: factoryList, error: factoryListError } = await f1.client
+    .from("quotes")
+    .select("id, rfq_id, status, rfqs!quotes_rfq_id_fkey (id, title, orgs!rfqs_brand_org_id_fkey (name))")
+    .eq("factory_org_id", f1org.id)
+    .neq("status", "superseded");
+  factoryListError
+    ? fail("the factory's own quotes list, embedded with its request", factoryListError)
+    : factoryList.some((row) => row.rfqs?.id === rfqId)
+      ? ok("a factory lists its quotes with the request embedded")
+      : fail("the factory's quote list came back without its request");
+
+  // listRfqs() counts only the live row per vendor, so revising does not
+  // inflate the brand's "quotes received".
+  const { data: counted, error: countError } = await brand.client
+    .from("rfqs")
+    .select("id, quotes!quotes_rfq_id_fkey(count)")
+    .eq("id", rfqId)
+    .in("quotes.status", ["submitted", "accepted", "declined"])
+    .single();
+  countError
+    ? fail("the brand's quote count", countError)
+    : counted.quotes?.[0]?.count === 2
+      ? ok("the brand's quote count ignores superseded versions (2 vendors, 3 rows)")
+      : fail(`expected 2 live quotes, counted ${counted.quotes?.[0]?.count}`);
 }
 
 console.log("\nphase 3 — the order runs");

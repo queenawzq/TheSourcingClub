@@ -41,7 +41,11 @@ const STATUS = {
 /** One request, in the shape the designed card reads. */
 function toCard(rfq, quote) {
   const statusKey = quote?.status ?? "invited";
-  const [status, statusTone] = STATUS[statusKey] ?? STATUS.invited;
+  // A cancelled request closes every quote on it; "Not selected" would say
+  // the brand chose someone else, which is not what happened.
+  const [status, statusTone] = rfq.status === "cancelled"
+    ? ["Request cancelled", "neutral"]
+    : STATUS[statusKey] ?? STATUS.invited;
   const quoted = quote?.unit_price_cents != null ? `${formatMoney(quote.unit_price_cents, quote.currency)} / unit` : "Not quoted";
 
   return {

@@ -51,6 +51,29 @@ function ago(when) {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
+/**
+ * What happened to this vendor's quote, in words. Every status gets its own
+ * sentence: the old fallback read "Your quote is a declined and has not been
+ * sent yet" on a quote that was sent and then lost, or closed by a cancel.
+ */
+function statusOf(quote, rfq) {
+  const brand = rfq.orgs?.name ?? "The brand";
+  switch (quote.status) {
+    case "submitted":
+      return { summary: `Your quote was submitted and is visible to ${rfq.orgs?.name ?? "the brand"}.`, label: "Quote submitted" };
+    case "accepted":
+      return { summary: `${brand} chose your quote. The order is under Production orders.`, label: "Accepted" };
+    case "declined":
+      return rfq.status === "cancelled"
+        ? { summary: `${brand} cancelled this request, so your quote was closed.`, label: "Request cancelled" }
+        : { summary: `${brand} chose another quote.`, label: "Not selected" };
+    case "withdrawn":
+      return { summary: "You withdrew this quote.", label: "Withdrawn" };
+    default:
+      return { summary: "Your quote is a draft and has not been sent yet.", label: "Draft" };
+  }
+}
+
 /** The score bands the database already defines, as the design draws them. */
 const MATCH_BANDS = [
   [90, "Strong fit", "strong"],
@@ -66,12 +89,14 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const [sampleLines, setSampleLines] = useState([]);
   const [extras, setExtras] = useState({ match: null, brand: null, quoteCount: 0, lastView: null, files: [], saved: false });
   const [error, setError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([getRfq(rfqId), getQuestions(rfqId), org?.id ? getMyQuote(rfqId, org.id) : null])
       .then(([request, asked, quote]) => {
         if (cancelled) return;
+        setLoaded(true);
         setRfq(request);
         setQuestions(asked ?? []);
         setMyQuote(quote ?? null);
@@ -129,6 +154,22 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   }
 
   if (error) return <p className="composer-error" role="alert">{error.message}</p>;
+  // A request the brand cancelled (or one this vendor was never shown) is not
+  // readable any more. The "cancelled" notification links here, so say so
+  // rather than render an empty page.
+  if (loaded && !rfq) {
+    return (
+      <main className="home-page shell-body" data-testid="rfq-unavailable">
+        <h1>This request is no longer open</h1>
+        <p className="shell-note">
+          The brand may have cancelled it, and any quote you sent on it has been closed.
+        </p>
+        <p className="shell-note">
+          <button type="button" className="quiet-btn" onClick={() => navigate("/browse")}>← Browse open requests</button>
+        </p>
+      </main>
+    );
+  }
   if (!rfq) return null;
 
   const verified = profile?.verification_status === "verified";
@@ -292,17 +333,17 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
             : "—",
         }}
         status={{
-          summary: myQuote.status === "submitted"
-            ? `Your quote was submitted and is visible to ${rfq.orgs?.name ?? "the brand"}.`
-            : `Your quote is a ${myQuote.status} and has not been sent yet.`,
+          ...statusOf(myQuote, rfq),
           price: myQuote.unit_price_cents ? formatMoney(myQuote.unit_price_cents) : "—",
           sent: myQuote.submitted_at
             ? DAY.format(new Date(myQuote.submitted_at))
             : "—",
-          label: myQuote.status === "submitted" ? "Quote submitted" : myQuote.status,
         }}
         onBack={() => navigate("/browse")}
-        onEdit={verified ? () => navigate(`/browse/${rfqId}/quote`) : undefined}
+        // Only a draft or a sent quote on an open request can still change.
+        onEdit={rfq.status !== "open" || !["draft", "submitted"].includes(myQuote.status)
+          ? null
+          : verified ? () => navigate(`/browse/${rfqId}/quote`) : undefined}
       />
     </>
   );

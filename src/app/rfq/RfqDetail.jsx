@@ -12,7 +12,7 @@
  */
 import React, { useEffect, useState } from "react";
 import { getColourSplits, getInvitations, getQuestions, getRfq, recordRfqView } from "../../lib/domain/rfq.js";
-import { listDocuments, urlFor } from "../../lib/domain/documents.js";
+import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
 import { orderForQuote } from "../../lib/domain/quote.js";
 import { openRfqThread } from "../../lib/domain/message.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
@@ -52,7 +52,9 @@ export default function RfqDetail({ org, rfqId, isFactory, profile }) {
       const [colours, questions, docs, links, brandRow] = await Promise.all([
         getColourSplits(rfqId),
         getQuestions(rfqId),
-        listDocuments(rfq.brand_org_id).catch(() => []),
+        // The request's own files. Listing the brand's documents and filtering
+        // on rfq_id found nothing: that select never asked for the column.
+        listRfqDocuments(rfqId).catch(() => []),
         supabase
           .from("taxonomy_links")
           .select("taxonomy_terms (id, kind, slug, label_en, label_zh)")
@@ -84,7 +86,7 @@ export default function RfqDetail({ org, rfqId, isFactory, profile }) {
         rfq,
         colours,
         questions,
-        documents: docs.filter((doc) => doc.rfq_id === rfqId),
+        documents: docs,
         terms: (links.data ?? []).map((row) => row.taxonomy_terms).filter(Boolean),
         brand: Array.isArray(brandRow?.data) ? brandRow.data[0] : brandRow?.data ?? null,
         invitations,
