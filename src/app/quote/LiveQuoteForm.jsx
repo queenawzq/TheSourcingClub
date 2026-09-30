@@ -20,7 +20,7 @@ import { FactorySubmitQuote } from "../../factory-prototype/main.jsx";
 import {
   createDraftQuote,
   formatCapacityWindow,
-  getMyQuote,
+  getLatestQuote,
   getSampleLines,
   parseCapacityWindow,
   saveQuote,
@@ -77,6 +77,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   const [questions, setQuestions] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [draftState, setDraftState] = useState(null);
 
   const kinds = useMemo(() => KINDS, []);
 
@@ -91,15 +92,71 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       setTerms(vocab);
       setQuestions(asked ?? []);
 
-      const mine = (await getMyQuote(rfqId, org.id)) ?? (await createDraftQuote(rfqId, org.id));
+      // A draft is started only when this vendor has no quote here at all.
+      // Anything else — sent, decided, withdrawn — is not editable, and the
+      // form used to open on it anyway: a sent quote failed to save, and a
+      // withdrawn one silently started a fresh draft. Those go to the
+      // read-back, where editing a sent quote asks first.
+      const latest = await getLatestQuote(rfqId, org.id);
+      if (latest && latest.status !== "draft") {
+        navigate(`/browse/${rfqId}`);
+        return;
+      }
+      const mine = latest ?? (await createDraftQuote(rfqId, org.id));
       setQuote(mine);
       setLines((await getSampleLines(mine.id)) ?? []);
     } catch (failure) {
       setError(failure);
     }
-  }, [rfqId, org.id, kinds]);
+  }, [rfqId, org.id, kinds, navigate]);
 
   useEffect(() => { load(); }, [load]);
+
+  /** Write what is on the card to the draft. */
+  async function persist(values) {
+    const unit = firstNumber(values.unitPrice);
+    const payment = paymentTermFrom(terms.payment_term ?? [], values.paymentTerms);
+    const incoterm = incotermFrom(terms.incoterm ?? [], values.incoterms);
+    const depositPct = depositPctFrom(payment?.slug);
+
+    await saveQuote(quote.id, {
+      unit_price_cents: unit == null ? null : toCents(unit),
+      production_quantity: firstNumber(values.quantity),
+      bulk_lead_time_days: firstNumber(values.leadTime),
+      payment_term_id: payment?.id ?? null,
+      incoterm_id: incoterm?.id ?? null,
+      shipping_notes: values.incoterms?.trim() || null,
+      // The window the vendor typed, as far as it parses. Nothing was written
+      // here before, so reopening a draft lost it and Review showed it blank.
+      ...parseCapacityWindow(values.capacityWindow),
+      // deposit_pct is nullable and submit_quote does not require it, but an
+      // order generated from a quote without one gets milestones totalling
+      // only the sample lines, agree_schedule refuses that forever, and the
+      // order is dead with nothing on screen explaining why.
+      deposit_pct: depositPct,
+      balance_pct: depositPct == null ? null : 100 - depositPct,
+      valid_until: (() => {
+        const parsed = Date.parse(values.validUntil ?? "");
+        return Number.isNaN(parsed) ? null : new Date(parsed).toISOString().slice(0, 10);
+      })(),
+    });
+
+    // Each designed sample stage becomes a row; the quote total is computed
+    // from them rather than typed.
+    const stages = [0, 1]
+      .map((index) => ({
+        stage: values[`sample.${index}.stage`]?.trim(),
+        cost_cents: (() => {
+          const amount = firstNumber(values[`sample.${index}.cost`]);
+          return amount == null ? null : toCents(amount);
+        })(),
+        timing_days: firstNumber(values[`sample.${index}.timing`]),
+        includes: values[`sample.${index}.includes`]?.trim() || null,
+        sort: index,
+      }))
+      .filter((row) => row.stage && row.cost_cents != null);
+    if (stages.length) await setSampleLines(quote.id, stages);
+  }
 
   /**
    * Save what is on the card, then go to the design's Review step.
@@ -114,54 +171,26 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     setError(null);
 
     try {
-      const unit = firstNumber(values.unitPrice);
-      const payment = paymentTermFrom(terms.payment_term ?? [], values.paymentTerms);
-      const incoterm = incotermFrom(terms.incoterm ?? [], values.incoterms);
-      const depositPct = depositPctFrom(payment?.slug);
-
-      await saveQuote(quote.id, {
-        unit_price_cents: unit == null ? null : toCents(unit),
-        production_quantity: firstNumber(values.quantity),
-        bulk_lead_time_days: firstNumber(values.leadTime),
-        payment_term_id: payment?.id ?? null,
-        incoterm_id: incoterm?.id ?? null,
-        shipping_notes: values.incoterms?.trim() || null,
-        // The window the vendor typed, as far as it parses. Nothing was written
-        // here before, so reopening a draft lost it and Review showed it blank.
-        ...parseCapacityWindow(values.capacityWindow),
-        // deposit_pct is nullable and submit_quote does not require it, but an
-        // order generated from a quote without one gets milestones totalling
-        // only the sample lines, agree_schedule refuses that forever, and the
-        // order is dead with nothing on screen explaining why.
-        deposit_pct: depositPct,
-        balance_pct: depositPct == null ? null : 100 - depositPct,
-        valid_until: (() => {
-          const parsed = Date.parse(values.validUntil ?? "");
-          return Number.isNaN(parsed) ? null : new Date(parsed).toISOString().slice(0, 10);
-        })(),
-      });
-
-      // Each designed sample stage becomes a row; the quote total is computed
-      // from them rather than typed.
-      const stages = [0, 1]
-        .map((index) => ({
-          stage: values[`sample.${index}.stage`]?.trim(),
-          cost_cents: (() => {
-            const amount = firstNumber(values[`sample.${index}.cost`]);
-            return amount == null ? null : toCents(amount);
-          })(),
-          timing_days: firstNumber(values[`sample.${index}.timing`]),
-          includes: values[`sample.${index}.includes`]?.trim() || null,
-          sort: index,
-        }))
-        .filter((row) => row.stage && row.cost_cents != null);
-      if (stages.length) await setSampleLines(quote.id, stages);
-
+      await persist(values);
       navigate(`/browse/${rfqId}/quote/review`);
     } catch (failure) {
       setError(failure);
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** The design's "Save draft": keep the card and stay on it. */
+  async function saveDraft(values) {
+    if (busy || !quote || draftState === "saving") return;
+    setDraftState("saving");
+    setError(null);
+    try {
+      await persist(values);
+      setDraftState("saved");
+    } catch (failure) {
+      setError(failure);
+      setDraftState(null);
     }
   }
 
@@ -227,6 +256,8 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       }}
       onBack={() => navigate(`/browse/${rfqId}`)}
       onReviewTotal={saveAndReview}
+      onSaveDraft={saveDraft}
+      draftState={draftState}
       busy={busy}
       error={error}
     />

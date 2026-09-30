@@ -1172,6 +1172,34 @@ async function main() {
     });
     check(Number(quoteSubtotal) === 26000, `the samples subtotal is computed from the rows (${quoteSubtotal})`);
 
+    // Revising a sent quote: the confirmation's "Back to edit quote" asks
+    // first, because editing takes the quote out of the brand's comparison
+    // until it is sent again — for a second charge. It used to open the form
+    // on the sent row, which could not save.
+    await clickButton(page, "back to edit quote");
+    await waitFor(page, '[data-testid="revise-quote-dialog"]', 15000);
+    const reviseText = await page.locator('[data-testid="revise-quote-dialog"]').innerText();
+    check(/25 credits/.test(reviseText), "editing a sent quote says what sending it again costs first");
+    await record(page, "Revise notice", "the cost of editing a sent quote, before it happens");
+    await page.locator('[data-testid="revise-quote-dialog-confirm"]').click();
+    await waitForHeading(page, "prepare quote", 25000);
+    await setQuoteField("unitPrice", "$16.95 / unit");
+    await page.locator('[data-testid="submit-quote"]').click();
+    await waitForHeading(page, "review quote", 25000);
+    const { data: beforeResend } = await db.rpc("credit_balance", { org: factoryOrg.id });
+    await clickButton(page, "send for");
+    await page.waitForTimeout(6000);
+    const { data: afterResend } = await db.rpc("credit_balance", { org: factoryOrg.id });
+    check(Number(beforeResend) - Number(afterResend) === 25,
+      `sending the revision charged again (${beforeResend} → ${afterResend})`);
+    const { data: versions } = await db.from("quotes")
+      .select("version, status, unit_price_cents").eq("rfq_id", publishedRfq.id).eq("factory_org_id", factoryOrg.id)
+      .order("version");
+    check(versions?.length === 2 && versions[0].status === "superseded"
+      && versions[1].status === "submitted" && versions[1].unit_price_cents === 1695,
+      `the revision is version 2 at $16.95, and version 1 is kept as superseded (${JSON.stringify(versions)})`);
+    await record(page, "Revision sent", "version 2 in the brand's comparison, version 1 kept as history");
+
     // A second bidder, seeded directly. Without one, "awarding declines the
     // others" has nothing to decline and proves nothing.
     const { data: rivalOrg } = await db.from("orgs")
@@ -1200,7 +1228,8 @@ async function main() {
     check(quoteCards === 2, `both quotes are listed (${quoteCards} cards)`);
 
     const quoteListText = await page.locator(".quote-list").innerText();
-    check(quoteListText.includes("5,390"),
+    // $16.95 x 300 + $260 of samples: the revised price, not the first one.
+    check(quoteListText.includes("5,345"),
       "the list shows the same total the factory saw, not a re-parsed string");
     check(quoteListText.includes(factoryName), "the quoting factory is named on its card");
 
