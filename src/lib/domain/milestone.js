@@ -93,6 +93,32 @@ export async function listUpdates(milestoneId) {
 }
 
 /**
+ * Every update on an order, newest first, in one read.
+ *
+ * The order screen needs the latest update per step and every file for its
+ * Files tab; asking per step would be one round trip per row. Either side's
+ * posts come back — a brand's comment is an update with the brand as author.
+ */
+export async function listOrderUpdates(orderId) {
+  return unwrap(
+    await supabase
+      .from("milestone_updates")
+      .select("id, milestone_id, body, created_at, author_org_id, orgs:author_org_id (name), documents (id, bucket, storage_path, file_name, mime_type, size_bytes)")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false }),
+    "load the updates on this order",
+  );
+}
+
+/** Nudge the other side about a step. Once a day per step; the RPC says so. */
+export async function remindMilestone(milestoneId) {
+  return unwrap(
+    await supabase.rpc("remind_milestone", { target_milestone: milestoneId }),
+    "send the reminder",
+  );
+}
+
+/**
  * Post an update with photos.
  *
  * The update row has to exist first, because each upload is scoped by the
