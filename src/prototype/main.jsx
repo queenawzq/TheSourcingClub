@@ -4,7 +4,7 @@ import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
-import { filterOrders, ProjectStepRail } from "../shared/production-order-parts.jsx";
+import { filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab } from "../shared/production-order-parts.jsx";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
@@ -6315,14 +6315,22 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite })
   );
 }
 
-export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, live = false }) {
+export function ProjectsScreen({
+  goTo,
+  setSelectedReorderProject,
+  onViewOrder,
+  live = false,
+  // Live passes the company's saved tabs (src/app/order/useOrderTabs.js); the
+  // prototype passes nothing and keeps its tabs in local state, as drawn.
+  tabStore = null
+}) {
   // Reads through the data seam rather than the module constant, so the same
   // screen serves mock data in prototype.html and real orders in app.html.
   const { data: orders, loading, error } = useOrders();
   const [activeTab, setActiveTab] = useState("active");
   // Live starts from the two fixed tabs and nothing else: the design's counts
   // and its "Spring 27" example read as real to a brand with no orders.
-  const [projectTabs, setProjectTabs] = useState(live ? [
+  const [localTabs, setProjectTabs] = useState(live ? [
     { key: "active", label: "Active orders", locked: true },
     { key: "closed", label: "Closed", locked: true }
   ] : [
@@ -6330,6 +6338,7 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, l
     { key: "closed", label: "Closed (6)", locked: true },
     { key: "custom-Spring 27", label: "Spring 27", locked: false }
   ]);
+  const projectTabs = tabStore?.tabs ?? localTabs;
   const [search, setSearch] = useState("");
   const [vendor, setVendor] = useState("all");
   const [dateRange, setDateRange] = useState("any");
@@ -6338,7 +6347,12 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, l
   const [newTabName, setNewTabName] = useState("");
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
   const [draftTabs, setDraftTabs] = useState(projectTabs);
-  const customTabs = projectTabs.filter((tab) => !tab.locked).map((tab) => tab.label);
+  const customTabs = projectTabs.filter((tab) => !tab.locked);
+
+  // A tab a teammate deleted, or this person just did, falls back to Active.
+  useEffect(() => {
+    if (tabStore && !projectTabs.some((tab) => tab.key === activeTab)) setActiveTab("active");
+  }, [tabStore, projectTabs, activeTab]);
 
   /**
    * Real counts, where the rows can answer the question.
@@ -6351,9 +6365,7 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, l
   const orderRows = orders ?? [];
   const knowsState = live || orderRows.some((project) => project.state);
   const isClosed = (project) => project.state === "completed" || project.state === "cancelled";
-  const tabRows = !knowsState
-    ? orderRows
-    : orderRows.filter((project) => (activeTab === "closed" ? isClosed(project) : !isClosed(project)));
+  const tabRows = !knowsState ? orderRows : rowsForTab(orderRows, activeTab, tabStore?.membership);
   // The filters only act on live rows; the prototype's mock cards carry none
   // of the fields they filter on, so there they stay as drawn.
   const vendorOptions = live
@@ -6371,12 +6383,23 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, l
   function openManageTabs() {
     setDraftTabs(projectTabs);
     setIsAddingTab(false);
+    tabStore?.clearErrors();
     setManageTabsOpen(true);
   }
 
   function addCustomTab(event) {
     event.preventDefault();
     const trimmedName = newTabName.trim();
+    if (tabStore) {
+      // The database checks the name; a refusal shows under the tabs.
+      tabStore.add(trimmedName).then((key) => {
+        if (!key) return;
+        setActiveTab(key);
+        setNewTabName("");
+        setIsAddingTab(false);
+      });
+      return;
+    }
     if (!trimmedName || projectTabs.some((tab) => tab.label === trimmedName)) return;
     const nextTab = { key: `custom-${trimmedName}`, label: trimmedName, locked: false };
     setProjectTabs((tabs) => [...tabs, nextTab]);
@@ -6404,6 +6427,12 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, l
   }
 
   function saveManagedTabs() {
+    if (tabStore) {
+      // One save for every rename, move and delete; the window stays open
+      // with the reason if the database refuses it.
+      tabStore.save(draftTabs).then((saved) => saved && setManageTabsOpen(false));
+      return;
+    }
     const cleanedTabs = [];
     const seenKeys = new Set();
     draftTabs.forEach((tab) => {
@@ -6530,6 +6559,9 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, l
           Manage tabs
         </button>
       </nav>
+      {(tabStore?.addError || tabStore?.error) && (
+        <p className="composer-error" role="alert">{(tabStore.addError || tabStore.error).message}</p>
+      )}
 
       {manageTabsOpen && createPortal(
         <div className="brand-profile-modal-layer">
@@ -6556,6 +6588,7 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, l
                 </div>
               ))}
             </div>
+            {tabStore?.saveError && <p className="composer-error" role="alert">{tabStore.saveError.message}</p>}
 
             <footer className="brand-profile-modal-actions">
               <button className="secondary-btn" type="button" onClick={() => setManageTabsOpen(false)}>Cancel</button>
@@ -6582,6 +6615,8 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, l
               ? "No orders match these filters."
               : activeTab === "closed"
               ? "Nothing closed yet."
+              : activeTab !== "active"
+              ? "No orders in this tab yet. Add one from an order's ··· menu."
               : "No production orders yet. One appears here when a quote is awarded."}
           </p>
         ) : (
@@ -6590,6 +6625,8 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, l
               project={project}
               goTo={goTo}
               customTabs={customTabs}
+              isFiled={tabStore ? (tab) => tabStore.membership.get(tab.key)?.has(project.id) : null}
+              onToggleTab={tabStore ? (tab) => tabStore.toggle(tab.key, project.id) : null}
               onViewOrder={onViewOrder}
               setSelectedReorderProject={setSelectedReorderProject}
               key={project.id ?? project.title}
@@ -6602,25 +6639,11 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, l
 }
 
 
-function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], onViewOrder, setSelectedReorderProject = null }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef(null);
+function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, onViewOrder, setSelectedReorderProject = null }) {
   const projectFacts = [
     ["Current step", project.currentStep],
     ["Next due", project.nextDue]
   ];
-
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-
-    function closeOnOutsideClick(event) {
-      if (menuRef.current?.contains(event.target)) return;
-      setMenuOpen(false);
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
-  }, [menuOpen]);
 
   return (
     <article className={project.featured ? "brand-project-card featured shared-responsive-card" : "brand-project-card shared-responsive-card"}>
@@ -6635,35 +6658,24 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
           status={project.status}
           statusTone={project.statusTone}
         >
-          <div className="project-overflow" ref={menuRef}>
-            <button className="rfq-more" type="button" aria-label="More order actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
-            {menuOpen && (
-              <div className="project-overflow-menu" role="menu">
-                <div className="project-overflow-submenu">
-                  <button type="button" role="menuitem">Add to</button>
-                  <div className="project-overflow-submenu-panel">
-                    {customTabs.map((tab) => (
-                      <button type="button" role="menuitem" key={tab} onClick={() => setMenuOpen(false)}>
-                        {tab}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+          <OrderCardMenu customTabs={customTabs} isFiled={isFiled} onToggleTab={onToggleTab}>
+            {(close) => (
+              <>
                 <button
                   type="button"
                   role="menuitem"
                   onClick={() => {
                     setSelectedReorderProject?.(project);
-                    setMenuOpen(false);
+                    close();
                     goTo("contract");
                   }}
                 >
                   Reorder style
                 </button>
-                <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive order</button>
-              </div>
+                <button type="button" role="menuitem" onClick={close}>Archive order</button>
+              </>
             )}
-          </div>
+          </OrderCardMenu>
         </ProjectCardActions>
       </header>
 

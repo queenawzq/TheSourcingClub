@@ -218,6 +218,9 @@ Things that will bite here specifically:
 - **Every header figure comes from `production_order_summary`.** JavaScript never sums money and never decides whose turn it is. The order total is the sum of the *milestones*, not the quote — they are equal at award and diverge the moment either side edits.
 - **`order_payments.milestone_id` is unique, so its embed is to-ONE.** PostgREST returns an object where an ordinary embed returns an array, and indexing it as `[0]` yields `undefined` rather than an error — the timeline silently loses every payment status. `listMilestones()` resolves the shape once into `milestone.payment`; nothing downstream should touch `order_payments` directly.
 
+- **Order tabs belong to the company, not the order** (066). `order_tabs` holds a company's "Active orders", "Closed" and its own tabs; `order_tab_orders` says which orders it filed where. The other side of the order never sees either. Filing needs the *tab's* company to be a party to the order, not merely the caller — one person can belong to a brand and an unrelated factory. Active and Closed are rows, created by the first `add_order_tab` / `save_order_tabs`, so a company with none is shown the defaults.
+- **`grant select` alone does not stop writes on a new table.** The stack's default privileges give `authenticated` every privilege on new tables, so 066 revokes insert/update/delete/truncate on `order_tabs` explicitly; its writes go through the two functions.
+
 Platform staff have no org, and `notifications.org_id` is `not null references orgs`, so **an admin cannot be notified of anything**. `admin_payment_queue()` is therefore a required step in the workflow, not a convenience: without someone watching it, every payment stalls at `sent`. Do not solve this with a synthetic platform org — it would leak into `current_org_ids()` and every `or is_platform_admin()` branch.
 
 ### Conversations (Phase 4)

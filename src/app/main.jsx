@@ -32,13 +32,14 @@ import LiveQuotes from "./quote/LiveQuotes.jsx";
 // The designed screens, mounted against live data through the seam. Importing
 // them pulls in the prototype stylesheet, which is the point — the design is
 // the CSS.
-import { ProjectsScreen, RfqsScreen, brandNavItems } from "../prototype/main.jsx";
+import { RfqsScreen, brandNavItems } from "../prototype/main.jsx";
 import { nav as factoryNavItems } from "../factory-prototype/main.jsx";
 import { PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import LiveFactoryHome from "./home/LiveFactoryHome.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 import { createLiveAdapter } from "./live-adapter.js";
+import LiveBrandOrders from "./order/LiveBrandOrders.jsx";
 import LiveFactoryOrders from "./order/LiveFactoryOrders.jsx";
 import MilestoneDetail from "./order/MilestoneDetail.jsx";
 import PaymentInstructions from "./order/PaymentInstructions.jsx";
@@ -854,15 +855,12 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       render: () => isFactory ? (
         <LiveFactoryOrders org={activeOrg} user={user} onViewOrder={(project) => navigate(`/orders/${project.id}`)} />
       ) : (
-        <main className="rfqs-page brand-projects-page">
-          <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
-            <ProjectsScreen
-              goTo={(next) => navigateFromPrototype(next, navigate)}
-              onViewOrder={(project) => navigate(project?.id ? `/orders/${project.id}` : "/orders")}
-              live
-            />
-          </DataProvider>
-        </main>
+        <LiveBrandOrders
+          org={activeOrg}
+          user={user}
+          goTo={(next) => navigateFromPrototype(next, navigate)}
+          onViewOrder={(project) => navigate(project?.id ? `/orders/${project.id}` : "/orders")}
+        />
       ),
     },
     {

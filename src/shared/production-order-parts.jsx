@@ -3,7 +3,7 @@
  * way: the brand's ProjectsScreen and the factory's FactoryProjectsPage.
  * They live here so a live fix lands on both sides at once.
  */
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 /**
  * Search, vendor, date range and sort over live order cards. The cards carry
@@ -28,6 +28,89 @@ export function filterOrders(rows, { search, vendor, dateRange, sortBy }) {
     return [...filtered].sort((a, b) => String(a.factory ?? "").localeCompare(String(b.factory ?? "")));
   }
   return [...filtered].sort((a, b) => time(b.createdAt, 0) - time(a.createdAt, 0));
+}
+
+/**
+ * Which orders a tab shows. Active and Closed split on the order's state; a
+ * custom tab shows the orders filed in it, open or closed. `membership` (tab
+ * key → Set of order ids) comes from the live store; the prototype has none,
+ * so there a custom tab keeps showing what it always did.
+ */
+export function rowsForTab(rows, tabKey, membership = null) {
+  const isClosed = (project) => project.state === "completed" || project.state === "cancelled";
+  if (membership && tabKey !== "active" && tabKey !== "closed") {
+    const filed = membership.get(tabKey);
+    return rows.filter((project) => filed?.has(project.id));
+  }
+  return rows.filter((project) => (tabKey === "closed" ? isClosed(project) : !isClosed(project)));
+}
+
+/**
+ * The "..." menu on an order card, with "Add to › <tab>".
+ *
+ * The brand card drew it; the factory card's "..." had nothing behind it, so
+ * both use this one. In the prototype the tabs are local and a click only
+ * closes the menu. Live passes `onToggleTab`: the tabs the order is already in
+ * carry a ✓, and choosing one again takes the order out. `children(close)`
+ * adds the card's other items.
+ */
+export function OrderCardMenu({ customTabs = [], isFiled = null, onToggleTab = null, children = null }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+
+    function closeOnOutsideClick(event) {
+      if (menuRef.current?.contains(event.target)) return;
+      setMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [menuOpen]);
+
+  const close = () => setMenuOpen(false);
+  // Live, a company with no tabs of its own would get an empty "Add to" panel.
+  const showAddTo = !onToggleTab || customTabs.length > 0;
+  if (!showAddTo && !children) {
+    return <button className="rfq-more" type="button" aria-label="More order actions">...</button>;
+  }
+
+  return (
+    <div className="project-overflow" ref={menuRef}>
+      <button className="rfq-more" type="button" aria-label="More order actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
+      {menuOpen && (
+        <div className="project-overflow-menu" role="menu">
+          {showAddTo && (
+            <div className="project-overflow-submenu">
+              <button type="button" role="menuitem">Add to</button>
+              <div className="project-overflow-submenu-panel">
+                {customTabs.map((tab) => {
+                  const filed = Boolean(isFiled?.(tab));
+                  return (
+                    <button
+                      type="button"
+                      role={onToggleTab ? "menuitemcheckbox" : "menuitem"}
+                      aria-checked={onToggleTab ? filed : undefined}
+                      key={tab.key}
+                      onClick={() => {
+                        close();
+                        onToggleTab?.(tab);
+                      }}
+                    >
+                      {filed ? "✓ " : ""}{tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {children?.(close)}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /**
