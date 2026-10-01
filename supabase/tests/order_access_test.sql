@@ -456,11 +456,12 @@ reset role;
 set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000001","email":"p3-brandowner@example.com","role":"authenticated"}';
 set local role authenticated;
 
-select throws_ok(
-  $$select public.post_milestone_update((select fit_id from p3m), 'Looks good to me')$$,
-  '42501',
-  null,
-  'a brand CANNOT post a factory update'
+-- Since 065 a brand comments on a step through the same function. What must
+-- still never happen is the comment being recorded as the factory's work.
+select is(
+  (select author_org_id from public.post_milestone_update((select fit_id from p3m), 'Looks good to me')),
+  'd3000000-0000-0000-0000-00000000000b'::uuid,
+  'a brand''s post on a step is its own comment, never recorded as the factory''s update'
 );
 
 reset role;
@@ -512,7 +513,8 @@ select throws_ok(
 -- and the gallery is simply empty, with no error anywhere.
 select is(
   (select count(*)::int from public.milestone_updates
-     where milestone_id = (select fit_id from p3m)),
+     where milestone_id = (select fit_id from p3m)
+       and author_org_id = 'd3000000-0000-0000-0000-0000000000f1'),
   1,
   'the brand CAN read the factory''s update on its own order'
 );

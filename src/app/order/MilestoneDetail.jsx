@@ -13,6 +13,7 @@ import {
 import { urlFor } from "../../lib/domain/documents.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import ApproveMilestone from "./ApproveMilestone.jsx";
 import "./order.css";
 
 function Photo({ document }) {
@@ -39,6 +40,7 @@ export default function MilestoneDetail({ org, orderId, milestoneId, isFactory, 
   const [busy, setBusy] = useState(false);
   const [body, setBody] = useState("");
   const [files, setFiles] = useState([]);
+  const [approving, setApproving] = useState(false);
 
   const load = useCallback(async () => {
     const [order, milestone] = await Promise.all([getOrder(orderId), getMilestone(orderId, milestoneId)]);
@@ -78,7 +80,12 @@ export default function MilestoneDetail({ org, orderId, milestoneId, isFactory, 
   const { order, milestone, updates } = state;
   const payment = milestone.payment ?? null;
   const action = milestoneAction(milestone, { isFactory, isOwner, order });
-  const canPost = isFactory && action.kind === "update";
+  // The brand comments on a step where work is happening; the factory posts
+  // updates wherever milestoneAction allows. Both go through the same RPC.
+  const canPost = isFactory
+    ? action.kind === "update"
+    : order.status === "active" && ["active", "submitted"].includes(milestone.state);
+  const canApprove = !isFactory && action.kind === "approve" && !action.disabled;
 
   return (
     <div className="rfq-page rfq-detail">
@@ -113,11 +120,37 @@ export default function MilestoneDetail({ org, orderId, milestoneId, isFactory, 
 
       {error ? <p className="ob-error">{error.message}</p> : null}
 
+      {/* This page is where a brand lands from "New update on …", so it is
+          where the brand has to be able to approve from. */}
+      {canApprove ? (
+        <section className="detail-card">
+          <div className="order-actions">
+            <button type="button" className="primary-btn" data-testid="approve-milestone"
+                    onClick={() => setApproving(true)}>
+              {action.label}
+            </button>
+          </div>
+        </section>
+      ) : null}
+      {approving ? (
+        <ApproveMilestone
+          milestone={milestone}
+          payment={milestone.kind === "approval_and_payment" ? payment : null}
+          onClose={() => setApproving(false)}
+          onDone={async () => {
+            setApproving(false);
+            await load();
+          }}
+        />
+      ) : null}
+
       {canPost ? (
         <section className="detail-card">
-          <h2>Post an update</h2>
+          <h2>{isFactory ? "Post an update" : "Add a comment"}</h2>
           <p className="ob-hint">
-            What you have done, and photographs of it. The brand sees this and approves from it.
+            {isFactory
+              ? "What you have done, and photographs of it. The brand sees this and approves from it."
+              : "A question or feedback on this step, with photos if they help. The factory is notified."}
           </p>
           <label className="ob-label" htmlFor="update-body">Note</label>
           <textarea id="update-body" data-field="update_body" rows={3} value={body}
@@ -145,9 +178,9 @@ export default function MilestoneDetail({ org, orderId, milestoneId, isFactory, 
                 orderId, milestoneId, orgId: org.id, body, files,
               }))}
             >
-              {busy ? "Posting…" : "Post update"}
+              {busy ? "Posting…" : isFactory ? "Post update" : "Post comment"}
             </button>
-            {milestone.state === "active" ? (
+            {isFactory && milestone.state === "active" ? (
               <button type="button" className="secondary-btn" data-testid="submit-milestone"
                       disabled={busy} onClick={() => run(() => submitMilestone(milestone.id))}>
                 Send for approval
@@ -161,14 +194,14 @@ export default function MilestoneDetail({ org, orderId, milestoneId, isFactory, 
         <h2>Updates ({updates.length})</h2>
         {updates.length === 0 ? (
           <p className="ob-hint">
-            {isFactory ? "You have not posted anything on this step yet." : "The factory has not posted anything yet."}
+            {isFactory ? "Nothing has been posted on this step yet." : "The factory has not posted anything yet."}
           </p>
         ) : (
           <ul className="update-list">
             {updates.map((update) => (
               <li key={update.id} className="update-item" data-testid="milestone-update">
                 <header>
-                  <strong>{update.orgs?.name ?? "Factory"}</strong>
+                  <strong>{update.orgs?.name ?? ""}</strong>
                   <span>{new Date(update.created_at).toLocaleString()}</span>
                 </header>
                 <p className="detail-body">{update.body}</p>

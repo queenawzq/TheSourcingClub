@@ -856,15 +856,18 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
             <ProjectsScreen
               goTo={(next) => navigateFromPrototype(next, navigate)}
               onViewOrder={(project) => navigate(project?.id ? `/orders/${project.id}` : "/orders")}
+              live
             />
           </DataProvider>
         </main>
       ),
     },
     {
+      // The detail and its two tabs are one screen; the path says which tab is
+      // open so a link to an order's files or contract lands on them.
       path: "/orders/:id",
       render: (params) => (
-        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} />
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} />
       ),
     },
     {
@@ -884,13 +887,13 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/orders/:id/files",
       render: (params) => (
-        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} />
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} tab="files" />
       ),
     },
     {
       path: "/orders/:id/contract",
       render: (params) => (
-        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} />
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} tab="contract" />
       ),
     },
     {

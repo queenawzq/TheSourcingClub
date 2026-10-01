@@ -1414,16 +1414,25 @@ async function main() {
 
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-action"]', 25000);
-    // The designed timeline approves from the row itself — the action a row
-    // carries is the one its state allows, so there is nothing to confirm
-    // about which transition is being made.
+    // The row's action is the one its state allows, and approving opens the
+    // design's own dialog: an approval is never one stray click. The note
+    // typed there reaches approve_milestone.
     await page.locator('[data-testid="milestone-action"]').first().click();
+    await waitFor(page, ".approve-fund-modal textarea", 10000);
+    await page.locator(".approve-fund-modal textarea").first().click();
+    await page.type("Fit approved, go ahead with bulk.");
+    await record(page, "Approve dialog", "the designed dialog, with real copy for a tracked payment");
+    await page.locator(".approve-fund-modal .primary-btn").first().click();
     await page.waitForTimeout(4000);
-    await record(page, "Approved", "from the row, on the state that row is actually in");
+    await record(page, "Approved", "from the row's dialog, on the state that row is actually in");
 
     const { data: dueNow } = await db.from("order_payments")
       .select("id, state, amount_cents").eq("milestone_id", firstStep.id).single();
     check(dueNow.state === "due", "approving the sample made its payment due");
+    const { data: approvedStep } = await db.from("order_milestones")
+      .select("approval_note").eq("id", firstStep.id).single();
+    check(approvedStep.approval_note === "Fit approved, go ahead with bulk.",
+      "the note typed in the approve dialog is stored with the approval");
 
     await page.goto(`${APP}/orders/${bornOrder.id}/payments/${dueNow.id}`);
     await waitFor(page, '[data-testid="pay-reference"]', 25000);
