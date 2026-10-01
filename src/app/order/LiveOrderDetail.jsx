@@ -108,9 +108,15 @@ function dueBadge(milestone, today = new Date()) {
   return { dueStatus: "", dueTone: "" };
 }
 
-/** Whether a step is waiting on someone, which is when a reminder means anything. */
-const waiting = (milestone) =>
-  milestone.state === "active" || milestone.state === "submitted" || milestone.payment?.state === "due";
+/**
+ * Whether a step is waiting on the OTHER side, which is the only time a
+ * reminder means anything. An open step waits on the factory's work; a
+ * submitted one on the brand's approval, a due payment on the brand's
+ * transfer. Reminding the other side about your own move is noise.
+ */
+const waitingOnOther = (milestone, isFactory) => (isFactory
+  ? milestone.state === "submitted" || milestone.payment?.state === "due"
+  : milestone.state === "active");
 
 const TABS = new Set(["overview", "files", "contract"]);
 
@@ -293,7 +299,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       reviewItem: stepUpdates.length
         ? `${stepUpdates.length} ${stepUpdates.length === 1 ? "update" : "updates"}, ${fileCount} ${fileCount === 1 ? "file" : "files"} posted on this step`
         : "Nothing posted on this step yet",
-      canRemind: running && waiting(milestone),
+      canRemind: running && waitingOnOther(milestone, isFactory),
       // post_milestone_update takes a post only while work is happening.
       canComment: running && (milestone.state === "active" || milestone.state === "submitted"),
       ...next,
