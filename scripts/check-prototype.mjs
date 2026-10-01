@@ -58,6 +58,37 @@ try {
   const factoryBody = await factory.locator("body").innerText();
   check(factoryBody.trim().length > 200, "the factory prototype still renders too");
 
+  // The brand's schedule builder and the factory's order screens are mounted
+  // live with optional props. Without them they must still be the design's
+  // own example content.
+  const milestones = await stagehand.browser.context.newPage(`${BASE}/prototype.html?screen=milestones`);
+  await milestones.setViewportSize(1440, 1100);
+  await milestones.waitForTimeout(3500);
+  const milestonesBody = await milestones.locator("body").innerText();
+  check(/production schedule/i.test(milestonesBody), "the schedule builder renders with no database");
+  check(milestonesBody.includes("Fit sample") && milestonesBody.includes("Atelier Minho"),
+    "with its example steps and its example factory");
+  const exampleSteps = await milestones.locator(".milestone-edit").count();
+  check(exampleSteps === 4, `the four example steps (${exampleSteps})`);
+
+  const factoryOrders = await stagehand.browser.context.newPage(`${BASE}/factory-prototype.html?screen=projects`);
+  await factoryOrders.setViewportSize(1440, 1100);
+  await factoryOrders.waitForTimeout(3500);
+  const factoryOrdersBody = await factoryOrders.locator("body").innerText();
+  check(factoryOrdersBody.includes("Maison Rue") && factoryOrdersBody.includes("Active orders (4)"),
+    "the factory's order list keeps its example orders and counts");
+  const factoryCards = await factoryOrders.locator(".factory-active-project-card").count();
+  check(factoryCards === 4, `the four example order cards (${factoryCards})`);
+
+  const factoryDetail = await stagehand.browser.context.newPage(`${BASE}/factory-prototype.html?screen=projectDetail`);
+  await factoryDetail.setViewportSize(1440, 1100);
+  await factoryDetail.waitForTimeout(3500);
+  const factoryDetailBody = await factoryDetail.locator("body").innerText();
+  check(/production timeline/i.test(factoryDetailBody) && factoryDetailBody.includes("$5,780"),
+    "the factory's order detail keeps its example timeline and figures");
+  const factorySteps = await factoryDetail.locator(".factory-milestone-item").count();
+  check(factorySteps === 7, `the seven example steps (${factorySteps})`);
+
   // The admin workspace now reads through the same seam, so it makes the same
   // promise and can break the same way. Every screen here is behind a
   // security-definer RPC in the live console; with no database it must still

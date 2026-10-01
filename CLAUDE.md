@@ -67,9 +67,19 @@ screens that remain are debt being paid down, not a pattern to extend.
 
 On the design, live: **auth**, **brand and factory onboarding**, **the
 dashboard**, **requests**, **orders**, the **request composer and its invite
-step**, **comparing quotes**, the **order interior**, the **factory's
-marketplace**, **conversations**, **settings**, and the whole **admin console**
+step**, **comparing quotes**, the **order interior** (each side on its own
+designed screens), **agreeing the schedule**, the **factory's marketplace**,
+**conversations**, **settings**, and the whole **admin console**
 (`admin.html`).
+
+**Agreeing the schedule** is the brand's designed `MilestonesScreen` (the
+"Production steps" stage of its flow). The factory has no designed builder,
+so it gets the same card inside its own designed order page, in place of the
+timeline, until both sides agree. The design's three step types map onto the
+four kinds: Paid release → `approval_and_payment`, Approval only →
+`approval_only`, Update only → `progress_only`; the generated deposit and
+balance (`payment_only`) read as Paid release and keep their kind unless the
+type is changed (`order-view.js`).
 
 **Everything a brand or a vendor touches is on the design**, except the
 screens below — each held back for a stated reason, not a backlog entry:
@@ -82,8 +92,6 @@ screens below — each held back for a stated reason, not a backlog entry:
   brand its money is on a card and held by TSC, and both are false. This is not
   a styling gap; it needs the design and the product to agree on where money
   goes.
-- **`ScheduleEditor`.** Agreeing the schedule has no designed screen, and it is
-  what activates an order. An unagreed order opens straight onto it.
 - **`AdminPayments`.** No designed payments queue, and confirming a payment is a
   required step: staff have no org and cannot be notified, so a payment sits at
   `sent` until a human opens it.

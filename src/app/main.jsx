@@ -39,7 +39,7 @@ import LiveFactoryHome from "./home/LiveFactoryHome.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 import { createLiveAdapter } from "./live-adapter.js";
-import ScheduleEditor from "./order/ScheduleEditor.jsx";
+import LiveFactoryOrders from "./order/LiveFactoryOrders.jsx";
 import MilestoneDetail from "./order/MilestoneDetail.jsx";
 import PaymentInstructions from "./order/PaymentInstructions.jsx";
 import PayoutDetails from "./order/PayoutDetails.jsx";
@@ -850,8 +850,11 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // pastes to its factory has to open.
       // Slice one of the port: the designed orders screen, live data.
       path: "/orders",
-      render: () => (
-        <main className={isFactory ? "rfqs-page brand-projects-page factory-projects-page" : "rfqs-page brand-projects-page"}>
+      // The factory's own designed list brings its own <main>.
+      render: () => isFactory ? (
+        <LiveFactoryOrders org={activeOrg} user={user} onViewOrder={(project) => navigate(`/orders/${project.id}`)} />
+      ) : (
+        <main className="rfqs-page brand-projects-page">
           <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
             <ProjectsScreen
               goTo={(next) => navigateFromPrototype(next, navigate)}
@@ -871,8 +874,12 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       ),
     },
     {
+      // An unagreed order opens on its schedule anyway; once agreed, the
+      // order's timeline IS the schedule, so this is the same screen.
       path: "/orders/:id/schedule",
-      render: (params) => <main className="home-page"><ScheduleEditor orderId={params.id} isFactory={isFactory} /></main>,
+      render: (params) => (
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} />
+      ),
     },
     {
       path: "/orders/:id/messages",
