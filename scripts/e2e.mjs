@@ -931,6 +931,9 @@ async function main() {
     await setField("sourcingDetails", "Vendor sources the poplin; brand provides labels.");
     await setField("additionalDetails", "Polybag per unit, carton by colour.");
     await setField("question-0", "Can you quote fit and PP samples separately?");
+    // Typed on the design's review card and never saved until now: every
+    // live request went out with no deadline, whatever the brand wrote.
+    await setField("deadline", "10 business days");
     await record(page, "The brief, corrected", "every field is the brand's, not the model's");
 
     // Review leads to the invite step, which is where the design puts the only
@@ -945,8 +948,10 @@ async function main() {
     check(/\d+%/.test(await page.locator(".invite-results").innerText()),
       "each vendor carries a real fit score against this request");
     await page.locator(".bottom-bar .primary-btn").first().click();
-    await page.waitForTimeout(4500);
-    await record(page, "RFQ published");
+    await waitFor(page, ".invite-success-card", 20000);
+    await record(page, "RFQ published", "the design's own success step, not a jump to the request page");
+    check(!/Organic woven shirt/.test(await page.locator(".right-rail").innerText()),
+      "the request summary beside it is this request, not the design's example shirt");
 
     const { data: publishedRfq } = await db
       .from("rfqs")
@@ -959,6 +964,10 @@ async function main() {
     check(publishedRfq.quantity_total === 300, "quantity persisted as a number");
     check(publishedRfq.target_unit_price_min_cents === 1800, `"$18" stored as 1800 minor units (got ${publishedRfq.target_unit_price_min_cents})`);
     check(publishedRfq.sourcing_responsibility_term_id !== null, "who buys the materials is recorded, so quotes are comparable");
+    const { data: dueRow } = await db.from("rfqs").select("quote_deadline").eq("id", publishedRfq.id).single();
+    const dueInDays = dueRow?.quote_deadline ? (new Date(dueRow.quote_deadline) - Date.now()) / 864e5 : null;
+    check(dueInDays !== null && dueInDays > 11 && dueInDays < 17,
+      `"10 business days" is stored as a real deadline (${dueRow?.quote_deadline ?? "none"})`);
 
     const { count: rfqLinks } = await db
       .from("taxonomy_links").select("*", { count: "exact", head: true })
@@ -1078,14 +1087,27 @@ async function main() {
     // it, and that is exactly how the whole form shipped unfillable: every
     // field was contentEditable={undefined} in English, so a vendor could not
     // enter a price. So click and type, and assert the caret went in.
+    // Stagehand's Locator has no evaluate() and its Page has no keyboard, so
+    // both go through the page: calling field.evaluate threw before its
+    // .catch() could run, and the walkthrough stopped at this step.
     const setQuoteField = async (name, value) => {
-      const field = page.locator(`[data-quote-field="${name}"]`).first();
-      const editable = await field.evaluate((node) => node.isContentEditable).catch(() => false);
+      const selector = `[data-quote-field="${name}"]`;
+      const field = page.locator(selector).first();
+      const editable = await page
+        .evaluate((sel) => Boolean(document.querySelector(sel)?.isContentEditable), selector)
+        .catch(() => false);
       check(editable, `the quote field "${name}" can actually be typed into`);
       if (!editable) return;
       await field.click();
-      await page.keyboard.press("ControlOrMeta+a");
-      await page.keyboard.type(value);
+      // Select what is there, so typing replaces it.
+      await page.evaluate((sel) => {
+        const range = document.createRange();
+        range.selectNodeContents(document.querySelector(sel));
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }, selector);
+      await page.type(value);
       const got = (await field.innerText()).trim();
       check(got === value, `"${name}" holds what was typed (${got || "empty"})`);
     };
@@ -1182,9 +1204,8 @@ async function main() {
       "the list shows the same total the factory saw, not a re-parsed string");
     check(quoteListText.includes(factoryName), "the quoting factory is named on its card");
 
-    // Choosing a quote awards it, and awarding creates the production order in
-    // the same transaction. There is no separate confirmation card in the
-    // design, so the click is the decision.
+    // The design's path: Review quote → Choose quote → the contract step,
+    // where the terms are read back before award_quote commits them.
     const cards = page.locator(".quote-card");
     let ourCard = -1;
     for (let index = 0; index < (await cards.count()); index += 1) {
@@ -1193,8 +1214,13 @@ async function main() {
     check(ourCard >= 0, `the quoting factory has a card (position ${ourCard + 1})`);
 
     await page.locator(`.quote-card:nth-of-type(${ourCard + 1}) [data-testid="choose-quote"]`).click();
-    await page.waitForTimeout(4000);
-    await record(page, "Awarded", "the loop closes here");
+    await waitFor(page, ".final-terms-card", 20000);
+    await record(page, "Contract terms", "the quote read back before anything is committed");
+    const contractText = await page.locator(".final-terms-card").innerText();
+    check(!/\$18\.40|Aug 12-30/.test(contractText), "the terms are this quote's, not the design's example");
+    await page.locator(".bottom-bar .primary-btn").first().click();
+    await page.waitForTimeout(4500);
+    await record(page, "Awarded", "the loop closes here, on the order it created");
 
     const { data: winner } = await db.from("quotes")
       .select("status").eq("rfq_id", publishedRfq.id).eq("factory_org_id", factoryOrg.id)

@@ -29,10 +29,13 @@ import LiveQuoteSent from "./quote/LiveQuoteSent.jsx";
 import LiveQuoteReview from "./quote/LiveQuoteReview.jsx";
 import LiveSaved from "./rfq/LiveSaved.jsx";
 import LiveQuotes from "./quote/LiveQuotes.jsx";
+import LiveRfqs from "./rfq/LiveRfqs.jsx";
+import LiveQuoteDetail from "./quote/LiveQuoteDetail.jsx";
+import LiveContract from "./quote/LiveContract.jsx";
 // The designed screens, mounted against live data through the seam. Importing
 // them pulls in the prototype stylesheet, which is the point — the design is
 // the CSS.
-import { ProjectsScreen, RfqsScreen, brandNavItems } from "../prototype/main.jsx";
+import { ProjectsScreen, brandNavItems } from "../prototype/main.jsx";
 import { nav as factoryNavItems } from "../factory-prototype/main.jsx";
 import { PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import LiveFactoryHome from "./home/LiveFactoryHome.jsx";
@@ -763,30 +766,26 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
           // The factory's own designed RFQs page: its quotes and invitations.
           <LiveFactoryRfqs org={activeOrg} />
         ) : (
-          <main className="rfqs-page brand-rfqs-page">
-            <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
-              <RfqsScreen
-                goTo={(next) => navigateFromPrototype(next, navigate)}
-                onViewQuotes={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/quotes` : "/rfqs")}
-                onEditRfq={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/edit` : "/rfqs")}
-                onInviteVendors={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/invite` : "/rfqs")}
-              />
-            </DataProvider>
-          </main>
+          <LiveRfqs
+            org={activeOrg}
+            user={user}
+            isOwner={isOwner}
+            goTo={(next) => navigateFromPrototype(next, navigate)}
+          />
         ),
     },
     {
       path: "/rfqs/new",
       render: () =>
         isFactory ? <NotForThisSide isFactory /> : (
-          <LiveComposer org={activeOrg} onPublished={(id) => navigate(`/rfqs/${id}`)} />
+          <LiveComposer org={activeOrg} />
         ),
     },
     {
       path: "/rfqs/:id/edit",
       render: (params) =>
         isFactory ? <NotForThisSide isFactory /> : (
-          <LiveComposer org={activeOrg} rfqId={params.id} onPublished={(id) => navigate(`/rfqs/${id}`)} />
+          <LiveComposer org={activeOrg} rfqId={params.id} />
         ),
     },
     {
@@ -810,14 +809,26 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // from an old link resumes the composer at that step.
       render: (params) =>
         isFactory ? <NotForThisSide isFactory /> : (
-          <LiveComposer org={activeOrg} rfqId={params.id} onPublished={(id) => navigate(`/rfqs/${id}`)} />
+          <LiveComposer org={activeOrg} rfqId={params.id} />
         ),
     },
     {
       path: "/rfqs/:id/quotes",
       render: (params) =>
+        isFactory ? <NotForThisSide isFactory /> : <LiveQuotes rfqId={params.id} />,
+    },
+    {
+      // One quote in full — the design's "Review quote".
+      path: "/rfqs/:id/quotes/:quoteId",
+      render: (params) =>
+        isFactory ? <NotForThisSide isFactory /> : <LiveQuoteDetail rfqId={params.id} quoteId={params.quoteId} />,
+    },
+    {
+      // The contract step: the terms read back, then award_quote.
+      path: "/rfqs/:id/quotes/:quoteId/contract",
+      render: (params) =>
         isFactory ? <NotForThisSide isFactory /> : (
-          <LiveQuotes rfqId={params.id} onAwarded={() => navigate("/orders")} />
+          <LiveContract rfqId={params.id} quoteId={params.quoteId} isOwner={isOwner} />
         ),
     },
     {
