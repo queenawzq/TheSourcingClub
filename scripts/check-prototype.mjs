@@ -34,6 +34,9 @@ try {
     "mock data reaches the screen through the provider",
   );
   check(body.includes("Atelier Minho"), "and the counterparty name with it");
+  // Tabs are saved per company in the live app; the prototype keeps its own.
+  check(body.includes("Active orders (4)") && body.includes("Closed (6)") && body.includes("Spring 27"),
+    "the design's example tabs and counts");
 
   const cards = await page.locator("article").count();
   check(cards >= 3, `the project cards render (${cards} articles)`);
@@ -79,6 +82,11 @@ try {
     "the factory's order list keeps its example orders and counts");
   const factoryCards = await factoryOrders.locator(".factory-active-project-card").count();
   check(factoryCards === 4, `the four example order cards (${factoryCards})`);
+  // The factory card's "..." now opens the same menu as the brand's.
+  await factoryOrders.locator('.factory-active-project-card button[aria-label="More order actions"]').first().click();
+  await factoryOrders.waitForTimeout(500);
+  check((await factoryOrders.locator(".project-overflow-menu").count()) === 1,
+    "the factory card's menu opens, with no database");
 
   const factoryDetail = await stagehand.browser.context.newPage(`${BASE}/factory-prototype.html?screen=projectDetail`);
   await factoryDetail.setViewportSize(1440, 1100);
