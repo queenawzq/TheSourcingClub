@@ -1280,7 +1280,9 @@ async function main() {
       `nobody faces a blank schedule — ${scheduleRows} steps are already there`);
     await record(page, "The schedule", "drafted from the quote; either side may change it");
 
-    await waitFor(page, '[data-testid="agree-schedule"]', 25000);
+    // The brand's builder is the designed "Production steps" stage; its agree
+    // button is the flow's own bottom bar, found by its words.
+    await waitFor(page, '[data-testid="schedule-hint"]', 25000);
     await clickButton(page, "agree to this schedule");
     await page.waitForTimeout(2500);
     await record(page, "Brand agrees", "one signature. The order has not started");
@@ -1310,6 +1312,17 @@ async function main() {
 
     // ================= THE FACTORY AGREES, AND WORKS =================
     console.log("\nTHE FACTORY AGREES, AND WORKS");
+
+    // The factory's own designed list, not the brand's, with the real order on it.
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    await waitFor(page, ".factory-active-project-card", 25000);
+    const factoryListText = await page.locator(".projects-list").innerText();
+    check(factoryListText.includes(rfqTitle),
+      "the factory's designed order list shows the real request");
+    check(!/Maison Rue|Elara Studio|Luna Resort/.test(factoryListText),
+      "and none of the factory design's example brands");
+    await record(page, "Factory's orders", "its own designed list, live");
 
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="agree-schedule"]', 25000);

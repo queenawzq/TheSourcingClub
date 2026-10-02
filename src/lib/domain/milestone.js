@@ -72,7 +72,9 @@ export async function saveSchedule(orderId, lines) {
         description: line.description || null,
         amount_cents: line.amount_cents ?? null,
         due_on: line.due_on || null,
-        sort: (index + 1) * 10,
+        // The caller's sort when it has one. Renumbering every save would
+        // turn two steps that run in parallel (equal sort) into a sequence.
+        sort: line.sort ?? (index + 1) * 10,
       })),
     }),
     "save the schedule",

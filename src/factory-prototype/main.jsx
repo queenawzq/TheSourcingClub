@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
+import { filterOrders, ProjectStepRail } from "../shared/production-order-parts.jsx";
 import "../prototype/styles.css";
 import "./styles.css";
 import "../shared/profile-shell.css";
@@ -4205,12 +4206,21 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
   return (
     <article className="factory-project-dashboard-row shared-responsive-card shared-dashboard-card">
       <header className="factory-project-dashboard-heading shared-card-heading">
-          <img
-            className="factory-project-dashboard-thumb-image"
-            src={imageSrc}
-            alt={`${project.title} reference`}
-            style={imagePosition ? { objectPosition: imagePosition } : undefined}
-          />
+          {/* A live order has no reference photo yet, and an <img> with no
+              source draws a broken-image tile. The tile keeps its place in
+              the grid with the brand's initials, as the list card's avatar. */}
+          {imageSrc ? (
+            <img
+              className="factory-project-dashboard-thumb-image"
+              src={imageSrc}
+              alt={`${project.title} reference`}
+              style={imagePosition ? { objectPosition: imagePosition } : undefined}
+            />
+          ) : (
+            <span className="factory-project-dashboard-thumb-image" aria-hidden="true" style={{ display: "grid", placeItems: "center", fontWeight: 600 }}>
+              {project.initials}
+            </span>
+          )}
           <div>
             <strong data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</strong>
             <p className="project-meta" data-no-translate>
@@ -4232,7 +4242,7 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
           <button className="primary-btn factory-project-view-btn" type="button" onClick={onView}>View order</button>
       </div>
       <div className="factory-project-dashboard-progress">
-          <ProjectProgress progress={project.progress} />
+          <ProjectProgress progress={project.progress} steps={project.steps} />
       </div>
     </article>
   );
@@ -5339,16 +5349,59 @@ function FactoryPriceTotalCard({ project, total }) {
   );
 }
 
-function FactoryProjectsPage({ language, onViewProject }) {
+export function FactoryProjectsPage({
+  language,
+  onViewProject,
+  // Live mounts pass `{ projects, loading, error }`; the prototype passes
+  // nothing and maps its own example orders, exactly as drawn.
+  live = null
+}) {
   const [activeTab, setActiveTab] = useState("active");
-  const [projectTabs, setProjectTabs] = useState([
+  // Live starts from the two fixed tabs with real counts: the design's "(4)"
+  // and "(6)" read as real to a factory with no orders.
+  const [projectTabs, setProjectTabs] = useState(live ? [
+    { key: "active", label: "Active orders", locked: true },
+    { key: "closed", label: "Closed", locked: true }
+  ] : [
     { key: "active", label: "Active orders (4)", locked: true },
     { key: "closed", label: "Closed (6)", locked: true }
   ]);
+  const [search, setSearch] = useState("");
+  const [brand, setBrand] = useState("all");
+  const [dateRange, setDateRange] = useState("any");
+  const [sortBy, setSortBy] = useState("newest");
   const [isAddingTab, setIsAddingTab] = useState(false);
   const [newTabName, setNewTabName] = useState("");
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
   const [draftTabs, setDraftTabs] = useState(projectTabs);
+
+  /**
+   * Live rows carry their state, so the tabs count and filter them; the
+   * prototype's example orders do not, so there the design's numbers stay.
+   * The filters are the brand screen's own (src/shared), with "Brand" as the
+   * counterparty column.
+   */
+  const orderRows = live?.projects ?? [];
+  const isClosed = (project) => project.state === "completed" || project.state === "cancelled";
+  const tabRows = orderRows.filter((project) => (activeTab === "closed" ? isClosed(project) : !isClosed(project)));
+  const brandOptions = live
+    ? [...new Set(orderRows.map((project) => project.brand).filter(Boolean))].sort()
+    : null;
+  const ordersForTab = live
+    ? filterOrders(tabRows.map((project) => ({ ...project, factory: project.brand })), {
+      search,
+      vendor: brand,
+      dateRange,
+      sortBy: sortBy === "brand" ? "factory" : sortBy
+    })
+    : [];
+  const tabLabel = (tab) => {
+    if (!live || !tab.locked) return tab.label;
+    const count = tab.key === "closed"
+      ? orderRows.filter(isClosed).length
+      : orderRows.filter((project) => !isClosed(project)).length;
+    return `${tab.label} (${count})`;
+  };
 
   function openManageTabs() {
     setDraftTabs(projectTabs);
@@ -5419,20 +5472,26 @@ function FactoryProjectsPage({ language, onViewProject }) {
             <span>Search production orders</span>
             <div>
               <SearchIcon />
-              <input placeholder="Order name, ID, or brand..." />
+              <input placeholder="Order name, ID, or brand..." value={search} onChange={(event) => setSearch(event.target.value)} />
             </div>
           </label>
           <label className="rfqs-sort">
             <span>Brand</span>
-            <select defaultValue="all">
+            <select value={brand} onChange={(event) => setBrand(event.target.value)}>
               <option value="all">All brands</option>
-              <option value="maison">Maison Rue</option>
-              <option value="elara">Elara Studio</option>
+              {brandOptions ? brandOptions.map((name) => (
+                <option value={name} key={name}>{name}</option>
+              )) : (
+                <>
+                  <option value="maison">Maison Rue</option>
+                  <option value="elara">Elara Studio</option>
+                </>
+              )}
             </select>
           </label>
           <label className="rfqs-sort">
             <span>Date Range</span>
-            <select defaultValue="any">
+            <select value={dateRange} onChange={(event) => setDateRange(event.target.value)}>
               <option value="any">Any Time</option>
               <option value="30">Last 30 days</option>
               <option value="90">Last 90 days</option>
@@ -5440,7 +5499,7 @@ function FactoryProjectsPage({ language, onViewProject }) {
           </label>
           <label className="rfqs-sort">
             <span>Sort By</span>
-            <select defaultValue="newest">
+            <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
               <option value="newest">Newest First</option>
               <option value="due">Next Due</option>
               <option value="brand">Brand</option>
@@ -5459,7 +5518,7 @@ function FactoryProjectsPage({ language, onViewProject }) {
                     aria-current={activeTab === tab.key ? "page" : undefined}
                     onClick={() => setActiveTab(tab.key)}
                   >
-                    {tab.label}
+                    {tabLabel(tab)}
                   </button>
                 </div>
               ) : (
@@ -5470,7 +5529,7 @@ function FactoryProjectsPage({ language, onViewProject }) {
                   onClick={() => setActiveTab(tab.key)}
                   key={tab.key}
                 >
-                  {tab.label}
+                  {tabLabel(tab)}
                 </button>
               )
             ))}
@@ -5542,21 +5601,44 @@ function FactoryProjectsPage({ language, onViewProject }) {
         )}
 
         <section className="projects-list" aria-label="Active factory production orders">
-          {factoryProjects.map((project) => (
-            <FactoryProjectListCard
-              project={project}
-              language={language}
-              onViewProject={onViewProject}
-              key={project.title}
-            />
-          ))}
+          {!live ? (
+            factoryProjects.map((project) => (
+              <FactoryProjectListCard
+                project={project}
+                language={language}
+                onViewProject={onViewProject}
+                key={project.title}
+              />
+            ))
+          ) : live.loading ? (
+            <p className="projects-empty" data-testid="orders-loading">Loading your orders…</p>
+          ) : live.error ? (
+            <p className="projects-empty projects-error" data-testid="orders-error">{live.error.message}</p>
+          ) : !ordersForTab.length ? (
+            <p className="projects-empty" data-testid="orders-empty">
+              {tabRows.length
+                ? "No orders match these filters."
+                : activeTab === "closed"
+                ? "Nothing closed yet."
+                : "No production orders yet. One appears here when a brand awards you a quote."}
+            </p>
+          ) : (
+            ordersForTab.map((project) => (
+              <FactoryProjectListCard
+                project={project}
+                language={language}
+                onViewProject={() => onViewProject(project)}
+                key={project.id}
+              />
+            ))
+          )}
         </section>
       </div>
     </main>
   );
 }
 
-function FactoryProjectListCard({ project, language, onViewProject }) {
+export function FactoryProjectListCard({ project, language, onViewProject }) {
   const isZh = language === "zh";
   const [primaryImage] = project.images || [];
   const productionFacts = [
@@ -5602,7 +5684,7 @@ function FactoryProjectListCard({ project, language, onViewProject }) {
           <div className="project-status-row">
             <span><strong>Current status:</strong> {project.statusDetail}</span>
           </div>
-          <ProjectProgress progress={project.progress} />
+          <ProjectProgress progress={project.progress} steps={project.steps} />
         </aside>
 
         <div className="factory-request-visuals factory-order-visuals" aria-label={`${project.title} production reference`}>
@@ -5618,7 +5700,11 @@ function FactoryProjectListCard({ project, language, onViewProject }) {
   );
 }
 
-function ProjectProgress({ progress }) {
+function ProjectProgress({ progress, steps }) {
+  // Live cards pass the order's own steps. The design's five fixed labels
+  // describe one imagined schedule, and an order's schedule can hold any steps.
+  if (steps?.length) return <ProjectStepRail steps={steps} />;
+
   const progressPercent = progress <= 1 ? 0 : ((progress - 1) / (projectSteps.length - 1)) * 100;
 
   return (
@@ -8185,10 +8271,10 @@ function CloseIconButton({ className = "", label, onClick }) {
   );
 }
 
-function Metric({ label, value, className = "" }) {
+function Metric({ label, value, className = "", testId }) {
   return (
     <div className={className ? `metric ${className}` : "metric"}>
-      <strong>{value}</strong>
+      <strong data-testid={testId}>{value}</strong>
       <span>{label}</span>
     </div>
   );
@@ -8686,31 +8772,65 @@ function BrandBrief({ language }) {
   );
 }
 
-function FactoryProjectProgressDetail({ language, onBack, onPostUpdate, showPostedUpdate = false }) {
+export function FactoryProjectProgressDetail({
+  language,
+  onBack,
+  onPostUpdate,
+  showPostedUpdate = false,
+  // Live mounts pass the rest; the prototype passes none and every panel keeps
+  // the design's own example content.
+  order,
+  milestones: liveMilestones,
+  counterparty,
+  activity,
+  files,
+  contract,
+  tab,
+  onTabChange,
+  onMessage,
+  onOpenFile,
+  onRemind,
+  dialog,
+  error,
+  // Before both sides agree there is no timeline to show: the live mount puts
+  // the schedule being agreed in its place.
+  schedule
+}) {
   const [updateMilestone, setUpdateMilestone] = useState(null);
-  const [activeDetailTab, setActiveDetailTab] = useState("overview");
+  const [localDetailTab, setLocalDetailTab] = useState("overview");
+  const activeDetailTab = tab ?? localDetailTab;
+  const setActiveDetailTab = onTabChange ?? setLocalDetailTab;
+  const isLive = Boolean(liveMilestones);
   const isZh = language === "zh";
   const detailTabs = [
     ["overview", "Overview"],
     ["files", "Files"],
     ["contract", "Contract details"]
   ];
+  const title = order?.title ?? "Organic cotton woven shirt production";
+  const subtitle = order?.subtitle ?? "Maison Rue · New York, USA · Started Jul 19";
+
+  function closeUpdate() {
+    setUpdateMilestone(null);
+    dialog?.onClose?.();
+  }
 
   return (
     <main className="factory-detail-page factory-project-detail-page">
       <header className="factory-detail-header factory-project-detail-header">
         <button className="text-link" type="button" onClick={onBack}>‹ Back to production orders</button>
-        <h1 data-no-translate>{isZh ? getTranslatedProjectTitle("Organic cotton woven shirt production") : "Organic cotton woven shirt production"}</h1>
-        <p data-no-translate>{isZh ? getTranslatedListMeta("Maison Rue · New York, USA · Started Jul 19") : "Maison Rue · New York, USA · Started Jul 19"}</p>
+        <h1 data-no-translate>{isZh ? getTranslatedProjectTitle(title) : title}</h1>
+        <p data-no-translate>{isZh ? getTranslatedListMeta(subtitle) : subtitle}</p>
+        {error && <p className="composer-error" role="alert">{error.message}</p>}
       </header>
 
       <div className="factory-project-detail-grid">
         <section className="factory-project-detail-main">
           <section className="factory-project-summary-card" aria-label="Production order summary">
-            <Metric label="order total" value="$5,780" />
-            <Metric label="funded" value="$120" />
-            <Metric label="remaining" value="$5,660" />
-            <Metric label="next payment" value="$1,656" className="highlight" />
+            <Metric label="order total" value={order?.total ?? "$5,780"} testId={order ? "order-total" : undefined} />
+            <Metric label="funded" value={order?.paid ?? "$120"} testId={order ? "order-paid" : undefined} />
+            <Metric label="remaining" value={order?.remaining ?? "$5,660"} />
+            <Metric label="next payment" value={order?.nextPayment ?? "$1,656"} className="highlight" />
           </section>
 
           <nav className="rfqs-tabs factory-project-detail-tabs" aria-label="Production order detail sections">
@@ -8727,45 +8847,55 @@ function FactoryProjectProgressDetail({ language, onBack, onPostUpdate, showPost
             ))}
           </nav>
 
-          {activeDetailTab === "overview" && (
+          {activeDetailTab === "overview" && (schedule ?? (
             <section className="factory-milestone-card">
               <h2>Production timeline</h2>
               <div className="factory-milestone-list">
-                {factoryProjectMilestones.map((milestone, index) => (
+                {(liveMilestones ?? factoryProjectMilestones).map((milestone, index) => (
                   <FactoryMilestoneItem
                     milestone={milestone}
                     index={index}
-                    key={milestone.title}
+                    key={milestone.id ?? milestone.title}
                     onAddUpdate={setUpdateMilestone}
-                    showUpdate={showPostedUpdate && index === 0}
+                    onRemind={onRemind}
+                    live={isLive}
+                    showUpdate={isLive ? Boolean(milestone.update) : showPostedUpdate && index === 0}
                   />
                 ))}
               </div>
             </section>
-          )}
-          {activeDetailTab === "files" && <FactoryProjectFilesPanel />}
-          {activeDetailTab === "contract" && <FactoryContractDetailsPanel />}
+          ))}
+          {activeDetailTab === "files" && <FactoryProjectFilesPanel files={files} onOpen={onOpenFile} />}
+          {activeDetailTab === "contract" && <FactoryContractDetailsPanel contract={contract} />}
         </section>
 
         <aside className="factory-detail-side">
           <section className="factory-side-card">
             <div className="factory-client-row">
-              <span>MR</span>
+              <span>{counterparty?.initials ?? "MR"}</span>
               <div>
-                <h2>Maison Rue</h2>
-                <p>New York, USA</p>
+                <h2>{counterparty?.name ?? "Maison Rue"}</h2>
+                {counterparty ? counterparty.location && <p>{counterparty.location}</p> : <p>New York, USA</p>}
               </div>
             </div>
-            <button className="secondary-btn" type="button">Message</button>
+            <button className="secondary-btn" type="button" onClick={onMessage}>Message</button>
           </section>
 
           <section className="factory-side-card activity-card">
             <h2>Order activity</h2>
             <ul>
-              <li>Factory last viewed order 2h ago</li>
-              <li>Last message yesterday</li>
-              <li>Sample photos expected Aug 16</li>
-              <li>Bulk deposit locked until approval</li>
+              {activity ? (
+                activity.length
+                  ? activity.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)
+                  : <li>Nothing has happened on this order yet.</li>
+              ) : (
+                <>
+                  <li>Factory last viewed order 2h ago</li>
+                  <li>Last message yesterday</li>
+                  <li>Sample photos expected Aug 16</li>
+                  <li>Bulk deposit locked until approval</li>
+                </>
+              )}
             </ul>
           </section>
         </aside>
@@ -8774,10 +8904,17 @@ function FactoryProjectProgressDetail({ language, onBack, onPostUpdate, showPost
         <AddUpdateModal
           language={language}
           milestone={updateMilestone}
-          onClose={() => setUpdateMilestone(null)}
-          onPost={() => {
-            setUpdateMilestone(null);
-            onPostUpdate();
+          onClose={closeUpdate}
+          live={isLive ? { counterparty: counterparty?.name ?? "", busy: dialog?.busy, error: dialog?.error } : null}
+          onPost={async (post) => {
+            if (!isLive) {
+              setUpdateMilestone(null);
+              onPostUpdate();
+              return;
+            }
+            // Live resolves true once the update is stored; a refusal keeps
+            // the dialog open with its reason.
+            if (await onPostUpdate(updateMilestone, post)) closeUpdate();
           }}
         />
       )}
@@ -8785,7 +8922,7 @@ function FactoryProjectProgressDetail({ language, onBack, onPostUpdate, showPost
   );
 }
 
-function FactoryProjectFilesPanel() {
+function FactoryProjectFilesPanel({ files: liveFiles, onOpen }) {
   const files = [
     ["Tech pack v3.pdf", "Brand spec · updated Jul 18"],
     ["Measurement chart.xlsx", "Sizing and tolerance sheet"],
@@ -8797,7 +8934,19 @@ function FactoryProjectFilesPanel() {
     <section className="factory-milestone-card factory-detail-tab-panel">
       <h2>Files</h2>
       <div className="factory-detail-file-list">
-        {files.map(([name, meta]) => (
+        {liveFiles ? (
+          liveFiles.length ? liveFiles.map((file) => (
+            <button className="factory-detail-file-row" type="button" key={file.id} onClick={() => onOpen?.(file)}>
+              <div>
+                <strong>{file.name}</strong>
+                <span>{file.meta}</span>
+              </div>
+              <img src="/assets/prototype-icons/download.svg" alt="" />
+            </button>
+          )) : (
+            <p className="projects-empty">No files yet. The request's attachments and anything posted on a step appear here.</p>
+          )
+        ) : files.map(([name, meta]) => (
           <button className="factory-detail-file-row" type="button" key={name}>
             <div>
               <strong>{name}</strong>
@@ -8811,13 +8960,13 @@ function FactoryProjectFilesPanel() {
   );
 }
 
-function FactoryContractDetailsPanel() {
-  const workDetails = [
+function FactoryContractDetailsPanel({ contract }) {
+  const workDetails = contract?.workDetails ?? [
     ["Contract title", "Organic cotton woven shirt sample + bulk production"],
     ["Scope of work", "Produce organic cotton woven shirts based on the attached tech pack. Quote covers 300 units across 3 colors, fit sample and PP sample before bulk, and a 28-day bulk lead after PP approval."],
     ["Approvals, revisions, and delivery", "Fit sample + PP sample before bulk; 3 colors at 100 units per color; one included fit sample revision; QC photos before final balance; delivery address confirmed before bulk; extra revision fees quoted separately."]
   ];
-  const acceptedQuote = [
+  const acceptedQuote = contract?.acceptedQuote ?? [
     ["Brand", "Maison Rue · New York, USA"],
     ["Unit price", "$18.40"],
     ["Quantity", "300 units"],
@@ -8827,14 +8976,14 @@ function FactoryContractDetailsPanel() {
     ["Terms", "30/70"],
     ["Quote total", "$5,780"]
   ];
-  const paymentTerms = [
+  const paymentTerms = contract?.paymentTerms ?? [
     ["Payment split", "30% deposit · 70% before shipment"],
     ["Sample payment", "Fit + PP samples quoted at $260"],
     ["Milestone release", "Sample funds release after brand approval; bulk funds release after final QC approval."],
     ["Release rule", "Funds release after the brand approves the relevant production step."],
     ["Shipping / incoterms", "EXW quoted · freight not included"]
   ];
-  const attachments = ["Tech pack v3.pdf", "Measurement chart", "Reference photo", "Color breakdown"];
+  const attachments = contract?.attachments ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photo", "Color breakdown"];
 
   return (
     <section className="factory-milestone-card factory-detail-tab-panel factory-contract-readonly-panel">
@@ -8874,21 +9023,31 @@ function FactoryContractDetailsPanel() {
           ))}
         </div>
       </div>
-      <div className="factory-contract-section">
-        <h3>Attachments</h3>
-        <div className="factory-contract-attachment-row">
-          {attachments.map((file) => (
-            <span key={file}>{file}</span>
-          ))}
+      {attachments.length > 0 && (
+        <div className="factory-contract-section">
+          <h3>Attachments</h3>
+          <div className="factory-contract-attachment-row">
+            {attachments.map((file) => (
+              <span key={file}>{file}</span>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }
 
-function FactoryMilestoneItem({ milestone, index, onAddUpdate, showUpdate = false }) {
+function FactoryMilestoneItem({ milestone, index, onAddUpdate, onRemind, live = false, showUpdate = false }) {
+  // Live rows say what they allow: "Add update" only while work is happening
+  // on the step, and a reminder only while it waits on the brand.
+  const canUpdate = !live || milestone.canComment;
+  const [reminded, setReminded] = useState(false);
+
   return (
-    <article className={`${milestone.active ? "factory-milestone-item active" : "factory-milestone-item"}${showUpdate ? " has-update" : ""}`}>
+    <article
+      className={`${milestone.active ? "factory-milestone-item active" : "factory-milestone-item"}${showUpdate ? " has-update" : ""}`}
+      data-testid={live ? "milestone-row" : undefined}
+    >
       <div className="factory-milestone-marker">{index + 1}</div>
       <div className="factory-milestone-copy">
         <div>
@@ -8896,20 +9055,62 @@ function FactoryMilestoneItem({ milestone, index, onAddUpdate, showUpdate = fals
           <p>{milestone.meta}</p>
         </div>
         <p>{milestone.description}</p>
-        {showUpdate && <FactoryPostedUpdateCard />}
+        {showUpdate && <FactoryPostedUpdateCard update={live ? milestone.update : undefined} />}
       </div>
       <div className="factory-milestone-actions">
         {milestone.amount && <strong>{milestone.amount}</strong>}
         {milestone.dueStatus && (
           <span className={`project-status shared-card-status ${milestone.dueTone}`}>{milestone.dueStatus}</span>
         )}
-        <button className="secondary-btn" type="button" onClick={() => onAddUpdate(milestone)}>Add update</button>
+        {canUpdate && (
+          <button className="secondary-btn" type="button" onClick={() => onAddUpdate(milestone)}>Add update</button>
+        )}
+        {live && milestone.canRemind && (
+          <button
+            className="secondary-btn"
+            type="button"
+            disabled={reminded}
+            onClick={async () => setReminded(Boolean(await onRemind?.(milestone)))}
+          >
+            {reminded ? "Reminder sent" : "Send reminder"}
+          </button>
+        )}
       </div>
     </article>
   );
 }
 
-function FactoryPostedUpdateCard() {
+function FactoryPostedUpdateCard({ update }) {
+  // Live passes the step's latest real update:
+  // `{ author, when, body, photos: [{ id, url, label }], extraFiles, total, onViewAll }`.
+  if (update) {
+    return (
+      <div className="factory-posted-update-card" data-testid="update-card">
+        <div className="factory-posted-update-header">
+          <div>
+            <strong>{update.author}</strong>
+            <span>{update.when}</span>
+          </div>
+          <button type="button" onClick={update.onViewAll}>View all updates ({update.total})</button>
+        </div>
+        <p>{update.body}</p>
+        {(update.photos.length > 0 || update.extraFiles > 0) && (
+          <div className="factory-posted-file-row">
+            {update.photos.map((photo) => (
+              <div className="factory-posted-file" key={photo.id}>
+                {photo.url ? <img src={photo.url} alt="" /> : null}
+                <span>{photo.label}</span>
+              </div>
+            ))}
+            {update.extraFiles > 0 && (
+              <button type="button" onClick={update.onViewAll}>+{update.extraFiles} {update.extraFiles === 1 ? "file" : "files"}</button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="factory-posted-update-card">
       <div className="factory-posted-update-header">
@@ -8934,9 +9135,17 @@ function FactoryPostedUpdateCard() {
   );
 }
 
-function AddUpdateModal({ language, milestone, onClose, onPost }) {
+function AddUpdateModal({ language, milestone, onClose, onPost, live = null }) {
+  // Live: a real note and real photos, handed to onPost({ body, files, submit }).
+  const [body, setBody] = useState("");
+  const [photos, setPhotos] = useState([]);
+  const fileInput = useRef(null);
   const isZh = language === "zh";
   const milestoneTitle = isZh ? translateFactoryMainText(milestone.title) : milestone.title.toLowerCase();
+  const brand = live?.counterparty || "Maison Rue";
+  // The design's copy says the update is what the brand reviews before the
+  // step is approved, so the live dialog can send it for that review too.
+  const canSubmit = Boolean(live && milestone.needsApproval && milestone.state === "active");
 
   return (
     <div className="factory-update-modal-layer" role="presentation">
@@ -8944,22 +9153,69 @@ function AddUpdateModal({ language, milestone, onClose, onPost }) {
         <CloseIconButton className="factory-update-close" label={isZh ? "关闭添加更新" : "Close add update"} onClick={onClose} />
         <header>
           <h2 id="factory-update-title">{isZh ? `添加${milestoneTitle}更新` : `Add ${milestoneTitle} update`}</h2>
-          <p>{isZh ? "分享进度照片和简短说明，供 Maison Rue 在审批此里程碑前查看。" : "Share progress photos and a short note for Maison Rue to review before this milestone is approved."}</p>
+          <p>{isZh ? `分享进度照片和简短说明，供 ${brand} 在审批此里程碑前查看。` : `Share progress photos and a short note for ${brand} to review before this milestone is approved.`}</p>
         </header>
 
         <label className="factory-update-note">
           <span>{isZh ? "更新说明" : "Upload note"}</span>
-          <textarea defaultValue={isZh ? "选填：包装、QC 要求、运输备注，或品牌审批前需要了解的其他信息。" : "Optional: packaging, QC expectations, shipping notes, or anything factories should know before quoting."} />
+          {live ? (
+            <textarea
+              data-field="update_body"
+              value={body}
+              // post_milestone_update requires a note, so live cannot call it
+              // optional; the design's own text also says "before quoting".
+              placeholder={`What changed on this step, for ${brand} to review...`}
+              onChange={(event) => setBody(event.target.value)}
+            />
+          ) : (
+            <textarea defaultValue={isZh ? "选填：包装、QC 要求、运输备注，或品牌审批前需要了解的其他信息。" : "Optional: packaging, QC expectations, shipping notes, or anything factories should know before quoting."} />
+          )}
         </label>
 
-        <button className="factory-update-upload" type="button">
+        <button className="factory-update-upload" type="button" onClick={live ? () => fileInput.current?.click() : undefined}>
           <strong>{isZh ? "+ 上传照片" : "+ Upload photos"}</strong>
-          <span>{isZh ? "JPG 或 PNG，最多 10 个文件" : "JPG or PNG, up to 10 files"}</span>
+          <span>{live && photos.length ? photos.map((file) => file.name).join(", ") : isZh ? "JPG 或 PNG，最多 10 个文件" : "JPG or PNG, up to 10 files"}</span>
         </button>
+        {live && (
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*,application/pdf"
+            multiple
+            hidden
+            data-testid="update-files"
+            onChange={(event) => setPhotos(Array.from(event.target.files ?? []).slice(0, 10))}
+          />
+        )}
+        {live?.error && <p className="composer-error" role="alert">{live.error.message}</p>}
 
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>{isZh ? "取消" : "Cancel"}</button>
-          <button className="primary-btn" type="button" onClick={onPost}>{isZh ? "发布更新" : "Post update"}</button>
+          {live ? (
+            <>
+              {/* post_milestone_update refuses an update with no note. */}
+              <button
+                className={canSubmit ? "secondary-btn" : "primary-btn"}
+                type="button"
+                disabled={live.busy || !body.trim()}
+                onClick={() => onPost({ body, files: photos, submit: false })}
+              >
+                {live.busy ? "Posting…" : "Post update"}
+              </button>
+              {canSubmit && (
+                <button
+                  className="primary-btn"
+                  type="button"
+                  disabled={live.busy || !body.trim()}
+                  onClick={() => onPost({ body, files: photos, submit: true })}
+                >
+                  Post and send for approval
+                </button>
+              )}
+            </>
+          ) : (
+            <button className="primary-btn" type="button" onClick={onPost}>{isZh ? "发布更新" : "Post update"}</button>
+          )}
         </footer>
       </div>
     </div>
