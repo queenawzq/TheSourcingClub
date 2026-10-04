@@ -8508,6 +8508,14 @@ select {
   padding: 32px;
 }
 
+/* The dialog is sized for 16px either side of a phone screen, so the layer
+   must not pad it by 32px there: it ran off the right edge. */
+@media (max-width: 760px) {
+  .approve-fund-modal-layer {
+    padding: 16px;
+  }
+}
+
 .approve-fund-modal-scrim {
   position: absolute;
   inset: 0;

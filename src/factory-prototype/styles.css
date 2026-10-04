@@ -10948,3 +10948,29 @@ button.sort-button {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
+/* On a phone the card is narrower than its header and photo row: stack the
+   header and wrap the photos (as the brand's card does), so nothing spills
+   past the card or makes the page scroll sideways. */
+@media (max-width: 760px) {
+  .factory-milestone-item > .factory-posted-update-card {
+    min-width: 0;
+  }
+
+  .factory-posted-update-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .factory-posted-update-header > div {
+    flex-wrap: wrap;
+  }
+
+  .factory-posted-update-header button {
+    justify-self: start;
+    text-align: left;
+  }
+
+  .factory-posted-file-row {
+    flex-wrap: wrap;
+  }
+}
