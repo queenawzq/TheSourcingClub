@@ -8773,6 +8773,13 @@ select {
   background: white;
 }
 
+/* The latest update spans the row under the step and its actions, so a note
+   reads at a normal line length rather than in the title's column. */
+.project-milestone-item > .project-update-card {
+  grid-column: 2 / -1;
+  max-width: none;
+}
+
 .project-update-header {
   display: grid;
   grid-template-columns: auto auto 1fr;

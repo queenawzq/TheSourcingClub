@@ -810,12 +810,12 @@ console.log("\nphase 3 — the order runs");
       ? ok("a competing factory CANNOT read that update")
       : fail("LEAK: a competitor read the update");
 
-    await factoryClient.rpc("submit_milestone", { target_milestone: first.id });
+    // Straight from the factory's update: nothing was sent for approval.
     const approved = await brand.client.rpc("approve_milestone", {
       target_milestone: first.id, note: "Approved from the smoke test",
     });
-    approved.error ? fail("the brand approves the sample", approved.error)
-                   : ok("the brand approves the sample");
+    approved.error ? fail("the brand approves the sample from the factory's update", approved.error)
+                   : ok("the brand approves the sample from the factory's update, with no send-for-approval step");
 
     const { data: deposit } = await admin
       .from("order_payments").select("*").eq("milestone_id", first.id).single();

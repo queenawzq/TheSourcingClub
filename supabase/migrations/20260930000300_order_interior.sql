@@ -10,8 +10,12 @@
 --   * "Send reminder" on a step. It changed a label and sent nothing.
 --   * "Project activity" beside the timeline. Four hardcoded lines.
 --
--- Nothing here changes a table. post_milestone_update keeps its name and its
--- arguments and only admits one more caller; the other two functions are new.
+-- And one rule from the design review: the brand approves a step from the
+-- factory's update, with no separate "send for approval" in between.
+--
+-- Nothing here changes a table. post_milestone_update and approve_milestone
+-- keep their names and arguments and only admit more; the other two
+-- functions are new.
 -- ============================================================================
 
 -- ---------------------------------------------------------------------------
@@ -296,3 +300,133 @@ $$;
 
 revoke all on function public.order_activity(uuid) from public;
 grant execute on function public.order_activity(uuid) to authenticated;
+
+
+-- ---------------------------------------------------------------------------
+-- approve_milestone: approve from the update, without "send for approval"
+-- ---------------------------------------------------------------------------
+-- The design review (Oct 2) took "send for approval" off the screens: the
+-- factory posts its update, and the brand approves from it. So a step that is
+-- still ACTIVE may now be approved, once the factory has posted at least one
+-- update on it. A SUBMITTED step is approvable exactly as before, so the
+-- current site's "Send for approval" keeps working.
+--
+-- Unchanged from 20260905000800 apart from that one check: same name, same
+-- arguments, same owner rule on a paying step, same outcomes (a paying step
+-- becomes approved and its payment due; any other step completes and the
+-- chain moves on).
+-- ---------------------------------------------------------------------------
+
+create or replace function public.approve_milestone(target_milestone uuid, note text default null)
+returns public.order_milestones
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  m public.order_milestones;
+  o public.production_orders;
+  p public.order_payments;
+begin
+  select * into o from public.production_orders
+   where id = (select order_id from public.order_milestones where id = target_milestone)
+   for update;
+  if not found then
+    raise exception 'milestone not found' using errcode = 'P0002';
+  end if;
+
+  select * into m from public.order_milestones where id = target_milestone for update;
+
+  if o.status <> 'active' then
+    raise exception 'this order is %', o.status using errcode = '22023';
+  end if;
+
+  if m.kind = 'payment_only' then
+    raise exception 'there is nothing to approve on a payment step' using errcode = '22023';
+  end if;
+
+  -- Approving a sample makes money due, so it takes an owner, matching
+  -- award_quote. Signing off a lab dip does not, and requiring an owner for
+  -- every colour approval would put the founder in the middle of daily work.
+  if m.kind = 'approval_and_payment' then
+    if not public.is_org_owner(o.brand_org_id) then
+      raise exception 'approving a step that releases a payment is limited to a brand owner'
+        using errcode = '42501';
+    end if;
+  elsif not public.is_org_member(o.brand_org_id) then
+    raise exception 'only the brand on this order approves its steps' using errcode = '42501';
+  end if;
+
+  -- Also the double-approve guard: a second concurrent call blocks on the row
+  -- lock above, then reads the new state and lands here.
+  --
+  -- An ACTIVE step is approvable once the factory has posted on it: the brand
+  -- approves from the update it has seen. Before anything is posted there is
+  -- nothing to approve, and a brand's own comment is not the factory's work.
+  if m.state = 'active' then
+    if not exists (
+      select 1 from public.milestone_updates u
+       where u.milestone_id = m.id and u.author_org_id = o.factory_org_id
+    ) then
+      raise exception 'the factory has not posted an update on "%" yet, so there is nothing to approve', m.title
+        using errcode = '22023';
+    end if;
+  elsif m.state <> 'submitted' then
+    raise exception 'that step is %, so it is not waiting on you', m.state
+      using errcode = '22023';
+  end if;
+
+  if m.kind = 'approval_and_payment' then
+    update public.order_milestones
+       set state = 'approved', approved_by = auth.uid(), approved_at = now(),
+           approval_note = nullif(btrim(coalesce(note, '')), '')
+     where id = m.id
+    returning * into m;
+
+    update public.order_payments
+       set state = 'due', due_at = now()
+     where milestone_id = m.id and state = 'not_due'
+    returning * into p;
+
+    insert into public.payment_events (payment_id, from_state, to_state, actor_user_id, actor_kind)
+    values (p.id, 'not_due', 'due', auth.uid(), 'brand');
+
+    insert into public.notifications
+      (org_id, kind, subject_type, subject_id, order_id, title, body)
+    values (
+      o.brand_org_id, 'payment_due', 'payment', p.id, o.id,
+      format('%s is due on %s', public.format_money(p.amount_cents, p.currency), o.order_number),
+      format('You approved "%s". Wire the payment, then mark it sent.', m.title)
+    );
+
+    insert into public.notifications
+      (org_id, kind, subject_type, subject_id, order_id, title, body)
+    values (
+      o.factory_org_id, 'milestone_approved', 'milestone', m.id, o.id,
+      format('"%s" was approved', m.title),
+      'The brand has approved this step. Payment follows once it is confirmed.'
+    );
+  else
+    update public.order_milestones
+       set state = 'complete', approved_by = auth.uid(), approved_at = now(),
+           approval_note = nullif(btrim(coalesce(note, '')), ''), completed_at = now()
+     where id = m.id
+    returning * into m;
+
+    insert into public.notifications
+      (org_id, kind, subject_type, subject_id, order_id, title, body)
+    values (
+      o.factory_org_id, 'milestone_approved', 'milestone', m.id, o.id,
+      format('"%s" was approved', m.title),
+      coalesce(nullif(btrim(coalesce(note, '')), ''), 'You can carry on to the next step.')
+    );
+
+    perform public.advance_order_chain(o.id);
+  end if;
+
+  return m;
+end;
+$$;
+
+revoke all on function public.approve_milestone(uuid, text) from public;
+grant execute on function public.approve_milestone(uuid, text) to authenticated;
