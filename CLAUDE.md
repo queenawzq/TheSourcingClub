@@ -95,8 +95,13 @@ screens below — each held back for a stated reason, not a backlog entry:
 - **`AdminPayments`.** No designed payments queue, and confirming a payment is a
   required step: staff have no org and cannot be notified, so a payment sits at
   `sent` until a human opens it.
-- **`MilestoneDetail`** and the brand's own **`RfqDetail`** — no designed
-  counterpart yet.
+- The brand's own **`RfqDetail`** — no designed counterpart yet.
+
+A step's full history opens in **`StepUpdatesModal`** (`src/shared/`), over
+the order, at the step's own address (`/orders/:id/milestones/:mid`). The
+designs draw only the latest update and its "View all updates" link, so the
+pop-up is the design's dialog frame around the design's update card. It
+replaced the hand-built step page after the design review of Oct 2.
 
 **The designed quote form writes prose where the schema keeps ids.** "30%
 deposit / 70% before shipment" and "EXW quoted" are matched against

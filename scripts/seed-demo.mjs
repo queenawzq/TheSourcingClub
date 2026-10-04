@@ -143,7 +143,7 @@ const quote = must(await factory.client.from("quotes").insert({
   factory_notes: "Includes fit and PP sample, EXW Porto.",
 }).select("id").single(), "quote");
 must(await factory.client.from("quote_sample_lines").insert({
-  quote_id: quote.id, stage: "fit_sample", cost_cents: 6500, timing_days: 10, sort: 0,
+  quote_id: quote.id, stage: "Fit sample", cost_cents: 6500, timing_days: 10, sort: 0,
 }), "sample line");
 must(await factory.client.rpc("submit_quote", { quote_id: quote.id }), "submit quote");
 
@@ -170,7 +170,7 @@ const secondQuote = must(await factory.client.from("quotes").insert({
   factory_notes: "Merino capsule, includes knit-down.",
 }).select("id").single(), "second quote");
 must(await factory.client.from("quote_sample_lines").insert({
-  quote_id: secondQuote.id, stage: "fit_sample", cost_cents: 4500, timing_days: 12, sort: 0,
+  quote_id: secondQuote.id, stage: "Fit sample", cost_cents: 4500, timing_days: 12, sort: 0,
 }), "sample line 2");
 must(await factory.client.rpc("submit_quote", { quote_id: secondQuote.id }), "submit second quote");
 must(await brand.client.rpc("award_quote", { quote_id: secondQuote.id }), "award");

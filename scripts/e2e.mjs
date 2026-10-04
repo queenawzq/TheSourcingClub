@@ -1363,15 +1363,20 @@ async function main() {
     check(activePayments.length === payingSteps,
       `activation created one payment per paying step and none for the rest (${activePayments.length})`);
 
-    // The first step, worked the way a factory actually works it.
+    // The first step, worked the way a factory actually works it: a note from
+    // the row's own dialog. There is no "send for approval" any more — the
+    // brand approves from the update itself.
     const firstStep = draftSteps[0];
-    await page.goto(`${APP}/orders/${bornOrder.id}/milestones/${firstStep.id}`);
-    await waitFor(page, '[data-field="update_body"]', 25000);
-    await page.locator('[data-field="update_body"]')
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="milestone-row"]', 25000);
+    await page.locator('[data-testid="milestone-row"] .milestone-more-button').first().click();
+    await clickButton(page, "add comment");
+    await waitFor(page, ".milestone-comment-modal textarea", 10000);
+    await page.locator(".milestone-comment-modal textarea").first()
       .fill("Fit sample finished. Front, back and collar detail photographed.");
-    await record(page, "Posting an update", "a note and photographs, which is the factory's only lever here");
+    await record(page, "Posting an update", "a note and photographs, from the row's own dialog");
 
-    await clickButton(page, "post update");
+    await page.locator(".milestone-comment-modal .primary-btn").first().click();
     await page.waitForTimeout(3000);
 
     const { data: postedUpdates } = await db.from("milestone_updates")
@@ -1380,12 +1385,11 @@ async function main() {
     check(postedUpdates[0].milestone_id === firstStep.id,
       "the update attached to the step that opened the composer, not to the first one on the page");
 
-    await clickButton(page, "send for approval");
-    await page.waitForTimeout(2500);
-    const { data: submitted } = await db.from("order_milestones")
+    const { data: stillOpen } = await db.from("order_milestones")
       .select("state").eq("id", firstStep.id).single();
-    check(submitted.state === "submitted", "the factory sent the step for approval");
-    await record(page, "Sent for approval", "the brand decides; the factory does not mark its own work done");
+    check(stillOpen.state === "active",
+      "posting is all the factory does: the step stays open, for the brand to approve from the update");
+    await record(page, "Update posted", "the brand decides; the factory does not mark its own work done");
 
     // Where the money goes. This run is what found that nothing wrote to this
     // table: the brand's pay button is correctly disabled with no destination,
@@ -1413,19 +1417,28 @@ async function main() {
 
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-action"]', 25000);
-    await record(page, "Waiting on the brand", "the factory has sent a step for approval");
+    const rowAction = await page.locator('[data-testid="milestone-action"]').first().innerText();
+    check(/^approve$/i.test(rowAction.trim()),
+      `the step the factory posted on offers the brand "Approve" (${rowAction.trim()})`);
+    await record(page, "Waiting on the brand", "the factory has posted; the row says Approve");
 
     // The brand can actually see the factory's update. If the counterparty
     // policy were missing this is an empty panel and no error anywhere, which
-    // is the failure this assertion exists to make loud.
-    await page.goto(`${APP}/orders/${bornOrder.id}/milestones/${firstStep.id}`);
-    await waitFor(page, '[data-testid="milestone-update"]', 25000);
-    const brandSeesUpdate = await page.locator('[data-testid="milestone-update"]').count();
+    // is the failure this assertion exists to make loud. "View all updates"
+    // opens the step's pop-up over the order, not a page of its own.
+    await page.locator('[data-testid="update-card"] button').first().click();
+    await waitFor(page, '[data-testid="step-update"]', 15000);
+    const brandSeesUpdate = await page.locator('[data-testid="step-update"]').count();
     check(brandSeesUpdate === 1,
       "the brand can read the factory's update across the org boundary");
-    await record(page, "The brand reads the update", "posted by the factory, readable by the brand, nobody else");
+    await record(page, "The brand reads the update", "in the step's pop-up, over the order");
 
-    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    // A step's own address — what notifications link to — opens the same pop-up.
+    await page.goto(`${APP}/orders/${bornOrder.id}/milestones/${firstStep.id}`);
+    await waitFor(page, '[data-testid="step-updates"]', 25000);
+    check((await page.locator('[data-testid="milestone-row"]').count()) > 0,
+      "a step link opens its pop-up on top of the order, with the timeline behind it");
+    await page.locator(".step-updates-modal .secondary-btn").first().click();
     await waitFor(page, '[data-testid="milestone-action"]', 25000);
     // The row's action is the one its state allows, and approving opens the
     // design's own dialog: an approval is never one stray click. The note

@@ -40,7 +40,6 @@ import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 import { createLiveAdapter } from "./live-adapter.js";
 import LiveFactoryOrders from "./order/LiveFactoryOrders.jsx";
-import MilestoneDetail from "./order/MilestoneDetail.jsx";
 import PaymentInstructions from "./order/PaymentInstructions.jsx";
 import PayoutDetails from "./order/PayoutDetails.jsx";
 import AdminPayments from "./admin/AdminPayments.jsx";
@@ -904,12 +903,11 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       ),
     },
     {
+      // A step is a pop-up over its order, not a page of its own: this is the
+      // address notifications and "View all updates" use.
       path: "/orders/:id/milestones/:mid",
       render: (params) => (
-        <main className="home-page">
-          <MilestoneDetail org={activeOrg} orderId={params.id} milestoneId={params.mid}
-                           isFactory={isFactory} isOwner={isOwner} />
-        </main>
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} step={params.mid} />
       ),
     },
     {

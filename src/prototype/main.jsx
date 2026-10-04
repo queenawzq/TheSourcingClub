@@ -7087,7 +7087,6 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
           </div>
         </div>
         <p className="milestone-description">{milestone.description}</p>
-        {milestone.update && <ProjectUpdateCard update={typeof milestone.update === "object" ? milestone.update : undefined} />}
       </div>
       <div className="milestone-row-actions">
         {milestone.amount && <strong className="milestone-row-amount">{milestone.amount}</strong>}
@@ -7149,6 +7148,9 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
           </button>
         )}
       </div>
+      {/* Below the step and its actions, across the row, so the note is not
+          squeezed into the title's column. */}
+      {milestone.update && <ProjectUpdateCard update={typeof milestone.update === "object" ? milestone.update : undefined} />}
     </article>
   );
 }
