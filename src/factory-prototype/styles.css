@@ -6818,6 +6818,13 @@ body:has(.factory-onboarding-page) {
   background: #fff;
 }
 
+/* The latest update spans the row under the step and its actions, so a note
+   reads at a normal line length rather than in the title's column. */
+.factory-milestone-item > .factory-posted-update-card {
+  grid-column: 2 / -1;
+  width: auto;
+}
+
 .factory-posted-update-header {
   display: grid;
   grid-template-columns: auto 1fr;

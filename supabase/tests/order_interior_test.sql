@@ -16,16 +16,17 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(24);
+select plan(28);
 
 -- ---------------------------------------------------------------------------
--- Fixtures: an awarded order, agreed by both sides, so its first step is open
+-- Fixtures: an awarded order the brand has confirmed, so its first step is open
 -- ---------------------------------------------------------------------------
 
 insert into auth.users (id, email, raw_user_meta_data) values
   ('ca000000-0000-0000-0000-000000000001', 'p10-brandowner@example.com', '{"name":"Brand Owner"}'),
   ('ca000000-0000-0000-0000-000000000002', 'p10-factory@example.com',    '{"name":"Factory Owner"}'),
-  ('ca000000-0000-0000-0000-000000000003', 'p10-outsider@example.com',   '{"name":"Outsider"}');
+  ('ca000000-0000-0000-0000-000000000003', 'p10-outsider@example.com',   '{"name":"Outsider"}'),
+  ('ca000000-0000-0000-0000-000000000004', 'p10-brandmember@example.com', '{"name":"Brand Member"}');
 
 insert into public.orgs (id, type, name, slug) values
   ('da000000-0000-0000-0000-00000000000b', 'brand',   'P10 Brand',    'pgtap10-brand'),
@@ -35,7 +36,8 @@ insert into public.orgs (id, type, name, slug) values
 insert into public.org_members (org_id, user_id, role) values
   ('da000000-0000-0000-0000-00000000000b', 'ca000000-0000-0000-0000-000000000001', 'owner'),
   ('da000000-0000-0000-0000-0000000000f1', 'ca000000-0000-0000-0000-000000000002', 'owner'),
-  ('da000000-0000-0000-0000-00000000000c', 'ca000000-0000-0000-0000-000000000003', 'owner');
+  ('da000000-0000-0000-0000-00000000000c', 'ca000000-0000-0000-0000-000000000003', 'owner'),
+  ('da000000-0000-0000-0000-00000000000b', 'ca000000-0000-0000-0000-000000000004', 'member');
 
 insert into public.brand_profiles (org_id, hq_location) values
   ('da000000-0000-0000-0000-00000000000b', 'London, UK'),
@@ -76,10 +78,6 @@ set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","r
 set local role authenticated;
 select public.agree_schedule((select order_id from p10), 1);
 reset role;
-set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000002","role":"authenticated"}';
-set local role authenticated;
-select public.agree_schedule((select order_id from p10), 1);
-reset role;
 
 -- Photos, one per side, uploaded but not yet attached. Their storage objects
 -- sit at {org}/milestone_update/{order}/…, which is what uploadDocument writes.
@@ -102,7 +100,7 @@ from p10;
 select is(
   (select state::text from public.order_milestones where id = (select first_step from p10)),
   'active',
-  'fixture: both sides agreed, so the first step is open'
+  'fixture: the brand confirmed the steps, so the first step is open'
 );
 
 -- ---------------------------------------------------------------------------
@@ -130,6 +128,13 @@ select throws_ok(
   $$select public.post_milestone_update((select last_step from p10), 'Early thoughts', '{}')$$,
   '22023', NULL,
   'a step that has not opened yet takes no comment'
+);
+
+-- The brand approves from the factory's update; its own comment is not one.
+select throws_ok(
+  $$select public.approve_milestone((select first_step from p10), null)$$,
+  '22023', NULL,
+  'with only the brand''s own comment on it, an open step has nothing to approve yet'
 );
 
 reset role;
@@ -294,8 +299,8 @@ select is(
 select is(
   (select count(*)::int from public.order_activity((select order_id from p10))
      where kind = 'schedule_agreed'),
-  2,
-  'the activity list shows each side agreeing the schedule'
+  1,
+  'the activity list shows the brand confirming the steps'
 );
 
 reset role;
@@ -309,6 +314,40 @@ select is(
 );
 
 reset role;
+
+-- ---------------------------------------------------------------------------
+-- Approving from the update, with no "send for approval" in between
+-- ---------------------------------------------------------------------------
+-- The first step is a paying sample, still ACTIVE, and the factory has posted
+-- on it (above).
+
+set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000004","role":"authenticated"}';
+set local role authenticated;
+
+select throws_ok(
+  $$select public.approve_milestone((select first_step from p10), null)$$,
+  '42501', NULL,
+  'a brand member still cannot approve a paying step: that takes an owner'
+);
+
+reset role;
+set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+select lives_ok(
+  $$select public.approve_milestone((select first_step from p10), 'Collar confirmed, go ahead.')$$,
+  'the brand owner approves an open step from the factory''s update'
+);
+
+reset role;
+
+select is(
+  (select m.state::text || '/' || p.state::text
+     from public.order_milestones m join public.order_payments p on p.milestone_id = m.id
+    where m.id = (select first_step from p10)),
+  'approved/due',
+  'the step is approved and its payment falls due, exactly as after "send for approval"'
+);
 
 select * from finish();
 rollback;
