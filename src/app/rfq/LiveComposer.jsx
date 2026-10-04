@@ -20,6 +20,7 @@ import { attachDocumentToRfq, createDraftRfq, getRfq, matchScoresForRfq, publish
 import { deleteDocument, listRfqDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
+import { fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -185,9 +186,17 @@ export default function LiveComposer({ org, rfqId }) {
             : "",
           category: "",
         });
+        setValues((current) => fillBlanks(current, fieldsFromBrief(row.brief, terms.product_category)));
       })
       .catch(setError);
   }, [rfqId]);
+
+  // The category is matched against the term labels, which load on their own
+  // and may arrive after a resumed draft does.
+  useEffect(() => {
+    if (step !== "review" || !terms.product_category?.length || !freeText) return;
+    setValues((current) => fillBlanks(current, { category: fieldsFromBrief(freeText, terms.product_category).category }));
+  }, [step, terms, freeText]);
 
   // The request's files, so a resumed draft shows what is already attached.
   useEffect(() => {
@@ -235,6 +244,34 @@ export default function LiveComposer({ org, rfqId }) {
   }, []);
 
   /**
+   * The model's answer, in the review card's own words. It returns taxonomy
+   * slugs and numbers; the card shows labels and prose the save step parses.
+   */
+  function fromModel(fields) {
+    if (!fields) return {};
+    const labels = (kind, slugs) => (slugs ?? [])
+      .map((slug) => (terms[kind] ?? []).find((term) => term.slug === slug))
+      .filter(Boolean)
+      .map((term) => termLabel(term))
+      .join(", ");
+    const splits = fields.colour_splits ?? [];
+    const evenly = splits.length > 0 && splits.every((split) => split.quantity === splits[0].quantity);
+    const total = fields.quantity_total ?? (splits.length ? splits.reduce((sum, split) => sum + split.quantity, 0) : null);
+    const low = fields.target_unit_price_min;
+    const high = fields.target_unit_price_max ?? low;
+    return {
+      title: fields.title ?? "",
+      category: labels("product_category", fields.product_category_slugs),
+      quantity: quantityLine(total, evenly ? splits.length : null),
+      material: fields.material_notes ?? "",
+      samples: fields.sample_notes ?? "",
+      price: low ? (high && high !== low ? `$${low}–$${high}` : `$${low}`) : "",
+      certifications: labels("certification", fields.certification_slugs),
+      regions: labels("region", fields.region_slugs),
+    };
+  }
+
+  /**
    * Leave the describe step.
    *
    * The draft row is created here, before anything is drafted or typed, so a
@@ -251,19 +288,14 @@ export default function LiveComposer({ org, rfqId }) {
       setDraftId(id);
       await saveRfq(id, { brief: freeText || null });
 
+      let fields = null;
       if (useModel && briefGenerationEnabled && freeText.trim()) {
-        const { fields } = await generateBrief({ freeText, terms });
-        if (fields) {
-          setValues((current) => ({
-            ...current,
-            title: fields.title ?? current.title ?? "",
-            quantity: fields.quantity_total ? String(fields.quantity_total) : current.quantity ?? "",
-            material: fields.material_notes ?? current.material ?? "",
-            samples: fields.sample_notes ?? current.samples ?? "",
-            timeline: fields.target_delivery_month ?? current.timeline ?? "",
-          }));
-        }
+        ({ fields } = await generateBrief({ freeText, terms }));
       }
+      // The model's reading first, then whatever the text itself says for
+      // what is still blank — with the model off, skipped or failed, the card
+      // still opens with the brief's own facts rather than empty fields.
+      setValues((current) => fillBlanks(fillBlanks(current, fromModel(fields)), fieldsFromBrief(freeText, terms.product_category)));
 
       setStep("review");
     } catch (failure) {

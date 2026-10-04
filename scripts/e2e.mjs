@@ -909,7 +909,14 @@ async function main() {
     const draftUrl = String(await page.url());
     check(/\/rfqs\/[0-9a-f-]{36}\/edit/.test(draftUrl) || /rfqs\/new/.test(draftUrl),
       "a draft row exists before the review card is filled in");
-    await record(page, "Review the brief", "read back and correctable — Skip AI leaves it empty to fill");
+    // Even with the model skipped, the card opens with what the brief says.
+    const prefilled = (name) => page.evaluate(
+      (field) => document.querySelector(`.review-brief-stack [name="${field}"]`)?.value ?? "", name);
+    check(/tops/i.test(await prefilled("category")),
+      "the review card reads the category out of the brief (shirts → Tops)");
+    check(/300 units · 3 colours, 100 each/.test(await prefilled("quantity")),
+      "the review card reads the quantity and colour split out of the brief");
+    await record(page, "Review the brief", "filled from the brief itself, and correctable");
 
     // The review fields are Queena's, addressed by the name the seam gives each.
     const setField = async (name, value) => {
