@@ -1253,12 +1253,12 @@ async function main() {
     check(!/Atelier Minho|Hansu Studio/.test(orderListText),
       "and no mock counterparty leaked through — the constants are not being read");
 
-    // An order that has not been agreed opens on the agreement, because there
-    // is no interior yet: no steps to work, no payments to make. The header
-    // figures are asserted once it is active, below.
+    // An order whose steps the brand has not confirmed opens on its builder,
+    // because there is no interior yet: no steps to work, no payments to
+    // make. The header figures are asserted once it is active, below.
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="schedule-row"]', 25000);
-    await record(page, "The order", "before either side agrees, the schedule is the whole screen");
+    await record(page, "The order", "before the brand confirms the steps, the builder is the whole screen");
 
     const { data: draftSteps } = await db.from("order_milestones")
       .select("id, title, kind, amount_cents, sort").eq("order_id", bornOrder.id).order("sort");
@@ -1271,29 +1271,30 @@ async function main() {
     check(stepsTotal === Number(bornOrder.order_total_cents),
       `the steps total exactly what was agreed (${stepsTotal})`);
 
-    // Editing has to withdraw both agreements, or one side's signature
-    // survives a change it never read.
     await page.goto(`${APP}/orders/${bornOrder.id}/schedule`);
     await waitFor(page, '[data-testid="schedule-row"]', 25000);
     const scheduleRows = await page.locator('[data-testid="schedule-row"]').count();
     check(scheduleRows === draftSteps.length,
       `nobody faces a blank schedule — ${scheduleRows} steps are already there`);
-    await record(page, "The schedule", "drafted from the quote; either side may change it");
+    await record(page, "The schedule", "drafted from the quote; the brand sets it");
 
-    // The brand's builder is the designed "Production steps" stage; its agree
-    // button is the flow's own bottom bar, found by its words.
+    // The brand's builder is the designed "Production steps" stage, and its
+    // buttons are the design's own: Save changes, and Continue to funding,
+    // which confirms the steps. Only the brand sets them (design review).
     await waitFor(page, '[data-testid="schedule-hint"]', 25000);
-    await clickButton(page, "agree to this schedule");
-    await page.waitForTimeout(2500);
-    await record(page, "Brand agrees", "one signature. The order has not started");
+    check(!/agree to this schedule/i.test(await page.locator("body").innerText()),
+      "there is no \"Agree to this schedule\" any more");
+    await clickButton(page, "continue to funding");
+    await page.waitForTimeout(3000);
+    await record(page, "Brand confirms the steps", "its confirmation alone starts the order");
 
-    const { data: halfSigned } = await db.from("production_orders")
+    const { data: confirmed } = await db.from("production_orders")
       .select("status, schedule_brand_agreed_at, schedule_factory_agreed_at")
       .eq("id", bornOrder.id).single();
-    check(halfSigned.status === "pending_schedule",
-      "one side agreeing does NOT start the order");
-    check(Boolean(halfSigned.schedule_brand_agreed_at) && !halfSigned.schedule_factory_agreed_at,
-      "only the brand's agreement is recorded");
+    check(confirmed.status === "active",
+      "the brand confirming the steps starts the order");
+    check(Boolean(confirmed.schedule_brand_agreed_at) && !confirmed.schedule_factory_agreed_at,
+      "no factory agreement was needed");
 
     // ================= THE LOSER HEARS =================
     console.log("\nTHE LOSER HEARS");
@@ -1310,8 +1311,8 @@ async function main() {
     check(/accepted/i.test(notifText), "the winning factory is told on its dashboard, without asking");
     await record(page, "Factory hears the outcome", "award_quote wrote this row; now something shows it");
 
-    // ================= THE FACTORY AGREES, AND WORKS =================
-    console.log("\nTHE FACTORY AGREES, AND WORKS");
+    // ================= THE FACTORY WORKS =================
+    console.log("\nTHE FACTORY WORKS");
 
     // The factory's own designed list, not the brand's, with the real order on it.
     await page.goto(`${APP}/orders`);
@@ -1324,25 +1325,12 @@ async function main() {
       "and none of the factory design's example brands");
     await record(page, "Factory's orders", "its own designed list, live");
 
+    // The factory never agrees the steps: it was told of them, and the order
+    // is already running.
     await page.goto(`${APP}/orders/${bornOrder.id}`);
-    await waitFor(page, '[data-testid="agree-schedule"]', 25000);
-
-    const factoryView = await page.locator("body").innerText();
-    check(/agree/i.test(factoryView),
-      "the factory reads its own wording off the same stored status the brand read differently");
-
-    const beforeAgreeing = await page.locator('[data-testid="milestone-action"]').count();
-    check(beforeAgreeing === 0,
-      "no step can be worked or paid before both sides have agreed");
-    await record(page, "Factory sees the schedule", "the same steps the brand read, nothing actionable yet");
-
-    await clickButton(page, "agree to this schedule");
-    await page.waitForTimeout(3000);
-    await record(page, "Both agreed", "the order is running");
-
-    const { data: live } = await db.from("production_orders")
-      .select("status, activated_at").eq("id", bornOrder.id).single();
-    check(live.status === "active", "the order starts only once BOTH sides have agreed");
+    await waitFor(page, '[data-testid="milestone-row"]', 25000);
+    check((await page.locator('[data-testid="agree-schedule"]').count()) === 0,
+      "the factory has no schedule to agree");
 
     // Now there is an interior to look at. Every figure in the designed header
     // is summed in SQL from the rows below it.
@@ -1369,14 +1357,15 @@ async function main() {
     const firstStep = draftSteps[0];
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-row"]', 25000);
-    await page.locator('[data-testid="milestone-row"] .milestone-more-button').first().click();
-    await clickButton(page, "add comment");
-    await waitFor(page, ".milestone-comment-modal textarea", 10000);
-    await page.locator(".milestone-comment-modal textarea").first()
+    await clickButton(page, "add update");
+    await waitFor(page, '[data-field="update_body"]', 10000);
+    await page.locator('[data-field="update_body"]')
       .fill("Fit sample finished. Front, back and collar detail photographed.");
-    await record(page, "Posting an update", "a note and photographs, from the row's own dialog");
+    check(!/send for approval/i.test(await page.locator(".factory-update-modal").innerText()),
+      "the factory's update dialog has one button, Post update: no \"send for approval\"");
+    await record(page, "Posting an update", "a note and photographs, from the design's Add update dialog");
 
-    await page.locator(".milestone-comment-modal .primary-btn").first().click();
+    await page.locator(".factory-update-modal .primary-btn").first().click();
     await page.waitForTimeout(3000);
 
     const { data: postedUpdates } = await db.from("milestone_updates")

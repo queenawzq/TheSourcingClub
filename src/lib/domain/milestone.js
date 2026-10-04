@@ -158,13 +158,6 @@ export async function postUpdate({ orderId, milestoneId, orgId, body, files = []
   }
 }
 
-export async function submitMilestone(milestoneId) {
-  return unwrap(
-    await supabase.rpc("submit_milestone", { target_milestone: milestoneId }),
-    "send this step for approval",
-  );
-}
-
 export async function approveMilestone(milestoneId, note) {
   return unwrap(
     await supabase.rpc("approve_milestone", {

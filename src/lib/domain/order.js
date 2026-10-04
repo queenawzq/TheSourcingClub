@@ -98,17 +98,15 @@ export async function acceptCancellation(orderId) {
 
 /**
  * `pending_schedule` is why this is a function and not a lookup table: what
- * the viewer should read depends on whether their own side has already agreed.
+ * the viewer should read depends on which side it is. Only the brand sets the
+ * production steps, and its confirmation starts the order.
  */
 export function orderStatusLabel(order, { isFactory }) {
   if (!order) return "";
-  const mine = isFactory ? order.schedule_factory_agreed_at : order.schedule_brand_agreed_at;
-  const theirs = isFactory ? order.schedule_brand_agreed_at : order.schedule_factory_agreed_at;
 
   switch (order.status) {
     case "pending_schedule":
-      if (!mine) return "Schedule needs your agreement";
-      return theirs ? "Starting" : "Waiting on the other side to agree";
+      return isFactory ? "Brand is setting the steps" : "Set the production steps";
     case "active":
       return "In production";
     case "completed":

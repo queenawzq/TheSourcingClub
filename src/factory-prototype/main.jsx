@@ -8792,9 +8792,9 @@ export function FactoryProjectProgressDetail({
   onRemind,
   dialog,
   error,
-  // Before both sides agree there is no timeline to show: the live mount puts
-  // the schedule being agreed in its place.
-  schedule
+  // Live only: a line above the timeline, e.g. while the brand is still
+  // setting the production steps.
+  notice
 }) {
   const [updateMilestone, setUpdateMilestone] = useState(null);
   const [localDetailTab, setLocalDetailTab] = useState("overview");
@@ -8847,9 +8847,10 @@ export function FactoryProjectProgressDetail({
             ))}
           </nav>
 
-          {activeDetailTab === "overview" && (schedule ?? (
+          {activeDetailTab === "overview" && (
             <section className="factory-milestone-card">
               <h2>Production timeline</h2>
+              {notice && <p className="muted production-schedule-helper" data-testid="schedule-notice">{notice}</p>}
               <div className="factory-milestone-list">
                 {(liveMilestones ?? factoryProjectMilestones).map((milestone, index) => (
                   <FactoryMilestoneItem
@@ -8864,7 +8865,7 @@ export function FactoryProjectProgressDetail({
                 ))}
               </div>
             </section>
-          ))}
+          )}
           {activeDetailTab === "files" && <FactoryProjectFilesPanel files={files} onOpen={onOpenFile} />}
           {activeDetailTab === "contract" && <FactoryContractDetailsPanel contract={contract} />}
         </section>
@@ -9055,7 +9056,6 @@ function FactoryMilestoneItem({ milestone, index, onAddUpdate, onRemind, live = 
           <p>{milestone.meta}</p>
         </div>
         <p>{milestone.description}</p>
-        {showUpdate && <FactoryPostedUpdateCard update={live ? milestone.update : undefined} />}
       </div>
       <div className="factory-milestone-actions">
         {milestone.amount && <strong>{milestone.amount}</strong>}
@@ -9076,6 +9076,9 @@ function FactoryMilestoneItem({ milestone, index, onAddUpdate, onRemind, live = 
           </button>
         )}
       </div>
+      {/* Below the step and its actions, across the row, so the note is not
+          squeezed into the title's column. */}
+      {showUpdate && <FactoryPostedUpdateCard update={live ? milestone.update : undefined} />}
     </article>
   );
 }
@@ -9136,16 +9139,13 @@ function FactoryPostedUpdateCard({ update }) {
 }
 
 function AddUpdateModal({ language, milestone, onClose, onPost, live = null }) {
-  // Live: a real note and real photos, handed to onPost({ body, files, submit }).
+  // Live: a real note and real photos, handed to onPost({ body, files }).
   const [body, setBody] = useState("");
   const [photos, setPhotos] = useState([]);
   const fileInput = useRef(null);
   const isZh = language === "zh";
   const milestoneTitle = isZh ? translateFactoryMainText(milestone.title) : milestone.title.toLowerCase();
   const brand = live?.counterparty || "Maison Rue";
-  // The design's copy says the update is what the brand reviews before the
-  // step is approved, so the live dialog can send it for that review too.
-  const canSubmit = Boolean(live && milestone.needsApproval && milestone.state === "active");
 
   return (
     <div className="factory-update-modal-layer" role="presentation">
@@ -9192,27 +9192,16 @@ function AddUpdateModal({ language, milestone, onClose, onPost, live = null }) {
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>{isZh ? "取消" : "Cancel"}</button>
           {live ? (
-            <>
-              {/* post_milestone_update refuses an update with no note. */}
-              <button
-                className={canSubmit ? "secondary-btn" : "primary-btn"}
-                type="button"
-                disabled={live.busy || !body.trim()}
-                onClick={() => onPost({ body, files: photos, submit: false })}
-              >
-                {live.busy ? "Posting…" : "Post update"}
-              </button>
-              {canSubmit && (
-                <button
-                  className="primary-btn"
-                  type="button"
-                  disabled={live.busy || !body.trim()}
-                  onClick={() => onPost({ body, files: photos, submit: true })}
-                >
-                  Post and send for approval
-                </button>
-              )}
-            </>
+            // post_milestone_update refuses an update with no note. Posting is
+            // all the factory does: the brand approves from the update.
+            <button
+              className="primary-btn"
+              type="button"
+              disabled={live.busy || !body.trim()}
+              onClick={() => onPost({ body, files: photos })}
+            >
+              {live.busy ? "Posting…" : "Post update"}
+            </button>
           ) : (
             <button className="primary-btn" type="button" onClick={onPost}>{isZh ? "发布更新" : "Post update"}</button>
           )}

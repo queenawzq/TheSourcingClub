@@ -19,7 +19,7 @@ create extension if not exists pgtap with schema extensions;
 select plan(28);
 
 -- ---------------------------------------------------------------------------
--- Fixtures: an awarded order, agreed by both sides, so its first step is open
+-- Fixtures: an awarded order the brand has confirmed, so its first step is open
 -- ---------------------------------------------------------------------------
 
 insert into auth.users (id, email, raw_user_meta_data) values
@@ -78,10 +78,6 @@ set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","r
 set local role authenticated;
 select public.agree_schedule((select order_id from p10), 1);
 reset role;
-set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000002","role":"authenticated"}';
-set local role authenticated;
-select public.agree_schedule((select order_id from p10), 1);
-reset role;
 
 -- Photos, one per side, uploaded but not yet attached. Their storage objects
 -- sit at {org}/milestone_update/{order}/…, which is what uploadDocument writes.
@@ -104,7 +100,7 @@ from p10;
 select is(
   (select state::text from public.order_milestones where id = (select first_step from p10)),
   'active',
-  'fixture: both sides agreed, so the first step is open'
+  'fixture: the brand confirmed the steps, so the first step is open'
 );
 
 -- ---------------------------------------------------------------------------
@@ -303,8 +299,8 @@ select is(
 select is(
   (select count(*)::int from public.order_activity((select order_id from p10))
      where kind = 'schedule_agreed'),
-  2,
-  'the activity list shows each side agreeing the schedule'
+  1,
+  'the activity list shows the brand confirming the steps'
 );
 
 reset role;

@@ -23,14 +23,13 @@ import {
   listOrderUpdates,
   postUpdate,
   remindMilestone,
-  submitMilestone,
 } from "../../lib/domain/milestone.js";
 import { brandSummary } from "../../lib/domain/rfq.js";
 import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
 import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
-import { BrandSchedule, FactorySchedule } from "./ScheduleBuilder.jsx";
+import { BrandSchedule } from "./ScheduleBuilder.jsx";
 import {
   activityLines,
   day,
@@ -119,13 +118,13 @@ function dueBadge(milestone, today = new Date()) {
 
 /**
  * Whether a step is waiting on the OTHER side, which is the only time a
- * reminder means anything. An open step waits on the factory's work; a
- * submitted one on the brand's approval, a due payment on the brand's
+ * reminder means anything. An open step waits on the factory's work until it
+ * posts; then on the brand's approval, as does a due payment on the brand's
  * transfer. Reminding the other side about your own move is noise.
  */
-const waitingOnOther = (milestone, isFactory) => (isFactory
-  ? milestone.state === "submitted" || milestone.payment?.state === "due"
-  : milestone.state === "active");
+const waitingOnOther = (milestone, isFactory, posted) => (isFactory
+  ? approvable(milestone, posted) || milestone.payment?.state === "due"
+  : milestone.state === "active" && !posted);
 
 const TABS = new Set(["overview", "files", "contract"]);
 
@@ -309,7 +308,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       reviewItem: stepUpdates.length
         ? `${stepUpdates.length} ${stepUpdates.length === 1 ? "update" : "updates"}, ${fileCount} ${fileCount === 1 ? "file" : "files"} posted on this step`
         : "Nothing posted on this step yet",
-      canRemind: running && waitingOnOther(milestone, isFactory),
+      canRemind: running && waitingOnOther(milestone, isFactory, posted),
       // post_milestone_update takes a post only while work is happening.
       canComment: running && (milestone.state === "active" || milestone.state === "submitted"),
       ...next,
@@ -347,15 +346,26 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   });
   const pending = order.status === "pending_schedule";
 
+  const stepPopup = openMilestone && (
+    <StepUpdatesModal
+      step={openMilestone}
+      updates={openUpdates}
+      urlFor={urlFor}
+      onOpenFile={(document) => openFile({ document })}
+      onClose={() => showStep(null)}
+    />
+  );
+
   /**
-   * Before both sides agree the schedule there are no steps running, no
-   * payments and nothing to fund: an unagreed order opens on the agreement,
-   * which is also the truthful order of events, since agree_schedule is what
-   * activates it. The factory agrees inside its own order page; the brand in
-   * the "Production steps" stage of its flow, as the design draws it.
+   * Before the brand confirms the production steps nothing is running: no
+   * payments, nothing to fund. The brand sets the steps in the "Production
+   * steps" stage of its flow, as the design draws it; the factory reads them
+   * on its own order page and is told of every change. (Design review: only
+   * the brand changes the steps; a factory that disagrees messages the brand.)
    */
   if (isFactory) {
     return (
+      <>
       <FactoryProjectProgressDetail
         language="en"
         onBack={() => navigate("/orders")}
@@ -370,17 +380,19 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         files={orderFiles(requestFiles, updates, milestones)}
         onOpenFile={openFile}
         contract={contract}
-        // The design's only step action is "Add update". Its dialog can also
-        // send the step for the brand's approval, which is what the update is
-        // for; the step page keeps its own "Send for approval".
-        onPostUpdate={(milestone, { body, files, submit }) => fromDialog(async () => {
-          await postUpdate({ orderId, milestoneId: milestone.id, orgId: org.id, body, files });
-          if (submit) await submitMilestone(milestone.id);
-        })}
+        // The design's only step action is "Add update". Posting is all the
+        // factory does: the brand approves from the update.
+        onPostUpdate={(milestone, { body, files }) => fromDialog(() => postUpdate({
+          orderId, milestoneId: milestone.id, orgId: org.id, body, files,
+        }))}
         onRemind={remind}
         dialog={{ busy, error: dialogError, onClose: () => setDialogError(null) }}
-        schedule={pending ? <FactorySchedule order={order} milestones={milestones} reload={load} /> : undefined}
+        notice={pending
+          ? `${other ?? "The brand"} is setting the production steps. Nothing starts until they confirm them, and you are told of every change. If something doesn't work for you, message them.`
+          : undefined}
       />
+      {stepPopup}
+      </>
     );
   }
 
@@ -423,15 +435,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         // A refusal belongs to the dialog it happened in, not the next one.
         onDialogClose={() => setDialogError(null)}
       />
-      {openMilestone && (
-        <StepUpdatesModal
-          step={openMilestone}
-          updates={openUpdates}
-          urlFor={urlFor}
-          onOpenFile={(document) => openFile({ document })}
-          onClose={() => showStep(null)}
-        />
-      )}
+      {stepPopup}
     </main>
   );
 }

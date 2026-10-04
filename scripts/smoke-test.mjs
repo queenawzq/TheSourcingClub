@@ -658,42 +658,44 @@ console.log("\nphase 3 — the order runs");
     updateEmbedError ? fail("update → documents embed parses", updateEmbedError)
                      : ok("the embed src/lib/domain/milestone.js uses for photos parses");
 
-    // ---- both sides agree -------------------------------------------------
-    const brandAgree = await brand.client.rpc("agree_schedule", {
-      target_order: order.id, revision: order.schedule_revision,
-    });
-    brandAgree.error ? fail("the brand agrees the schedule", brandAgree.error)
-                     : ok("the brand agrees the schedule");
-
-    const { data: halfway } = await admin
-      .from("production_orders").select("status").eq("id", order.id).single();
-    halfway.status === "pending_schedule"
-      ? ok("one signature is not enough — the order has not started")
-      : fail(`order is ${halfway.status} after one agreement`);
-
-    const { error: staleAgree } = await brand.client.rpc("agree_schedule", {
-      target_order: order.id, revision: order.schedule_revision,
-    });
-    staleAgree ? ok("a side cannot agree the same schedule twice")
-               : fail("LEAK: agreed twice");
-
+    // ---- the brand sets the steps; its confirmation starts the order ------
     // The factory has to act as itself: every RPC keys on auth.uid(), so
     // service_role genuinely cannot stand in for a party here.
     const { data: winner } = await admin
       .from("quotes").select("factory_org_id").eq("id", awardedQuote).single();
     // Reuse the winning factory's own session from the loop above.
     const factoryClient = f1Client;
+
+    const { error: factoryEdit } = await factoryClient.rpc("set_order_schedule", {
+      target_order: order.id,
+      lines: milestones.map((m) => ({ kind: m.kind, title: m.title, amount_cents: m.amount_cents, sort: m.sort })),
+    });
+    factoryEdit ? ok("the factory CANNOT change the production steps; only the brand does")
+                : fail("LEAK: the factory rewrote the brand's production steps");
+
     const factoryAgree = await factoryClient.rpc("agree_schedule", {
       target_order: order.id, revision: order.schedule_revision,
     });
-    factoryAgree.error ? fail("the factory agrees too", factoryAgree.error)
-                       : ok("the factory agrees too");
+    factoryAgree.error ? fail("a factory agreeing (the current site) is still accepted", factoryAgree.error)
+                       : ok("a factory agreeing (the current site) is still accepted");
+
+    const { data: halfway } = await admin
+      .from("production_orders").select("status").eq("id", order.id).single();
+    halfway.status === "pending_schedule"
+      ? ok("the factory agreeing does not start the order")
+      : fail(`order is ${halfway.status} after the factory's agreement`);
+
+    const brandAgree = await brand.client.rpc("agree_schedule", {
+      target_order: order.id, revision: order.schedule_revision,
+    });
+    brandAgree.error ? fail("the brand confirms the production steps", brandAgree.error)
+                     : ok("the brand confirms the production steps");
 
     const { data: active } = await admin
       .from("production_orders").select("status, activated_at").eq("id", order.id).single();
     active.status === "active"
-      ? ok("the order starts only once BOTH sides have agreed")
-      : fail(`order is ${active.status} after both agreements`);
+      ? ok("the brand's confirmation starts the order")
+      : fail(`order is ${active.status} after the brand confirmed`);
 
     const { data: payments } = await admin
       .from("order_payments").select("*, order_milestones (title, sort, kind)")
