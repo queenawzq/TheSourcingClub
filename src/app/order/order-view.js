@@ -118,7 +118,7 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
       case "payment_sent": return `${who(row.actor_org_id)} marked ${money(row.detail)} sent for ${step}`;
       case "payment_confirmed": return `TSC confirmed ${money(row.detail)} for ${step}`;
       case "payment_released": return `TSC released ${money(row.detail)} for ${step}`;
-      case "schedule_agreed": return `${who(row.actor_org_id)} agreed the schedule`;
+      case "schedule_agreed": return `${who(row.actor_org_id)} confirmed the production steps`;
       case "order_activated": return "Production started";
       case "cancellation_proposed": return `${who(row.actor_org_id)} proposed cancelling`;
       case "order_completed": return "Order completed";

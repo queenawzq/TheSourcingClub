@@ -6818,6 +6818,11 @@ body:has(.factory-onboarding-page) {
   background: #fff;
 }
 
+/* The line above the timeline while the brand sets the production steps. */
+.factory-milestone-card > .production-schedule-helper {
+  margin: 0 0 18px;
+}
+
 /* The latest update spans the row under the step and its actions, so a note
    reads at a normal line length rather than in the title's column. */
 .factory-milestone-item > .factory-posted-update-card {
