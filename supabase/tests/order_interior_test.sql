@@ -346,7 +346,7 @@ select lives_ok(
 reset role;
 
 select is(
-  (select state::text || '/' || p.state::text
+  (select m.state::text || '/' || p.state::text
      from public.order_milestones m join public.order_payments p on p.milestone_id = m.id
     where m.id = (select first_step from p10)),
   'approved/due',
