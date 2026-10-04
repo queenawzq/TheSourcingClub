@@ -4,7 +4,7 @@ import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
-import { filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab } from "../shared/production-order-parts.jsx";
+import { archiveActionFor, filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab, withArchivedTab } from "../shared/production-order-parts.jsx";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
@@ -6348,11 +6348,16 @@ export function ProjectsScreen({
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
   const [draftTabs, setDraftTabs] = useState(projectTabs);
   const customTabs = projectTabs.filter((tab) => !tab.locked);
+  const orderRows = orders ?? [];
+  // "Archived" joins the strip only while the company has archived something.
+  const stripTabs = tabStore ? withArchivedTab(projectTabs, orderRows, tabStore.archived) : projectTabs;
 
-  // A tab a teammate deleted, or this person just did, falls back to Active.
+  // A tab a teammate deleted, or this person just did, falls back to Active;
+  // an archive emptied by Unarchive falls back to Closed, where the order went.
   useEffect(() => {
-    if (tabStore && !projectTabs.some((tab) => tab.key === activeTab)) setActiveTab("active");
-  }, [tabStore, projectTabs, activeTab]);
+    if (loading || !tabStore || stripTabs.some((tab) => tab.key === activeTab)) return;
+    setActiveTab(activeTab === "archived" ? "closed" : "active");
+  }, [loading, tabStore, stripTabs, activeTab]);
 
   /**
    * Real counts, where the rows can answer the question.
@@ -6362,10 +6367,8 @@ export function ProjectsScreen({
    * brand that had none. Live rows carry their state; the prototype's mock
    * projects do not, so there the design's own numbers stay.
    */
-  const orderRows = orders ?? [];
   const knowsState = live || orderRows.some((project) => project.state);
-  const isClosed = (project) => project.state === "completed" || project.state === "cancelled";
-  const tabRows = !knowsState ? orderRows : rowsForTab(orderRows, activeTab, tabStore?.membership);
+  const tabRows = !knowsState ? orderRows : rowsForTab(orderRows, activeTab, tabStore?.membership, tabStore?.archived);
   // The filters only act on live rows; the prototype's mock cards carry none
   // of the fields they filter on, so there they stay as drawn.
   const vendorOptions = live
@@ -6374,9 +6377,7 @@ export function ProjectsScreen({
   const ordersForTab = !live ? tabRows : filterOrders(tabRows, { search, vendor, dateRange, sortBy });
   const tabLabel = (tab) => {
     if (!tab.locked || !knowsState) return tab.label;
-    const count = tab.key === "closed"
-      ? orderRows.filter(isClosed).length
-      : orderRows.filter((project) => !isClosed(project)).length;
+    const count = rowsForTab(orderRows, tab.key, null, tabStore?.archived).length;
     return `${tab.label.replace(/\s*\(\d+\)\s*$/, "")} (${count})`;
   };
 
@@ -6502,7 +6503,7 @@ export function ProjectsScreen({
 
       <nav className="rfqs-tabs projects-tabs" aria-label="Project status">
         <div className="project-tabs-scroll">
-          {projectTabs.map((tab) => (
+          {stripTabs.map((tab) => (
             !tab.locked ? (
               <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
                 <button
@@ -6599,7 +6600,7 @@ export function ProjectsScreen({
         document.body
       )}
 
-      <section className="projects-list" aria-label={activeTab === "closed" ? "Closed orders" : "Active orders"}>
+      <section className="projects-list" aria-label={activeTab === "closed" ? "Closed orders" : activeTab === "archived" ? "Archived orders" : "Active orders"}>
         {/* Three states the prototype has never had. Against the mock adapter
             only the last one is ever reached, which is why the page looks
             unchanged; against a network all three happen. */}
@@ -6615,6 +6616,8 @@ export function ProjectsScreen({
               ? "No orders match these filters."
               : activeTab === "closed"
               ? "Nothing closed yet."
+              : activeTab === "archived"
+              ? "No archived orders."
               : activeTab !== "active"
               ? "No orders in this tab yet. Add one from an order's ··· menu."
               : "No production orders yet. One appears here when a quote is awarded."}
@@ -6627,6 +6630,7 @@ export function ProjectsScreen({
               customTabs={customTabs}
               isFiled={tabStore ? (tab) => tabStore.membership.get(tab.key)?.has(project.id) : null}
               onToggleTab={tabStore ? (tab) => tabStore.toggle(tab.key, project.id) : null}
+              archiveAction={archiveActionFor(tabStore, project)}
               onViewOrder={onViewOrder}
               setSelectedReorderProject={setSelectedReorderProject}
               key={project.id ?? project.title}
@@ -6639,7 +6643,7 @@ export function ProjectsScreen({
 }
 
 
-function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, onViewOrder, setSelectedReorderProject = null }) {
+function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, onViewOrder, setSelectedReorderProject = null }) {
   const projectFacts = [
     ["Current step", project.currentStep],
     ["Next due", project.nextDue]
@@ -6672,7 +6676,22 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
                 >
                   Reorder style
                 </button>
-                <button type="button" role="menuitem" onClick={close}>Archive order</button>
+                {/* Live passes the item the order allows (none on an open
+                    order); the prototype keeps the design's own. */}
+                {archiveAction === undefined ? (
+                  <button type="button" role="menuitem" onClick={close}>Archive order</button>
+                ) : archiveAction ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      close();
+                      archiveAction.run();
+                    }}
+                  >
+                    {archiveAction.label}
+                  </button>
+                ) : null}
               </>
             )}
           </OrderCardMenu>

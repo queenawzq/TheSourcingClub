@@ -1860,6 +1860,108 @@ async function main() {
     check(!/Seoul Knit Works asked about yarn/i.test(homeText),
       "and the design's example alerts are not shown as if they were real");
 
+    // ================= PUTTING IT AWAY =================
+    // "Archive order" sat in the card's menu and only closed it. Only a closed
+    // order can be archived, so this one is cancelled first, by both sides,
+    // through the functions the cancel screens will call (they come later).
+    console.log("\nPUTTING IT AWAY");
+    const asUser = async (email) => {
+      const client = createClient(
+        process.env.SUPABASE_URL ?? stack.API_URL,
+        process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY,
+        { auth: { persistSession: false } },
+      );
+      await client.auth.signInWithPassword({ email, password: PASSWORD });
+      return client;
+    };
+    // Each archive change reloads the company's tabs; read the strip once it
+    // has caught up, not the instant the click lands.
+    const stripOnce = async (test) => {
+      const deadline = Date.now() + 15000;
+      let text = "";
+      while (Date.now() < deadline) {
+        text = await page.locator(".project-tabs-scroll").innerText().catch(() => "");
+        if (test(text)) break;
+        await page.waitForTimeout(250);
+      }
+      return text;
+    };
+    const { error: proposeError } = await (await asUser(brandEmail))
+      .rpc("propose_cancellation", { target_order: bornOrder.id, reason: "Season dropped" });
+    const { error: acceptError } = await (await asUser(`e2e-factory-${stamp}@example.com`))
+      .rpc("accept_cancellation", { target_order: bornOrder.id });
+    check(!proposeError && !acceptError,
+      `the order is cancelled by both sides${proposeError || acceptError ? `: ${(proposeError ?? acceptError).message}` : ""}`);
+
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    await clickButton(page, "closed");
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "archive order");
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    const archivedStrip = await stripOnce((text) => /archived \(1\)/i.test(text));
+    check(/archived \(1\)/i.test(archivedStrip) && /closed \(0\)/i.test(archivedStrip),
+      `archiving moves the order from Closed to a new Archived tab (${archivedStrip.replace(/\s+/g, " ")})`);
+
+    await page.reload();
+    await waitForHeading(page, "production orders", 25000);
+    await clickButton(page, "archived");
+    await waitFor(page, ".brand-project-card", 15000);
+    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
+      "after a reload the order is still archived");
+    await record(page, "Archived", "the brand put a cancelled order away");
+    await clickButton(page, `${brandTab} capsule`.toLowerCase());
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    check(true, "an archived order leaves the custom tab it was filed in");
+
+    await page.goto(APP);
+    await waitFor(page, ".home-stack", 25000);
+    check(!(await page.locator(".home-stack").innerText()).includes(rfqTitle),
+      "and leaves the dashboard");
+
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    await clickButton(page, "archived");
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "unarchive order");
+    const unarchivedStrip = await stripOnce((text) => !/archived/i.test(text));
+    check(!/archived/i.test(unarchivedStrip) && /closed \(1\)/i.test(unarchivedStrip),
+      `Unarchive puts it back in Closed, and the empty Archived tab goes (${unarchivedStrip.replace(/\s+/g, " ")})`);
+    await clickButton(page, `${brandTab} capsule`.toLowerCase());
+    await waitFor(page, ".brand-project-card", 15000);
+    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
+      "and back in the custom tab it was filed in");
+
+    // Each company's archive is its own: the brand's says nothing to the factory.
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "archive order");
+    await page.waitForTimeout(1500);
+    await signOutFully(page);
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory tidying up", "factory");
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    // Its own tab showing means its tabs, and its archive with them, have loaded.
+    check(!/archived/i.test(await stripOnce((text) => text.includes(factoryTab))),
+      "the brand archiving the order archives nothing for the factory");
+    await clickButton(page, "closed");
+    await waitFor(page, ".factory-active-project-card", 15000);
+    await page.locator('.factory-active-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "archive order");
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    check(/archived \(1\)/i.test(await stripOnce((text) => /archived \(1\)/i.test(text))),
+      "the factory archives it from its own card menu");
+    await record(page, "Factory's archive", "its own, separate from the brand's");
+    await clickButton(page, "archived");
+    await waitFor(page, ".factory-active-project-card", 15000);
+    await page.locator('.factory-active-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "unarchive order");
+    check(!/archived/i.test(await stripOnce((text) => !/archived/i.test(text))),
+      "and unarchives it");
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand after the archive");
+
     // ================= JOINING A TEAM =================
     // listMyInvitations() and acceptInvitation() have existed since Phase 1
     // with nothing calling either: an invitation could be sent and never seen.

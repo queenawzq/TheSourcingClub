@@ -1,5 +1,6 @@
 /**
- * A company's order tabs: "Active orders", "Closed", and the ones it adds.
+ * A company's order tabs: "Active orders", "Closed", and the ones it adds,
+ * and the archive the screens show as an "Archived" tab.
  *
  * Tabs belong to the company, not the person, and the other side of an order
  * never sees them. Active and Closed are rows too, written by the first add
@@ -57,5 +58,32 @@ export async function removeOrderFromTab(tabId, orderId) {
   return unwrap(
     await supabase.from("order_tab_orders").delete().eq("tab_id", tabId).eq("order_id", orderId),
     "take the order out of the tab",
+  );
+}
+
+/**
+ * The company's archive: the closed orders it has put out of the way. The
+ * other side keeps its own, and an archived order keeps its tab filing.
+ */
+export async function listArchivedOrderIds(orgId) {
+  const rows = unwrap(
+    await supabase.from("order_archives").select("order_id").eq("org_id", orgId),
+    "load your archived orders",
+  );
+  return (rows ?? []).map((row) => row.order_id);
+}
+
+/** Only a completed or cancelled order; the database refuses any other. */
+export async function archiveOrder(orgId, orderId, userId) {
+  return unwrap(
+    await supabase.from("order_archives").insert({ org_id: orgId, order_id: orderId, archived_by: userId }),
+    "archive the order",
+  );
+}
+
+export async function unarchiveOrder(orgId, orderId) {
+  return unwrap(
+    await supabase.from("order_archives").delete().eq("org_id", orgId).eq("order_id", orderId),
+    "unarchive the order",
   );
 }

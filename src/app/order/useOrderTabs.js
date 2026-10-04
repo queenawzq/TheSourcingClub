@@ -9,14 +9,21 @@
  * Active and Closed keep the keys "active" and "closed", so the pages' own
  * active/closed filtering is untouched; a custom tab's key is its id.
  * Every change reloads afterwards rather than guessing, like the order screen.
+ *
+ * The company's archive rides along: `archived` holds the ids of the closed
+ * orders it has put away, which the pages show under "Archived" and nowhere
+ * else.
  */
 import { useCallback, useEffect, useState } from "react";
 import {
   addOrderTab,
   addOrderToTab,
+  archiveOrder,
+  listArchivedOrderIds,
   listOrderTabs,
   removeOrderFromTab,
   saveOrderTabs,
+  unarchiveOrder,
 } from "../../lib/domain/order-tabs.js";
 
 const DEFAULT_TABS = [
@@ -32,6 +39,7 @@ function toTab(row) {
 export default function useOrderTabs(org, user) {
   const orgId = org?.id ?? null;
   const [rows, setRows] = useState([]);
+  const [archivedIds, setArchivedIds] = useState([]);
   const [error, setError] = useState(null);
   const [addError, setAddError] = useState(null);
   const [saveError, setSaveError] = useState(null);
@@ -39,7 +47,9 @@ export default function useOrderTabs(org, user) {
   const load = useCallback(async () => {
     if (!orgId) return;
     try {
-      setRows(await listOrderTabs(orgId));
+      const [tabRows, archived] = await Promise.all([listOrderTabs(orgId), listArchivedOrderIds(orgId)]);
+      setRows(tabRows);
+      setArchivedIds(archived);
       setError(null);
     } catch (err) {
       setError(err);
@@ -52,6 +62,7 @@ export default function useOrderTabs(org, user) {
 
   const tabs = rows.length ? rows.map(toTab) : DEFAULT_TABS;
   const membership = new Map(rows.map((row) => [row.id, new Set(row.orderIds)]));
+  const archived = new Set(archivedIds);
 
   /** Resolves to the new tab's key, or null when it was refused. */
   const add = useCallback(async (label) => {
@@ -95,9 +106,22 @@ export default function useOrderTabs(org, user) {
     }
   }, [membership, user?.id, load]);
 
+  /** Archive a closed order, or bring an archived one back. */
+  const setArchived = useCallback(async (orderId, archive) => {
+    setError(null);
+    try {
+      if (archive) await archiveOrder(orgId, orderId, user?.id);
+      else await unarchiveOrder(orgId, orderId);
+      await load();
+    } catch (err) {
+      setError(err);
+    }
+  }, [orgId, user?.id, load]);
+
   return {
     tabs,
     membership,
+    archived,
     error,
     addError,
     saveError,
@@ -105,5 +129,7 @@ export default function useOrderTabs(org, user) {
     add,
     save,
     toggle,
+    archive: (orderId) => setArchived(orderId, true),
+    unarchive: (orderId) => setArchived(orderId, false),
   };
 }
