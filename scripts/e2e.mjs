@@ -1860,11 +1860,12 @@ async function main() {
     check(!/Seoul Knit Works asked about yarn/i.test(homeText),
       "and the design's example alerts are not shown as if they were real");
 
-    // ================= PUTTING IT AWAY =================
-    // "Archive order" sat in the card's menu and only closed it. Only a closed
-    // order can be archived, so this one is cancelled first, by both sides,
-    // through the functions the cancel screens will call (they come later).
-    console.log("\nPUTTING IT AWAY");
+    // ================= CALLING IT OFF =================
+    // Cancelling has no design; these are the live screens: the card menu's
+    // "Cancel order", the order page's banner, and the reason dialog. Either
+    // side proposes, the proposer can withdraw, and the other side keeps the
+    // order or accepts.
+    console.log("\nCALLING IT OFF");
     const asUser = async (email) => {
       const client = createClient(
         process.env.SUPABASE_URL ?? stack.API_URL,
@@ -1886,12 +1887,86 @@ async function main() {
       }
       return text;
     };
+    const proposal = async () => (await db.from("production_orders")
+      .select("status, cancel_proposed_by_org, cancel_reason").eq("id", bornOrder.id).single()).data;
+    // Polls the order until `test` holds: each action reloads after the click.
+    const proposalOnce = async (test) => {
+      const deadline = Date.now() + 15000;
+      let row = await proposal();
+      while (!test(row) && Date.now() < deadline) {
+        await page.waitForTimeout(300);
+        row = await proposal();
+      }
+      return row;
+    };
+    const proposeIn = async (reason) => {
+      await waitFor(page, 'textarea[name="cancel-reason"]', 15000);
+      await page.locator('textarea[name="cancel-reason"]').first().fill(reason);
+      await clickButton(page, "propose cancellation");
+    };
+
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "cancel order");
+    await proposeIn("Season dropped");
+    let row = await proposalOnce((r) => r.cancel_proposed_by_org === brandOrg.id);
+    check(row.cancel_proposed_by_org === brandOrg.id && row.cancel_reason === "Season dropped" && row.status === "active",
+      `the brand proposes cancelling from the card's menu, with its reason (${JSON.stringify(row)})`);
+    check(/you proposed cancelling: season dropped/i.test(await page.locator(".projects-list").innerText()),
+      "and the card says so");
+    await record(page, "Cancellation proposed", "from the order card's menu; nothing changes until the factory answers");
+
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "withdraw cancellation");
+    row = await proposalOnce((r) => r.cancel_proposed_by_org === null);
+    check(row.cancel_proposed_by_org === null && row.status === "active",
+      "the brand withdraws it from the same menu, and the order carries on");
+
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, ".order-cancel-link", 25000);
+    await page.locator(".order-cancel-link").first().click();
+    await proposeIn("Season dropped");
+    await waitFor(page, '[data-testid="cancel-notice"][data-state="mine"]', 15000);
+    check(/waiting for/i.test(await page.locator('[data-testid="cancel-notice"]').innerText()),
+      "proposed from the order page, the brand is shown it is waiting on the factory");
+    await record(page, "Waiting on the factory", "the banner the proposing side sees, with Withdraw");
+
+    await signOutFully(page);
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory answers", "factory");
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="cancel-notice"][data-state="theirs"]', 25000);
+    check(/season dropped/i.test(await page.locator('[data-testid="cancel-notice"]').innerText()),
+      "the factory sees the brand's proposal and its reason on the order");
+    await record(page, "The factory is asked", "Keep order, or Accept cancellation");
+    await clickButton(page, "keep order");
+    row = await proposalOnce((r) => r.cancel_proposed_by_org === null);
+    check(row.cancel_proposed_by_org === null && row.status === "active",
+      "Keep order turns the proposal down and the order carries on");
+
+    // Proposed once more, to be accepted this time.
     const { error: proposeError } = await (await asUser(brandEmail))
       .rpc("propose_cancellation", { target_order: bornOrder.id, reason: "Season dropped" });
-    const { error: acceptError } = await (await asUser(`e2e-factory-${stamp}@example.com`))
-      .rpc("accept_cancellation", { target_order: bornOrder.id });
-    check(!proposeError && !acceptError,
-      `the order is cancelled by both sides${proposeError || acceptError ? `: ${(proposeError ?? acceptError).message}` : ""}`);
+    check(!proposeError, `the brand proposes again${proposeError ? `: ${proposeError.message}` : ""}`);
+    await page.reload();
+    await waitFor(page, '[data-testid="cancel-notice"][data-state="theirs"]', 25000);
+    await clickButton(page, "accept cancellation");
+    await waitFor(page, ".order-cancel-modal", 15000);
+    check(/cannot be undone/i.test(await page.locator(".order-cancel-modal").innerText()),
+      "accepting asks first, and says what cancelling does");
+    await page.locator(".order-cancel-modal .primary-btn").first().click();
+    row = await proposalOnce((r) => r.status === "cancelled");
+    check(row.status === "cancelled", `the factory accepts and the order is cancelled (${row.status})`);
+    await waitFor(page, '[data-testid="cancel-notice"][data-state="cancelled"]', 15000);
+    await record(page, "Cancelled", "both sides agreed; the order says when and why");
+
+    // ================= PUTTING IT AWAY =================
+    // "Archive order" sat in the card's menu and only closed it. Only a closed
+    // order can be archived, and the one above was just cancelled.
+    console.log("\nPUTTING IT AWAY");
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand tidying up");
 
     await page.goto(`${APP}/orders`);
     await waitForHeading(page, "production orders", 25000);

@@ -19,7 +19,7 @@ function totalLine(draft, order) {
   return draft.balances ? text : `${text}: these have to match before you can save or continue`;
 }
 
-export function BrandSchedule({ order, milestones, reload, vendor, onBack }) {
+export function BrandSchedule({ order, milestones, reload, vendor, onBack, banner = null, dialog = null }) {
   const draft = useScheduleDraft({ order, milestones, reload });
 
   return (
@@ -33,9 +33,12 @@ export function BrandSchedule({ order, milestones, reload, vendor, onBack }) {
       centerAction={{ label: "Save changes", onClick: draft.save, disabled: !draft.canSave }}
       rail={{ vendor }}
     >
+      {/* Live only: an open proposal to cancel sits above the steps. */}
+      {banner}
       <MilestonesScreen live={draft} />
       <p className="muted production-schedule-helper" data-testid="schedule-hint">{draft.hint}</p>
       {draft.error && <p className="composer-error" role="alert">{draft.error.message}</p>}
+      {dialog}
     </FlowShell>
   );
 }

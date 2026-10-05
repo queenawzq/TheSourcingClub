@@ -57,6 +57,12 @@ function statusDetail(order, isFactory) {
   }
   if (order.status === "cancelled") return order.cancel_reason ?? "Cancelled";
   if (order.status === "completed") return "Every step is done";
+  // An open proposal to cancel outranks whatever the steps are waiting for:
+  // until it is accepted, kept or withdrawn, it is the thing to answer.
+  const proposal = cancelProposal(order, isFactory);
+  if (proposal) {
+    return `${proposal.mine ? "You" : counterparty(order, isFactory)} proposed cancelling: ${proposal.reason}`;
+  }
   // A payment that is actually due, from the steps when the row carries them.
   // next_payment_cents is the next PAYING step, which may still be weeks off:
   // "$4,284.00 due next" on a final balance that waits on QC read as a bill.
@@ -75,6 +81,21 @@ function statusDetail(order, isFactory) {
   return order.current_milestone_title
     ? `Now: ${order.current_milestone_title}`
     : "In production";
+}
+
+/**
+ * An open proposal to cancel, from the viewer's side: `{ mine, reason, at }`,
+ * or null. Once the order is closed the proposal is history, not a question.
+ */
+export function cancelProposal(order, isFactory) {
+  if (!order.cancel_proposed_by_org) return null;
+  if (order.status !== "pending_schedule" && order.status !== "active") return null;
+  const ours = isFactory ? order.factory_org_id : order.brand_org_id;
+  return {
+    mine: order.cancel_proposed_by_org === ours,
+    reason: order.cancel_reason ?? "",
+    at: order.cancel_proposed_at,
+  };
 }
 
 /**
@@ -128,6 +149,8 @@ export function toProjectCard(order, isFactory) {
     orderNumber: order.order_number,
     createdAt: order.created_at,
     nextDueOn: order.next_payment_due_on ?? null,
+    // What the card's menu offers about cancelling (live only).
+    cancelProposal: cancelProposal(order, isFactory),
     // The prototype shows a reference photograph on every card. Real orders
     // may have none, and the card renders without it — better than a
     // placeholder that implies an image exists.

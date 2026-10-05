@@ -78,6 +78,28 @@ export function archiveActionFor(store, project) {
 }
 
 /**
+ * The card menu's cancel item, live. The design draws none, so without a
+ * store there is nothing; a closed order has nothing to cancel either. An
+ * open proposal changes the item: its proposer may withdraw it, and the other
+ * side is sent to the order, where the banner asks before anything closes.
+ * `reload` refreshes the list the card is on.
+ */
+export function cancelActionFor(store, project, reload) {
+  if (!store || isClosedOrder(project) || !project.id) return null;
+  const proposal = project.cancelProposal;
+  if (!proposal) {
+    return {
+      label: "Cancel order",
+      run: () => store.propose({ id: project.id, title: project.title, counterparty: project.factory, onDone: reload }),
+    };
+  }
+  if (proposal.mine) {
+    return { label: "Withdraw cancellation", run: async () => { if (await store.withdraw(project.id)) reload?.(); } };
+  }
+  return store.view ? { label: "Review cancellation", run: () => store.view(project) } : null;
+}
+
+/**
  * The "..." menu on an order card, with "Add to › <tab>".
  *
  * The brand card drew it; the factory card's "..." had nothing behind it, so

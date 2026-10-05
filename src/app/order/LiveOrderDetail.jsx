@@ -30,6 +30,8 @@ import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { BrandSchedule } from "./ScheduleBuilder.jsx";
+import CancelNotice from "./CancelNotice.jsx";
+import useOrderCancel from "./useOrderCancel.jsx";
 import {
   activityLines,
   day,
@@ -164,6 +166,10 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   }, [orderId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Cancelling has no design: the banner, the dialog and the side panel's
+  // "Cancel order" are live only (CancelNotice, CancelOrderDialog).
+  const cancel = useOrderCancel({ onChanged: load });
 
   // The parts that do not change as the order moves: the request's files, the
   // other company's location, and the snapshot's term labels. Each one is
@@ -345,6 +351,14 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     attachments: requestFiles,
   });
   const pending = order.status === "pending_schedule";
+  // Either side may propose cancelling an open order, once: while a proposal
+  // is open the banner answers it instead.
+  const proposeCancel = (pending || running) && !order.cancel_proposed_by_org
+    ? () => cancel.propose({ id: order.id, title: header.title, counterparty: other })
+    : null;
+  const cancelBanner = (
+    <CancelNotice order={order} isFactory={isFactory} counterparty={other} title={header.title} store={cancel} />
+  );
 
   const stepPopup = openMilestone && (
     <StepUpdatesModal
@@ -390,8 +404,11 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         notice={pending
           ? `${other ?? "The brand"} is setting the production steps. Nothing starts until they confirm them, and you are told of every change. If something doesn't work for you, message them.`
           : undefined}
+        banner={cancelBanner}
+        onCancelOrder={proposeCancel}
       />
       {stepPopup}
+      {cancel.dialog}
       </>
     );
   }
@@ -403,7 +420,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         milestones={milestones}
         reload={load}
         onBack={() => navigate("/orders")}
-        vendor={{ ...counterparty, onMessage: () => navigate(`/orders/${orderId}/messages`) }}
+        vendor={{ ...counterparty, onMessage: () => navigate(`/orders/${orderId}/messages`), onCancel: proposeCancel }}
+        banner={cancelBanner}
+        dialog={cancel.dialog}
       />
     );
   }
@@ -434,8 +453,11 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         onRemind={remind}
         // A refusal belongs to the dialog it happened in, not the next one.
         onDialogClose={() => setDialogError(null)}
+        banner={cancelBanner}
+        onCancelOrder={proposeCancel}
       />
       {stepPopup}
+      {cancel.dialog}
     </main>
   );
 }

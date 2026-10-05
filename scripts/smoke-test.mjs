@@ -902,6 +902,38 @@ console.log("\nphase 3 — the order runs");
       if (draftId) await brand.client.from("rfqs").delete().eq("id", draftId);
     }
 
+    // Cancelling (035, 070): a proposal is taken back by the side that made
+    // it, and nobody else. The order is left running for what follows.
+    {
+      const { error: proposeError } = await brand.client
+        .rpc("propose_cancellation", { target_order: order.id, reason: "Smoke test" });
+      proposeError ? fail("the brand proposes cancelling", proposeError) : ok("the brand proposes cancelling");
+
+      const { error: strangerWithdraw } = await losingFactory
+        .rpc("withdraw_cancellation", { target_order: order.id });
+      strangerWithdraw ? ok("an outsider CANNOT withdraw the brand's proposal")
+                       : fail("LEAK: an outsider withdrew a proposal to cancel");
+
+      const { error: factoryWithdraw } = await factoryClient
+        .rpc("withdraw_cancellation", { target_order: order.id });
+      factoryWithdraw ? ok("the factory CANNOT withdraw the brand's proposal")
+                      : fail("LEAK: the factory withdrew the brand's proposal");
+
+      const { data: withdrawn, error: withdrawError } = await brand.client
+        .rpc("withdraw_cancellation", { target_order: order.id });
+      withdrawError
+        ? fail("the brand withdraws its proposal", withdrawError)
+        : withdrawn?.cancel_proposed_by_org === null && withdrawn?.status !== "cancelled"
+        ? ok("the brand withdraws its proposal, and the order carries on")
+        : fail(`withdrawing returned ${JSON.stringify(withdrawn)}`);
+
+      const { error: nothingToDecline } = await factoryClient
+        .rpc("decline_cancellation", { target_order: order.id });
+      /nobody has proposed/.test(nothingToDecline?.message ?? "")
+        ? ok("decline_cancellation(target_order) answers, and refuses with nothing proposed")
+        : fail("decline_cancellation's signature or refusal", nothingToDecline);
+    }
+
     const { data: notSeen } = await losingFactory
       .from("milestone_updates").select("id").eq("milestone_id", first.id);
     (notSeen ?? []).length === 0
