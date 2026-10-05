@@ -1,0 +1,78 @@
+Local runs of scripts/deploy-migrate.mjs against the local Supabase stack (CLI 2.117.0), 2026-10-01 14:54.
+The local DB starts with main's 60 migrations. SUPABASE_DB_URL points at the local stack (127.0.0.1:54322).
+  history rows: 60
+
+$ 1. preview build
+[deploy-migrate] Supabase CLI 2.117.0; 60 migration files
+[deploy-migrate] skipping: not a production build (VERCEL_ENV=preview)
+exit code: 0
+
+$ 2. production build, SUPABASE_DB_URL not set (the state right after merge)
+[deploy-migrate] Supabase CLI 2.117.0; 60 migration files
+[deploy-migrate] skipping: SUPABASE_DB_URL is not set, so migrations are not applied by this deploy
+exit code: 0
+
+$ 3. production build of another branch (Promote to Production on a PR preview)
+[deploy-migrate] Supabase CLI 2.117.0; 60 migration files
+[deploy-migrate] ERROR: refusing to migrate a production build of "feat/some-pr"; only "main" applies migrations
+exit code: 1
+
+$ 4. production build of main, one pending migration (20260930000300)
+[deploy-migrate] Supabase CLI 2.117.0; 61 migration files
+[deploy-migrate] applying pending migrations from main
+Connecting to local database...
+Do you want to push these migrations to the local database?
+ • 20260930000300_order_interior.sql
+ [Y/n] y
+Applying migration 20260930000300_order_interior.sql...
+Finished supabase db push.
+[deploy-migrate] migrations are up to date
+exit code: 0
+  history rows: 61
+
+$ 5. two OLDER migrations merged after it (out of timestamp order)
+[deploy-migrate] Supabase CLI 2.117.0; 63 migration files
+[deploy-migrate] applying pending migrations from main
+Connecting to local database...
+Do you want to push these migrations to the local database?
+ • 20260930000100_rfq_cancel_and_documents.sql
+ • 20260930000200_rfq_notifications.sql
+ [Y/n] y
+Applying migration 20260930000100_rfq_cancel_and_documents.sql...
+Applying migration 20260930000200_rfq_notifications.sql...
+Finished supabase db push.
+[deploy-migrate] migrations are up to date
+exit code: 0
+  history rows: 63
+
+$ 6. the next deploy, nothing pending
+[deploy-migrate] Supabase CLI 2.117.0; 63 migration files
+[deploy-migrate] applying pending migrations from main
+Connecting to local database...
+Local database is up to date.
+[deploy-migrate] migrations are up to date
+exit code: 0
+  history rows: 63
+
+$ 7. a broken migration (creates a table, then errors)
+[deploy-migrate] Supabase CLI 2.117.0; 64 migration files
+[deploy-migrate] applying pending migrations from main
+Connecting to local database...
+Do you want to push these migrations to the local database?
+ • 20261001999900_broken_probe.sql
+ [Y/n] y
+Applying migration 20261001999900_broken_probe.sql...
+ERROR: function this_function_does_not_exist() does not exist (SQLSTATE 42883)
+At statement: 1
+select this_function_does_not_exist()
+       ^
+Try rerunning the command with --debug to troubleshoot the error.
+[deploy-migrate] ERROR: supabase db push failed (exit 1); this deploy is stopped and the live site is unchanged
+exit code: 1
+  deploy_probe table exists afterwards: f
+  history rows: 63
+
+$ 8. migrations folder missing from the build
+[deploy-migrate] Supabase CLI 2.117.0; 0 migration files
+[deploy-migrate] ERROR: supabase/migrations/ is missing or empty in this build; check .vercelignore
+exit code: 1
