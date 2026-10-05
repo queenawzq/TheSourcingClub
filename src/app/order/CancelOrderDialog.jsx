@@ -5,11 +5,16 @@
  * screens' own dialog classes (the approve dialogs'), so it reads as one of
  * them and keeps their phone padding. Flagged for Queena.
  *
+ * It renders into `document.body`: the order pages' `<main className="rfqs-page">`
+ * carries a transform, which turns a fixed layer into one the height of the
+ * whole page, and the dialog then opens halfway down it.
+ *
  * `mode` is "propose" (a reason is required, and the other side sees it) or
  * "accept" (their reason, read back). `onConfirm(reason)` resolves true when
  * the dialog may close; a refusal stays in the dialog that caused it.
  */
 import React, { useState } from "react";
+import { createPortal } from "react-dom";
 
 /** What accepting does today (close_order, migration 035). Said before, not after. */
 export const CANCEL_CONSEQUENCES =
@@ -20,7 +25,7 @@ export default function CancelOrderDialog({ mode = "propose", title, counterpart
   const other = counterparty || "the other side";
   const proposing = mode === "propose";
 
-  return (
+  return createPortal((
     <div className="approve-fund-modal-layer" role="presentation">
       <button className="approve-fund-modal-scrim" type="button" aria-label="Close" onClick={onClose} />
       <section className="approve-fund-modal order-cancel-modal" role="dialog" aria-modal="true" aria-labelledby="order-cancel-title">
@@ -74,5 +79,5 @@ export default function CancelOrderDialog({ mode = "propose", title, counterpart
         </footer>
       </section>
     </div>
-  );
+  ), document.body);
 }
