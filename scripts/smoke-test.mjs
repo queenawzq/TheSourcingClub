@@ -983,6 +983,44 @@ console.log("\nphase 3 — the order runs");
       msgNotif.length === 1 && msgNotif[0].org_id === order.factory_org_id
         ? ok("sending notified the other side, and only the other side")
         : fail(`expected one notification to the factory, got ${msgNotif.length}`);
+
+      // A message saved to be checked first. Only the server, holding the
+      // secret key, records the verdict; while it is held the factory sees
+      // nothing of it and is told nothing.
+      const { data: held, error: heldError } = await brand.client.from("messages").insert({
+        thread_id: threadId,
+        sender_org_id: order.brand_org_id,
+        sender_user_id: brand.id,
+        body: "Easier on WhatsApp: +44 7700 900123",
+        delivery: "checking",
+      }).select("id").single();
+      heldError ? fail("the brand sends a message to be checked first", heldError)
+                : ok("the brand sends a message to be checked first");
+
+      const { error: selfVerdict } = await brand.client.rpc("record_message_screening", {
+        target_message: held?.id, outcome: "delivered", method: "ai",
+      });
+      selfVerdict ? ok("a sender CANNOT record the verdict on its own message")
+                  : fail("LEAK: a sender delivered its own message past the check");
+
+      const { error: verdictError } = await admin.rpc("record_message_screening", {
+        target_message: held?.id, outcome: "held", method: "pattern", reason: "phone number",
+      });
+      verdictError ? fail("the server holds the message", verdictError)
+                   : ok("the server holds the message");
+
+      const { data: factorySeesHeld } = await factoryClient
+        .from("messages").select("id").eq("id", held?.id);
+      (factorySeesHeld ?? []).length === 0
+        ? ok("the factory CANNOT read a held message")
+        : fail("LEAK: the factory read a held message");
+
+      const { data: afterHold } = await admin
+        .from("notifications").select("id")
+        .eq("subject_type", "thread").eq("subject_id", threadId);
+      afterHold.length === 1
+        ? ok("and is not notified of it")
+        : fail(`expected still one notification, got ${afterHold.length}`);
     }
   }
 }
