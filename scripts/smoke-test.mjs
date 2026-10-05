@@ -874,6 +874,34 @@ console.log("\nphase 3 — the order runs");
         : fail("LEAK: the factory read the brand's archive");
     }
 
+    // Reorder style: the brand's request, copied into a new draft that
+    // remembers the order. The request is the brand's, so nobody else may.
+    {
+      const { data: draftId, error: reorderError } = await brand.client
+        .rpc("duplicate_rfq_from_order", { target_order: order.id });
+      const { data: draft } = draftId
+        ? await brand.client.from("rfqs").select("status, visibility, title, reorder_of_order_id").eq("id", draftId).single()
+        : { data: null };
+      reorderError
+        ? fail("the brand reorders an order as a new draft request", reorderError)
+        : draft?.status === "draft" && draft.visibility === "invited_only"
+          && draft.reorder_of_order_id === order.id && /\(reorder\)$/.test(draft.title)
+        ? ok("the brand reorders an order as a new draft request")
+        : fail(`the reorder draft reads back as ${JSON.stringify(draft)}`);
+
+      const { error: factoryReorder } = await factoryClient
+        .rpc("duplicate_rfq_from_order", { target_order: order.id });
+      factoryReorder ? ok("the factory on the order CANNOT reorder the brand's request")
+                     : fail("LEAK: the factory copied the brand's request");
+
+      const { error: strangerReorder } = await losingFactory
+        .rpc("duplicate_rfq_from_order", { target_order: order.id });
+      strangerReorder ? ok("an outsider CANNOT reorder the brand's order")
+                      : fail("LEAK: an outsider copied the brand's request");
+
+      if (draftId) await brand.client.from("rfqs").delete().eq("id", draftId);
+    }
+
     const { data: notSeen } = await losingFactory
       .from("milestone_updates").select("id").eq("milestone_id", first.id);
     (notSeen ?? []).length === 0

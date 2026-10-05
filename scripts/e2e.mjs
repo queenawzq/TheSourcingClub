@@ -1962,6 +1962,70 @@ async function main() {
     await signOutFully(page);
     await signIn(page, brandEmail, "Brand after the archive");
 
+    // ================= ORDERING IT AGAIN =================
+    // "Reorder style" sat in the card's menu and reloaded the list. It now
+    // copies the order's request into a new draft and opens the composer with
+    // the same factory ticked. The order is archived and cancelled: a brand
+    // repeats a style it has put away as readily as one still running.
+    console.log("\nORDERING IT AGAIN");
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    await clickButton(page, "archived");
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "reorder style");
+    await waitFor(page, '[data-testid="reorder-note"]', 25000);
+    const reorderId = (String(await page.url()).match(/rfqs\/([0-9a-f-]{36})\/edit/) ?? [])[1];
+    check(Boolean(reorderId), "Reorder style opens a new draft request in the composer");
+    check((await page.locator('[data-testid="reorder-note"]').innerText()).includes(factoryName),
+      "which says which order it repeats, and with whom");
+
+    // Read back in the review card's own words, so saving it again keeps it.
+    const readBack = await page.evaluate(() => Object.fromEntries(
+      [...document.querySelectorAll(".review-brief-stack [name]")].map((field) => [field.name, field.value]),
+    ));
+    check(readBack.title === `${rfqTitle} (reorder)`, `named as a reorder ("${readBack.title}")`);
+    check(readBack.category === "Womenswear" && readBack.regions === "Portugal" && readBack.certifications === "GOTS",
+      `the category, region and certification come back as typed (${readBack.category} / ${readBack.regions} / ${readBack.certifications})`);
+    check(readBack.quantity === "300 units total · 3 colors, 100 each",
+      `and the colour breakdown in the words that saved it (${readBack.quantity})`);
+    check(/fit and PP samples separately/.test(readBack["question-0"] ?? "") && /Polybag/.test(readBack.additionalDetails ?? ""),
+      "with the brand's question and its extra details");
+    check(!readBack.timeline, "last run's delivery month is left for the brand to set again");
+    await setField("timeline", "Bulk by late March 2027");
+    await record(page, "Reorder", "the order's request, copied into a new draft");
+
+    await page.locator(".bottom-bar .primary-btn").first().click();
+    await waitFor(page, ".invite-results", 30000);
+    await waitFor(page, ".bottom-bar .primary-btn", 30000);
+    await page.waitForTimeout(1200);
+    const inviteState = await page.evaluate(() => ({
+      openToAll: document.querySelector('[name="open-to-all"]')?.checked,
+      first: document.querySelector(".invite-selection-factory-card")?.innerText ?? "",
+      firstSelected: document.querySelector(".invite-selection-factory-card")?.classList.contains("selected"),
+    }));
+    check(inviteState.first.includes(factoryName) && inviteState.firstSelected,
+      "the factory that made it heads the vendor list, already ticked");
+    check(inviteState.openToAll === false, "and the request goes to that factory only, unless the brand opens it");
+    await record(page, "Reorder: invite", "the same factory, ticked");
+    await page.locator(".bottom-bar .primary-btn").first().click();
+    await page.waitForTimeout(4500);
+
+    const { data: reordered } = await db
+      .from("rfqs").select("status, visibility, reorder_of_order_id, target_delivery_month").eq("id", reorderId).single();
+    check(reordered?.status === "open" && reordered.visibility === "invited_only",
+      `the reorder is sent, invite-only (${reordered?.status}, ${reordered?.visibility})`);
+    check(reordered?.reorder_of_order_id === bornOrder.id, "and remembers the order it repeats");
+    check(reordered?.target_delivery_month === "2027-03-01", "with the new delivery month the brand typed");
+    const { data: reorderInvites } = await db
+      .from("rfq_invitations").select("orgs (name)").eq("rfq_id", reorderId);
+    check((reorderInvites ?? []).length === 1 && reorderInvites[0].orgs?.name === factoryName,
+      `the same factory is invited (${(reorderInvites ?? []).map((row) => row.orgs?.name).join(", ")})`);
+    const { count: reorderLinks } = await db
+      .from("taxonomy_links").select("*", { count: "exact", head: true })
+      .eq("subject_type", "rfq").eq("subject_id", reorderId);
+    check(reorderLinks === rfqLinks, `saving the copy kept its ${rfqLinks} requirement links (${reorderLinks})`);
+
     // ================= JOINING A TEAM =================
     // listMyInvitations() and acceptInvitation() have existed since Phase 1
     // with nothing calling either: an invitation could be sent and never seen.

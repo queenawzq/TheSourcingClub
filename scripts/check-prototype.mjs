@@ -43,6 +43,21 @@ try {
   const cards = await page.locator("article").count();
   check(cards >= 3, `the project cards render (${cards} articles)`);
 
+  // Live "Reorder style" starts a new draft request; the design's own jumps to
+  // its contract screen, filled in as a reorder. That must stay as drawn.
+  const reorderPage = await stagehand.browser.context.newPage(`${BASE}/prototype.html?screen=projects`);
+  await reorderPage.setViewportSize(1440, 1100);
+  await reorderPage.waitForTimeout(3500);
+  await reorderPage.locator('article button[aria-label="More order actions"]').first().click();
+  await reorderPage.waitForTimeout(500);
+  const reorderItem = reorderPage.locator(".project-overflow-menu > button").first();
+  check(/reorder style/i.test(await reorderItem.innerText()), "the brand card's menu has Reorder style");
+  await reorderItem.click();
+  await reorderPage.waitForTimeout(1500);
+  const reorderBody = await reorderPage.locator("body").innerText();
+  check(/confirm final terms/i.test(reorderBody) && /reorder with Atelier Minho/i.test(reorderBody),
+    "and it opens the design's contract screen as a reorder, with no database");
+
   // Against a synchronous adapter these states must never be reached, or the
   // prototype has started flashing UI it never used to.
   check(

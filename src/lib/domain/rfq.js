@@ -15,7 +15,7 @@ const RFQ_COLUMNS = `
   target_delivery_month, requires_sample, sample_notes,
   target_unit_price_min_cents, target_unit_price_max_cents, currency,
   quote_deadline, additional_details,
-  published_at, awarded_at, awarded_quote_id, created_at, updated_at
+  published_at, awarded_at, awarded_quote_id, reorder_of_order_id, created_at, updated_at
 `;
 
 export async function createDraftRfq(orgId) {
@@ -30,6 +30,18 @@ export async function createDraftRfq(orgId) {
       .select(RFQ_COLUMNS)
       .single(),
     "start a new request",
+  );
+}
+
+/**
+ * "Reorder style": the order's request, copied into a new draft the brand
+ * reads back in the composer and sends to the same factory. Last run's
+ * delivery month and deadline are left behind (migration 069).
+ */
+export async function duplicateRfqFromOrder(orderId) {
+  return unwrap(
+    await supabase.rpc("duplicate_rfq_from_order", { target_order: orderId }),
+    "start the reorder",
   );
 }
 
