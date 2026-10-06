@@ -99,12 +99,18 @@ export async function listOpenRfqs() {
  * beyond the factory's identity.
  */
 export async function listFactoryRfqs(factoryOrgId) {
-  const rfqEmbed = `rfqs (${RFQ_COLUMNS}, orgs!rfqs_brand_org_id_fkey (name))`;
+  const rfqFields = `${RFQ_COLUMNS}, orgs!rfqs_brand_org_id_fkey (name)`;
+  const rfqEmbed = `rfqs (${rfqFields})`;
+  // `rfqs.awarded_quote_id` points back at `quotes`, so quotes and rfqs are
+  // joined two ways and PostgREST refuses the embed rather than guessing. The
+  // quote's own request is the one its `rfq_id` names. `rfq_invitations`
+  // reaches `rfqs` one way only, so it keeps the plain embed.
+  const quoteRfqEmbed = `rfqs!quotes_rfq_id_fkey (${rfqFields})`;
 
   const [quotes, invitations] = await Promise.all([
     supabase
       .from("quotes")
-      .select(`id, rfq_id, status, unit_price_cents, currency, submitted_at, created_at, ${rfqEmbed}`)
+      .select(`id, rfq_id, status, unit_price_cents, currency, submitted_at, created_at, ${quoteRfqEmbed}`)
       .eq("factory_org_id", factoryOrgId)
       // Superseded versions are history; the live row is what the tab shows.
       .neq("status", "superseded")
