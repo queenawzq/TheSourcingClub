@@ -159,6 +159,12 @@ npm run taxonomy      # regenerate migration 007 from the seed JSON
 
 Put the local URL and publishable key in `.env.local` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; `app.html` shows a setup message rather than crashing when they are absent.
 
+**PR previews get their own database.** Supabase branching (GitHub integration, "Supabase changes only") creates a database branch when a PR that changes `supabase/` is opened, runs its migrations and `seed.sql`, and writes the branch's details into Vercel for that PR's preview. It deletes the branch when the PR is merged or closed. It writes its own variable names, so on a Vercel **preview** build only:
+- `vite.config.js` bakes `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` into `__PREVIEW_SUPABASE__`, which `src/lib/supabase.js` prefers;
+- `api/_supabase-env.js` uses `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` + `SUPABASE_SECRET_KEY`, only when all three are set.
+
+Production, local dev and a preview without a branch use `VITE_SUPABASE_*` (and the server's usual names) as before. The decision happens only when the PR is opened; later pushes don't create a branch.
+
 ### Shape
 
 The browser talks to Postgres directly with the publishable key, and **row level security is the entire authorisation layer** — there is no server tier to enforce anything a second time. A mistake in a policy is a data breach, not a bug, which is why `supabase/tests/access_rules_test.sql` is mostly *negative* assertions: a policy that accidentally grants everything still passes every positive test.
