@@ -21,6 +21,9 @@ const publishableKey = __PREVIEW_SUPABASE__?.key ?? import.meta.env.VITE_SUPABAS
  */
 export const isConfigured = Boolean(url && publishableKey);
 
+/** The database this build talks to. The demo sign-in hides itself on production's. */
+export const supabaseUrl = url ?? "";
+
 /**
  * "Keep me logged in", made real.
  *
