@@ -35,15 +35,15 @@ import LiveContract from "./quote/LiveContract.jsx";
 // The designed screens, mounted against live data through the seam. Importing
 // them pulls in the prototype stylesheet, which is the point — the design is
 // the CSS.
-import { ProjectsScreen, brandNavItems } from "../prototype/main.jsx";
+import { brandNavItems } from "../prototype/main.jsx";
 import { nav as factoryNavItems } from "../factory-prototype/main.jsx";
 import { PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import LiveFactoryHome from "./home/LiveFactoryHome.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 import { createLiveAdapter } from "./live-adapter.js";
-import ScheduleEditor from "./order/ScheduleEditor.jsx";
-import MilestoneDetail from "./order/MilestoneDetail.jsx";
+import LiveBrandOrders from "./order/LiveBrandOrders.jsx";
+import LiveFactoryOrders from "./order/LiveFactoryOrders.jsx";
 import PaymentInstructions from "./order/PaymentInstructions.jsx";
 import PayoutDetails from "./order/PayoutDetails.jsx";
 import AdminPayments from "./admin/AdminPayments.jsx";
@@ -861,26 +861,33 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // pastes to its factory has to open.
       // Slice one of the port: the designed orders screen, live data.
       path: "/orders",
-      render: () => (
-        <main className={isFactory ? "rfqs-page brand-projects-page factory-projects-page" : "rfqs-page brand-projects-page"}>
-          <DataProvider adapter={createLiveAdapter({ org: activeOrg, isFactory, user })}>
-            <ProjectsScreen
-              goTo={(next) => navigateFromPrototype(next, navigate)}
-              onViewOrder={(project) => navigate(project?.id ? `/orders/${project.id}` : "/orders")}
-            />
-          </DataProvider>
-        </main>
+      // The factory's own designed list brings its own <main>.
+      render: () => isFactory ? (
+        <LiveFactoryOrders org={activeOrg} user={user} onViewOrder={(project) => navigate(`/orders/${project.id}`)} />
+      ) : (
+        <LiveBrandOrders
+          org={activeOrg}
+          user={user}
+          goTo={(next) => navigateFromPrototype(next, navigate)}
+          onViewOrder={(project) => navigate(project?.id ? `/orders/${project.id}` : "/orders")}
+        />
       ),
     },
     {
+      // The detail and its two tabs are one screen; the path says which tab is
+      // open so a link to an order's files or contract lands on them.
       path: "/orders/:id",
       render: (params) => (
-        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} />
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} />
       ),
     },
     {
+      // An unagreed order opens on its schedule anyway; once agreed, the
+      // order's timeline IS the schedule, so this is the same screen.
       path: "/orders/:id/schedule",
-      render: (params) => <main className="home-page"><ScheduleEditor orderId={params.id} isFactory={isFactory} /></main>,
+      render: (params) => (
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} />
+      ),
     },
     {
       path: "/orders/:id/messages",
@@ -895,22 +902,21 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/orders/:id/files",
       render: (params) => (
-        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} />
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} tab="files" />
       ),
     },
     {
       path: "/orders/:id/contract",
       render: (params) => (
-        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} />
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} tab="contract" />
       ),
     },
     {
+      // A step is a pop-up over its order, not a page of its own: this is the
+      // address notifications and "View all updates" use.
       path: "/orders/:id/milestones/:mid",
       render: (params) => (
-        <main className="home-page">
-          <MilestoneDetail org={activeOrg} orderId={params.id} milestoneId={params.mid}
-                           isFactory={isFactory} isOwner={isOwner} />
-        </main>
+        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} step={params.mid} />
       ),
     },
     {

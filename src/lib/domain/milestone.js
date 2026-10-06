@@ -72,7 +72,9 @@ export async function saveSchedule(orderId, lines) {
         description: line.description || null,
         amount_cents: line.amount_cents ?? null,
         due_on: line.due_on || null,
-        sort: (index + 1) * 10,
+        // The caller's sort when it has one. Renumbering every save would
+        // turn two steps that run in parallel (equal sort) into a sequence.
+        sort: line.sort ?? (index + 1) * 10,
       })),
     }),
     "save the schedule",
@@ -89,6 +91,32 @@ export async function listUpdates(milestoneId) {
       .eq("milestone_id", milestoneId)
       .order("created_at", { ascending: false }),
     "load the updates on this step",
+  );
+}
+
+/**
+ * Every update on an order, newest first, in one read.
+ *
+ * The order screen needs the latest update per step and every file for its
+ * Files tab; asking per step would be one round trip per row. Either side's
+ * posts come back — a brand's comment is an update with the brand as author.
+ */
+export async function listOrderUpdates(orderId) {
+  return unwrap(
+    await supabase
+      .from("milestone_updates")
+      .select("id, milestone_id, body, created_at, author_org_id, orgs:author_org_id (name), documents (id, bucket, storage_path, file_name, mime_type, size_bytes)")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false }),
+    "load the updates on this order",
+  );
+}
+
+/** Nudge the other side about a step. Once a day per step; the RPC says so. */
+export async function remindMilestone(milestoneId) {
+  return unwrap(
+    await supabase.rpc("remind_milestone", { target_milestone: milestoneId }),
+    "send the reminder",
   );
 }
 
@@ -130,13 +158,6 @@ export async function postUpdate({ orderId, milestoneId, orgId, body, files = []
   }
 }
 
-export async function submitMilestone(milestoneId) {
-  return unwrap(
-    await supabase.rpc("submit_milestone", { target_milestone: milestoneId }),
-    "send this step for approval",
-  );
-}
-
 export async function approveMilestone(milestoneId, note) {
   return unwrap(
     await supabase.rpc("approve_milestone", {
@@ -156,58 +177,3 @@ export const KIND_LABEL = {
   progress_only: "Progress update",
 };
 
-/**
- * The ONE place a verb is chosen for a milestone row.
- *
- * Returns `{ label, kind, disabled, reason }`. A disabled action still
- * renders, with its reason visible — the factory being told WHY it cannot
- * start is the difference between a gate and a screen that appears broken.
- */
-export function milestoneAction(milestone, { isFactory, isOwner, order }) {
-  const payment = milestone.payment ?? null;
-  const running = order?.status === "active";
-
-  if (!running) {
-    return { label: null, reason: "Nothing can move until both sides agree the schedule." };
-  }
-
-  if (isFactory) {
-    if (milestone.kind === "payment_only") {
-      if (payment?.state === "due" || payment?.state === "sent") {
-        return {
-          label: null,
-          reason: payment.state === "sent"
-            ? "The brand says this is paid. You can start once we confirm it arrived."
-            : "Waiting for the brand to pay this step.",
-        };
-      }
-      return { label: null, reason: null };
-    }
-    if (milestone.state === "active") {
-      return { label: "Post an update", kind: "update" };
-    }
-    if (milestone.state === "submitted") {
-      return { label: "Post an update", kind: "update", note: "Already with the brand." };
-    }
-    if (milestone.state === "pending") {
-      return { label: null, reason: "An earlier step has to finish first." };
-    }
-    return { label: null, reason: null };
-  }
-
-  // Brand.
-  if (milestone.state === "submitted") {
-    const needsOwner = milestone.kind === "approval_and_payment" && !isOwner;
-    return {
-      label: milestone.kind === "approval_and_payment" ? "Approve and pay" : "Approve",
-      kind: "approve",
-      disabled: needsOwner,
-      reason: needsOwner ? "Approving a step that releases a payment is limited to an owner." : null,
-    };
-  }
-  if (payment?.state === "due") {
-    return { label: "Pay this step", kind: "pay", disabled: !isOwner,
-             reason: isOwner ? null : "Recording a payment is limited to an owner." };
-  }
-  return { label: null, reason: null };
-}

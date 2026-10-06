@@ -1315,12 +1315,68 @@ async function main() {
     check(!/Atelier Minho|Hansu Studio/.test(orderListText),
       "and no mock counterparty leaked through — the constants are not being read");
 
-    // An order that has not been agreed opens on the agreement, because there
-    // is no interior yet: no steps to work, no payments to make. The header
-    // figures are asserted once it is active, below.
+    // The brand's own tabs. "+ Add tab", "Add to ›" and "Manage tabs" lived in
+    // React state, so a reload lost them and no order was ever put in one.
+    // They are saved per company now; the factory never sees them.
+    const brandTab = `Spring ${String(stamp).slice(-4)}`;
+    await clickButton(page, "+ add tab");
+    await page.locator(".project-tab-add-form input").first().fill(brandTab);
+    await page.locator('.project-tab-add-form button[type="submit"]').first().click();
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    check(/no orders in this tab yet/i.test(await page.locator(".projects-list").innerText()),
+      "a new tab opens, empty, and says how to fill it");
+
+    await clickButton(page, "active orders");
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await page.locator(".project-overflow-submenu > button").first().click();
+    await page.locator(".project-overflow-submenu-panel button").first().click();
+    await page.waitForTimeout(1500);
+
+    await page.reload();
+    await waitForHeading(page, "production orders", 25000);
+    await clickButton(page, brandTab.toLowerCase());
+    await waitFor(page, ".brand-project-card", 15000);
+    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
+      "after a reload the tab is still there, with the order in it");
+    await record(page, "The brand's own tab", "added, filed into and reloaded: it is saved now");
+
+    await clickButton(page, "manage tabs");
+    await waitFor(page, ".project-tabs-manager-row", 10000);
+    await page.locator(".project-tabs-manager-row:nth-child(3) input").first().fill(`${brandTab} capsule`);
+    await page.locator(".project-tabs-manager-row:nth-child(3) button").first().click();
+    await clickButton(page, "save changes");
+    await page.waitForTimeout(1500);
+    await page.reload();
+    await waitForHeading(page, "production orders", 25000);
+    const tabOrder = (await page.locator(".project-tabs-scroll").innerText()).split("\n").map((line) => line.trim()).filter(Boolean);
+    check(tabOrder[1] === `${brandTab} capsule` && /^closed/i.test(tabOrder[2] ?? ""),
+      `Manage tabs renamed and moved it, and that survived a reload (${tabOrder.slice(0, 3).join(" | ")})`);
+
+    await clickButton(page, `${brandTab} capsule`.toLowerCase());
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await page.locator(".project-overflow-submenu > button").first().click();
+    const filedItem = (await page.locator(".project-overflow-submenu-panel button").first().innerText()).trim();
+    check(filedItem.startsWith("✓"), `the menu marks the tab the order is in (${filedItem})`);
+    await page.locator(".project-overflow-submenu-panel button").first().click();
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    check(true, "choosing a ✓ tab again takes the order out of it");
+
+    // Filed back in, so the factory's list below can show it is not leaking.
+    await clickButton(page, "active orders");
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await page.locator(".project-overflow-submenu > button").first().click();
+    await page.locator(".project-overflow-submenu-panel button").first().click();
+    await page.waitForTimeout(1500);
+
+    // An order whose steps the brand has not confirmed opens on its builder,
+    // because there is no interior yet: no steps to work, no payments to
+    // make. The header figures are asserted once it is active, below.
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="schedule-row"]', 25000);
-    await record(page, "The order", "before either side agrees, the schedule is the whole screen");
+    await record(page, "The order", "before the brand confirms the steps, the builder is the whole screen");
 
     const { data: draftSteps } = await db.from("order_milestones")
       .select("id, title, kind, amount_cents, sort").eq("order_id", bornOrder.id).order("sort");
@@ -1333,27 +1389,30 @@ async function main() {
     check(stepsTotal === Number(bornOrder.order_total_cents),
       `the steps total exactly what was agreed (${stepsTotal})`);
 
-    // Editing has to withdraw both agreements, or one side's signature
-    // survives a change it never read.
     await page.goto(`${APP}/orders/${bornOrder.id}/schedule`);
     await waitFor(page, '[data-testid="schedule-row"]', 25000);
     const scheduleRows = await page.locator('[data-testid="schedule-row"]').count();
     check(scheduleRows === draftSteps.length,
       `nobody faces a blank schedule — ${scheduleRows} steps are already there`);
-    await record(page, "The schedule", "drafted from the quote; either side may change it");
+    await record(page, "The schedule", "drafted from the quote; the brand sets it");
 
-    await waitFor(page, '[data-testid="agree-schedule"]', 25000);
-    await clickButton(page, "agree to this schedule");
-    await page.waitForTimeout(2500);
-    await record(page, "Brand agrees", "one signature. The order has not started");
+    // The brand's builder is the designed "Production steps" stage, and its
+    // buttons are the design's own: Save changes, and Continue to funding,
+    // which confirms the steps. Only the brand sets them (design review).
+    await waitFor(page, '[data-testid="schedule-hint"]', 25000);
+    check(!/agree to this schedule/i.test(await page.locator("body").innerText()),
+      "there is no \"Agree to this schedule\" any more");
+    await clickButton(page, "continue to funding");
+    await page.waitForTimeout(3000);
+    await record(page, "Brand confirms the steps", "its confirmation alone starts the order");
 
-    const { data: halfSigned } = await db.from("production_orders")
+    const { data: confirmed } = await db.from("production_orders")
       .select("status, schedule_brand_agreed_at, schedule_factory_agreed_at")
       .eq("id", bornOrder.id).single();
-    check(halfSigned.status === "pending_schedule",
-      "one side agreeing does NOT start the order");
-    check(Boolean(halfSigned.schedule_brand_agreed_at) && !halfSigned.schedule_factory_agreed_at,
-      "only the brand's agreement is recorded");
+    check(confirmed.status === "active",
+      "the brand confirming the steps starts the order");
+    check(Boolean(confirmed.schedule_brand_agreed_at) && !confirmed.schedule_factory_agreed_at,
+      "no factory agreement was needed");
 
     // ================= THE LOSER HEARS =================
     console.log("\nTHE LOSER HEARS");
@@ -1370,28 +1429,47 @@ async function main() {
     check(/accepted/i.test(notifText), "the winning factory is told on its dashboard, without asking");
     await record(page, "Factory hears the outcome", "award_quote wrote this row; now something shows it");
 
-    // ================= THE FACTORY AGREES, AND WORKS =================
-    console.log("\nTHE FACTORY AGREES, AND WORKS");
+    // ================= THE FACTORY WORKS =================
+    console.log("\nTHE FACTORY WORKS");
 
+    // The factory's own designed list, not the brand's, with the real order on it.
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    await waitFor(page, ".factory-active-project-card", 25000);
+    const factoryListText = await page.locator(".projects-list").innerText();
+    check(factoryListText.includes(rfqTitle),
+      "the factory's designed order list shows the real request");
+    check(!/Maison Rue|Elara Studio|Luna Resort/.test(factoryListText),
+      "and none of the factory design's example brands");
+    await record(page, "Factory's orders", "its own designed list, live");
+
+    // The brand filed this order under its own tab above. The factory sees
+    // none of that, and gets a "..." menu of its own to do the same.
+    check(!(await page.locator(".project-tabs-scroll").innerText()).includes(brandTab),
+      "the factory never sees how the brand filed the order");
+    const factoryTab = `Linen ${String(stamp).slice(-4)}`;
+    await clickButton(page, "+ add tab");
+    await page.locator(".project-tab-add-form input").first().fill(factoryTab);
+    await page.locator('.project-tab-add-form button[type="submit"]').first().click();
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    await clickButton(page, "active orders");
+    await waitFor(page, ".factory-active-project-card", 15000);
+    await page.locator('.factory-active-project-card button[aria-label="More order actions"]').first().click();
+    await page.locator(".project-overflow-submenu > button").first().click();
+    await page.locator(".project-overflow-submenu-panel button").first().click();
+    await page.waitForTimeout(1500);
+    await clickButton(page, factoryTab.toLowerCase());
+    await waitFor(page, ".factory-active-project-card", 15000);
+    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
+      "the factory files the order under a tab of its own, from the card's new menu");
+    await record(page, "Factory's own tab", "its \"...\" had no menu; now it files orders too");
+
+    // The factory never agrees the steps: it was told of them, and the order
+    // is already running.
     await page.goto(`${APP}/orders/${bornOrder.id}`);
-    await waitFor(page, '[data-testid="agree-schedule"]', 25000);
-
-    const factoryView = await page.locator("body").innerText();
-    check(/agree/i.test(factoryView),
-      "the factory reads its own wording off the same stored status the brand read differently");
-
-    const beforeAgreeing = await page.locator('[data-testid="milestone-action"]').count();
-    check(beforeAgreeing === 0,
-      "no step can be worked or paid before both sides have agreed");
-    await record(page, "Factory sees the schedule", "the same steps the brand read, nothing actionable yet");
-
-    await clickButton(page, "agree to this schedule");
-    await page.waitForTimeout(3000);
-    await record(page, "Both agreed", "the order is running");
-
-    const { data: live } = await db.from("production_orders")
-      .select("status, activated_at").eq("id", bornOrder.id).single();
-    check(live.status === "active", "the order starts only once BOTH sides have agreed");
+    await waitFor(page, '[data-testid="milestone-row"]', 25000);
+    check((await page.locator('[data-testid="agree-schedule"]').count()) === 0,
+      "the factory has no schedule to agree");
 
     // Now there is an interior to look at. Every figure in the designed header
     // is summed in SQL from the rows below it.
@@ -1412,15 +1490,21 @@ async function main() {
     check(activePayments.length === payingSteps,
       `activation created one payment per paying step and none for the rest (${activePayments.length})`);
 
-    // The first step, worked the way a factory actually works it.
+    // The first step, worked the way a factory actually works it: a note from
+    // the row's own dialog. There is no "send for approval" any more — the
+    // brand approves from the update itself.
     const firstStep = draftSteps[0];
-    await page.goto(`${APP}/orders/${bornOrder.id}/milestones/${firstStep.id}`);
-    await waitFor(page, '[data-field="update_body"]', 25000);
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="milestone-row"]', 25000);
+    await clickButton(page, "add update");
+    await waitFor(page, '[data-field="update_body"]', 10000);
     await page.locator('[data-field="update_body"]')
       .fill("Fit sample finished. Front, back and collar detail photographed.");
-    await record(page, "Posting an update", "a note and photographs, which is the factory's only lever here");
+    check(!/send for approval/i.test(await page.locator(".factory-update-modal").innerText()),
+      "the factory's update dialog has one button, Post update: no \"send for approval\"");
+    await record(page, "Posting an update", "a note and photographs, from the design's Add update dialog");
 
-    await clickButton(page, "post update");
+    await page.locator(".factory-update-modal .primary-btn").first().click();
     await page.waitForTimeout(3000);
 
     const { data: postedUpdates } = await db.from("milestone_updates")
@@ -1429,12 +1513,11 @@ async function main() {
     check(postedUpdates[0].milestone_id === firstStep.id,
       "the update attached to the step that opened the composer, not to the first one on the page");
 
-    await clickButton(page, "send for approval");
-    await page.waitForTimeout(2500);
-    const { data: submitted } = await db.from("order_milestones")
+    const { data: stillOpen } = await db.from("order_milestones")
       .select("state").eq("id", firstStep.id).single();
-    check(submitted.state === "submitted", "the factory sent the step for approval");
-    await record(page, "Sent for approval", "the brand decides; the factory does not mark its own work done");
+    check(stillOpen.state === "active",
+      "posting is all the factory does: the step stays open, for the brand to approve from the update");
+    await record(page, "Update posted", "the brand decides; the factory does not mark its own work done");
 
     // Where the money goes. This run is what found that nothing wrote to this
     // table: the brand's pay button is correctly disabled with no destination,
@@ -1462,30 +1545,48 @@ async function main() {
 
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-action"]', 25000);
-    await record(page, "Waiting on the brand", "the factory has sent a step for approval");
+    const rowAction = await page.locator('[data-testid="milestone-action"]').first().innerText();
+    check(/^approve$/i.test(rowAction.trim()),
+      `the step the factory posted on offers the brand "Approve" (${rowAction.trim()})`);
+    await record(page, "Waiting on the brand", "the factory has posted; the row says Approve");
 
     // The brand can actually see the factory's update. If the counterparty
     // policy were missing this is an empty panel and no error anywhere, which
-    // is the failure this assertion exists to make loud.
-    await page.goto(`${APP}/orders/${bornOrder.id}/milestones/${firstStep.id}`);
-    await waitFor(page, '[data-testid="milestone-update"]', 25000);
-    const brandSeesUpdate = await page.locator('[data-testid="milestone-update"]').count();
+    // is the failure this assertion exists to make loud. "View all updates"
+    // opens the step's pop-up over the order, not a page of its own.
+    await page.locator('[data-testid="update-card"] button').first().click();
+    await waitFor(page, '[data-testid="step-update"]', 15000);
+    const brandSeesUpdate = await page.locator('[data-testid="step-update"]').count();
     check(brandSeesUpdate === 1,
       "the brand can read the factory's update across the org boundary");
-    await record(page, "The brand reads the update", "posted by the factory, readable by the brand, nobody else");
+    await record(page, "The brand reads the update", "in the step's pop-up, over the order");
 
-    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    // A step's own address — what notifications link to — opens the same pop-up.
+    await page.goto(`${APP}/orders/${bornOrder.id}/milestones/${firstStep.id}`);
+    await waitFor(page, '[data-testid="step-updates"]', 25000);
+    check((await page.locator('[data-testid="milestone-row"]').count()) > 0,
+      "a step link opens its pop-up on top of the order, with the timeline behind it");
+    await page.locator(".step-updates-modal .secondary-btn").first().click();
     await waitFor(page, '[data-testid="milestone-action"]', 25000);
-    // The designed timeline approves from the row itself — the action a row
-    // carries is the one its state allows, so there is nothing to confirm
-    // about which transition is being made.
+    // The row's action is the one its state allows, and approving opens the
+    // design's own dialog: an approval is never one stray click. The note
+    // typed there reaches approve_milestone.
     await page.locator('[data-testid="milestone-action"]').first().click();
+    await waitFor(page, ".approve-fund-modal textarea", 10000);
+    await page.locator(".approve-fund-modal textarea").first().click();
+    await page.type("Fit approved, go ahead with bulk.");
+    await record(page, "Approve dialog", "the designed dialog, with real copy for a tracked payment");
+    await page.locator(".approve-fund-modal .primary-btn").first().click();
     await page.waitForTimeout(4000);
-    await record(page, "Approved", "from the row, on the state that row is actually in");
+    await record(page, "Approved", "from the row's dialog, on the state that row is actually in");
 
     const { data: dueNow } = await db.from("order_payments")
       .select("id, state, amount_cents").eq("milestone_id", firstStep.id).single();
     check(dueNow.state === "due", "approving the sample made its payment due");
+    const { data: approvedStep } = await db.from("order_milestones")
+      .select("approval_note").eq("id", firstStep.id).single();
+    check(approvedStep.approval_note === "Fit approved, go ahead with bulk.",
+      "the note typed in the approve dialog is stored with the approval");
 
     await page.goto(`${APP}/orders/${bornOrder.id}/payments/${dueNow.id}`);
     await waitFor(page, '[data-testid="pay-reference"]', 25000);
@@ -1820,6 +1921,247 @@ async function main() {
 
     check(!/Seoul Knit Works asked about yarn/i.test(homeText),
       "and the design's example alerts are not shown as if they were real");
+
+    // ================= CALLING IT OFF =================
+    // Cancelling has no design; these are the live screens: the card menu's
+    // "Cancel order", the order page's banner, and the reason dialog. Either
+    // side proposes, the proposer can withdraw, and the other side keeps the
+    // order or accepts.
+    console.log("\nCALLING IT OFF");
+    const asUser = async (email) => {
+      const client = createClient(
+        process.env.SUPABASE_URL ?? stack.API_URL,
+        process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY,
+        { auth: { persistSession: false } },
+      );
+      await client.auth.signInWithPassword({ email, password: PASSWORD });
+      return client;
+    };
+    // Each archive change reloads the company's tabs; read the strip once it
+    // has caught up, not the instant the click lands.
+    const stripOnce = async (test) => {
+      const deadline = Date.now() + 15000;
+      let text = "";
+      while (Date.now() < deadline) {
+        text = await page.locator(".project-tabs-scroll").innerText().catch(() => "");
+        if (test(text)) break;
+        await page.waitForTimeout(250);
+      }
+      return text;
+    };
+    const proposal = async () => (await db.from("production_orders")
+      .select("status, cancel_proposed_by_org, cancel_reason").eq("id", bornOrder.id).single()).data;
+    // Polls the order until `test` holds: each action reloads after the click.
+    const proposalOnce = async (test) => {
+      const deadline = Date.now() + 15000;
+      let row = await proposal();
+      while (!test(row) && Date.now() < deadline) {
+        await page.waitForTimeout(300);
+        row = await proposal();
+      }
+      return row;
+    };
+    const proposeIn = async (reason) => {
+      await waitFor(page, 'textarea[name="cancel-reason"]', 15000);
+      await page.locator('textarea[name="cancel-reason"]').first().fill(reason);
+      await clickButton(page, "propose cancellation");
+    };
+
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "cancel order");
+    await proposeIn("Season dropped");
+    let row = await proposalOnce((r) => r.cancel_proposed_by_org === brandOrg.id);
+    check(row.cancel_proposed_by_org === brandOrg.id && row.cancel_reason === "Season dropped" && row.status === "active",
+      `the brand proposes cancelling from the card's menu, with its reason (${JSON.stringify(row)})`);
+    check(/you proposed cancelling: season dropped/i.test(await page.locator(".projects-list").innerText()),
+      "and the card says so");
+    await record(page, "Cancellation proposed", "from the order card's menu; nothing changes until the factory answers");
+
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "withdraw cancellation");
+    row = await proposalOnce((r) => r.cancel_proposed_by_org === null);
+    check(row.cancel_proposed_by_org === null && row.status === "active",
+      "the brand withdraws it from the same menu, and the order carries on");
+
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, ".order-cancel-link", 25000);
+    await page.locator(".order-cancel-link").first().click();
+    await proposeIn("Season dropped");
+    await waitFor(page, '[data-testid="cancel-notice"][data-state="mine"]', 15000);
+    check(/waiting for/i.test(await page.locator('[data-testid="cancel-notice"]').innerText()),
+      "proposed from the order page, the brand is shown it is waiting on the factory");
+    await record(page, "Waiting on the factory", "the banner the proposing side sees, with Withdraw");
+
+    await signOutFully(page);
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory answers", "factory");
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="cancel-notice"][data-state="theirs"]', 25000);
+    check(/season dropped/i.test(await page.locator('[data-testid="cancel-notice"]').innerText()),
+      "the factory sees the brand's proposal and its reason on the order");
+    await record(page, "The factory is asked", "Keep order, or Accept cancellation");
+    await clickButton(page, "keep order");
+    row = await proposalOnce((r) => r.cancel_proposed_by_org === null);
+    check(row.cancel_proposed_by_org === null && row.status === "active",
+      "Keep order turns the proposal down and the order carries on");
+
+    // Proposed once more, to be accepted this time.
+    const { error: proposeError } = await (await asUser(brandEmail))
+      .rpc("propose_cancellation", { target_order: bornOrder.id, reason: "Season dropped" });
+    check(!proposeError, `the brand proposes again${proposeError ? `: ${proposeError.message}` : ""}`);
+    await page.reload();
+    await waitFor(page, '[data-testid="cancel-notice"][data-state="theirs"]', 25000);
+    await clickButton(page, "accept cancellation");
+    await waitFor(page, ".order-cancel-modal", 15000);
+    check(/cannot be undone/i.test(await page.locator(".order-cancel-modal").innerText()),
+      "accepting asks first, and says what cancelling does");
+    await page.locator(".order-cancel-modal .primary-btn").first().click();
+    row = await proposalOnce((r) => r.status === "cancelled");
+    check(row.status === "cancelled", `the factory accepts and the order is cancelled (${row.status})`);
+    await waitFor(page, '[data-testid="cancel-notice"][data-state="cancelled"]', 15000);
+    await record(page, "Cancelled", "both sides agreed; the order says when and why");
+
+    // ================= PUTTING IT AWAY =================
+    // "Archive order" sat in the card's menu and only closed it. Only a closed
+    // order can be archived, and the one above was just cancelled.
+    console.log("\nPUTTING IT AWAY");
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand tidying up");
+
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    await clickButton(page, "closed");
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "archive order");
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    const archivedStrip = await stripOnce((text) => /archived \(1\)/i.test(text));
+    check(/archived \(1\)/i.test(archivedStrip) && /closed \(0\)/i.test(archivedStrip),
+      `archiving moves the order from Closed to a new Archived tab (${archivedStrip.replace(/\s+/g, " ")})`);
+
+    await page.reload();
+    await waitForHeading(page, "production orders", 25000);
+    await clickButton(page, "archived");
+    await waitFor(page, ".brand-project-card", 15000);
+    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
+      "after a reload the order is still archived");
+    await record(page, "Archived", "the brand put a cancelled order away");
+    await clickButton(page, `${brandTab} capsule`.toLowerCase());
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    check(true, "an archived order leaves the custom tab it was filed in");
+
+    await page.goto(APP);
+    await waitFor(page, ".home-stack", 25000);
+    check(!(await page.locator(".home-stack").innerText()).includes(rfqTitle),
+      "and leaves the dashboard");
+
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    await clickButton(page, "archived");
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "unarchive order");
+    const unarchivedStrip = await stripOnce((text) => !/archived/i.test(text));
+    check(!/archived/i.test(unarchivedStrip) && /closed \(1\)/i.test(unarchivedStrip),
+      `Unarchive puts it back in Closed, and the empty Archived tab goes (${unarchivedStrip.replace(/\s+/g, " ")})`);
+    await clickButton(page, `${brandTab} capsule`.toLowerCase());
+    await waitFor(page, ".brand-project-card", 15000);
+    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
+      "and back in the custom tab it was filed in");
+
+    // Each company's archive is its own: the brand's says nothing to the factory.
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "archive order");
+    await page.waitForTimeout(1500);
+    await signOutFully(page);
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory tidying up", "factory");
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    // Its own tab showing means its tabs, and its archive with them, have loaded.
+    check(!/archived/i.test(await stripOnce((text) => text.includes(factoryTab))),
+      "the brand archiving the order archives nothing for the factory");
+    await clickButton(page, "closed");
+    await waitFor(page, ".factory-active-project-card", 15000);
+    await page.locator('.factory-active-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "archive order");
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    check(/archived \(1\)/i.test(await stripOnce((text) => /archived \(1\)/i.test(text))),
+      "the factory archives it from its own card menu");
+    await record(page, "Factory's archive", "its own, separate from the brand's");
+    await clickButton(page, "archived");
+    await waitFor(page, ".factory-active-project-card", 15000);
+    await page.locator('.factory-active-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "unarchive order");
+    check(!/archived/i.test(await stripOnce((text) => !/archived/i.test(text))),
+      "and unarchives it");
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand after the archive");
+
+    // ================= ORDERING IT AGAIN =================
+    // "Reorder style" sat in the card's menu and reloaded the list. It now
+    // copies the order's request into a new draft and opens the composer with
+    // the same factory ticked. The order is archived and cancelled: a brand
+    // repeats a style it has put away as readily as one still running.
+    console.log("\nORDERING IT AGAIN");
+    await page.goto(`${APP}/orders`);
+    await waitForHeading(page, "production orders", 25000);
+    await clickButton(page, "archived");
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "reorder style");
+    await waitFor(page, '[data-testid="reorder-note"]', 25000);
+    const reorderId = (String(await page.url()).match(/rfqs\/([0-9a-f-]{36})\/edit/) ?? [])[1];
+    check(Boolean(reorderId), "Reorder style opens a new draft request in the composer");
+    check((await page.locator('[data-testid="reorder-note"]').innerText()).includes(factoryName),
+      "which says which order it repeats, and with whom");
+
+    // Read back in the review card's own words, so saving it again keeps it.
+    const readBack = await page.evaluate(() => Object.fromEntries(
+      [...document.querySelectorAll(".review-brief-stack [name]")].map((field) => [field.name, field.value]),
+    ));
+    check(readBack.title === `${rfqTitle} (reorder)`, `named as a reorder ("${readBack.title}")`);
+    check(readBack.category === "Womenswear" && readBack.regions === "Portugal" && readBack.certifications === "GOTS",
+      `the category, region and certification come back as typed (${readBack.category} / ${readBack.regions} / ${readBack.certifications})`);
+    check(readBack.quantity === "300 units total · 3 colors, 100 each",
+      `and the colour breakdown in the words that saved it (${readBack.quantity})`);
+    check(/fit and PP samples separately/.test(readBack["question-0"] ?? "") && /Polybag/.test(readBack.additionalDetails ?? ""),
+      "with the brand's question and its extra details");
+    check(!readBack.timeline, "last run's delivery month is left for the brand to set again");
+    await setField("timeline", "Bulk by late March 2027");
+    await record(page, "Reorder", "the order's request, copied into a new draft");
+
+    await page.locator(".bottom-bar .primary-btn").first().click();
+    await waitFor(page, ".invite-results", 30000);
+    await waitFor(page, ".bottom-bar .primary-btn", 30000);
+    await page.waitForTimeout(1200);
+    const inviteState = await page.evaluate(() => ({
+      openToAll: document.querySelector('[name="open-to-all"]')?.checked,
+      first: document.querySelector(".invite-selection-factory-card")?.innerText ?? "",
+      firstSelected: document.querySelector(".invite-selection-factory-card")?.classList.contains("selected"),
+    }));
+    check(inviteState.first.includes(factoryName) && inviteState.firstSelected,
+      "the factory that made it heads the vendor list, already ticked");
+    check(inviteState.openToAll === false, "and the request goes to that factory only, unless the brand opens it");
+    await record(page, "Reorder: invite", "the same factory, ticked");
+    await page.locator(".bottom-bar .primary-btn").first().click();
+    await page.waitForTimeout(4500);
+
+    const { data: reordered } = await db
+      .from("rfqs").select("status, visibility, reorder_of_order_id, target_delivery_month").eq("id", reorderId).single();
+    check(reordered?.status === "open" && reordered.visibility === "invited_only",
+      `the reorder is sent, invite-only (${reordered?.status}, ${reordered?.visibility})`);
+    check(reordered?.reorder_of_order_id === bornOrder.id, "and remembers the order it repeats");
+    check(reordered?.target_delivery_month === "2027-03-01", "with the new delivery month the brand typed");
+    const { data: reorderInvites } = await db
+      .from("rfq_invitations").select("orgs (name)").eq("rfq_id", reorderId);
+    check((reorderInvites ?? []).length === 1 && reorderInvites[0].orgs?.name === factoryName,
+      `the same factory is invited (${(reorderInvites ?? []).map((row) => row.orgs?.name).join(", ")})`);
+    const { count: reorderLinks } = await db
+      .from("taxonomy_links").select("*", { count: "exact", head: true })
+      .eq("subject_type", "rfq").eq("subject_id", reorderId);
+    check(reorderLinks === rfqLinks, `saving the copy kept its ${rfqLinks} requirement links (${reorderLinks})`);
 
     // ================= JOINING A TEAM =================
     // listMyInvitations() and acceptInvitation() have existed since Phase 1

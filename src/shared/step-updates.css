@@ -1,0 +1,27 @@
+/* The step's history inside the design's dialog frame (StepUpdatesModal). */
+.step-updates-modal .step-updates-list {
+  display: grid;
+  gap: 12px;
+  max-height: min(60vh, 560px);
+  overflow-y: auto;
+}
+
+.step-updates-modal .project-update-card {
+  max-width: none;
+}
+
+.step-updates-modal .sample-file-row button {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.step-updates-modal .sample-file-row button:not(.sample-file) {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #174df2;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+}

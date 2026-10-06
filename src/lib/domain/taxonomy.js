@@ -85,6 +85,22 @@ export async function addCustomTerm(orgId, kind, label) {
  * Deliberately scoped to a single kind: a profile edit screen saves one chip
  * group at a time, and a blanket delete would wipe the groups it never showed.
  */
+/**
+ * The term ids linked to one subject, of every kind. The caller holds the
+ * terms already (listTermsByKind) and finds each id among them.
+ */
+export async function listLinks(subjectType, subjectId) {
+  const rows = unwrap(
+    await supabase
+      .from("taxonomy_links")
+      .select("term_id")
+      .eq("subject_type", subjectType)
+      .eq("subject_id", subjectId),
+    "load saved selections",
+  );
+  return rows.map((row) => row.term_id);
+}
+
 export async function setLinks({ subjectType, subjectId, orgId, kind, termIds }) {
   const existing = unwrap(
     await supabase

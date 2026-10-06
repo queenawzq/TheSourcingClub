@@ -14,14 +14,16 @@
  * The draft row exists before a single field is filled, so nothing typed is
  * ever held only in component state.
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DescribeScreen, FlowShell, InviteScreen, InviteSuccessScreen, ReviewScreen } from "../../prototype/main.jsx";
-import { attachDocumentToRfq, createDraftRfq, getRfq, matchScoresForRfq, publishRfq, saveRfq, setColourSplits, setInvitations, setQuestions } from "../../lib/domain/rfq.js";
+import { attachDocumentToRfq, createDraftRfq, getColourSplits, getQuestions, getRfq, matchScoresForRfq, publishRfq, saveRfq, setColourSplits, setInvitations, setQuestions } from "../../lib/domain/rfq.js";
 import { deleteDocument, listRfqDocuments, uploadDocument } from "../../lib/domain/documents.js";
+import { getOrder } from "../../lib/domain/order.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
 import { fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
-import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
+import { listLinks, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
+import { linkedLabels, mentionsLabel, monthLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 
@@ -155,6 +157,10 @@ export default function LiveComposer({ org, rfqId }) {
   const [invited, setInvited] = useState([]);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
+  // A reorder: the order this draft repeats, and its factory, which the
+  // invite step ticks once (and only once, so unticking it sticks).
+  const [reorder, setReorder] = useState(null);
+  const preselected = useRef(false);
 
   const kinds = useMemo(() => KINDS, []);
 
@@ -162,34 +168,54 @@ export default function LiveComposer({ org, rfqId }) {
     listTermsByKind(kinds).then(setTerms).catch(setError);
   }, [kinds]);
 
-  // Resume an existing draft rather than starting a second one.
+  // Resume an existing draft rather than starting a second one. Everything
+  // the review card shows is read back, in the words its parsers read: a
+  // field left blank here is saved blank by toInvite(), and its links deleted.
   useEffect(() => {
     if (!rfqId) return;
-    getRfq(rfqId)
-      .then((row) => {
+    Promise.all([getRfq(rfqId), listLinks("rfq", rfqId), getColourSplits(rfqId), getQuestions(rfqId), listTermsByKind(kinds)])
+      .then(async ([row, linked, splits, questions, byKind]) => {
         if (!row) return;
         setFreeText(row.brief ?? "");
         setValues({
           title: row.title ?? "",
-          quantity: row.quantity_total ? String(row.quantity_total) : "",
+          quantity: resumedQuantityLine(row.quantity_total, splits),
           material: row.material_notes ?? "",
           samples: row.sample_notes ?? "",
-          timeline: row.target_delivery_month ?? "",
+          timeline: monthLine(row.target_delivery_month),
           price: row.target_unit_price_min_cents
             ? `$${(row.target_unit_price_min_cents / 100).toFixed(0)}-$${((row.target_unit_price_max_cents ?? row.target_unit_price_min_cents) / 100).toFixed(0)}`
             : "",
-          certifications: "",
-          regions: "",
+          category: linkedLabels(linked, byKind.product_category),
+          certifications: linkedLabels(linked, byKind.certification),
+          regions: linkedLabels(linked, byKind.region),
+          sourcing: sourcingChoice(row.sourcing_responsibility_term_id, byKind.sourcing_responsibility, SOURCING_SLUG),
+          additionalDetails: row.additional_details ?? "",
           // Read back as the date it is, so saving again parses the same way.
           deadline: row.quote_deadline
             ? new Date(row.quote_deadline).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })
             : "",
-          category: "",
+          ...Object.fromEntries(questions.slice(0, 3).map((question, index) => [`question-${index}`, question.prompt])),
         });
         setValues((current) => fillBlanks(current, fieldsFromBrief(row.brief, terms.product_category)));
+
+        if (row.reorder_of_order_id) {
+          // Read under RLS: an order this brand is not on comes back empty,
+          // and the draft is then just a draft.
+          const order = await getOrder(row.reorder_of_order_id);
+          if (order) {
+            setReorder({
+              title: order.rfqs?.title ?? "this order",
+              factoryOrgId: order.factory_org_id,
+              factoryName: order.factory?.name ?? "the factory",
+            });
+            // A repeat goes to the factory that made it, not to everyone.
+            setOpenToAll(false);
+          }
+        }
       })
       .catch(setError);
-  }, [rfqId]);
+  }, [rfqId, kinds]);
 
   // The category is matched against the term labels, which load on their own
   // and may arrive after a resumed draft does.
@@ -351,9 +377,8 @@ export default function LiveComposer({ org, rfqId }) {
       ];
       for (const [kind, typed] of linkKinds) {
         if (typed === undefined) continue;
-        const lower = String(typed ?? "").toLowerCase();
         const termIds = (terms[kind] ?? [])
-          .filter((term) => lower.includes(termLabel(term).toLowerCase()))
+          .filter((term) => mentionsLabel(typed, termLabel(term)))
           .map((term) => term.id);
         await setLinks({ subjectType: "rfq", subjectId: draftId, orgId: org.id, kind, termIds });
       }
@@ -378,10 +403,19 @@ export default function LiveComposer({ org, rfqId }) {
       // The design ranks this list by fit. match_score_rfq() answers per
       // pair, so score the vendors actually being shown and sort by it.
       const scores = await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
+      const repeated = reorder && (rows ?? []).find((row) => row.org_id === reorder.factoryOrgId);
+      if (reorder && !preselected.current) {
+        preselected.current = true;
+        if (repeated) {
+          setSelectedVendors((current) => (current.includes(repeated.orgs?.name) ? current : [...current, repeated.orgs?.name]));
+        }
+      }
       setVendors(
         (rows ?? [])
           .map((row) => ({ ...row, matchPercent: scores.get(row.org_id) ?? null }))
-          .sort((a, b) => (b.matchPercent ?? -1) - (a.matchPercent ?? -1)),
+          .sort((a, b) => (b.matchPercent ?? -1) - (a.matchPercent ?? -1))
+          // A reorder's own factory heads the list, ticked, above the ranking.
+          .sort((a, b) => Number(b.org_id === reorder?.factoryOrgId) - Number(a.org_id === reorder?.factoryOrgId)),
       );
       setStep("invite");
     } catch (failure) {
@@ -510,6 +544,11 @@ export default function LiveComposer({ org, rfqId }) {
           openToAll={openToAll}
           onOpenToAllChange={setOpenToAll}
         />
+        {reorder && !vendors.some((vendor) => vendor.org_id === reorder.factoryOrgId) && (
+          <p className="composer-note" data-testid="reorder-unlisted">
+            {reorder.factoryName} is not listed on TSC right now, so it cannot be invited. Open the request to all vendors or choose another.
+          </p>
+        )}
         {error && <p className="composer-error" role="alert">{error.message}</p>}
       </FlowShell>
     );
@@ -523,6 +562,11 @@ export default function LiveComposer({ org, rfqId }) {
       onBack={() => setStep("describe")}
       onNext={toInvite}
     >
+      {reorder && (
+        <p className="composer-note" data-testid="reorder-note">
+          Reordering {reorder.title} with {reorder.factoryName}. Check the details, then invite.
+        </p>
+      )}
       <ReviewScreen
         brief={freeText}
         values={values}
