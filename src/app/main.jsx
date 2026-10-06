@@ -58,6 +58,9 @@ import "./shell.css";
 
 // Lazy: only someone following a Terms or Privacy link needs it.
 const LegalPage = lazy(() => import("./LegalPage.jsx"));
+// One-click demo sign-in, on test builds only: a production build has
+// __DEMO_SIGN_IN__ = false and leaves this import out (see vite.config.js).
+const DemoSignIn = __DEMO_SIGN_IN__ ? lazy(() => import("../shared/DemoSignIn.jsx")) : null;
 
 function Loading({ label }) {
   return (
@@ -155,6 +158,23 @@ function SignIn() {
     }
     // No navigation on success: the session changes, AuthProvider re-renders,
     // and App picks the next screen. Setting one here would race that.
+    setBusy(false);
+  }
+
+  /**
+   * A demo account, from the test sites' one-click sign-in. The admin has no
+   * company, and app.html would ask it to create one, so it goes on to its
+   * own workspace instead.
+   */
+  async function demoSignIn(login) {
+    clearError();
+    setNotice(null);
+    setBusy(true);
+    const signedIn = await signInWithPassword({ email: login.email, password: login.password });
+    if (signedIn && login.admin) {
+      window.location.assign("/admin.html");
+      return;
+    }
     setBusy(false);
   }
 
@@ -341,6 +361,11 @@ function SignIn() {
         sendCode(email);
       }}
       onAuthenticate={authenticate}
+      footer={DemoSignIn && (
+        <Suspense fallback={null}>
+          <DemoSignIn busy={busy} onPick={demoSignIn} />
+        </Suspense>
+      )}
     />
   );
 }
