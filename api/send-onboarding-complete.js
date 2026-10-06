@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { supabaseServerEnv } from "./_supabase-env.js";
 // Loaded with import(), not a static import: Vercel compiles api/*.js to
 // CommonJS, and a static import of this .mjs becomes a require() that
 // crashes the function before it runs (ERR_REQUIRE_ESM, a bare 500).
@@ -31,9 +32,7 @@ export default async function handler(request, response) {
     return;
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const { supabaseUrl, anonKey, serviceKey } = supabaseServerEnv();
   const resendKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL;
   const authorization = request.headers.authorization;

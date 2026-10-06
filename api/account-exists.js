@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { supabaseServerEnv } from "./_supabase-env.js";
 
 /**
  * Does this address have an account?
@@ -34,8 +35,7 @@ export default async function handler(request, response) {
     return;
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const { supabaseUrl, serviceKey } = supabaseServerEnv();
   if (!supabaseUrl || !serviceKey) {
     response.status(503).json({ error: "account lookup is not configured" });
     return;
