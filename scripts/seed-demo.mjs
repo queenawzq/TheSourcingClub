@@ -14,7 +14,10 @@
  *   demo-factory-new@example.com  a factory waiting for verification
  *   demo-admin@example.com        a platform admin, for /admin.html
  *
- * All use the password "demo password 8". The first two are the logins
+ * All use the password "demo password 8". The list lives in
+ * src/shared/demo-logins.mjs, which the test sites' one-click sign-in reads
+ * too: a scenario that needs an account of its own adds it there, and its
+ * setup below. The first two are the logins
  * supabase/seed.sql already makes, so after `supabase db reset` this fills
  * those accounts rather than making new ones.
  *
@@ -32,6 +35,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
+import { DEMO_LOGINS as LOGINS, DEMO_PASSWORD as PASSWORD } from "../src/shared/demo-logins.mjs";
 
 const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
 
@@ -75,20 +79,11 @@ if (!isLocal && !process.argv.includes("--remote")) {
   process.exit(1);
 }
 
-const PASSWORD = "demo password 8";
 const admin = createClient(URL, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } });
 
 const must = ({ data, error }, what) => {
   if (error) throw new Error(`${what}: ${error.message}`);
   return data;
-};
-
-const LOGINS = {
-  brand: { email: "demo-brand@example.com", name: "Demo Brand" },
-  factory: { email: "demo-factory@example.com", name: "Demo Factory" },
-  secondFactory: { email: "demo-factory-two@example.com", name: "Ningbo Loomworks" },
-  newFactory: { email: "demo-factory-new@example.com", name: "Atlas Knit Studio" },
-  admin: { email: "demo-admin@example.com", name: "Demo Admin" },
 };
 
 /**
@@ -120,7 +115,14 @@ const factory = await demoUser(LOGINS.factory);
 const secondFactory = await demoUser(LOGINS.secondFactory);
 const newFactory = await demoUser(LOGINS.newFactory);
 const adminUser = await demoUser(LOGINS.admin);
-const demoUserIds = [brand.id, factory.id, secondFactory.id, newFactory.id, adminUser.id];
+const demoUsers = { brand, factory, secondFactory, newFactory, admin: adminUser };
+// Every login in the shared list gets a sign-in button on the test sites, so
+// one with no setup here would be a button that fails.
+const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
+if (unseeded.length) {
+  throw new Error(`demo-logins.mjs lists ${unseeded.join(", ")}, which this script does not set up yet`);
+}
+const demoUserIds = Object.values(demoUsers).map((user) => user.id);
 
 // The companies only demo users belong to. A company someone else is also a
 // member of (a tester who invited a demo login) is left alone.
