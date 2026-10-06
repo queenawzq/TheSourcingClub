@@ -1,12 +1,13 @@
 import React from "react";
 import { supabaseUrl } from "../lib/supabase.js";
+import { DEMO_LOGINS, DEMO_PASSWORD } from "./demo-logins.mjs";
 import "./demo-sign-in.css";
 
 /**
  * "Sign in as a demo account", for test sites only.
  *
- * The logins are the fixed ones scripts/seed-demo.mjs creates; keep the two
- * lists the same. This file is only ever loaded through
+ * The logins are the fixed ones scripts/seed-demo.mjs creates, from the list
+ * both read (demo-logins.mjs). This file is only ever loaded through
  * `lazy(() => import(...))` behind __DEMO_SIGN_IN__ (see vite.config.js), so
  * a production build does not contain it at all.
  *
@@ -15,15 +16,8 @@ import "./demo-sign-in.css";
  * back to production's, and none of these accounts may exist there.
  */
 const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
-const PASSWORD = "demo password 8";
 
-export const DEMO_LOGINS = [
-  { key: "brand", role: "Brand", name: "Demo Brand", email: "demo-brand@example.com" },
-  { key: "factory", role: "Factory", name: "Demo Factory", email: "demo-factory@example.com" },
-  { key: "factoryTwo", role: "Factory two", name: "Ningbo Loomworks", email: "demo-factory-two@example.com" },
-  { key: "factoryNew", role: "Factory waiting for review", name: "Atlas Knit Studio", email: "demo-factory-new@example.com" },
-  { key: "admin", role: "Admin", name: "Platform staff", email: "demo-admin@example.com", admin: true },
-].map((login) => ({ ...login, password: PASSWORD }));
+const LOGINS = Object.entries(DEMO_LOGINS).map(([key, login]) => ({ key, ...login, password: DEMO_PASSWORD }));
 
 /**
  * `only` limits the buttons to some of the logins (the staff page shows the
@@ -32,7 +26,7 @@ export const DEMO_LOGINS = [
  */
 export default function DemoSignIn({ only, busy = false, onPick, children }) {
   if (!supabaseUrl || supabaseUrl.includes(PRODUCTION_REF)) return null;
-  const logins = only ? DEMO_LOGINS.filter((login) => only.includes(login.key)) : DEMO_LOGINS;
+  const logins = only ? LOGINS.filter((login) => only.includes(login.key)) : LOGINS;
 
   return (
     <aside className="demo-sign-in" aria-label="Demo accounts">
@@ -48,7 +42,7 @@ export default function DemoSignIn({ only, busy = false, onPick, children }) {
         ))}
       </div>
       <p className="demo-sign-in-note">
-        Password for all of them: <code>{PASSWORD}</code>
+        Password for all of them: <code>{DEMO_PASSWORD}</code>
       </p>
       {children && <p className="demo-sign-in-note">{children}</p>}
     </aside>
