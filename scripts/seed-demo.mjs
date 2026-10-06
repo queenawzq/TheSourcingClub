@@ -1,22 +1,43 @@
 /**
- * A populated local marketplace, for looking at screens.
+ * A populated marketplace with fixed demo logins, for looking at screens.
  *
  *   supabase start
- *   node scripts/seed-demo.mjs
+ *   npm run seed:demo
  *
  * The suites prove behaviour; this exists so a human (or Claude in Chrome) can
  * open the app and SEE a dashboard with real requests, quotes and an order on
- * it. Every account uses the same password and the run prints them at the end.
+ * it. The logins never change, so a tester can keep them:
  *
- * Local only: it needs the service key, and it creates confirmed users without
- * email round trips.
+ *   demo-brand@example.com        the brand, with every request and order below
+ *   demo-factory@example.com      the factory that quoted and runs the orders
+ *   demo-factory-two@example.com  a second factory, with a competing quote
+ *   demo-factory-new@example.com  a factory waiting for verification
+ *   demo-admin@example.com        a platform admin, for /admin.html
+ *
+ * All use the password "demo password 8". The first two are the logins
+ * supabase/seed.sql already makes, so after `supabase db reset` this fills
+ * those accounts rather than making new ones.
+ *
+ * Every run ends in the same state. The demo users are kept (their password is
+ * set back), but the demo companies, and every order one of them is part of,
+ * are deleted and built again. Run it again to reset the demo data.
+ *
+ * It needs the service key and creates confirmed users without email round
+ * trips, so it only runs against a local stack, or a test database named on
+ * purpose with --remote:
+ *
+ *   SUPABASE_URL=… SUPABASE_ANON_KEY=… SUPABASE_SERVICE_KEY=… npm run seed:demo -- --remote
+ *
+ * It refuses the production project outright.
  */
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 
+const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
+
 function localStack() {
   try {
-    return JSON.parse(execFileSync("supabase", ["status", "-o", "json"], {
+    return JSON.parse(execFileSync("npx", ["supabase", "status", "-o", "json"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }));
@@ -25,48 +46,107 @@ function localStack() {
   }
 }
 
-const stack = localStack();
+const fromEnv = process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY && process.env.SUPABASE_SERVICE_KEY;
+const stack = fromEnv ? {} : localStack();
 const URL = process.env.SUPABASE_URL ?? stack.API_URL;
 const ANON = process.env.SUPABASE_ANON_KEY ?? stack.PUBLISHABLE_KEY ?? stack.ANON_KEY;
 const SERVICE = process.env.SUPABASE_SERVICE_KEY ?? stack.SECRET_KEY ?? stack.SERVICE_ROLE_KEY;
 if (!URL || !ANON || !SERVICE) {
-  console.error("No local Supabase. Run `supabase start` first.");
+  console.error("No Supabase to seed. Run `supabase start` first, or set SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_KEY.");
+  process.exit(1);
+}
+
+// A JWT-style key names its project in the payload; the newer sb_secret_ keys
+// don't, so the URL check is the one that always applies.
+function keyRef(key) {
+  try {
+    return JSON.parse(Buffer.from(key.split(".")[1], "base64url").toString()).ref ?? null;
+  } catch {
+    return null;
+  }
+}
+if (URL.includes(PRODUCTION_REF) || keyRef(SERVICE) === PRODUCTION_REF) {
+  console.error("Refusing to seed: that is the production database.");
+  process.exit(1);
+}
+const isLocal = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?(\/|$)/.test(URL);
+if (!isLocal && !process.argv.includes("--remote")) {
+  console.error(`Refusing to seed ${new globalThis.URL(URL).host} without --remote. Pass it only for a test database.`);
   process.exit(1);
 }
 
 const PASSWORD = "demo password 8";
 const admin = createClient(URL, SERVICE, { auth: { autoRefreshToken: false, persistSession: false } });
-const stamp = Date.now();
-
-async function signedIn(email) {
-  const existing = await admin.auth.admin.createUser({
-    email,
-    password: PASSWORD,
-    email_confirm: true,
-    user_metadata: { name: email.split("@")[0] },
-  });
-  if (existing.error && !/already/i.test(existing.error.message)) throw existing.error;
-  const client = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
-  if (error) throw error;
-  const { data } = await client.auth.getUser();
-  return { client, id: data.user.id, email };
-}
 
 const must = ({ data, error }, what) => {
   if (error) throw new Error(`${what}: ${error.message}`);
   return data;
 };
 
-const brandEmail = `demo-brand-${stamp}@example.com`;
-const factoryEmail = `demo-factory-${stamp}@example.com`;
+const LOGINS = {
+  brand: { email: "demo-brand@example.com", name: "Demo Brand" },
+  factory: { email: "demo-factory@example.com", name: "Demo Factory" },
+  secondFactory: { email: "demo-factory-two@example.com", name: "Ningbo Loomworks" },
+  newFactory: { email: "demo-factory-new@example.com", name: "Atlas Knit Studio" },
+  admin: { email: "demo-admin@example.com", name: "Demo Admin" },
+};
 
-console.log("\ncreating accounts");
-const brand = await signedIn(brandEmail);
-const factory = await signedIn(factoryEmail);
+/**
+ * The demo user, made once and kept: an existing one gets its password back
+ * (a tester may have changed it) and is unblocked (the admin console can
+ * disable users).
+ */
+async function demoUser({ email, name }) {
+  const existing = must(await admin.from("user_profiles").select("id").eq("email", email).maybeSingle(), `look up ${email}`);
+  if (existing) {
+    must(await admin.auth.admin.updateUserById(existing.id, {
+      password: PASSWORD, email_confirm: true, ban_duration: "none",
+    }), `reset ${email}`);
+  } else {
+    must(await admin.auth.admin.createUser({
+      email, password: PASSWORD, email_confirm: true, user_metadata: { name },
+    }), `create ${email}`);
+  }
+  const client = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
+  if (error) throw new Error(`sign in as ${email}: ${error.message}`);
+  const { data } = await client.auth.getUser();
+  return { client, id: data.user.id, email };
+}
 
-const brandOrg = must(await brand.client.rpc("create_org", { org_name: `Demo Brand ${stamp}`, org_kind: "brand" }), "create brand org");
-const factoryOrg = must(await factory.client.rpc("create_org", { org_name: `Demo Factory ${stamp}`, org_kind: "factory" }), "create factory org");
+console.log("\ndemo logins");
+const brand = await demoUser(LOGINS.brand);
+const factory = await demoUser(LOGINS.factory);
+const secondFactory = await demoUser(LOGINS.secondFactory);
+const newFactory = await demoUser(LOGINS.newFactory);
+const adminUser = await demoUser(LOGINS.admin);
+const demoUserIds = [brand.id, factory.id, secondFactory.id, newFactory.id, adminUser.id];
+
+// The companies only demo users belong to. A company someone else is also a
+// member of (a tester who invited a demo login) is left alone.
+const memberships = must(await admin.from("org_members").select("org_id").in("user_id", demoUserIds), "demo memberships");
+const candidates = [...new Set(memberships.map((m) => m.org_id))];
+const everyone = candidates.length
+  ? must(await admin.from("org_members").select("org_id, user_id").in("org_id", candidates), "their members")
+  : [];
+const demoOrgIds = candidates.filter((org) =>
+  everyone.filter((m) => m.org_id === org).every((m) => demoUserIds.includes(m.user_id)));
+
+// Orders keep their request, quote and both companies from being deleted, so
+// they go first; deleting the companies then takes their requests, quotes,
+// threads, credits, codes and notifications with them.
+if (demoOrgIds.length) {
+  const list = `(${demoOrgIds.join(",")})`;
+  const orders = must(await admin.from("production_orders").delete()
+    .or(`brand_org_id.in.${list},factory_org_id.in.${list}`).select("id"), "clear demo orders");
+  must(await admin.from("orgs").delete().in("id", demoOrgIds), "clear demo companies");
+  console.log(`cleared ${demoOrgIds.length} demo companies and ${orders.length} orders`);
+}
+
+must(await admin.from("platform_admins").upsert({ user_id: adminUser.id, note: "demo admin" }), "demo admin");
+
+const brandOrg = must(await brand.client.rpc("create_org", { org_name: LOGINS.brand.name, org_kind: "brand" }), "create brand org");
+const factoryOrg = must(await factory.client.rpc("create_org", { org_name: LOGINS.factory.name, org_kind: "factory" }), "create factory org");
 
 // Onboarded and verified, so both land on the dashboard rather than the
 // onboarding flow or the "in review" card.
@@ -102,9 +182,7 @@ must(await admin.from("credit_ledger").insert({
 }), "factory credits");
 
 // A second verified factory, so a request can have two quotes to compare.
-const secondFactoryEmail = `demo-factory-two-${stamp}@example.com`;
-const secondFactory = await signedIn(secondFactoryEmail);
-const secondFactoryOrg = must(await secondFactory.client.rpc("create_org", { org_name: `Ningbo Loomworks ${stamp}`, org_kind: "factory" }), "create second factory org");
+const secondFactoryOrg = must(await secondFactory.client.rpc("create_org", { org_name: LOGINS.secondFactory.name, org_kind: "factory" }), "create second factory org");
 must(await admin.from("factory_profiles").upsert({
   org_id: secondFactoryOrg.id,
   country_code: "CN",
@@ -119,6 +197,23 @@ must(await admin.from("factory_profiles").upsert({
 must(await admin.from("credit_ledger").insert({
   org_id: secondFactoryOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
 }), "second factory credits");
+
+// A factory that finished onboarding and waits for a decision: the admin
+// console's verification queue has it, and its own login sees "in review".
+const newFactoryOrg = must(await newFactory.client.rpc("create_org", { org_name: LOGINS.newFactory.name, org_kind: "factory" }), "create new factory org");
+must(await admin.from("factory_profiles").upsert({
+  org_id: newFactoryOrg.id,
+  legal_name: "Atlas Knit Studio Ltd",
+  website_url: "https://atlasknit.example.com",
+  country_code: "GB",
+  location: "Leicester, UK",
+  founded_year: 2014,
+  moq: 100,
+  typical_lead_days: 30,
+  intro: "Circular and flat knitwear, 100-unit minimums, sampling in a week.",
+  onboarding_completed_at: new Date().toISOString(),
+  verification_status: "pending",
+}), "new factory profile");
 
 /**
  * A request as a brand fills it in on the review card: the prose fields, the
@@ -308,20 +403,26 @@ must(await admin.from("credit_ledger").insert({
   org_id: brandOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
 }), "credits");
 must(await admin.from("discount_codes").insert({
-  code: `DEMO-${String(stamp).slice(-6)}`, owner_org_id: brandOrg.id, amount_cents: 5000,
+  code: "DEMO-BRAND", owner_org_id: brandOrg.id, amount_cents: 5000,
 }), "discount code");
 
+const app = isLocal ? "http://127.0.0.1:5173/app.html" : "<the site>/app.html";
 console.log(`
-done. Sign in at http://127.0.0.1:5173/app.html
+done. Every login uses the password "${PASSWORD}".
 
-  brand    ${brandEmail}
-  factory  ${factoryEmail}   (http://127.0.0.1:5173/app.html?portal=factory)
-  factory  ${secondFactoryEmail}   (a second factory, with a competing quote)
-  password ${PASSWORD}
+  brand           ${LOGINS.brand.email}   ${app}
+  factory         ${LOGINS.factory.email}   ${app}?portal=factory
+  second factory  ${LOGINS.secondFactory.email}   (a competing quote)
+  new factory     ${LOGINS.newFactory.email}   (waiting for verification)
+  admin           ${LOGINS.admin.email}   ${app.replace("app.html", "admin.html")}
 
   The brand has:
     - "${shirting.title}": open, with two quotes to compare
     - "${merino.title}": an order waiting for its production steps
     - "${linen.title}": a running order, its first step sent for approval
     - "${tote.title}": an order cancelled by both sides
+  The admin's verification queue has ${LOGINS.newFactory.name}.
+
+  Run this again at any time to put the demo companies back to this state.
+  It deletes them, and any order another company has with them.
 `);
