@@ -273,7 +273,7 @@ async function sendQuote(vendor, vendorOrg, rfq, { price, quantity, lead, note, 
     factory_notes: note,
   }).select("id").single(), "quote");
   must(await vendor.client.from("quote_sample_lines").insert({
-    quote_id: quote.id, stage: "fit_sample", cost_cents: 6500, timing_days: 10, sort: 0,
+    quote_id: quote.id, stage: "Fit sample", cost_cents: 6500, timing_days: 10, sort: 0,
   }), "sample line");
   if (answer) {
     const [question] = must(await vendor.client.from("rfq_questions").select("id").eq("rfq_id", rfq.id), "questions");
@@ -398,6 +398,72 @@ const cancelled = await award(await sendQuote(factory, factoryOrg, tote, {
 must(await brand.client.rpc("propose_cancellation", { target_order: cancelled.id, reason: "The season's tote was dropped." }), "propose cancelling");
 must(await factory.client.rpc("accept_cancellation", { target_order: cancelled.id }), "accept the cancellation");
 
+// Two running orders with a cancellation waiting on an answer, so both
+// sides' cancel banners can be seen without clicking one into being: on the
+// first the factory proposed (the brand sees Accept / Keep order), on the
+// second the brand did (the brand sees Withdraw). Each goes request → quote →
+// award → steps confirmed → proposed, through the companies' own logins.
+console.log("orders with a cancellation proposed");
+async function orderWithCancelProposed({ title, brief, quantity, unitPrice, proposer, reason }) {
+  const { id: rfqId } = must(await brand.client
+    .from("rfqs")
+    .insert({ brand_org_id: brandOrg.id, status: "draft", visibility: "open_to_all" })
+    .select("id")
+    .single(), `draft: ${title}`);
+  must(await brand.client.from("rfqs").update({
+    title,
+    brief,
+    quantity_total: quantity,
+    requires_sample: true,
+    quote_deadline: new Date(Date.now() + 12 * 864e5).toISOString(),
+    status: "open",
+    published_at: new Date().toISOString(),
+  }).eq("id", rfqId), `publish: ${title}`);
+  const { id: quoteId } = must(await factory.client.from("quotes").insert({
+    rfq_id: rfqId,
+    factory_org_id: factoryOrg.id,
+    unit_price_cents: unitPrice,
+    production_quantity: quantity,
+    bulk_lead_time_days: 30,
+    deposit_pct: 30,
+    balance_pct: 70,
+    payment_term_id: paymentTermId,
+    incoterm_id: incotermId,
+    valid_until: validUntil,
+  }).select("id").single(), `quote: ${title}`);
+  must(await factory.client.from("quote_sample_lines").insert({
+    quote_id: quoteId, stage: "Fit sample", cost_cents: 5000, timing_days: 10, sort: 0,
+  }), `sample line: ${title}`);
+  must(await factory.client.rpc("submit_quote", { quote_id: quoteId }), `submit: ${title}`);
+  must(await brand.client.rpc("award_quote", { quote_id: quoteId }), `award: ${title}`);
+  const order = must(await brand.client.from("production_orders")
+    .select("id, schedule_revision").eq("quote_id", quoteId).single(), `order: ${title}`);
+  // The brand confirms the steps, which starts the order; the factory agrees
+  // only where the schema still asks it to.
+  must(await brand.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `brand confirms: ${title}`);
+  const { data: after } = await brand.client.from("production_orders").select("status").eq("id", order.id).single();
+  if (after?.status === "pending_schedule") {
+    must(await factory.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `factory agrees: ${title}`);
+  }
+  must(await proposer.client.rpc("propose_cancellation", { target_order: order.id, reason }), `propose: ${title}`);
+}
+await orderWithCancelProposed({
+  title: "Linen trousers, SS27",
+  brief: "220 wide-leg linen trousers, garment-washed. Fit sample before bulk.",
+  quantity: 220,
+  unitPrice: 2900,
+  proposer: factory,
+  reason: "Our linen mill has moved the fabric to late March, so we can't hold the delivery date.",
+});
+await orderWithCancelProposed({
+  title: "Recycled nylon windbreaker",
+  brief: "150 packable windbreakers in recycled nylon ripstop.",
+  quantity: 150,
+  unitPrice: 3800,
+  proposer: brand,
+  reason: "The windbreaker was cut from the AW27 range.",
+});
+
 // Credits and a discount code, so the Savings card has real figures.
 must(await admin.from("credit_ledger").insert({
   org_id: brandOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
@@ -421,6 +487,8 @@ done. Every login uses the password "${PASSWORD}".
     - "${merino.title}": an order waiting for its production steps
     - "${linen.title}": a running order, its first step sent for approval
     - "${tote.title}": an order cancelled by both sides
+    - "Linen trousers, SS27": the factory proposed cancelling (Accept / Keep order)
+    - "Recycled nylon windbreaker": the brand proposed cancelling (Withdraw)
   The admin's verification queue has ${LOGINS.newFactory.name}.
 
   Run this again at any time to put the demo companies back to this state.
