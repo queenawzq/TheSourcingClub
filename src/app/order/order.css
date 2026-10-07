@@ -213,3 +213,15 @@
   gap: 12px;
 }
 .order-modal h2 { margin: 0; }
+
+/* The factory's name in the brand's order panel opens its profile. It reads
+   as the name it was, with the underline a link gets on hover. */
+.project-factory-panel .project-factory-profile-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.project-factory-panel .project-factory-profile-link:hover,
+.project-factory-panel .project-factory-profile-link:focus-visible {
+  text-decoration: underline;
+}

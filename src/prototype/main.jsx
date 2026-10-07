@@ -3795,24 +3795,35 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
     <article className={`factory-card selected home-recommended-invite-card${factory.name.length > 18 ? " home-recommended-long-name" : ""}`}>
       <div className="invite-factory-content">
         <div className="invite-factory-top">
-          <a className="marketplace-factory-title marketplace-factory-profile-link" href={`/prototype.html?screen=factoryProfile&factory=${encodeURIComponent(factory.name)}&from=dashboard`} aria-label={`View ${factory.name} factory profile`}>
+          <a
+            className="marketplace-factory-title marketplace-factory-profile-link"
+            href={factory.profileHref ?? `/prototype.html?screen=factoryProfile&factory=${encodeURIComponent(factory.name)}&from=dashboard`}
+            aria-label={`View ${factory.name} factory profile`}
+            onClick={factory.onOpenProfile ? (event) => {
+              event.preventDefault();
+              factory.onOpenProfile();
+            } : undefined}
+          >
             <div className="factory-avatar">{factory.initials}</div>
             <div>
               <div className="factory-name-row">
                 <h3>{factory.name}</h3>
-                <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+                {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />}
               </div>
               <p>{factory.location}</p>
             </div>
           </a>
+          {/* Live cards pass "" for what nothing records (a match needs a
+              request, a rating needs reviews, and a brand can't count another
+              brand's orders), and null for a Message with no conversation. */}
           <div className="factory-card-metrics">
-            <Metric label="match" value={factory.match} className={matchTierClass(factory.match)} />
-            <Metric label="rating" value={factory.rating} />
-            <span className="orders-count">{factory.orders}</span>
+            {factory.match !== "" && <Metric label="match" value={factory.match} className={matchTierClass(factory.match)} />}
+            {factory.rating !== "" && <Metric label="rating" value={factory.rating} />}
+            {factory.orders !== "" && <span className="orders-count">{factory.orders}</span>}
           </div>
           <div className="factory-actions home-recommended-card-actions">
-            <button className="save-pill button-like-action" type="button">Message</button>
-            <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Request quote</button>
+            {factory.onMessage !== null && <button className="save-pill button-like-action" type="button" onClick={factory.onMessage}>Message</button>}
+            <button className="primary-btn" type="button" onClick={() => (factory.onRequestQuote ? factory.onRequestQuote() : goTo("describe"))}>Request quote</button>
           </div>
         </div>
 
@@ -4149,7 +4160,19 @@ function HomeProjectMiniCard({ project, goTo, onOpen }) {
   );
 }
 
-function BrandFactoryProfileScreen({ goTo }) {
+/**
+ * A factory's profile as a brand sees it.
+ *
+ * `live`, when the real app mounts this screen, replaces the example vendor:
+ * `{ name, initials, logoUrl, verifiedIcon, verifiedLabel, heroLine, tags,
+ * performance: { primary, primaryLabel, metrics }, intro, overviewRows,
+ * fitSections: [[label, items]], samples: [{ title, meta, src }], location,
+ * capacityRows, trust: [{ name, status, verified }], back: { label, onClick },
+ * onSave, onMessage, onRequestQuote, contact: { label, onClick } }`. A button
+ * whose handler is missing is left out. Without `live` the screen shows the
+ * design's example, unchanged.
+ */
+export function BrandFactoryProfileScreen({ goTo, live = null }) {
   const query = new URLSearchParams(window.location.search);
   const requestedFactory = query.get("factory");
   const profileOrigin = query.get("from");
@@ -4157,46 +4180,84 @@ function BrandFactoryProfileScreen({ goTo }) {
   const returnLabel = profileOrigin === "dashboard" ? "dashboard" : profileOrigin === "invite" ? "vendor selection" : "vendors";
   const factory = marketplaceFactories.find((item) => item.name === requestedFactory) || marketplaceFactories[0];
   const statValue = (label) => factory.stats.find(([name]) => name === label)?.[1] || "—";
-  const overviewRows = [
-    ["Factory name", factory.name],
-    ["Factory location", factory.location],
-    ["Specialty", factory.specialty],
-    ["Average response", factory.response],
-    ["Typical MOQ", statValue("MOQ")],
-    ["Typical bulk lead", statValue("Bulk lead")]
-  ];
+  const view = live ?? {
+    name: factory.name,
+    initials: factory.initials,
+    logoUrl: null,
+    verifiedIcon: factory.trust,
+    verifiedLabel: `${factory.trust} factory`,
+    heroLine: `${factory.location} · ${factory.specialty}`,
+    tags: factory.categories.slice(0, 4),
+    performance: {
+      primary: factory.rating,
+      primaryLabel: `${factory.match} match · ${factory.response} avg. response`,
+      metrics: [
+        { label: "Club orders", value: factory.orders.replace(" Club orders", "") },
+        { label: "MOQ", value: statValue("MOQ") },
+        { label: "Capacity", value: statValue("Capacity") }
+      ]
+    },
+    intro: factory.notes[0],
+    overviewRows: [
+      ["Factory name", factory.name],
+      ["Factory location", factory.location],
+      ["Specialty", factory.specialty],
+      ["Average response", factory.response],
+      ["Typical MOQ", statValue("MOQ")],
+      ["Typical bulk lead", statValue("Bulk lead")]
+    ],
+    fitSections: [
+      ["Makes", factory.categories],
+      ["Capabilities", factory.capabilities],
+      ["Price point", [statValue("Price point")]]
+    ],
+    samples: factory.products.slice(0, 3).map((product) => ({ title: product.name, meta: factory.specialty, src: product.image })),
+    location: factory.location,
+    capacityRows: factory.stats,
+    trust: [
+      { name: "Club Standard", status: factory.trust === "trusted" ? "Trusted" : factory.trust === "verified" ? "Verified" : "Basic", verified: true },
+      ...factory.capabilities.slice(-2).map((capability) => ({ name: capability, status: "Listed", verified: true }))
+    ],
+    back: { label: returnLabel, onClick: () => goTo(returnTarget) },
+    onSave: () => {},
+    onMessage: () => {},
+    onRequestQuote: () => goTo("describe"),
+    contact: { label: "Message factory", onClick: () => {} }
+  };
 
   return (
     <div className="brand-profile brand-profile-redesign brand-factory-public-profile is-public-view">
       <div className="factory-profile-shell">
         <div className="brand-factory-profile-back-row">
-          <button className="project-back-link" type="button" onClick={() => goTo(returnTarget)}>
-            ‹ Back to {returnLabel}
+          <button className="project-back-link" type="button" onClick={view.back.onClick}>
+            ‹ Back to {view.back.label}
           </button>
         </div>
 
         <section className="factory-profile-hero">
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
-              <div className="factory-profile-logo">{factory.initials}</div>
+              <div className="factory-profile-logo">{view.logoUrl ? <img src={view.logoUrl} alt={`${view.name} logo`} /> : view.initials}</div>
             </div>
             <div>
               <div className="factory-profile-title-row">
-                <h1>{factory.name}</h1>
-                <span className="factory-profile-verified" title={`${factory.trust} factory`}>
-                  <img src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
-                </span>
+                <h1>{view.name}</h1>
+                {view.verifiedIcon && (
+                  <span className="factory-profile-verified" title={view.verifiedLabel}>
+                    <img src={`/assets/prototype-icons/${view.verifiedIcon}.svg`} alt={view.verifiedLabel} />
+                  </span>
+                )}
               </div>
-              <p>{factory.location} · {factory.specialty}</p>
+              <p>{view.heroLine}</p>
               <div className="tag-row compact-tags factory-profile-hero-tags">
-                {factory.categories.slice(0, 4).map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                {view.tags.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
               </div>
             </div>
           </div>
           <div className="factory-profile-actions">
-            <button className="secondary-btn" type="button">Save factory</button>
-            <button className="secondary-btn" type="button">Message</button>
-            <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Request quote</button>
+            {view.onSave && <button className="secondary-btn" type="button" onClick={live ? view.onSave : undefined}>Save factory</button>}
+            {view.onMessage && <button className="secondary-btn" type="button" onClick={live ? view.onMessage : undefined}>Message</button>}
+            {view.onRequestQuote && <button className="primary-btn" type="button" onClick={view.onRequestQuote}>Request quote</button>}
           </div>
         </section>
 
@@ -4204,75 +4265,69 @@ function BrandFactoryProfileScreen({ goTo }) {
           <section className="factory-profile-main">
             <ProfilePerformanceCard
               eyebrow="Factory performance"
-              primary={factory.rating}
-              primaryLabel={`${factory.match} match · ${factory.response} avg. response`}
-              metrics={[
-                { label: "Club orders", value: factory.orders.replace(" Club orders", "") },
-                { label: "MOQ", value: statValue("MOQ") },
-                { label: "Capacity", value: statValue("Capacity") }
-              ]}
+              primary={view.performance.primary}
+              primaryLabel={view.performance.primaryLabel}
+              metrics={view.performance.metrics}
             />
 
             <section className="factory-profile-card">
               <ProfileCardHeader title="Overview" />
-              <p>{factory.notes[0]}</p>
+              {view.intro && <p>{view.intro}</p>}
               <div className="factory-profile-detail-grid">
-                {overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
+                {view.overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
               <ProfileCardHeader title="Production fit" />
-              <ProfileChipSection label="Makes" items={factory.categories} />
-              <ProfileChipSection label="Capabilities" items={factory.capabilities} />
-              <ProfileChipSection label="Price point" items={[statValue("Price point")]} />
+              {view.fitSections.length
+                ? view.fitSections.map(([label, items]) => <ProfileChipSection label={label} items={items} key={label} />)
+                : <p>No production details added yet.</p>}
             </section>
 
-            <section className="factory-profile-card">
-              <ProfileCardHeader title="Sample work" />
-              <div className="factory-profile-product-grid">
-                {factory.products.slice(0, 3).map((product) => (
-                  <article className="factory-profile-product" key={product.name}>
-                    <img src={product.image} alt={`${product.name} by ${factory.name}`} />
-                    <strong>{product.name}</strong>
-                    <span>{factory.specialty}</span>
-                  </article>
-                ))}
-              </div>
-            </section>
+            {view.samples.length > 0 && (
+              <section className="factory-profile-card">
+                <ProfileCardHeader title="Sample work" />
+                <div className="factory-profile-product-grid">
+                  {view.samples.map((product) => (
+                    <article className="factory-profile-product" key={product.title}>
+                      <img src={product.src} alt={`${product.title} by ${view.name}`} />
+                      <strong>{product.title}</strong>
+                      {product.meta && <span>{product.meta}</span>}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
           </section>
 
           <aside className="factory-profile-side">
             <section className="factory-profile-card factory-profile-contact-card">
               <h2>Contact factory</h2>
               <div className="factory-profile-contact-row">
-                <div className="factory-avatar">{factory.initials}</div>
+                <div className="factory-avatar">{view.initials}</div>
                 <div>
-                  <strong>{factory.name}</strong>
-                  <span>{factory.location}</span>
+                  <strong>{view.name}</strong>
+                  <span>{view.location}</span>
                 </div>
               </div>
-              <button className="primary-btn" type="button">Message factory</button>
+              <button className="primary-btn" type="button" onClick={live ? view.contact.onClick : undefined}>{view.contact.label}</button>
             </section>
 
             <section className="factory-profile-card">
               <ProfileCardHeader title="Capacity and terms" />
               <div className="factory-profile-detail-grid brand-factory-profile-side-details">
-                {factory.stats.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
+                {view.capacityRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
               <ProfileCardHeader title="Trust and verification" />
               <div className="factory-profile-cert-list">
-                <div className="factory-profile-cert">
-                  <strong>Club Standard</strong>
-                  <span className="verified">{factory.trust === "trusted" ? "Trusted" : factory.trust === "verified" ? "Verified" : "Basic"}</span>
-                </div>
-                {factory.capabilities.slice(-2).map((capability) => (
-                  <div className="factory-profile-cert" key={capability}>
-                    <strong>{capability}</strong>
-                    <span className="verified">Listed</span>
+                {view.trust.map((item) => (
+                  <div className="factory-profile-cert" key={item.name}>
+                    <strong>{item.name}</strong>
+                    <span className={item.verified ? "verified" : undefined}>{item.status}</span>
                   </div>
                 ))}
               </div>
@@ -6942,7 +6997,11 @@ export function ProjectDetailScreen({
             <div className="project-factory-row">
               <div className="factory-avatar">{counterparty ? counterparty.initials : "AM"}</div>
               <div>
-                <strong>{counterparty ? counterparty.name : "Atelier Minho"}</strong>
+                <strong>
+                  {counterparty?.profileHref
+                    ? <a className="project-factory-profile-link" href={counterparty.profileHref} onClick={(event) => { event.preventDefault(); counterparty.onOpenProfile(); }}>{counterparty.name}</a>
+                    : counterparty ? counterparty.name : "Atelier Minho"}
+                </strong>
                 {counterparty ? (counterparty.location && <span>{counterparty.location}</span>) : <span>Porto, Portugal</span>}
               </div>
             </div>
@@ -7831,15 +7890,22 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
         <div className="invite-factory-top">
           <a
             className="marketplace-factory-title marketplace-factory-profile-link"
-            href={`/prototype.html?screen=factoryProfile&factory=${encodeURIComponent(factory.name)}&from=invite`}
+            href={factory.profileHref ?? `/prototype.html?screen=factoryProfile&factory=${encodeURIComponent(factory.name)}&from=invite`}
             aria-label={`View ${factory.name} factory profile`}
-            onClick={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              // Live opens the profile in place, so the selection is kept.
+              if (factory.onOpenProfile) {
+                event.preventDefault();
+                factory.onOpenProfile();
+              }
+            }}
           >
             <div className="factory-avatar">{factory.initials}</div>
             <div>
               <div className="factory-name-row">
                 <h3>{factory.name}</h3>
-                <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+                {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />}
               </div>
               <p>{factory.location}</p>
             </div>
@@ -8028,6 +8094,26 @@ function getQuoteComparisonDetails(factory) {
   };
 }
 
+function QuoteVendorTitle({ factory, children }) {
+  if (!factory.profileHref) return <div className="marketplace-factory-title">{children}</div>;
+  return (
+    <a
+      className="marketplace-factory-title marketplace-factory-profile-link"
+      href={factory.profileHref}
+      aria-label={`View ${factory.name} profile`}
+      onClick={(event) => {
+        event.stopPropagation();
+        if (factory.onOpenProfile) {
+          event.preventDefault();
+          factory.onOpenProfile();
+        }
+      }}
+    >
+      {children}
+    </a>
+  );
+}
+
 export function QuotesScreen({
   selectedQuote,
   setSelectedQuote,
@@ -8091,7 +8177,9 @@ export function QuotesScreen({
             />
             <div className="quote-factory-content">
               <div className="quote-factory-top">
-                <div className="marketplace-factory-title">
+                {/* Live, the name opens the vendor's profile, as the invite
+                    step's designed card does. */}
+                <QuoteVendorTitle factory={factory}>
                   <div className="factory-avatar">{factory.initials}</div>
                   <div>
                     <div className="factory-name-row">
@@ -8100,7 +8188,7 @@ export function QuotesScreen({
                     </div>
                     <p>{factory.location}</p>
                   </div>
-                </div>
+                </QuoteVendorTitle>
                 <div className="factory-actions quote-actions">
                   <span
                     className="save-pill button-like-action"

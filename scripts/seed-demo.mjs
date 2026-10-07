@@ -115,8 +115,10 @@ const brand = await demoUser(LOGINS.brand);
 const factory = await demoUser(LOGINS.factory);
 const secondFactory = await demoUser(LOGINS.secondFactory);
 const newFactory = await demoUser(LOGINS.newFactory);
+const newBrand = await demoUser(LOGINS.newBrand);
+const tradingCompany = await demoUser(LOGINS.tradingCompany);
 const adminUser = await demoUser(LOGINS.admin);
-const demoUsers = { brand, factory, secondFactory, newFactory, admin: adminUser };
+const demoUsers = { brand, factory, secondFactory, newFactory, newBrand, tradingCompany, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -313,6 +315,89 @@ must(await admin.from("factory_profiles").upsert({
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "pending",
 }), "new factory profile");
+
+// A brand that has just finished onboarding: no requests and no orders, so
+// its dashboard shows the newcomer layout and its "Recommended factories".
+// Its product focus (tops, dresses) is what those are ranked by.
+console.log("new brand and trading company");
+const newBrandOrg = must(await newBrand.client.rpc("create_org", { org_name: LOGINS.newBrand.name, org_kind: "brand" }), "create new brand org");
+must(await admin.from("brand_profiles").upsert({
+  org_id: newBrandOrg.id,
+  hq_location: "Copenhagen, Denmark",
+  onboarding_completed_at: new Date().toISOString(),
+  verification_status: "verified",
+}), "new brand profile");
+must(await newBrand.client.from("taxonomy_links").insert(await Promise.all(
+  [["product_category", "tops"], ["product_category", "dresses-jumpsuits"]].map(async ([kind, slug]) => ({
+    subject_type: "brand_profile", subject_id: newBrandOrg.id, org_id: newBrandOrg.id, term_id: await termId(kind, slug),
+  })),
+)), "new brand product focus");
+
+// A verified trading company, its profile filled in the way the trading
+// onboarding fills it (its own questions, columns and tags), through its own
+// login: so its profile page (/profile) has everything on it, and brands find
+// it in the invite step and on the newcomer dashboard.
+const tradingOrg = must(await tradingCompany.client.rpc("create_org", { org_name: LOGINS.tradingCompany.name, org_kind: "factory" }), "create trading company org");
+must(await admin.from("factory_profiles").upsert({
+  org_id: tradingOrg.id,
+  vendor_kind: "trading_company",
+  legal_name: "Kowloon Sourcing Partners",
+  website_url: "https://kowloonsourcing.example.com",
+  country_code: "HK",
+  location: "Hong Kong / Shenzhen, China",
+  founded_year: 2015,
+  employee_count: 25,
+  languages_supported: "English, Mandarin, Cantonese",
+  moq: 300,
+  typical_lead_days: 50,
+  typical_order_value_band: "$15,000-$100,000",
+  partner_factory_count: 18,
+  supported_incoterms: "FOB · EXW · DDP",
+  typical_payment_terms: "30% deposit · 70% before shipment",
+  equipment_notes: "Packaging development, Freight consolidation",
+  intro: "Apparel sourcing and production management for premium brands. We match each style to one of 18 partner factories in China and Portugal, run sampling and costing, and inspect in line and before shipment.",
+  onboarding_completed_at: new Date().toISOString(),
+  verification_status: "verified",
+  published_at: new Date().toISOString(),
+}), "trading company profile");
+must(await admin.from("credit_ledger").insert({
+  org_id: tradingOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
+}), "trading company credits");
+const tradingTags = [
+  ["production_program", "oem"], ["production_program", "full-package"], ["production_program", "small-batch"],
+  ["production_type", "wovens"], ["production_type", "cut-sew-knits"],
+  ["product_category", "tops"], ["product_category", "dresses-jumpsuits"], ["product_category", "outerwear"],
+  ["make", "button-down-shirts"], ["make", "woven-dresses"],
+  ["sourcing_region", "china"], ["sourcing_region", "portugal"],
+  ["market_level", "premium-contemporary"],
+  ["core_service", "supplier-matching"], ["core_service", "sample-management"], ["core_service", "production-management"],
+  ["product_development", "tech-pack-support"], ["product_development", "material-sourcing"],
+  ["quality_compliance", "factory-verification"], ["quality_compliance", "in-line-inspection"], ["quality_compliance", "final-inspection"],
+  ["region", "united-states"], ["region", "europe"],
+];
+must(await tradingCompany.client.from("taxonomy_links").insert(await Promise.all(tradingTags.map(async ([kind, slug]) => ({
+  subject_type: "factory_profile", subject_id: tradingOrg.id, org_id: tradingOrg.id, term_id: await termId(kind, slug),
+})))), "trading company tags");
+must(await tradingCompany.client.from("profile_references").insert(
+  ["Northline Studio", "Maison Ora"].map((title, sort) => ({ org_id: tradingOrg.id, title, sort })),
+), "trading company references");
+must(await tradingCompany.client.from("factory_certifications").insert(
+  { org_id: tradingOrg.id, term_id: await termId("certification", "bsci") },
+), "trading company certification");
+for (const [file, name, caption] of [
+  ["dashboard-rfq-shirt.jpg", "Organic cotton shirt program.jpg", "Supplier matching · sampling · QC"],
+  ["dashboard-rfq-knit.jpg", "Premium knit capsule.jpg", "Yarn sourcing · production management"],
+  ["dashboard-rfq-denim.jpg", "Denim wash development.jpg", "Factory verification · final inspection"],
+]) {
+  const path = `${tradingOrg.id}/product_image/${crypto.randomUUID()}-${name.replace(/\s+/g, "-")}`;
+  const bytes = readFileSync(new globalThis.URL(`../assets/${file}`, import.meta.url));
+  must(await tradingCompany.client.storage.from("org-public").upload(path, bytes, { contentType: "image/jpeg" }), `upload ${name}`);
+  must(await tradingCompany.client.from("documents").insert({
+    org_id: tradingOrg.id, kind: "product_image", bucket: "org-public", storage_path: path,
+    file_name: name, mime_type: "image/jpeg", size_bytes: bytes.length,
+    title: name.replace(/\.jpg$/, ""), caption,
+  }), `record ${name}`);
+}
 
 /**
  * A request as a brand fills it in on the review card: the prose fields, the
@@ -579,6 +664,8 @@ done. Every login uses the password "${PASSWORD}".
   factory         ${LOGINS.factory.email}   ${app}?portal=factory
   second factory  ${LOGINS.secondFactory.email}   (a competing quote)
   new factory     ${LOGINS.newFactory.email}   (waiting for verification)
+  new brand       ${LOGINS.newBrand.email}   (no requests yet: recommended factories)
+  trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory
   admin           ${LOGINS.admin.email}   ${app.replace("app.html", "admin.html")}
 
   The brand has:

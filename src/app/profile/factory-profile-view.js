@@ -71,7 +71,7 @@ export function documentStatus(status, hasFile) {
  * Labels per chip group, in the taxonomy's order.
  * `selected` is getSelectedTerms() ({ kind: [termId] }), `terms` listTermsByKind().
  */
-function chipLabels(kind, selected, terms) {
+export function chipLabels(kind, selected, terms) {
   const ids = new Set(selected?.[kind] ?? []);
   return (terms?.[kind] ?? []).filter((term) => ids.has(term.id)).map((term) => termLabel(term));
 }

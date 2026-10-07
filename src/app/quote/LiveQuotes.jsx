@@ -64,6 +64,8 @@ export default function LiveQuotes({ rfqId }) {
   const shaped = state.quotes.map(({ raw, view }) => ({
     id: view.id,
     factoryOrgId: raw.factory_org_id,
+    profileHref: `/app.html/factories/${raw.factory_org_id}?from=quotes`,
+    onOpenProfile: () => navigate(`/factories/${raw.factory_org_id}?from=quotes`),
     initials: view.initials,
     name: view.name,
     location: "",

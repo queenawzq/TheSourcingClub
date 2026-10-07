@@ -172,9 +172,8 @@ export default function LiveFactoryHome({ org, profile }) {
   const { snapshot, rfqs, orders, quotesSent, credits, capacity } = state;
   const n = (value) => Number(value) || 0;
   const isTrading = profile?.vendor_kind === "trading_company";
-  // The design opens the profile from here. Trading companies don't have
-  // theirs live yet, so they keep landing on Settings.
-  const profilePath = isTrading ? "/team" : "/profile";
+  // The design opens the profile from here, for either kind of vendor.
+  const profilePath = "/profile";
   const activeOrders = orders.filter((order) => order.status === "active");
 
   const attention = [];
@@ -186,7 +185,7 @@ export default function LiveFactoryHome({ org, profile }) {
       meta: "Brands can see your profile now. Quoting opens once your business registration is approved.",
       action: "View checklist",
       // The checklist is the profile's completion page.
-      onAction: () => navigate(isTrading ? profilePath : "/profile/completion"),
+      onAction: () => navigate("/profile/completion"),
     });
   }
   if (!isTrading && !capacity.set) {

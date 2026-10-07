@@ -162,6 +162,25 @@ try {
     "the profile completion page keeps its example too",
   );
 
+  // The trading company's page and the brand's view of a factory take a
+  // `live` prop now; without one they must keep the design's examples.
+  const trading = await stagehand.browser.context.newPage(`${BASE}/factory-prototype.html?screen=profile&company=trading`);
+  await trading.setViewportSize(1440, 1100);
+  await trading.waitForTimeout(3500);
+  const tradingBody = await trading.locator("body").innerText();
+  check(
+    tradingBody.includes("Pacific Source Partners") && tradingBody.includes("92%") && tradingBody.includes("Manage case studies"),
+    "the trading company profile renders its example company with no database",
+  );
+  const brandView = await stagehand.browser.context.newPage(`${BASE}/prototype.html?screen=factoryProfile`);
+  await brandView.setViewportSize(1440, 1100);
+  await brandView.waitForTimeout(3500);
+  const brandViewBody = await brandView.locator("body").innerText();
+  check(
+    brandViewBody.includes("Atelier Minho") && brandViewBody.includes("Save factory") && brandViewBody.includes("Club Standard"),
+    "the brand's view of a factory renders its example vendor, every button drawn",
+  );
+
   // The admin workspace now reads through the same seam, so it makes the same
   // promise and can break the same way. Every screen here is behind a
   // security-definer RPC in the live console; with no database it must still

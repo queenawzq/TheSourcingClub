@@ -13,6 +13,7 @@ import { saveCapacity } from "../../lib/domain/capacity-store.js";
 import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { CHIP_KINDS } from "./factory-profile-view.js";
+import { TRADING_CHIP_KINDS, TRADING_SECTIONS } from "./trading-profile-view.js";
 
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 const textOrNull = (value) => String(value ?? "").trim() || null;
@@ -40,8 +41,8 @@ async function saveOverview(org, form, terms) {
  * "Add your own" becomes its own term where the platform allows that, as in
  * onboarding.
  */
-async function saveProduction(org, form, terms) {
-  for (const [key, kind] of Object.entries(CHIP_KINDS)) {
+async function saveChipGroups(org, form, terms, kinds) {
+  for (const [key, kind] of Object.entries(kinds)) {
     const chosen = form[key] ?? [];
     const known = terms[kind] ?? [];
     const termIds = [];
@@ -52,6 +53,10 @@ async function saveProduction(org, form, terms) {
     }
     await setLinks({ subjectType: "factory_profile", subjectId: org.id, orgId: org.id, kind, termIds });
   }
+}
+
+async function saveProduction(org, form, terms) {
+  await saveChipGroups(org, form, terms, CHIP_KINDS);
   // Key machines are free text on the profile row, one per comma, as
   // onboarding writes them.
   await saveFactoryProfile(org.id, { equipment_notes: (form.equipment ?? []).join(", ") || null });
@@ -116,12 +121,56 @@ async function saveReferences(org, form, existing) {
 }
 
 /**
+ * The trading company's text dialogs. Each writes the columns and chip groups
+ * its onboarding questions write (migration 20260920000500 and the trading
+ * taxonomy kinds), and only those.
+ */
+async function saveTradingSection(org, editor, form, terms) {
+  if (editor === "company") {
+    const location = textOrNull(form.location);
+    const patch = {
+      intro: textOrNull(form.intro),
+      legal_name: textOrNull(form.name),
+      founded_year: firstNumber(form.founded),
+      website_url: textOrNull(form.website),
+      location,
+      employee_count: firstNumber(form.employees),
+      languages_supported: textOrNull(form.languages),
+    };
+    const code = countryCodeFrom(location, terms.country ?? []);
+    if (code) patch.country_code = code;
+    return saveFactoryProfile(org.id, patch);
+  }
+  if (editor === "commercial") {
+    return saveFactoryProfile(org.id, {
+      moq: firstNumber(form.moq),
+      typical_lead_days: firstNumber(form.leadTime),
+      typical_order_value_band: textOrNull(form.orderValue),
+      partner_factory_count: firstNumber(form.partnerFactories),
+      supported_incoterms: textOrNull(form.incoterms),
+      typical_payment_terms: textOrNull(form.paymentTerms),
+    });
+  }
+  const kinds = Object.fromEntries(TRADING_SECTIONS[editor].map((key) => [key, TRADING_CHIP_KINDS[key]]));
+  await saveChipGroups(org, form, terms, kinds);
+  // "Other capabilities" is free text on the profile row, as onboarding writes it.
+  if (editor === "services") {
+    await saveFactoryProfile(org.id, { equipment_notes: (form.otherCapabilities ?? []).join(", ") || null });
+  }
+  return undefined;
+}
+
+/**
  * The dialogs wired to the database. The last four edit files, which save as
  * each one is added or removed (factory-profile-files.js), so their "Save
  * changes" only closes the dialog.
  */
 const FILE_DIALOGS = ["banner", "walkthrough", "samples", "verification"];
 export const SAVED_EDITORS = ["overview", "production", "capacity", "references", ...FILE_DIALOGS];
+
+/** The trading company's page: its four text dialogs plus the factory's that fit it unchanged. */
+const TRADING_TEXT_DIALOGS = ["company", "network", "services", "commercial"];
+export const TRADING_EDITORS = [...TRADING_TEXT_DIALOGS, "references", "banner", "samples", "verification"];
 
 /**
  * Save one dialog. `parts` is what the page loaded (terms, references,
@@ -133,6 +182,7 @@ export async function saveProfileSection(org, editor, form, parts, now = new Dat
   if (editor === "production") return saveProduction(org, form, terms);
   if (editor === "capacity") return saveCapacityAndTerms(org, form, terms, Boolean(parts.capacity?.capacity), now);
   if (editor === "references") return saveReferences(org, form, parts.references ?? []);
+  if (TRADING_TEXT_DIALOGS.includes(editor)) return saveTradingSection(org, editor, form, terms);
   if (FILE_DIALOGS.includes(editor)) return undefined;
   throw new Error(`The ${editor} section can't be saved yet.`);
 }

@@ -39,7 +39,9 @@ export function RouterProvider({ children }) {
     const url = `${BASE}${next === "/" ? "" : next}`;
     if (replace) window.history.replaceState({}, "", url);
     else window.history.pushState({}, "", url);
-    setPath(next);
+    // A query (`?from=dashboard`) rides in the URL; routes match the path alone,
+    // as they do after a refresh.
+    setPath(next.split("?")[0] || "/");
     window.scrollTo({ top: 0 });
   }, []);
 

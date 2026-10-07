@@ -16,6 +16,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DescribeScreen, FlowShell, InviteScreen, InviteSuccessScreen, ReviewScreen } from "../../prototype/main.jsx";
+import LiveBrandFactoryProfile from "../profile/LiveBrandFactoryProfile.jsx";
 import { attachDocumentToRfq, createDraftRfq, getColourSplits, getQuestions, getRfq, matchScoresForRfq, publishRfq, saveRfq, setColourSplits, setInvitations, setQuestions } from "../../lib/domain/rfq.js";
 import { deleteDocument, listRfqDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import { getOrder } from "../../lib/domain/order.js";
@@ -161,6 +162,12 @@ export default function LiveComposer({ org, rfqId }) {
   // invite step ticks once (and only once, so unticking it sticks).
   const [reorder, setReorder] = useState(null);
   const preselected = useRef(false);
+  // "Request quote" on a vendor's profile opens a new request with that
+  // vendor ticked the same way (`/rfqs/new?invite=<org id>`).
+  const [requestedVendor] = useState(() => (rfqId ? null : new URLSearchParams(window.location.search).get("invite")));
+  // A vendor's profile, opened from the invite step: shown in place of it, so
+  // the selection survives the visit.
+  const [profileOf, setProfileOf] = useState(null);
 
   const kinds = useMemo(() => KINDS, []);
 
@@ -407,19 +414,21 @@ export default function LiveComposer({ org, rfqId }) {
       // The design ranks this list by fit. match_score_rfq() answers per
       // pair, so score the vendors actually being shown and sort by it.
       const scores = await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
-      const repeated = reorder && (rows ?? []).find((row) => row.org_id === reorder.factoryOrgId);
-      if (reorder && !preselected.current) {
+      const firstId = reorder?.factoryOrgId ?? requestedVendor;
+      const first = firstId && (rows ?? []).find((row) => row.org_id === firstId);
+      if (firstId && !preselected.current) {
         preselected.current = true;
-        if (repeated) {
-          setSelectedVendors((current) => (current.includes(repeated.orgs?.name) ? current : [...current, repeated.orgs?.name]));
+        if (first) {
+          setSelectedVendors((current) => (current.includes(first.orgs?.name) ? current : [...current, first.orgs?.name]));
         }
       }
       setVendors(
         (rows ?? [])
           .map((row) => ({ ...row, matchPercent: scores.get(row.org_id) ?? null }))
           .sort((a, b) => (b.matchPercent ?? -1) - (a.matchPercent ?? -1))
-          // A reorder's own factory heads the list, ticked, above the ranking.
-          .sort((a, b) => Number(b.org_id === reorder?.factoryOrgId) - Number(a.org_id === reorder?.factoryOrgId)),
+          // A reorder's own factory (or the vendor the request was started
+          // from) heads the list, ticked, above the ranking.
+          .sort((a, b) => Number(b.org_id === firstId) - Number(a.org_id === firstId)),
       );
       setStep("invite");
     } catch (failure) {
@@ -497,12 +506,35 @@ export default function LiveComposer({ org, rfqId }) {
     );
   }
 
+  if (step === "invite" && profileOf) {
+    const vendor = vendors.find((item) => item.org_id === profileOf);
+    const close = () => {
+      setProfileOf(null);
+      window.scrollTo({ top: 0 });
+    };
+    return (
+      <LiveBrandFactoryProfile
+        org={org}
+        vendorOrgId={profileOf}
+        from="invite"
+        onBack={close}
+        // Already requesting: "Request quote" ticks this vendor and goes back.
+        onRequestQuote={() => {
+          const name = vendor?.orgs?.name;
+          if (name) setSelectedVendors((current) => (current.includes(name) ? current : [...current, name]));
+          close();
+        }}
+      />
+    );
+  }
+
   if (step === "invite") {
     const shaped = vendors.map((vendor) => ({
       initials: (vendor.orgs?.name ?? "?").slice(0, 2).toUpperCase(),
       name: vendor.orgs?.name ?? "Vendor",
       location: vendor.location ?? "Location not given",
-      trust: vendor.verification_status === "verified" ? "trusted" : "unverified",
+      // There is no "unverified" badge: an unverified vendor has none.
+      trust: vendor.verification_status === "verified" ? "trusted" : "",
       // Scored against this request by match_score_rfq(); blank when the
       // vendor's profile has too little in it to score.
       fit: vendor.matchPercent === null ? "" : `${vendor.matchPercent}%`,
@@ -530,6 +562,11 @@ export default function LiveComposer({ org, rfqId }) {
       categories: [],
       capabilities: [],
       notes: vendor.intro ? [vendor.intro] : [],
+      profileHref: `/app.html/factories/${vendor.org_id}?from=invite`,
+      onOpenProfile: () => {
+        setProfileOf(vendor.org_id);
+        window.scrollTo({ top: 0 });
+      },
     }));
 
     return (

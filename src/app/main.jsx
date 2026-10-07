@@ -53,6 +53,7 @@ import LiveComposer from "./rfq/LiveComposer.jsx";
 import LiveOrderDetail from "./order/LiveOrderDetail.jsx";
 import LiveSettings from "./settings/LiveSettings.jsx";
 import LiveFactoryProfile from "./profile/LiveFactoryProfile.jsx";
+import LiveBrandFactoryProfile from "./profile/LiveBrandFactoryProfile.jsx";
 import NotificationList from "./NotificationList.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
 import "./shell.css";
@@ -596,10 +597,6 @@ function activeNavFor(path, isFactory) {
   return "";
 }
 
-/** Manufacturers have their designed profile page live; trading companies not yet. */
-function hasFactoryProfilePage(isFactory, profile) {
-  return isFactory && profile?.vendor_kind !== "trading_company";
-}
 
 const initialsOf = (name) =>
   (name ?? "")
@@ -644,7 +641,8 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
           navigate(paths[label] ?? "/");
           if (window.matchMedia("(max-width: 760px)").matches) setCollapsed(true);
         }}
-        onProfile={() => navigate(hasFactoryProfilePage(isFactory, profile) ? "/profile" : "/team")}
+        // Vendors have their designed profile page; brands get theirs later.
+        onProfile={() => navigate(isFactory ? "/profile" : "/team")}
         onToggle={() => setCollapsed((value) => !value)}
         onSignOut={onSignOut}
       />
@@ -959,15 +957,30 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
         throw new Error("Deliberate crash from /__crash — this is a self-test.");
       },
     },
-    // The factory's own profile. Brands and trading companies get theirs in
-    // later changes; until then /profile is the dashboard for them, as before.
-    ...(hasFactoryProfilePage(isFactory, profile)
+    // The vendor's own profile (a manufacturer's or a trading company's
+    // design). Brands get theirs in a later change; until then /profile is
+    // the dashboard for them, as before.
+    ...(isFactory
       ? [
         { path: "/profile", render: () => <LiveFactoryProfile org={activeOrg} /> },
         { path: "/profile/completion", render: () => <LiveFactoryProfile org={activeOrg} page="completion" /> },
         { path: "/profile/edit/:editor", render: (params) => <LiveFactoryProfile org={activeOrg} editor={params.editor} /> },
       ]
       : []),
+    {
+      // A vendor's profile as a brand sees it. `?from=` says where it was
+      // opened, for the design's back link.
+      path: "/factories/:id",
+      render: (params) =>
+        isFactory ? <NotForThisSide isFactory /> : (
+          <LiveBrandFactoryProfile
+            key={params.id}
+            org={activeOrg}
+            vendorOrgId={params.id}
+            from={new URLSearchParams(window.location.search).get("from")}
+          />
+        ),
+    },
     {
       path: "/team",
       render: () => (

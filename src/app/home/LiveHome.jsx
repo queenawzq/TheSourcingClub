@@ -26,6 +26,40 @@ import { listThreads } from "../../lib/domain/message.js";
 import { inviteBrand, savingsFor } from "../../lib/domain/credits.js";
 import { toProjectCard, toRfqCard } from "../live-adapter.js";
 import { formatMoney } from "../../lib/money.js";
+import { useRouter } from "../../lib/router.jsx";
+import { initialsOf } from "../profile/factory-profile-view.js";
+import { loadRecommendedVendors } from "../profile/load-profile.js";
+
+/**
+ * A recommended vendor as the designed dashboard card. Like the invite
+ * step's cards, it leaves out what nothing records: the match (there is no
+ * request to score against yet), a rating, and an order count a brand may
+ * not read. A new brand has no conversations, so there is no Message.
+ */
+function toRecommendedCard(vendor, navigate) {
+  const name = vendor.orgs?.name ?? "Vendor";
+  return {
+    initials: initialsOf(name),
+    name,
+    location: vendor.location ?? "Location not given",
+    trust: vendor.verification_status === "verified" ? "trusted" : "",
+    match: "",
+    rating: "",
+    orders: "",
+    stats: [
+      ["MOQ", vendor.moq ? `${vendor.moq}/style` : "—"],
+      ["Lead time", vendor.typical_lead_days ? `${vendor.typical_lead_days} days` : "—"],
+      ["Type", vendor.vendor_kind === "trading_company" ? "Trading company" : "Factory"],
+      ["Status", vendor.verification_status === "verified" ? "Verified" : "Unverified"],
+    ],
+    notes: [vendor.intro ?? ""],
+    products: vendor.products,
+    profileHref: `/app.html/factories/${vendor.org_id}?from=dashboard`,
+    onOpenProfile: () => navigate(`/factories/${vendor.org_id}?from=dashboard`),
+    onMessage: null,
+    onRequestQuote: () => navigate(`/rfqs/new?invite=${vendor.org_id}`),
+  };
+}
 
 /**
  * The snapshot, as the designed attention cards.
@@ -103,8 +137,10 @@ function attentionFrom(snapshot, isFactory, goTo) {
 }
 
 export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewRfq, onViewProject }) {
-  const [state, setState] = useState({ snapshot: null, rfqs: [], projects: [], savings: null });
+  const { navigate } = useRouter();
+  const [state, setState] = useState({ snapshot: null, rfqs: [], projects: [], savings: null, loaded: false });
   const [error, setError] = useState(null);
+  const [recommended, setRecommended] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -138,6 +174,7 @@ export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewR
             .filter((order) => !archivedIds.includes(order.id))
             .map((order) => toProjectCard(order, false)),
           savings,
+          loaded: true,
         });
       })
       .catch((failure) => !cancelled && setError(failure));
@@ -146,6 +183,18 @@ export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewR
 
   const { snapshot, rfqs, projects, savings } = state;
   const attention = attentionFrom(snapshot, isFactory, goTo) ?? [];
+  const isNewcomer = state.loaded && !rfqs.length && !projects.length;
+
+  // The newcomer layout's "Recommended factories": real vendors, never the
+  // design's examples, and only fetched when that layout shows.
+  useEffect(() => {
+    if (isFactory || !isNewcomer) return undefined;
+    let cancelled = false;
+    loadRecommendedVendors(org.id)
+      .then((vendors) => !cancelled && setRecommended(vendors))
+      .catch((failure) => !cancelled && setError(failure));
+    return () => { cancelled = true; };
+  }, [org.id, isFactory, isNewcomer]);
 
   return (
     <>
@@ -155,6 +204,7 @@ export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewR
         // sourcing?" — is for an account that genuinely has nothing yet, not
         // for one that simply has nothing outstanding today.
         dashboardState={rfqs.length || projects.length ? "active" : "newcomer"}
+        factories={recommended.map((vendor) => toRecommendedCard(vendor, navigate))}
         goTo={goTo}
         onOpenActivity={onOpenActivity}
         orgName={org.name}
