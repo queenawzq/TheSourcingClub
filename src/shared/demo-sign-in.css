@@ -1,0 +1,117 @@
+/*
+ * The demo sign-in box (DemoSignIn.jsx). Not part of the design: it only
+ * exists on test sites, so it is drawn to look like a tool, dashed and amber,
+ * rather than like the product.
+ */
+.demo-sign-in {
+  width: min(100%, 520px);
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px dashed #d99a1e;
+  border-radius: 14px;
+  background: #fff8e8;
+  color: #0b1020;
+  font-size: 13px;
+}
+
+/* The staff sign-in's card is 500px, not 520px. */
+.admin-login-workspace .demo-sign-in {
+  width: min(100%, 500px);
+}
+
+.demo-sign-in-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-weight: 600;
+}
+
+.demo-sign-in-title strong {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #d99a1e;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.demo-sign-in-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+@media (max-width: 560px) {
+  .demo-sign-in-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.demo-sign-in-list button {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid #ecd3a0;
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.demo-sign-in-list button:hover:not(:disabled),
+.demo-sign-in-list button:focus-visible {
+  border-color: #d99a1e;
+}
+
+.demo-sign-in-list button:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.demo-sign-in-list button strong {
+  font-size: 13px;
+}
+
+.demo-sign-in-list button em {
+  color: #60769b;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.demo-sign-in-list button span {
+  overflow: hidden;
+  color: #60769b;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.demo-sign-in-note {
+  margin: 10px 0 0;
+  color: #60769b;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.demo-sign-in-note + .demo-sign-in-note {
+  margin-top: 4px;
+}
+
+.demo-sign-in-note code {
+  color: #0b1020;
+  font-size: 12px;
+}
+
+.demo-sign-in-note a {
+  color: #174df2;
+  font-weight: 700;
+}
