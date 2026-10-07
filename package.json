@@ -6,6 +6,7 @@
     "emails:approved": "node scripts/generate-account-approved-email.mjs",
     "emails:test": "node scripts/test-transactional-emails.mjs",
     "smoke": "node scripts/smoke-test.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
     "taxonomy": "python3 scripts/build-taxonomy.py",
