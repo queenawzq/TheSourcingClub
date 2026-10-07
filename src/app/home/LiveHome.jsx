@@ -21,6 +21,7 @@ import { HomeScreen } from "../../prototype/main.jsx";
 import { dashboardSnapshot } from "../../lib/domain/dashboard.js";
 import { listRfqs } from "../../lib/domain/rfq.js";
 import { listOrders } from "../../lib/domain/order.js";
+import { listArchivedOrderIds } from "../../lib/domain/order-tabs.js";
 import { listThreads } from "../../lib/domain/message.js";
 import { inviteBrand, savingsFor } from "../../lib/domain/credits.js";
 import { toProjectCard, toRfqCard } from "../live-adapter.js";
@@ -113,8 +114,9 @@ export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewR
       listOrders(org.id),
       listThreads(org.id),
       savingsFor(org.id),
+      listArchivedOrderIds(org.id),
     ])
-      .then(([snapshot, rfqs, orders, threads, savings]) => {
+      .then(([snapshot, rfqs, orders, threads, savings, archivedIds]) => {
         if (cancelled) return;
         const messagesByRfq = new Map();
         for (const thread of threads ?? []) {
@@ -131,7 +133,10 @@ export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewR
           rfqs: (rfqs ?? [])
             .filter((rfq) => rfq.status === "open")
             .map((rfq) => toRfqCard(rfq, messagesByRfq.get(rfq.id) ?? 0)),
-          projects: (orders ?? []).map((order) => toProjectCard(order, false)),
+          // An order the company archived is out of its way here too.
+          projects: (orders ?? [])
+            .filter((order) => !archivedIds.includes(order.id))
+            .map((order) => toProjectCard(order, false)),
           savings,
         });
       })

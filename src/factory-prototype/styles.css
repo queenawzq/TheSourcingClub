@@ -6818,6 +6818,18 @@ body:has(.factory-onboarding-page) {
   background: #fff;
 }
 
+/* The line above the timeline while the brand sets the production steps. */
+.factory-milestone-card > .production-schedule-helper {
+  margin: 0 0 18px;
+}
+
+/* The latest update spans the row under the step and its actions, so a note
+   reads at a normal line length rather than in the title's column. */
+.factory-milestone-item > .factory-posted-update-card {
+  grid-column: 2 / -1;
+  width: auto;
+}
+
 .factory-posted-update-header {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -7790,6 +7802,18 @@ body:has(.factory-onboarding-page) {
   padding: var(--button-padding);
 }
 
+/* Live only: Edit and Withdraw side by side in the same slot. */
+.factory-rfq-read-header .factory-rfq-read-actions {
+  grid-area: edit;
+  display: flex;
+  gap: 10px;
+}
+
+.factory-rfq-read-header .factory-rfq-read-actions .secondary-btn {
+  min-height: var(--button-height);
+  padding: var(--button-padding);
+}
+
 .factory-review-header-top {
   display: flex;
   align-items: center;
@@ -8444,7 +8468,8 @@ body:has(.factory-onboarding-page) {
       "edit";
   }
 
-  .factory-rfq-read-header .factory-rfq-edit-btn {
+  .factory-rfq-read-header .factory-rfq-edit-btn,
+  .factory-rfq-read-header .factory-rfq-read-actions {
     justify-self: start;
   }
 
@@ -10935,4 +10960,30 @@ button.sort-button {
   font-size: 14px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+/* On a phone the card is narrower than its header and photo row: stack the
+   header and wrap the photos (as the brand's card does), so nothing spills
+   past the card or makes the page scroll sideways. */
+@media (max-width: 760px) {
+  .factory-milestone-item > .factory-posted-update-card {
+    min-width: 0;
+  }
+
+  .factory-posted-update-header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .factory-posted-update-header > div {
+    flex-wrap: wrap;
+  }
+
+  .factory-posted-update-header button {
+    justify-self: start;
+    text-align: left;
+  }
+
+  .factory-posted-file-row {
+    flex-wrap: wrap;
+  }
 }
