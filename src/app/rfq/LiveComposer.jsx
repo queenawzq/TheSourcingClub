@@ -197,7 +197,11 @@ export default function LiveComposer({ org, rfqId }) {
             : "",
           ...Object.fromEntries(questions.slice(0, 3).map((question, index) => [`question-${index}`, question.prompt])),
         });
-        setValues((current) => fillBlanks(current, fieldsFromBrief(row.brief, terms.product_category)));
+        // A reorder leaves the delivery month blank on purpose: the last run's
+        // is most likely past, so the brief must not fill it back in.
+        const fromBrief = fieldsFromBrief(row.brief, terms.product_category);
+        if (row.reorder_of_order_id) delete fromBrief.timeline;
+        setValues((current) => fillBlanks(current, fromBrief));
 
         if (row.reorder_of_order_id) {
           // Read under RLS: an order this brand is not on comes back empty,
