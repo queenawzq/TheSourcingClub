@@ -1,6 +1,6 @@
 /**
- * Loading a vendor's profile records, for its own profile page and for the
- * brand's view of it.
+ * Loading profile records: a vendor's, for its own page and for the brand's
+ * view of it; a brand's, for its own page and for the vendor's view of it.
  *
  * The owner reads everything it has. A brand reads only what the access
  * rules already admit for a published profile: the profile row, its tags,
@@ -8,8 +8,16 @@
  * video. So the brand's load never asks for the business registration, a
  * certificate file or the factory's orders: private documents are refused by
  * the rules anyway, and a factory's orders would carry other brands' names.
+ *
+ * A vendor reads a brand only through brand_profile_for_factory(), which
+ * returns what the brand told vendors and nothing private (no revenue, email,
+ * website, documents or orders).
  */
-import { getFactoryProfile, getSelectedTerms } from "../../lib/domain/profile.js";
+import { getBrandProfile, getFactoryProfile, getSelectedTerms } from "../../lib/domain/profile.js";
+import { BRAND_KINDS } from "../../lib/domain/brand-profile-fields.js";
+import { listMembers } from "../../lib/domain/org.js";
+import { brandProfileForFactory, listRfqs, listSavedBrands } from "../../lib/domain/rfq.js";
+import { listThreads } from "../../lib/domain/message.js";
 import { listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { getCapacity } from "../../lib/domain/capacity-store.js";
 import { listDocuments, urlFor } from "../../lib/domain/documents.js";
@@ -179,4 +187,118 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
     })));
     return { ...row, products };
   }));
+}
+
+/** Every taxonomy kind a brand profile shows, plus the country list for its HQ. */
+const BRAND_PROFILE_KINDS = [...BRAND_KINDS, "country"];
+
+/**
+ * Everything the brand's own page draws: what onboarding saved (the profile,
+ * its tags and files), its team and pending invitations, and its own requests
+ * and orders for the activity figures and "Past work with vendors".
+ */
+export async function loadOwnBrandProfile(org) {
+  const [profile, terms, selected, logos, images, registrations, members, invitations, rfqs, orders] = await Promise.all([
+    getBrandProfile(org.id),
+    listTermsByKind(BRAND_PROFILE_KINDS),
+    getSelectedTerms("brand_profile", org.id),
+    listDocuments(org.id, "logo"),
+    listDocuments(org.id, "product_image"),
+    listDocuments(org.id, "business_registration"),
+    listMembers(org.id),
+    supabase.from("org_invitations").select("id, email, role, created_at").eq("org_id", org.id).eq("status", "pending").order("created_at")
+      .then((result) => unwrap(result, "load your invitations")),
+    listRfqs(org.id),
+    listOrders(org.id),
+  ]);
+  const [logoUrl, assets] = await Promise.all([
+    logos[0] ? urlFor(logos[0], 3600) : null,
+    // listDocuments is newest first; the page reads its assets in the order
+    // they were added.
+    Promise.all([...images].reverse().map(async (doc) => ({
+      title: doc.title || titleFromFileName(doc.file_name),
+      caption: doc.caption ?? "",
+      src: await urlFor(doc, 3600),
+      doc,
+    }))),
+  ]);
+
+  return {
+    orgName: org.name,
+    isOwner: org.role === "owner",
+    profile,
+    terms,
+    selected,
+    logos,
+    logoUrl,
+    assets,
+    registrationDoc: registrations[0] ?? null,
+    members,
+    invitations,
+    rfqs,
+    // Only the orders this brand placed: a person in both a brand and a
+    // factory org gets the active org's side.
+    orders: orders.filter((order) => order.brand_org_id === org.id),
+  };
+}
+
+/**
+ * A brand's profile as a vendor may read it, through
+ * brand_profile_for_factory(): nothing private comes back, and it is refused
+ * unless the vendor can see one of the brand's requests. Also whether the
+ * vendor has saved the brand, its latest conversation with the brand, and the
+ * brand's newest open request it can see (the contact card's way in).
+ */
+export async function loadBrandProfileForFactory(factoryOrg, brandOrgId) {
+  const [data, terms, saved, threads, open] = await Promise.all([
+    brandProfileForFactory(brandOrgId),
+    listTermsByKind(BRAND_PROFILE_KINDS),
+    listSavedBrands(factoryOrg.id),
+    listThreads(factoryOrg.id),
+    // RLS returns only the requests this vendor may see.
+    supabase.from("rfqs").select("id, title").eq("brand_org_id", brandOrgId).eq("status", "open")
+      .order("published_at", { ascending: false }).limit(1)
+      .then((result) => unwrap(result, "load this brand's open requests")),
+  ]);
+  const files = data?.assets ?? [];
+  const url = (file) => publicUrl(file.storage_path);
+  const logo = [...files].reverse().find((file) => file.kind === "logo");
+
+  return {
+    data,
+    terms,
+    logoUrl: logo ? url(logo) : null,
+    assets: files
+      .filter((file) => file.kind === "product_image")
+      .map((file) => ({ title: file.title || titleFromFileName(file.file_name), caption: file.caption ?? "", src: url(file), key: file.storage_path })),
+    saved: saved.some((row) => row.brand_org_id === brandOrgId),
+    // listThreads is newest first.
+    thread: threads.find((thread) => thread.brand_org_id === brandOrgId && thread.factory_org_id === factoryOrg.id) ?? null,
+    openRequest: open[0] ?? null,
+  };
+}
+
+/**
+ * The vendor's Saved brands tab: each saved brand with what its card shows.
+ * A brand the vendor can no longer see (its requests closed to it) keeps its
+ * name and nothing else.
+ */
+export async function loadSavedBrands(factoryOrg) {
+  const [rows, terms] = await Promise.all([listSavedBrands(factoryOrg.id), listTermsByKind(BRAND_PROFILE_KINDS)]);
+  const brands = await Promise.all(rows.map(async (row) => {
+    const data = await brandProfileForFactory(row.brand_org_id).catch(() => null);
+    const logo = data ? [...(data.assets ?? [])].reverse().find((file) => file.kind === "logo") : null;
+    return {
+      orgId: row.brand_org_id,
+      name: row.orgs?.name ?? data?.name ?? "Brand",
+      data,
+      logoUrl: logo ? publicUrl(logo.storage_path) : null,
+    };
+  }));
+  return { brands, terms };
+}
+
+/** A public-bucket file's permanent address. */
+function publicUrl(path) {
+  return supabase.storage.from("org-public").getPublicUrl(path).data.publicUrl;
 }

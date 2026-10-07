@@ -16,9 +16,10 @@
  *      and reopening resumes where the gap is.
  *   3. Saves are partial upserts, so a later step cannot blank an earlier one.
  *
- * The mapping below is the only place the design's visible labels meet the
+ * The mapping in brand-profile-fields.js (shared with the brand profile's
+ * edit dialogs) is the only place the design's visible labels meet the
  * database's column names. That is deliberate: rename a field in the design
- * and exactly one line changes here.
+ * and exactly one line changes there.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { BrandOnboarding, onboardingFieldName } from "../../prototype/main.jsx";
@@ -26,7 +27,14 @@ import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.
 import { completeOnboarding, getSelectedTerms, saveBrandProfile } from "../../lib/domain/profile.js";
 import { inviteMember } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
-import { toCents } from "../../lib/money.js";
+import {
+  CATEGORY_KIND,
+  CATEGORY_LABEL,
+  COLUMN_FOR_LABEL,
+  KIND_FOR_LABEL,
+  NUMERIC_COLUMNS,
+  parsePriceRange,
+} from "../../lib/domain/brand-profile-fields.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import { useSignableTerms } from "./useSignableTerms.js";
 import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
@@ -58,58 +66,6 @@ const TERMS_STEP = 8;
 
 /** Index of the designed profile review card. */
 const REVIEW_STEP = 7;
-
-/** Designed label → brand_profiles column. */
-const COLUMN_FOR_LABEL = {
-  "Brand name": "legal_name",
-  "Business email": "business_email",
-  "Website URL": "website_url",
-  "HQ location": "hq_location",
-  "Year founded": "founded_year",
-  "About the brand": "intro",
-  "Average pieces ordered per year": "pieces_per_year_band",
-  "Typical order size per style": "order_size_band",
-  "Collections per year": "collections_per_year",
-  "Typical reorder cadence": "reorder_cadence",
-  "Current sourcing stage": "sourcing_stage",
-  "Annual revenue": "annual_revenue_band",
-};
-
-const NUMERIC_COLUMNS = new Set(["founded_year"]);
-
-/** Designed chip-group label → taxonomy kind. */
-const KIND_FOR_LABEL = {
-  "What does your brand make?": "product_category",
-  "Market level": "market_level",
-  "Preferred regions": "region",
-  Certifications: "certification",
-  "Services needed": "service",
-};
-
-/**
- * "Select all that apply", so it is stored as links like the other groups. The
- * `brand_category` column keeps the first choice, because migration 011 made
- * it a single slug and several things still read it that way.
- */
-const CATEGORY_LABEL = "Brand category";
-const CATEGORY_KIND = "brand_category";
-
-/**
- * "$18 - $40" typed into one box, stored as two integer columns.
- *
- * The design asks for a range in a single field. Parsing it here rather than
- * splitting the field keeps the screen as drawn, and a value that cannot be
- * read is stored as nothing rather than as a guess.
- */
-function parsePriceRange(text) {
-  const numbers = String(text ?? "").match(/\d+(?:\.\d+)?/g);
-  if (!numbers?.length) return { target_price_min_cents: null, target_price_max_cents: null };
-  const [low, high = low] = numbers;
-  return {
-    target_price_min_cents: toCents(low),
-    target_price_max_cents: toCents(high),
-  };
-}
 
 export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, initialStep = 0 }) {
   const [step, setStep] = useState(initialStep);

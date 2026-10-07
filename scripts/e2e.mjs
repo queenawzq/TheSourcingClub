@@ -867,6 +867,50 @@ async function main() {
     // The admin was the last account signed in, so come back as the brand.
     await signOutFully(page);
     await signIn(page, `e2e-brand-${stamp}@example.com`, "Brand returning");
+
+    // The account card opens the brand's own profile, on its design, with
+    // what onboarding saved; it used to open Settings.
+    await page.locator(".account-card").first().click();
+    await waitFor(page, ".brand-profile-hero h1", 20000);
+    await record(page, "Brand profile", "its own answers on the designed profile page");
+    const brandProfileText = await page.locator("main.brand-profile-page").first().innerText();
+    check(brandProfileText.includes(brandName), "the profile is the brand's own, by the name it gave");
+    check(brandProfileText.includes("$250k-$1M"), "with its revenue band, which only the brand itself sees");
+    check(!/Maison Rue|Ari Chen|Publish changes/.test(brandProfileText), "none of the design's example brand, and no Publish button");
+    await page.locator(".factory-profile-view-toggle button").nth(1).click();
+    await waitFor(page, ".brand-profile-redesign.is-public-view .brand-profile-hero", 10000);
+    check(!(await page.locator("main.brand-profile-page").first().innerText()).includes("$250k-$1M"),
+      "View as public leaves the revenue out, as vendors will see it");
+    await page.locator(".factory-profile-view-toggle button").nth(0).click();
+
+    // The overview dialog saves to the brand's profile row.
+    await page.evaluate(() => [...document.querySelectorAll(".factory-profile-card")]
+      .find((card) => card.offsetParent && card.querySelector("h2")?.textContent === "Overview")
+      ?.querySelector(".factory-profile-edit-button")?.click());
+    await waitFor(page, ".brand-profile-modal textarea", 10000);
+    const newBrandIntro = `Organic cotton shirts in small runs, edited ${stamp}.`;
+    await page.evaluate((text) => {
+      const area = document.querySelector(".brand-profile-modal textarea");
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(area, text);
+      area.dispatchEvent(new Event("input", { bubbles: true }));
+    }, newBrandIntro);
+    await record(page, "Edit brand overview", "the designed dialog, starting from what onboarding saved");
+    await page.locator(".brand-profile-modal-actions .primary-btn").click();
+    await page.waitForTimeout(3000);
+    check(!(await page.evaluate(() => Boolean(document.querySelector(".brand-profile-modal")))), "saving closes the brand's dialog");
+    const { data: editedBrand } = await db.from("brand_profiles").select("intro").eq("org_id", brandOrg.id).single();
+    check(editedBrand.intro === newBrandIntro, "and the new overview is the saved profile");
+
+    // "View details" opens the completion page, scored the same way.
+    const brandPercent = await page.evaluate(() => document.querySelector(".factory-profile-status-meter strong")?.textContent);
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent === "View details" && button.offsetParent)?.click());
+    await waitFor(page, ".brand-profile-completion-page", 15000);
+    await record(page, "Brand profile completion", "the checklist behind the profile's percentage");
+    const brandCompletionText = await page.locator(".brand-profile-completion-page").innerText();
+    check(brandCompletionText.includes(brandPercent) && brandCompletionText.includes("Decision makers"),
+      `the brand's completion page shows the same ${brandPercent} as its profile`);
+    check(!/Add payment method/.test(brandCompletionText), "with no payment-method item, which nothing stores");
+
     await page.goto(`${APP}/rfqs`);
     // Re-pointed at the DESIGNED requests screen, which now renders this route
     // against live data. Queena relabelled the brand's nav RFQs → Quotes, so
@@ -1199,6 +1243,23 @@ async function main() {
     check((await page.locator(".factory-saved-page").innerText()).includes(publishedRfq.title ?? "P"),
       "the saved request is on the Saved page");
     await record(page, "Saved", "one nav item that used to go nowhere");
+    await page.goto(`${APP}/browse/${publishedRfq.id}`);
+    await waitForHeading(page, "rfq details", 25000);
+
+    // The brand's name opens the brand's profile as a vendor may read it:
+    // what it told vendors, never its revenue.
+    await page.locator(".factory-client-profile-link").first().click();
+    await waitFor(page, ".factory-brand-public-page .factory-profile-hero h1", 20000);
+    await record(page, "Factory's view of a brand", "what the brand told vendors, nothing private");
+    const brandSeenText = await page.locator(".factory-brand-public-page").innerText();
+    check(brandSeenText.includes(brandName) && brandSeenText.includes(newBrandIntro), "the factory reads the brand's own profile");
+    check(!/\$250k-\$1M|Maison Rue|revenue/.test(brandSeenText), "and not its revenue, nor the design's example brand");
+    await page.locator(".factory-brand-public-page .factory-profile-banner-edit").click();
+    await page.waitForTimeout(1500);
+    check((await page.locator(".factory-brand-public-page .factory-profile-banner-edit").innerText()) === "Saved", "Save brand saves it");
+    await page.goto(`${APP}/saved`);
+    await waitFor(page, ".factory-saved-brand-card", 20000);
+    check((await page.locator(".factory-saved-brand-card").first().innerText()).includes(brandName), "and it is under Saved brands");
     await page.goto(`${APP}/browse/${publishedRfq.id}`);
     await waitForHeading(page, "rfq details", 25000);
 

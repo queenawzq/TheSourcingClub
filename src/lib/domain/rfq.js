@@ -390,3 +390,41 @@ export async function brandSummary(brandOrgId) {
   );
   return Array.isArray(rows) ? rows[0] ?? null : rows ?? null;
 }
+
+/**
+ * A brand's profile as a vendor may read it: what the brand told vendors in
+ * onboarding, never its revenue, email, website or documents. Refused unless
+ * this vendor can see one of the brand's requests.
+ */
+export async function brandProfileForFactory(brandOrgId) {
+  return unwrap(
+    await supabase.rpc("brand_profile_for_factory", { brand_org: brandOrgId }),
+    "load this brand's profile",
+  );
+}
+
+/** The vendor's saved brands, newest first, with each brand's name. */
+export async function listSavedBrands(orgId) {
+  return unwrap(
+    await supabase
+      .from("saved_brands")
+      .select("brand_org_id, created_at, orgs!saved_brands_brand_org_id_fkey (id, name)")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false }),
+    "load your saved brands",
+  );
+}
+
+export async function saveBrand(orgId, brandOrgId, userId) {
+  return unwrap(
+    await supabase.from("saved_brands").insert({ org_id: orgId, brand_org_id: brandOrgId, saved_by: userId }),
+    "save this brand",
+  );
+}
+
+export async function unsaveBrand(orgId, brandOrgId) {
+  return unwrap(
+    await supabase.from("saved_brands").delete().eq("org_id", orgId).eq("brand_org_id", brandOrgId),
+    "remove this saved brand",
+  );
+}

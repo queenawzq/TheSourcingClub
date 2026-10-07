@@ -4933,30 +4933,87 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
   );
 }
 
-function FactoryBrandPublicProfilePage({ brandName, language = "en", onBack }) {
+/**
+ * A brand's profile as a factory sees it.
+ *
+ * `live`, when the real app mounts this page, replaces the example brand:
+ * `{ name, initials, logoUrl, heroLine, tags, performance: { primary,
+ * primaryLabel, metrics }, intro, overviewRows, fitSections: [[label, items]],
+ * volumeRows, assets: [{ title, meta, src }], location, contact: { label,
+ * onClick } | null, trust: [{ name, status, verified }], back: { label,
+ * onClick }, save: { saved, busy, onToggle } | null, empty: { intro, fit,
+ * volume, assets } }`. Without it the page shows the design's example,
+ * unchanged.
+ */
+export function FactoryBrandPublicProfilePage({ brandName, language = "en", onBack, live = null }) {
   const data = savedBrandProfiles[brandName] || savedBrandProfiles["Maison Rue"];
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
+  const view = live ?? {
+    name: brandName,
+    initials: data.initials,
+    logoUrl: null,
+    heroLine: `${tx(data.location)} · ${data.categories.map(tx).join(" · ")} · ${data.revenue} ${tx("revenue")}`,
+    tags: data.products.map(tx),
+    performance: {
+      primary: data.stats.orders,
+      primaryLabel: `${tx("Club orders")} · ${data.stats.response} ${tx("avg. response")}`,
+      metrics: [
+        { label: tx("Active RFQs"), value: data.stats.rfqs },
+        { label: tx("Repeat factories"), value: data.stats.partners },
+        { label: tx("Payment status"), value: tx("Verified") }
+      ]
+    },
+    intro: isZh ? data.summaryZh : data.intro,
+    overviewRows: [
+      [tx("Brand name"), brandName],
+      [tx("Brand category"), data.categories.map(tx).join(" · ")],
+      [tx("HQ location"), tx(data.location)],
+      [tx("Annual revenue"), data.revenue]
+    ],
+    fitSections: [
+      [tx("What the brand makes"), data.products.map(tx)],
+      [tx("Preferred regions"), data.regions.map(tx)],
+      [tx("Certifications requested"), data.certifications.map(tx)],
+      [tx("Services needed"), data.services.map(tx)]
+    ],
+    volumeRows: data.volume.map(([label, value]) => [tx(label), tx(value)]),
+    assets: data.assets.map((asset) => ({ ...asset, title: tx(asset.title), meta: tx(asset.meta) })),
+    location: tx(data.location),
+    contact: { label: tx("Contact brand"), onClick: undefined },
+    trust: [
+      { name: tx("Business profile"), status: tx("Verified"), verified: true },
+      { name: tx("Payment status"), status: tx("Verified"), verified: true },
+      { name: tx("Marketplace activity"), status: tx("Active"), verified: true }
+    ],
+    back: { label: tx("Back to saved brands"), onClick: onBack },
+    save: { saved: false, busy: false, onToggle: undefined },
+    empty: {}
+  };
 
   return (
     <main className="factory-profile-page brand-profile-page factory-brand-public-page">
       <div className="brand-profile brand-profile-redesign is-public-view">
         <div className="factory-profile-shell">
-          <button className="factory-profile-public-back" type="button" onClick={onBack}>← {tx("Back to saved brands")}</button>
+          <button className="factory-profile-public-back" type="button" onClick={view.back.onClick}>← {view.back.label}</button>
 
           <section className="factory-profile-hero brand-profile-hero">
-            <button className="factory-profile-banner-edit" type="button">{tx("Save brand")}</button>
+            {view.save && (
+              <button className="factory-profile-banner-edit" type="button" onClick={view.save.onToggle} disabled={view.save.busy}>
+                {view.save.saved ? tx("Saved") : tx("Save brand")}
+              </button>
+            )}
             <div className="factory-profile-identity">
               <div className="factory-profile-logo-wrap">
-                <div className="factory-profile-logo">{data.initials}</div>
+                <div className="factory-profile-logo">{view.logoUrl ? <img src={view.logoUrl} alt={`${view.name} logo`} /> : view.initials}</div>
               </div>
               <div>
                 <div className="factory-profile-title-row">
-                  <h1>{brandName}</h1>
+                  <h1>{view.name}</h1>
                 </div>
-                <p>{tx(data.location)} · {data.categories.map(tx).join(" · ")} · {data.revenue} {tx("revenue")}</p>
+                <p>{view.heroLine}</p>
                 <div className="tag-row compact-tags factory-profile-hero-tags">
-                  {data.products.map((tag) => <span className="tag garment-tag" key={tag}>{tx(tag)}</span>)}
+                  {view.tags.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
                 </div>
               </div>
             </div>
@@ -4966,52 +5023,46 @@ function FactoryBrandPublicProfilePage({ brandName, language = "en", onBack }) {
             <div className="factory-profile-main">
               <ProfilePerformanceCard
                 eyebrow={tx("Brand activity")}
-                primary={data.stats.orders}
-                primaryLabel={`${tx("Club orders")} · ${data.stats.response} ${tx("avg. response")}`}
-                metrics={[
-                  { label: tx("Active RFQs"), value: data.stats.rfqs },
-                  { label: tx("Repeat factories"), value: data.stats.partners },
-                  { label: tx("Payment status"), value: tx("Verified") }
-                ]}
+                primary={view.performance.primary}
+                primaryLabel={view.performance.primaryLabel}
+                metrics={view.performance.metrics}
               />
 
               <section className="factory-profile-card">
                 <ProfileCardHeader title={tx("Overview")} />
-                <p>{isZh ? data.summaryZh : data.intro}</p>
+                <p>{view.intro || view.empty.intro}</p>
                 <div className="factory-profile-detail-grid">
-                  <ProfileDetailPair label={tx("Brand name")} value={brandName} />
-                  <ProfileDetailPair label={tx("Brand category")} value={data.categories.map(tx).join(" · ")} />
-                  <ProfileDetailPair label={tx("HQ location")} value={tx(data.location)} />
-                  <ProfileDetailPair label={tx("Annual revenue")} value={data.revenue} />
+                  {view.overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
                 </div>
               </section>
 
               <section className="factory-profile-card">
                 <ProfileCardHeader title={tx("Sourcing fit")} />
-                <ProfileChipSection label={tx("What the brand makes")} items={data.products.map(tx)} />
-                <ProfileChipSection label={tx("Preferred regions")} items={data.regions.map(tx)} />
-                <ProfileChipSection label={tx("Certifications requested")} items={data.certifications.map(tx)} />
-                <ProfileChipSection label={tx("Services needed")} items={data.services.map(tx)} />
+                {view.fitSections.map(([label, items]) => <ProfileChipSection label={label} items={items} key={label} />)}
               </section>
 
               <section className="factory-profile-card">
                 <ProfileCardHeader title={tx("Sourcing volume")} />
-                <div className="factory-profile-detail-grid">
-                  {data.volume.map(([label, value]) => <ProfileDetailPair label={tx(label)} value={tx(value)} key={label} />)}
-                </div>
+                {view.volumeRows.length > 0 ? (
+                  <div className="factory-profile-detail-grid">
+                    {view.volumeRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
+                  </div>
+                ) : <p>{view.empty.volume}</p>}
               </section>
 
               <section className="factory-profile-card">
                 <ProfileCardHeader title={tx("Brand assets")} />
-                <div className="factory-profile-product-grid">
-                  {data.assets.map((asset) => (
-                    <article className="factory-profile-product brand-profile-asset" key={asset.title}>
-                      <img src={asset.src} alt={`${asset.title} preview`} />
-                      <strong>{tx(asset.title)}</strong>
-                      <span>{tx(asset.meta)}</span>
-                    </article>
-                  ))}
-                </div>
+                {view.assets.length > 0 ? (
+                  <div className="factory-profile-product-grid">
+                    {view.assets.map((asset) => (
+                      <article className="factory-profile-product brand-profile-asset" key={asset.key ?? asset.title}>
+                        <img src={asset.src} alt={`${asset.title} preview`} />
+                        <strong>{asset.title}</strong>
+                        <span>{asset.meta}</span>
+                      </article>
+                    ))}
+                  </div>
+                ) : <p>{view.empty.assets}</p>}
               </section>
             </div>
 
@@ -5019,21 +5070,21 @@ function FactoryBrandPublicProfilePage({ brandName, language = "en", onBack }) {
               <section className="factory-profile-card factory-profile-contact-card">
                 <h2>{tx("Brand contact")}</h2>
                 <div className="factory-profile-contact-row">
-                  <div className="factory-avatar">{data.initials}</div>
+                  <div className="factory-avatar">{view.initials}</div>
                   <div>
-                    <strong>{brandName}</strong>
-                    <span>{tx(data.location)}</span>
+                    <strong>{view.name}</strong>
+                    <span>{view.location}</span>
                   </div>
                 </div>
-                <button className="primary-btn" type="button">{tx("Contact brand")}</button>
+                {view.contact && <button className="primary-btn" type="button" onClick={view.contact.onClick}>{view.contact.label}</button>}
               </section>
 
               <section className="factory-profile-card">
                 <ProfileCardHeader title={tx("Trust and verification")} />
                 <div className="factory-profile-cert-list">
-                  <div className="factory-profile-cert"><strong>{tx("Business profile")}</strong><span className="verified">{tx("Verified")}</span></div>
-                  <div className="factory-profile-cert"><strong>{tx("Payment status")}</strong><span className="verified">{tx("Verified")}</span></div>
-                  <div className="factory-profile-cert"><strong>{tx("Marketplace activity")}</strong><span className="verified">{tx("Active")}</span></div>
+                  {view.trust.map((item) => (
+                    <div className="factory-profile-cert" key={item.name}><strong>{item.name}</strong><span className={item.verified ? "verified" : undefined}>{item.status}</span></div>
+                  ))}
                 </div>
               </section>
             </aside>
@@ -5048,15 +5099,18 @@ export function FactorySavedPage({
   language,
   onViewBrand,
   onViewRfq,
-  // Live mounts pass the vendor's own saved requests; the prototype passes
-  // none and keeps the design's examples. Saved brands has nothing behind it
-  // yet, so a live mount opens on the RFQ tab.
+  // Live mounts pass the vendor's own saved requests and saved brands; the
+  // prototype passes neither and keeps the design's examples. A brand card
+  // live is `{ key, initials, logoUrl, name, location, summary, tags,
+  // onContact }`: the fit and trust rows have nothing behind them.
   rfqs,
+  brands,
+  initialTab,
 }) {
-  const [tab, setTab] = useState(rfqs ? "rfqs" : "brands");
+  const [tab, setTab] = useState(initialTab ?? (rfqs && !brands ? "rfqs" : "brands"));
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
-  const savedBrands = brandProjects.slice(0, 3).map((project) => {
+  const savedBrands = brands ?? brandProjects.slice(0, 3).map((project) => {
     const profile = savedBrandProfiles[project.brand];
     return {
       initials: project.initials,
@@ -5081,9 +5135,7 @@ export function FactorySavedPage({
         </header>
 
         <nav className="rfqs-tabs saved-tabs" aria-label="Saved lists">
-          {/* Saving a brand has nothing behind it yet, so the live mount
-              shows only the tab that does. */}
-          {!rfqs && (
+          {(!rfqs || brands) && (
             <button className={tab === "brands" ? "active" : ""} type="button" onClick={() => setTab("brands")}>{tx(`Saved brands (${savedBrands.length})`)}</button>
           )}
           <button className={tab === "rfqs" ? "active" : ""} type="button" onClick={() => setTab("rfqs")}>{tx(`Saved RFQs (${savedRfqs.length})`)}</button>
@@ -5108,11 +5160,15 @@ export function FactorySavedPage({
         </section>
 
         {tab === "brands" ? (
-          <section className="factory-saved-brand-grid" aria-label="Saved brands">
-            {savedBrands.map((brand) => (
-              <FactorySavedBrandCard brand={brand} language={language} onViewBrand={onViewBrand} key={brand.name} />
-            ))}
-          </section>
+          savedBrands.length > 0 || !brands ? (
+            <section className="factory-saved-brand-grid" aria-label="Saved brands">
+              {savedBrands.map((brand) => (
+                <FactorySavedBrandCard brand={brand} language={language} onViewBrand={onViewBrand} key={brand.key ?? brand.name} />
+              ))}
+            </section>
+          ) : (
+            <p className="factory-dashboard-empty">{tx("No saved brands yet. Save a brand from its profile to keep it here.")}</p>
+          )
         ) : (
           <section className="factory-saved-rfq-list" aria-label="Saved RFQs">
             {savedRfqs.map((project) => (
@@ -5134,23 +5190,27 @@ function FactorySavedBrandCard({ brand, language = "en", onViewBrand }) {
     <article className="factory-saved-brand-card">
       <header>
         <button className="factory-saved-brand-identity factory-saved-brand-link" type="button" onClick={() => onViewBrand(brand)}>
-          <div className="factory-avatar">{brand.initials}</div>
+          <div className="factory-avatar">{brand.logoUrl ? <img src={brand.logoUrl} alt="" /> : brand.initials}</div>
           <div>
             <h2>{brand.name}</h2>
             <p>{tx(brand.location)}</p>
           </div>
         </button>
         <div className="factory-saved-card-actions">
-          <span className={`factory-project-fit ${fitTone}`}>{tx(brand.fit)}</span>
-          <button className="secondary-btn" type="button">{tx("Contact brand")}</button>
+          {brand.fit && <span className={`factory-project-fit ${fitTone}`}>{tx(brand.fit)}</span>}
+          {brand.contact !== null && (
+            <button className="secondary-btn" type="button" onClick={brand.contact?.onClick}>{brand.contact?.label ?? tx("Contact brand")}</button>
+          )}
         </div>
       </header>
-      <p className="factory-saved-brand-summary">{brand.summary}</p>
-      <div className="factory-request-trust factory-saved-brand-trust">
-        <span className="factory-request-trust-icon" aria-hidden="true">$</span>
-        <strong>{tx("Payment verified")}</strong>
-        <span>{tx(brand.trust)}</span>
-      </div>
+      {brand.summary && <p className="factory-saved-brand-summary">{brand.summary}</p>}
+      {brand.trust && (
+        <div className="factory-request-trust factory-saved-brand-trust">
+          <span className="factory-request-trust-icon" aria-hidden="true">$</span>
+          <strong>{tx("Payment verified")}</strong>
+          <span>{tx(brand.trust)}</span>
+        </div>
+      )}
       <div className="tag-row compact-tags">
         {brand.tags.map((tag) => (
           <span className="tag garment-tag" key={tag}>{tx(tag)}</span>
@@ -9237,7 +9297,12 @@ export function FactoryProjectDetail({
             <div className="factory-client-row">
               <span>{brand?.initials ?? "MR"}</span>
               <div>
-                <h2>{brand?.name ?? "Maison Rue"}</h2>
+                {/* Live, the brand's name opens its profile. */}
+                <h2>
+                  {brand?.profileHref
+                    ? <a className="factory-client-profile-link" href={brand.profileHref} onClick={(event) => { event.preventDefault(); brand.onOpenProfile(); }}>{brand.name}</a>
+                    : brand?.name ?? "Maison Rue"}
+                </h2>
                 <p>{brand?.location ?? "New York, USA"}</p>
               </div>
             </div>
@@ -9420,7 +9485,11 @@ export function FactoryProjectProgressDetail({
             <div className="factory-client-row">
               <span>{counterparty?.initials ?? "MR"}</span>
               <div>
-                <h2>{counterparty?.name ?? "Maison Rue"}</h2>
+                <h2>
+                  {counterparty?.profileHref
+                    ? <a className="factory-client-profile-link" href={counterparty.profileHref} onClick={(event) => { event.preventDefault(); counterparty.onOpenProfile(); }}>{counterparty.name}</a>
+                    : counterparty?.name ?? "Maison Rue"}
+                </h2>
                 {counterparty ? counterparty.location && <p>{counterparty.location}</p> : <p>New York, USA</p>}
               </div>
             </div>
