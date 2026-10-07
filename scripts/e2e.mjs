@@ -1002,6 +1002,24 @@ async function main() {
     await waitFor(page, DASHBOARD, 30000);
     await record(page, "Factory dashboard", "still unverified, so it may look but not bid");
 
+    // The account card opens the factory's own profile, as the design does,
+    // and what onboarding saved is what it shows.
+    await page.locator(".account-card").first().click();
+    await waitFor(page, ".factory-profile-hero", 20000);
+    await record(page, "Factory profile", "its own answers on the designed profile page");
+    const profileText = await page.locator("main.factory-profile-page").first().innerText();
+    check(profileText.includes(factoryName), "the profile is the factory's own, by the name it gave");
+    check(profileText.includes("150 units / style") && profileText.includes("Leixões"),
+      "the MOQ and nearest port onboarding saved are on it");
+    check(profileText.includes("12 x Juki DDL-9000C") && profileText.includes("2 x Kansai flatlock"),
+      "the free-text equipment becomes one tag per machine");
+    check(!/Atelier Minho|Publish changes|4\.8/.test(profileText), "none of the design's example factory, and no Publish button");
+    await page.locator(".factory-profile-view-toggle button").nth(1).click();
+    await waitFor(page, "main.factory-profile-page.is-public-view .factory-profile-sidebar-contact-card", 10000);
+    check(/Contact factory/.test(await page.locator("main.factory-profile-page").first().innerText()),
+      "View as public switches to what brands see");
+    await page.locator(".factory-profile-view-toggle button").nth(0).click();
+
     await page.goto(`${APP}/browse`);
     await waitForHeading(page, "browse rfqs");
     await waitFor(page, '[data-testid="open-rfq-card"]', 20000);

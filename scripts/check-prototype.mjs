@@ -58,6 +58,28 @@ try {
   const factoryBody = await factory.locator("body").innerText();
   check(factoryBody.trim().length > 200, "the factory prototype still renders too");
 
+  // The live app mounts the factory's profile with its own data and without
+  // the edit controls; the prototype must keep the example factory and every
+  // owner control the design draws.
+  const factoryProfile = await stagehand.browser.context.newPage(`${BASE}/factory-prototype.html?screen=profile`);
+  await factoryProfile.setViewportSize(1440, 1100);
+  await factoryProfile.waitForTimeout(3500);
+  const profileBody = await factoryProfile.locator("body").innerText();
+  check(
+    profileBody.includes("Atelier Minho") && profileBody.includes("88%") && profileBody.includes("4.8"),
+    "the factory profile renders its example factory with no database",
+  );
+  check(
+    profileBody.includes("Publish changes") && profileBody.includes("See details") && profileBody.includes("Manage video"),
+    "with the owner controls the design draws",
+  );
+  const profileEdits = await factoryProfile.locator(".factory-profile-edit-button").count();
+  check(profileEdits >= 9, `and every section's edit button (${profileEdits})`);
+  check(
+    profileBody.includes("Maison Rue · May 2026 - Jul 2026"),
+    "past projects keep the brand's name in the example",
+  );
+
   // The admin workspace now reads through the same seam, so it makes the same
   // promise and can break the same way. Every screen here is behind a
   // security-definer RPC in the live console; with no database it must still

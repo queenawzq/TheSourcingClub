@@ -34,6 +34,7 @@
  * It refuses the production project outright.
  */
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { DEMO_LOGINS as LOGINS, DEMO_PASSWORD as PASSWORD } from "../src/shared/demo-logins.mjs";
 
@@ -139,6 +140,13 @@ const demoOrgIds = candidates.filter((org) =>
 // threads, credits, codes and notifications with them.
 if (demoOrgIds.length) {
   const list = `(${demoOrgIds.join(",")})`;
+  // Deleting a company deletes its document rows but not the files behind
+  // them, so the files go first.
+  const files = must(await admin.from("documents").select("bucket, storage_path").in("org_id", demoOrgIds), "demo files");
+  for (const bucket of new Set(files.map((file) => file.bucket))) {
+    const paths = files.filter((file) => file.bucket === bucket).map((file) => file.storage_path);
+    if (paths.length) must(await admin.storage.from(bucket).remove(paths), `clear demo files in ${bucket}`);
+  }
   const orders = must(await admin.from("production_orders").delete()
     .or(`brand_org_id.in.${list},factory_org_id.in.${list}`).select("id"), "clear demo orders");
   must(await admin.from("orgs").delete().in("id", demoOrgIds), "clear demo companies");
@@ -160,11 +168,18 @@ must(await admin.from("brand_profiles").upsert({
 }), "brand profile");
 must(await admin.from("factory_profiles").upsert({
   org_id: factoryOrg.id,
+  legal_name: "Demo Factory",
+  website_url: "https://demofactory.example.com",
   country_code: "PT",
   location: "Porto, Portugal",
+  nearest_port: "Port of Leixoes",
+  founded_year: 2012,
+  employee_count: 85,
   moq: 150,
   typical_lead_days: 28,
-  intro: "Woven shirting and light outerwear, small runs.",
+  sample_lead_days: 10,
+  equipment_notes: "Single-needle lockstitch, Overlock, Automatic buttonholer, Fusing press",
+  intro: "Woven shirting and light outerwear, small runs. We pattern, sample and sew in-house, and send photo updates at every step.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "verified",
   published_at: new Date().toISOString(),
@@ -182,6 +197,57 @@ const validUntil = new Date(Date.now() + 21 * 864e5).toISOString();
 must(await admin.from("credit_ledger").insert({
   org_id: factoryOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
 }), "factory credits");
+
+// The demo factory's profile, filled in the way onboarding fills it, through
+// its own login: production-fit tags, capacity, references, certifications and
+// sample images. Its profile page (/profile) shows all of it.
+console.log("factory profile");
+const factoryTags = [
+  ["manufacturing_model", "oem"], ["manufacturing_model", "full-package"],
+  ["production_type", "wovens"], ["production_type", "cut-sew-knits"],
+  ["product_category", "tops"], ["product_category", "outerwear"], ["product_category", "dresses-jumpsuits"],
+  ["make", "button-down-shirts"], ["make", "poplin-blouses"], ["make", "lightweight-jackets"],
+  ["market_level", "premium-contemporary"],
+  ["specialty", "organic-poplin-shirts"], ["specialty", "fit-sample-pp-sample"], ["specialty", "low-moq-sampling"],
+  ["design_service", "pattern-making"], ["design_service", "sample-development"], ["design_service", "tech-pack-support"],
+  ["region", "europe"], ["region", "united-states"],
+  ["digital_tool", "clo-3d"], ["digital_tool", "gerber"],
+];
+must(await factory.client.from("taxonomy_links").insert(await Promise.all(factoryTags.map(async ([kind, slug]) => ({
+  subject_type: "factory_profile", subject_id: factoryOrg.id, org_id: factoryOrg.id, term_id: await termId(kind, slug),
+})))), "factory profile tags");
+must(await factory.client.from("factory_capacity").insert({
+  org_id: factoryOrg.id, category_term_id: await termId("capacity_category", "wovens"), input_mode: "units", monthly_units: 6000,
+}), "factory capacity");
+const firstOfMonth = (offset) => {
+  const date = new Date();
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + offset, 1)).toISOString().slice(0, 10);
+};
+must(await factory.client.from("factory_capacity_months").insert(
+  ["open", "partial", "partial", "full", "open", "open"].map((level, offset) => ({ org_id: factoryOrg.id, month: firstOfMonth(offset), level })),
+), "factory booking calendar");
+must(await factory.client.from("profile_references").insert(
+  ["Northline Studio", "Elara Studio", "Harbour & Co"].map((title, sort) => ({ org_id: factoryOrg.id, title, sort })),
+), "factory references");
+must(await factory.client.from("factory_certifications").insert([
+  { org_id: factoryOrg.id, term_id: await termId("certification", "oeko-tex-standard-100") },
+  { org_id: factoryOrg.id, term_id: await termId("certification", "gots") },
+]), "factory certifications");
+// The repo's own sample-garment photos, uploaded as the factory's sample
+// images, the way the profile's image upload stores them (public bucket).
+for (const [file, name] of [
+  ["dashboard-rfq-shirt.jpg", "Organic cotton poplin shirt.jpg"],
+  ["dashboard-rfq-knit.jpg", "Fine-gauge knit capsule.jpg"],
+  ["dashboard-rfq-denim.jpg", "Denim jacket development.jpg"],
+]) {
+  const path = `${factoryOrg.id}/product_image/${crypto.randomUUID()}-${name.replace(/\s+/g, "-")}`;
+  const bytes = readFileSync(new globalThis.URL(`../assets/${file}`, import.meta.url));
+  must(await factory.client.storage.from("org-public").upload(path, bytes, { contentType: "image/jpeg" }), `upload ${name}`);
+  must(await factory.client.from("documents").insert({
+    org_id: factoryOrg.id, kind: "product_image", bucket: "org-public", storage_path: path,
+    file_name: name, mime_type: "image/jpeg", size_bytes: bytes.length,
+  }), `record ${name}`);
+}
 
 // A second verified factory, so a request can have two quotes to compare.
 const secondFactoryOrg = must(await secondFactory.client.rpc("create_org", { org_name: LOGINS.secondFactory.name, org_kind: "factory" }), "create second factory org");

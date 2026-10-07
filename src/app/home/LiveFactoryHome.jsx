@@ -172,6 +172,9 @@ export default function LiveFactoryHome({ org, profile }) {
   const { snapshot, rfqs, orders, quotesSent, credits, capacity } = state;
   const n = (value) => Number(value) || 0;
   const isTrading = profile?.vendor_kind === "trading_company";
+  // The design opens the profile from here. Trading companies don't have
+  // theirs live yet, so they keep landing on Settings.
+  const profilePath = isTrading ? "/team" : "/profile";
   const activeOrders = orders.filter((order) => order.status === "active");
 
   const attention = [];
@@ -182,7 +185,7 @@ export default function LiveFactoryHome({ org, profile }) {
       title: "Verification in review",
       meta: "Brands can see your profile now. Quoting opens once your business registration is approved.",
       action: "View checklist",
-      onAction: () => navigate("/team"),
+      onAction: () => navigate(profilePath),
     });
   }
   if (!isTrading && !capacity.set) {
@@ -265,7 +268,7 @@ export default function LiveFactoryHome({ org, profile }) {
       onBrowseRfqs={() => navigate("/browse")}
       onViewRfqDetail={(rfq) => navigate(rfq?.id ? `/browse/${rfq.id}` : "/browse")}
       onViewProjects={(project) => navigate(project?.id ? `/orders/${project.id}` : "/orders")}
-      onViewProfile={() => navigate("/team")}
+      onViewProfile={() => navigate(profilePath)}
       onOpenActivity={() => navigate("/notifications")}
     />
     </>

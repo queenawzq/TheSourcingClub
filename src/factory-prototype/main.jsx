@@ -3037,15 +3037,24 @@ function TradingCompanyProfilePage({ language = "en" }) {
   );
 }
 
-function FactoryManufacturingProfilePage({ language, onViewCompletion }) {
+/**
+ * `live`, when the real app mounts this page: `{ data, capacityRows, heroLine,
+ * initials, logoUrl, verifiedIcon, performance, status, walkthrough }`. The
+ * data has the same shape as `factoryProfileData`. Without it the page shows
+ * the design's example factory, unchanged.
+ */
+export function FactoryManufacturingProfilePage({ language, onViewCompletion, live = null }) {
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const [profileData, setProfileData] = useState(factoryProfileData);
-  const data = profileData;
+  const data = live ? live.data : profileData;
   const [projectTab, setProjectTab] = useState("completed");
   const [profileMode, setProfileMode] = useState(new URLSearchParams(window.location.search).get("view") === "public" ? "public" : "edit");
   const [activeEditor, setActiveEditor] = useState(null);
   const isOwnerView = profileMode === "edit";
+  // The edit dialogs aren't wired to the database yet, so the live page
+  // leaves out every button that opens one.
+  const canEdit = isOwnerView && !live;
   const visibleProjects = projectTab === "completed" ? data.pastProjects : data.inProductionProjects;
   const openEditor = (editor) => {
     setProfileMode("edit");
@@ -3063,7 +3072,7 @@ function FactoryManufacturingProfilePage({ language, onViewCompletion }) {
     ["Nearest port", data.nearestPort],
     ["Total employees", data.employees]
   ];
-  const capacityRows = [
+  const capacityRows = live ? live.capacityRows : [
     ["MOQ", data.moq],
     ["Typical lead time", data.leadTime],
     ["Typical sample lead time", data.sampleLeadTime],
@@ -3077,30 +3086,34 @@ function FactoryManufacturingProfilePage({ language, onViewCompletion }) {
     <section className={`factory-profile-card factory-profile-owner-card ${responsiveClass}`}>
       <div className="factory-profile-card-header">
         <h2>Profile status</h2>
-        <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>See details</button>
+        {!live && <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>See details</button>}
       </div>
       <div className="factory-profile-status-meter">
-        <strong>88%</strong>
+        <strong>{live ? `${live.status.percent}%` : "88%"}</strong>
         <span>Profile complete</span>
       </div>
-      <div className="factory-profile-status-track"><span /></div>
-      <p>Add the remaining certifications and keep monthly capacity current to strengthen this profile.</p>
-      <div className="factory-profile-owner-actions">
-        <button className="primary-btn" type="button">Publish changes</button>
-      </div>
+      <div className="factory-profile-status-track"><span style={live ? { width: `${live.status.percent}%` } : undefined} /></div>
+      <p>{live ? live.status.note : "Add the remaining certifications and keep monthly capacity current to strengthen this profile."}</p>
+      {/* Live saves go out as they are made, so there is nothing to publish. */}
+      {!live && (
+        <div className="factory-profile-owner-actions">
+          <button className="primary-btn" type="button">Publish changes</button>
+        </div>
+      )}
     </section>
   );
   const renderContactCard = (responsiveClass) => (
     <section className={`factory-profile-card factory-profile-contact-card ${responsiveClass}`}>
       <h2>Contact supplier</h2>
       <div className="factory-profile-contact-row">
-        <div className="factory-avatar">AM</div>
+        <div className="factory-avatar">{live ? live.initials : "AM"}</div>
         <div>
           <strong data-no-translate>{data.name}</strong>
           <span data-no-translate>{data.location}</span>
         </div>
       </div>
-      <button className="primary-btn" type="button">Contact factory</button>
+      {/* In the factory's own preview this shows what brands will press. */}
+      <button className="primary-btn" type="button" title={live ? "Brands use this to message you" : undefined}>Contact factory</button>
     </section>
   );
 
@@ -3110,7 +3123,7 @@ function FactoryManufacturingProfilePage({ language, onViewCompletion }) {
         <ProfileOwnerBar
           ariaLabel="Profile view mode"
           isOwnerView={isOwnerView}
-          onEdit={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
+          onEdit={() => canEdit ? openEditor("overview") : setProfileMode("edit")}
           onPublic={() => setProfileMode("public")}
           ownerText="Edit what brands see"
           profileLabel="Factory profile"
@@ -3120,23 +3133,25 @@ function FactoryManufacturingProfilePage({ language, onViewCompletion }) {
         {!isOwnerView && renderContactCard("factory-profile-compact-contact-card")}
 
         <section className="factory-profile-hero">
-          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
+          {canEdit && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
           {!isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => setProfileMode("edit")}>Save factory</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
-              <div className="factory-profile-logo">AM</div>
+              <div className="factory-profile-logo">{live?.logoUrl ? <img src={live.logoUrl} alt={`${data.name} logo`} /> : live ? live.initials : "AM"}</div>
             </div>
             <div>
               <div className="factory-profile-title-row">
                 <h1 data-no-translate>{data.name}</h1>
-                <span className="factory-profile-verified" title={data.profileVerified} aria-label={data.profileVerified}>
-                  <img src="/assets/prototype-icons/basic.svg" alt="" />
-                </span>
+                {(!live || live.verifiedIcon) && (
+                  <span className="factory-profile-verified" title={data.profileVerified} aria-label={data.profileVerified}>
+                    <img src={`/assets/prototype-icons/${live ? live.verifiedIcon : "basic"}.svg`} alt="" />
+                  </span>
+                )}
               </div>
-              <p data-no-translate>{isZh ? `${tx(data.location)} · ${tx(data.nearestPort)} · ${data.employees} 名员工` : `${data.location} · ${data.nearestPort} · ${data.employees} employees`}</p>
+              <p data-no-translate>{live ? live.heroLine : isZh ? `${tx(data.location)} · ${tx(data.nearestPort)} · ${data.employees} 名员工` : `${data.location} · ${data.nearestPort} · ${data.employees} employees`}</p>
               <div className="tag-row compact-tags factory-profile-hero-tags">
                 {data.productionTypes.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
-                <span className="tag garment-tag">{data.marketLevel}</span>
+                {data.marketLevel && <span className="tag garment-tag">{data.marketLevel}</span>}
               </div>
             </div>
           </div>
@@ -3146,8 +3161,8 @@ function FactoryManufacturingProfilePage({ language, onViewCompletion }) {
           <section className="factory-profile-main">
             <ProfilePerformanceCard
               eyebrow="Factory performance"
-              primary={data.rating}
-              primaryLabel={`${data.reviews} reviews · ${data.responseTime} avg. response`}
+              primary={live ? live.performance.primary : data.rating}
+              primaryLabel={live ? live.performance.primaryLabel : `${data.reviews} reviews · ${data.responseTime} avg. response`}
               metrics={[
                 { label: "Club orders", value: data.clubOrders },
                 { label: "Repeat brands", value: data.repeatBrands },
@@ -3156,7 +3171,7 @@ function FactoryManufacturingProfilePage({ language, onViewCompletion }) {
             />
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
+              <ProfileCardHeader title="Overview" editable={canEdit} onEdit={() => openEditor("overview")} />
               <p>{data.intro}</p>
               <div className="factory-profile-detail-grid">
                 {overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
@@ -3164,54 +3179,70 @@ function FactoryManufacturingProfilePage({ language, onViewCompletion }) {
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Production fit" editable={isOwnerView} onEdit={() => openEditor("production")} />
-              <ProfileChipSection label="Manufacturing model" items={data.manufacturingModels} />
-              <ProfileChipSection label="Production type" items={data.productionTypes} />
-              <ProfileChipSection label="Product categories" items={data.categories} />
-              <ProfileChipSection label="Makes" items={data.makes} />
-              <ProfileChipSection label="Market level" items={[data.marketLevel]} />
-              <ProfileChipSection label="Specialties" items={data.specialties} />
-              <ProfileChipSection label="Design services" items={data.services} />
-              <ProfileChipSection label="Primary export markets" items={data.exportMarkets} />
-              <ProfileChipSection label="Digital tools" items={data.tools} />
-              <ProfileChipSection label="Key machines or equipment" items={data.equipment} />
+              <ProfileCardHeader title="Production fit" editable={canEdit} onEdit={() => openEditor("production")} />
+              {[
+                ["Manufacturing model", data.manufacturingModels],
+                ["Production type", data.productionTypes],
+                ["Product categories", data.categories],
+                ["Makes", data.makes],
+                ["Market level", data.marketLevel ? [data.marketLevel] : []],
+                ["Specialties", data.specialties],
+                ["Design services", data.services],
+                ["Primary export markets", data.exportMarkets],
+                ["Digital tools", data.tools],
+                ["Key machines or equipment", data.equipment]
+              ]
+                // A group the factory hasn't answered is left out, not shown as a bare label.
+                .filter(([, items]) => !live || items.length > 0)
+                .map(([label, items]) => <ProfileChipSection label={label} items={items} key={label} />)}
+              {live && !data.productionTypes.length && !data.categories.length && <p>No production details yet.</p>}
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Capacity and terms" editable={isOwnerView} onEdit={() => openEditor("capacity")} />
+              <ProfileCardHeader title="Capacity and terms" editable={canEdit} onEdit={() => openEditor("capacity")} />
               <div className="factory-profile-detail-grid">
                 {capacityRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Factory walkthrough" editable={isOwnerView} actionLabel="Manage video" onEdit={() => openEditor("walkthrough")} />
-              <div className="factory-profile-video-card">
-                <div className="factory-profile-video-preview">
-                  <img src="/assets/factory-header.png" alt="Factory walkthrough preview" />
-                  <span>2:48</span>
-                </div>
-                <div>
-                  <strong>Verified production-floor walkthrough</strong>
-                  <p>Continuous facility walkthrough covering the core areas requested during onboarding.</p>
-                  <div className="tag-row compact-tags">
-                    {data.walkthrough.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
+              <ProfileCardHeader title="Factory walkthrough" editable={canEdit} actionLabel="Manage video" onEdit={() => openEditor("walkthrough")} />
+              {live && !live.walkthrough ? (
+                <p>No walkthrough video yet.</p>
+              ) : (
+                <div className="factory-profile-video-card">
+                  <div className="factory-profile-video-preview">
+                    {live
+                      ? <video src={live.walkthrough.url} controls preload="metadata" aria-label="Factory walkthrough" />
+                      : <img src="/assets/factory-header.png" alt="Factory walkthrough preview" />}
+                    {!live && <span>2:48</span>}
+                  </div>
+                  <div>
+                    <strong>{live ? live.walkthrough.title : "Verified production-floor walkthrough"}</strong>
+                    <p>{live ? live.walkthrough.note : "Continuous facility walkthrough covering the core areas requested during onboarding."}</p>
+                    <div className="tag-row compact-tags">
+                      {data.walkthrough.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Samples developed" editable={isOwnerView} actionLabel="Manage images" onEdit={() => openEditor("samples")} />
-              <div className="factory-profile-product-grid">
-                {data.products.map((product) => (
-                  <article className="factory-profile-product" key={product.title}>
-                    <img src={product.src} alt={`${product.title} reference`} />
-                    <strong>{product.title}</strong>
-                    <span>{product.meta}</span>
-                  </article>
-                ))}
-              </div>
+              <ProfileCardHeader title="Samples developed" editable={canEdit} actionLabel="Manage images" onEdit={() => openEditor("samples")} />
+              {live && !data.products.length ? (
+                <p>No sample images yet.</p>
+              ) : (
+                <div className="factory-profile-product-grid">
+                  {data.products.map((product) => (
+                    <article className="factory-profile-product" key={product.src}>
+                      <img src={product.src} alt={`${product.title} reference`} />
+                      <strong>{product.title}</strong>
+                      <span>{product.meta}</span>
+                    </article>
+                  ))}
+                </div>
+              )}
             </section>
 
             <section className="factory-profile-card">
@@ -3243,27 +3274,33 @@ function FactoryManufacturingProfilePage({ language, onViewCompletion }) {
                 </button>
               </div>
               <div className="factory-profile-project-list">
+                {live && !visibleProjects.length && (
+                  <p>{projectTab === "completed" ? "No completed orders yet." : "No orders in production right now."}</p>
+                )}
                 {visibleProjects.map((project) => (
-                  <article className="factory-profile-history-card" key={project.title}>
+                  <article className="factory-profile-history-card" key={project.key ?? project.title}>
                     <header>
                       <div>
                         <h3>{project.title}</h3>
-                        <p>{project.brand} · {project.date}</p>
+                        {/* Other brands never see who a factory's clients are. */}
+                        <p>{live && !isOwnerView ? project.date : `${project.brand} · ${project.date}`}</p>
                       </div>
                       <span>{project.result}</span>
                     </header>
-                    <p>{project.summary}</p>
-                    {projectTab === "completed" && (
+                    {project.summary && <p>{project.summary}</p>}
+                    {projectTab === "completed" && (!live || project.review) && (
                       <div className="factory-profile-history-review">
                         <strong>{project.rating}</strong>
                         <p>"{project.review}"</p>
                       </div>
                     )}
-                    <div className="factory-profile-history-footer">
-                      <div className="tag-row compact-tags">
-                        {project.tags.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                    {(!live || project.tags.length > 0) && (
+                      <div className="factory-profile-history-footer">
+                        <div className="tag-row compact-tags">
+                          {project.tags.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </article>
                 ))}
               </div>
@@ -3278,7 +3315,7 @@ function FactoryManufacturingProfilePage({ language, onViewCompletion }) {
             )}
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Manage docs" onEdit={() => openEditor("verification")} />
+              <ProfileCardHeader title="Verification" editable={canEdit} actionLabel="Manage docs" onEdit={() => openEditor("verification")} />
               <div className="factory-profile-cert-list">
                 {data.certifications.map((cert) => (
                   <div className="factory-profile-cert" key={cert.name}>
@@ -3290,7 +3327,8 @@ function FactoryManufacturingProfilePage({ language, onViewCompletion }) {
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Client references" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("references")} />
+              <ProfileCardHeader title="Client references" editable={canEdit} actionLabel="Edit" onEdit={() => openEditor("references")} />
+              {live && !data.references.length && <p>No client references yet.</p>}
               <div className="factory-profile-reference-list">
                 {data.references.map((reference) => (
                   <div key={reference}>
