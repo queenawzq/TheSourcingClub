@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { supabaseServerEnv } from "./_supabase-env.js";
 import { messageFor } from "./send-review-decision.js";
 
 /**
@@ -63,8 +64,7 @@ export default async function handler(request, response) {
     return;
   }
 
-  const supabaseUrl = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
+  const { supabaseUrl, anonKey } = supabaseServerEnv();
   const resendKey = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM_EMAIL;
   const authorization = request.headers.authorization;

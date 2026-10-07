@@ -29,19 +29,48 @@ const initialsOf = (name) =>
     .map((word) => word[0].toUpperCase())
     .join("") || "??";
 
+// Tones are the ones the design's stylesheet draws: ready, warning, neutral,
+// danger. "success" and "info" had no rule and rendered as bare text.
 const STATUS = {
   draft: ["Draft", "warning"],
-  submitted: ["Quote submitted", "success"],
-  accepted: ["Awarded", "success"],
+  submitted: ["Quote submitted", "ready"],
+  accepted: ["Awarded", "ready"],
   declined: ["Not selected", "neutral"],
   withdrawn: ["Withdrawn", "neutral"],
-  invited: ["Invited", "info"],
+  invited: ["Invited", "ready"],
 };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * How close the quote deadline is, for a card the vendor still has to act on.
+ * Calendar days in the vendor's own time zone, so "today" means today here.
+ * Null when the deadline is more than three days out, or not set.
+ */
+function dueLabel(deadline, now = new Date()) {
+  if (!deadline) return null;
+  const due = new Date(deadline);
+  if (due.getTime() < now.getTime()) return ["Past due", "neutral"];
+  const startOf = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const days = Math.round((startOf(due) - startOf(now)) / DAY_MS);
+  if (days <= 0) return ["Due today", "danger"];
+  if (days <= 3) return [`Due in ${days} day${days === 1 ? "" : "s"}`, "warning"];
+  return null;
+}
 
 /** One request, in the shape the designed card reads. */
 function toCard(rfq, quote) {
   const statusKey = quote?.status ?? "invited";
-  const [status, statusTone] = STATUS[statusKey] ?? STATUS.invited;
+  // Only cards still waiting on the vendor count down. A submitted card keeps
+  // its label: the design routes its button on the words "Quote submitted".
+  const due = rfq.status === "open" && ["invited", "draft"].includes(statusKey)
+    ? dueLabel(rfq.quote_deadline)
+    : null;
+  // A cancelled request closes every quote on it; "Not selected" would say
+  // the brand chose someone else, which is not what happened.
+  const [status, statusTone] = rfq.status === "cancelled"
+    ? ["Request cancelled", "neutral"]
+    : due ?? STATUS[statusKey] ?? STATUS.invited;
   const quoted = quote?.unit_price_cents != null ? `${formatMoney(quote.unit_price_cents, quote.currency)} / unit` : "Not quoted";
 
   return {
@@ -110,9 +139,13 @@ export default function LiveFactoryRfqs({ org }) {
       language="en"
       rfqsByTab={tabs}
       onBrowseRfqs={() => navigate("/browse")}
-      // A sent quote opens read-only; anything else opens the quote form.
-      onViewRequest={(rfq) => navigate(rfq?.id ? `/browse/${rfq.id}/quote/sent` : "/browse")}
-      onEditQuote={(rfq) => navigate(rfq?.id ? (rfq.quoteStatus === "invited" ? `/browse/${rfq.id}` : `/browse/${rfq.id}/quote`) : "/browse")}
+      // A draft opens the form. Everything else opens the request, which reads
+      // back what was sent or what happened to it — for a sent quote that is
+      // the design's "View RFQ", with Edit and Withdraw; it used to open the
+      // post-send confirmation, where neither was offered. A withdrawn card
+      // used to open the form, which quietly started a new quote.
+      onViewRequest={(rfq) => navigate(rfq?.id ? `/browse/${rfq.id}` : "/browse")}
+      onEditQuote={(rfq) => navigate(rfq?.id ? (rfq.quoteStatus === "draft" ? `/browse/${rfq.id}/quote` : `/browse/${rfq.id}`) : "/browse")}
     />
   );
 }

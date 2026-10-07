@@ -12,6 +12,37 @@ const deployTarget = process.env.NETLIFY
     : "local";
 
 /**
+ * A PR preview's own database, when it has one.
+ *
+ * Supabase branching gives each PR that changes the database a branch of its
+ * own, and writes that branch's address and publishable key into Vercel for
+ * the PR's preview — as NEXT_PUBLIC_SUPABASE_URL and
+ * NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, which Vite would otherwise ignore.
+ * They are baked in only on a Vercel preview build, and only as a pair, so
+ * production, local dev and a preview with no branch keep using
+ * VITE_SUPABASE_* exactly as before. src/lib/supabase.js reads the result.
+ */
+function previewSupabase(mode) {
+  if (process.env.VERCEL_ENV !== "preview") return null;
+  const env = loadEnv(mode, process.cwd(), "NEXT_PUBLIC_SUPABASE_");
+  const url = env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  return url && key ? { url, key } : null;
+}
+
+/**
+ * One-click sign-in as the demo accounts (src/shared/DemoSignIn.jsx).
+ *
+ * Only test builds get it: the dev server, and Vercel preview builds — every
+ * PR preview and the qa site, which all talk to the test database. A
+ * production build gets `false`, so the buttons, the demo emails and their
+ * password are left out of the bundle entirely, not merely hidden.
+ */
+function demoSignIn(command) {
+  return command === "serve" || process.env.VERCEL_ENV === "preview";
+}
+
+/**
  * Deep links live under /app.html/... . Production handles this with a rewrite
  * in vercel.json; the dev server needs the same, or a hard refresh on
  * /app.html/rfqs/:id falls through to the marketing page — which is exactly
@@ -79,10 +110,12 @@ function apiRoutes() {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command, mode }) => ({
   plugins: [react(), appDeepLinks(), apiRoutes()],
   define: {
-    __DEPLOY_TARGET__: JSON.stringify(deployTarget)
+    __DEPLOY_TARGET__: JSON.stringify(deployTarget),
+    __PREVIEW_SUPABASE__: JSON.stringify(previewSupabase(mode)),
+    __DEMO_SIGN_IN__: JSON.stringify(demoSignIn(command))
   },
   build: {
     rollupOptions: {
@@ -114,4 +147,4 @@ export default defineConfig({
       }
     }
   }
-});
+}));

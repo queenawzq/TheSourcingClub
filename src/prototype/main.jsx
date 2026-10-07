@@ -1090,6 +1090,8 @@ export function FlowShell({
   selectedQuote = null,
   fundingMilestone = null,
   busy = false,
+  // Live mounts pass the real vendor / request here; see RightRail.
+  rail = null,
 }) {
   const meta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
 
@@ -1106,7 +1108,7 @@ export function FlowShell({
         )}
         <div className="screen-transition">{children}</div>
       </section>
-      <RightRail screen={screen} selectedQuote={selectedQuote} fundingMilestone={fundingMilestone} />
+      <RightRail screen={screen} selectedQuote={selectedQuote} fundingMilestone={fundingMilestone} rail={rail} />
       {screen !== "describe" && (
         <BottomBar
           canBack={canBack}
@@ -3296,7 +3298,7 @@ function calculateFundingSummary(milestone) {
   };
 }
 
-function RightRail({ screen, selectedQuote, fundingMilestone }) {
+function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
   if (screen === "invite" || screen === "quotes" || screen === "quoteDetail") {
     return null;
   }
@@ -3404,6 +3406,32 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
   }
 
   const isQuoteArea = ["quotes", "quoteDetail", "contract", "milestones"].includes(screen);
+  // Live: the vendor actually being chosen, and a Message button that opens
+  // the conversation. The prototype's "AM / Porto, Portugal" is its example.
+  if (isQuoteArea && rail?.vendor) {
+    return (
+      <aside className="right-rail">
+        <section className="accepted-quote-panel">
+          <div className="accepted-factory">
+            <div className="factory-avatar">{rail.vendor.initials}</div>
+            <div>
+              <strong>{rail.vendor.name}</strong>
+              {rail.vendor.location && <span>{rail.vendor.location}</span>}
+            </div>
+          </div>
+          {rail.vendor.onMessage && (
+            <button className="secondary-btn accepted-message-btn" type="button" onClick={rail.vendor.onMessage}>
+              Message factory
+            </button>
+          )}
+        </section>
+        <section className="accepted-reminder">
+          <h3>TSC reminder</h3>
+          <p>Message the vendor to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
+        </section>
+      </aside>
+    );
+  }
   if (isQuoteArea) {
     return (
       <aside className="right-rail">
@@ -3434,6 +3462,21 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
               <li>In-line or final QC review</li>
               <li>Shipment handoff and final balance</li>
             </ul>
+          </Card>
+        )}
+      </aside>
+    );
+  }
+
+  // Live: the request that was actually written, row by row, leaving out
+  // anything it does not say.
+  if (rail?.summary) {
+    const rows = rail.summary.filter(([, value]) => value);
+    return (
+      <aside className={screen === "inviteSuccess" ? "right-rail invite-success-right-rail" : "right-rail"}>
+        {rows.length > 0 && (
+          <Card title="Request summary">
+            {rows.map(([label, value]) => <Metric label={label} value={value} key={label} />)}
           </Card>
         )}
       </aside>
@@ -5919,6 +5962,7 @@ export function RfqsScreen({
   onViewQuotes,
   onEditRfq,
   onInviteVendors,
+  onArchiveRfq,
 }) {
   const [activeTab, setActiveTab] = useState("active");
   const [rfqTabs, setRfqTabs] = useState([
@@ -6151,6 +6195,7 @@ export function RfqsScreen({
               onViewQuotes={onViewQuotes}
               onEdit={onEditRfq}
               onInvite={onInviteVendors}
+              onArchive={onArchiveRfq}
               key={rfq.id ?? rfq.title}
             />
           ))
@@ -6160,7 +6205,7 @@ export function RfqsScreen({
   );
 }
 
-function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite }) {
+function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, onArchive }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   // Defaulted: a live mount that supplies fewer cells than the design draws
@@ -6223,10 +6268,29 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite })
                     </div>
                   )}
                 </div>
-                <button type="button" role="menuitem" onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
+                {/* A request that is awarded or cancelled can no longer be
+                    edited or widened; live cards say so with archivable. */}
+                {rfq.archivable !== false && (
+                  <button type="button" role="menuitem" onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
+                )}
                 <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate quote</button>
-                <button type="button" role="menuitem" onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
-                <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive quote</button>
+                {rfq.archivable !== false && (
+                  <button type="button" role="menuitem" onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
+                )}
+                {/* Live, archiving cancels the request; a request that is
+                    already awarded or cancelled has nothing left to archive. */}
+                {rfq.archivable !== false && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onArchive?.(rfq);
+                    }}
+                  >
+                    Archive quote
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -7415,7 +7479,7 @@ export function DescribeScreen({
   );
 }
 
-export function ReviewScreen({ brief, values, onChange, onEditBrief }) {
+export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments = null, onAddFiles, onRemoveFile, uploading = false }) {
   // The prototype passes none of these and reads exactly as drawn.
   const isLive = Boolean(values);
   const at = (key, drawn) => (isLive ? values[key] ?? "" : drawn);
@@ -7524,9 +7588,51 @@ export function ReviewScreen({ brief, values, onChange, onEditBrief }) {
         )}
       </Card>
       <Card title="Attachments">
+        {/* Live mounts pass the request's files and an upload handler; the
+            prototype passes neither and keeps the drawn, inert zone. */}
+        {onAddFiles ? (
+          <>
+            <button
+              className="upload-zone"
+              type="button"
+              data-testid="rfq-upload"
+              disabled={uploading}
+              onClick={(event) => event.currentTarget.nextElementSibling?.click()}
+            >
+              {uploading ? "Uploading…" : "+ Add tech pack, sketches, sample references, or color breakdown"}
+            </button>
+            <input
+              type="file"
+              multiple
+              hidden
+              name="rfq-attachments"
+              accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.zip"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                if (files.length) onAddFiles(files);
+              }}
+            />
+          </>
+        ) : (
         <button className="upload-zone" type="button">
           + Add tech pack, sketches, sample references, or color breakdown
         </button>
+        )}
+        {attachments?.length > 0 && (
+          <div className="attachment-tray">
+            {attachments.map((file) => (
+              <span className="attachment-chip" key={file.id}>
+                {file.file_name}
+                {onRemoveFile && (
+                  <button type="button" aria-label={`Remove ${file.file_name}`} onClick={() => onRemoveFile(file)}>
+                    <img src="/assets/prototype-icons/close.svg" alt="" />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
       </Card>
       <Card title="Questions vendors should answer">
         {/* Each question becomes a row a vendor answers against, so they are
@@ -7700,8 +7806,15 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
           </a>
           <div className="factory-card-metrics">
             <Metric label="match" value={factory.fit} className={matchTierClass(factory.fit)} />
-            <Metric label="rating" value={factory.rating || (factory.name === "Atelier Minho" ? "4.9" : factory.name === "Hanshu Studio" ? "4.8" : "4.7")} />
-            <span className="orders-count">{factory.orders || `${factory.name === "Atelier Minho" ? "12" : factory.name === "Hanshu Studio" ? "8" : "19"} Club orders`}</span>
+            {/* Live cards pass "" for both: there is no rating, and a brand
+                cannot count another brand's orders. The fallbacks are the
+                prototype's example vendors and must never reach a real one. */}
+            {factory.rating !== "" && (
+              <Metric label="rating" value={factory.rating || (factory.name === "Atelier Minho" ? "4.9" : factory.name === "Hanshu Studio" ? "4.8" : "4.7")} />
+            )}
+            {factory.orders !== "" && (
+              <span className="orders-count">{factory.orders || `${factory.name === "Atelier Minho" ? "12" : factory.name === "Hanshu Studio" ? "8" : "19"} Club orders`}</span>
+            )}
           </div>
           <div className="factory-actions">
             <span className="save-pill button-like-action">Message</span>
@@ -7771,8 +7884,18 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
   );
 }
 
-function InviteSuccessScreen({ goTo, selectedFactories }) {
+/**
+ * The request is live. Live mounts pass `openToAll` so the copy is true when
+ * nobody was hand-picked: "sent to 0 selected vendors" is not what happened
+ * to a request every matching vendor can see.
+ */
+export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false }) {
   const vendorCount = selectedFactories.length;
+  const sentTo = openToAll
+    ? vendorCount
+      ? `We sent the brief to ${vendorCount} selected ${vendorCount === 1 ? "vendor" : "vendors"}, and every matching vendor on TSC can see it too.`
+      : "Every matching vendor on TSC can now see the brief."
+    : null;
 
   return (
     <div className="stack">
@@ -7781,7 +7904,7 @@ function InviteSuccessScreen({ goTo, selectedFactories }) {
         <div className="success-copy">
           <h2>Your quote request is live</h2>
           <p>
-            We sent the brief to {vendorCount} selected vendors. They can review the request,
+            {sentTo ?? <>We sent the brief to {vendorCount} selected vendors.</>} They can review the request,
             ask questions, and submit quotes before the deadline.
           </p>
         </div>
@@ -7841,6 +7964,9 @@ function formatQuoteCurrency(value) {
 }
 
 function getQuoteComparisonDetails(factory) {
+  // A live quote carries its own figures; the constants below are the
+  // prototype's example vendors and must never reach a real comparison.
+  if (factory.comparison) return factory.comparison;
   const sampleSubtotal = factory.name === "Ningbo Woven Co" ? 220 : 260;
   const quantity = parseQuoteUnits(factory.quoteQuantity);
   const productionSubtotal = parseQuoteCurrency(factory.price) * quantity;
@@ -7874,6 +8000,9 @@ export function QuotesScreen({
   // Live mounts pass these; the prototype passes none and is unchanged.
   quotes: liveQuotes,
   onAward,
+  onChoose,
+  onReview,
+  onMessage,
   busy = false,
   error = null,
 }) {
@@ -7937,6 +8066,10 @@ export function QuotesScreen({
                     className="save-pill button-like-action"
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (onMessage) {
+                        onMessage(factory);
+                        return;
+                      }
                       goTo("messages");
                     }}
                   >
@@ -7947,6 +8080,10 @@ export function QuotesScreen({
                     onClick={(event) => {
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
+                      if (onReview) {
+                        onReview(factory);
+                        return;
+                      }
                       goTo("quoteDetail");
                     }}
                   >
@@ -7959,11 +8096,12 @@ export function QuotesScreen({
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
                       setSelectedReorderProject(null);
-                      // Live, choosing a quote awards it — which creates the
-                      // production order in the same transaction. There is no
-                      // separate contract step to walk to first.
+                      // Live, choosing walks to the contract step, where the
+                      // terms are read back before award_quote commits them.
+                      // A mount without that step awards directly.
                       if (isLive) {
-                        if (!busy) onAward?.(factory.id);
+                        if (onChoose) onChoose(factory);
+                        else if (!busy) onAward?.(factory.id);
                         return;
                       }
                       goTo("contract");
@@ -8085,12 +8223,93 @@ export function QuotesScreen({
   );
 }
 
-function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
-  const factory = factories.find((item) => item.name === selectedQuote) || factories[0];
-  const quoteDetails = getQuoteComparisonDetails(factory);
+/**
+ * One vendor's quote in full.
+ *
+ * Live mounts pass `quote` (a describeQuote() result) and `request` (the
+ * brand's own request, read back); every figure then comes from those and a
+ * section with nothing behind it is left out. Without them the prototype's
+ * example vendor renders exactly as before.
+ */
+export function QuoteDetailScreen({
+  selectedQuote,
+  goTo,
+  setSelectedReorderProject,
+  quote: live = null,
+  request = null,
+  onBack,
+  onMessage,
+  onChoose,
+}) {
+  const factory = live
+    ? { name: live.name, initials: live.initials, trust: live.trust ?? "", location: live.location ?? "",
+        price: live.price || "—", quoteQuantity: live.quantity || "—", lead: live.lead || "—",
+        fitType: live.fitType ?? "", fitSummary: live.fitSummary ?? "", materialCosts: [] }
+    : factories.find((item) => item.name === selectedQuote) || factories[0];
+  const quoteDetails = live ? live : getQuoteComparisonDetails(factory);
+  const overviewRows = live
+    ? [
+        ["Product", request?.product],
+        ["Color breakdown", request?.colours],
+        ["Bulk lead time", live.lead],
+        ["Capacity window", live.capacityWindow],
+        ["Payment terms", live.paymentTerms],
+        ["Shipping / incoterms", live.shipping],
+        ["Valid until", live.validUntil],
+      ].filter(([, value]) => value)
+    : [
+        ["Product", "Women’s woven shirting, lightweight outerwear"],
+        ["Color breakdown", "3 colors · 100 units per color"],
+        ["Bulk lead time", `${factory.lead} after PP approval`],
+        ["Capacity window", "Aug 12-30 · 420 units reserved"],
+        ["Payment terms", "30% deposit · 70% before shipment"],
+        ["Shipping / incoterms", "EXW quoted · freight not included"]
+      ];
+  const sourcingRows = live
+    ? [["Sourcing responsibility", request?.sourcing], ["Materials", request?.materials]].filter(([, value]) => value)
+    : [
+        ["Brand provides separately", "Labels, packaging, final color standards, and special branded trims."],
+        ["Factory includes", "Main production materials and standard components from approved direction, included in unit price."]
+      ];
+  const priceRows = live
+    ? [
+        ["Production subtotal", `${live.quantity} × ${live.price}`, live.productionSubtotal],
+        live.sampleSubtotal && ["Sample subtotal", live.samplePlan, live.sampleSubtotal],
+        ["Shipping", "TBD by brand", "Not included"]
+      ].filter(Boolean)
+    : [
+        ["Production subtotal", `${factory.quoteQuantity} × ${factory.price}`, quoteDetails.productionSubtotal],
+        ["Materials included in unit price", quoteDetails.includedMaterialPerUnit, "Included above"],
+        ["Additional material cost", `${quoteDetails.additionalMaterialPerUnit} × ${factory.quoteQuantity}`, quoteDetails.additionalMaterialSubtotal],
+        ["Sample subtotal", "Fit + PP samples", quoteDetails.sampleSubtotal],
+        ["Shipping", "TBD by brand", "Not included"]
+      ];
+  const sampleRows = live
+    ? live.sampleRows
+    : [
+        { stage: "Fit sample", cost: "$95", timing: "10 days", includes: "1 revision round" },
+        { stage: "PP sample", cost: "$165", timing: "11 days", includes: "Pre-production approval" },
+        { stage: "Extra revision", cost: "$65 each", timing: "Adds 5-7 days", includes: "Shipping not included" }
+      ];
+  const vendorNotes = live
+    ? [live.notes, ...(live.answers ?? []).map((answer) => `${answer.question} — ${answer.answer}`)].filter(Boolean)
+    : ["Can quote fit and PP separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec."];
+  const requestRows = live
+    ? [
+        ["Quantity", request?.quantity],
+        ["Target price", request?.target],
+        ["Sample ask", request?.samples],
+        ["Target date", request?.targetDate]
+      ].filter(([, value]) => value)
+    : [
+        ["Quantity", "300 units · 3 colors"],
+        ["Target price", "$18-$24 / unit"],
+        ["Sample ask", "Fit + PP before bulk"],
+        ["Target date", "Bulk by late September"]
+      ];
   return (
     <div className="quote-detail-layout">
-      <button className="text-link quote-back-link" type="button" onClick={() => goTo("quotes")}>‹ Back to vendor quotes</button>
+      <button className="text-link quote-back-link" type="button" onClick={() => (onBack ? onBack() : goTo("quotes"))}>‹ Back to vendor quotes</button>
       <header className="quote-detail-header">
         <h1>{factory.name} quotation</h1>
         <p>Review the full vendor quote before messaging, asking a follow-up question, or choosing this quote for contract terms.</p>
@@ -8104,16 +8323,21 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
                 <div className="factory-main">
                   <div className="factory-name-row">
                     <h3>{factory.name}</h3>
-                    <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+                    {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />}
                   </div>
-                  <p>{factory.location}</p>
+                  {factory.location && <p>{factory.location}</p>}
                 </div>
               </div>
               <div className="factory-actions quote-actions">
-                <span className="save-pill button-like-action">Message</span>
+                <span className="save-pill button-like-action" onClick={() => onMessage?.()}>Message</span>
                 <strong
                   className="button-like-action"
+                  data-testid="choose-quote-detail"
                   onClick={() => {
+                    if (onChoose) {
+                      onChoose();
+                      return;
+                    }
                     setSelectedReorderProject?.(null);
                     goTo("contract");
                   }}
@@ -8136,34 +8360,26 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
               ))}
             </div>
 
+            {(factory.fitType || factory.fitSummary) && (
             <div className="quote-detail-fit-row">
-              <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>
+              {factory.fitType && <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>}
               <p>{factory.fitSummary}</p>
             </div>
+            )}
           </section>
 
+          {overviewRows.length > 0 && (
           <section className="quote-detail-section">
             <h3>Quote overview</h3>
-            <DetailPairs
-              rows={[
-                ["Product", "Women’s woven shirting, lightweight outerwear"],
-                ["Color breakdown", "3 colors · 100 units per color"],
-                ["Bulk lead time", `${factory.lead} after PP approval`],
-                ["Capacity window", "Aug 12-30 · 420 units reserved"],
-                ["Payment terms", "30% deposit · 70% before shipment"],
-                ["Shipping / incoterms", "EXW quoted · freight not included"]
-              ]}
-            />
+            <DetailPairs rows={overviewRows} />
           </section>
+          )}
 
+          {(sourcingRows.length > 0 || (factory.materialCosts || []).length > 0) && (
           <section className="quote-detail-section quote-sourcing-section">
             <h3>Material sourcing responsibility</h3>
-            <DetailPairs
-              rows={[
-                ["Brand provides separately", "Labels, packaging, final color standards, and special branded trims."],
-                ["Factory includes", "Main production materials and standard components from approved direction, included in unit price."]
-              ]}
-            />
+            <DetailPairs rows={sourcingRows} />
+            {(!live || (factory.materialCosts || []).length > 0) && (
             <div className="quote-material-cost-details">
               <h4>Material cost details</h4>
               <DetailRows
@@ -8174,52 +8390,47 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
                 ])}
               />
             </div>
+            )}
           </section>
+          )}
 
           <section className="price-breakdown">
             <h3>Price breakdown</h3>
-            <DetailRows
-              rows={[
-                ["Production subtotal", `${factory.quoteQuantity} × ${factory.price}`, quoteDetails.productionSubtotal],
-                ["Materials included in unit price", quoteDetails.includedMaterialPerUnit, "Included above"],
-                ["Additional material cost", `${quoteDetails.additionalMaterialPerUnit} × ${factory.quoteQuantity}`, quoteDetails.additionalMaterialSubtotal],
-                ["Sample subtotal", "Fit + PP samples", quoteDetails.sampleSubtotal],
-                ["Shipping", "TBD by brand", "Not included"]
-              ]}
-            />
+            <DetailRows rows={priceRows} />
             <div className="quote-total">
               <strong>Quote total shown to brand</strong>
-              <span>{quoteDetails.total}</span>
+              <span>{quoteDetails.total || "—"}</span>
             </div>
           </section>
 
+          {sampleRows.length > 0 && (
           <section className="quote-detail-section">
             <h3>Sample plan</h3>
             <p className="muted">Separate stages make it clear what the brand pays before bulk production.</p>
             <div className="sample-table">
               <span>Stage</span><span>Cost</span><span>Timing</span><span>Includes</span>
-              <strong>Fit sample</strong><strong>$95</strong><strong>10 days</strong><strong>1 revision round</strong>
-              <strong>PP sample</strong><strong>$165</strong><strong>11 days</strong><strong>Pre-production approval</strong>
-              <strong>Extra revision</strong><strong>$65 each</strong><strong>Adds 5-7 days</strong><strong>Shipping not included</strong>
+              {sampleRows.map((row, index) => (
+                <React.Fragment key={`${row.stage}-${index}`}>
+                  <strong>{row.stage}</strong><strong>{row.cost}</strong><strong>{row.timing}</strong><strong>{row.includes}</strong>
+                </React.Fragment>
+              ))}
             </div>
           </section>
+          )}
 
+          {vendorNotes.length > 0 && (
           <section className="quote-note-panel">
             <h3>Vendor notes and open clarification</h3>
-            <p>Can quote fit and PP separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec.</p>
+            {vendorNotes.map((note) => <p key={note}>{note}</p>)}
           </section>
+          )}
         </Card>
 
+        {requestRows.length > 0 && (
         <Card title="Original request" className="original-request-card">
-          <DetailRows
-            rows={[
-              ["Quantity", "300 units · 3 colors"],
-              ["Target price", "$18-$24 / unit"],
-              ["Sample ask", "Fit + PP before bulk"],
-              ["Target date", "Bulk by late September"]
-            ]}
-          />
+          <DetailRows rows={requestRows} />
         </Card>
+        )}
       </div>
     </div>
   );
@@ -8252,7 +8463,15 @@ function DetailRows({ rows }) {
   );
 }
 
-function ContractScreen({ selectedQuote, reorderProject = null }) {
+/**
+ * Confirm the terms, then commit.
+ *
+ * Live mounts pass `terms` (a describeQuote() result plus the request's title
+ * and brief) and `attachments`: award_quote snapshots the quote itself, so
+ * live this step is a read-back of what is being agreed and every field is
+ * read-only. Without them the prototype's editable example renders as before.
+ */
+export function ContractScreen({ selectedQuote, reorderProject = null, terms: live = null, attachments = null, onOpenAttachment }) {
   const isReorder = Boolean(reorderProject);
   const deliveryTerms = [
     ["DDP", "Factory delivers to final destination, including duties"],
@@ -8261,10 +8480,14 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
   ];
   const [deliveryTerm, setDeliveryTerm] = useState("DDP");
   const reorderStyleName = reorderProject?.title?.replace(/\s+production$/i, "") || "";
-  const contractTitle = isReorder
+  const contractTitle = live
+    ? `${live.title || "Production"} with ${live.name}`
+    : isReorder
     ? `${reorderStyleName} reorder with ${reorderProject.factory}`
     : "Organic cotton woven shirt sample + bulk production";
-  const scopeCopy = isReorder
+  const scopeCopy = live
+    ? live.brief || "The request as the brand wrote it."
+    : isReorder
     ? `Repeat the previous ${reorderStyleName.toLowerCase()} order with ${reorderProject.factory}. Use the last approved style as the starting point, then confirm quantity, color breakdown, materials, trims, labels, packing, and any construction changes before funding.`
     : "Produce the woven shirt styles described in the attached tech pack, including approved fabric, trims, measurements, construction details, color standards, labels, and packing requirements.";
   const approvalCopy = isReorder
@@ -8274,6 +8497,21 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
   return (
     <div className="stack contract-stack">
       <Card title="Confirm final terms" className="final-terms-card">
+        {live ? (
+        <div className="final-terms-grid">
+          {[
+            ["Unit price", live.price],
+            ["Quantity", live.quantity],
+            ["Samples", [live.samplePlan, live.sampleSubtotal].filter(Boolean).join(" · ")],
+            ["Bulk lead", live.lead],
+            ["Capacity", live.capacityWindow],
+            ["Terms", live.paymentTerms],
+            ["Total", live.total]
+          ].filter(([, value]) => value).map(([label, value]) => (
+            <AcceptedQuoteField label={label} value={value} key={label} readOnly />
+          ))}
+        </div>
+        ) : (
         <div className="final-terms-grid">
           <AcceptedQuoteField label="Unit price" value="$18.40" />
           <AcceptedQuoteField label="Quantity" value="300 units" />
@@ -8282,6 +8520,17 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
           <AcceptedQuoteField label="Capacity" value="Aug 12-30" />
           <AcceptedQuoteField label="Terms" value="30/70" />
         </div>
+        )}
+        {live ? (
+        live.shipping && (
+        <section className="confirmed-trade-term">
+          <div>
+            <label htmlFor="contract-delivery-term">Delivery term from quote</label>
+            <input id="contract-delivery-term" value={live.shipping} readOnly />
+          </div>
+        </section>
+        )
+        ) : (
         <section className="confirmed-trade-term">
           <div>
             <label htmlFor="contract-delivery-term">Delivery term from quote</label>
@@ -8292,6 +8541,7 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
             </select>
           </div>
         </section>
+        )}
       </Card>
       <Card title="Work details" className="work-details-card">
         <Field
@@ -8310,6 +8560,22 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
             {approvalCopy}
           </div>
         </section>
+        {attachments ? (
+        attachments.length > 0 && (
+        <section className="contract-section">
+          <div className="contract-section-header">
+            <h3>Attachments</h3>
+          </div>
+          <div className="attachment-tray">
+            {attachments.map((file) => (
+              <button className="attachment-chip" type="button" key={file.id} onClick={() => onOpenAttachment?.(file)}>
+                {file.file_name}
+              </button>
+            ))}
+          </div>
+        </section>
+        )
+        ) : (
         <section className="contract-section">
           <div className="contract-section-header">
             <h3>Attachments</h3>
@@ -8324,6 +8590,7 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
             ))}
           </div>
         </section>
+        )}
       </Card>
     </div>
   );
@@ -8579,11 +8846,11 @@ function Metric({ label, value, className = "", testId }) {
   );
 }
 
-function AcceptedQuoteField({ label, value }) {
+function AcceptedQuoteField({ label, value, readOnly = false }) {
   return (
     <label className="accepted-quote-field">
       <span>{label}</span>
-      <input defaultValue={value} />
+      <input defaultValue={value} readOnly={readOnly} />
     </label>
   );
 }

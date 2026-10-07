@@ -1,16 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
+import { supabaseServerEnv } from "./_supabase-env.js";
 
 const jsonBody = (request) =>
   typeof request.body === "string" ? JSON.parse(request.body) : request.body ?? {};
 
 const isUuid = (value) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value));
-
-const serverConfig = () => ({
-  supabaseUrl: process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL,
-  anonKey: process.env.SUPABASE_ANON_KEY ?? process.env.VITE_SUPABASE_ANON_KEY,
-  serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-});
 
 async function authenticatedAdmin(authorization, supabaseUrl, anonKey) {
   if (!authorization?.startsWith("Bearer ")) return null;
@@ -88,7 +83,7 @@ export default async function handler(request, response) {
     return;
   }
 
-  const { supabaseUrl, anonKey, serviceKey } = serverConfig();
+  const { supabaseUrl, anonKey, serviceKey } = supabaseServerEnv();
   if (!supabaseUrl || !anonKey || !serviceKey) {
     response.status(503).json({ error: "admin user directory is not configured on the server" });
     return;
