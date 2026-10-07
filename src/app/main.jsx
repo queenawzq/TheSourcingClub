@@ -12,17 +12,6 @@
  */
 import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-// The designed screens' stylesheets, in the order the factory prototype loads
-// them. Left to the imports below, the brand prototype's module brings in the
-// shared profile and order-card sheets first and the factory's own sheet lands
-// after them, so its older rules beat the shared ones on every live page (the
-// profile's view toggle came out black instead of blue, tags the wrong tint).
-import "../shared/auth-screen.css";
-import "../shared/terms-dialog.css";
-import "../prototype/styles.css";
-import "../factory-prototype/styles.css";
-import "../shared/profile-shell.css";
-import "../shared/production-order-cards.css";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { acceptInvitation, createOrg, listMyInvitations } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile } from "../lib/domain/profile.js";

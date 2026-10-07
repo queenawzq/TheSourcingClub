@@ -73,24 +73,11 @@ designed screens), **setting the production steps**, the **factory's marketplace
 read-only until its edit dialogs are wired), and the whole **admin console**
 (`admin.html`).
 
-**The live app sets the stylesheet order itself** (top of `src/app/main.jsx`):
-the brand prototype, then the factory prototype's sheet, then the shared
-profile and order-card sheets, as the factory prototype loads them. Left to the
-import graph, the factory sheet landed after the shared ones and its older
-rules won on live pages.
-
-**Only the brand sets the production steps** (design review, Oct 2; migration
-067). It does so on its designed `MilestonesScreen`, the "Production steps"
-stage of its flow: "Save changes" saves them and tells the factory, and
-"Continue to funding" confirms them, which is what starts the order. The
-factory reads the steps on its own order page and is notified of every
-change; if one does not work for it, it messages the brand. The design's
-three step types map onto the
-four kinds: Paid release → `approval_and_payment`, Approval only →
-`approval_only`, Update only → `progress_only`; the generated deposit and
-balance (`payment_only`) read as Paid release and keep their kind unless the
-type is changed (`order-view.js`).
-
+step**, **comparing quotes**, the **order interior** (each side on its own
+designed screens), **setting the production steps**, the **factory's marketplace**,
+**conversations**, **settings**, the **factory's own profile** (`/profile`,
+read-only until its edit dialogs are wired), and the whole **admin console**
+(`admin.html`).
 **Everything a brand or a vendor touches is on the design**, except the
 screens below — each held back for a stated reason, not a backlog entry:
 
