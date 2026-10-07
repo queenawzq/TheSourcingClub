@@ -3531,7 +3531,10 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
     projects: ["Manage projects", "Update completed and in-production project proof for brands."],
     verification: ["Manage verification documents", "Upload certificates and registration documents for profile review."]
   };
-  const [title, helper] = editorTitles[editor] || editorTitles.overview;
+  const [title, designHelper] = editorTitles[editor] || editorTitles.overview;
+  // Live there is no banner (the page never shows one), so the helper only
+  // promises the profile image.
+  const helper = live && editor === "banner" ? "Upload or replace the profile image used on this profile." : designHelper;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const options = (key) => live?.options?.[key] ?? factoryProfileEditorOptions[key];
