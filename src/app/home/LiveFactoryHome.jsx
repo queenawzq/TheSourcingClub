@@ -254,7 +254,7 @@ export default function LiveFactoryHome({ org, profile }) {
       })}
       metrics={[
         { label: "Open RFQs", value: String(rfqs.length), note: "Open to quote now", tone: "blue" },
-        { label: "Quotes sent this month", value: String(quotesSent ?? 0), note: n(snapshot?.quotes_to_compare) ? `${snapshot.quotes_to_compare} awaiting brand review` : "Sent since the 1st", tone: "green" },
+        { label: "Quotes sent this month", value: String(quotesSent ?? 0), note: n(snapshot?.quotes_awaiting_decision) ? `${snapshot.quotes_awaiting_decision} awaiting brand review` : "Sent since the 1st", tone: "green" },
         { label: "Active production orders", value: String(activeOrders.length), note: nextDue ?? `${n(snapshot?.steps_awaiting_you)} need updates`, tone: "amber" },
       ]}
       capacity={capacity}

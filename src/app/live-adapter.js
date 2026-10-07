@@ -200,12 +200,16 @@ export function toRfqCard(rfq, messageCount = 0) {
     images: [],
     status: rfq.status === "awarded"
       ? "Awarded"
-      : quotes > 0
+      : rfq.status === "cancelled"
+        ? "Cancelled"
+        : quotes > 0
         ? "Ready to compare"
         : rfq.status === "draft"
           ? "Draft"
           : "Waiting for quotes",
-    statusTone: rfq.status === "awarded" ? "ready" : quotes > 0 ? "ready" : "neutral",
+    statusTone: rfq.status === "cancelled" ? "neutral" : rfq.status === "awarded" ? "ready" : quotes > 0 ? "ready" : "neutral",
+    // Only a draft or an open request can be cancelled (cancel_rfq).
+    archivable: rfq.status === "draft" || rfq.status === "open",
     metrics: [
       [String(quotes), quotes === 1 ? "quote" : "quotes"],
       [String(invited), "invited"],

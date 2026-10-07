@@ -1,10 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../../lib/auth.jsx";
 import { isConfigured } from "../../lib/supabase.js";
 import { isPlatformAdmin } from "../../lib/domain/admin.js";
 import ErrorBoundary from "../../lib/ErrorBoundary.jsx";
 import "./admin-login.css";
+
+// One-click demo sign-in, on test builds only: a production build has
+// __DEMO_SIGN_IN__ = false and leaves this import out (see vite.config.js).
+const DemoSignIn = __DEMO_SIGN_IN__ ? lazy(() => import("../../shared/DemoSignIn.jsx")) : null;
 
 const SIGNED_IN = ["ready", "no-org"];
 
@@ -73,6 +77,15 @@ function AdminLogin() {
     setBusy(false);
   }
 
+  /** The demo admin, from the test sites' one-click sign-in. */
+  async function demoSignIn(login) {
+    clearError();
+    setLocalError("");
+    setBusy(true);
+    await signInWithPassword({ email: login.email, password: login.password });
+    setBusy(false);
+  }
+
   async function submitRecovery(event) {
     event.preventDefault();
     clearError();
@@ -138,6 +151,8 @@ function AdminLogin() {
   }
 
   const checking = status === "loading" || accessState === "checking" || accessState === "allowed";
+  const showingSignIn = isConfigured && status !== "unconfigured" && accessState !== "denied"
+    && !checking && !codeFor && !resetting && !recovery;
 
   return (
     <main className="admin-login-page">
@@ -252,6 +267,14 @@ function AdminLogin() {
             <p>Access is restricted and activity may be logged for marketplace security.</p>
           </footer>
         </div>
+
+        {DemoSignIn && showingSignIn && (
+          <Suspense fallback={null}>
+            <DemoSignIn only={["admin"]} busy={busy} onPick={demoSignIn}>
+              The brand and factory accounts are on the <a href="/app.html">main sign-in</a>.
+            </DemoSignIn>
+          </Suspense>
+        )}
       </section>
     </main>
   );
