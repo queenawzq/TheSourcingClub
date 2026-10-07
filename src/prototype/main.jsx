@@ -4345,7 +4345,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
  * `live`, when the real app mounts this screen, replaces the example brand:
  * `{ name, initials, logoUrl, location, categoryLine, revenue, tags,
  * performance: { primary, primaryLabel, metrics }, intro, introEmpty,
- * overviewRows, privateRows, fitSections: [[label, items]], volumeRows,
+ * overviewRows, privateRows, publicOverviewRows, fitSections: [[label, items]], volumeRows,
  * assets: [{ title, meta, src }], assetsEmpty, status: { percent },
  * verification: [{ name, status, verified }], stakeholders: [{ key, initials,
  * label }], projects: { completed, active }, projectsEmpty, editors,
@@ -4515,10 +4515,10 @@ export function BrandProfileScreen({ onViewCompletion, live = null }) {
     projects: { completed: data.completedProjects, active: data.activeProjects }
   };
   const visibleProjects = projectTab === "completed" ? view.projects.completed : view.projects.active;
-  const overviewRows = [
-    ...view.overviewRows,
-    ...(isOwnerView ? view.privateRows : []),
-  ];
+  // Live, the public preview leaves out what vendors can't read.
+  const overviewRows = isOwnerView
+    ? [...view.overviewRows, ...view.privateRows]
+    : view.publicOverviewRows ?? view.overviewRows;
   const renderProfileStatusCard = (responsiveClass) => (
     <section className={`factory-profile-card factory-profile-owner-card ${responsiveClass}`}>
       <div className="factory-profile-card-header">

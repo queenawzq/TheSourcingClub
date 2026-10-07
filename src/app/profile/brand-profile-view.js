@@ -244,6 +244,14 @@ export function brandProfileView(parts) {
       ["HQ location", profile?.hq_location || NOT_GIVEN],
     ],
     privateRows: [["Annual revenue", profile?.annual_revenue_band || NOT_GIVEN]],
+    // "View as public" shows what a vendor reads (brand_profile_for_factory):
+    // the same three rows as the vendor's view, so no email, website, year
+    // or revenue.
+    publicOverviewRows: [
+      ["Brand name", name],
+      ["Brand category", chips.categories.join(" · ") || NOT_GIVEN],
+      ["HQ location", profile?.hq_location || NOT_GIVEN],
+    ],
     fitSections: [
       ["What the brand makes", chips.products],
       ["Market level", marketLevel],
