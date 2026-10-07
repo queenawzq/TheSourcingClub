@@ -97,7 +97,7 @@ function safeName(fileName) {
  * insert fails we remove the uploaded object, so a failed upload cannot leave
  * an orphan sitting in a bucket that nothing references and nobody reviews.
  */
-export async function uploadDocument({ orgId, kind, file, scopeId = null }) {
+export async function uploadDocument({ orgId, kind, file, scopeId = null, title = null, caption = null }) {
   const bucket = bucketFor(kind);
   // `scopeId` becomes a third path segment. Storage policies can only read the
   // object's name, so a file that has to be readable by someone outside the
@@ -128,6 +128,10 @@ export async function uploadDocument({ orgId, kind, file, scopeId = null }) {
           file_name: file.name,
           mime_type: contentType,
           size_bytes: file.size,
+          // A name and a line of description a profile card shows; most
+          // uploads have neither.
+          title: title || null,
+          caption: caption || null,
           // Documents that get reviewed enter the queue immediately; the rest
           // are never looked at and stay unverified.
           status: REVIEWED_KINDS.has(kind) ? "pending" : "unverified",
@@ -145,7 +149,7 @@ export async function uploadDocument({ orgId, kind, file, scopeId = null }) {
 export async function listDocuments(orgId, kind) {
   let query = supabase
     .from("documents")
-    .select("id, kind, bucket, storage_path, file_name, mime_type, size_bytes, status, created_at")
+    .select("id, kind, bucket, storage_path, file_name, mime_type, size_bytes, status, title, caption, created_at")
     .eq("org_id", orgId)
     .order("created_at", { ascending: false });
 
@@ -172,6 +176,19 @@ export async function urlFor(document, expiresInSeconds = 300) {
 
   if (error) throw new Error(`link to ${document.file_name}: ${error.message}`);
   return data.signedUrl;
+}
+
+/** Rename a file, or change its description, without uploading it again. */
+export async function updateDocumentDetails(documentId, { title, caption }) {
+  return unwrap(
+    await supabase
+      .from("documents")
+      .update({ title: title || null, caption: caption || null })
+      .eq("id", documentId)
+      .select("id, title, caption")
+      .single(),
+    "save the file's name and description",
+  );
 }
 
 /** Remove the object first: a dangling row is easier to notice than a dangling file. */

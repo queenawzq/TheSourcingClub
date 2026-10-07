@@ -287,7 +287,8 @@ export function profileStatus(checks) {
  *
  * parts: { orgName, profile, terms, selected, capacity, references,
  *          certifications: [{ name, status, hasFile }], registrationDoc,
- *          logoUrl, samples: [{ title, src }], walkthrough: { url, status, created_at } | null,
+ *          logoUrl, samples: [{ title, caption, src }],
+ *          walkthrough: { url, status, title, caption, created_at } | null,
  *          orders }
  */
 export function factoryProfileView(parts, now = new Date()) {
@@ -304,7 +305,7 @@ export function factoryProfileView(parts, now = new Date()) {
     ...parts.certifications.map((cert) => ({ name: cert.name, status: documentStatus(cert.status, cert.hasFile) })),
   ];
   const references = parts.references.map((reference) => reference.title);
-  const samples = parts.samples.map((sample) => ({ title: sample.title, meta: "", src: sample.src }));
+  const samples = parts.samples.map((sample) => ({ title: sample.title, meta: sample.caption ?? "", src: sample.src }));
   const live = orders.filter((order) => order.status !== "cancelled");
   const perBrand = live.reduce((tally, order) => tally.set(order.brand_org_id, (tally.get(order.brand_org_id) ?? 0) + 1), new Map());
   const projects = projectCards(orders);
@@ -359,8 +360,9 @@ export function factoryProfileView(parts, now = new Date()) {
     walkthrough: parts.walkthrough
       ? {
         url: parts.walkthrough.url,
-        title: parts.walkthrough.status === "verified" ? "Verified production-floor walkthrough" : "Production-floor walkthrough",
-        note: `Uploaded ${dayMonth(parts.walkthrough.created_at)}.`,
+        title: parts.walkthrough.title
+          || (parts.walkthrough.status === "verified" ? "Verified production-floor walkthrough" : "Production-floor walkthrough"),
+        note: parts.walkthrough.caption || `Uploaded ${dayMonth(parts.walkthrough.created_at)}.`,
       }
       : null,
     checks,

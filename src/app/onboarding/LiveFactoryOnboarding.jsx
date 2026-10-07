@@ -17,10 +17,17 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/main.jsx";
-import { addCustomTerm, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
+import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
+import {
+  addCertification as claimCertification,
+  attachCertificate,
+  certificationTerm as findCertificationTerm,
+  loadCertifications as loadCertificationRows,
+  removeCertification,
+} from "../../lib/domain/certifications.js";
 import { getCapacity, saveCapacity } from "../../lib/domain/capacity-store.js";
 import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
 import { useSignableTerms } from "./useSignableTerms.js";
@@ -158,23 +165,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   );
 
   /** Certifications claimed, each with the file behind it if there is one. */
-  const loadCertifications = useCallback(async (byKind) => {
-    const rows = unwrap(
-      await supabase
-        .from("factory_certifications")
-        .select("id, term_id, status, document:documents (id, bucket, storage_path, file_name)")
-        .eq("org_id", org.id)
-        .order("created_at"),
-      "load your certifications",
-    );
-    const list = byKind.certification ?? [];
-    return rows
-      .map((row) => {
-        const term = list.find((item) => item.id === row.term_id);
-        return term ? { id: row.id, termId: row.term_id, name: termLabel(term), fileName: row.document?.file_name ?? "", document: row.document } : null;
-      })
-      .filter(Boolean);
-  }, [org.id]);
+  const loadCertifications = useCallback(
+    (byKind) => loadCertificationRows(org.id, byKind.certification ?? []),
+    [org.id],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -286,23 +280,16 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   /** The country read out of the typed location (see countryCodeFrom in profile.js). */
   const countryCodeFrom = useCallback((location) => countryCodeIn(location, terms.country ?? []), [terms]);
 
-  const certificationTerm = (name) =>
-    (terms.certification ?? []).find((term) => termLabel(term, "en") === name || termLabel(term, language) === name);
+  const certificationTerm = (name) => findCertificationTerm(name, terms.certification ?? [], language);
 
   async function addCertification(name) {
-    let term = certificationTerm(name);
+    const known = certificationTerm(name);
+    const term = await claimCertification(org.id, name, terms.certification ?? [], language);
     let nextTerms = terms;
-    if (!term) {
-      term = await addCustomTerm(org.id, "certification", name);
+    if (!known) {
       nextTerms = { ...terms, certification: [...(terms.certification ?? []), term] };
       setTerms(nextTerms);
     }
-    unwrap(
-      await supabase
-        .from("factory_certifications")
-        .upsert({ org_id: org.id, term_id: term.id }, { onConflict: "org_id,term_id", ignoreDuplicates: true }),
-      "add the certification",
-    );
     setCertifications(await loadCertifications(nextTerms));
   }
 
@@ -311,14 +298,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     const term = certificationTerm(name);
     if (!term) throw new Error(`${name} is not a certification we recognise.`);
     const previous = certifications.find((cert) => cert.termId === term.id)?.document;
-    const document = await uploadDocument({ orgId: org.id, kind: "certificate", file });
-    unwrap(
-      await supabase
-        .from("factory_certifications")
-        .upsert({ org_id: org.id, term_id: term.id, document_id: document.id, status: "pending" }, { onConflict: "org_id,term_id" }),
-      "attach the certificate",
-    );
-    if (previous) await deleteDocument(previous).catch(() => {});
+    const document = await attachCertificate(org.id, term.id, file, previous);
     setCertifications(await loadCertifications(terms));
     return document.file_name;
   }
@@ -326,11 +306,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   async function deleteCertificate(name) {
     const cert = certifications.find((item) => item.name === name);
     if (!cert) return;
-    unwrap(
-      await supabase.from("factory_certifications").delete().eq("id", cert.id),
-      "remove the certification",
-    );
-    if (cert.document) await deleteDocument(cert.document);
+    await removeCertification(cert);
     setCertifications(await loadCertifications(terms));
   }
 

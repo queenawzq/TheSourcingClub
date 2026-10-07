@@ -115,8 +115,13 @@ async function saveReferences(org, form, existing) {
   }
 }
 
-/** The dialogs this file saves, in the order the page draws them. */
-export const SAVED_EDITORS = ["overview", "production", "capacity", "references"];
+/**
+ * The dialogs wired to the database. The last four edit files, which save as
+ * each one is added or removed (factory-profile-files.js), so their "Save
+ * changes" only closes the dialog.
+ */
+const FILE_DIALOGS = ["banner", "walkthrough", "samples", "verification"];
+export const SAVED_EDITORS = ["overview", "production", "capacity", "references", ...FILE_DIALOGS];
 
 /**
  * Save one dialog. `parts` is what the page loaded (terms, references,
@@ -128,5 +133,6 @@ export async function saveProfileSection(org, editor, form, parts, now = new Dat
   if (editor === "production") return saveProduction(org, form, terms);
   if (editor === "capacity") return saveCapacityAndTerms(org, form, terms, Boolean(parts.capacity?.capacity), now);
   if (editor === "references") return saveReferences(org, form, parts.references ?? []);
+  if (FILE_DIALOGS.includes(editor)) return undefined;
   throw new Error(`The ${editor} section can't be saved yet.`);
 }

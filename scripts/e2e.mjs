@@ -1067,6 +1067,44 @@ async function main() {
       `the completion page shows the same ${cardPercent} as the profile`);
     check(!/Atelier Minho|GOTS and BSCI/.test(completionText), "with none of the design's example checks");
 
+    // The file dialogs save too: a sample image, with the name and
+    // description the dialog asks for, lands on the profile's samples card.
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Back to profile"))?.click());
+    await waitFor(page, ".factory-profile-hero", 15000);
+    await page.evaluate(() => [...document.querySelectorAll(".factory-profile-edit-button")]
+      .find((button) => button.offsetParent && button.textContent === "Manage images")?.click());
+    await waitFor(page, ".profile-asset-add-button", 10000);
+    await page.locator(".profile-asset-add-button").click();
+    await waitFor(page, ".profile-asset-upload-dialog", 10000);
+    await page.locator('.profile-asset-upload-dialog input[type="file"]').setInputFiles({
+      name: "fit-sample.jpg",
+      mimeType: "image/jpeg",
+      buffer: await fs.readFile(path.join(OUT, "..", "assets", "dashboard-rfq-shirt.jpg")),
+    });
+    await page.evaluate(() => {
+      const [name, description] = document.querySelectorAll(".profile-asset-upload-dialog .profile-asset-metadata-grid input");
+      const set = (input, text) => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, text);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      set(name, "Poplin fit sample");
+      set(description, "Wovens · fit sample");
+    });
+    await record(page, "Add a sample image", "a real upload, with the name and description brands will read");
+    await page.locator(".profile-asset-upload-actions .primary-btn").click();
+    await page.waitForTimeout(4000);
+    const sampleCards = await page.evaluate(() => [...document.querySelectorAll(".profile-asset-manager-card")].map((card) => card.innerText));
+    check(sampleCards.some((text) => text.includes("Poplin fit sample") && text.includes("Wovens · fit sample")),
+      "the new image is in the dialog with its name and description");
+    await page.locator(".factory-profile-modal .factory-onboarding-actions .primary-btn").click();
+    await page.waitForTimeout(1500);
+    check((await page.locator("main.factory-profile-page").first().innerText()).includes("Poplin fit sample"),
+      "and on the profile's samples card");
+    const { data: savedSample } = await db.from("documents").select("bucket, title, caption")
+      .eq("org_id", factoryOrg.id).eq("kind", "product_image").eq("title", "Poplin fit sample").single();
+    check(savedSample?.bucket === "org-public" && savedSample?.caption === "Wovens · fit sample",
+      "stored as a public sample image, name and description with it");
+
     await page.goto(`${APP}/browse`);
     await waitForHeading(page, "browse rfqs");
     await waitFor(page, '[data-testid="open-rfq-card"]', 20000);
