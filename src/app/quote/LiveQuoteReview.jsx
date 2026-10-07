@@ -139,6 +139,9 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
       onBack={() => navigate(`/browse/${rfqId}/quote`)}
       onEdit={() => navigate(`/browse/${rfqId}/quote`)}
       onPurchaseCredits={() => navigate("/payout")}
+      // The draft was saved on the way here, so "Save draft" is leaving it for
+      // later: it waits under Drafts on the RFQs page.
+      onSaveDraft={() => navigate("/rfqs")}
       onSendQuote={send}
     />
   );

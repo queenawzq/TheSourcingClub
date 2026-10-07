@@ -9,8 +9,10 @@
  */
 import { createClient } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const publishableKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// A PR preview with its own Supabase branch connects to that branch; every
+// other build (production included) uses VITE_SUPABASE_*. See vite.config.js.
+const url = __PREVIEW_SUPABASE__?.url ?? import.meta.env.VITE_SUPABASE_URL;
+const publishableKey = __PREVIEW_SUPABASE__?.key ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 /**
  * True when the app has been given somewhere to connect to. The shells check
@@ -18,6 +20,9 @@ const publishableKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
  * instead of a stack trace from deep inside a query.
  */
 export const isConfigured = Boolean(url && publishableKey);
+
+/** The database this build talks to. The demo sign-in hides itself on production's. */
+export const supabaseUrl = url ?? "";
 
 /**
  * "Keep me logged in", made real.

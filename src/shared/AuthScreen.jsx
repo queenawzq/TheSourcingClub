@@ -49,6 +49,9 @@ export function AuthScreen({
   // Staff accounts are provisioned by an administrator, so this variant is
   // login-only and does not offer the public account or portal switches.
   staff = false,
+  // Shown under the card. app.html puts the test sites' demo sign-in here;
+  // the prototypes pass nothing.
+  footer = null,
 }) {
   const [mode, setMode] = useState(initialMode);
   const [showPassword, setShowPassword] = useState(false);
@@ -240,6 +243,8 @@ export function AuthScreen({
             </p>
           )}
         </div>
+
+        {footer}
 
         {staff ? (
           <a className="auth-portal-switch" href="/app.html">
