@@ -556,6 +556,48 @@ console.log("\nphase 2 — the loop");
     payment_term_id: pay.id, incoterm_id: inco.id, deposit_pct: 30, balance_pct: 70,
   }).eq("id", revised.id);
   await f1.client.rpc("submit_quote", { quote_id: revised.id });
+
+  // Sending tells the brand, and a revision sent again says so.
+  const { data: received } = await admin.from("notifications")
+    .select("title").eq("kind", "quote_received").eq("subject_id", rfqId);
+  received?.length === 2 && received.some((row) => /revised quote/.test(row.title))
+    ? ok("the brand is notified of each quote sent, and of the revision as one")
+    : fail(`expected 2 quote_received notifications, got ${received?.length}`);
+
+  // A third vendor sends and withdraws while the request is still open.
+  {
+    const f3 = await signedInUser(`f3-${stamp}@example.com`);
+    const { data: f3org } = await f3.client.rpc("create_org", {
+      org_name: `Withdrawing Mill ${stamp}`, org_kind: "factory",
+    });
+    await admin.from("factory_profiles").upsert({
+      org_id: f3org.id, country_code: "PT", moq: 100,
+      published_at: new Date().toISOString(), verification_status: "verified",
+    }, { onConflict: "org_id" });
+    await admin.from("credit_ledger").insert({
+      org_id: f3org.id, delta: 500, reason: "onboarding_grant", note: "smoke fixture",
+    });
+    const { data: q3 } = await f3.client.from("quotes").insert({
+      rfq_id: rfqId, factory_org_id: f3org.id, unit_price_cents: 1990,
+      production_quantity: 300, bulk_lead_time_days: 30,
+      payment_term_id: pay.id, incoterm_id: inco.id,
+      valid_until: new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10),
+    }).select().single();
+    await f3.client.rpc("submit_quote", { quote_id: q3.id });
+    const { error: withdrawError } = await f3.client.rpc("withdraw_quote", { quote_id: q3.id });
+    withdrawError ? fail("withdraw_quote", withdrawError) : ok("a vendor withdraws a sent quote");
+
+    const { count: toldWithdrawn } = await admin.from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("kind", "quote_withdrawn").eq("subject_id", rfqId);
+    toldWithdrawn === 1 ? ok("the brand is notified of the withdrawal")
+                        : fail(`expected 1 quote_withdrawn notification, got ${toldWithdrawn}`);
+
+    const { error: requote } = await f3.client.from("quotes").insert({ rfq_id: rfqId, factory_org_id: f3org.id });
+    requote ? ok("a withdrawal is final: the same vendor cannot start another quote")
+            : fail("LEAK: a vendor quoted again after withdrawing");
+  }
+
   const { error: loserSubmit } = await losingFactory.rpc("submit_quote", { quote_id: losingQuote });
   if (loserSubmit) fail("the second factory could not submit", loserSubmit);
 
@@ -586,6 +628,34 @@ console.log("\nphase 2 — the loop");
   rfqRow.status === "awarded" && rfqRow.awarded_quote_id === revised.id
     ? ok("the rfq closed and points at the winning quote")
     : fail(`rfq is ${rfqRow.status}`);
+
+  // The exact embed listFactoryRfqs() sends. Unqualified, `rfqs (...)` from
+  // quotes is ambiguous (quotes.rfq_id and rfqs.awarded_quote_id) and the
+  // factory's whole RFQs page failed to load.
+  const { data: factoryList, error: factoryListError } = await f1.client
+    .from("quotes")
+    .select("id, rfq_id, status, rfqs!quotes_rfq_id_fkey (id, title, orgs!rfqs_brand_org_id_fkey (name))")
+    .eq("factory_org_id", f1org.id)
+    .neq("status", "superseded");
+  factoryListError
+    ? fail("the factory's own quotes list, embedded with its request", factoryListError)
+    : factoryList.some((row) => row.rfqs?.id === rfqId)
+      ? ok("a factory lists its quotes with the request embedded")
+      : fail("the factory's quote list came back without its request");
+
+  // listRfqs() counts only the live row per vendor, so revising does not
+  // inflate the brand's "quotes received".
+  const { data: counted, error: countError } = await brand.client
+    .from("rfqs")
+    .select("id, quotes!quotes_rfq_id_fkey(count)")
+    .eq("id", rfqId)
+    .in("quotes.status", ["submitted", "accepted", "declined"])
+    .single();
+  countError
+    ? fail("the brand's quote count", countError)
+    : counted.quotes?.[0]?.count === 2
+      ? ok("the brand's quote count ignores superseded versions (2 vendors, 3 rows)")
+      : fail(`expected 2 live quotes, counted ${counted.quotes?.[0]?.count}`);
 }
 
 console.log("\nphase 3 — the order runs");

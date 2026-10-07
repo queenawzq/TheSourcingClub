@@ -155,7 +155,7 @@ A `"local"` build falls back to sniffing `*.netlify.app` / `*.vercel.app` from t
 
 `google-sheets-apps-script.js` routes on the `source` field: `factory-prototype-survey` writes to a `FactorySurvey` sheet, everything else falls back to the `Signups` sheet, so the existing `data-source="designer"` / `data-source="factory"` signup forms are unchanged. It reads `event.parameters` (plural) so the survey's `trust_factors` checkbox group keeps all its values.
 
-Config lives in `netlify.toml` and `vercel.json`; both just run `npm run build` and publish `dist`.
+Config lives in `netlify.toml` and `vercel.json`; both run `npm run build` and publish `dist`. Vercel then runs `scripts/deploy-migrate.mjs`, which applies database migrations on production builds only (see **Backend**).
 
 Note: submissions use `mode: 'no-cors'`, so `fetch` resolves even when the Apps Script rejects the request — only a network-level failure surfaces the error state. That is pre-existing behavior shared with the signup forms.
 
@@ -171,9 +171,18 @@ npm run smoke         # 138 checks through supabase-js: embeds, RPC signatures, 
 npm run check:css     # fails on a CSS variable used but never defined (runs in build)
 npm run check:prototype  # the prototype must still render with NO database
 npm run taxonomy      # regenerate migration 007 from the seed JSON
+npm run seed:demo     # demo companies with fixed logins; run again to reset them
 ```
 
 Put the local URL and publishable key in `.env.local` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; `app.html` shows a setup message rather than crashing when they are absent.
+
+**Demo data.** `npm run seed:demo` (`scripts/seed-demo.mjs`) fills the database with demo companies, requests, quotes and orders behind fixed logins, all with the password `demo password 8`: `demo-brand@example.com`, `demo-factory@example.com`, `demo-factory-two@example.com` (a competing quote), `demo-factory-new@example.com` (waiting for verification) and `demo-admin@example.com` (platform admin, `/admin.html`). Each run deletes the demo companies and every order one of them is part of, then builds them again, so running it again is the reset. It only targets a local stack unless given `--remote` with `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` for a test database, and it refuses the production project. A PR that adds a state a tester needs to see adds it here. **A scenario that needs an account of its own** (a role or company state none of the logins has) adds the login to `src/shared/demo-logins.mjs` and its setup to the seed; the seed stops if a listed login has no setup. That list is also what the test sites' one-click sign-in shows: on test builds only (the dev server, PR previews and the qa site: `__DEMO_SIGN_IN__` in `vite.config.js`), the sign-in screens offer a button per login (`src/shared/DemoSignIn.jsx`). A production build leaves that code and the list out, and the buttons hide themselves when connected to the production database.
+
+**PR previews get their own database.** Supabase branching (GitHub integration, "Supabase changes only") creates a database branch when a PR that changes `supabase/` is opened, runs its migrations and `seed.sql`, and writes the branch's details into Vercel for that PR's preview. It deletes the branch when the PR is merged or closed. It writes its own variable names, so on a Vercel **preview** build only:
+- `vite.config.js` bakes `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` into `__PREVIEW_SUPABASE__`, which `src/lib/supabase.js` prefers;
+- `api/_supabase-env.js` uses `SUPABASE_URL` + `SUPABASE_PUBLISHABLE_KEY` + `SUPABASE_SECRET_KEY`, only when all three are set.
+
+Production, local dev and a preview without a branch use `VITE_SUPABASE_*` (and the server's usual names) as before. The decision happens only when the PR is opened; later pushes don't create a branch.
 
 ### Shape
 
@@ -181,7 +190,9 @@ The browser talks to Postgres directly with the publishable key, and **row level
 
 Two roles matter. `authenticated` and `anon` hold the publishable key and are fully governed by RLS; `anon` deliberately has no table grants at all, so a signed-out visitor is refused before RLS is consulted. The one exception is `current_legal_documents()`, granted to `anon` so signup can link to the terms before an account exists (see **Legal documents**). `service_role` carries `BYPASSRLS` and is only ever used by server code holding the secret key — never anything bundled into the browser.
 
-Migrations are numbered and immutable once pushed. `007` is generated from `supabase/seed/taxonomy.json` by `scripts/build-taxonomy.py`; edit the JSON, never the SQL.
+Migrations are numbered and immutable once pushed. **Merging to `main` applies them to production:** the Vercel production build runs `supabase db push --include-all` after `npm run build` (`scripts/deploy-migrate.mjs`, using the Production-only `SUPABASE_DB_URL`). A failed migration fails the deploy and the previous site stays live. Preview builds never touch the database. Two consequences: every migration must work with the site that is still live while it is applied (add, don't rename or drop in the same change), and a rollback is Vercel's Instant Rollback, since rebuilding an older commit fails once production holds a migration that commit lacks.
+
+`007` is generated from `supabase/seed/taxonomy.json` by `scripts/build-taxonomy.py`; edit the JSON, never the SQL.
 
 ### Things that will bite
 

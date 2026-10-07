@@ -1,10 +1,11 @@
 /**
  * Notifications.
  *
- * Written only by security-definer functions — award_quote is the sole writer
- * today — so a client can read them and mark them read, nothing more. That is
- * the same shape as credit_ledger, and for the same reason: a notification a
- * user could fabricate is worth nothing.
+ * Written only by security-definer functions and triggers — invitations,
+ * quotes sent and withdrawn, awards, cancellations, messages and order steps —
+ * so a client can read them and mark them read, nothing more. That is the same
+ * shape as credit_ledger, and for the same reason: a notification a user could
+ * fabricate is worth nothing.
  */
 import { supabase, unwrap } from "../supabase.js";
 
@@ -56,6 +57,11 @@ export function notificationLink(notification, { isFactory }) {
 
   // A request lives at a different address for each side; an order does not —
   // it is one row with two parties, and the same link has to open for both.
+  // A quote arriving or leaving is news about the comparison, so the brand
+  // lands on it rather than on the request.
+  if (type === "rfq" && !isFactory && ["quote_received", "quote_withdrawn"].includes(notification.kind)) {
+    return `/rfqs/${id}/quotes`;
+  }
   if (type === "rfq") return isFactory ? `/browse/${id}` : `/rfqs/${id}`;
   if (type === "order") return `/orders/${id}`;
 
