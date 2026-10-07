@@ -31,3 +31,10 @@
 .live-profile-error {
   color: #b42318;
 }
+
+/* A save error sits in the dialog's sticky footer, left of the buttons. */
+.factory-profile-modal .factory-profile-modal-error {
+  flex: 1;
+  margin: 0;
+  text-align: left;
+}

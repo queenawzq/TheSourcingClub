@@ -69,7 +69,8 @@ On the design, live: **auth**, **brand and factory onboarding**, **the
 dashboard**, **requests**, **orders**, the **request composer and its invite
 step**, **comparing quotes**, the **order interior**, the **factory's
 marketplace**, **conversations**, **settings**, the **factory's own profile**
-(`/profile`, read-only until its edit dialogs are wired), and the whole **admin
+(`/profile`, with its overview, production-fit, capacity and references dialogs
+and the completion page at `/profile/completion`), and the whole **admin
 console** (`admin.html`).
 
 **Everything a brand or a vendor touches is on the design**, except the

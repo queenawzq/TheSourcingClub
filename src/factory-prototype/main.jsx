@@ -3042,6 +3042,12 @@ function TradingCompanyProfilePage({ language = "en" }) {
  * initials, logoUrl, verifiedIcon, performance, status, walkthrough }`. The
  * data has the same shape as `factoryProfileData`. Without it the page shows
  * the design's example factory, unchanged.
+ *
+ * The edit dialogs: `live.editors` lists the ones wired to the database,
+ * `live.form` / `live.options` / `live.months` are their starting values,
+ * option lists and booking months, `live.onSave(editor, form)` saves one
+ * (a promise), `live.initialEditor` opens one on arrival and
+ * `live.onEditorClosed` hears when a dialog closes.
  */
 export function FactoryManufacturingProfilePage({ language, onViewCompletion, live = null }) {
   const isZh = language === "zh";
@@ -3050,11 +3056,10 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
   const data = live ? live.data : profileData;
   const [projectTab, setProjectTab] = useState("completed");
   const [profileMode, setProfileMode] = useState(new URLSearchParams(window.location.search).get("view") === "public" ? "public" : "edit");
-  const [activeEditor, setActiveEditor] = useState(null);
+  const [activeEditor, setActiveEditor] = useState(() => (live?.editors?.includes(live.initialEditor) ? live.initialEditor : null));
   const isOwnerView = profileMode === "edit";
-  // The edit dialogs aren't wired to the database yet, so the live page
-  // leaves out every button that opens one.
-  const canEdit = isOwnerView && !live;
+  // Live, only the dialogs wired to the database get their button.
+  const canEditSection = (editor) => isOwnerView && (!live || Boolean(live.editors?.includes(editor)));
   const visibleProjects = projectTab === "completed" ? data.pastProjects : data.inProductionProjects;
   const openEditor = (editor) => {
     setProfileMode("edit");
@@ -3086,7 +3091,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
     <section className={`factory-profile-card factory-profile-owner-card ${responsiveClass}`}>
       <div className="factory-profile-card-header">
         <h2>Profile status</h2>
-        {!live && <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>See details</button>}
+        {(!live || onViewCompletion) && <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>See details</button>}
       </div>
       <div className="factory-profile-status-meter">
         <strong>{live ? `${live.status.percent}%` : "88%"}</strong>
@@ -3123,7 +3128,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
         <ProfileOwnerBar
           ariaLabel="Profile view mode"
           isOwnerView={isOwnerView}
-          onEdit={() => canEdit ? openEditor("overview") : setProfileMode("edit")}
+          onEdit={() => canEditSection("overview") ? openEditor("overview") : setProfileMode("edit")}
           onPublic={() => setProfileMode("public")}
           ownerText="Edit what brands see"
           profileLabel="Factory profile"
@@ -3133,7 +3138,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
         {!isOwnerView && renderContactCard("factory-profile-compact-contact-card")}
 
         <section className="factory-profile-hero">
-          {canEdit && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
+          {canEditSection("banner") && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
           {!isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => setProfileMode("edit")}>Save factory</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
@@ -3171,7 +3176,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
             />
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Overview" editable={canEdit} onEdit={() => openEditor("overview")} />
+              <ProfileCardHeader title="Overview" editable={canEditSection("overview")} onEdit={() => openEditor("overview")} />
               <p>{data.intro}</p>
               <div className="factory-profile-detail-grid">
                 {overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
@@ -3179,7 +3184,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Production fit" editable={canEdit} onEdit={() => openEditor("production")} />
+              <ProfileCardHeader title="Production fit" editable={canEditSection("production")} onEdit={() => openEditor("production")} />
               {[
                 ["Manufacturing model", data.manufacturingModels],
                 ["Production type", data.productionTypes],
@@ -3199,14 +3204,14 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Capacity and terms" editable={canEdit} onEdit={() => openEditor("capacity")} />
+              <ProfileCardHeader title="Capacity and terms" editable={canEditSection("capacity")} onEdit={() => openEditor("capacity")} />
               <div className="factory-profile-detail-grid">
                 {capacityRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Factory walkthrough" editable={canEdit} actionLabel="Manage video" onEdit={() => openEditor("walkthrough")} />
+              <ProfileCardHeader title="Factory walkthrough" editable={canEditSection("walkthrough")} actionLabel="Manage video" onEdit={() => openEditor("walkthrough")} />
               {live && !live.walkthrough ? (
                 <p>No walkthrough video yet.</p>
               ) : (
@@ -3229,7 +3234,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Samples developed" editable={canEdit} actionLabel="Manage images" onEdit={() => openEditor("samples")} />
+              <ProfileCardHeader title="Samples developed" editable={canEditSection("samples")} actionLabel="Manage images" onEdit={() => openEditor("samples")} />
               {live && !data.products.length ? (
                 <p>No sample images yet.</p>
               ) : (
@@ -3315,7 +3320,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
             )}
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Verification" editable={canEdit} actionLabel="Manage docs" onEdit={() => openEditor("verification")} />
+              <ProfileCardHeader title="Verification" editable={canEditSection("verification")} actionLabel="Manage docs" onEdit={() => openEditor("verification")} />
               <div className="factory-profile-cert-list">
                 {data.certifications.map((cert) => (
                   <div className="factory-profile-cert" key={cert.name}>
@@ -3327,7 +3332,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Client references" editable={canEdit} actionLabel="Edit" onEdit={() => openEditor("references")} />
+              <ProfileCardHeader title="Client references" editable={canEditSection("references")} actionLabel="Edit" onEdit={() => openEditor("references")} />
               {live && !data.references.length && <p>No client references yet.</p>}
               <div className="factory-profile-reference-list">
                 {data.references.map((reference) => (
@@ -3345,7 +3350,11 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
         <FactoryProfileEditModal
           editor={activeEditor}
           data={data}
-          onClose={() => setActiveEditor(null)}
+          live={live}
+          onClose={() => {
+            setActiveEditor(null);
+            live?.onEditorClosed?.();
+          }}
           onSave={saveProfileSection}
         />
       ), document.body)}
@@ -3412,10 +3421,17 @@ const profileCompletionIconMap = {
   missing: "/assets/prototype-icons/warning.svg"
 };
 
-function FactoryProfileCompletionPage({ onBack }) {
-  const completeCount = profileCompletionChecks.filter((item) => item.tone === "complete").length;
-  const progressCount = profileCompletionChecks.filter((item) => item.tone === "progress").length;
-  const attentionCount = profileCompletionChecks.filter((item) => item.tone === "missing").length;
+/**
+ * `live`, when the real app mounts this page: `{ percent, intro, checks,
+ * summaryLabel, suggestions }`, each check `{ title, status, tone,
+ * description, action: { label, onClick } | null }`. Without it the page
+ * shows the design's example, unchanged.
+ */
+export function FactoryProfileCompletionPage({ onBack, live = null }) {
+  const checks = live ? live.checks : profileCompletionChecks;
+  const completeCount = checks.filter((item) => item.tone === "complete").length;
+  const progressCount = checks.filter((item) => item.tone === "progress").length;
+  const attentionCount = checks.filter((item) => item.tone === "missing").length;
 
   return (
     <main className="factory-profile-page factory-profile-completion-page">
@@ -3426,12 +3442,12 @@ function FactoryProfileCompletionPage({ onBack }) {
           <div>
             <span>Profile verification</span>
             <h1>Profile completion summary</h1>
-            <p>You can publish and receive matching RFQs now. Complete the items below to improve trust signals and help brands understand the factory faster.</p>
+            <p>{live ? live.intro : "You can publish and receive matching RFQs now. Complete the items below to improve trust signals and help brands understand the factory faster."}</p>
           </div>
           <div className="factory-profile-completion-score">
-            <strong>88%</strong>
+            <strong>{live ? `${live.percent}%` : "88%"}</strong>
             <span>Profile complete</span>
-            <div className="factory-profile-status-track"><span /></div>
+            <div className="factory-profile-status-track"><span style={live ? { width: `${live.percent}%` } : undefined} /></div>
           </div>
         </section>
 
@@ -3445,7 +3461,7 @@ function FactoryProfileCompletionPage({ onBack }) {
                 </div>
               </div>
               <div className="profile-completion-check-list">
-                {profileCompletionChecks.map((item) => (
+                {checks.map((item) => (
                   <article className={`profile-completion-check ${item.tone}`} key={item.title}>
                     <span className="profile-completion-check-icon" aria-hidden="true">
                       <img src={profileCompletionIconMap[item.tone]} alt="" />
@@ -3454,7 +3470,9 @@ function FactoryProfileCompletionPage({ onBack }) {
                       <strong>{item.title}</strong>
                       <small>{item.status}</small>
                       <p>{item.description}</p>
-                      {item.action && <button className="secondary-btn compact-btn" type="button">{item.action}</button>}
+                      {live
+                        ? item.action && <button className="secondary-btn compact-btn" type="button" onClick={item.action.onClick}>{item.action.label}</button>
+                        : item.action && <button className="secondary-btn compact-btn" type="button">{item.action}</button>}
                     </div>
                   </article>
                 ))}
@@ -3466,7 +3484,7 @@ function FactoryProfileCompletionPage({ onBack }) {
             <section className="factory-profile-card">
               <h2>Summary</h2>
               <div className="profile-completion-summary-grid">
-                <ProfileCompletionSummaryRow label="Verified" value={`${completeCount} items`} />
+                <ProfileCompletionSummaryRow label={live ? live.summaryLabel : "Verified"} value={`${completeCount} items`} />
                 <ProfileCompletionSummaryRow label="In review" value={`${progressCount} items`} />
                 <ProfileCompletionSummaryRow label="Needs attention" value={`${attentionCount} items`} />
               </div>
@@ -3474,8 +3492,16 @@ function FactoryProfileCompletionPage({ onBack }) {
             <section className="factory-profile-card">
               <h2>Suggested updates</h2>
               <div className="factory-profile-owner-task-list">
-                <span>Upload GOTS certificate</span>
-                <span>Add August available capacity</span>
+                {live
+                  ? live.suggestions.length
+                    ? live.suggestions.map((suggestion) => <span key={suggestion}>{suggestion}</span>)
+                    : <span>Nothing to add. Keep monthly capacity current.</span>
+                  : (
+                    <>
+                      <span>Upload GOTS certificate</span>
+                      <span>Add August available capacity</span>
+                    </>
+                  )}
               </div>
             </section>
           </aside>
@@ -3485,7 +3511,13 @@ function FactoryProfileCompletionPage({ onBack }) {
   );
 }
 
-function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
+/**
+ * Live (`live` from the profile page): the form starts from `live.form`, chip
+ * groups offer `live.options` (falling back to the design's list where the
+ * platform has none), and Save hands the whole form to `live.onSave(editor,
+ * form)`, staying open with the error if it fails.
+ */
+function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave }) {
   const isSimpleMediaEditor = ["banner", "walkthrough", "samples", "projects"].includes(editor);
   const editorTitles = {
     overview: ["Edit overview", "Update the factory details brands see at the top of this profile."],
@@ -3499,7 +3531,10 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
     verification: ["Manage verification documents", "Upload certificates and registration documents for profile review."]
   };
   const [title, helper] = editorTitles[editor] || editorTitles.overview;
-  const [form, setForm] = useState(() => ({
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const options = (key) => live?.options?.[key] ?? factoryProfileEditorOptions[key];
+  const [form, setForm] = useState(() => live ? { ...live.form } : ({
     name: data.name,
     location: data.location,
     nearestPort: data.nearestPort,
@@ -3535,7 +3570,20 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
     certifications: data.certifications
   }));
   const updateField = (key, value) => setForm((current) => ({ ...current, [key]: value }));
-  const save = () => {
+  const save = async () => {
+    if (live) {
+      setSaving(true);
+      setSaveError(null);
+      try {
+        await live.onSave(editor, form);
+        onClose();
+      } catch (error) {
+        setSaveError(error);
+        setSaving(false);
+      }
+      return;
+    }
+
     if (editor === "overview") {
       onSave({
         name: form.name,
@@ -3646,21 +3694,21 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
 
         {editor === "production" && (
           <div className="factory-onboarding-section production-fit-section">
-            <ProfileChipEditor label="Manufacturing model" options={factoryProfileEditorOptions.manufacturingModels} selected={form.manufacturingModels} onChange={(items) => updateField("manufacturingModels", items)} />
-            <ProfileChipEditor label="Production type" options={factoryProfileEditorOptions.productionTypes} selected={form.productionTypes} onChange={(items) => updateField("productionTypes", items)} />
-            <ProfileChipEditor label="Product categories" options={factoryProfileEditorOptions.categories} selected={form.categories} onChange={(items) => updateField("categories", items)} />
-            <ProfileChipEditor label="Makes" options={factoryProfileEditorOptions.makes} selected={form.makes} onChange={(items) => updateField("makes", items)} allowCustom />
-            <ProfileChipEditor label="Market level" options={factoryProfileEditorOptions.marketLevel} selected={form.marketLevel} onChange={(items) => updateField("marketLevel", items)} singleSelect />
-            <ProfileChipEditor label="Design services" options={factoryProfileEditorOptions.services} selected={form.services} onChange={(items) => updateField("services", items)} />
-            <ProfileChipEditor label="Specialties" options={factoryProfileEditorOptions.specialties} selected={form.specialties} onChange={(items) => updateField("specialties", items)} allowCustom />
-            <ProfileChipEditor label="Primary export markets" options={factoryProfileEditorOptions.exportMarkets} selected={form.exportMarkets} onChange={(items) => updateField("exportMarkets", items)} />
-            <ProfileChipEditor label="Digital tools" options={factoryProfileEditorOptions.tools} selected={form.tools} onChange={(items) => updateField("tools", items)} />
-            <ProfileChipEditor label="Key machines or equipment" options={factoryProfileEditorOptions.equipment} selected={form.equipment} onChange={(items) => updateField("equipment", items)} allowCustom />
+            <ProfileChipEditor label="Manufacturing model" options={options("manufacturingModels")} selected={form.manufacturingModels} onChange={(items) => updateField("manufacturingModels", items)} />
+            <ProfileChipEditor label="Production type" options={options("productionTypes")} selected={form.productionTypes} onChange={(items) => updateField("productionTypes", items)} />
+            <ProfileChipEditor label="Product categories" options={options("categories")} selected={form.categories} onChange={(items) => updateField("categories", items)} />
+            <ProfileChipEditor label="Makes" options={options("makes")} selected={form.makes} onChange={(items) => updateField("makes", items)} allowCustom />
+            <ProfileChipEditor label="Market level" options={options("marketLevel")} selected={form.marketLevel} onChange={(items) => updateField("marketLevel", items)} singleSelect />
+            <ProfileChipEditor label="Design services" options={options("services")} selected={form.services} onChange={(items) => updateField("services", items)} />
+            <ProfileChipEditor label="Specialties" options={options("specialties")} selected={form.specialties} onChange={(items) => updateField("specialties", items)} allowCustom />
+            <ProfileChipEditor label="Primary export markets" options={options("exportMarkets")} selected={form.exportMarkets} onChange={(items) => updateField("exportMarkets", items)} />
+            <ProfileChipEditor label="Digital tools" options={options("tools")} selected={form.tools} onChange={(items) => updateField("tools", items)} />
+            <ProfileChipEditor label="Key machines or equipment" options={options("equipment")} selected={form.equipment} onChange={(items) => updateField("equipment", items)} allowCustom />
           </div>
         )}
 
         {editor === "capacity" && (
-          <ProfileCapacityEditor form={form} onChange={updateField} />
+          <ProfileCapacityEditor form={form} onChange={updateField} months={live?.months} />
         )}
 
         {editor === "references" && (
@@ -3684,8 +3732,10 @@ function FactoryProfileEditModal({ editor, data, onClose, onSave }) {
         )}
 
         <footer className="factory-onboarding-actions">
+          {/* In the sticky footer, so a long dialog can't scroll it out of sight. */}
+          {saveError && <p className="factory-onboarding-save-error factory-profile-modal-error" role="alert">{saveError.message ?? String(saveError)}</p>}
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="primary-btn" type="button" onClick={save}>Save changes</button>
+          <button className="primary-btn" type="button" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
         </footer>
       </section>
     </div>
@@ -3915,8 +3965,9 @@ function ProfileEditField({ label, value, onChange }) {
   );
 }
 
-function ProfileCapacityEditor({ form, onChange }) {
-  const monthNames = ["Aug", "Sep", "Oct"];
+/** `months`, live: the next three months from today, in place of the design's Aug-Oct. */
+function ProfileCapacityEditor({ form, onChange, months }) {
+  const monthNames = months ?? ["Aug", "Sep", "Oct"];
   const selectedCategory = FACTORY_CAPACITY_CATEGORIES.find((category) => category.key === form.capacityCategoryKey) || FACTORY_CAPACITY_CATEGORIES[1];
   const availableHours = Number.parseInt(form.lineHoursInput || "0", 10) || 0;
   const directUnits = Number.parseInt(form.capacityMonthlyUnits || "0", 10) || 0;
@@ -3928,7 +3979,7 @@ function ProfileCapacityEditor({ form, onChange }) {
     partial: { min: 25, max: 60 },
     full: { min: 0, max: 25 }
   };
-  const activeRange = levelRanges[form.capacityMonthSelections?.Aug || "open"] || levelRanges.open;
+  const activeRange = levelRanges[form.capacityMonthSelections?.[monthNames[0]] || "open"] || levelRanges.open;
   const minPieces = Math.round(monthlyUnits * (activeRange.min / 100));
   const maxPieces = Math.round(monthlyUnits * (activeRange.max / 100));
   const pieceSummary = minPieces === maxPieces ? maxPieces.toLocaleString() : `${minPieces.toLocaleString()}-${maxPieces.toLocaleString()}`;
@@ -4017,7 +4068,7 @@ function ProfileCapacityEditor({ form, onChange }) {
 
         <div className="capacity-brand-preview onboarding-capacity-preview">
           <span>BRANDS WILL SEE</span>
-          <strong>{`${selectedCategory.label} · Aug start · roughly ${pieceSummary} pieces that month`}</strong>
+          <strong>{`${selectedCategory.label} · ${monthNames[0]} start · roughly ${pieceSummary} pieces that month`}</strong>
           <p>{previewFormula}</p>
         </div>
       </section>

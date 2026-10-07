@@ -945,7 +945,11 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     // The factory's own profile. Brands and trading companies get theirs in
     // later changes; until then /profile is the dashboard for them, as before.
     ...(hasFactoryProfilePage(isFactory, profile)
-      ? [{ path: "/profile", render: () => <LiveFactoryProfile org={activeOrg} /> }]
+      ? [
+        { path: "/profile", render: () => <LiveFactoryProfile org={activeOrg} /> },
+        { path: "/profile/completion", render: () => <LiveFactoryProfile org={activeOrg} page="completion" /> },
+        { path: "/profile/edit/:editor", render: (params) => <LiveFactoryProfile org={activeOrg} editor={params.editor} /> },
+      ]
       : []),
     {
       path: "/team",
