@@ -3731,7 +3731,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
           <FactoryProfileMediaEditor
             assets={getFactoryProfileMediaAssets(editor, data)}
             live={live?.files?.[editor]}
-            uploadHelper={editor === "projects" ? "Add completed work, in-production orders, or project proof that helps brands understand your reliability." : editor === "samples" ? "Add sample garments, development examples, construction details, or finished pieces." : "Add another image or file."}
+            uploadHelper={editor === "projects" ? "Add completed work, in-production orders, or project proof that helps brands understand your reliability." : editor === "samples" ? "Add sample garments, development examples, construction details, or finished pieces." : live && editor === "walkthrough" ? "Add a short production-floor video, MP4 or MOV up to 50 MB." : "Add another image or file."}
             itemType={editor === "projects" ? "project" : "image"}
           />
         )}
