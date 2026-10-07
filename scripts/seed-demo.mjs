@@ -489,6 +489,8 @@ done. Every login uses the password "${PASSWORD}".
     - "${merino.title}": an order waiting for its production steps
     - "${linen.title}": a running order, its first step sent for approval
     - "${tote.title}": an order cancelled by both sides
+    - "Linen trousers, SS27": the factory proposed cancelling (Accept / Keep order)
+    - "Recycled nylon windbreaker": the brand proposed cancelling (Withdraw)
   The admin's verification queue has ${LOGINS.newFactory.name}.
 
   Run this again at any time to put the demo companies back to this state.
