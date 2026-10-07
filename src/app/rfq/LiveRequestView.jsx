@@ -32,10 +32,12 @@ import {
   saveRequest,
   unsaveRequest,
 } from "../../lib/domain/rfq.js";
-import { getMyQuote, getSampleLines } from "../../lib/domain/quote.js";
+import { formatCapacityWindow, getLatestQuote, getSampleLines, reviseQuote, withdrawQuote } from "../../lib/domain/quote.js";
+import { quoteCreditCost } from "../../lib/domain/credits.js";
 import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import QuoteActionDialog, { reviseCopy } from "../quote/QuoteActionDialog.jsx";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -51,6 +53,29 @@ function ago(when) {
   return `${days} day${days === 1 ? "" : "s"} ago`;
 }
 
+/**
+ * What happened to this vendor's quote, in words. Every status gets its own
+ * sentence: the old fallback read "Your quote is a declined and has not been
+ * sent yet" on a quote that was sent and then lost, or closed by a cancel.
+ */
+function statusOf(quote, rfq) {
+  const brand = rfq.orgs?.name ?? "The brand";
+  switch (quote.status) {
+    case "submitted":
+      return { summary: `Your quote was submitted and is visible to ${rfq.orgs?.name ?? "the brand"}.`, label: "Quote submitted" };
+    case "accepted":
+      return { summary: `${brand} chose your quote. The order is under Production orders.`, label: "Accepted" };
+    case "declined":
+      return rfq.status === "cancelled"
+        ? { summary: `${brand} cancelled this request, so your quote was closed.`, label: "Request cancelled" }
+        : { summary: `${brand} chose another quote.`, label: "Not selected" };
+    case "withdrawn":
+      return { summary: "You withdrew this quote.", label: "Withdrawn" };
+    default:
+      return { summary: "Your quote is a draft and has not been sent yet.", label: "Draft" };
+  }
+}
+
 /** The score bands the database already defines, as the design draws them. */
 const MATCH_BANDS = [
   [90, "Strong fit", "strong"],
@@ -64,21 +89,35 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const [questions, setQuestions] = useState([]);
   const [myQuote, setMyQuote] = useState(null);
   const [sampleLines, setSampleLines] = useState([]);
-  const [extras, setExtras] = useState({ match: null, brand: null, quoteCount: 0, lastView: null, files: [], saved: false });
+  const [extras, setExtras] = useState({ match: null, brand: null, lastView: null, files: [], saved: false });
   const [error, setError] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  // "revise" or "withdraw" while the vendor is being asked; a sent quote is
+  // changed only after they have read what it costs.
+  const [asking, setAsking] = useState(null);
+  const [creditCost, setCreditCost] = useState(null);
+  // Bumped after a withdrawal so the quote is read again, not guessed at.
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getRfq(rfqId), getQuestions(rfqId), org?.id ? getMyQuote(rfqId, org.id) : null])
+    // The latest quote, withdrawn included: a withdrawal is final, and this is
+    // the page that has to say so.
+    Promise.all([getRfq(rfqId), getQuestions(rfqId), org?.id ? getLatestQuote(rfqId, org.id) : null])
       .then(([request, asked, quote]) => {
         if (cancelled) return;
+        setLoaded(true);
         setRfq(request);
         setQuestions(asked ?? []);
         setMyQuote(quote ?? null);
       })
       .catch((failure) => !cancelled && setError(failure));
     return () => { cancelled = true; };
-  }, [rfqId, org?.id]);
+  }, [rfqId, org?.id, version]);
+
+  useEffect(() => {
+    quoteCreditCost().then(setCreditCost, () => {});
+  }, []);
 
   // The panels around the request: how well it matches, who the brand is,
   // what is happening on it, and whether this vendor saved it. Each fails
@@ -98,7 +137,6 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         setExtras({
           match: scores.get(org.id) ?? null,
           brand: summary,
-          quoteCount: Number(rfq.quotes?.[0]?.count) || 0,
           lastView: viewed,
           files: files ?? [],
           saved: Boolean(savedAlready),
@@ -129,6 +167,22 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   }
 
   if (error) return <p className="composer-error" role="alert">{error.message}</p>;
+  // A request the brand cancelled (or one this vendor was never shown) is not
+  // readable any more. The "cancelled" notification links here, so say so
+  // rather than render an empty page.
+  if (loaded && !rfq) {
+    return (
+      <main className="home-page shell-body" data-testid="rfq-unavailable">
+        <h1>This request is no longer open</h1>
+        <p className="shell-note">
+          The brand may have cancelled it, and any quote you sent on it has been closed.
+        </p>
+        <p className="shell-note">
+          <button type="button" className="quiet-btn" onClick={() => navigate("/browse")}>← Browse open requests</button>
+        </p>
+      </main>
+    );
+  }
   if (!rfq) return null;
 
   const verified = profile?.verification_status === "verified";
@@ -215,8 +269,9 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
               : "No replies yet",
             paymentStatus: extras.brand.payment_verified ? "Verified" : "Not verified",
           } : null}
+          // No "N quotes received" line: RLS shows a vendor only its own
+          // quotes, so the count read 0 on every request.
           activity={[
-            `${extras.quoteCount} quote${extras.quoteCount === 1 ? "" : "s"} received`,
             extras.lastView ? `Last viewed by brand: ${ago(extras.lastView)}` : null,
             rfq.quote_deadline ? `Quotes close ${DAY.format(new Date(rfq.quote_deadline))}` : null,
           ].filter(Boolean)}
@@ -229,8 +284,48 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     );
   }
 
+  const open = rfq.status === "open";
+  const brandName = rfq.orgs?.name ?? "the brand";
+
+  async function revise() {
+    await reviseQuote(myQuote.id);
+    navigate(`/browse/${rfqId}/quote`);
+  }
+
+  async function withdraw() {
+    await withdrawQuote(myQuote.id);
+    setAsking(null);
+    setVersion((current) => current + 1);
+  }
+
+  // A draft opens straight into the form. A sent quote asks first, then
+  // becomes a new draft version; the old form used to open on the sent row
+  // and fail to save, because only a draft is editable.
+  let onEdit = null;
+  if (open && myQuote.status === "draft") onEdit = verified ? () => navigate(`/browse/${rfqId}/quote`) : undefined;
+  if (open && myQuote.status === "submitted") onEdit = verified ? () => setAsking("revise") : undefined;
+
   return (
     <>
+      {asking === "revise" && (
+        <QuoteActionDialog
+          testId="revise-quote-dialog"
+          {...reviseCopy(brandName, creditCost)}
+          onConfirm={revise}
+          onClose={() => setAsking(null)}
+        />
+      )}
+      {asking === "withdraw" && (
+        <QuoteActionDialog
+          testId="withdraw-quote-dialog"
+          title="Withdraw your quote?"
+          body={`${brandName} will no longer see your quote. The credits spent sending it are not refunded, and you can't quote on this request again.`}
+          confirmLabel="Withdraw quote"
+          busyLabel="Withdrawing…"
+          onConfirm={withdraw}
+          onClose={() => setAsking(null)}
+        />
+      )}
       {!verified && (
         <div className="browse-gate">
           <strong>You can read this, but not quote it yet.</strong>
@@ -251,11 +346,13 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           unitPrice: myQuote.unit_price_cents ? formatMoney(myQuote.unit_price_cents) : "",
           quantity: myQuote.production_quantity ? `${myQuote.production_quantity} units` : "",
           leadTime: myQuote.bulk_lead_time_days ? `${myQuote.bulk_lead_time_days} days` : "",
-          capacityWindow: "",
+          // What the vendor sent, as Review showed it before sending. Both read
+          // blank here, on the one page meant to read the quote back.
+          capacityWindow: formatCapacityWindow(myQuote),
           paymentTerms: myQuote.deposit_pct
             ? `${myQuote.deposit_pct}% deposit / ${myQuote.balance_pct ?? 100 - myQuote.deposit_pct}% balance`
             : "",
-          incoterms: "",
+          incoterms: myQuote.shipping_notes ?? "",
           validUntil: myQuote.valid_until
             ? new Date(`${myQuote.valid_until}T00:00:00`).toLocaleDateString("en", { dateStyle: "medium" })
             : "",
@@ -292,17 +389,16 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
             : "—",
         }}
         status={{
-          summary: myQuote.status === "submitted"
-            ? `Your quote was submitted and is visible to ${rfq.orgs?.name ?? "the brand"}.`
-            : `Your quote is a ${myQuote.status} and has not been sent yet.`,
+          ...statusOf(myQuote, rfq),
           price: myQuote.unit_price_cents ? formatMoney(myQuote.unit_price_cents) : "—",
           sent: myQuote.submitted_at
             ? DAY.format(new Date(myQuote.submitted_at))
             : "—",
-          label: myQuote.status === "submitted" ? "Quote submitted" : myQuote.status,
         }}
         onBack={() => navigate("/browse")}
-        onEdit={verified ? () => navigate(`/browse/${rfqId}/quote`) : undefined}
+        // Only a draft or a sent quote on an open request can still change.
+        onEdit={onEdit}
+        onWithdraw={open && myQuote.status === "submitted" ? () => setAsking("withdraw") : undefined}
       />
     </>
   );

@@ -39,6 +39,29 @@ export async function getMyQuote(rfqId, factoryOrgId) {
   );
 }
 
+/**
+ * The factory's latest quote on a request, withdrawn included.
+ *
+ * getMyQuote() skips a withdrawn row, which is right for the brand-facing
+ * reads but wrong for the vendor's own screens: a withdrawal is final, so the
+ * vendor has to see it, not a blank form that silently starts a new quote.
+ */
+export async function getLatestQuote(rfqId, factoryOrgId) {
+  return unwrap(
+    await supabase
+      .from("quotes")
+      .select(QUOTE_COLUMNS)
+      .eq("rfq_id", rfqId)
+      .eq("factory_org_id", factoryOrgId)
+      .neq("status", "superseded")
+      .order("version", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    "load your quote",
+  );
+}
+
 export async function createDraftQuote(rfqId, factoryOrgId) {
   return unwrap(
     await supabase
