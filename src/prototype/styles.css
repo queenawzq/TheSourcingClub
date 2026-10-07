@@ -6471,6 +6471,38 @@ select {
   gap: 12px;
 }
 
+/* A bar with a middle group (a total, a secondary button) has no room for
+   it beside Back and the primary button on a phone: the primary button was
+   pushed off the right edge. The group gets its own row above them. */
+@media (max-width: 600px) {
+  .bottom-bar:has(> .bottom-meta-group) {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    height: auto;
+    padding-top: 10px;
+    padding-bottom: 12px;
+  }
+
+  .bottom-bar > .bottom-meta-group {
+    flex: 1 0 100%;
+    order: -1;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+
+  .bottom-meta-group .compact-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  /* Live step rows hold inputs, which will not shrink below their own
+     width, so the steps card ran 4px past the screen and the page scrolled
+     sideways. */
+  .production-step-grid > * {
+    min-width: 0;
+  }
+}
+
 .primary-btn,
 .secondary-btn {
   height: var(--button-height);
@@ -8508,6 +8540,14 @@ select {
   padding: 32px;
 }
 
+/* The dialog is sized for 16px either side of a phone screen, so the layer
+   must not pad it by 32px there: it ran off the right edge. */
+@media (max-width: 760px) {
+  .approve-fund-modal-layer {
+    padding: 16px;
+  }
+}
+
 .approve-fund-modal-scrim {
   position: absolute;
   inset: 0;
@@ -8771,6 +8811,13 @@ select {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: white;
+}
+
+/* The latest update spans the row under the step and its actions, so a note
+   reads at a normal line length rather than in the title's column. */
+.project-milestone-item > .project-update-card {
+  grid-column: 2 / -1;
+  max-width: none;
 }
 
 .project-update-header {
@@ -17641,6 +17688,18 @@ button.sort-button {
   border-radius: 10px;
   background: #fff2ec;
   color: #a8330f;
+  font-size: 13px;
+}
+
+/* What the composer is working on, when it is not a fresh request: a reorder
+   says which order it repeats and with whom. Live-only, like the error. */
+.composer-note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #e3e6ee);
+  border-radius: 10px;
+  background: #f4f7ff;
+  color: var(--ink, #1f2430);
   font-size: 13px;
 }
 

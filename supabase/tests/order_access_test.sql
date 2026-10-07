@@ -18,7 +18,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(69);
+select plan(67);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures
@@ -338,27 +338,34 @@ select throws_ok(
   'a step with no payment cannot be given an amount'
 );
 
+-- Only the brand sets the steps (067). A factory agreeing, which the current
+-- site still offers, is recorded but decides nothing.
+reset role;
+set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000003","email":"p3-f1@example.com","role":"authenticated"}';
+set local role authenticated;
+
 select lives_ok(
   $$select public.agree_schedule((select order_id from p3), 1)$$,
-  'the brand can agree the schedule it was given'
+  'a factory agreeing is still accepted, so the current site keeps working'
 );
 
 select is(
   (select status::text from public.production_orders where id = (select order_id from p3)),
   'pending_schedule',
-  'the order does NOT start when only one side has agreed'
+  'a factory agreeing does NOT start the order: only the brand''s confirmation does'
 );
 
 select throws_ok(
-  $$select public.agree_schedule((select order_id from p3), 1)$$,
-  '22023',
+  $$select public.set_order_schedule((select order_id from p3),
+      '[{"kind":"payment_only","title":"Everything","amount_cents":"22001"}]'::jsonb)$$,
+  '42501',
   null,
-  'a side cannot agree the same schedule twice'
+  'the factory CANNOT change the production steps; it messages the brand instead'
 );
 
--- The factory edits. Both agreements must fall away, including the brand's.
+-- The brand edits. The factory is told.
 reset role;
-set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000003","email":"p3-f1@example.com","role":"authenticated"}';
+set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000001","email":"p3-brandowner@example.com","role":"authenticated"}';
 set local role authenticated;
 
 select lives_ok(
@@ -369,19 +376,23 @@ select lives_ok(
         {"kind":"progress_only","title":"Bulk production","sort":"40"},
         {"kind":"approval_only","title":"QC photos","sort":"50"},
         {"kind":"payment_only","title":"Final balance","amount_cents":"5001","sort":"60"}]'::jsonb)$$,
-  'either side can rewrite the schedule while it is still being agreed'
+  'the brand changes the production steps while the order has not started'
 );
 
-select is(
-  (select schedule_brand_agreed_at from public.production_orders where id = (select order_id from p3)),
-  null,
-  'editing the schedule withdraws an agreement the other side had already given'
-);
-
--- The stale-revision trap: the brand agreed at revision 1, the factory has
--- since edited. Re-submitting the brand's agreement at the old revision would
--- otherwise activate the order on terms the brand never saw.
 reset role;
+select is(
+  (select count(*)::int from public.notifications n
+     join public.production_orders o on o.id = n.order_id
+    where o.id = (select order_id from p3)
+      and n.org_id = o.factory_org_id
+      and n.kind = 'schedule_updated'
+      and n.title like 'The brand changed the production steps%'),
+  1,
+  'the factory is told the brand changed the steps'
+);
+
+-- The stale-revision trap still holds: confirming at the revision the brand
+-- read before the steps changed would start the order on steps it never saw.
 set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000001","email":"p3-brandowner@example.com","role":"authenticated"}';
 set local role authenticated;
 
@@ -389,33 +400,18 @@ select throws_ok(
   $$select public.agree_schedule((select order_id from p3), 1)$$,
   '22023',
   null,
-  'agreeing a schedule at a stale revision is refused after the other side edited it'
+  'confirming at a stale revision is refused once the steps changed'
 );
 
 select lives_ok(
   $$select public.agree_schedule((select order_id from p3), 2)$$,
-  'the brand can agree again once it has read the revision that exists'
-);
-
-select is(
-  (select status::text from public.production_orders where id = (select order_id from p3)),
-  'pending_schedule',
-  'still not started: the factory has not agreed its own edit'
-);
-
-reset role;
-set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000003","email":"p3-f1@example.com","role":"authenticated"}';
-set local role authenticated;
-
-select lives_ok(
-  $$select public.agree_schedule((select order_id from p3), 2)$$,
-  'the factory agrees too'
+  'the brand confirms the steps at the revision that exists'
 );
 
 select is(
   (select status::text from public.production_orders where id = (select order_id from p3)),
   'active',
-  'the order becomes active only after BOTH sides have agreed'
+  'the brand''s confirmation alone starts the order'
 );
 
 select is(
@@ -456,11 +452,12 @@ reset role;
 set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000001","email":"p3-brandowner@example.com","role":"authenticated"}';
 set local role authenticated;
 
-select throws_ok(
-  $$select public.post_milestone_update((select fit_id from p3m), 'Looks good to me')$$,
-  '42501',
-  null,
-  'a brand CANNOT post a factory update'
+-- Since 065 a brand comments on a step through the same function. What must
+-- still never happen is the comment being recorded as the factory's work.
+select is(
+  (select author_org_id from public.post_milestone_update((select fit_id from p3m), 'Looks good to me')),
+  'd3000000-0000-0000-0000-00000000000b'::uuid,
+  'a brand''s post on a step is its own comment, never recorded as the factory''s update'
 );
 
 reset role;
@@ -512,7 +509,8 @@ select throws_ok(
 -- and the gallery is simply empty, with no error anywhere.
 select is(
   (select count(*)::int from public.milestone_updates
-     where milestone_id = (select fit_id from p3m)),
+     where milestone_id = (select fit_id from p3m)
+       and author_org_id = 'd3000000-0000-0000-0000-0000000000f1'),
   1,
   'the brand CAN read the factory''s update on its own order'
 );

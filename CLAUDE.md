@@ -67,10 +67,23 @@ screens that remain are debt being paid down, not a pattern to extend.
 
 On the design, live: **auth**, **brand and factory onboarding**, **the
 dashboard**, **requests**, **orders**, the **request composer and its invite
-step**, **comparing quotes**, the **order interior**, the **factory's
-marketplace**, **conversations**, **settings**, the **factory's own profile**
-(`/profile`, read-only until its edit dialogs are wired), and the whole **admin
-console** (`admin.html`).
+step**, **comparing quotes**, the **order interior** (each side on its own
+designed screens), **setting the production steps**, the **factory's marketplace**,
+**conversations**, **settings**, the **factory's own profile** (`/profile`,
+read-only until its edit dialogs are wired), and the whole **admin console**
+(`admin.html`).
+
+**Only the brand sets the production steps** (design review, Oct 2; migration
+067). It does so on its designed `MilestonesScreen`, the "Production steps"
+stage of its flow: "Save changes" saves them and tells the factory, and
+"Continue to funding" confirms them, which is what starts the order. The
+factory reads the steps on its own order page and is notified of every
+change; if one does not work for it, it messages the brand. The design's
+three step types map onto the
+four kinds: Paid release → `approval_and_payment`, Approval only →
+`approval_only`, Update only → `progress_only`; the generated deposit and
+balance (`payment_only`) read as Paid release and keep their kind unless the
+type is changed (`order-view.js`).
 
 **Everything a brand or a vendor touches is on the design**, except the
 screens below — each held back for a stated reason, not a backlog entry:
@@ -83,13 +96,16 @@ screens below — each held back for a stated reason, not a backlog entry:
   brand its money is on a card and held by TSC, and both are false. This is not
   a styling gap; it needs the design and the product to agree on where money
   goes.
-- **`ScheduleEditor`.** Agreeing the schedule has no designed screen, and it is
-  what activates an order. An unagreed order opens straight onto it.
 - **`AdminPayments`.** No designed payments queue, and confirming a payment is a
   required step: staff have no org and cannot be notified, so a payment sits at
   `sent` until a human opens it.
-- **`MilestoneDetail`** and the brand's own **`RfqDetail`** — no designed
-  counterpart yet.
+- The brand's own **`RfqDetail`** — no designed counterpart yet.
+
+A step's full history opens in **`StepUpdatesModal`** (`src/shared/`), over
+the order, at the step's own address (`/orders/:id/milestones/:mid`). The
+designs draw only the latest update and its "View all updates" link, so the
+pop-up is the design's dialog frame around the design's update card. It
+replaced the hand-built step page after the design review of Oct 2.
 
 **The designed quote form writes prose where the schema keeps ids.** "30%
 deposit / 70% before shipment" and "EXW quoted" are matched against
@@ -214,13 +230,20 @@ Things that will bite here specifically:
 - **A `security definer` function has no policy behind it.** The `or is_platform_admin()` branches on the read policies do not protect `confirm_payment_received`. The admin test is the first statement in each of the three admin RPCs — before any `select`, since checking afterwards leaks existence through `P0002` versus `42501`.
 - **`quotes.deposit_pct` is nullable** and `submit_quote()` does not require it. Uncoalesced, the schedule generator emits milestones totalling only the sample lines, `agree_schedule` refuses that forever, and the order is dead with nothing on screen explaining why.
 - **Compute one side of a percentage split and subtract for the other.** Rounding both independently loses or invents a cent, permanently, on a figure a brand types into a bank transfer.
-- **`agree_schedule` takes a revision.** Without it: brand agrees, factory edits, factory agrees, and a client that cached "I already agreed" re-stamps the brand on terms it never read. The order activates showing two green checkmarks.
+- **`agree_schedule` takes a revision.** Without it a brand that confirmed steps it read on one screen, while a teammate changed them on another, would start the order on steps it never saw.
 - **The chain advances on `confirmed`, never on `released`.** Keying it to release would freeze a production order permanently on one forgotten admin click, with no error and no party able to unstick it.
 - **`documents_own` is `for all`** and says nothing about `milestone_update_id`. Without `documents_link_guard`, one UPDATE re-parents a photo onto another order and the counterparty read policy then serves it to strangers.
 - **Milestone photos need three things to work**: the kind in `PRIVATE_KINDS`, a `documents` read policy for the counterparty, *and* a matching `storage.objects` policy. With only the first two, `urlFor()` mints a signed URL that 400s — a broken image tile, not an error message.
 - **Money is `bigint` throughout.** `unit_price_cents * production_quantity` passes `int4` at 100,000 units of a $250 jacket.
 - **Every header figure comes from `production_order_summary`.** JavaScript never sums money and never decides whose turn it is. The order total is the sum of the *milestones*, not the quote — they are equal at award and diverge the moment either side edits.
 - **`order_payments.milestone_id` is unique, so its embed is to-ONE.** PostgREST returns an object where an ordinary embed returns an array, and indexing it as `[0]` yields `undefined` rather than an error — the timeline silently loses every payment status. `listMilestones()` resolves the shape once into `milestone.payment`; nothing downstream should touch `order_payments` directly.
+
+- **Order tabs belong to the company, not the order** (066). `order_tabs` holds a company's "Active orders", "Closed" and its own tabs; `order_tab_orders` says which orders it filed where. The other side of the order never sees either. Filing needs the *tab's* company to be a party to the order, not merely the caller — one person can belong to a brand and an unrelated factory. Active and Closed are rows, created by the first `add_order_tab` / `save_order_tabs`, so a company with none is shown the defaults.
+- **`grant select` alone does not stop writes on a new table.** The stack's default privileges give `authenticated` every privilege on new tables, so 066 revokes insert/update/delete/truncate on `order_tabs` explicitly; its writes go through the two functions.
+- **The archive is the company's too** (068). `order_archives` holds the closed orders a company has put away; the other side keeps its own. Only a completed or cancelled order can be archived, and the archiving company must be a party to it. An archived order keeps its tab filing: `rowsForTab` (`src/shared/production-order-parts.jsx`) leaves it out of every tab but "Archived", so unarchiving puts it back where it was. The "Archived" tab is not an `order_tabs` row; it is drawn only while the archive is non-empty, and the brand's dashboard leaves archived orders out.
+- **"Reorder style" starts from a request, not a contract** (069). An order is always the award of a quote, so `duplicate_rfq_from_order()` copies the order's request (breakdown, questions and taxonomy links included; delivery month, deadline, files and invitations not) into a new invite-only draft, and the composer ticks the same factory. The function runs as the caller, so RLS decides everything; only the order's brand may. `rfqs.reorder_of_order_id` has **no foreign key on purpose**: a second path between `rfqs` and `production_orders` would make the order list's `rfqs (title, brief)` embed ambiguous, and PostgREST refuses those.
+- **Cancelling takes both sides** (035, 070). Either side proposes with a reason (`propose_cancellation`); only the *other* side accepts (`accept_cancellation`) or keeps the order (`decline_cancellation`); only the proposing side withdraws (`withdraw_cancellation`). Any member may do each, and every step notifies the other company. Accepting runs `close_order`: steps not done and payments TSC has not confirmed (`sent` included) are cancelled, confirmed and released ones stay. There is no design: the card menu item, the reason dialog (`CancelOrderDialog`), the banner above each order page's money strip (`CancelNotice`) and the side panel's "Cancel order" are live only, passed in as optional props so the prototypes draw none of them.
+- **A resumed draft must read back every review-card field in the words its parser reads** (`src/app/rfq/resume-fields.js`). A field left blank on resume is saved blank, and `setLinks` deletes its links. Taxonomy labels are matched as whole words (`mentionsLabel`): "Womenswear" contains "menswear".
 
 Platform staff have no org, and `notifications.org_id` is `not null references orgs`, so **an admin cannot be notified of anything**. `admin_payment_queue()` is therefore a required step in the workflow, not a convenience: without someone watching it, every payment stalls at `sent`. Do not solve this with a synthetic platform org — it would leak into `current_org_ids()` and every `or is_platform_admin()` branch.
 

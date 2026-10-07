@@ -14,13 +14,18 @@
  * The draft row exists before a single field is filled, so nothing typed is
  * ever held only in component state.
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { DescribeScreen, FlowShell, InviteScreen, ReviewScreen } from "../../prototype/main.jsx";
-import { createDraftRfq, getRfq, matchScoresForRfq, publishRfq, saveRfq, setColourSplits, setInvitations, setQuestions } from "../../lib/domain/rfq.js";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DescribeScreen, FlowShell, InviteScreen, InviteSuccessScreen, ReviewScreen } from "../../prototype/main.jsx";
+import { attachDocumentToRfq, createDraftRfq, getColourSplits, getQuestions, getRfq, matchScoresForRfq, publishRfq, saveRfq, setColourSplits, setInvitations, setQuestions } from "../../lib/domain/rfq.js";
+import { deleteDocument, listRfqDocuments, uploadDocument } from "../../lib/domain/documents.js";
+import { getOrder } from "../../lib/domain/order.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
-import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
+import { fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
+import { listLinks, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
+import { linkedLabels, mentionsLabel, monthLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
 import { toCents } from "../../lib/money.js";
+import { useRouter } from "../../lib/router.jsx";
 
 const KINDS = ["product_category", "certification", "region", "sourcing_responsibility"];
 
@@ -83,12 +88,60 @@ function deliveryMonthFrom(text) {
   return `${year}-${String(found + 1).padStart(2, "0")}-01`;
 }
 
+/**
+ * The quote deadline, from what the brand typed.
+ *
+ * The field is prose in the design ("Jul 24, 2026 · 5 business days after
+ * publish"), and nothing was ever saved from it: every live request went out
+ * with no deadline, whatever the brand wrote. Read a date ("Oct 20, 2026",
+ * "2026-10-20", "Oct 20" meaning the next one) or a span ("5 business days",
+ * "10 days") as the END of that day, local time. Unlike the other fields an
+ * unreadable deadline is not dropped quietly — it decides when vendors are
+ * refused — so it comes back as an error the screen shows.
+ */
+export function quoteDeadlineFrom(text, now = new Date()) {
+  const said = String(text ?? "").trim();
+  if (!said) return { value: null };
+  const endOf = (day) => new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59);
+
+  const span = said.match(/(\d+)\s*(business|working)?\s*days?/i);
+  const iso = said.match(/(\d{4})-(\d{2})-(\d{2})/);
+  const named = said.match(/([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:,?\s*(\d{4}))?/);
+  let day = null;
+
+  if (iso) {
+    day = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]));
+  } else if (named && MONTHS.some((month) => month.startsWith(named[1].toLowerCase().slice(0, 3)))) {
+    const month = MONTHS.findIndex((name) => name.startsWith(named[1].toLowerCase().slice(0, 3)));
+    const year = named[3] ? Number(named[3]) : now.getFullYear();
+    day = new Date(year, month, Number(named[2]));
+    // "Oct 20" in November means next year's.
+    if (!named[3] && endOf(day) < now) day = new Date(year + 1, month, Number(named[2]));
+  } else if (span) {
+    day = new Date(now);
+    let left = Number(span[1]);
+    while (left > 0) {
+      day.setDate(day.getDate() + 1);
+      if (!span[2] || (day.getDay() !== 0 && day.getDay() !== 6)) left -= 1;
+    }
+  }
+
+  if (!day || Number.isNaN(day.getTime())) {
+    return { error: `Could not read "${said}" as a quote deadline. Try a date such as Oct 20, 2026, or "5 business days".` };
+  }
+  if (endOf(day) < now) {
+    return { error: "The quote deadline has already passed. Vendors could not quote at all." };
+  }
+  return { value: endOf(day).toISOString() };
+}
+
 const firstNumber = (text) => {
   const match = String(text ?? "").match(/\d[\d,]*/);
   return match ? Number(match[0].replace(/,/g, "")) : null;
 };
 
-export default function LiveComposer({ org, rfqId, onPublished }) {
+export default function LiveComposer({ org, rfqId }) {
+  const { navigate } = useRouter();
   const [step, setStep] = useState(rfqId ? "review" : "describe");
   const [draftId, setDraftId] = useState(rfqId ?? null);
   const [freeText, setFreeText] = useState("");
@@ -100,6 +153,14 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
   const [selectedVendors, setSelectedVendors] = useState([]);
   // The design's own toggle, ticked by default exactly as it is drawn.
   const [openToAll, setOpenToAll] = useState(true);
+  // Who the request actually went to, for the success card's copy.
+  const [invited, setInvited] = useState([]);
+  const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  // A reorder: the order this draft repeats, and its factory, which the
+  // invite step ticks once (and only once, so unticking it sticks).
+  const [reorder, setReorder] = useState(null);
+  const preselected = useRef(false);
 
   const kinds = useMemo(() => KINDS, []);
 
@@ -107,34 +168,134 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
     listTermsByKind(kinds).then(setTerms).catch(setError);
   }, [kinds]);
 
-  // Resume an existing draft rather than starting a second one.
+  // Resume an existing draft rather than starting a second one. Everything
+  // the review card shows is read back, in the words its parsers read: a
+  // field left blank here is saved blank by toInvite(), and its links deleted.
   useEffect(() => {
     if (!rfqId) return;
-    getRfq(rfqId)
-      .then((row) => {
+    Promise.all([getRfq(rfqId), listLinks("rfq", rfqId), getColourSplits(rfqId), getQuestions(rfqId), listTermsByKind(kinds)])
+      .then(async ([row, linked, splits, questions, byKind]) => {
         if (!row) return;
         setFreeText(row.brief ?? "");
         setValues({
           title: row.title ?? "",
-          quantity: row.quantity_total ? String(row.quantity_total) : "",
+          quantity: resumedQuantityLine(row.quantity_total, splits),
           material: row.material_notes ?? "",
           samples: row.sample_notes ?? "",
-          timeline: row.target_delivery_month ?? "",
+          timeline: monthLine(row.target_delivery_month),
           price: row.target_unit_price_min_cents
             ? `$${(row.target_unit_price_min_cents / 100).toFixed(0)}-$${((row.target_unit_price_max_cents ?? row.target_unit_price_min_cents) / 100).toFixed(0)}`
             : "",
-          certifications: "",
-          regions: "",
-          deadline: row.quote_deadline ?? "",
-          category: "",
+          category: linkedLabels(linked, byKind.product_category),
+          certifications: linkedLabels(linked, byKind.certification),
+          regions: linkedLabels(linked, byKind.region),
+          sourcing: sourcingChoice(row.sourcing_responsibility_term_id, byKind.sourcing_responsibility, SOURCING_SLUG),
+          additionalDetails: row.additional_details ?? "",
+          // Read back as the date it is, so saving again parses the same way.
+          deadline: row.quote_deadline
+            ? new Date(row.quote_deadline).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })
+            : "",
+          ...Object.fromEntries(questions.slice(0, 3).map((question, index) => [`question-${index}`, question.prompt])),
         });
+        setValues((current) => fillBlanks(current, fieldsFromBrief(row.brief, terms.product_category)));
+
+        if (row.reorder_of_order_id) {
+          // Read under RLS: an order this brand is not on comes back empty,
+          // and the draft is then just a draft.
+          const order = await getOrder(row.reorder_of_order_id);
+          if (order) {
+            setReorder({
+              title: order.rfqs?.title ?? "this order",
+              factoryOrgId: order.factory_org_id,
+              factoryName: order.factory?.name ?? "the factory",
+            });
+            // A repeat goes to the factory that made it, not to everyone.
+            setOpenToAll(false);
+          }
+        }
       })
       .catch(setError);
-  }, [rfqId]);
+  }, [rfqId, kinds]);
+
+  // The category is matched against the term labels, which load on their own
+  // and may arrive after a resumed draft does.
+  useEffect(() => {
+    if (step !== "review" || !terms.product_category?.length || !freeText) return;
+    setValues((current) => fillBlanks(current, { category: fieldsFromBrief(freeText, terms.product_category).category }));
+  }, [step, terms, freeText]);
+
+  // The request's files, so a resumed draft shows what is already attached.
+  useEffect(() => {
+    if (!draftId) return;
+    listRfqDocuments(draftId).then(setFiles).catch(() => {});
+  }, [draftId]);
+
+  /**
+   * Attach files to the request.
+   *
+   * Every file here is filed as a tech pack in the PRIVATE bucket, under the
+   * request's id: a brand's unreleased sketches must never land in the public
+   * bucket, and the request in the path is what lets an invited vendor open
+   * them (see migration 063). The kind only decides the bucket and the policy.
+   */
+  async function addFiles(picked) {
+    if (!draftId || uploading) return;
+    setUploading(true);
+    setError(null);
+    try {
+      for (const file of picked) {
+        const document = await uploadDocument({ orgId: org.id, kind: "tech_pack", file, scopeId: draftId });
+        await attachDocumentToRfq(document.id, draftId);
+      }
+      setFiles(await listRfqDocuments(draftId));
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function removeFile(file) {
+    setError(null);
+    try {
+      await deleteDocument(file);
+      setFiles((current) => current.filter((candidate) => candidate.id !== file.id));
+    } catch (failure) {
+      setError(failure);
+    }
+  }
 
   const change = useCallback((name, value) => {
     setValues((current) => ({ ...current, [name]: value }));
   }, []);
+
+  /**
+   * The model's answer, in the review card's own words. It returns taxonomy
+   * slugs and numbers; the card shows labels and prose the save step parses.
+   */
+  function fromModel(fields) {
+    if (!fields) return {};
+    const labels = (kind, slugs) => (slugs ?? [])
+      .map((slug) => (terms[kind] ?? []).find((term) => term.slug === slug))
+      .filter(Boolean)
+      .map((term) => termLabel(term))
+      .join(", ");
+    const splits = fields.colour_splits ?? [];
+    const evenly = splits.length > 0 && splits.every((split) => split.quantity === splits[0].quantity);
+    const total = fields.quantity_total ?? (splits.length ? splits.reduce((sum, split) => sum + split.quantity, 0) : null);
+    const low = fields.target_unit_price_min;
+    const high = fields.target_unit_price_max ?? low;
+    return {
+      title: fields.title ?? "",
+      category: labels("product_category", fields.product_category_slugs),
+      quantity: quantityLine(total, evenly ? splits.length : null),
+      material: fields.material_notes ?? "",
+      samples: fields.sample_notes ?? "",
+      price: low ? (high && high !== low ? `$${low}–$${high}` : `$${low}`) : "",
+      certifications: labels("certification", fields.certification_slugs),
+      regions: labels("region", fields.region_slugs),
+    };
+  }
 
   /**
    * Leave the describe step.
@@ -153,19 +314,14 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
       setDraftId(id);
       await saveRfq(id, { brief: freeText || null });
 
+      let fields = null;
       if (useModel && briefGenerationEnabled && freeText.trim()) {
-        const { fields } = await generateBrief({ freeText, terms });
-        if (fields) {
-          setValues((current) => ({
-            ...current,
-            title: fields.title ?? current.title ?? "",
-            quantity: fields.quantity_total ? String(fields.quantity_total) : current.quantity ?? "",
-            material: fields.material_notes ?? current.material ?? "",
-            samples: fields.sample_notes ?? current.samples ?? "",
-            timeline: fields.target_delivery_month ?? current.timeline ?? "",
-          }));
-        }
+        ({ fields } = await generateBrief({ freeText, terms }));
       }
+      // The model's reading first, then whatever the text itself says for
+      // what is still blank — with the model off, skipped or failed, the card
+      // still opens with the brief's own facts rather than empty fields.
+      setValues((current) => fillBlanks(fillBlanks(current, fromModel(fields)), fieldsFromBrief(freeText, terms.product_category)));
 
       setStep("review");
     } catch (failure) {
@@ -189,8 +345,12 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
     setError(null);
 
     try {
+      const deadline = quoteDeadlineFrom(values.deadline);
+      if (deadline.error) throw new Error(deadline.error);
+
       await saveRfq(draftId, {
         title: values.title?.trim() || values.category?.trim() || "Untitled request",
+        quote_deadline: deadline.value,
         brief: freeText || null,
         quantity_total: firstNumber(values.quantity),
         material_notes: values.material?.trim() || null,
@@ -217,9 +377,8 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
       ];
       for (const [kind, typed] of linkKinds) {
         if (typed === undefined) continue;
-        const lower = String(typed ?? "").toLowerCase();
         const termIds = (terms[kind] ?? [])
-          .filter((term) => lower.includes(termLabel(term).toLowerCase()))
+          .filter((term) => mentionsLabel(typed, termLabel(term)))
           .map((term) => term.id);
         await setLinks({ subjectType: "rfq", subjectId: draftId, orgId: org.id, kind, termIds });
       }
@@ -244,10 +403,19 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
       // The design ranks this list by fit. match_score_rfq() answers per
       // pair, so score the vendors actually being shown and sort by it.
       const scores = await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
+      const repeated = reorder && (rows ?? []).find((row) => row.org_id === reorder.factoryOrgId);
+      if (reorder && !preselected.current) {
+        preselected.current = true;
+        if (repeated) {
+          setSelectedVendors((current) => (current.includes(repeated.orgs?.name) ? current : [...current, repeated.orgs?.name]));
+        }
+      }
       setVendors(
         (rows ?? [])
           .map((row) => ({ ...row, matchPercent: scores.get(row.org_id) ?? null }))
-          .sort((a, b) => (b.matchPercent ?? -1) - (a.matchPercent ?? -1)),
+          .sort((a, b) => (b.matchPercent ?? -1) - (a.matchPercent ?? -1))
+          // A reorder's own factory heads the list, ticked, above the ranking.
+          .sort((a, b) => Number(b.org_id === reorder?.factoryOrgId) - Number(a.org_id === reorder?.factoryOrgId)),
       );
       setStep("invite");
     } catch (failure) {
@@ -273,7 +441,10 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
         .filter((vendor) => selectedVendors.includes(vendor.orgs?.name))
         .map((vendor) => vendor.org_id);
       if (chosen.length) await setInvitations(draftId, chosen);
-      onPublished?.(draftId);
+      setInvited(selectedVendors.filter((name) => vendors.some((vendor) => vendor.orgs?.name === name)));
+      // The design's "Quote request sent" step, rather than dropping the brand
+      // on the request page with no word that anything was sent.
+      setStep("success");
     } catch (failure) {
       setError(failure);
     } finally {
@@ -297,6 +468,31 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
     );
   }
 
+  if (step === "success") {
+    return (
+      <FlowShell
+        screen="inviteSuccess"
+        canBack={false}
+        onNext={() => navigate(`/rfqs/${draftId}/quotes`)}
+        // The request as it was saved, not the design's example shirt.
+        rail={{
+          summary: [
+            ["Product", values.title?.trim() || values.category?.trim()],
+            ["Quantity", values.quantity?.trim()],
+            ["Samples", values.samples?.trim()],
+            ["Target", values.price?.trim()],
+          ],
+        }}
+      >
+        <InviteSuccessScreen
+          selectedFactories={invited}
+          openToAll={openToAll}
+          goTo={(next) => navigate(next === "quotes" ? `/rfqs/${draftId}/quotes` : "/")}
+        />
+      </FlowShell>
+    );
+  }
+
   if (step === "invite") {
     const shaped = vendors.map((vendor) => ({
       initials: (vendor.orgs?.name ?? "?").slice(0, 2).toUpperCase(),
@@ -306,6 +502,10 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
       // Scored against this request by match_score_rfq(); blank when the
       // vendor's profile has too little in it to score.
       fit: vendor.matchPercent === null ? "" : `${vendor.matchPercent}%`,
+      // Nothing records a rating or a vendor's order count a brand may read;
+      // "" tells the card to leave both out rather than print an example.
+      rating: "",
+      orders: "",
       fitType: vendor.vendor_kind === "trading_company" ? "Trading company" : "Factory",
       fitSummary: vendor.intro ?? "",
       factoryNote: "",
@@ -344,6 +544,11 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
           openToAll={openToAll}
           onOpenToAllChange={setOpenToAll}
         />
+        {reorder && !vendors.some((vendor) => vendor.org_id === reorder.factoryOrgId) && (
+          <p className="composer-note" data-testid="reorder-unlisted">
+            {reorder.factoryName} is not listed on TSC right now, so it cannot be invited. Open the request to all vendors or choose another.
+          </p>
+        )}
         {error && <p className="composer-error" role="alert">{error.message}</p>}
       </FlowShell>
     );
@@ -357,11 +562,20 @@ export default function LiveComposer({ org, rfqId, onPublished }) {
       onBack={() => setStep("describe")}
       onNext={toInvite}
     >
+      {reorder && (
+        <p className="composer-note" data-testid="reorder-note">
+          Reordering {reorder.title} with {reorder.factoryName}. Check the details, then invite.
+        </p>
+      )}
       <ReviewScreen
         brief={freeText}
         values={values}
         onChange={change}
         onEditBrief={() => setStep("describe")}
+        attachments={files}
+        onAddFiles={addFiles}
+        onRemoveFile={removeFile}
+        uploading={uploading}
       />
       {error && <p className="composer-error" role="alert">{error.message}</p>}
     </FlowShell>

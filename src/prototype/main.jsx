@@ -4,6 +4,7 @@ import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
+import { archiveActionFor, cancelActionFor, filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab, withArchivedTab } from "../shared/production-order-parts.jsx";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
@@ -1090,11 +1091,19 @@ export function FlowShell({
   selectedQuote = null,
   fundingMilestone = null,
   busy = false,
+  // Live mounts pass the real vendor / request here; see RightRail.
+  rail = null,
+  // The bottom bar's centre button and a primary that can wait (the schedule
+  // cannot be agreed while it has unsaved edits or does not add up).
+  centerAction = null,
+  primaryDisabled = false,
 }) {
   const meta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
+  // The prototype's App gives the contract and schedule screens this class too.
+  const actionFlow = ["contract", "milestones"].includes(screen) ? " quote-action-flow" : "";
 
   return (
-    <main className={`flow-page${["invite", "quotes", "quoteDetail"].includes(screen) ? " wide-flow" : ""}`}>
+    <main className={`flow-page${["invite", "quotes", "quoteDetail"].includes(screen) ? " wide-flow" : ""}${actionFlow}`}>
       <JourneyRail current={meta.step} isMilestoneFunding={Boolean(fundingMilestone)} />
       <section className="flow-content">
         {screen !== "quoteDetail" && (
@@ -1106,7 +1115,7 @@ export function FlowShell({
         )}
         <div className="screen-transition">{children}</div>
       </section>
-      <RightRail screen={screen} selectedQuote={selectedQuote} fundingMilestone={fundingMilestone} />
+      <RightRail screen={screen} selectedQuote={selectedQuote} fundingMilestone={fundingMilestone} rail={rail} />
       {screen !== "describe" && (
         <BottomBar
           canBack={canBack}
@@ -1114,6 +1123,8 @@ export function FlowShell({
           onNext={onNext}
           primaryLabel={busy ? "Saving…" : primaryLabel ?? meta.cta}
           centerText={centerText}
+          centerAction={centerAction}
+          primaryDisabled={primaryDisabled}
         />
       )}
     </main>
@@ -3296,7 +3307,7 @@ function calculateFundingSummary(milestone) {
   };
 }
 
-function RightRail({ screen, selectedQuote, fundingMilestone }) {
+function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
   if (screen === "invite" || screen === "quotes" || screen === "quoteDetail") {
     return null;
   }
@@ -3404,6 +3415,52 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
   }
 
   const isQuoteArea = ["quotes", "quoteDetail", "contract", "milestones"].includes(screen);
+  // Live: the vendor actually being chosen, and a Message button that opens
+  // the conversation. The prototype's "AM / Porto, Portugal" is its example.
+  if (isQuoteArea && rail?.vendor) {
+    return (
+      <aside className="right-rail">
+        <section className="accepted-quote-panel">
+          <div className="accepted-factory">
+            <div className="factory-avatar">{rail.vendor.initials}</div>
+            <div>
+              <strong>{rail.vendor.name}</strong>
+              {rail.vendor.location && <span>{rail.vendor.location}</span>}
+            </div>
+          </div>
+          {rail.vendor.onMessage && (
+            <button className="secondary-btn accepted-message-btn" type="button" onClick={rail.vendor.onMessage}>
+              Message factory
+            </button>
+          )}
+          {/* Live only, no design yet: cancelling an order whose steps are
+              still being set. */}
+          {rail.vendor.onCancel && (
+            <button className="order-cancel-link" type="button" onClick={rail.vendor.onCancel}>
+              Cancel order
+            </button>
+          )}
+        </section>
+        {screen === "milestones" ? (
+          <Card title="What should production steps cover?" tone="soft">
+            <ul className="production-step-guidance-list">
+              <li>Samples and revision approvals</li>
+              <li>Material, trim, or color confirmations</li>
+              <li>Bulk deposit and production start</li>
+              <li>In-line or final QC review</li>
+              <li>Shipment handoff and final balance</li>
+            </ul>
+          </Card>
+        ) : (
+          <section className="accepted-reminder">
+            <h3>TSC reminder</h3>
+            <p>Message the vendor to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
+          </section>
+        )}
+      </aside>
+    );
+  }
+
   if (isQuoteArea) {
     return (
       <aside className="right-rail">
@@ -3434,6 +3491,21 @@ function RightRail({ screen, selectedQuote, fundingMilestone }) {
               <li>In-line or final QC review</li>
               <li>Shipment handoff and final balance</li>
             </ul>
+          </Card>
+        )}
+      </aside>
+    );
+  }
+
+  // Live: the request that was actually written, row by row, leaving out
+  // anything it does not say.
+  if (rail?.summary) {
+    const rows = rail.summary.filter(([, value]) => value);
+    return (
+      <aside className={screen === "inviteSuccess" ? "right-rail invite-success-right-rail" : "right-rail"}>
+        {rows.length > 0 && (
+          <Card title="Request summary">
+            {rows.map(([label, value]) => <Metric label={label} value={value} key={label} />)}
           </Card>
         )}
       </aside>
@@ -5919,6 +5991,7 @@ export function RfqsScreen({
   onViewQuotes,
   onEditRfq,
   onInviteVendors,
+  onArchiveRfq,
 }) {
   const [activeTab, setActiveTab] = useState("active");
   const [rfqTabs, setRfqTabs] = useState([
@@ -6151,6 +6224,7 @@ export function RfqsScreen({
               onViewQuotes={onViewQuotes}
               onEdit={onEditRfq}
               onInvite={onInviteVendors}
+              onArchive={onArchiveRfq}
               key={rfq.id ?? rfq.title}
             />
           ))
@@ -6160,7 +6234,7 @@ export function RfqsScreen({
   );
 }
 
-function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite }) {
+function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, onArchive }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   // Defaulted: a live mount that supplies fewer cells than the design draws
@@ -6223,10 +6297,29 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite })
                     </div>
                   )}
                 </div>
-                <button type="button" role="menuitem" onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
+                {/* A request that is awarded or cancelled can no longer be
+                    edited or widened; live cards say so with archivable. */}
+                {rfq.archivable !== false && (
+                  <button type="button" role="menuitem" onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
+                )}
                 <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate quote</button>
-                <button type="button" role="menuitem" onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
-                <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive quote</button>
+                {rfq.archivable !== false && (
+                  <button type="button" role="menuitem" onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
+                )}
+                {/* Live, archiving cancels the request; a request that is
+                    already awarded or cancelled has nothing left to archive. */}
+                {rfq.archivable !== false && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onArchive?.(rfq);
+                    }}
+                  >
+                    Archive quote
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -6267,21 +6360,55 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite })
   );
 }
 
-export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder }) {
+export function ProjectsScreen({
+  goTo,
+  setSelectedReorderProject,
+  onViewOrder,
+  // Live passes this: "Reorder style" starts a new draft request from the
+  // order. The prototype keeps the design's jump to the contract screen.
+  onReorder = null,
+  live = false,
+  // Live passes the company's saved tabs (src/app/order/useOrderTabs.js); the
+  // prototype passes nothing and keeps its tabs in local state, as drawn.
+  tabStore = null,
+  // Live only: cancelling (src/app/order/useOrderCancel.jsx). The design
+  // draws no cancel item, so the prototype passes nothing and shows none.
+  cancelStore = null
+}) {
   // Reads through the data seam rather than the module constant, so the same
   // screen serves mock data in prototype.html and real orders in app.html.
-  const { data: orders, loading, error } = useOrders();
+  const { data: orders, loading, error, reload: reloadOrders } = useOrders();
   const [activeTab, setActiveTab] = useState("active");
-  const [projectTabs, setProjectTabs] = useState([
+  // Live starts from the two fixed tabs and nothing else: the design's counts
+  // and its "Spring 27" example read as real to a brand with no orders.
+  const [localTabs, setProjectTabs] = useState(live ? [
+    { key: "active", label: "Active orders", locked: true },
+    { key: "closed", label: "Closed", locked: true }
+  ] : [
     { key: "active", label: "Active orders (4)", locked: true },
     { key: "closed", label: "Closed (6)", locked: true },
     { key: "custom-Spring 27", label: "Spring 27", locked: false }
   ]);
+  const projectTabs = tabStore?.tabs ?? localTabs;
+  const [search, setSearch] = useState("");
+  const [vendor, setVendor] = useState("all");
+  const [dateRange, setDateRange] = useState("any");
+  const [sortBy, setSortBy] = useState("newest");
   const [isAddingTab, setIsAddingTab] = useState(false);
   const [newTabName, setNewTabName] = useState("");
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
   const [draftTabs, setDraftTabs] = useState(projectTabs);
-  const customTabs = projectTabs.filter((tab) => !tab.locked).map((tab) => tab.label);
+  const customTabs = projectTabs.filter((tab) => !tab.locked);
+  const orderRows = orders ?? [];
+  // "Archived" joins the strip only while the company has archived something.
+  const stripTabs = tabStore ? withArchivedTab(projectTabs, orderRows, tabStore.archived) : projectTabs;
+
+  // A tab a teammate deleted, or this person just did, falls back to Active;
+  // an archive emptied by Unarchive falls back to Closed, where the order went.
+  useEffect(() => {
+    if (loading || !tabStore || stripTabs.some((tab) => tab.key === activeTab)) return;
+    setActiveTab(activeTab === "archived" ? "closed" : "active");
+  }, [loading, tabStore, stripTabs, activeTab]);
 
   /**
    * Real counts, where the rows can answer the question.
@@ -6291,29 +6418,40 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder })
    * brand that had none. Live rows carry their state; the prototype's mock
    * projects do not, so there the design's own numbers stay.
    */
-  const orderRows = orders ?? [];
-  const knowsState = orderRows.some((project) => project.state);
-  const isClosed = (project) => project.state === "completed" || project.state === "cancelled";
-  const ordersForTab = !knowsState
-    ? orderRows
-    : orderRows.filter((project) => (activeTab === "closed" ? isClosed(project) : !isClosed(project)));
+  const knowsState = live || orderRows.some((project) => project.state);
+  const tabRows = !knowsState ? orderRows : rowsForTab(orderRows, activeTab, tabStore?.membership, tabStore?.archived);
+  // The filters only act on live rows; the prototype's mock cards carry none
+  // of the fields they filter on, so there they stay as drawn.
+  const vendorOptions = live
+    ? [...new Set(orderRows.map((project) => project.factory).filter(Boolean))].sort()
+    : null;
+  const ordersForTab = !live ? tabRows : filterOrders(tabRows, { search, vendor, dateRange, sortBy });
   const tabLabel = (tab) => {
     if (!tab.locked || !knowsState) return tab.label;
-    const count = tab.key === "closed"
-      ? orderRows.filter(isClosed).length
-      : orderRows.filter((project) => !isClosed(project)).length;
+    const count = rowsForTab(orderRows, tab.key, null, tabStore?.archived).length;
     return `${tab.label.replace(/\s*\(\d+\)\s*$/, "")} (${count})`;
   };
 
   function openManageTabs() {
     setDraftTabs(projectTabs);
     setIsAddingTab(false);
+    tabStore?.clearErrors();
     setManageTabsOpen(true);
   }
 
   function addCustomTab(event) {
     event.preventDefault();
     const trimmedName = newTabName.trim();
+    if (tabStore) {
+      // The database checks the name; a refusal shows under the tabs.
+      tabStore.add(trimmedName).then((key) => {
+        if (!key) return;
+        setActiveTab(key);
+        setNewTabName("");
+        setIsAddingTab(false);
+      });
+      return;
+    }
     if (!trimmedName || projectTabs.some((tab) => tab.label === trimmedName)) return;
     const nextTab = { key: `custom-${trimmedName}`, label: trimmedName, locked: false };
     setProjectTabs((tabs) => [...tabs, nextTab]);
@@ -6341,6 +6479,12 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder })
   }
 
   function saveManagedTabs() {
+    if (tabStore) {
+      // One save for every rename, move and delete; the window stays open
+      // with the reason if the database refuses it.
+      tabStore.save(draftTabs).then((saved) => saved && setManageTabsOpen(false));
+      return;
+    }
     const cleanedTabs = [];
     const seenKeys = new Set();
     draftTabs.forEach((tab) => {
@@ -6373,20 +6517,26 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder })
           <span>Search Projects</span>
           <div>
             <SearchIcon />
-            <input placeholder="Project name, ID, or vendor..." />
+            <input placeholder="Project name, ID, or vendor..." value={search} onChange={(event) => setSearch(event.target.value)} />
           </div>
         </label>
         <label className="rfqs-sort">
           <span>Vendor</span>
-          <select defaultValue="all">
+          <select value={vendor} onChange={(event) => setVendor(event.target.value)}>
             <option value="all">All vendors</option>
-            <option value="atelier">Atelier Minho</option>
-            <option value="hansu">Hansu Studio</option>
+            {vendorOptions ? vendorOptions.map((name) => (
+              <option value={name} key={name}>{name}</option>
+            )) : (
+              <>
+                <option value="atelier">Atelier Minho</option>
+                <option value="hansu">Hansu Studio</option>
+              </>
+            )}
           </select>
         </label>
         <label className="rfqs-sort">
           <span>Date Range</span>
-          <select defaultValue="any">
+          <select value={dateRange} onChange={(event) => setDateRange(event.target.value)}>
             <option value="any">Any Time</option>
             <option value="30">Last 30 days</option>
             <option value="90">Last 90 days</option>
@@ -6394,7 +6544,7 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder })
         </label>
         <label className="rfqs-sort">
           <span>Sort By</span>
-          <select defaultValue="newest">
+          <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
             <option value="newest">Newest First</option>
             <option value="due">Next Due</option>
             <option value="factory">Vendor</option>
@@ -6404,7 +6554,7 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder })
 
       <nav className="rfqs-tabs projects-tabs" aria-label="Project status">
         <div className="project-tabs-scroll">
-          {projectTabs.map((tab) => (
+          {stripTabs.map((tab) => (
             !tab.locked ? (
               <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
                 <button
@@ -6461,6 +6611,9 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder })
           Manage tabs
         </button>
       </nav>
+      {(tabStore?.addError || tabStore?.error) && (
+        <p className="composer-error" role="alert">{(tabStore.addError || tabStore.error).message}</p>
+      )}
 
       {manageTabsOpen && createPortal(
         <div className="brand-profile-modal-layer">
@@ -6487,6 +6640,7 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder })
                 </div>
               ))}
             </div>
+            {tabStore?.saveError && <p className="composer-error" role="alert">{tabStore.saveError.message}</p>}
 
             <footer className="brand-profile-modal-actions">
               <button className="secondary-btn" type="button" onClick={() => setManageTabsOpen(false)}>Cancel</button>
@@ -6497,7 +6651,7 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder })
         document.body
       )}
 
-      <section className="projects-list" aria-label={activeTab === "closed" ? "Closed orders" : "Active orders"}>
+      <section className="projects-list" aria-label={activeTab === "closed" ? "Closed orders" : activeTab === "archived" ? "Archived orders" : "Active orders"}>
         {/* Three states the prototype has never had. Against the mock adapter
             only the last one is ever reached, which is why the page looks
             unchanged; against a network all three happen. */}
@@ -6509,8 +6663,14 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder })
           </p>
         ) : !ordersForTab.length ? (
           <p className="projects-empty" data-testid="orders-empty">
-            {activeTab === "closed"
+            {tabRows.length
+              ? "No orders match these filters."
+              : activeTab === "closed"
               ? "Nothing closed yet."
+              : activeTab === "archived"
+              ? "No archived orders."
+              : activeTab !== "active"
+              ? "No orders in this tab yet. Add one from an order's ··· menu."
               : "No production orders yet. One appears here when a quote is awarded."}
           </p>
         ) : (
@@ -6519,8 +6679,13 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder })
               project={project}
               goTo={goTo}
               customTabs={customTabs}
+              isFiled={tabStore ? (tab) => tabStore.membership.get(tab.key)?.has(project.id) : null}
+              onToggleTab={tabStore ? (tab) => tabStore.toggle(tab.key, project.id) : null}
+              archiveAction={archiveActionFor(tabStore, project)}
+              cancelAction={cancelActionFor(cancelStore, project, reloadOrders)}
               onViewOrder={onViewOrder}
               setSelectedReorderProject={setSelectedReorderProject}
+              onReorder={onReorder}
               key={project.id ?? project.title}
             />
           ))
@@ -6530,25 +6695,12 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder })
   );
 }
 
-function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], onViewOrder, setSelectedReorderProject = null }) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef(null);
+
+function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, cancelAction = null, onViewOrder, setSelectedReorderProject = null, onReorder = null }) {
   const projectFacts = [
     ["Current step", project.currentStep],
     ["Next due", project.nextDue]
   ];
-
-  useEffect(() => {
-    if (!menuOpen) return undefined;
-
-    function closeOnOutsideClick(event) {
-      if (menuRef.current?.contains(event.target)) return;
-      setMenuOpen(false);
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
-  }, [menuOpen]);
 
   return (
     <article className={project.featured ? "brand-project-card featured shared-responsive-card" : "brand-project-card shared-responsive-card"}>
@@ -6563,35 +6715,55 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
           status={project.status}
           statusTone={project.statusTone}
         >
-          <div className="project-overflow" ref={menuRef}>
-            <button className="rfq-more" type="button" aria-label="More order actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
-            {menuOpen && (
-              <div className="project-overflow-menu" role="menu">
-                <div className="project-overflow-submenu">
-                  <button type="button" role="menuitem">Add to</button>
-                  <div className="project-overflow-submenu-panel">
-                    {customTabs.map((tab) => (
-                      <button type="button" role="menuitem" key={tab} onClick={() => setMenuOpen(false)}>
-                        {tab}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+          <OrderCardMenu customTabs={customTabs} isFiled={isFiled} onToggleTab={onToggleTab}>
+            {(close) => (
+              <>
                 <button
                   type="button"
                   role="menuitem"
                   onClick={() => {
+                    close();
+                    if (onReorder) {
+                      onReorder(project);
+                      return;
+                    }
                     setSelectedReorderProject?.(project);
-                    setMenuOpen(false);
                     goTo("contract");
                   }}
                 >
                   Reorder style
                 </button>
-                <button type="button" role="menuitem" onClick={() => setMenuOpen(false)}>Archive order</button>
-              </div>
+                {/* Live passes the item the order allows (none on an open
+                    order); the prototype keeps the design's own. */}
+                {archiveAction === undefined ? (
+                  <button type="button" role="menuitem" onClick={close}>Archive order</button>
+                ) : archiveAction ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      close();
+                      archiveAction.run();
+                    }}
+                  >
+                    {archiveAction.label}
+                  </button>
+                ) : null}
+                {cancelAction && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      close();
+                      cancelAction.run();
+                    }}
+                  >
+                    {cancelAction.label}
+                  </button>
+                )}
+              </>
             )}
-          </div>
+          </OrderCardMenu>
         </ProjectCardActions>
       </header>
 
@@ -6609,7 +6781,7 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
           <div className="project-status-row">
             <span><strong>Current status:</strong> {project.statusDetail}</span>
           </div>
-          <ProjectProgress progress={project.progress} />
+          <ProjectProgress progress={project.progress} steps={project.steps} />
         </aside>
 
         <div className="project-visuals" aria-label={`${project.title} production reference`}>
@@ -6625,7 +6797,11 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
   );
 }
 
-function ProjectProgress({ progress }) {
+function ProjectProgress({ progress, steps }) {
+  // Live cards pass the order's own steps. The design's five fixed labels
+  // describe one imagined schedule, and an order's schedule can hold any steps.
+  if (steps?.length) return <ProjectStepRail steps={steps} />;
+
   const progressPercent = progress <= 1 ? 0 : ((progress - 1) / (projectSteps.length - 1)) * 100;
 
   return (
@@ -6646,6 +6822,7 @@ function ProjectProgress({ progress }) {
   );
 }
 
+
 export function ProjectDetailScreen({
   goTo,
   goToFundingMilestone,
@@ -6655,10 +6832,31 @@ export function ProjectDetailScreen({
   onAction,
   busy = false,
   error = null,
+  // Live only. Each replaces a hardcoded panel; absent, the design's own
+  // content renders exactly as before.
+  tab,
+  onTabChange,
+  counterparty,
+  onMessage,
+  activity,
+  files,
+  onOpenFile,
+  contract,
+  onApprove,
+  onPostComment,
+  onRemind,
+  onDialogClose,
+  // Live only, with no design yet: a banner above the money strip while a
+  // cancellation is proposed (or once the order is cancelled), and a quiet
+  // "Cancel order" under Message.
+  banner = null,
+  onCancelOrder = null,
 }) {
   const milestoneList = liveMilestones ?? projectDetailMilestones;
   const isLive = Boolean(liveMilestones);
-  const [activeDetailTab, setActiveDetailTab] = useState("overview");
+  const [localDetailTab, setLocalDetailTab] = useState("overview");
+  const activeDetailTab = tab ?? localDetailTab;
+  const setActiveDetailTab = onTabChange ?? setLocalDetailTab;
   const [approveFundMilestone, setApproveFundMilestone] = useState(null);
   const [paidMilestones, setPaidMilestones] = useState([]);
   const [approvalMilestone, setApprovalMilestone] = useState(null);
@@ -6680,6 +6878,7 @@ export function ProjectDetailScreen({
 
       <div className="project-detail-layout">
         <div className="project-detail-main">
+          {banner}
           {/* Every figure comes from production_order_summary. JavaScript
               never sums money here: the order total is the sum of the
               milestones, not of the quote, and the two diverge the moment
@@ -6715,42 +6914,56 @@ export function ProjectDetailScreen({
                     index={index}
                     isPaid={paidMilestones.includes(milestone.title)}
                     isApproved={approvedMilestones.includes(milestone.title)}
-                    // Live, the row's action is whatever the milestone's own
-                    // state allows, and it goes straight to the RPC that owns
-                    // that transition. The prototype keeps its modals.
+                    // Live, fund and submit go straight to the page or RPC
+                    // that owns the transition. Approving and commenting open
+                    // the design's own dialogs, the same as the prototype —
+                    // an approval is never one stray click.
                     onApproveFund={isLive ? () => onAction?.("fund", milestone) : setApproveFundMilestone}
                     onFundMilestone={isLive ? () => onAction?.("fund", milestone) : goToFundingMilestone}
-                    onApprove={isLive ? () => onAction?.("approve", milestone) : setApprovalMilestone}
-                    onComment={isLive ? () => onAction?.("comment", milestone) : setCommentMilestone}
-                    key={milestone.title}
+                    onApprove={isLive
+                      ? () => (milestone.stepKind === "approval_and_payment" ? setApproveFundMilestone(milestone) : setApprovalMilestone(milestone))
+                      : setApprovalMilestone}
+                    onOpen={isLive ? () => onAction?.("open", milestone) : undefined}
+                    onComment={setCommentMilestone}
+                    onRemind={onRemind}
+                    key={milestone.id ?? milestone.title}
                   />
                 ))}
               </div>
-              <button className="secondary-btn manage-milestones" type="button">Manage milestones</button>
+              {!isLive && <button className="secondary-btn manage-milestones" type="button">Manage milestones</button>}
             </section>
           )}
-          {activeDetailTab === "files" && <ProjectFilesPanel />}
-          {activeDetailTab === "contract" && <ProjectContractDetailsPanel goTo={goTo} />}
+          {activeDetailTab === "files" && <ProjectFilesPanel files={files} onOpenFile={onOpenFile} />}
+          {activeDetailTab === "contract" && <ProjectContractDetailsPanel goTo={goTo} contract={contract} />}
         </div>
 
         <aside className="project-detail-side">
           <section className="project-factory-panel">
             <div className="project-factory-row">
-              <div className="factory-avatar">AM</div>
+              <div className="factory-avatar">{counterparty ? counterparty.initials : "AM"}</div>
               <div>
-                <strong>Atelier Minho</strong>
-                <span>Porto, Portugal</span>
+                <strong>{counterparty ? counterparty.name : "Atelier Minho"}</strong>
+                {counterparty ? (counterparty.location && <span>{counterparty.location}</span>) : <span>Porto, Portugal</span>}
               </div>
             </div>
-            <button className="secondary-btn" type="button">Message</button>
+            <button className="secondary-btn" type="button" onClick={onMessage}>Message</button>
+            {onCancelOrder && <button className="order-cancel-link" type="button" onClick={onCancelOrder}>Cancel order</button>}
           </section>
           <section className="project-activity-panel">
             <h2>Project activity</h2>
-            <ul>
-              <li>Factory last viewed project 2h ago</li>
-              <li>Last message yesterday</li>
-              <li>Sample photos expected Aug 16</li>
-              <li>Bulk deposit locked until approval</li>
+            <ul data-testid={activity ? "order-activity" : undefined}>
+              {activity ? (
+                activity.length
+                  ? activity.map((line, index) => <li key={`${index}-${line}`}>{line}</li>)
+                  : <li>Nothing has happened on this order yet.</li>
+              ) : (
+                <>
+                  <li>Factory last viewed project 2h ago</li>
+                  <li>Last message yesterday</li>
+                  <li>Sample photos expected Aug 16</li>
+                  <li>Bulk deposit locked until approval</li>
+                </>
+              )}
             </ul>
           </section>
         </aside>
@@ -6758,8 +6971,16 @@ export function ProjectDetailScreen({
       {approveFundMilestone && createPortal((
         <ApproveFundModal
           milestone={approveFundMilestone}
-          onClose={() => setApproveFundMilestone(null)}
-          onApprove={() => {
+          live={isLive ? { counterparty: counterparty?.name, busy, error } : null}
+          onClose={() => {
+            setApproveFundMilestone(null);
+            onDialogClose?.();
+          }}
+          onApprove={async (note) => {
+            if (isLive) {
+              if (await onApprove?.(approveFundMilestone, note)) setApproveFundMilestone(null);
+              return;
+            }
             setPaidMilestones((current) => current.includes(approveFundMilestone.title) ? current : [...current, approveFundMilestone.title]);
             setApproveFundMilestone(null);
           }}
@@ -6768,8 +6989,16 @@ export function ProjectDetailScreen({
       {approvalMilestone && createPortal((
         <ApproveMilestoneModal
           milestone={approvalMilestone}
-          onClose={() => setApprovalMilestone(null)}
-          onApprove={() => {
+          live={isLive ? { counterparty: counterparty?.name, busy, error } : null}
+          onClose={() => {
+            setApprovalMilestone(null);
+            onDialogClose?.();
+          }}
+          onApprove={async (note) => {
+            if (isLive) {
+              if (await onApprove?.(approvalMilestone, note)) setApprovalMilestone(null);
+              return;
+            }
             setApprovedMilestones((current) => current.includes(approvalMilestone.title) ? current : [...current, approvalMilestone.title]);
             setApprovalMilestone(null);
           }}
@@ -6778,31 +7007,46 @@ export function ProjectDetailScreen({
       {commentMilestone && createPortal((
         <MilestoneCommentModal
           milestone={commentMilestone}
-          onClose={() => setCommentMilestone(null)}
-          onPost={() => setCommentMilestone(null)}
+          live={isLive ? { counterparty: counterparty?.name, busy, error } : null}
+          onClose={() => {
+            setCommentMilestone(null);
+            onDialogClose?.();
+          }}
+          onPost={async (comment) => {
+            if (isLive) {
+              if (await onPostComment?.(commentMilestone, comment)) setCommentMilestone(null);
+              return;
+            }
+            setCommentMilestone(null);
+          }}
         />
       ), document.body)}
     </div>
   );
 }
 
-function ProjectFilesPanel() {
-  const files = [
+function ProjectFilesPanel({ files: liveFiles, onOpenFile }) {
+  // Live passes `[{ id, name, meta }]`: the request's attachments and every
+  // file posted on a step. The design's four examples are mock only.
+  const files = liveFiles ?? [
     ["Tech pack v3.pdf", "Brand spec · updated Jul 18"],
     ["Measurement chart.xlsx", "Sizing and tolerance sheet"],
     ["Reference photos.zip", "Design references · 12 files"],
     ["Approved quote.pdf", "Atelier Minho quote reference"]
-  ];
+  ].map(([name, meta]) => ({ id: name, name, meta }));
 
   return (
     <section className="milestone-timeline-card project-detail-tab-panel">
       <h2>Files</h2>
-      <div className="project-detail-file-list">
-        {files.map(([name, meta]) => (
-          <button className="project-detail-file-row" type="button" key={name}>
+      <div className="project-detail-file-list" data-testid={liveFiles ? "order-files" : undefined}>
+        {liveFiles && !files.length && (
+          <p className="muted">No files yet. The request's attachments and photos posted on a step appear here.</p>
+        )}
+        {files.map((file) => (
+          <button className="project-detail-file-row" type="button" key={file.id} onClick={() => onOpenFile?.(file)}>
             <div>
-              <strong>{name}</strong>
-              <span>{meta}</span>
+              <strong>{file.name}</strong>
+              <span>{file.meta}</span>
             </div>
             <img src="/assets/prototype-icons/download.svg" alt="" />
           </button>
@@ -6812,7 +7056,11 @@ function ProjectFilesPanel() {
   );
 }
 
-function ProjectContractDetailsPanel({ goTo }) {
+function ProjectContractDetailsPanel({ goTo, contract = null }) {
+  // Live passes the order's own snapshot, already worded. The snapshot is
+  // immutable once awarded, so there is no Edit to offer against it.
+  if (contract) return <ProjectContractSections {...contract} />;
+
   const workDetails = [
     ["Contract title", "Organic cotton woven shirt sample + bulk production"],
     ["Scope of work", "Produce organic cotton woven shirts based on the attached tech pack. Quote covers 300 units across 3 colors, fit sample and PP sample before bulk, and a 28-day bulk lead after PP approval."],
@@ -6838,12 +7086,24 @@ function ProjectContractDetailsPanel({ goTo }) {
   const attachments = ["Tech pack v3.pdf", "Measurement chart", "Reference photo", "Color breakdown"];
 
   return (
+    <ProjectContractSections
+      workDetails={workDetails}
+      acceptedQuote={acceptedQuote}
+      paymentTerms={paymentTerms}
+      attachments={attachments}
+      onEdit={() => goTo("contract")}
+    />
+  );
+}
+
+function ProjectContractSections({ workDetails, acceptedQuote, paymentTerms, attachments, onEdit = null }) {
+  return (
     <section className="milestone-timeline-card project-detail-tab-panel project-contract-readonly-panel">
       <div className="project-contract-panel-header">
         <div>
           <h2>Contract details</h2>
         </div>
-        <button className="secondary-btn compact-btn" type="button" onClick={() => goTo("contract")}>Edit</button>
+        {onEdit && <button className="secondary-btn compact-btn" type="button" onClick={onEdit}>Edit</button>}
       </div>
       <div className="project-contract-section">
         <h3>Work details</h3>
@@ -6878,19 +7138,21 @@ function ProjectContractDetailsPanel({ goTo }) {
           ))}
         </div>
       </div>
-      <div className="project-contract-section">
-        <h3>Attachments</h3>
-        <div className="project-contract-attachment-row">
-          {attachments.map((file) => (
-            <span key={file}>{file}</span>
-          ))}
+      {attachments.length > 0 && (
+        <div className="project-contract-section">
+          <h3>Attachments</h3>
+          <div className="project-contract-attachment-row">
+            {attachments.map((file) => (
+              <span key={file}>{file}</span>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </section>
   );
 }
 
-function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = false, onApproveFund, onFundMilestone, onApprove, onComment }) {
+function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = false, onApproveFund, onFundMilestone, onApprove, onComment, onOpen, onRemind }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [reminderSent, setReminderSent] = useState(false);
   const menuRef = useRef(null);
@@ -6913,7 +7175,7 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
     if (milestone.kind) {
       if (milestone.kind === "fund") onFundMilestone?.(milestone);
       else if (milestone.kind === "approve") onApprove?.(milestone);
-      else onComment?.(milestone);
+      else onOpen?.(milestone);
       return;
     }
     if (milestone.action === "Approve fund") onApproveFund?.(milestone);
@@ -6923,7 +7185,7 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
 
   return (
     <article className="project-milestone-item" data-testid="milestone-row">
-      <span className={index === 0 ? "milestone-number current" : "milestone-number"}>{index + 1}</span>
+      <span className={(milestone.current ?? index === 0) ? "milestone-number current" : "milestone-number"}>{index + 1}</span>
       <div className="milestone-body">
         <div className="milestone-title-line">
           <div>
@@ -6932,13 +7194,13 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
           </div>
         </div>
         <p className="milestone-description">{milestone.description}</p>
-        {milestone.update && <ProjectUpdateCard />}
       </div>
       <div className="milestone-row-actions">
         {milestone.amount && <strong className="milestone-row-amount">{milestone.amount}</strong>}
         {milestone.dueStatus && (
           <span className={`project-status shared-card-status ${milestone.dueTone}`}>{milestone.dueStatus}</span>
         )}
+        {(milestone.canRemind !== false || milestone.canComment !== false) && (
         <div className="project-overflow milestone-more" ref={menuRef}>
           <button
             className="rfq-more milestone-more-button"
@@ -6949,28 +7211,39 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
           >...</button>
           {menuOpen && (
             <div className="project-overflow-menu milestone-action-menu" role="menu">
-              <button
-                type="button"
-                role="menuitem"
-                disabled={reminderSent}
-                onClick={() => {
-                  setReminderSent(true);
-                  setMenuOpen(false);
-                }}
-              >
-                {reminderSent ? "Reminder sent" : "Send reminder"}
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onComment?.(milestone);
-                }}
-              >Add comment</button>
+              {milestone.canRemind !== false && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={reminderSent}
+                  onClick={async () => {
+                    setMenuOpen(false);
+                    // Live, the label changes only once the reminder is
+                    // actually on its way.
+                    if (onRemind) {
+                      if (await onRemind(milestone)) setReminderSent(true);
+                      return;
+                    }
+                    setReminderSent(true);
+                  }}
+                >
+                  {reminderSent ? "Reminder sent" : "Send reminder"}
+                </button>
+              )}
+              {milestone.canComment !== false && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onComment?.(milestone);
+                  }}
+                >Add comment</button>
+              )}
             </div>
           )}
         </div>
+        )}
         {(isPaid || isApproved) && (
           <span className={isApproved ? "milestone-paid-status approved" : "milestone-paid-status"}>
             {isApproved ? "Approved" : "Paid"}
@@ -6982,11 +7255,20 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
           </button>
         )}
       </div>
+      {/* Below the step and its actions, across the row, so the note is not
+          squeezed into the title's column. */}
+      {milestone.update && <ProjectUpdateCard update={typeof milestone.update === "object" ? milestone.update : undefined} />}
     </article>
   );
 }
 
-function MilestoneCommentModal({ milestone, onClose, onPost }) {
+function MilestoneCommentModal({ milestone, onClose, onPost, live = null }) {
+  // Live: a real note and real photos, handed to onPost({ body, files }).
+  const [body, setBody] = useState("");
+  const [photos, setPhotos] = useState([]);
+  const fileInput = useRef(null);
+  const other = live?.counterparty ?? "Atelier Minho";
+
   return (
     <div className="approve-fund-modal-layer" role="presentation">
       <button className="approve-fund-modal-scrim" type="button" aria-label="Close comment" onClick={onClose} />
@@ -6996,26 +7278,52 @@ function MilestoneCommentModal({ milestone, onClose, onPost }) {
         </button>
         <header>
           <h2 id="milestone-comment-title">Add {milestone.title.toLowerCase()} comment</h2>
-          <span>Share feedback, questions, or files with Atelier Minho for this production step.</span>
+          <span>Share feedback, questions, or files with {other} for this production step.</span>
         </header>
         <label className="approve-fund-note">
           <span>Comment</span>
-          <textarea rows={3} placeholder="Write a comment for Atelier Minho..." autoFocus />
+          {live ? (
+            <textarea rows={3} placeholder={`Write a comment for ${other}...`} autoFocus value={body} onChange={(event) => setBody(event.target.value)} />
+          ) : (
+            <textarea rows={3} placeholder="Write a comment for Atelier Minho..." autoFocus />
+          )}
         </label>
-        <button className="milestone-comment-upload" type="button">
+        <button className="milestone-comment-upload" type="button" onClick={live ? () => fileInput.current?.click() : undefined}>
           <strong>+ Upload photos</strong>
-          <span>JPG or PNG, up to 10 files</span>
+          <span>{live && photos.length ? photos.map((file) => file.name).join(", ") : "JPG or PNG, up to 10 files"}</span>
         </button>
+        {live && (
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*,application/pdf"
+            multiple
+            hidden
+            data-testid="comment-files"
+            onChange={(event) => setPhotos(Array.from(event.target.files ?? []).slice(0, 10))}
+          />
+        )}
+        {live?.error && <p className="composer-error" role="alert">{live.error.message}</p>}
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="primary-btn" type="button" onClick={onPost}>Post comment</button>
+          <button
+            className="primary-btn"
+            type="button"
+            disabled={live ? live.busy || !body.trim() : undefined}
+            onClick={live ? () => onPost({ body, files: photos }) : onPost}
+          >
+            {live?.busy ? "Posting…" : "Post comment"}
+          </button>
         </footer>
       </section>
     </div>
   );
 }
 
-function ApproveMilestoneModal({ milestone, onClose, onApprove }) {
+function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
+  const [note, setNote] = useState("");
+  const other = live?.counterparty ?? "Atelier Minho";
+
   return (
     <div className="approve-fund-modal-layer" role="presentation">
       <button className="approve-fund-modal-scrim" type="button" aria-label="Close approval" onClick={onClose} />
@@ -7026,7 +7334,7 @@ function ApproveMilestoneModal({ milestone, onClose, onApprove }) {
         <header>
           <p>Approve step</p>
           <h2 id="approve-step-title">Approve {milestone.title.toLowerCase()}</h2>
-          <span>This marks the production step as approved and lets Atelier Minho continue to the next step.</span>
+          <span>This marks the production step as approved and lets {other} continue to the next step.</span>
         </header>
         <div className="approve-fund-summary single">
           <div>
@@ -7036,18 +7344,28 @@ function ApproveMilestoneModal({ milestone, onClose, onApprove }) {
         </div>
         <label className="approve-fund-note">
           <span>Approval note</span>
-          <textarea rows={3} placeholder="Optional note for Atelier Minho..." />
+          {live ? (
+            <textarea rows={3} placeholder={`Optional note for ${other}...`} value={note} onChange={(event) => setNote(event.target.value)} />
+          ) : (
+            <textarea rows={3} placeholder="Optional note for Atelier Minho..." />
+          )}
         </label>
+        {live?.error && <p className="composer-error" role="alert">{live.error.message}</p>}
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="primary-btn" type="button" onClick={onApprove}>Approve step</button>
+          <button className="primary-btn" type="button" disabled={live?.busy || undefined} onClick={live ? () => onApprove(note) : onApprove}>
+            {live?.busy ? "Approving…" : "Approve step"}
+          </button>
         </footer>
       </section>
     </div>
   );
 }
 
-function ApproveFundModal({ milestone, onClose, onApprove }) {
+function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
+  const [note, setNote] = useState("");
+  const other = live?.counterparty ?? "Atelier Minho";
+
   return (
     <div className="approve-fund-modal-layer" role="presentation">
       <button className="approve-fund-modal-scrim" type="button" aria-label="Close approve fund" onClick={onClose} />
@@ -7056,9 +7374,18 @@ function ApproveFundModal({ milestone, onClose, onApprove }) {
           <img src="/assets/prototype-icons/close.svg" alt="" />
         </button>
         <header>
-          <p>Approve fund</p>
-          <h2 id="approve-fund-title">Release {milestone.amount} for {milestone.title.toLowerCase()}</h2>
-          <span>Funds will move from project funds to Atelier Minho after approval.</span>
+          <p>{live ? "Approve and pay" : "Approve fund"}</p>
+          <h2 id="approve-fund-title">
+            {live ? `Approve ${milestone.title.toLowerCase()}` : `Release ${milestone.amount} for ${milestone.title.toLowerCase()}`}
+          </h2>
+          {/* Live, payments are tracked bank transfers: approving makes this
+              step's payment due, and the brand sends it next. Nothing moves
+              on its own, so the design's "funds will move" would be untrue. */}
+          <span>
+            {live
+              ? `Approving signs this step off and makes ${milestone.amount} due to ${other}. You'll send it by bank transfer from the step's payment page.`
+              : "Funds will move from project funds to Atelier Minho after approval."}
+          </span>
         </header>
         <div className="approve-fund-summary">
           <div>
@@ -7071,23 +7398,58 @@ function ApproveFundModal({ milestone, onClose, onApprove }) {
           </div>
           <div>
             <span>Review item</span>
-            <strong>Fit sample photos and uploaded files</strong>
+            <strong>{live ? milestone.reviewItem ?? "Photos and files posted on this step" : "Fit sample photos and uploaded files"}</strong>
           </div>
         </div>
         <label className="approve-fund-note">
           <span>Approval note</span>
-          <textarea rows={3} placeholder="Optional note for Atelier Minho..." />
+          {live ? (
+            <textarea rows={3} placeholder={`Optional note for ${other}...`} value={note} onChange={(event) => setNote(event.target.value)} />
+          ) : (
+            <textarea rows={3} placeholder="Optional note for Atelier Minho..." />
+          )}
         </label>
+        {live?.error && <p className="composer-error" role="alert">{live.error.message}</p>}
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="primary-btn" type="button" onClick={onApprove}>Approve and release fund</button>
+          <button className="primary-btn" type="button" disabled={live?.busy || undefined} onClick={live ? () => onApprove(note) : onApprove}>
+            {live ? (live.busy ? "Approving…" : "Approve step") : "Approve and release fund"}
+          </button>
         </footer>
       </section>
     </div>
   );
 }
 
-function ProjectUpdateCard() {
+function ProjectUpdateCard({ update }) {
+  // Live passes the step's latest real update:
+  // `{ author, when, body, photos: [{ id, url, label }], extraFiles, total, onViewAll }`.
+  if (update) {
+    return (
+      <div className="project-update-card" data-testid="update-card">
+        <div className="project-update-header">
+          <strong>{update.author}</strong>
+          <span>{update.when}</span>
+          <button type="button" onClick={update.onViewAll}>View all updates ({update.total})</button>
+        </div>
+        <p>{update.body}</p>
+        {(update.photos.length > 0 || update.extraFiles > 0) && (
+          <div className="sample-file-row">
+            {update.photos.map((photo) => (
+              <div className="sample-file" key={photo.id}>
+                {photo.url ? <img src={photo.url} alt="" /> : null}
+                <span>{photo.label}</span>
+              </div>
+            ))}
+            {update.extraFiles > 0 && (
+              <button type="button" onClick={update.onViewAll}>+{update.extraFiles} {update.extraFiles === 1 ? "file" : "files"}</button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="project-update-card">
       <div className="project-update-header">
@@ -7157,7 +7519,7 @@ export function DescribeScreen({
   );
 }
 
-export function ReviewScreen({ brief, values, onChange, onEditBrief }) {
+export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments = null, onAddFiles, onRemoveFile, uploading = false }) {
   // The prototype passes none of these and reads exactly as drawn.
   const isLive = Boolean(values);
   const at = (key, drawn) => (isLive ? values[key] ?? "" : drawn);
@@ -7266,9 +7628,51 @@ export function ReviewScreen({ brief, values, onChange, onEditBrief }) {
         )}
       </Card>
       <Card title="Attachments">
+        {/* Live mounts pass the request's files and an upload handler; the
+            prototype passes neither and keeps the drawn, inert zone. */}
+        {onAddFiles ? (
+          <>
+            <button
+              className="upload-zone"
+              type="button"
+              data-testid="rfq-upload"
+              disabled={uploading}
+              onClick={(event) => event.currentTarget.nextElementSibling?.click()}
+            >
+              {uploading ? "Uploading…" : "+ Add tech pack, sketches, sample references, or color breakdown"}
+            </button>
+            <input
+              type="file"
+              multiple
+              hidden
+              name="rfq-attachments"
+              accept=".pdf,.png,.jpg,.jpeg,.webp,.xlsx,.xls,.zip"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                if (files.length) onAddFiles(files);
+              }}
+            />
+          </>
+        ) : (
         <button className="upload-zone" type="button">
           + Add tech pack, sketches, sample references, or color breakdown
         </button>
+        )}
+        {attachments?.length > 0 && (
+          <div className="attachment-tray">
+            {attachments.map((file) => (
+              <span className="attachment-chip" key={file.id}>
+                {file.file_name}
+                {onRemoveFile && (
+                  <button type="button" aria-label={`Remove ${file.file_name}`} onClick={() => onRemoveFile(file)}>
+                    <img src="/assets/prototype-icons/close.svg" alt="" />
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
       </Card>
       <Card title="Questions vendors should answer">
         {/* Each question becomes a row a vendor answers against, so they are
@@ -7442,8 +7846,15 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
           </a>
           <div className="factory-card-metrics">
             <Metric label="match" value={factory.fit} className={matchTierClass(factory.fit)} />
-            <Metric label="rating" value={factory.rating || (factory.name === "Atelier Minho" ? "4.9" : factory.name === "Hanshu Studio" ? "4.8" : "4.7")} />
-            <span className="orders-count">{factory.orders || `${factory.name === "Atelier Minho" ? "12" : factory.name === "Hanshu Studio" ? "8" : "19"} Club orders`}</span>
+            {/* Live cards pass "" for both: there is no rating, and a brand
+                cannot count another brand's orders. The fallbacks are the
+                prototype's example vendors and must never reach a real one. */}
+            {factory.rating !== "" && (
+              <Metric label="rating" value={factory.rating || (factory.name === "Atelier Minho" ? "4.9" : factory.name === "Hanshu Studio" ? "4.8" : "4.7")} />
+            )}
+            {factory.orders !== "" && (
+              <span className="orders-count">{factory.orders || `${factory.name === "Atelier Minho" ? "12" : factory.name === "Hanshu Studio" ? "8" : "19"} Club orders`}</span>
+            )}
           </div>
           <div className="factory-actions">
             <span className="save-pill button-like-action">Message</span>
@@ -7513,8 +7924,18 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
   );
 }
 
-function InviteSuccessScreen({ goTo, selectedFactories }) {
+/**
+ * The request is live. Live mounts pass `openToAll` so the copy is true when
+ * nobody was hand-picked: "sent to 0 selected vendors" is not what happened
+ * to a request every matching vendor can see.
+ */
+export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false }) {
   const vendorCount = selectedFactories.length;
+  const sentTo = openToAll
+    ? vendorCount
+      ? `We sent the brief to ${vendorCount} selected ${vendorCount === 1 ? "vendor" : "vendors"}, and every matching vendor on TSC can see it too.`
+      : "Every matching vendor on TSC can now see the brief."
+    : null;
 
   return (
     <div className="stack">
@@ -7523,7 +7944,7 @@ function InviteSuccessScreen({ goTo, selectedFactories }) {
         <div className="success-copy">
           <h2>Your quote request is live</h2>
           <p>
-            We sent the brief to {vendorCount} selected vendors. They can review the request,
+            {sentTo ?? <>We sent the brief to {vendorCount} selected vendors.</>} They can review the request,
             ask questions, and submit quotes before the deadline.
           </p>
         </div>
@@ -7583,6 +8004,9 @@ function formatQuoteCurrency(value) {
 }
 
 function getQuoteComparisonDetails(factory) {
+  // A live quote carries its own figures; the constants below are the
+  // prototype's example vendors and must never reach a real comparison.
+  if (factory.comparison) return factory.comparison;
   const sampleSubtotal = factory.name === "Ningbo Woven Co" ? 220 : 260;
   const quantity = parseQuoteUnits(factory.quoteQuantity);
   const productionSubtotal = parseQuoteCurrency(factory.price) * quantity;
@@ -7616,6 +8040,9 @@ export function QuotesScreen({
   // Live mounts pass these; the prototype passes none and is unchanged.
   quotes: liveQuotes,
   onAward,
+  onChoose,
+  onReview,
+  onMessage,
   busy = false,
   error = null,
 }) {
@@ -7679,6 +8106,10 @@ export function QuotesScreen({
                     className="save-pill button-like-action"
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (onMessage) {
+                        onMessage(factory);
+                        return;
+                      }
                       goTo("messages");
                     }}
                   >
@@ -7689,6 +8120,10 @@ export function QuotesScreen({
                     onClick={(event) => {
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
+                      if (onReview) {
+                        onReview(factory);
+                        return;
+                      }
                       goTo("quoteDetail");
                     }}
                   >
@@ -7701,11 +8136,12 @@ export function QuotesScreen({
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
                       setSelectedReorderProject(null);
-                      // Live, choosing a quote awards it — which creates the
-                      // production order in the same transaction. There is no
-                      // separate contract step to walk to first.
+                      // Live, choosing walks to the contract step, where the
+                      // terms are read back before award_quote commits them.
+                      // A mount without that step awards directly.
                       if (isLive) {
-                        if (!busy) onAward?.(factory.id);
+                        if (onChoose) onChoose(factory);
+                        else if (!busy) onAward?.(factory.id);
                         return;
                       }
                       goTo("contract");
@@ -7827,12 +8263,93 @@ export function QuotesScreen({
   );
 }
 
-function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
-  const factory = factories.find((item) => item.name === selectedQuote) || factories[0];
-  const quoteDetails = getQuoteComparisonDetails(factory);
+/**
+ * One vendor's quote in full.
+ *
+ * Live mounts pass `quote` (a describeQuote() result) and `request` (the
+ * brand's own request, read back); every figure then comes from those and a
+ * section with nothing behind it is left out. Without them the prototype's
+ * example vendor renders exactly as before.
+ */
+export function QuoteDetailScreen({
+  selectedQuote,
+  goTo,
+  setSelectedReorderProject,
+  quote: live = null,
+  request = null,
+  onBack,
+  onMessage,
+  onChoose,
+}) {
+  const factory = live
+    ? { name: live.name, initials: live.initials, trust: live.trust ?? "", location: live.location ?? "",
+        price: live.price || "—", quoteQuantity: live.quantity || "—", lead: live.lead || "—",
+        fitType: live.fitType ?? "", fitSummary: live.fitSummary ?? "", materialCosts: [] }
+    : factories.find((item) => item.name === selectedQuote) || factories[0];
+  const quoteDetails = live ? live : getQuoteComparisonDetails(factory);
+  const overviewRows = live
+    ? [
+        ["Product", request?.product],
+        ["Color breakdown", request?.colours],
+        ["Bulk lead time", live.lead],
+        ["Capacity window", live.capacityWindow],
+        ["Payment terms", live.paymentTerms],
+        ["Shipping / incoterms", live.shipping],
+        ["Valid until", live.validUntil],
+      ].filter(([, value]) => value)
+    : [
+        ["Product", "Women’s woven shirting, lightweight outerwear"],
+        ["Color breakdown", "3 colors · 100 units per color"],
+        ["Bulk lead time", `${factory.lead} after PP approval`],
+        ["Capacity window", "Aug 12-30 · 420 units reserved"],
+        ["Payment terms", "30% deposit · 70% before shipment"],
+        ["Shipping / incoterms", "EXW quoted · freight not included"]
+      ];
+  const sourcingRows = live
+    ? [["Sourcing responsibility", request?.sourcing], ["Materials", request?.materials]].filter(([, value]) => value)
+    : [
+        ["Brand provides separately", "Labels, packaging, final color standards, and special branded trims."],
+        ["Factory includes", "Main production materials and standard components from approved direction, included in unit price."]
+      ];
+  const priceRows = live
+    ? [
+        ["Production subtotal", `${live.quantity} × ${live.price}`, live.productionSubtotal],
+        live.sampleSubtotal && ["Sample subtotal", live.samplePlan, live.sampleSubtotal],
+        ["Shipping", "TBD by brand", "Not included"]
+      ].filter(Boolean)
+    : [
+        ["Production subtotal", `${factory.quoteQuantity} × ${factory.price}`, quoteDetails.productionSubtotal],
+        ["Materials included in unit price", quoteDetails.includedMaterialPerUnit, "Included above"],
+        ["Additional material cost", `${quoteDetails.additionalMaterialPerUnit} × ${factory.quoteQuantity}`, quoteDetails.additionalMaterialSubtotal],
+        ["Sample subtotal", "Fit + PP samples", quoteDetails.sampleSubtotal],
+        ["Shipping", "TBD by brand", "Not included"]
+      ];
+  const sampleRows = live
+    ? live.sampleRows
+    : [
+        { stage: "Fit sample", cost: "$95", timing: "10 days", includes: "1 revision round" },
+        { stage: "PP sample", cost: "$165", timing: "11 days", includes: "Pre-production approval" },
+        { stage: "Extra revision", cost: "$65 each", timing: "Adds 5-7 days", includes: "Shipping not included" }
+      ];
+  const vendorNotes = live
+    ? [live.notes, ...(live.answers ?? []).map((answer) => `${answer.question} — ${answer.answer}`)].filter(Boolean)
+    : ["Can quote fit and PP separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec."];
+  const requestRows = live
+    ? [
+        ["Quantity", request?.quantity],
+        ["Target price", request?.target],
+        ["Sample ask", request?.samples],
+        ["Target date", request?.targetDate]
+      ].filter(([, value]) => value)
+    : [
+        ["Quantity", "300 units · 3 colors"],
+        ["Target price", "$18-$24 / unit"],
+        ["Sample ask", "Fit + PP before bulk"],
+        ["Target date", "Bulk by late September"]
+      ];
   return (
     <div className="quote-detail-layout">
-      <button className="text-link quote-back-link" type="button" onClick={() => goTo("quotes")}>‹ Back to vendor quotes</button>
+      <button className="text-link quote-back-link" type="button" onClick={() => (onBack ? onBack() : goTo("quotes"))}>‹ Back to vendor quotes</button>
       <header className="quote-detail-header">
         <h1>{factory.name} quotation</h1>
         <p>Review the full vendor quote before messaging, asking a follow-up question, or choosing this quote for contract terms.</p>
@@ -7846,16 +8363,21 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
                 <div className="factory-main">
                   <div className="factory-name-row">
                     <h3>{factory.name}</h3>
-                    <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+                    {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />}
                   </div>
-                  <p>{factory.location}</p>
+                  {factory.location && <p>{factory.location}</p>}
                 </div>
               </div>
               <div className="factory-actions quote-actions">
-                <span className="save-pill button-like-action">Message</span>
+                <span className="save-pill button-like-action" onClick={() => onMessage?.()}>Message</span>
                 <strong
                   className="button-like-action"
+                  data-testid="choose-quote-detail"
                   onClick={() => {
+                    if (onChoose) {
+                      onChoose();
+                      return;
+                    }
                     setSelectedReorderProject?.(null);
                     goTo("contract");
                   }}
@@ -7878,34 +8400,26 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
               ))}
             </div>
 
+            {(factory.fitType || factory.fitSummary) && (
             <div className="quote-detail-fit-row">
-              <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>
+              {factory.fitType && <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>}
               <p>{factory.fitSummary}</p>
             </div>
+            )}
           </section>
 
+          {overviewRows.length > 0 && (
           <section className="quote-detail-section">
             <h3>Quote overview</h3>
-            <DetailPairs
-              rows={[
-                ["Product", "Women’s woven shirting, lightweight outerwear"],
-                ["Color breakdown", "3 colors · 100 units per color"],
-                ["Bulk lead time", `${factory.lead} after PP approval`],
-                ["Capacity window", "Aug 12-30 · 420 units reserved"],
-                ["Payment terms", "30% deposit · 70% before shipment"],
-                ["Shipping / incoterms", "EXW quoted · freight not included"]
-              ]}
-            />
+            <DetailPairs rows={overviewRows} />
           </section>
+          )}
 
+          {(sourcingRows.length > 0 || (factory.materialCosts || []).length > 0) && (
           <section className="quote-detail-section quote-sourcing-section">
             <h3>Material sourcing responsibility</h3>
-            <DetailPairs
-              rows={[
-                ["Brand provides separately", "Labels, packaging, final color standards, and special branded trims."],
-                ["Factory includes", "Main production materials and standard components from approved direction, included in unit price."]
-              ]}
-            />
+            <DetailPairs rows={sourcingRows} />
+            {(!live || (factory.materialCosts || []).length > 0) && (
             <div className="quote-material-cost-details">
               <h4>Material cost details</h4>
               <DetailRows
@@ -7916,52 +8430,47 @@ function QuoteDetailScreen({ selectedQuote, goTo, setSelectedReorderProject }) {
                 ])}
               />
             </div>
+            )}
           </section>
+          )}
 
           <section className="price-breakdown">
             <h3>Price breakdown</h3>
-            <DetailRows
-              rows={[
-                ["Production subtotal", `${factory.quoteQuantity} × ${factory.price}`, quoteDetails.productionSubtotal],
-                ["Materials included in unit price", quoteDetails.includedMaterialPerUnit, "Included above"],
-                ["Additional material cost", `${quoteDetails.additionalMaterialPerUnit} × ${factory.quoteQuantity}`, quoteDetails.additionalMaterialSubtotal],
-                ["Sample subtotal", "Fit + PP samples", quoteDetails.sampleSubtotal],
-                ["Shipping", "TBD by brand", "Not included"]
-              ]}
-            />
+            <DetailRows rows={priceRows} />
             <div className="quote-total">
               <strong>Quote total shown to brand</strong>
-              <span>{quoteDetails.total}</span>
+              <span>{quoteDetails.total || "—"}</span>
             </div>
           </section>
 
+          {sampleRows.length > 0 && (
           <section className="quote-detail-section">
             <h3>Sample plan</h3>
             <p className="muted">Separate stages make it clear what the brand pays before bulk production.</p>
             <div className="sample-table">
               <span>Stage</span><span>Cost</span><span>Timing</span><span>Includes</span>
-              <strong>Fit sample</strong><strong>$95</strong><strong>10 days</strong><strong>1 revision round</strong>
-              <strong>PP sample</strong><strong>$165</strong><strong>11 days</strong><strong>Pre-production approval</strong>
-              <strong>Extra revision</strong><strong>$65 each</strong><strong>Adds 5-7 days</strong><strong>Shipping not included</strong>
+              {sampleRows.map((row, index) => (
+                <React.Fragment key={`${row.stage}-${index}`}>
+                  <strong>{row.stage}</strong><strong>{row.cost}</strong><strong>{row.timing}</strong><strong>{row.includes}</strong>
+                </React.Fragment>
+              ))}
             </div>
           </section>
+          )}
 
+          {vendorNotes.length > 0 && (
           <section className="quote-note-panel">
             <h3>Vendor notes and open clarification</h3>
-            <p>Can quote fit and PP separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec.</p>
+            {vendorNotes.map((note) => <p key={note}>{note}</p>)}
           </section>
+          )}
         </Card>
 
+        {requestRows.length > 0 && (
         <Card title="Original request" className="original-request-card">
-          <DetailRows
-            rows={[
-              ["Quantity", "300 units · 3 colors"],
-              ["Target price", "$18-$24 / unit"],
-              ["Sample ask", "Fit + PP before bulk"],
-              ["Target date", "Bulk by late September"]
-            ]}
-          />
+          <DetailRows rows={requestRows} />
         </Card>
+        )}
       </div>
     </div>
   );
@@ -7994,7 +8503,15 @@ function DetailRows({ rows }) {
   );
 }
 
-function ContractScreen({ selectedQuote, reorderProject = null }) {
+/**
+ * Confirm the terms, then commit.
+ *
+ * Live mounts pass `terms` (a describeQuote() result plus the request's title
+ * and brief) and `attachments`: award_quote snapshots the quote itself, so
+ * live this step is a read-back of what is being agreed and every field is
+ * read-only. Without them the prototype's editable example renders as before.
+ */
+export function ContractScreen({ selectedQuote, reorderProject = null, terms: live = null, attachments = null, onOpenAttachment }) {
   const isReorder = Boolean(reorderProject);
   const deliveryTerms = [
     ["DDP", "Factory delivers to final destination, including duties"],
@@ -8003,10 +8520,14 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
   ];
   const [deliveryTerm, setDeliveryTerm] = useState("DDP");
   const reorderStyleName = reorderProject?.title?.replace(/\s+production$/i, "") || "";
-  const contractTitle = isReorder
+  const contractTitle = live
+    ? `${live.title || "Production"} with ${live.name}`
+    : isReorder
     ? `${reorderStyleName} reorder with ${reorderProject.factory}`
     : "Organic cotton woven shirt sample + bulk production";
-  const scopeCopy = isReorder
+  const scopeCopy = live
+    ? live.brief || "The request as the brand wrote it."
+    : isReorder
     ? `Repeat the previous ${reorderStyleName.toLowerCase()} order with ${reorderProject.factory}. Use the last approved style as the starting point, then confirm quantity, color breakdown, materials, trims, labels, packing, and any construction changes before funding.`
     : "Produce the woven shirt styles described in the attached tech pack, including approved fabric, trims, measurements, construction details, color standards, labels, and packing requirements.";
   const approvalCopy = isReorder
@@ -8016,6 +8537,21 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
   return (
     <div className="stack contract-stack">
       <Card title="Confirm final terms" className="final-terms-card">
+        {live ? (
+        <div className="final-terms-grid">
+          {[
+            ["Unit price", live.price],
+            ["Quantity", live.quantity],
+            ["Samples", [live.samplePlan, live.sampleSubtotal].filter(Boolean).join(" · ")],
+            ["Bulk lead", live.lead],
+            ["Capacity", live.capacityWindow],
+            ["Terms", live.paymentTerms],
+            ["Total", live.total]
+          ].filter(([, value]) => value).map(([label, value]) => (
+            <AcceptedQuoteField label={label} value={value} key={label} readOnly />
+          ))}
+        </div>
+        ) : (
         <div className="final-terms-grid">
           <AcceptedQuoteField label="Unit price" value="$18.40" />
           <AcceptedQuoteField label="Quantity" value="300 units" />
@@ -8024,6 +8560,17 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
           <AcceptedQuoteField label="Capacity" value="Aug 12-30" />
           <AcceptedQuoteField label="Terms" value="30/70" />
         </div>
+        )}
+        {live ? (
+        live.shipping && (
+        <section className="confirmed-trade-term">
+          <div>
+            <label htmlFor="contract-delivery-term">Delivery term from quote</label>
+            <input id="contract-delivery-term" value={live.shipping} readOnly />
+          </div>
+        </section>
+        )
+        ) : (
         <section className="confirmed-trade-term">
           <div>
             <label htmlFor="contract-delivery-term">Delivery term from quote</label>
@@ -8034,6 +8581,7 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
             </select>
           </div>
         </section>
+        )}
       </Card>
       <Card title="Work details" className="work-details-card">
         <Field
@@ -8052,6 +8600,22 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
             {approvalCopy}
           </div>
         </section>
+        {attachments ? (
+        attachments.length > 0 && (
+        <section className="contract-section">
+          <div className="contract-section-header">
+            <h3>Attachments</h3>
+          </div>
+          <div className="attachment-tray">
+            {attachments.map((file) => (
+              <button className="attachment-chip" type="button" key={file.id} onClick={() => onOpenAttachment?.(file)}>
+                {file.file_name}
+              </button>
+            ))}
+          </div>
+        </section>
+        )
+        ) : (
         <section className="contract-section">
           <div className="contract-section-header">
             <h3>Attachments</h3>
@@ -8066,6 +8630,7 @@ function ContractScreen({ selectedQuote, reorderProject = null }) {
             ))}
           </div>
         </section>
+        )}
       </Card>
     </div>
   );
@@ -8108,7 +8673,13 @@ function PaymentScreen() {
   );
 }
 
-function MilestonesScreen({ milestoneTypes, setMilestoneTypes }) {
+/**
+ * The schedule builder. Live mounts pass `live = { rows, onChange(index,
+ * patch), onAdd, onRemove }`: each row is `{ key, type, title, description,
+ * amount, due_on, note }` with `type` one of the design's three step types.
+ * Without it the screen draws the design's four example steps, as before.
+ */
+export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = null }) {
   const productionSteps = [
     {
       name: "Fit sample",
@@ -8166,7 +8737,48 @@ function MilestonesScreen({ milestoneTypes, setMilestoneTypes }) {
           </div>
         </div>
         <div className="milestone-form">
-          {productionSteps.map((milestone, i) => {
+          {live ? live.rows.map((row, i) => {
+            const field = (name, value) => live.onChange(i, { [name]: value });
+            return (
+              <div className="milestone-edit" key={row.key} data-testid="schedule-row">
+                <div className="milestone-title-row">
+                  <h3>Step {i + 1}</h3>
+                  <div className="milestone-controls">
+                    <select
+                      className={`step-type-select ${row.type.toLowerCase().replaceAll(" ", "-")}`}
+                      value={row.type}
+                      data-field={`step_${i}_kind`}
+                      onChange={(event) => live.onChange(i, { type: event.target.value })}
+                    >
+                      <option>Paid release</option>
+                      <option>Approval only</option>
+                      <option>Update only</option>
+                    </select>
+                    <button className="trash-btn" type="button" aria-label={`Remove step ${i + 1}`} onClick={() => live.onRemove(i)}>
+                      <img src="/assets/prototype-icons/trash.svg" alt="" />
+                    </button>
+                  </div>
+                </div>
+                {row.note && <p className="muted production-schedule-helper">{row.note}</p>}
+                <div className="production-step-grid">
+                  <Field label="Step name" name="title" value={row.title} onChange={field} />
+                  <Field label="Description" name="description" value={row.description} onChange={field} />
+                  {row.type === "Paid release" ? (
+                    <Field label="Amount" name="amount" value={row.amount} onChange={field} />
+                  ) : (
+                    <Field label="Amount" value="No payment" muted />
+                  )}
+                  <Field
+                    label={row.type === "Update only" ? "Update timing" : "Due date"}
+                    name="due_on"
+                    type="date"
+                    value={row.due_on}
+                    onChange={field}
+                  />
+                </div>
+              </div>
+            );
+          }) : productionSteps.map((milestone, i) => {
             const type = milestoneTypes[milestone.name] || milestone.type;
             return (
               <div className="milestone-edit" key={milestone.name}>
@@ -8201,7 +8813,7 @@ function MilestonesScreen({ milestoneTypes, setMilestoneTypes }) {
               </div>
             );
           })}
-          <button className="add-step-btn" type="button">+ Add production step</button>
+          <button className="add-step-btn" type="button" onClick={live?.onAdd}>+ Add production step</button>
         </div>
       </Card>
     </div>
@@ -8290,7 +8902,7 @@ function Card({ title, children, className = "", tone = "" }) {
   );
 }
 
-function Field({ label, value, muted = false, className = "", name, onChange }) {
+function Field({ label, value, muted = false, className = "", name, onChange, type }) {
   return (
     <div className={`${muted ? "field muted-field" : "field"} ${className}`}>
       <span>{label}</span>
@@ -8301,6 +8913,7 @@ function Field({ label, value, muted = false, className = "", name, onChange }) 
         <input
           className="field-input"
           name={name}
+          type={type}
           value={value ?? ""}
           placeholder="—"
           onChange={(event) => onChange(name, event.target.value)}
@@ -8321,16 +8934,16 @@ function Metric({ label, value, className = "", testId }) {
   );
 }
 
-function AcceptedQuoteField({ label, value }) {
+function AcceptedQuoteField({ label, value, readOnly = false }) {
   return (
     <label className="accepted-quote-field">
       <span>{label}</span>
-      <input defaultValue={value} />
+      <input defaultValue={value} readOnly={readOnly} />
     </label>
   );
 }
 
-function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null }) {
+function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null, primaryDisabled = false }) {
   return (
     <footer className={canBack ? "bottom-bar has-back" : "bottom-bar no-back"}>
       {canBack && (
@@ -8350,7 +8963,7 @@ function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", cen
       )}
       <div className="bottom-actions">
         {primaryLabel && (
-          <button className="primary-btn" type="button" onClick={onNext}>
+          <button className="primary-btn" type="button" onClick={onNext} disabled={primaryDisabled || undefined}>
             {primaryLabel}
           </button>
         )}

@@ -556,6 +556,48 @@ console.log("\nphase 2 — the loop");
     payment_term_id: pay.id, incoterm_id: inco.id, deposit_pct: 30, balance_pct: 70,
   }).eq("id", revised.id);
   await f1.client.rpc("submit_quote", { quote_id: revised.id });
+
+  // Sending tells the brand, and a revision sent again says so.
+  const { data: received } = await admin.from("notifications")
+    .select("title").eq("kind", "quote_received").eq("subject_id", rfqId);
+  received?.length === 2 && received.some((row) => /revised quote/.test(row.title))
+    ? ok("the brand is notified of each quote sent, and of the revision as one")
+    : fail(`expected 2 quote_received notifications, got ${received?.length}`);
+
+  // A third vendor sends and withdraws while the request is still open.
+  {
+    const f3 = await signedInUser(`f3-${stamp}@example.com`);
+    const { data: f3org } = await f3.client.rpc("create_org", {
+      org_name: `Withdrawing Mill ${stamp}`, org_kind: "factory",
+    });
+    await admin.from("factory_profiles").upsert({
+      org_id: f3org.id, country_code: "PT", moq: 100,
+      published_at: new Date().toISOString(), verification_status: "verified",
+    }, { onConflict: "org_id" });
+    await admin.from("credit_ledger").insert({
+      org_id: f3org.id, delta: 500, reason: "onboarding_grant", note: "smoke fixture",
+    });
+    const { data: q3 } = await f3.client.from("quotes").insert({
+      rfq_id: rfqId, factory_org_id: f3org.id, unit_price_cents: 1990,
+      production_quantity: 300, bulk_lead_time_days: 30,
+      payment_term_id: pay.id, incoterm_id: inco.id,
+      valid_until: new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10),
+    }).select().single();
+    await f3.client.rpc("submit_quote", { quote_id: q3.id });
+    const { error: withdrawError } = await f3.client.rpc("withdraw_quote", { quote_id: q3.id });
+    withdrawError ? fail("withdraw_quote", withdrawError) : ok("a vendor withdraws a sent quote");
+
+    const { count: toldWithdrawn } = await admin.from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("kind", "quote_withdrawn").eq("subject_id", rfqId);
+    toldWithdrawn === 1 ? ok("the brand is notified of the withdrawal")
+                        : fail(`expected 1 quote_withdrawn notification, got ${toldWithdrawn}`);
+
+    const { error: requote } = await f3.client.from("quotes").insert({ rfq_id: rfqId, factory_org_id: f3org.id });
+    requote ? ok("a withdrawal is final: the same vendor cannot start another quote")
+            : fail("LEAK: a vendor quoted again after withdrawing");
+  }
+
   const { error: loserSubmit } = await losingFactory.rpc("submit_quote", { quote_id: losingQuote });
   if (loserSubmit) fail("the second factory could not submit", loserSubmit);
 
@@ -586,6 +628,34 @@ console.log("\nphase 2 — the loop");
   rfqRow.status === "awarded" && rfqRow.awarded_quote_id === revised.id
     ? ok("the rfq closed and points at the winning quote")
     : fail(`rfq is ${rfqRow.status}`);
+
+  // The exact embed listFactoryRfqs() sends. Unqualified, `rfqs (...)` from
+  // quotes is ambiguous (quotes.rfq_id and rfqs.awarded_quote_id) and the
+  // factory's whole RFQs page failed to load.
+  const { data: factoryList, error: factoryListError } = await f1.client
+    .from("quotes")
+    .select("id, rfq_id, status, rfqs!quotes_rfq_id_fkey (id, title, orgs!rfqs_brand_org_id_fkey (name))")
+    .eq("factory_org_id", f1org.id)
+    .neq("status", "superseded");
+  factoryListError
+    ? fail("the factory's own quotes list, embedded with its request", factoryListError)
+    : factoryList.some((row) => row.rfqs?.id === rfqId)
+      ? ok("a factory lists its quotes with the request embedded")
+      : fail("the factory's quote list came back without its request");
+
+  // listRfqs() counts only the live row per vendor, so revising does not
+  // inflate the brand's "quotes received".
+  const { data: counted, error: countError } = await brand.client
+    .from("rfqs")
+    .select("id, quotes!quotes_rfq_id_fkey(count)")
+    .eq("id", rfqId)
+    .in("quotes.status", ["submitted", "accepted", "declined"])
+    .single();
+  countError
+    ? fail("the brand's quote count", countError)
+    : counted.quotes?.[0]?.count === 2
+      ? ok("the brand's quote count ignores superseded versions (2 vendors, 3 rows)")
+      : fail(`expected 2 live quotes, counted ${counted.quotes?.[0]?.count}`);
 }
 
 console.log("\nphase 3 — the order runs");
@@ -637,6 +707,19 @@ console.log("\nphase 3 — the order runs");
     embedError ? fail("milestone → payment embed parses", embedError)
                : ok("the embed src/lib/domain/milestone.js uses parses");
 
+    // The order list and detail embed through the summary VIEW, which only
+    // works while PostgREST can see the base table's foreign keys through it.
+    const { data: listed, error: listEmbedError } = await brand.client
+      .from("production_order_summary")
+      .select("id, rfqs (title, brief), brand:brand_org_id (name), factory:factory_org_id (name, factory_profiles (location, country_code)), order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state))")
+      .eq("id", order.id)
+      .maybeSingle();
+    listEmbedError
+      ? fail("the order list's embeds parse through the summary view", listEmbedError)
+      : Array.isArray(listed?.order_milestones) && listed.order_milestones.length > 0
+      ? ok("the order list's embeds parse through the summary view, steps included")
+      : fail("the order list's step embed came back empty");
+
 
     const { error: updateEmbedError } = await admin
       .from("milestone_updates")
@@ -645,42 +728,44 @@ console.log("\nphase 3 — the order runs");
     updateEmbedError ? fail("update → documents embed parses", updateEmbedError)
                      : ok("the embed src/lib/domain/milestone.js uses for photos parses");
 
-    // ---- both sides agree -------------------------------------------------
-    const brandAgree = await brand.client.rpc("agree_schedule", {
-      target_order: order.id, revision: order.schedule_revision,
-    });
-    brandAgree.error ? fail("the brand agrees the schedule", brandAgree.error)
-                     : ok("the brand agrees the schedule");
-
-    const { data: halfway } = await admin
-      .from("production_orders").select("status").eq("id", order.id).single();
-    halfway.status === "pending_schedule"
-      ? ok("one signature is not enough — the order has not started")
-      : fail(`order is ${halfway.status} after one agreement`);
-
-    const { error: staleAgree } = await brand.client.rpc("agree_schedule", {
-      target_order: order.id, revision: order.schedule_revision,
-    });
-    staleAgree ? ok("a side cannot agree the same schedule twice")
-               : fail("LEAK: agreed twice");
-
+    // ---- the brand sets the steps; its confirmation starts the order ------
     // The factory has to act as itself: every RPC keys on auth.uid(), so
     // service_role genuinely cannot stand in for a party here.
     const { data: winner } = await admin
       .from("quotes").select("factory_org_id").eq("id", awardedQuote).single();
     // Reuse the winning factory's own session from the loop above.
     const factoryClient = f1Client;
+
+    const { error: factoryEdit } = await factoryClient.rpc("set_order_schedule", {
+      target_order: order.id,
+      lines: milestones.map((m) => ({ kind: m.kind, title: m.title, amount_cents: m.amount_cents, sort: m.sort })),
+    });
+    factoryEdit ? ok("the factory CANNOT change the production steps; only the brand does")
+                : fail("LEAK: the factory rewrote the brand's production steps");
+
     const factoryAgree = await factoryClient.rpc("agree_schedule", {
       target_order: order.id, revision: order.schedule_revision,
     });
-    factoryAgree.error ? fail("the factory agrees too", factoryAgree.error)
-                       : ok("the factory agrees too");
+    factoryAgree.error ? fail("a factory agreeing (the current site) is still accepted", factoryAgree.error)
+                       : ok("a factory agreeing (the current site) is still accepted");
+
+    const { data: halfway } = await admin
+      .from("production_orders").select("status").eq("id", order.id).single();
+    halfway.status === "pending_schedule"
+      ? ok("the factory agreeing does not start the order")
+      : fail(`order is ${halfway.status} after the factory's agreement`);
+
+    const brandAgree = await brand.client.rpc("agree_schedule", {
+      target_order: order.id, revision: order.schedule_revision,
+    });
+    brandAgree.error ? fail("the brand confirms the production steps", brandAgree.error)
+                     : ok("the brand confirms the production steps");
 
     const { data: active } = await admin
       .from("production_orders").select("status, activated_at").eq("id", order.id).single();
     active.status === "active"
-      ? ok("the order starts only once BOTH sides have agreed")
-      : fail(`order is ${active.status} after both agreements`);
+      ? ok("the brand's confirmation starts the order")
+      : fail(`order is ${active.status} after the brand confirmed`);
 
     const { data: payments } = await admin
       .from("order_payments").select("*, order_milestones (title, sort, kind)")
@@ -739,20 +824,185 @@ console.log("\nphase 3 — the order runs");
     posted.error ? fail("the factory posts an update", posted.error)
                  : ok("the factory posts an update against the step it is working on");
 
-    const { error: brandPost } = await brand.client.rpc("post_milestone_update", {
+    // Since 065 a brand comments on a step through the same RPC. What must
+    // never happen is the comment being stored as the factory's own work.
+    const brandPost = await brand.client.rpc("post_milestone_update", {
       target_milestone: first.id, body: "Looks good", document_ids: [],
     });
-    brandPost ? ok("a brand CANNOT post an update as though it were the factory")
-              : fail("LEAK: the brand posted a factory update");
+    brandPost.error
+      ? fail("the brand comments on the step", brandPost.error)
+      : brandPost.data?.author_org_id === org.id
+      ? ok("a brand comments on a step as itself, never as the factory")
+      : fail("LEAK: the brand's comment was stored as another company's post");
 
     // The brand can read what the factory posted. This is the positive twin of
     // every isolation check, and the one whose absence is silent: get the
     // policy wrong and the gallery is simply empty, with no error at all.
     const { data: seen } = await brand.client
-      .from("milestone_updates").select("id, body").eq("milestone_id", first.id);
+      .from("milestone_updates").select("id, body")
+      .eq("milestone_id", first.id).eq("author_org_id", winner.factory_org_id);
     (seen ?? []).length === 1
       ? ok("the brand CAN read the factory's update — the counterparty policy works")
-      : fail(`the brand sees ${(seen ?? []).length} updates, expected 1`);
+      : fail(`the brand sees ${(seen ?? []).length} factory updates, expected 1`);
+
+    const { data: commentSeen } = await factoryClient
+      .from("milestone_updates").select("id")
+      .eq("milestone_id", first.id).eq("author_org_id", org.id);
+    (commentSeen ?? []).length === 1
+      ? ok("the factory CAN read the brand's comment")
+      : fail(`the factory sees ${(commentSeen ?? []).length} brand comments, expected 1`);
+
+    // Reminders: once a day per step, and only between the two parties.
+    const reminded = await brand.client.rpc("remind_milestone", { target_milestone: first.id });
+    reminded.error ? fail("the brand reminds the factory about an open step", reminded.error)
+                   : ok("the brand reminds the factory about an open step");
+    const { error: remindedTwice } = await brand.client.rpc("remind_milestone", { target_milestone: first.id });
+    remindedTwice ? ok("a second reminder the same day is refused")
+                  : fail("a second reminder the same day went through");
+    const { error: strangerRemind } = await losingFactory.rpc("remind_milestone", { target_milestone: first.id });
+    strangerRemind ? ok("a factory that lost the bid CANNOT send a reminder on the order")
+                   : fail("LEAK: an outsider sent a reminder");
+
+    // The activity list: the parties' own rows, and nothing for anyone else.
+    const { data: activity, error: activityError } = await brand.client
+      .rpc("order_activity", { target_order: order.id });
+    activityError
+      ? fail("order_activity answers a party", activityError)
+      : (activity ?? []).some((row) => row.kind === "update_posted" && row.actor_org_id === winner.factory_org_id)
+      ? ok("order_activity shows the brand the factory's update, credited to the factory")
+      : fail("order_activity is missing the factory's update");
+    const { data: outsiderActivity } = await losingFactory.rpc("order_activity", { target_order: order.id });
+    (outsiderActivity ?? []).length === 0
+      ? ok("order_activity is empty for a factory that lost the bid")
+      : fail("LEAK: an outsider read the order's activity");
+
+    // Order tabs: the company's own groupings, and nobody else's business.
+    {
+      const { data: tab, error: addTabError } = await brand.client
+        .rpc("add_order_tab", { target_org: org.id, new_label: `Smoke ${stamp}` });
+      addTabError ? fail("the brand adds an order tab", addTabError) : ok("the brand adds an order tab");
+
+      const { error: fileError } = await brand.client
+        .from("order_tab_orders").insert({ tab_id: tab?.id, order_id: order.id, added_by: brand.id });
+      fileError ? fail("the brand files its order in the tab", fileError)
+                : ok("the brand files its order in the tab");
+
+      const { data: brandTabs, error: listTabsError } = await brand.client
+        .from("order_tabs").select("id, kind, label, sort, order_tab_orders (order_id)")
+        .eq("org_id", org.id).order("sort");
+      listTabsError
+        ? fail("the brand reads its tabs with their orders", listTabsError)
+        : (brandTabs ?? []).map((row) => row.kind).join() === "active,closed,custom"
+          && brandTabs[2].order_tab_orders.some((row) => row.order_id === order.id)
+        ? ok("the brand reads Active, Closed and its tab, with the order in it")
+        : fail(`the brand's tabs read back as ${JSON.stringify(brandTabs)}`);
+
+      const { data: factoryView } = await factoryClient.from("order_tabs").select("id").eq("org_id", org.id);
+      (factoryView ?? []).length === 0
+        ? ok("the factory on the order CANNOT see the brand's tabs")
+        : fail("LEAK: the factory read the brand's tabs");
+
+      const { error: strangerSave } = await losingFactory.rpc("save_order_tabs", { target_org: org.id, tabs: [] });
+      strangerSave ? ok("an outsider CANNOT save another company's tabs")
+                   : fail("LEAK: an outsider saved the brand's tabs");
+
+      const { error: directInsert } = await brand.client
+        .from("order_tabs").insert({ org_id: org.id, kind: "custom", label: "Direct", sort: 1 });
+      directInsert ? ok("a tab CANNOT be written directly, only through the two functions")
+                   : fail("LEAK: a tab was inserted directly");
+
+      const { data: kept, error: saveError } = await brand.client.rpc("save_order_tabs", {
+        target_org: org.id,
+        tabs: [{ kind: "closed", label: "Done" }, { kind: "active", label: "Running" }],
+      });
+      saveError
+        ? fail("save_order_tabs renames, reorders and deletes in one call", saveError)
+        : (kept ?? []).map((row) => row.label).join() === "Done,Running"
+        ? ok("save_order_tabs renames, reorders and deletes in one call")
+        : fail(`save_order_tabs left ${JSON.stringify(kept)}`);
+    }
+
+    // The archive: closed orders only, and each company's own. This order is
+    // still running, so every archive below must be refused.
+    {
+      const { error: openArchive } = await brand.client
+        .from("order_archives").insert({ org_id: org.id, order_id: order.id, archived_by: brand.id });
+      openArchive ? ok("an order still running CANNOT be archived")
+                  : fail("LEAK: an open order was archived");
+
+      const { error: strangerArchive } = await losingFactory
+        .from("order_archives").insert({ org_id: org.id, order_id: order.id });
+      strangerArchive ? ok("an outsider CANNOT archive the brand's order")
+                      : fail("LEAK: an outsider archived the brand's order");
+
+      const { data: factoryArchive, error: factoryArchiveError } = await factoryClient
+        .from("order_archives").select("order_id").eq("org_id", org.id);
+      factoryArchiveError
+        ? fail("the factory's read of the brand's archive answers", factoryArchiveError)
+        : (factoryArchive ?? []).length === 0
+        ? ok("the factory on the order CANNOT see the brand's archive")
+        : fail("LEAK: the factory read the brand's archive");
+    }
+
+    // Reorder style: the brand's request, copied into a new draft that
+    // remembers the order. The request is the brand's, so nobody else may.
+    {
+      const { data: draftId, error: reorderError } = await brand.client
+        .rpc("duplicate_rfq_from_order", { target_order: order.id });
+      const { data: draft } = draftId
+        ? await brand.client.from("rfqs").select("status, visibility, title, reorder_of_order_id").eq("id", draftId).single()
+        : { data: null };
+      reorderError
+        ? fail("the brand reorders an order as a new draft request", reorderError)
+        : draft?.status === "draft" && draft.visibility === "invited_only"
+          && draft.reorder_of_order_id === order.id && /\(reorder\)$/.test(draft.title)
+        ? ok("the brand reorders an order as a new draft request")
+        : fail(`the reorder draft reads back as ${JSON.stringify(draft)}`);
+
+      const { error: factoryReorder } = await factoryClient
+        .rpc("duplicate_rfq_from_order", { target_order: order.id });
+      factoryReorder ? ok("the factory on the order CANNOT reorder the brand's request")
+                     : fail("LEAK: the factory copied the brand's request");
+
+      const { error: strangerReorder } = await losingFactory
+        .rpc("duplicate_rfq_from_order", { target_order: order.id });
+      strangerReorder ? ok("an outsider CANNOT reorder the brand's order")
+                      : fail("LEAK: an outsider copied the brand's request");
+
+      if (draftId) await brand.client.from("rfqs").delete().eq("id", draftId);
+    }
+
+    // Cancelling (035, 070): a proposal is taken back by the side that made
+    // it, and nobody else. The order is left running for what follows.
+    {
+      const { error: proposeError } = await brand.client
+        .rpc("propose_cancellation", { target_order: order.id, reason: "Smoke test" });
+      proposeError ? fail("the brand proposes cancelling", proposeError) : ok("the brand proposes cancelling");
+
+      const { error: strangerWithdraw } = await losingFactory
+        .rpc("withdraw_cancellation", { target_order: order.id });
+      strangerWithdraw ? ok("an outsider CANNOT withdraw the brand's proposal")
+                       : fail("LEAK: an outsider withdrew a proposal to cancel");
+
+      const { error: factoryWithdraw } = await factoryClient
+        .rpc("withdraw_cancellation", { target_order: order.id });
+      factoryWithdraw ? ok("the factory CANNOT withdraw the brand's proposal")
+                      : fail("LEAK: the factory withdrew the brand's proposal");
+
+      const { data: withdrawn, error: withdrawError } = await brand.client
+        .rpc("withdraw_cancellation", { target_order: order.id });
+      withdrawError
+        ? fail("the brand withdraws its proposal", withdrawError)
+        : withdrawn?.cancel_proposed_by_org === null && withdrawn?.status !== "cancelled"
+        ? ok("the brand withdraws its proposal, and the order carries on")
+        : fail(`withdrawing returned ${JSON.stringify(withdrawn)}`);
+
+      const { error: nothingToDecline } = await factoryClient
+        .rpc("decline_cancellation", { target_order: order.id });
+      /nobody has proposed/.test(nothingToDecline?.message ?? "")
+        ? ok("decline_cancellation(target_order) answers, and refuses with nothing proposed")
+        : fail("decline_cancellation's signature or refusal", nothingToDecline);
+    }
 
     const { data: notSeen } = await losingFactory
       .from("milestone_updates").select("id").eq("milestone_id", first.id);
@@ -760,12 +1010,12 @@ console.log("\nphase 3 — the order runs");
       ? ok("a competing factory CANNOT read that update")
       : fail("LEAK: a competitor read the update");
 
-    await factoryClient.rpc("submit_milestone", { target_milestone: first.id });
+    // Straight from the factory's update: nothing was sent for approval.
     const approved = await brand.client.rpc("approve_milestone", {
       target_milestone: first.id, note: "Approved from the smoke test",
     });
-    approved.error ? fail("the brand approves the sample", approved.error)
-                   : ok("the brand approves the sample");
+    approved.error ? fail("the brand approves the sample from the factory's update", approved.error)
+                   : ok("the brand approves the sample from the factory's update, with no send-for-approval step");
 
     const { data: deposit } = await admin
       .from("order_payments").select("*").eq("milestone_id", first.id).single();

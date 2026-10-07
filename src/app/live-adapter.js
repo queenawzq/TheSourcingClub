@@ -25,8 +25,11 @@ const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric"
  * Rather than invent one, this reports how far through its OWN schedule the
  * order is, scaled onto the five positions. It is right at both ends and
  * approximate in between, and the rail's middle labels will not always match
- * what the order actually contains. Flagged for Queena: either the rail
- * becomes derived from the schedule, or the schedule gets a fixed spine.
+ * what the order actually contains.
+ *
+ * It is now only the fallback: when the list carries the order's steps, the
+ * card draws its rail from them instead (`railSteps` below). Flagged for
+ * Queena, as the rail is a design decision.
  */
 function progressPosition(order) {
   if (order.status === "pending_schedule") return 1;
@@ -48,18 +51,75 @@ function counterparty(order, isFactory) {
  * it cannot describe a state the order is not in.
  */
 function statusDetail(order, isFactory) {
+  // Only the brand sets the production steps; its confirmation starts the order.
   if (order.status === "pending_schedule") {
-    const mine = isFactory ? order.schedule_factory_agreed_at : order.schedule_brand_agreed_at;
-    return mine ? "Waiting on the other side to agree the schedule" : "Agree the schedule to begin";
+    return isFactory ? "The brand is setting the production steps" : "Set the production steps to begin";
   }
   if (order.status === "cancelled") return order.cancel_reason ?? "Cancelled";
   if (order.status === "completed") return "Every step is done";
-  if (Number(order.next_payment_cents) > 0 && !isFactory) {
+  // An open proposal to cancel outranks whatever the steps are waiting for:
+  // until it is accepted, kept or withdrawn, it is the thing to answer.
+  const proposal = cancelProposal(order, isFactory);
+  if (proposal) {
+    return `${proposal.mine ? "You" : counterparty(order, isFactory)} proposed cancelling: ${proposal.reason}`;
+  }
+  // A payment that is actually due, from the steps when the row carries them.
+  // next_payment_cents is the next PAYING step, which may still be weeks off:
+  // "$4,284.00 due next" on a final balance that waits on QC read as a bill.
+  if (order.order_milestones) {
+    const due = order.order_milestones.find((milestone) => {
+      const payment = Array.isArray(milestone.order_payments) ? milestone.order_payments[0] : milestone.order_payments;
+      return payment?.state === "due";
+    });
+    if (due) {
+      const amount = formatMoney(due.amount_cents, order.currency);
+      return isFactory ? `Waiting on ${amount} from the brand` : `${amount} due for ${due.title}`;
+    }
+  } else if (Number(order.next_payment_cents) > 0 && !isFactory) {
     return `${formatMoney(order.next_payment_cents, order.currency)} due next`;
   }
   return order.current_milestone_title
     ? `Now: ${order.current_milestone_title}`
     : "In production";
+}
+
+/**
+ * An open proposal to cancel, from the viewer's side: `{ mine, reason, at }`,
+ * or null. Once the order is closed the proposal is history, not a question.
+ */
+export function cancelProposal(order, isFactory) {
+  if (!order.cancel_proposed_by_org) return null;
+  if (order.status !== "pending_schedule" && order.status !== "active") return null;
+  const ours = isFactory ? order.factory_org_id : order.brand_org_id;
+  return {
+    mine: order.cancel_proposed_by_org === ours,
+    reason: order.cancel_reason ?? "",
+    at: order.cancel_proposed_at,
+  };
+}
+
+/**
+ * The order's own steps for the card's rail: `[{ id, label, done, current,
+ * needsFunding }]`. "Need funding" is the design's label for a first step
+ * waiting on the brand's money, so it only ever shows to the brand.
+ */
+function railSteps(order, isFactory) {
+  const payState = (milestone) => {
+    const payment = milestone.order_payments;
+    return (Array.isArray(payment) ? payment[0] : payment)?.state ?? null;
+  };
+  return [...(order.order_milestones ?? [])]
+    .sort((a, b) => a.sort - b.sort)
+    .map((milestone) => {
+      const current = milestone.id === order.current_milestone_id;
+      return {
+        id: milestone.id,
+        label: milestone.title,
+        done: milestone.state === "complete",
+        current,
+        needsFunding: current && !isFactory && payState(milestone) === "due",
+      };
+    });
 }
 
 /** A database row in the shape the designed card reads. */
@@ -84,6 +144,13 @@ export function toProjectCard(order, isFactory) {
       ? MONTH_DAY.format(new Date(order.next_payment_due_on))
       : "—",
     progress: progressPosition(order),
+    steps: railSteps(order, isFactory),
+    // What the list's search, date range and sort read.
+    orderNumber: order.order_number,
+    createdAt: order.created_at,
+    nextDueOn: order.next_payment_due_on ?? null,
+    // What the card's menu offers about cancelling (live only).
+    cancelProposal: cancelProposal(order, isFactory),
     // The prototype shows a reference photograph on every card. Real orders
     // may have none, and the card renders without it — better than a
     // placeholder that implies an image exists.
@@ -133,12 +200,16 @@ export function toRfqCard(rfq, messageCount = 0) {
     images: [],
     status: rfq.status === "awarded"
       ? "Awarded"
-      : quotes > 0
+      : rfq.status === "cancelled"
+        ? "Cancelled"
+        : quotes > 0
         ? "Ready to compare"
         : rfq.status === "draft"
           ? "Draft"
           : "Waiting for quotes",
-    statusTone: rfq.status === "awarded" ? "ready" : quotes > 0 ? "ready" : "neutral",
+    statusTone: rfq.status === "cancelled" ? "neutral" : rfq.status === "awarded" ? "ready" : quotes > 0 ? "ready" : "neutral",
+    // Only a draft or an open request can be cancelled (cancel_rfq).
+    archivable: rfq.status === "draft" || rfq.status === "open",
     metrics: [
       [String(quotes), quotes === 1 ? "quote" : "quotes"],
       [String(invited), "invited"],

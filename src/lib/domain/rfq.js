@@ -15,7 +15,7 @@ const RFQ_COLUMNS = `
   target_delivery_month, requires_sample, sample_notes,
   target_unit_price_min_cents, target_unit_price_max_cents, currency,
   quote_deadline, additional_details,
-  published_at, awarded_at, awarded_quote_id, created_at, updated_at
+  published_at, awarded_at, awarded_quote_id, reorder_of_order_id, created_at, updated_at
 `;
 
 export async function createDraftRfq(orgId) {
@@ -30,6 +30,18 @@ export async function createDraftRfq(orgId) {
       .select(RFQ_COLUMNS)
       .single(),
     "start a new request",
+  );
+}
+
+/**
+ * "Reorder style": the order's request, copied into a new draft the brand
+ * reads back in the composer and sends to the same factory. Last run's
+ * delivery month and deadline are left behind (migration 069).
+ */
+export async function duplicateRfqFromOrder(orderId) {
+  return unwrap(
+    await supabase.rpc("duplicate_rfq_from_order", { target_order: orderId }),
+    "start the reorder",
   );
 }
 
@@ -66,6 +78,10 @@ export async function listRfqs(orgId) {
       // refuses it rather than guessing.
       .select(`${RFQ_COLUMNS}, quotes!quotes_rfq_id_fkey(count), rfq_invitations(count)`)
       .eq("brand_org_id", orgId)
+      // One vendor revising twice is one quote, not three: superseded and
+      // withdrawn rows are history. Same set listQuotesForRfq() shows, so the
+      // card's count and the compare screen agree.
+      .in("quotes.status", ["submitted", "accepted", "declined"])
       .order("created_at", { ascending: false }),
     "load your requests",
   );
@@ -99,19 +115,22 @@ export async function listOpenRfqs() {
  * beyond the factory's identity.
  */
 export async function listFactoryRfqs(factoryOrgId) {
-  const rfqEmbed = `rfqs (${RFQ_COLUMNS}, orgs!rfqs_brand_org_id_fkey (name))`;
+  const rfqColumns = `${RFQ_COLUMNS}, orgs!rfqs_brand_org_id_fkey (name)`;
 
   const [quotes, invitations] = await Promise.all([
     supabase
       .from("quotes")
-      .select(`id, rfq_id, status, unit_price_cents, currency, submitted_at, created_at, ${rfqEmbed}`)
+      // Named for the same reason as listRfqs(): quotes.rfq_id and
+      // rfqs.awarded_quote_id are two paths between these tables, and an
+      // unqualified embed is refused outright — the whole RFQs page with it.
+      .select(`id, rfq_id, status, unit_price_cents, currency, submitted_at, created_at, rfqs!quotes_rfq_id_fkey (${rfqColumns})`)
       .eq("factory_org_id", factoryOrgId)
       // Superseded versions are history; the live row is what the tab shows.
       .neq("status", "superseded")
       .order("created_at", { ascending: false }),
     supabase
       .from("rfq_invitations")
-      .select(`id, rfq_id, status, created_at, ${rfqEmbed}`)
+      .select(`id, rfq_id, status, created_at, rfqs (${rfqColumns})`)
       .eq("factory_org_id", factoryOrgId)
       .order("created_at", { ascending: false }),
   ]);
@@ -138,8 +157,16 @@ export async function publishRfq(rfqId, visibility) {
   });
 }
 
-export async function cancelRfq(rfqId) {
-  return saveRfq(rfqId, { status: "cancelled" });
+/**
+ * Cancel a draft or open request. An RPC, not an update: it closes the quotes
+ * on the request and tells every vendor involved in the same transaction, and
+ * only an owner may do it. The reason, if given, is what the vendors read.
+ */
+export async function cancelRfq(rfqId, reason = null) {
+  return unwrap(
+    await supabase.rpc("cancel_rfq", { target_rfq: rfqId, reason }),
+    "cancel the request",
+  );
 }
 
 // ---- Colour splits --------------------------------------------------------
