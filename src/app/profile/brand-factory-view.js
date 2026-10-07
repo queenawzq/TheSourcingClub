@@ -42,7 +42,9 @@ export function brandFactoryView(parts, now = new Date()) {
   const moq = profile?.moq != null ? `${count(profile.moq)}/style` : NOT_GIVEN;
   const category = (terms?.capacity_category ?? []).find((term) => term.id === capacityState?.capacity?.category_term_id);
   const units = monthlyUnits(capacityState?.capacity, minutesPerPieceFor(category));
-  const monthly = units ? `${count(units)}/month` : NOT_GIVEN;
+  // The design's wording ("420 units"); per month in the terms list.
+  const capacityUnits = units ? `${count(units)} units` : NOT_GIVEN;
+  const monthly = units ? `${count(units)} units/month` : NOT_GIVEN;
   const bulkLead = given(data.leadTime) ? data.leadTime : NOT_GIVEN;
   const verified = profile?.verification_status === "verified";
 
@@ -58,10 +60,11 @@ export function brandFactoryView(parts, now = new Date()) {
     tags: data.categories.slice(0, 4),
     performance: {
       ...own.performance,
+      // The design's metrics are Club orders, MOQ and Capacity; a brand
+      // can't count another brand's orders, so the first is left out.
       metrics: [
         { label: "MOQ", value: moq },
-        { label: "Capacity", value: monthly },
-        { label: "Lead time", value: bulkLead },
+        { label: "Capacity", value: capacityUnits },
       ],
     },
     intro: data.intro,
