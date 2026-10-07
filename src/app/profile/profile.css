@@ -1,0 +1,33 @@
+/*
+ * The live profile page adds a real logo image and a real walkthrough video
+ * where the design draws initials and a still. Names are prefixed or scoped
+ * so they can't restyle a designed class elsewhere.
+ */
+.factory-profile-page .factory-profile-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.factory-profile-page .factory-profile-video-preview video {
+  display: block;
+  width: 100%;
+  height: 150px;
+  object-fit: cover;
+  background: #0b1020;
+}
+
+.live-profile-loading,
+.live-profile-error {
+  margin: 48px auto;
+  max-width: 1120px;
+  padding: 0 24px;
+  color: #5b6475;
+  font-size: 14px;
+}
+
+.live-profile-error {
+  color: #b42318;
+}

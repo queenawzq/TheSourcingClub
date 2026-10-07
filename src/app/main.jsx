@@ -12,6 +12,17 @@
  */
 import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+// The designed screens' stylesheets, in the order the factory prototype loads
+// them. Left to the imports below, the brand prototype's module brings in the
+// shared profile and order-card sheets first and the factory's own sheet lands
+// after them, so its older rules beat the shared ones on every live page (the
+// profile's view toggle came out black instead of blue, tags the wrong tint).
+import "../shared/auth-screen.css";
+import "../shared/terms-dialog.css";
+import "../prototype/styles.css";
+import "../factory-prototype/styles.css";
+import "../shared/profile-shell.css";
+import "../shared/production-order-cards.css";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { acceptInvitation, createOrg, listMyInvitations } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile } from "../lib/domain/profile.js";
@@ -52,6 +63,7 @@ import LiveHome from "./home/LiveHome.jsx";
 import LiveComposer from "./rfq/LiveComposer.jsx";
 import LiveOrderDetail from "./order/LiveOrderDetail.jsx";
 import LiveSettings from "./settings/LiveSettings.jsx";
+import LiveFactoryProfile from "./profile/LiveFactoryProfile.jsx";
 import NotificationList from "./NotificationList.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
 import "./shell.css";
@@ -595,6 +607,11 @@ function activeNavFor(path, isFactory) {
   return "";
 }
 
+/** Manufacturers have their designed profile page live; trading companies not yet. */
+function hasFactoryProfilePage(isFactory, profile) {
+  return isFactory && profile?.vendor_kind !== "trading_company";
+}
+
 const initialsOf = (name) =>
   (name ?? "")
     .split(/\s+/)
@@ -638,7 +655,7 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
           navigate(paths[label] ?? "/");
           if (window.matchMedia("(max-width: 760px)").matches) setCollapsed(true);
         }}
-        onProfile={() => navigate("/team")}
+        onProfile={() => navigate(hasFactoryProfilePage(isFactory, profile) ? "/profile" : "/team")}
         onToggle={() => setCollapsed((value) => !value)}
         onSignOut={onSignOut}
       />
@@ -953,6 +970,11 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
         throw new Error("Deliberate crash from /__crash — this is a self-test.");
       },
     },
+    // The factory's own profile. Brands and trading companies get theirs in
+    // later changes; until then /profile is the dashboard for them, as before.
+    ...(hasFactoryProfilePage(isFactory, profile)
+      ? [{ path: "/profile", render: () => <LiveFactoryProfile org={activeOrg} /> }]
+      : []),
     {
       path: "/team",
       render: () => (
