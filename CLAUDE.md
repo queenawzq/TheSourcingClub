@@ -72,12 +72,6 @@ marketplace**, **conversations**, **settings**, the **factory's own profile**
 (`/profile`, read-only until its edit dialogs are wired), and the whole **admin
 console** (`admin.html`).
 
-**The live app sets the stylesheet order itself** (top of `src/app/main.jsx`):
-the brand prototype, then the factory prototype's sheet, then the shared
-profile and order-card sheets, as the factory prototype loads them. Left to the
-import graph, the factory sheet landed after the shared ones and its older
-rules won on live pages.
-
 **Everything a brand or a vendor touches is on the design**, except the
 screens below — each held back for a stated reason, not a backlog entry:
 

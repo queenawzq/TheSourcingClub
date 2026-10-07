@@ -86,6 +86,30 @@
   color: #fff;
 }
 
+/* The factory's own profile page. The rules above tie with the factory
+   prototype's older ones, so whichever stylesheet loads last wins, and the
+   live app's build loads the factory sheet last (a black toggle). These win
+   on specificity instead. Background and border are left to the rules above,
+   where both sheets agree, so the factory sheet's hover still applies. */
+.factory-profile-page:not(.brand-profile-page) .factory-profile-view-toggle {
+  gap: 4px;
+  padding: 4px;
+  border-color: #d8e1ec;
+  background: #f2f6fb;
+}
+
+.factory-profile-page:not(.brand-profile-page) .factory-profile-view-toggle button {
+  min-height: 38px;
+  padding: 0 18px;
+  color: #5c7298;
+  font-weight: 700;
+}
+
+.factory-profile-page:not(.brand-profile-page) .factory-profile-view-toggle button.active {
+  background: #174df2;
+  color: #fff;
+}
+
 .app-shell:not(.nav-collapsed) > .brand-profile-page.factory-profile-page,
 .side-nav:not(.collapsed) + .brand-profile-page.factory-profile-page,
 .app-shell > .brand-profile-page.factory-profile-page {
