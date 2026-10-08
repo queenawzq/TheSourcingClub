@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
-import { filterOrders, ProjectStepRail } from "../shared/production-order-parts.jsx";
+import { filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab } from "../shared/production-order-parts.jsx";
 import "../prototype/styles.css";
 import "./styles.css";
 import "../shared/profile-shell.css";
@@ -5366,20 +5366,24 @@ function FactoryPriceTotalCard({ project, total }) {
 export function FactoryProjectsPage({
   language,
   onViewProject,
-  // Live mounts pass `{ projects, loading, error }`; the prototype passes
-  // nothing and maps its own example orders, exactly as drawn.
+  // Live mounts pass `{ projects, loading, error, tabStore }`; the prototype
+  // passes nothing and maps its own example orders, exactly as drawn.
   live = null
 }) {
+  // The company's saved tabs (src/app/order/useOrderTabs.js), live only.
+  const tabStore = live?.tabStore ?? null;
   const [activeTab, setActiveTab] = useState("active");
   // Live starts from the two fixed tabs with real counts: the design's "(4)"
   // and "(6)" read as real to a factory with no orders.
-  const [projectTabs, setProjectTabs] = useState(live ? [
+  const [localTabs, setProjectTabs] = useState(live ? [
     { key: "active", label: "Active orders", locked: true },
     { key: "closed", label: "Closed", locked: true }
   ] : [
     { key: "active", label: "Active orders (4)", locked: true },
     { key: "closed", label: "Closed (6)", locked: true }
   ]);
+  const projectTabs = tabStore?.tabs ?? localTabs;
+  const customTabs = projectTabs.filter((tab) => !tab.locked);
   const [search, setSearch] = useState("");
   const [brand, setBrand] = useState("all");
   const [dateRange, setDateRange] = useState("any");
@@ -5389,6 +5393,11 @@ export function FactoryProjectsPage({
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
   const [draftTabs, setDraftTabs] = useState(projectTabs);
 
+  // A tab a teammate deleted, or this person just did, falls back to Active.
+  useEffect(() => {
+    if (tabStore && !projectTabs.some((tab) => tab.key === activeTab)) setActiveTab("active");
+  }, [tabStore, projectTabs, activeTab]);
+
   /**
    * Live rows carry their state, so the tabs count and filter them; the
    * prototype's example orders do not, so there the design's numbers stay.
@@ -5397,7 +5406,7 @@ export function FactoryProjectsPage({
    */
   const orderRows = live?.projects ?? [];
   const isClosed = (project) => project.state === "completed" || project.state === "cancelled";
-  const tabRows = orderRows.filter((project) => (activeTab === "closed" ? isClosed(project) : !isClosed(project)));
+  const tabRows = rowsForTab(orderRows, activeTab, tabStore?.membership);
   const brandOptions = live
     ? [...new Set(orderRows.map((project) => project.brand).filter(Boolean))].sort()
     : null;
@@ -5420,12 +5429,23 @@ export function FactoryProjectsPage({
   function openManageTabs() {
     setDraftTabs(projectTabs);
     setIsAddingTab(false);
+    tabStore?.clearErrors();
     setManageTabsOpen(true);
   }
 
   function addCustomTab(event) {
     event.preventDefault();
     const trimmedName = newTabName.trim();
+    if (tabStore) {
+      // The database checks the name; a refusal shows under the tabs.
+      tabStore.add(trimmedName).then((key) => {
+        if (!key) return;
+        setActiveTab(key);
+        setNewTabName("");
+        setIsAddingTab(false);
+      });
+      return;
+    }
     if (!trimmedName || projectTabs.some((tab) => tab.label === trimmedName)) return;
     const nextTab = { key: `custom-${trimmedName}`, label: trimmedName, locked: false };
     setProjectTabs((tabs) => [...tabs, nextTab]);
@@ -5453,6 +5473,12 @@ export function FactoryProjectsPage({
   }
 
   function saveManagedTabs() {
+    if (tabStore) {
+      // One save for every rename, move and delete; the window stays open
+      // with the reason if the database refuses it.
+      tabStore.save(draftTabs).then((saved) => saved && setManageTabsOpen(false));
+      return;
+    }
     const cleanedTabs = [];
     const seenKeys = new Set();
     draftTabs.forEach((tab) => {
@@ -5578,6 +5604,9 @@ export function FactoryProjectsPage({
             Manage tabs
           </button>
         </nav>
+        {(tabStore?.addError || tabStore?.error) && (
+          <p className="composer-error" role="alert">{(tabStore.addError || tabStore.error).message}</p>
+        )}
 
         {manageTabsOpen && createPortal(
           <div className="brand-profile-modal-layer">
@@ -5604,6 +5633,7 @@ export function FactoryProjectsPage({
                   </div>
                 ))}
               </div>
+              {tabStore?.saveError && <p className="composer-error" role="alert">{tabStore.saveError.message}</p>}
 
               <footer className="brand-profile-modal-actions">
                 <button className="secondary-btn" type="button" onClick={() => setManageTabsOpen(false)}>Cancel</button>
@@ -5621,6 +5651,7 @@ export function FactoryProjectsPage({
                 project={project}
                 language={language}
                 onViewProject={onViewProject}
+                customTabs={customTabs}
                 key={project.title}
               />
             ))
@@ -5634,6 +5665,8 @@ export function FactoryProjectsPage({
                 ? "No orders match these filters."
                 : activeTab === "closed"
                 ? "Nothing closed yet."
+                : activeTab !== "active"
+                ? "No orders in this tab yet. Add one from an order's ··· menu."
                 : "No production orders yet. One appears here when a brand awards you a quote."}
             </p>
           ) : (
@@ -5642,6 +5675,9 @@ export function FactoryProjectsPage({
                 project={project}
                 language={language}
                 onViewProject={() => onViewProject(project)}
+                customTabs={customTabs}
+                isFiled={tabStore ? (tab) => tabStore.membership.get(tab.key)?.has(project.id) : null}
+                onToggleTab={tabStore ? (tab) => tabStore.toggle(tab.key, project.id) : null}
                 key={project.id}
               />
             ))
@@ -5652,7 +5688,7 @@ export function FactoryProjectsPage({
   );
 }
 
-export function FactoryProjectListCard({ project, language, onViewProject }) {
+export function FactoryProjectListCard({ project, language, onViewProject, customTabs = [], isFiled = null, onToggleTab = null }) {
   const isZh = language === "zh";
   const [primaryImage] = project.images || [];
   const productionFacts = [
@@ -5679,7 +5715,7 @@ export function FactoryProjectListCard({ project, language, onViewProject }) {
           status={project.status}
           statusTone={project.statusTone}
         >
-          <button className="rfq-more" type="button" aria-label="More order actions">...</button>
+          <OrderCardMenu customTabs={customTabs} isFiled={isFiled} onToggleTab={onToggleTab} />
         </ProjectCardActions>
       </header>
 

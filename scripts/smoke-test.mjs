@@ -876,6 +876,52 @@ console.log("\nphase 3 — the order runs");
       ? ok("order_activity is empty for a factory that lost the bid")
       : fail("LEAK: an outsider read the order's activity");
 
+    // Order tabs: the company's own groupings, and nobody else's business.
+    {
+      const { data: tab, error: addTabError } = await brand.client
+        .rpc("add_order_tab", { target_org: org.id, new_label: `Smoke ${stamp}` });
+      addTabError ? fail("the brand adds an order tab", addTabError) : ok("the brand adds an order tab");
+
+      const { error: fileError } = await brand.client
+        .from("order_tab_orders").insert({ tab_id: tab?.id, order_id: order.id, added_by: brand.id });
+      fileError ? fail("the brand files its order in the tab", fileError)
+                : ok("the brand files its order in the tab");
+
+      const { data: brandTabs, error: listTabsError } = await brand.client
+        .from("order_tabs").select("id, kind, label, sort, order_tab_orders (order_id)")
+        .eq("org_id", org.id).order("sort");
+      listTabsError
+        ? fail("the brand reads its tabs with their orders", listTabsError)
+        : (brandTabs ?? []).map((row) => row.kind).join() === "active,closed,custom"
+          && brandTabs[2].order_tab_orders.some((row) => row.order_id === order.id)
+        ? ok("the brand reads Active, Closed and its tab, with the order in it")
+        : fail(`the brand's tabs read back as ${JSON.stringify(brandTabs)}`);
+
+      const { data: factoryView } = await factoryClient.from("order_tabs").select("id").eq("org_id", org.id);
+      (factoryView ?? []).length === 0
+        ? ok("the factory on the order CANNOT see the brand's tabs")
+        : fail("LEAK: the factory read the brand's tabs");
+
+      const { error: strangerSave } = await losingFactory.rpc("save_order_tabs", { target_org: org.id, tabs: [] });
+      strangerSave ? ok("an outsider CANNOT save another company's tabs")
+                   : fail("LEAK: an outsider saved the brand's tabs");
+
+      const { error: directInsert } = await brand.client
+        .from("order_tabs").insert({ org_id: org.id, kind: "custom", label: "Direct", sort: 1 });
+      directInsert ? ok("a tab CANNOT be written directly, only through the two functions")
+                   : fail("LEAK: a tab was inserted directly");
+
+      const { data: kept, error: saveError } = await brand.client.rpc("save_order_tabs", {
+        target_org: org.id,
+        tabs: [{ kind: "closed", label: "Done" }, { kind: "active", label: "Running" }],
+      });
+      saveError
+        ? fail("save_order_tabs renames, reorders and deletes in one call", saveError)
+        : (kept ?? []).map((row) => row.label).join() === "Done,Running"
+        ? ok("save_order_tabs renames, reorders and deletes in one call")
+        : fail(`save_order_tabs left ${JSON.stringify(kept)}`);
+    }
+
     const { data: notSeen } = await losingFactory
       .from("milestone_updates").select("id").eq("milestone_id", first.id);
     (notSeen ?? []).length === 0

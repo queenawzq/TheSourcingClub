@@ -10,9 +10,11 @@ import { FactoryProjectsPage } from "../../factory-prototype/main.jsx";
 import { DataProvider, useOrders } from "../../lib/data/DataProvider.jsx";
 import { createLiveAdapter } from "../live-adapter.js";
 import { initials } from "./order-view.js";
+import useOrderTabs from "./useOrderTabs.js";
 
-function Orders({ onViewOrder }) {
+function Orders({ org, user, onViewOrder }) {
   const { data, loading, error } = useOrders();
+  const tabStore = useOrderTabs(org, user);
   const projects = (data ?? []).map((card) => ({
     ...card,
     brand: card.factory,
@@ -22,7 +24,7 @@ function Orders({ onViewOrder }) {
   return (
     <FactoryProjectsPage
       language="en"
-      live={{ projects, loading, error }}
+      live={{ projects, loading, error, tabStore }}
       onViewProject={onViewOrder}
     />
   );
@@ -31,7 +33,7 @@ function Orders({ onViewOrder }) {
 export default function LiveFactoryOrders({ org, user, onViewOrder }) {
   return (
     <DataProvider adapter={createLiveAdapter({ org, isFactory: true, user })}>
-      <Orders onViewOrder={onViewOrder} />
+      <Orders org={org} user={user} onViewOrder={onViewOrder} />
     </DataProvider>
   );
 }

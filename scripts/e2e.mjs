@@ -1315,6 +1315,62 @@ async function main() {
     check(!/Atelier Minho|Hansu Studio/.test(orderListText),
       "and no mock counterparty leaked through — the constants are not being read");
 
+    // The brand's own tabs. "+ Add tab", "Add to ›" and "Manage tabs" lived in
+    // React state, so a reload lost them and no order was ever put in one.
+    // They are saved per company now; the factory never sees them.
+    const brandTab = `Spring ${String(stamp).slice(-4)}`;
+    await clickButton(page, "+ add tab");
+    await page.locator(".project-tab-add-form input").first().fill(brandTab);
+    await page.locator('.project-tab-add-form button[type="submit"]').first().click();
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    check(/no orders in this tab yet/i.test(await page.locator(".projects-list").innerText()),
+      "a new tab opens, empty, and says how to fill it");
+
+    await clickButton(page, "active orders");
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await page.locator(".project-overflow-submenu > button").first().click();
+    await page.locator(".project-overflow-submenu-panel button").first().click();
+    await page.waitForTimeout(1500);
+
+    await page.reload();
+    await waitForHeading(page, "production orders", 25000);
+    await clickButton(page, brandTab.toLowerCase());
+    await waitFor(page, ".brand-project-card", 15000);
+    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
+      "after a reload the tab is still there, with the order in it");
+    await record(page, "The brand's own tab", "added, filed into and reloaded: it is saved now");
+
+    await clickButton(page, "manage tabs");
+    await waitFor(page, ".project-tabs-manager-row", 10000);
+    await page.locator(".project-tabs-manager-row:nth-child(3) input").first().fill(`${brandTab} capsule`);
+    await page.locator(".project-tabs-manager-row:nth-child(3) button").first().click();
+    await clickButton(page, "save changes");
+    await page.waitForTimeout(1500);
+    await page.reload();
+    await waitForHeading(page, "production orders", 25000);
+    const tabOrder = (await page.locator(".project-tabs-scroll").innerText()).split("\n").map((line) => line.trim()).filter(Boolean);
+    check(tabOrder[1] === `${brandTab} capsule` && /^closed/i.test(tabOrder[2] ?? ""),
+      `Manage tabs renamed and moved it, and that survived a reload (${tabOrder.slice(0, 3).join(" | ")})`);
+
+    await clickButton(page, `${brandTab} capsule`.toLowerCase());
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await page.locator(".project-overflow-submenu > button").first().click();
+    const filedItem = (await page.locator(".project-overflow-submenu-panel button").first().innerText()).trim();
+    check(filedItem.startsWith("✓"), `the menu marks the tab the order is in (${filedItem})`);
+    await page.locator(".project-overflow-submenu-panel button").first().click();
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    check(true, "choosing a ✓ tab again takes the order out of it");
+
+    // Filed back in, so the factory's list below can show it is not leaking.
+    await clickButton(page, "active orders");
+    await waitFor(page, ".brand-project-card", 15000);
+    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
+    await page.locator(".project-overflow-submenu > button").first().click();
+    await page.locator(".project-overflow-submenu-panel button").first().click();
+    await page.waitForTimeout(1500);
+
     // An order whose steps the brand has not confirmed opens on its builder,
     // because there is no interior yet: no steps to work, no payments to
     // make. The header figures are asserted once it is active, below.
@@ -1386,6 +1442,27 @@ async function main() {
     check(!/Maison Rue|Elara Studio|Luna Resort/.test(factoryListText),
       "and none of the factory design's example brands");
     await record(page, "Factory's orders", "its own designed list, live");
+
+    // The brand filed this order under its own tab above. The factory sees
+    // none of that, and gets a "..." menu of its own to do the same.
+    check(!(await page.locator(".project-tabs-scroll").innerText()).includes(brandTab),
+      "the factory never sees how the brand filed the order");
+    const factoryTab = `Linen ${String(stamp).slice(-4)}`;
+    await clickButton(page, "+ add tab");
+    await page.locator(".project-tab-add-form input").first().fill(factoryTab);
+    await page.locator('.project-tab-add-form button[type="submit"]').first().click();
+    await waitFor(page, '[data-testid="orders-empty"]', 15000);
+    await clickButton(page, "active orders");
+    await waitFor(page, ".factory-active-project-card", 15000);
+    await page.locator('.factory-active-project-card button[aria-label="More order actions"]').first().click();
+    await page.locator(".project-overflow-submenu > button").first().click();
+    await page.locator(".project-overflow-submenu-panel button").first().click();
+    await page.waitForTimeout(1500);
+    await clickButton(page, factoryTab.toLowerCase());
+    await waitFor(page, ".factory-active-project-card", 15000);
+    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
+      "the factory files the order under a tab of its own, from the card's new menu");
+    await record(page, "Factory's own tab", "its \"...\" had no menu; now it files orders too");
 
     // The factory never agrees the steps: it was told of them, and the order
     // is already running.
