@@ -4,6 +4,7 @@ import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
+import { filterOrders, ProjectStepRail } from "../shared/production-order-parts.jsx";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
@@ -1092,11 +1093,17 @@ export function FlowShell({
   busy = false,
   // Live mounts pass the real vendor / request here; see RightRail.
   rail = null,
+  // The bottom bar's centre button and a primary that can wait (the schedule
+  // cannot be agreed while it has unsaved edits or does not add up).
+  centerAction = null,
+  primaryDisabled = false,
 }) {
   const meta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
+  // The prototype's App gives the contract and schedule screens this class too.
+  const actionFlow = ["contract", "milestones"].includes(screen) ? " quote-action-flow" : "";
 
   return (
-    <main className={`flow-page${["invite", "quotes", "quoteDetail"].includes(screen) ? " wide-flow" : ""}`}>
+    <main className={`flow-page${["invite", "quotes", "quoteDetail"].includes(screen) ? " wide-flow" : ""}${actionFlow}`}>
       <JourneyRail current={meta.step} isMilestoneFunding={Boolean(fundingMilestone)} />
       <section className="flow-content">
         {screen !== "quoteDetail" && (
@@ -1116,6 +1123,8 @@ export function FlowShell({
           onNext={onNext}
           primaryLabel={busy ? "Saving…" : primaryLabel ?? meta.cta}
           centerText={centerText}
+          centerAction={centerAction}
+          primaryDisabled={primaryDisabled}
         />
       )}
     </main>
@@ -3425,13 +3434,26 @@ function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
             </button>
           )}
         </section>
-        <section className="accepted-reminder">
-          <h3>TSC reminder</h3>
-          <p>Message the vendor to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
-        </section>
+        {screen === "milestones" ? (
+          <Card title="What should production steps cover?" tone="soft">
+            <ul className="production-step-guidance-list">
+              <li>Samples and revision approvals</li>
+              <li>Material, trim, or color confirmations</li>
+              <li>Bulk deposit and production start</li>
+              <li>In-line or final QC review</li>
+              <li>Shipment handoff and final balance</li>
+            </ul>
+          </Card>
+        ) : (
+          <section className="accepted-reminder">
+            <h3>TSC reminder</h3>
+            <p>Message the vendor to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
+          </section>
+        )}
       </aside>
     );
   }
+
   if (isQuoteArea) {
     return (
       <aside className="right-rail">
@@ -6617,30 +6639,6 @@ export function ProjectsScreen({ goTo, setSelectedReorderProject, onViewOrder, l
   );
 }
 
-/**
- * Search, vendor, date range and sort over live order cards. The cards carry
- * `factory` (the other company, whichever side is looking), `orderNumber`,
- * `createdAt` and `nextDueOn`.
- */
-function filterOrders(rows, { search, vendor, dateRange, sortBy }) {
-  const needle = search.trim().toLowerCase();
-  const since = dateRange === "any" ? null : Date.now() - Number(dateRange) * 86400000;
-  const filtered = rows.filter((project) => {
-    if (vendor !== "all" && project.factory !== vendor) return false;
-    if (since && project.createdAt && new Date(project.createdAt).getTime() < since) return false;
-    if (!needle) return true;
-    return [project.title, project.orderNumber, project.factory]
-      .some((value) => String(value ?? "").toLowerCase().includes(needle));
-  });
-  const time = (value, missing) => (value ? new Date(value).getTime() : missing);
-  if (sortBy === "due") {
-    return [...filtered].sort((a, b) => time(a.nextDueOn, Infinity) - time(b.nextDueOn, Infinity));
-  }
-  if (sortBy === "factory") {
-    return [...filtered].sort((a, b) => String(a.factory ?? "").localeCompare(String(b.factory ?? "")));
-  }
-  return [...filtered].sort((a, b) => time(b.createdAt, 0) - time(a.createdAt, 0));
-}
 
 function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], onViewOrder, setSelectedReorderProject = null }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -6762,33 +6760,6 @@ function ProjectProgress({ progress, steps }) {
   );
 }
 
-/**
- * The same rail, drawn from real steps: `[{ id, label, done, current, needsFunding }]`.
- * At most five are shown, a window around the current step, because the
- * design's rail has room for five.
- */
-function ProjectStepRail({ steps }) {
-  const currentIndex = Math.max(0, steps.findIndex((step) => step.current));
-  const start = Math.max(0, Math.min(currentIndex - 2, steps.length - 5));
-  const visible = steps.slice(start, start + 5);
-  const doneCount = visible.filter((step) => step.done).length;
-  const progressPercent = visible.length <= 1 ? 0 : (doneCount / (visible.length - 1)) * 100;
-
-  return (
-    <div className="project-progress" style={{ "--project-progress": `${Math.min(progressPercent, 100)}%` }}>
-      <div className="project-progress-line" aria-hidden="true" />
-      {visible.map((step, index) => (
-        <div
-          className={step.done ? "project-progress-step complete" : step.current ? "project-progress-step current" : "project-progress-step"}
-          key={step.id ?? `${start + index}-${step.label}`}
-        >
-          <span>{step.done ? "✓" : start + index + 1}</span>
-          <small>{step.needsFunding ? "Need funding" : step.label}</small>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export function ProjectDetailScreen({
   goTo,
@@ -8633,7 +8604,13 @@ function PaymentScreen() {
   );
 }
 
-function MilestonesScreen({ milestoneTypes, setMilestoneTypes }) {
+/**
+ * The schedule builder. Live mounts pass `live = { rows, onChange(index,
+ * patch), onAdd, onRemove }`: each row is `{ key, type, title, description,
+ * amount, due_on, note }` with `type` one of the design's three step types.
+ * Without it the screen draws the design's four example steps, as before.
+ */
+export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = null }) {
   const productionSteps = [
     {
       name: "Fit sample",
@@ -8691,7 +8668,48 @@ function MilestonesScreen({ milestoneTypes, setMilestoneTypes }) {
           </div>
         </div>
         <div className="milestone-form">
-          {productionSteps.map((milestone, i) => {
+          {live ? live.rows.map((row, i) => {
+            const field = (name, value) => live.onChange(i, { [name]: value });
+            return (
+              <div className="milestone-edit" key={row.key} data-testid="schedule-row">
+                <div className="milestone-title-row">
+                  <h3>Step {i + 1}</h3>
+                  <div className="milestone-controls">
+                    <select
+                      className={`step-type-select ${row.type.toLowerCase().replaceAll(" ", "-")}`}
+                      value={row.type}
+                      data-field={`step_${i}_kind`}
+                      onChange={(event) => live.onChange(i, { type: event.target.value })}
+                    >
+                      <option>Paid release</option>
+                      <option>Approval only</option>
+                      <option>Update only</option>
+                    </select>
+                    <button className="trash-btn" type="button" aria-label={`Remove step ${i + 1}`} onClick={() => live.onRemove(i)}>
+                      <img src="/assets/prototype-icons/trash.svg" alt="" />
+                    </button>
+                  </div>
+                </div>
+                {row.note && <p className="muted production-schedule-helper">{row.note}</p>}
+                <div className="production-step-grid">
+                  <Field label="Step name" name="title" value={row.title} onChange={field} />
+                  <Field label="Description" name="description" value={row.description} onChange={field} />
+                  {row.type === "Paid release" ? (
+                    <Field label="Amount" name="amount" value={row.amount} onChange={field} />
+                  ) : (
+                    <Field label="Amount" value="No payment" muted />
+                  )}
+                  <Field
+                    label={row.type === "Update only" ? "Update timing" : "Due date"}
+                    name="due_on"
+                    type="date"
+                    value={row.due_on}
+                    onChange={field}
+                  />
+                </div>
+              </div>
+            );
+          }) : productionSteps.map((milestone, i) => {
             const type = milestoneTypes[milestone.name] || milestone.type;
             return (
               <div className="milestone-edit" key={milestone.name}>
@@ -8726,7 +8744,7 @@ function MilestonesScreen({ milestoneTypes, setMilestoneTypes }) {
               </div>
             );
           })}
-          <button className="add-step-btn" type="button">+ Add production step</button>
+          <button className="add-step-btn" type="button" onClick={live?.onAdd}>+ Add production step</button>
         </div>
       </Card>
     </div>
@@ -8815,7 +8833,7 @@ function Card({ title, children, className = "", tone = "" }) {
   );
 }
 
-function Field({ label, value, muted = false, className = "", name, onChange }) {
+function Field({ label, value, muted = false, className = "", name, onChange, type }) {
   return (
     <div className={`${muted ? "field muted-field" : "field"} ${className}`}>
       <span>{label}</span>
@@ -8826,6 +8844,7 @@ function Field({ label, value, muted = false, className = "", name, onChange }) 
         <input
           className="field-input"
           name={name}
+          type={type}
           value={value ?? ""}
           placeholder="—"
           onChange={(event) => onChange(name, event.target.value)}
@@ -8855,7 +8874,7 @@ function AcceptedQuoteField({ label, value, readOnly = false }) {
   );
 }
 
-function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null }) {
+function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null, primaryDisabled = false }) {
   return (
     <footer className={canBack ? "bottom-bar has-back" : "bottom-bar no-back"}>
       {canBack && (
@@ -8875,7 +8894,7 @@ function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", cen
       )}
       <div className="bottom-actions">
         {primaryLabel && (
-          <button className="primary-btn" type="button" onClick={onNext}>
+          <button className="primary-btn" type="button" onClick={onNext} disabled={primaryDisabled || undefined}>
             {primaryLabel}
           </button>
         )}

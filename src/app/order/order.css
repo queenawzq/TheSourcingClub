@@ -131,22 +131,21 @@
 .update-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .update-photo.is-loading { display: inline-block; }
 
-/* Schedule editor --------------------------------------------------------- */
+/* Schedule builder, on the factory's order page -------------------------- */
+/* The card is the designed MilestonesScreen; this is only the live-only row
+   that saves and agrees, which the brand gets from its flow's bottom bar. */
 
-.schedule-rows { display: flex; flex-direction: column; gap: 12px; }
-.schedule-row {
-  display: grid;
-  grid-template-columns: 1fr 260px;
-  gap: 16px;
-  padding: 16px;
-  border: 1px solid var(--line, #e5e7eb);
-  border-radius: 8px;
-  background: var(--card, #fff);
+.live-schedule { display: flex; flex-direction: column; gap: 12px; }
+.live-schedule-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
 }
-.schedule-row-main, .schedule-row-side { display: flex; flex-direction: column; gap: 4px; }
+.live-schedule-actions span { margin-right: auto; font-size: 13px; color: #5b6f94; }
 
 @media (max-width: 720px) {
-  .schedule-row { grid-template-columns: 1fr; }
   .milestone-item { grid-template-columns: 28px 1fr; }
   .milestone-amount, .milestone-actions { grid-column: 2; }
 }

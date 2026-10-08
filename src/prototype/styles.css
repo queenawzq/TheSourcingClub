@@ -6471,6 +6471,38 @@ select {
   gap: 12px;
 }
 
+/* A bar with a middle group (a total, a secondary button) has no room for
+   it beside Back and the primary button on a phone: the primary button was
+   pushed off the right edge. The group gets its own row above them. */
+@media (max-width: 600px) {
+  .bottom-bar:has(> .bottom-meta-group) {
+    flex-wrap: wrap;
+    row-gap: 8px;
+    height: auto;
+    padding-top: 10px;
+    padding-bottom: 12px;
+  }
+
+  .bottom-bar > .bottom-meta-group {
+    flex: 1 0 100%;
+    order: -1;
+    justify-content: space-between;
+    margin-left: 0;
+  }
+
+  .bottom-meta-group .compact-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  /* Live step rows hold inputs, which will not shrink below their own
+     width, so the steps card ran 4px past the screen and the page scrolled
+     sideways. */
+  .production-step-grid > * {
+    min-width: 0;
+  }
+}
+
 .primary-btn,
 .secondary-btn {
   height: var(--button-height);

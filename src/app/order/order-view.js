@@ -6,7 +6,7 @@
  * Money comes from the order snapshot and production_order_summary, formatted
  * with formatMoney. Nothing here sums or splits an amount.
  */
-import { formatMoney } from "../../lib/money.js";
+import { formatMoney, fromCents, toCents } from "../../lib/money.js";
 import { formatCapacityWindow } from "../../lib/domain/quote.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -118,7 +118,7 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
       case "payment_sent": return `${who(row.actor_org_id)} marked ${money(row.detail)} sent for ${step}`;
       case "payment_confirmed": return `TSC confirmed ${money(row.detail)} for ${step}`;
       case "payment_released": return `TSC released ${money(row.detail)} for ${step}`;
-      case "schedule_agreed": return `${who(row.actor_org_id)} agreed the schedule`;
+      case "schedule_agreed": return `${who(row.actor_org_id)} confirmed the production steps`;
       case "order_activated": return "Production started";
       case "cancellation_proposed": return `${who(row.actor_org_id)} proposed cancelling`;
       case "order_completed": return "Order completed";
@@ -143,7 +143,7 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
  * The Contract tab, from the order's snapshot: what was agreed at award and
  * cannot change. Shaped as the designed panel's four sections.
  */
-export function describeOrderContract({ order, milestones, incoterm, paymentTerm, factoryLine, attachments }) {
+export function describeOrderContract({ order, milestones, incoterm, paymentTerm, factoryLine, attachments, counterpartyLabel = "Factory" }) {
   const money = (cents) => (cents == null ? "—" : formatMoney(cents, order.currency));
   const title = order.rfqs?.title || order.order_number;
   const approvals = milestones
@@ -160,7 +160,7 @@ export function describeOrderContract({ order, milestones, incoterm, paymentTerm
         : "No step needs the brand's sign-off."],
     ],
     acceptedQuote: [
-      ["Factory", factoryLine],
+      [counterpartyLabel, factoryLine],
       ["Unit price", money(order.unit_price_cents)],
       ["Quantity", `${Number(order.production_quantity).toLocaleString("en")} units`],
       ["Samples", order.sample_subtotal_cents ? money(order.sample_subtotal_cents) : "None"],
@@ -178,4 +178,93 @@ export function describeOrderContract({ order, milestones, incoterm, paymentTerm
     ],
     attachments: (attachments ?? []).map((doc) => doc.file_name),
   };
+}
+
+/**
+ * The schedule builder speaks the design's three step types; the database
+ * keeps four kinds. Paid release is a step the brand approves and then pays
+ * for; the generated deposit and balance (`payment_only`, paid as soon as the
+ * step opens) also read as Paid release, and keep their own kind until
+ * someone changes the type.
+ */
+const TYPE_OF = {
+  approval_and_payment: "Paid release",
+  payment_only: "Paid release",
+  approval_only: "Approval only",
+  progress_only: "Update only",
+};
+const KIND_FOR = { "Approval only": "approval_only", "Update only": "progress_only" };
+export const PAID_RELEASE = "Paid release";
+
+export const typeOf = (kind) => TYPE_OF[kind] ?? "Update only";
+
+export function kindFor(type, originalKind) {
+  if (type !== PAID_RELEASE) return KIND_FOR[type];
+  return originalKind === "payment_only" ? "payment_only" : "approval_and_payment";
+}
+
+const PAID_ON_OPEN = "Paid when this step opens: there is nothing for the brand to approve first.";
+
+/** Loaded milestones → the builder's editable rows. */
+export function scheduleRows(milestones) {
+  return milestones.map((milestone) => ({
+    key: milestone.id,
+    kind: milestone.kind,
+    originalKind: milestone.kind,
+    sort: milestone.sort,
+    type: typeOf(milestone.kind),
+    title: milestone.title,
+    description: milestone.description ?? "",
+    amount: milestone.amount_cents ? String(fromCents(milestone.amount_cents)) : "",
+    due_on: milestone.due_on ?? "",
+    note: milestone.kind === "payment_only" ? PAID_ON_OPEN : "",
+  }));
+}
+
+/** One edit to a row. A type change re-derives the kind and drops an amount it can no longer carry. */
+export function editRow(row, patch) {
+  const next = { ...row, ...patch };
+  if (patch.type) {
+    next.kind = kindFor(patch.type, row.originalKind);
+    next.note = next.kind === "payment_only" ? PAID_ON_OPEN : "";
+    // The database refuses an amount on a step that carries no money.
+    if (patch.type !== PAID_RELEASE) next.amount = "";
+  }
+  return next;
+}
+
+/** A new step goes last: "Update only", one sort step after the current last. */
+export function newRow(rows) {
+  const last = rows.reduce((max, row) => Math.max(max, row.sort ?? 0), 0);
+  return {
+    key: `new-${Date.now()}-${rows.length}`,
+    kind: "progress_only",
+    originalKind: null,
+    sort: last + 10,
+    type: "Update only",
+    title: "",
+    description: "",
+    amount: "",
+    due_on: "",
+    note: "",
+  };
+}
+
+const PAYS = new Set(["approval_and_payment", "payment_only"]);
+
+/** Rows → `set_order_schedule` lines. Each step keeps its own sort, so steps that run in parallel (equal sort) stay parallel. */
+export function scheduleLines(rows) {
+  return rows.map((row) => ({
+    kind: row.kind,
+    title: row.title,
+    description: row.description,
+    amount_cents: PAYS.has(row.kind) ? toCents(row.amount) : null,
+    due_on: row.due_on,
+    sort: row.sort,
+  }));
+}
+
+/** What the paying steps add up to, in cents; the builder compares it to the order total. */
+export function scheduleTotal(rows) {
+  return rows.reduce((sum, row) => sum + (PAYS.has(row.kind) ? toCents(row.amount) ?? 0 : 0), 0);
 }

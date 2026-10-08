@@ -67,9 +67,22 @@ screens that remain are debt being paid down, not a pattern to extend.
 
 On the design, live: **auth**, **brand and factory onboarding**, **the
 dashboard**, **requests**, **orders**, the **request composer and its invite
-step**, **comparing quotes**, the **order interior**, the **factory's
-marketplace**, **conversations**, **settings**, and the whole **admin console**
+step**, **comparing quotes**, the **order interior** (each side on its own
+designed screens), **setting the production steps**, the **factory's marketplace**,
+**conversations**, **settings**, and the whole **admin console**
 (`admin.html`).
+
+**Only the brand sets the production steps** (design review, Oct 2; migration
+067). It does so on its designed `MilestonesScreen`, the "Production steps"
+stage of its flow: "Save changes" saves them and tells the factory, and
+"Continue to funding" confirms them, which is what starts the order. The
+factory reads the steps on its own order page and is notified of every
+change; if one does not work for it, it messages the brand. The design's
+three step types map onto the
+four kinds: Paid release → `approval_and_payment`, Approval only →
+`approval_only`, Update only → `progress_only`; the generated deposit and
+balance (`payment_only`) read as Paid release and keep their kind unless the
+type is changed (`order-view.js`).
 
 **Everything a brand or a vendor touches is on the design**, except the
 screens below — each held back for a stated reason, not a backlog entry:
@@ -82,8 +95,6 @@ screens below — each held back for a stated reason, not a backlog entry:
   brand its money is on a card and held by TSC, and both are false. This is not
   a styling gap; it needs the design and the product to agree on where money
   goes.
-- **`ScheduleEditor`.** Agreeing the schedule has no designed screen, and it is
-  what activates an order. An unagreed order opens straight onto it.
 - **`AdminPayments`.** No designed payments queue, and confirming a payment is a
   required step: staff have no org and cannot be notified, so a payment sits at
   `sent` until a human opens it.
@@ -218,7 +229,7 @@ Things that will bite here specifically:
 - **A `security definer` function has no policy behind it.** The `or is_platform_admin()` branches on the read policies do not protect `confirm_payment_received`. The admin test is the first statement in each of the three admin RPCs — before any `select`, since checking afterwards leaks existence through `P0002` versus `42501`.
 - **`quotes.deposit_pct` is nullable** and `submit_quote()` does not require it. Uncoalesced, the schedule generator emits milestones totalling only the sample lines, `agree_schedule` refuses that forever, and the order is dead with nothing on screen explaining why.
 - **Compute one side of a percentage split and subtract for the other.** Rounding both independently loses or invents a cent, permanently, on a figure a brand types into a bank transfer.
-- **`agree_schedule` takes a revision.** Without it: brand agrees, factory edits, factory agrees, and a client that cached "I already agreed" re-stamps the brand on terms it never read. The order activates showing two green checkmarks.
+- **`agree_schedule` takes a revision.** Without it a brand that confirmed steps it read on one screen, while a teammate changed them on another, would start the order on steps it never saw.
 - **The chain advances on `confirmed`, never on `released`.** Keying it to release would freeze a production order permanently on one forgotten admin click, with no error and no party able to unstick it.
 - **`documents_own` is `for all`** and says nothing about `milestone_update_id`. Without `documents_link_guard`, one UPDATE re-parents a photo onto another order and the counterparty read policy then serves it to strangers.
 - **Milestone photos need three things to work**: the kind in `PRIVATE_KINDS`, a `documents` read policy for the counterparty, *and* a matching `storage.objects` policy. With only the first two, `urlFor()` mints a signed URL that 400s — a broken image tile, not an error message.

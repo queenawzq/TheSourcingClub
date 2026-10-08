@@ -51,9 +51,9 @@ function counterparty(order, isFactory) {
  * it cannot describe a state the order is not in.
  */
 function statusDetail(order, isFactory) {
+  // Only the brand sets the production steps; its confirmation starts the order.
   if (order.status === "pending_schedule") {
-    const mine = isFactory ? order.schedule_factory_agreed_at : order.schedule_brand_agreed_at;
-    return mine ? "Waiting on the other side to agree the schedule" : "Agree the schedule to begin";
+    return isFactory ? "The brand is setting the production steps" : "Set the production steps to begin";
   }
   if (order.status === "cancelled") return order.cancel_reason ?? "Cancelled";
   if (order.status === "completed") return "Every step is done";

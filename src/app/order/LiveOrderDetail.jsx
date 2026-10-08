@@ -1,10 +1,11 @@
 /**
- * A production order, on Queena's designed screen.
+ * A production order, on Queena's designed screens: each side its own.
  *
- * `ProjectDetailScreen` comes from src/prototype/main.jsx — the header strip,
- * the tabs, the milestone timeline, the side panel and the dialogs. This file
- * is the seam: every panel the design draws with an example gets the real
- * thing here, or nothing.
+ * The brand gets `ProjectDetailScreen` from src/prototype/main.jsx, the
+ * factory `FactoryProjectProgressDetail` from src/factory-prototype/main.jsx —
+ * the header strip, the tabs, the milestone timeline, the side panel and the
+ * dialogs. This file is the seam: one load, shaped once, and every panel the
+ * designs draw with an example gets the real thing here, or nothing.
  *
  * Every figure comes from `production_order_summary`. JavaScript never sums
  * money and never decides whose turn it is: the order total is the sum of the
@@ -13,6 +14,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
+import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
 import { StepUpdatesModal } from "../../shared/StepUpdatesModal.jsx";
 import { getOrder, orderActivity } from "../../lib/domain/order.js";
 import {
@@ -27,7 +29,7 @@ import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
 import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
-import ScheduleEditor from "./ScheduleEditor.jsx";
+import { BrandSchedule } from "./ScheduleBuilder.jsx";
 import {
   activityLines,
   day,
@@ -114,9 +116,15 @@ function dueBadge(milestone, today = new Date()) {
   return { dueStatus: "", dueTone: "" };
 }
 
-/** Whether a step is waiting on someone, which is when a reminder means anything. */
-const waiting = (milestone) =>
-  milestone.state === "active" || milestone.state === "submitted" || milestone.payment?.state === "due";
+/**
+ * Whether a step is waiting on the OTHER side, which is the only time a
+ * reminder means anything. An open step waits on the factory's work until it
+ * posts; then on the brand's approval, as does a due payment on the brand's
+ * transfer. Reminding the other side about your own move is noise.
+ */
+const waitingOnOther = (milestone, isFactory, posted) => (isFactory
+  ? approvable(milestone, posted) || milestone.payment?.state === "due"
+  : milestone.state === "active" && !posted);
 
 const TABS = new Set(["overview", "files", "contract"]);
 
@@ -265,21 +273,6 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       : null;
   }
 
-  /**
-   * Before both sides agree the schedule there is no order interior to show —
-   * no steps, no payments, nothing to fund. The designs have no screen for
-   * that agreement, so rather than invent one, an order that has not been
-   * agreed opens on the agreement itself. It is also the truthful order of
-   * events: agree_schedule is what activates the order.
-   */
-  if (order.status === "pending_schedule") {
-    return (
-      <main className="home-page">
-        <ScheduleEditor org={org} orderId={orderId} isFactory={isFactory} onAgreed={load} />
-      </main>
-    );
-  }
-
   const money = (cents) => (cents == null ? "—" : formatMoney(cents, order.currency));
   const other = isFactory ? order.brand?.name : order.factory?.name;
   const running = order.status === "active";
@@ -294,7 +287,11 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       id: milestone.id,
       paymentId: milestone.payment?.id ?? null,
       stepKind: milestone.kind,
+      state: milestone.state,
+      needsApproval: milestone.kind === "approval_and_payment" || milestone.kind === "approval_only",
       current: milestone.id === order.current_milestone_id,
+      // The factory's design marks the step being worked on as "active".
+      active: milestone.id === order.current_milestone_id,
       title: milestone.title,
       // What this row is waiting for, said plainly. A factory must never be
       // left guessing whether it may start: the chain advances on a payment
@@ -311,7 +308,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       reviewItem: stepUpdates.length
         ? `${stepUpdates.length} ${stepUpdates.length === 1 ? "update" : "updates"}, ${fileCount} ${fileCount === 1 ? "file" : "files"} posted on this step`
         : "Nothing posted on this step yet",
-      canRemind: running && waiting(milestone),
+      canRemind: running && waitingOnOther(milestone, isFactory, posted),
       // post_milestone_update takes a post only while work is happening.
       canComment: running && (milestone.state === "active" || milestone.state === "submitted"),
       ...next,
@@ -325,6 +322,91 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const activeTab = TABS.has(tab) ? tab : "overview";
   const openMilestone = milestones.find((milestone) => milestone.id === openStepId) ?? null;
   const factoryLine = [order.factory?.name, isFactory ? "" : location].filter(Boolean).join(" · ");
+  const brandLine = [order.brand?.name, location].filter(Boolean).join(" · ");
+  const counterparty = { name: other ?? "", initials: initials(other), location };
+  const header = {
+    title: order.rfqs?.title || order.order_number,
+    subtitle: [other, order.order_number, order.activated_at ? `started ${day(order.activated_at)}` : null]
+      .filter(Boolean)
+      .join(" · "),
+    total: money(order.total_cents),
+    paid: money(order.paid_cents),
+    remaining: money(order.outstanding_cents),
+    nextPayment: money(order.next_payment_cents),
+  };
+  const onTabChange = (next) => navigate(next === "overview" ? `/orders/${orderId}` : `/orders/${orderId}/${next}`);
+  const contract = describeOrderContract({
+    order,
+    milestones,
+    incoterm: terms.incoterm,
+    paymentTerm: terms.paymentTerm,
+    factoryLine: isFactory ? brandLine : factoryLine,
+    counterpartyLabel: isFactory ? "Brand" : "Factory",
+    attachments: requestFiles,
+  });
+  const pending = order.status === "pending_schedule";
+
+  const stepPopup = openMilestone && (
+    <StepUpdatesModal
+      step={openMilestone}
+      updates={openUpdates}
+      urlFor={urlFor}
+      onOpenFile={(document) => openFile({ document })}
+      onClose={() => showStep(null)}
+    />
+  );
+
+  /**
+   * Before the brand confirms the production steps nothing is running: no
+   * payments, nothing to fund. The brand sets the steps in the "Production
+   * steps" stage of its flow, as the design draws it; the factory reads them
+   * on its own order page and is told of every change. (Design review: only
+   * the brand changes the steps; a factory that disagrees messages the brand.)
+   */
+  if (isFactory) {
+    return (
+      <>
+      <FactoryProjectProgressDetail
+        language="en"
+        onBack={() => navigate("/orders")}
+        order={header}
+        milestones={shaped}
+        error={error}
+        tab={activeTab}
+        onTabChange={onTabChange}
+        counterparty={counterparty}
+        onMessage={() => navigate(`/orders/${orderId}/messages`)}
+        activity={activityLines(activity, { order, viewerOrgId: org.id })}
+        files={orderFiles(requestFiles, updates, milestones)}
+        onOpenFile={openFile}
+        contract={contract}
+        // The design's only step action is "Add update". Posting is all the
+        // factory does: the brand approves from the update.
+        onPostUpdate={(milestone, { body, files }) => fromDialog(() => postUpdate({
+          orderId, milestoneId: milestone.id, orgId: org.id, body, files,
+        }))}
+        onRemind={remind}
+        dialog={{ busy, error: dialogError, onClose: () => setDialogError(null) }}
+        notice={pending
+          ? `${other ?? "The brand"} is setting the production steps. Nothing starts until they confirm them, and you are told of every change. If something doesn't work for you, message them.`
+          : undefined}
+      />
+      {stepPopup}
+      </>
+    );
+  }
+
+  if (pending) {
+    return (
+      <BrandSchedule
+        order={order}
+        milestones={milestones}
+        reload={load}
+        onBack={() => navigate("/orders")}
+        vendor={{ ...counterparty, onMessage: () => navigate(`/orders/${orderId}/messages`) }}
+      />
+    );
+  }
 
   return (
     <main className="rfqs-page">
@@ -332,35 +414,19 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       <ProjectDetailScreen
         goTo={() => navigate("/orders")}
         goToFundingMilestone={act}
-        order={{
-          title: order.rfqs?.title || order.order_number,
-          subtitle: [other, order.order_number, order.activated_at ? `started ${day(order.activated_at)}` : null]
-            .filter(Boolean)
-            .join(" · "),
-          total: money(order.total_cents),
-          paid: money(order.paid_cents),
-          remaining: money(order.outstanding_cents),
-          nextPayment: money(order.next_payment_cents),
-        }}
+        order={header}
         milestones={shaped}
         busy={busy}
         error={dialogError}
         onAction={(_kind, milestone) => act(milestone)}
         tab={activeTab}
-        onTabChange={(next) => navigate(next === "overview" ? `/orders/${orderId}` : `/orders/${orderId}/${next}`)}
-        counterparty={{ name: other ?? "", initials: initials(other), location }}
+        onTabChange={onTabChange}
+        counterparty={counterparty}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
         activity={activityLines(activity, { order, viewerOrgId: org.id })}
         files={orderFiles(requestFiles, updates, milestones)}
         onOpenFile={openFile}
-        contract={describeOrderContract({
-          order,
-          milestones,
-          incoterm: terms.incoterm,
-          paymentTerm: terms.paymentTerm,
-          factoryLine,
-          attachments: requestFiles,
-        })}
+        contract={contract}
         onApprove={(milestone, note) => fromDialog(() => approveMilestone(milestone.id, note))}
         onPostComment={(milestone, { body, files }) => fromDialog(() => postUpdate({
           orderId, milestoneId: milestone.id, orgId: org.id, body, files,
@@ -369,15 +435,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         // A refusal belongs to the dialog it happened in, not the next one.
         onDialogClose={() => setDialogError(null)}
       />
-      {openMilestone && (
-        <StepUpdatesModal
-          step={openMilestone}
-          updates={openUpdates}
-          urlFor={urlFor}
-          onOpenFile={(document) => openFile({ document })}
-          onClose={() => showStep(null)}
-        />
-      )}
+      {stepPopup}
     </main>
   );
 }

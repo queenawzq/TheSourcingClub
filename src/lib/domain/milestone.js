@@ -72,7 +72,9 @@ export async function saveSchedule(orderId, lines) {
         description: line.description || null,
         amount_cents: line.amount_cents ?? null,
         due_on: line.due_on || null,
-        sort: (index + 1) * 10,
+        // The caller's sort when it has one. Renumbering every save would
+        // turn two steps that run in parallel (equal sort) into a sequence.
+        sort: line.sort ?? (index + 1) * 10,
       })),
     }),
     "save the schedule",
@@ -154,13 +156,6 @@ export async function postUpdate({ orderId, milestoneId, orgId, body, files = []
     // file the factory may have taken some trouble over.
     throw error;
   }
-}
-
-export async function submitMilestone(milestoneId) {
-  return unwrap(
-    await supabase.rpc("submit_milestone", { target_milestone: milestoneId }),
-    "send this step for approval",
-  );
 }
 
 export async function approveMilestone(milestoneId, note) {
