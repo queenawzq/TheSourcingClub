@@ -16,10 +16,14 @@ import { DataProvider } from "../../lib/data/DataProvider.jsx";
 import { duplicateRfqFromOrder } from "../../lib/domain/rfq.js";
 import { useRouter } from "../../lib/router.jsx";
 import { createLiveAdapter } from "../live-adapter.js";
+import useOrderCancel from "./useOrderCancel.jsx";
 import useOrderTabs from "./useOrderTabs.js";
 
 export default function LiveBrandOrders({ org, user, goTo, onViewOrder }) {
   const tabStore = useOrderTabs(org, user);
+  // Cancelling has no design: the card menu's item and the reason dialog are
+  // live only. The list reloads itself through the item (cancelActionFor).
+  const cancelStore = useOrderCancel({ onViewOrder });
   const { navigate } = useRouter();
   const [reordering, setReordering] = useState(false);
   const [reorderError, setReorderError] = useState(null);
@@ -39,12 +43,13 @@ export default function LiveBrandOrders({ org, user, goTo, onViewOrder }) {
 
   return (
     <main className="rfqs-page brand-projects-page">
-      {reorderError && (
-        <p className="projects-empty projects-error" role="alert">{reorderError.message}</p>
+      {(reorderError || cancelStore.error) && (
+        <p className="projects-empty projects-error" role="alert">{(reorderError || cancelStore.error).message}</p>
       )}
       <DataProvider adapter={createLiveAdapter({ org, isFactory: false, user })}>
-        <ProjectsScreen goTo={goTo} onViewOrder={onViewOrder} onReorder={reorder} live tabStore={tabStore} />
+        <ProjectsScreen goTo={goTo} onViewOrder={onViewOrder} onReorder={reorder} live tabStore={tabStore} cancelStore={cancelStore} />
       </DataProvider>
+      {cancelStore.dialog}
     </main>
   );
 }

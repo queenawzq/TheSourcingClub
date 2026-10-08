@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
-import { archiveActionFor, filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab, withArchivedTab } from "../shared/production-order-parts.jsx";
+import { archiveActionFor, cancelActionFor, filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab, withArchivedTab } from "../shared/production-order-parts.jsx";
 import "../prototype/styles.css";
 import "./styles.css";
 import "../shared/profile-shell.css";
@@ -5366,12 +5366,14 @@ function FactoryPriceTotalCard({ project, total }) {
 export function FactoryProjectsPage({
   language,
   onViewProject,
-  // Live mounts pass `{ projects, loading, error, tabStore }`; the prototype
+  // Live mounts pass `{ projects, loading, error, reload, tabStore, cancelStore }`; the prototype
   // passes nothing and maps its own example orders, exactly as drawn.
   live = null
 }) {
   // The company's saved tabs (src/app/order/useOrderTabs.js), live only.
   const tabStore = live?.tabStore ?? null;
+  // Live only: cancelling. The design draws no cancel item.
+  const cancelStore = live?.cancelStore ?? null;
   const [activeTab, setActiveTab] = useState("active");
   // Live starts from the two fixed tabs with real counts: the design's "(4)"
   // and "(6)" read as real to a factory with no orders.
@@ -5605,8 +5607,8 @@ export function FactoryProjectsPage({
             Manage tabs
           </button>
         </nav>
-        {(tabStore?.addError || tabStore?.error) && (
-          <p className="composer-error" role="alert">{(tabStore.addError || tabStore.error).message}</p>
+        {(tabStore?.addError || tabStore?.error || cancelStore?.error) && (
+          <p className="composer-error" role="alert">{(tabStore?.addError || tabStore?.error || cancelStore.error).message}</p>
         )}
 
         {manageTabsOpen && createPortal(
@@ -5682,6 +5684,7 @@ export function FactoryProjectsPage({
                 isFiled={tabStore ? (tab) => tabStore.membership.get(tab.key)?.has(project.id) : null}
                 onToggleTab={tabStore ? (tab) => tabStore.toggle(tab.key, project.id) : null}
                 archiveAction={archiveActionFor(tabStore, project)}
+                cancelAction={cancelActionFor(cancelStore, project, live?.reload)}
                 key={project.id}
               />
             ))
@@ -5692,7 +5695,7 @@ export function FactoryProjectsPage({
   );
 }
 
-export function FactoryProjectListCard({ project, language, onViewProject, customTabs = [], isFiled = null, onToggleTab = null, archiveAction = null }) {
+export function FactoryProjectListCard({ project, language, onViewProject, customTabs = [], isFiled = null, onToggleTab = null, archiveAction = null, cancelAction = null }) {
   const isZh = language === "zh";
   const [primaryImage] = project.images || [];
   const productionFacts = [
@@ -5719,21 +5722,22 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
           status={project.status}
           statusTone={project.statusTone}
         >
-          {/* The design draws no archive item here; live adds the one the
-              order allows, the same as the brand's card. */}
+          {/* The design draws no archive or cancel item here; live adds the
+              ones the order allows, the same as the brand's card. */}
           <OrderCardMenu customTabs={customTabs} isFiled={isFiled} onToggleTab={onToggleTab}>
-            {archiveAction ? (close) => (
+            {archiveAction || cancelAction ? (close) => [archiveAction, cancelAction].filter(Boolean).map((item) => (
               <button
                 type="button"
                 role="menuitem"
+                key={item.label}
                 onClick={() => {
                   close();
-                  archiveAction.run();
+                  item.run();
                 }}
               >
-                {archiveAction.label}
+                {item.label}
               </button>
-            ) : null}
+            )) : null}
           </OrderCardMenu>
         </ProjectCardActions>
       </header>
@@ -8863,7 +8867,12 @@ export function FactoryProjectProgressDetail({
   error,
   // Live only: a line above the timeline, e.g. while the brand is still
   // setting the production steps.
-  notice
+  notice,
+  // Live only, with no design yet: a banner above the money strip while a
+  // cancellation is proposed (or once the order is cancelled), and a quiet
+  // "Cancel order" under Message.
+  banner = null,
+  onCancelOrder = null
 }) {
   const [updateMilestone, setUpdateMilestone] = useState(null);
   const [localDetailTab, setLocalDetailTab] = useState("overview");
@@ -8895,6 +8904,7 @@ export function FactoryProjectProgressDetail({
 
       <div className="factory-project-detail-grid">
         <section className="factory-project-detail-main">
+          {banner}
           <section className="factory-project-summary-card" aria-label="Production order summary">
             <Metric label="order total" value={order?.total ?? "$5,780"} testId={order ? "order-total" : undefined} />
             <Metric label="funded" value={order?.paid ?? "$120"} testId={order ? "order-paid" : undefined} />
@@ -8949,6 +8959,7 @@ export function FactoryProjectProgressDetail({
               </div>
             </div>
             <button className="secondary-btn" type="button" onClick={onMessage}>Message</button>
+            {onCancelOrder && <button className="order-cancel-link" type="button" onClick={onCancelOrder}>Cancel order</button>}
           </section>
 
           <section className="factory-side-card activity-card">

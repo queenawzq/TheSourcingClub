@@ -57,7 +57,49 @@
 }
 
 .order-agree { border-color: var(--blue, #2458ff); }
-.order-cancel-notice { border-color: #f0b429; }
+/* Cancelling an order (live only; no design yet). The amber of the step gate
+   below: something to answer, not an error. Sits above the designed money
+   strip, so it carries its own spacing. */
+.order-cancel-notice {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid #f0b429;
+  border-radius: var(--card-radius);
+  background: #fff8e6;
+  color: var(--text);
+}
+.order-cancel-notice[data-state="cancelled"] {
+  border-color: var(--border-strong);
+  background: var(--bg-page);
+}
+.order-cancel-notice-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.order-cancel-notice-text strong { font-size: 14px; font-weight: var(--weight-strong); }
+.order-cancel-notice-text p { margin: 0; font-size: 13px; overflow-wrap: anywhere; }
+.order-cancel-notice-text span { font-size: 12px; color: var(--text-muted); }
+.order-cancel-notice-actions { display: flex; gap: 8px; flex-shrink: 0; }
+@media (max-width: 760px) {
+  .order-cancel-notice { flex-direction: column; align-items: stretch; }
+  .order-cancel-notice-actions { flex-wrap: wrap; }
+  .order-cancel-notice-actions button { flex: 1 1 auto; }
+}
+
+/* The quiet "Cancel order" under a side panel's Message button. */
+.order-cancel-link {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.order-cancel-link:hover { color: var(--danger); }
 .order-gate-card { background: #fff8e6; }
 .order-quiet-footer { margin-top: 24px; }
 

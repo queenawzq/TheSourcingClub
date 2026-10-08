@@ -92,6 +92,22 @@ export async function acceptCancellation(orderId) {
   );
 }
 
+/** The side that proposed cancelling takes it back (migration 070). */
+export async function withdrawCancellation(orderId) {
+  return unwrap(
+    await supabase.rpc("withdraw_cancellation", { target_order: orderId }),
+    "withdraw the cancellation",
+  );
+}
+
+/** The other side keeps the order (migration 070). */
+export async function declineCancellation(orderId) {
+  return unwrap(
+    await supabase.rpc("decline_cancellation", { target_order: orderId }),
+    "keep the order",
+  );
+}
+
 /* ------------------------------------------------------------------------ */
 /* Wording                                                                   */
 /* ------------------------------------------------------------------------ */

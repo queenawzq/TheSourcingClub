@@ -4,7 +4,7 @@ import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
-import { archiveActionFor, filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab, withArchivedTab } from "../shared/production-order-parts.jsx";
+import { archiveActionFor, cancelActionFor, filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab, withArchivedTab } from "../shared/production-order-parts.jsx";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
@@ -3433,6 +3433,13 @@ function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
               Message factory
             </button>
           )}
+          {/* Live only, no design yet: cancelling an order whose steps are
+              still being set. */}
+          {rail.vendor.onCancel && (
+            <button className="order-cancel-link" type="button" onClick={rail.vendor.onCancel}>
+              Cancel order
+            </button>
+          )}
         </section>
         {screen === "milestones" ? (
           <Card title="What should production steps cover?" tone="soft">
@@ -6363,11 +6370,14 @@ export function ProjectsScreen({
   live = false,
   // Live passes the company's saved tabs (src/app/order/useOrderTabs.js); the
   // prototype passes nothing and keeps its tabs in local state, as drawn.
-  tabStore = null
+  tabStore = null,
+  // Live only: cancelling (src/app/order/useOrderCancel.jsx). The design
+  // draws no cancel item, so the prototype passes nothing and shows none.
+  cancelStore = null
 }) {
   // Reads through the data seam rather than the module constant, so the same
   // screen serves mock data in prototype.html and real orders in app.html.
-  const { data: orders, loading, error } = useOrders();
+  const { data: orders, loading, error, reload: reloadOrders } = useOrders();
   const [activeTab, setActiveTab] = useState("active");
   // Live starts from the two fixed tabs and nothing else: the design's counts
   // and its "Spring 27" example read as real to a brand with no orders.
@@ -6672,6 +6682,7 @@ export function ProjectsScreen({
               isFiled={tabStore ? (tab) => tabStore.membership.get(tab.key)?.has(project.id) : null}
               onToggleTab={tabStore ? (tab) => tabStore.toggle(tab.key, project.id) : null}
               archiveAction={archiveActionFor(tabStore, project)}
+              cancelAction={cancelActionFor(cancelStore, project, reloadOrders)}
               onViewOrder={onViewOrder}
               setSelectedReorderProject={setSelectedReorderProject}
               onReorder={onReorder}
@@ -6685,7 +6696,7 @@ export function ProjectsScreen({
 }
 
 
-function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, onViewOrder, setSelectedReorderProject = null, onReorder = null }) {
+function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, cancelAction = null, onViewOrder, setSelectedReorderProject = null, onReorder = null }) {
   const projectFacts = [
     ["Current step", project.currentStep],
     ["Next due", project.nextDue]
@@ -6738,6 +6749,18 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
                     {archiveAction.label}
                   </button>
                 ) : null}
+                {cancelAction && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      close();
+                      cancelAction.run();
+                    }}
+                  >
+                    {cancelAction.label}
+                  </button>
+                )}
               </>
             )}
           </OrderCardMenu>
@@ -6823,6 +6846,11 @@ export function ProjectDetailScreen({
   onPostComment,
   onRemind,
   onDialogClose,
+  // Live only, with no design yet: a banner above the money strip while a
+  // cancellation is proposed (or once the order is cancelled), and a quiet
+  // "Cancel order" under Message.
+  banner = null,
+  onCancelOrder = null,
 }) {
   const milestoneList = liveMilestones ?? projectDetailMilestones;
   const isLive = Boolean(liveMilestones);
@@ -6850,6 +6878,7 @@ export function ProjectDetailScreen({
 
       <div className="project-detail-layout">
         <div className="project-detail-main">
+          {banner}
           {/* Every figure comes from production_order_summary. JavaScript
               never sums money here: the order total is the sum of the
               milestones, not of the quote, and the two diverge the moment
@@ -6918,6 +6947,7 @@ export function ProjectDetailScreen({
               </div>
             </div>
             <button className="secondary-btn" type="button" onClick={onMessage}>Message</button>
+            {onCancelOrder && <button className="order-cancel-link" type="button" onClick={onCancelOrder}>Cancel order</button>}
           </section>
           <section className="project-activity-panel">
             <h2>Project activity</h2>
