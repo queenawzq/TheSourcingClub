@@ -26,6 +26,7 @@ import { listOrders } from "../../lib/domain/order.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { CHIP_KINDS, titleFromFileName } from "./factory-profile-view.js";
 import { TRADING_CHIP_KINDS } from "./trading-profile-view.js";
+import { rankVendors } from "../browse/vendor-directory-view.js";
 
 // `country` lets a saved location carry its country code, as onboarding does.
 const KINDS = [
@@ -157,7 +158,6 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
   ]);
   if (!rows.length) return [];
 
-  const wanted = new Set(Object.values(brandTerms).flat());
   const links = unwrap(
     await supabase
       .from("taxonomy_links")
@@ -166,18 +166,7 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
       .in("subject_id", rows.map((row) => row.org_id)),
     "load recommended vendors",
   );
-  const overlap = new Map();
-  for (const link of links) {
-    if (wanted.has(link.term_id)) overlap.set(link.subject_id, (overlap.get(link.subject_id) ?? 0) + 1);
-  }
-  const verified = (row) => Number(row.verification_status === "verified");
-
-  const chosen = [...rows]
-    .sort((a, b) =>
-      verified(b) - verified(a)
-      || (overlap.get(b.org_id) ?? 0) - (overlap.get(a.org_id) ?? 0)
-      || String(b.published_at).localeCompare(String(a.published_at)))
-    .slice(0, limit);
+  const chosen = rankVendors(rows, links, brandTerms).slice(0, limit);
 
   return Promise.all(chosen.map(async (row) => {
     const samples = await listDocuments(row.org_id, "product_image");
@@ -187,6 +176,108 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
     })));
     return { ...row, products };
   }));
+}
+
+const VENDOR_COLUMNS = "org_id, legal_name, website_url, location, country_code, nearest_port, founded_year, employee_count, intro, moq, typical_lead_days, sample_lead_days, verification_status, published_at, equipment_notes, vendor_kind, languages_supported, typical_order_value_band, partner_factory_count, supported_incoterms, typical_payment_terms, orgs (name)";
+
+/** Rows grouped by one of their columns. */
+const groupBy = (rows, key) => rows.reduce((grouped, row) => {
+  (grouped[row[key]] ||= []).push(row);
+  return grouped;
+}, {});
+
+/**
+ * Every published vendor as Browse vendors draws it, ranked by fit with the
+ * brand. One query per table for all vendors, rather than the profile page's
+ * load per vendor, and only what the access rules give a brand for a
+ * published profile (the same reads as loadVendorProfileForBrand()).
+ *
+ * Each vendor comes back as the `parts` brand-factory-view.js takes, plus the
+ * profile's own tag ids for the filters. Also the taxonomy (the filters'
+ * options) and the brand's conversations, for each card's Message button.
+ */
+export async function loadVendorDirectory(brandOrg) {
+  const [profiles, terms, brandTerms, threads] = await Promise.all([
+    supabase.from("factory_profiles").select(VENDOR_COLUMNS).not("published_at", "is", null)
+      .then((result) => unwrap(result, "load vendors")),
+    listTermsByKind(KINDS),
+    getSelectedTerms("brand_profile", brandOrg.id),
+    listThreads(brandOrg.id),
+  ]);
+  if (!profiles.length) return { vendors: [], terms, threads };
+
+  const ids = profiles.map((profile) => profile.org_id);
+  const [links, capacities, months, claims, refs, files] = await Promise.all([
+    supabase.from("taxonomy_links").select("subject_id, term_id").eq("subject_type", "factory_profile").in("subject_id", ids)
+      .then((result) => unwrap(result, "load vendors' tags")),
+    supabase.from("factory_capacity").select("org_id, category_term_id, input_mode, line_hours, monthly_units").in("org_id", ids)
+      .then((result) => unwrap(result, "load vendors' capacity")),
+    supabase.from("factory_capacity_months").select("org_id, month, level").in("org_id", ids)
+      .then((result) => unwrap(result, "load vendors' booking calendars")),
+    // The claim and its status only: the certificate file is private.
+    supabase.from("factory_certifications").select("org_id, term_id, status").in("org_id", ids).order("created_at")
+      .then((result) => unwrap(result, "load vendors' certifications")),
+    supabase.from("profile_references").select("id, org_id, title, counterparty, sort").in("org_id", ids).order("sort")
+      .then((result) => unwrap(result, "load vendors' references")),
+    supabase.from("documents").select("id, org_id, kind, bucket, storage_path, file_name, title, caption, created_at")
+      .in("org_id", ids).in("kind", ["logo", "product_image"]).eq("bucket", "org-public")
+      .order("created_at")
+      .then((result) => unwrap(result, "load vendors' images")),
+  ]);
+
+  const termKind = new Map(Object.values(terms).flat().map((term) => [term.id, term.kind]));
+  const linksBy = groupBy(links, "subject_id");
+  const monthsBy = groupBy(months, "org_id");
+  const claimsBy = groupBy(claims, "org_id");
+  const refsBy = groupBy(refs, "org_id");
+  const filesBy = groupBy(files, "org_id");
+  const capacityBy = new Map(capacities.map((row) => [row.org_id, row]));
+  const certificationTerms = terms.certification ?? [];
+
+  const parts = profiles.map((profile) => {
+    const selected = {};
+    for (const link of linksBy[profile.org_id] ?? []) {
+      const kind = termKind.get(link.term_id);
+      if (kind) (selected[kind] ||= []).push(link.term_id);
+    }
+    const own = filesBy[profile.org_id] ?? [];
+    // Oldest first, the order the vendor added them; the newest logo wins.
+    const logo = own.filter((doc) => doc.kind === "logo").at(-1);
+    const certifications = (claimsBy[profile.org_id] ?? []).map((claim) => {
+      const term = certificationTerms.find((item) => item.id === claim.term_id);
+      return term ? { termId: term.id, name: termLabel(term), status: claim.status, hasFile: false } : null;
+    }).filter(Boolean);
+
+    return {
+      orgId: profile.org_id,
+      orgName: profile.orgs?.name ?? "",
+      profile,
+      terms,
+      selected,
+      capacity: {
+        capacity: capacityBy.get(profile.org_id) ?? null,
+        months: Object.fromEntries((monthsBy[profile.org_id] ?? []).map((row) => [row.month, row.level])),
+      },
+      references: refsBy[profile.org_id] ?? [],
+      certifications,
+      registrationDoc: null,
+      logoUrl: logo ? publicUrl(logo.storage_path) : null,
+      samples: own.filter((doc) => doc.kind === "product_image").map((doc) => ({
+        title: doc.title || titleFromFileName(doc.file_name),
+        caption: doc.caption ?? "",
+        src: publicUrl(doc.storage_path),
+      })),
+      walkthrough: null,
+      orders: [],
+    };
+  });
+
+  const order = rankVendors(profiles, links, brandTerms).map((row) => row.org_id);
+  return {
+    vendors: order.map((id) => parts.find((part) => part.orgId === id)),
+    terms,
+    threads,
+  };
 }
 
 /** Every taxonomy kind a brand profile shows, plus the country list for its HQ. */

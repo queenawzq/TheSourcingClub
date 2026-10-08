@@ -101,6 +101,7 @@ export function brandFactoryView(parts, now = new Date()) {
 
 /** The brand's back link, by where the profile was opened from. */
 export const BACK_LABELS = {
+  browse: "vendors",
   dashboard: "dashboard",
   invite: "vendor selection",
   quotes: "quotes",

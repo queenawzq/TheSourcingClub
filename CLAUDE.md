@@ -78,7 +78,10 @@ page), the **brand's own profile** (`/profile` for a brand, with its edit
 dialogs and completion page), the **vendor's view of a brand**
 (`/brands/:id`, read through `brand_profile_for_factory()`: never revenue,
 email, website or documents; opened from Saved brands, the request's brand
-card and the order page), and the whole **admin console**
+card and the order page), the brand's **Browse vendors** (`/browse`, the
+designed marketplace, and `/browse/list`, the designed directory list: every
+published vendor, filters from the taxonomy, ranked like the dashboard's
+recommended factories), and the whole **admin console**
 (`admin.html`).
 
 **Only the brand sets the production steps** (design review, Oct 2; migration
