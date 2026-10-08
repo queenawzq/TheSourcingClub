@@ -54,6 +54,7 @@ import LiveOrderDetail from "./order/LiveOrderDetail.jsx";
 import LiveSettings from "./settings/LiveSettings.jsx";
 import LiveFactoryProfile from "./profile/LiveFactoryProfile.jsx";
 import LiveBrandFactoryProfile from "./profile/LiveBrandFactoryProfile.jsx";
+import LiveBrandBrowse from "./browse/LiveBrandBrowse.jsx";
 import LiveBrandProfile from "./profile/LiveBrandProfile.jsx";
 import LiveFactoryBrandProfile from "./profile/LiveFactoryBrandProfile.jsx";
 import NotificationList from "./NotificationList.jsx";
@@ -571,6 +572,7 @@ const BRAND_NAV_PATHS = {
   Dashboard: "/",
   Quotes: "/rfqs",
   "Production orders": "/orders",
+  "Browse vendors": "/browse",
   Conversations: "/messages",
   Settings: "/team",
 };
@@ -597,6 +599,8 @@ function activeNavFor(path, isFactory) {
   if (isFactory && path.startsWith("/brands")) return "Saved";
   if (isFactory && path.startsWith("/payout")) return "Payments";
   if (isFactory && path.startsWith("/rfqs")) return "RFQs";
+  // A vendor's profile sits under Browse vendors, as in the design.
+  if (!isFactory && (path.startsWith("/browse") || path.startsWith("/factories"))) return "Browse vendors";
   if (!isFactory && path.startsWith("/rfqs")) return "Quotes";
   return "";
 }
@@ -834,7 +838,14 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/browse",
       render: () =>
-        isFactory ? <LiveBrowse profile={profile} /> : <NotForThisSide isFactory={false} />,
+        isFactory ? <LiveBrowse profile={profile} /> : <LiveBrandBrowse org={activeOrg} />,
+    },
+    {
+      // Browse vendors as the design's directory list. Before /browse/:id,
+      // which is a factory's view of one request.
+      path: "/browse/list",
+      render: () =>
+        isFactory ? <NotForThisSide isFactory /> : <LiveBrandBrowse org={activeOrg} view="list" />,
     },
     {
       path: "/rfqs/:id/invite",

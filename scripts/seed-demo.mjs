@@ -363,6 +363,42 @@ must(await admin.from("factory_profiles").upsert({
 must(await admin.from("credit_ledger").insert({
   org_id: secondFactoryOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
 }), "second factory credits");
+// Its profile filled in through its own login, so Browse vendors has a second
+// full card and its filters (production type, price, location, lead time,
+// certifications, open capacity) tell the two factories apart.
+const secondFactoryTags = [
+  ["manufacturing_model", "cmt"], ["production_type", "wovens"],
+  ["product_category", "tops"], ["product_category", "bottoms"], ["product_category", "menswear"],
+  ["make", "linen-co-ords"], ["make", "button-down-shirts"],
+  ["market_level", "mid-range"],
+  ["specialty", "wash-development"], ["specialty", "small-batch-production"], ["specialty", "trim-sourcing"],
+];
+must(await secondFactory.client.from("taxonomy_links").insert(await Promise.all(secondFactoryTags.map(async ([kind, slug]) => ({
+  subject_type: "factory_profile", subject_id: secondFactoryOrg.id, org_id: secondFactoryOrg.id, term_id: await termId(kind, slug),
+})))), "second factory tags");
+must(await secondFactory.client.from("factory_capacity").insert({
+  org_id: secondFactoryOrg.id, category_term_id: await termId("capacity_category", "wovens"), input_mode: "units", monthly_units: 2400,
+}), "second factory capacity");
+must(await secondFactory.client.from("factory_capacity_months").insert(
+  ["full", "open", "open", "partial", "partial", "open"].map((level, offset) => ({ org_id: secondFactoryOrg.id, month: firstOfMonth(offset), level })),
+), "second factory booking calendar");
+must(await secondFactory.client.from("factory_certifications").insert([
+  { org_id: secondFactoryOrg.id, term_id: await termId("certification", "bsci") },
+  { org_id: secondFactoryOrg.id, term_id: await termId("certification", "grs") },
+]), "second factory certifications");
+for (const [file, name, caption] of [
+  ["dashboard-rfq-shirt.jpg", "Washed linen shirt.jpg", "Wovens · garment wash"],
+  ["dashboard-rfq-denim.jpg", "Linen trouser fit sample.jpg", "Bottoms · fit sample"],
+]) {
+  const path = `${secondFactoryOrg.id}/product_image/${crypto.randomUUID()}-${name.replace(/\s+/g, "-")}`;
+  const bytes = readFileSync(new globalThis.URL(`../assets/${file}`, import.meta.url));
+  must(await secondFactory.client.storage.from("org-public").upload(path, bytes, { contentType: "image/jpeg" }), `upload ${name}`);
+  must(await secondFactory.client.from("documents").insert({
+    org_id: secondFactoryOrg.id, kind: "product_image", bucket: "org-public", storage_path: path,
+    file_name: name, mime_type: "image/jpeg", size_bytes: bytes.length,
+    title: name.replace(/\.jpg$/, ""), caption,
+  }), `record ${name}`);
+}
 
 // A factory that finished onboarding and waits for a decision: the admin
 // console's verification queue has it, and its own login sees "in review".
@@ -748,6 +784,7 @@ done. Every login uses the password "${PASSWORD}".
     - "Recycled nylon windbreaker": the brand proposed cancelling (Withdraw)
   Its profile (/profile) is filled in, with a pending invitation.
   ${LOGINS.factory.name} has it under Saved → Saved brands.
+  Browse vendors lists ${LOGINS.factory.name} and ${LOGINS.secondFactory.name} (Factories) and ${LOGINS.tradingCompany.name} (Trading companies).
   The admin's verification queue has ${LOGINS.newFactory.name}.
 
   Run this again at any time to put the demo companies back to this state.

@@ -17,14 +17,14 @@ import { loadVendorProfileForBrand } from "./load-profile.js";
 import "./profile.css";
 
 /** Where the back link goes when there is no in-app page to go back to. */
-const FALLBACK = { dashboard: "/", quotes: "/rfqs", order: "/orders", invite: "/rfqs" };
+const FALLBACK = { browse: "/browse", dashboard: "/", quotes: "/rfqs", order: "/orders", invite: "/rfqs" };
 
 function Frame({ children }) {
   return <main className="factory-profile-page brand-profile-page">{children}</main>;
 }
 
 /**
- * `from`: where it was opened ("dashboard", "quotes", "order", "invite"),
+ * `from`: where it was opened ("browse", "dashboard", "quotes", "order", "invite"),
  * which picks the back link's words. `onBack` / `onRequestQuote` replace the
  * default actions (the composer shows this in place of its invite step).
  */

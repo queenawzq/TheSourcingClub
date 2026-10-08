@@ -181,6 +181,18 @@ try {
     "the brand's view of a factory renders its example vendor, every button drawn",
   );
 
+  // Browse vendors takes a `live` prop; without one the marketplace keeps the
+  // design's example vendors, scores and pre-ticked filters.
+  const marketplace = await stagehand.browser.context.newPage(`${BASE}/prototype.html?screen=factoryMarketplace`);
+  await marketplace.setViewportSize(1440, 1100);
+  await marketplace.waitForTimeout(3500);
+  const marketplaceBody = await marketplace.locator("body").innerText();
+  check(
+    marketplaceBody.includes("36 factories") && marketplaceBody.includes("Atelier Minho") && marketplaceBody.includes("96%")
+      && marketplaceBody.includes("Club Standard") && !marketplaceBody.includes("List view"),
+    "the vendor marketplace renders its example factories, with no database",
+  );
+
   // The brand's own profile, its completion page, and a factory's view of a
   // brand take a `live` prop too; without one they keep the design's example.
   const brandProfile = await stagehand.browser.context.newPage(`${BASE}/prototype.html?screen=profile`);

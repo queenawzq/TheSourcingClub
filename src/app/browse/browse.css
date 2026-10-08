@@ -1,0 +1,104 @@
+/*
+ * Browse vendors, live. The designed pages bring their own styles
+ * (prototype/styles.css); these only cover what live data adds: a vendor's
+ * logo in the avatar, the MOQ range's working handles, a profile link on the
+ * list card, and the line shown when nothing matches.
+ */
+
+.directory-page .factory-avatar {
+  overflow: hidden;
+}
+
+.directory-page .factory-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* The design draws the MOQ range as a picture; live, two range inputs sit
+   over it (invisible, full height) and move the drawn handles. */
+.live-moq-chart .moq-track,
+.live-moq-chart .moq-handle {
+  pointer-events: none;
+}
+
+/* --lo / --hi: where the handles sit, 0-100 along the track (set inline). */
+.live-moq-chart {
+  --lo: 0;
+  --hi: 100;
+}
+
+.live-moq-chart .moq-track {
+  right: calc(18px + (100% - 36px) * (100 - var(--hi)) / 100);
+  left: calc(18px + (100% - 36px) * var(--lo) / 100);
+}
+
+.live-moq-chart .moq-handle.min,
+.live-moq-chart .moq-handle.max {
+  right: auto;
+}
+
+.live-moq-chart .moq-handle.min {
+  left: calc(18px + (100% - 36px) * var(--lo) / 100 - 7px);
+}
+
+.live-moq-chart .moq-handle.max {
+  left: calc(18px + (100% - 36px) * var(--hi) / 100 - 7px);
+}
+
+.live-moq-chart span.is-outside {
+  opacity: 0.25;
+}
+
+.live-moq-chart .moq-range-input {
+  position: absolute;
+  right: 7px;
+  bottom: 6px;
+  left: 7px;
+  width: calc(100% - 14px);
+  height: 26px;
+  margin: 0;
+  background: none;
+  opacity: 0;
+  pointer-events: none;
+  appearance: none;
+}
+
+.live-moq-chart .moq-range-input::-webkit-slider-thumb {
+  width: 22px;
+  height: 26px;
+  cursor: grab;
+  pointer-events: auto;
+  appearance: none;
+}
+
+.live-moq-chart .moq-range-input::-moz-range-thumb {
+  width: 22px;
+  height: 26px;
+  border: 0;
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.live-moq-chart:has(.moq-range-input:focus-visible) .moq-handle {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.directory-factory-profile-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.directory-factory-profile-link:hover,
+.directory-factory-profile-link:focus-visible {
+  text-decoration: underline;
+}
+
+.directory-empty-note {
+  margin: 0;
+  padding: 24px 0;
+  color: var(--muted, #667085);
+  font-size: 14px;
+}

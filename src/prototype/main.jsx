@@ -5734,14 +5734,25 @@ function CertificationCard({ title, detail, icon }) {
   );
 }
 
-function FactorySearchScreen({ goTo }) {
+/**
+ * `live` (Browse vendors' list view in the app): { vendorType, vendors,
+ * filters (see DirectoryLiveFilters), search, onSearch, summary, matching,
+ * onCardsView, empty, card(vendor) → DirectoryFactoryCard's `live` }.
+ *
+ * The prototype's own render of this screen stops on `isTrading`, which it
+ * never defines; a live render draws its filter panel with
+ * DirectoryLiveFilters instead, so it never reaches that line.
+ */
+export function FactorySearchScreen({ goTo, live = null }) {
+  const vendors = live ? live.vendors : directoryFactories;
   return (
     <div className="directory-shell">
       <section className="directory-filter-panel" aria-label="Factory filters">
         <div className="directory-filter-header">
           <strong>Filters</strong>
-          <button type="button">Reset</button>
+          <button type="button" onClick={live ? live.filters.onReset : undefined}>Reset</button>
         </div>
+        {live ? <DirectoryLiveFilters filters={{ ...live.filters, isTrading: live.vendorType === "trading", searchWords: true }} /> : (<>
         <FilterGroup title="Production type">
           <FilterCheck label="Cut & sew knits" />
           <FilterCheck checked label="Wovens" />
@@ -5837,6 +5848,7 @@ function FactorySearchScreen({ goTo }) {
           </div>
           <p>{isTrading ? "Filter by when a sourcing team can begin and the order sizes its partner network supports." : "Use quick presets, or open the dropdowns for exact windows and quantities."}</p>
         </FilterGroup>
+        </>)}
       </section>
 
       <section className="directory-results" aria-label="Factory search results">
@@ -5847,23 +5859,33 @@ function FactorySearchScreen({ goTo }) {
           </div>
           <label className="directory-search">
             <SearchIcon />
-            <input placeholder="Search cut & sew, denim, Portugal..." />
+            {live ? (
+              <input placeholder="Search cut & sew, denim, Portugal..." value={live.search} aria-label="Search vendors" onChange={(event) => live.onSearch(event.target.value)} />
+            ) : (
+              <input placeholder="Search cut & sew, denim, Portugal..." />
+            )}
           </label>
         </header>
         <div className="directory-summary">
           <div>
-            <strong>36 factories</strong>
-            <span>matching cut & sew, low MOQ, Trusted or Verified standard</span>
+            <strong>{live ? live.summary : "36 factories"}</strong>
+            <span>{live ? live.matching : "matching cut & sew, low MOQ, Trusted or Verified standard"}</span>
           </div>
           <div className="directory-summary-actions">
             <button className="filter-button sort-button" type="button">Sort: Best fit</button>
-            <button className="filter-button sort-button" type="button" onClick={() => goTo("factoryMarketplace")}>Marketplace cards</button>
+            <button className="filter-button sort-button" type="button" onClick={live ? live.onCardsView : () => goTo("factoryMarketplace")}>Marketplace cards</button>
           </div>
         </div>
         <div className="directory-card-list">
-          {directoryFactories.map((factory) => (
-            <DirectoryFactoryCard factory={factory} key={factory.name} onQuote={() => goTo("describe")} />
+          {vendors.map((factory) => (
+            <DirectoryFactoryCard
+              factory={factory}
+              key={live ? factory.id : factory.name}
+              onQuote={() => goTo("describe")}
+              live={live ? live.card(factory) : null}
+            />
           ))}
+          {live && !vendors.length && <p className="directory-empty-note">{live.empty}</p>}
         </div>
       </section>
     </div>
@@ -5879,17 +5901,202 @@ function FilterGroup({ title, children }) {
   );
 }
 
-function FilterCheck({ checked = false, label, icon }) {
+function FilterCheck({ checked = false, label, icon, onChange }) {
   return (
     <label className="directory-check">
-      <input type="checkbox" defaultChecked={checked} />
+      {/* Live filters are controlled; the prototype's are only a picture of one. */}
+      {onChange ? <input type="checkbox" checked={checked} onChange={onChange} /> : <input type="checkbox" defaultChecked={checked} />}
       {icon && <img src={`/assets/prototype-icons/${icon}.svg`} alt="" />}
       <span>{label}</span>
     </label>
   );
 }
 
-function DirectoryFactoryCard({ factory, onQuote }) {
+/**
+ * The filter panel's groups with real options, for the live Browse vendors
+ * pages (both layouts). `filters`: { panel, value, onToggle, onMoq, isTrading,
+ * searchWords } — see src/app/browse/vendor-directory-view.js.
+ */
+function DirectoryLiveFilters({ filters }) {
+  const { panel, value, onToggle, onMoq, isTrading, searchWords = false } = filters;
+  const chip = (group, option, selected) => (
+    <button
+      className={selected ? "directory-chip selected" : "directory-chip"}
+      type="button"
+      aria-pressed={selected}
+      key={option.id}
+      onClick={() => onToggle(group, option.id)}
+    >
+      {option.label}
+    </button>
+  );
+  const moq = panel.moq;
+  const [low, high] = value.moq ?? (moq ? [moq.min, moq.max] : [0, 0]);
+  const share = (amount) => (moq && moq.max > moq.min ? ((amount - moq.min) / (moq.max - moq.min)) * 100 : 0);
+  const capacityWords = searchWords && isTrading;
+
+  return (
+    <>
+      {panel.checks.filter((group) => group.options.length).map((group) => (
+        <FilterGroup title={group.title} key={group.key}>
+          {group.options.map((option) => (
+            <FilterCheck
+              checked={(value.terms[group.key] ?? []).includes(option.id)}
+              label={option.label}
+              key={option.id}
+              onChange={() => onToggle(group.key, option.id)}
+            />
+          ))}
+        </FilterGroup>
+      ))}
+      {panel.priceLevels.length > 0 && (
+        <FilterGroup title="Price point">
+          <div className="directory-chip-grid">
+            {panel.priceLevels.map((option) => chip("market_level", option, (value.terms.market_level ?? []).includes(option.id)))}
+          </div>
+        </FilterGroup>
+      )}
+      {moq && moq.max > moq.min && (
+        <FilterGroup title="MOQ range">
+          <div className="moq-chart live-moq-chart" style={{ "--lo": share(low), "--hi": share(high) }}>
+            {moq.bars.map((bar, index) => (
+              <span
+                className={bar.to < low || bar.from > high ? "is-outside" : undefined}
+                style={{ height: bar.height }}
+                key={index}
+                aria-hidden="true"
+              />
+            ))}
+            <i className="moq-track" aria-hidden="true" />
+            <b className="moq-handle min" aria-hidden="true" />
+            <b className="moq-handle max" aria-hidden="true" />
+            <input
+              className="moq-range-input"
+              type="range"
+              min={moq.min}
+              max={moq.max}
+              step={moq.step}
+              value={low}
+              aria-label="Lowest MOQ"
+              onChange={(event) => onMoq([Math.min(Number(event.target.value), high), high])}
+            />
+            <input
+              className="moq-range-input"
+              type="range"
+              min={moq.min}
+              max={moq.max}
+              step={moq.step}
+              value={high}
+              aria-label="Highest MOQ"
+              onChange={(event) => onMoq([low, Math.max(Number(event.target.value), low)])}
+            />
+          </div>
+          <div className="moq-values">
+            <span>{low.toLocaleString("en")}</span>
+            <span>{high === moq.max ? `${high.toLocaleString("en")}+` : high.toLocaleString("en")}</span>
+          </div>
+        </FilterGroup>
+      )}
+      {panel.countries.length > 0 && (
+        <FilterGroup title="Location">
+          <div className="directory-chip-grid">
+            {panel.countries.map((option) => chip("countries", option, value.countries.includes(option.id)))}
+          </div>
+        </FilterGroup>
+      )}
+      {panel.certifications.length > 0 && (
+        <FilterGroup title="Certifications">
+          <div className="directory-chip-grid">
+            {panel.certifications.map((option) => chip("certifications", option, value.certifications.includes(option.id)))}
+          </div>
+        </FilterGroup>
+      )}
+      <FilterGroup title="Lead time">
+        <div className="directory-chip-grid">
+          {panel.leadTimes.map((option) => chip("leadTimes", option, value.leadTimes.includes(option.id)))}
+        </div>
+      </FilterGroup>
+      <FilterGroup title={capacityWords ? "Network availability" : "Open capacity"}>
+        <label className="directory-select">
+          <span>{capacityWords ? "Next intake window" : "Start window"}</span>
+          <select value={value.startWindow} onChange={(event) => onToggle("startWindow", event.target.value || value.startWindow)}>
+            <option value="">{capacityWords ? "Select intake window" : "Select start window"}</option>
+            {panel.startWindows.map((option) => <option value={option.id ?? option.key} key={option.key}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="directory-select">
+          <span>{capacityWords ? "Supported order size" : "Available quantity"}</span>
+          <select value={value.quantity} onChange={(event) => onToggle("quantity", event.target.value || value.quantity)}>
+            <option value="">{capacityWords ? "Select order size" : "Select quantity"}</option>
+            {panel.quantities.map((option) => <option value={option.id} key={option.id}>{option.label}</option>)}
+          </select>
+        </label>
+        <div className="directory-capacity-presets">
+          {chip("startWindow", { id: panel.startWindows[0].key, label: panel.startWindows[0].label }, value.startWindow === panel.startWindows[0].key)}
+          {chip("quantity", panel.quantities[0], value.quantity === panel.quantities[0].id)}
+        </div>
+        <p>{capacityWords ? "Filter by when a sourcing team can begin and the order sizes its partner network supports." : "Use quick presets, or open the dropdowns for exact windows and quantities."}</p>
+      </FilterGroup>
+    </>
+  );
+}
+
+/** `live`: as MarketplaceFactoryCard's. */
+function DirectoryFactoryCard({ factory, onQuote, live = null }) {
+  if (live) {
+    return (
+      <article className="directory-factory-card">
+        <div className="directory-factory-intro">
+          <div className="factory-avatar">{factory.logoUrl ? <img src={factory.logoUrl} alt="" /> : factory.initials}</div>
+          <div>
+            <div className="factory-name-row">
+              <h2>
+                <a
+                  className="directory-factory-profile-link"
+                  href={live.href}
+                  onClick={(event) => {
+                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                    event.preventDefault();
+                    live.onOpen();
+                  }}
+                >
+                  {factory.name}
+                </a>
+              </h2>
+              {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} vendor`} />}
+            </div>
+            <p>{factory.location}</p>
+            {factory.specialty && <strong>{factory.specialty}</strong>}
+          </div>
+        </div>
+        <div className="directory-factory-metrics" aria-hidden="true" />
+        <div className="directory-factory-actions">
+          {live.save && (
+            <button className="secondary-btn" type="button" aria-pressed={live.save.saved} disabled={live.save.busy} onClick={live.save.onToggle}>
+              {live.save.saved ? "Saved" : "Save"}
+            </button>
+          )}
+          <button className="primary-btn" type="button" onClick={live.onQuote}>Request quote</button>
+        </div>
+        {factory.tags.length > 0 && (
+          <div className="tag-row compact-tags directory-tags">
+            {factory.tags.map((tag) => <span className="tag" key={tag}>{tag}</span>)}
+          </div>
+        )}
+        {factory.capacityTags.length > 0 && (
+          <div className="tag-row compact-tags directory-capacity-tags">
+            {factory.capacityTags.map((tag) => <span className="tag blue-tag" key={tag}>{tag}</span>)}
+          </div>
+        )}
+        {factory.insight.length > 0 && (
+          <div className="directory-insight-box">
+            <strong>Insights about this {factory.vendorType === "trading" ? "trading company" : "factory"}</strong>
+            {factory.insight.map((line) => <p key={line}>• {line}</p>)}
+          </div>
+        )}
+      </article>
+    );
+  }
   return (
     <article className={factory.featured ? "directory-factory-card featured" : "directory-factory-card"}>
       <div className="directory-factory-intro">
@@ -5932,11 +6139,19 @@ function DirectoryFactoryCard({ factory, onQuote }) {
   );
 }
 
-function FactoryMarketplaceScreen({ goTo }) {
+/**
+ * `live` (Browse vendors in the app): { vendorType, onVendorType, vendors,
+ * filters (see DirectoryLiveFilters), search, onSearch, summary, onListView,
+ * empty, card(vendor) → MarketplaceFactoryCard's `live` }. Without it the
+ * prototype draws its examples, unchanged.
+ */
+export function FactoryMarketplaceScreen({ goTo, live = null }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [vendorType, setVendorType] = useState("factories");
+  const [sampleVendorType, setVendorType] = useState("factories");
+  const vendorType = live ? live.vendorType : sampleVendorType;
+  const chooseVendorType = live ? live.onVendorType : setVendorType;
   const isTrading = vendorType === "trading";
-  const vendors = isTrading ? marketplaceTradingCompanies : marketplaceFactories;
+  const vendors = live ? live.vendors : isTrading ? marketplaceTradingCompanies : marketplaceFactories;
 
   useEffect(() => {
     if (!filtersOpen) return undefined;
@@ -5972,10 +6187,11 @@ function FactoryMarketplaceScreen({ goTo }) {
         <div className="directory-filter-header">
           <strong>Filters</strong>
           <div className="marketplace-filter-header-actions">
-            <button type="button">Reset</button>
+            <button type="button" onClick={live ? live.filters.onReset : undefined}>Reset</button>
             <button className="marketplace-filter-close" type="button" onClick={() => setFiltersOpen(false)}>Close</button>
           </div>
         </div>
+        {live ? <DirectoryLiveFilters filters={{ ...live.filters, isTrading }} /> : (<>
         <FilterGroup title={isTrading ? "Sourcing regions" : "Production type"}>
           {(isTrading
             ? ["China", "Portugal", "Korea", "India", "Turkey", "Vietnam"]
@@ -6073,12 +6289,13 @@ function FactoryMarketplaceScreen({ goTo }) {
           </div>
           <p>Use quick presets, or open the dropdowns for exact windows and quantities.</p>
         </FilterGroup>
+        </>)}
       </aside>
 
       <section className="marketplace-results" aria-label={`${isTrading ? "Trading company" : "Factory"} marketplace results`}>
         <div className="marketplace-vendor-toggle" role="tablist" aria-label="Vendor type">
-          <button className={!isTrading ? "active" : ""} type="button" role="tab" aria-selected={!isTrading} onClick={() => setVendorType("factories")}>Factories</button>
-          <button className={isTrading ? "active" : ""} type="button" role="tab" aria-selected={isTrading} onClick={() => setVendorType("trading")}>Trading companies</button>
+          <button className={!isTrading ? "active" : ""} type="button" role="tab" aria-selected={!isTrading} onClick={() => chooseVendorType("factories")}>Factories</button>
+          <button className={isTrading ? "active" : ""} type="button" role="tab" aria-selected={isTrading} onClick={() => chooseVendorType("trading")}>Trading companies</button>
         </div>
         <header className="marketplace-header">
           <div>
@@ -6086,12 +6303,21 @@ function FactoryMarketplaceScreen({ goTo }) {
           </div>
           <label className="directory-search marketplace-search">
             <SearchIcon />
-            <input placeholder={isTrading ? "Search sourcing regions, services, product categories..." : "Search shirts, cardigans, denim wash, baby rompers..."} />
+            {live ? (
+              <input
+                placeholder={isTrading ? "Search sourcing regions, services, product categories..." : "Search shirts, cardigans, denim wash, baby rompers..."}
+                value={live.search}
+                aria-label={isTrading ? "Search trading companies" : "Search factories"}
+                onChange={(event) => live.onSearch(event.target.value)}
+              />
+            ) : (
+              <input placeholder={isTrading ? "Search sourcing regions, services, product categories..." : "Search shirts, cardigans, denim wash, baby rompers..."} />
+            )}
           </label>
         </header>
         <div className="marketplace-summary">
           <div>
-            <strong>{isTrading ? "14 trading companies" : "36 factories"}</strong>
+            <strong>{live ? live.summary : isTrading ? "14 trading companies" : "36 factories"}</strong>
             <span>{isTrading ? "showing sourcing regions, partner networks, managed services, and verified company details" : "showing larger samples, exact garment tags, specialties, and verified capability notes"}</span>
           </div>
           <div className="directory-summary-actions">
@@ -6106,19 +6332,32 @@ function FactoryMarketplaceScreen({ goTo }) {
               Filters
             </button>
             <button className="filter-button sort-button" type="button">Sort: Best fit</button>
+            {live?.onListView && <button className="filter-button sort-button" type="button" onClick={live.onListView}>List view</button>}
           </div>
         </div>
         <div className="marketplace-card-list">
           {vendors.map((factory) => (
-            <MarketplaceFactoryCard factory={factory} vendorType={isTrading ? "trading" : "factory"} key={factory.name} onQuote={() => goTo("describe")} />
+            <MarketplaceFactoryCard
+              factory={factory}
+              vendorType={isTrading ? "trading" : "factory"}
+              key={live ? factory.id : factory.name}
+              onQuote={() => goTo("describe")}
+              live={live ? live.card(factory) : null}
+            />
           ))}
+          {live && !vendors.length && <p className="directory-empty-note">{live.empty}</p>}
         </div>
       </section>
     </div>
   );
 }
 
-function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote }) {
+/**
+ * `live`: { href, onOpen, onQuote, onMessage, save: { saved, busy, onToggle } }.
+ * A live card leaves out what nothing records (match, rating, Club orders),
+ * and any button with nothing behind it.
+ */
+function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote, live = null }) {
   const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
   const updateSampleScroll = (element) => {
     if (!element) return;
@@ -6132,7 +6371,28 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote }) {
   return (
     <article className={`marketplace-factory-card${factory.featured ? " featured" : ""}${["Tirupur Natural Studio", "Hangzhou Denim Lab"].includes(factory.name) ? " marketplace-tight-wrapped-name" : ""}`}>
       <div className="marketplace-factory-top">
-        {vendorType === "factory" ? (
+        {live ? (
+          <a
+            className="marketplace-factory-title marketplace-factory-profile-link"
+            href={live.href}
+            aria-label={`View ${factory.name} ${vendorType === "trading" ? "trading company" : "factory"} profile`}
+            onClick={(event) => {
+              if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+              event.preventDefault();
+              live.onOpen();
+            }}
+          >
+            <div className="factory-avatar">{factory.logoUrl ? <img src={factory.logoUrl} alt="" /> : factory.initials}</div>
+            <div>
+              <div className="factory-name-row">
+                <h2>{factory.name}</h2>
+                {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} vendor`} />}
+              </div>
+              <p>{factory.location}</p>
+              {vendorType === "trading" && <span className="marketplace-vendor-type">Trading company</span>}
+            </div>
+          </a>
+        ) : vendorType === "factory" ? (
           <a className="marketplace-factory-title marketplace-factory-profile-link" href={`/prototype.html?screen=factoryProfile&factory=${encodeURIComponent(factory.name)}&from=vendors`} aria-label={`View ${factory.name} factory profile`}>
             <div className="factory-avatar">{factory.initials}</div>
             <div>
@@ -6156,16 +6416,30 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote }) {
           </div>
           </div>
         )}
+        {live ? <div className="marketplace-factory-metrics" aria-hidden="true" /> : (
         <div className="marketplace-factory-metrics">
           <Metric label="match" value={factory.match} className={matchTierClass(factory.match)} />
           <Metric label="rating" value={factory.rating} />
           <span>{factory.orders}</span>
         </div>
+        )}
+        {live ? (
+          <div className="marketplace-factory-actions">
+            {live.save && (
+              <button className="secondary-btn" type="button" aria-pressed={live.save.saved} disabled={live.save.busy} onClick={live.save.onToggle}>
+                {live.save.saved ? "Saved" : "Save"}
+              </button>
+            )}
+            {live.onMessage && <button className="secondary-btn marketplace-message-action" type="button" onClick={live.onMessage}>Message</button>}
+            <button className="primary-btn" type="button" onClick={live.onQuote}>Request quote</button>
+          </div>
+        ) : (
         <div className="marketplace-factory-actions">
           <button className="secondary-btn" type="button">Save</button>
           <button className="secondary-btn marketplace-message-action" type="button">Message</button>
           <button className="primary-btn" type="button" onClick={onQuote}>Request quote</button>
         </div>
+        )}
       </div>
 
       <div className="marketplace-factory-body">
@@ -6178,11 +6452,14 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote }) {
               </div>
             ))}
           </div>
+          {(!live || factory.notes[0]) && (
           <div className="marketplace-note-list">
             <p>{factory.notes[0]}</p>
           </div>
+          )}
         </div>
 
+        {(!live || factory.products.length > 0) && (
         <div className="marketplace-samples-shell">
           <button
             className={sampleScroll.left ? "marketplace-samples-prev visible" : "marketplace-samples-prev"}
@@ -6223,9 +6500,11 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote }) {
             <img src="/assets/prototype-icons/dropdown.svg" alt="" />
           </button>
         </div>
+        )}
       </div>
 
       <div className="marketplace-tag-section">
+        {(!live || factory.categories.length > 0) && (
         <div>
           <span className="marketplace-tag-label">{vendorType === "trading" ? "Sources" : "Makes"}</span>
           <div className="tag-row compact-tags">
@@ -6234,6 +6513,8 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote }) {
             ))}
           </div>
         </div>
+        )}
+        {(!live || factory.capabilities.length > 0) && (
         <div>
           <span className="marketplace-tag-label">{vendorType === "trading" ? "Services" : "Specializes in"}</span>
           <div className="tag-row compact-tags">
@@ -6242,6 +6523,7 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote }) {
             ))}
           </div>
         </div>
+        )}
       </div>
     </article>
   );

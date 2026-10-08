@@ -2062,6 +2062,73 @@ async function main() {
       .select("*", { count: "exact", head: true }).eq("rfq_id", privateRfq.id);
     check(inviteCount === 1, `one factory was invited (${inviteCount})`);
 
+    // ================= BROWSE VENDORS =================
+    // The brand's sidebar item, on the designed marketplace: every published
+    // vendor and nothing else, with real filters, search and both layouts.
+    console.log("\nBROWSE VENDORS");
+    await page.evaluate(() => [...document.querySelectorAll(".side-nav button, nav button")].find((button) => button.textContent.trim() === "Browse vendors")?.click());
+    await waitFor(page, ".marketplace-factory-card", 25000);
+    await record(page, "Browse vendors", "every published vendor, on the designed marketplace");
+    const cardNames = () => page.evaluate(() => [...document.querySelectorAll(".marketplace-factory-card h2")].map((h) => h.textContent));
+    const browseNames = await cardNames();
+    check(browseNames.includes(factoryName), `the e2e factory is listed (${browseNames.length} factories)`);
+    const { data: unpublished } = await db.from("factory_profiles").select("orgs (name)").is("published_at", null);
+    const hidden = (unpublished ?? []).map((row) => row.orgs?.name).filter(Boolean);
+    check(!browseNames.some((name) => hidden.includes(name)), `no unpublished vendor is listed (${hidden.length} unpublished in the database)`);
+    const browseText = await page.locator(".marketplace-results").innerText();
+    check(!/Atelier Minho|Seoul Knit Works|96%|Club orders/.test(browseText), "none of the design's example vendors, scores or order counts");
+
+    // Search by the e2e factory's name, then a filter, then Reset.
+    await page.evaluate((value) => {
+      const input = document.querySelector(".marketplace-search input");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }, factoryName);
+    await page.waitForTimeout(400);
+    const searched = await cardNames();
+    check(searched.includes(factoryName) && searched.length < browseNames.length, `search narrows the list to that factory (${searched.join(", ")})`);
+    await clickButton(page, "reset");
+    await page.waitForTimeout(400);
+    check((await cardNames()).length === browseNames.length, "Reset brings every vendor back");
+    const filterResult = await page.evaluate(async () => {
+      const box = [...document.querySelectorAll(".marketplace-filter-panel .directory-check")].find((label) => label.textContent.trim() === "Wovens")?.querySelector("input");
+      box?.click();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return { found: Boolean(box), shown: document.querySelectorAll(".marketplace-factory-card").length };
+    });
+    check(filterResult.found && filterResult.shown <= browseNames.length, `a production-type filter narrows the list (${filterResult.shown} of ${browseNames.length})`);
+    await record(page, "Filtered by production type", "options from the taxonomy, not the design's list");
+    await clickButton(page, "reset");
+    await page.waitForTimeout(300);
+
+    // Trading companies on their own tab.
+    await page.evaluate(() => document.querySelectorAll(".marketplace-vendor-toggle button")[1]?.click());
+    await page.waitForTimeout(500);
+    const tradingCards = await page.evaluate(() => [...document.querySelectorAll(".marketplace-factory-card")].map((card) => card.innerText));
+    check(tradingCards.every((text) => /trading company/i.test(text)), `the Trading companies tab lists only trading companies (${tradingCards.length})`);
+    await page.evaluate(() => document.querySelectorAll(".marketplace-vendor-toggle button")[0]?.click());
+    await page.waitForTimeout(400);
+
+    // The directory list, and back to the cards.
+    await clickButton(page, "list view");
+    await waitFor(page, ".directory-factory-card", 15000);
+    check((await page.evaluate(() => location.pathname)).endsWith("/browse/list"), "List view opens the designed directory list");
+    await record(page, "Browse vendors, list view", "the design's directory layout, same vendors and filters");
+    await clickButton(page, "marketplace cards");
+    await waitFor(page, ".marketplace-factory-card", 15000);
+
+    // A card opens the vendor's profile, with the way back to Browse.
+    await page.evaluate((name) => {
+      const link = [...document.querySelectorAll(".marketplace-factory-card a.marketplace-factory-profile-link")].find((a) => a.querySelector("h2")?.textContent === name);
+      link?.click();
+    }, factoryName);
+    await waitFor(page, ".factory-profile-hero", 20000);
+    const fromBrowse = await page.locator(".factory-profile-page").innerText();
+    check(fromBrowse.includes(factoryName) && fromBrowse.includes("Back to vendors"), "a card opens that vendor's profile, with \"Back to vendors\"");
+    await clickButton(page, "back to vendors");
+    await waitFor(page, ".marketplace-factory-card", 15000);
+    check((await page.evaluate(() => location.pathname)).endsWith("/browse"), "Back to vendors returns to Browse vendors");
+
     // ================= THE HOME SCREEN =================
     // It used to be a heading, a notification list and a row of buttons, with
     // a line telling people the real screens lived in the prototype.
