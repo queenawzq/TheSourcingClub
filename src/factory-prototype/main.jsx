@@ -5252,7 +5252,11 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
           <button className="text-link" type="button" onClick={onBack}>‹ Back to RFQs</button>
           <h1>View RFQ</h1>
           <p>Review the brand request and the quote you submitted.</p>
-          <button className="secondary-btn factory-rfq-edit-btn" type="button" onClick={onEdit}>Edit quote</button>
+          {/* Live passes null once the quote can no longer change: accepted,
+              declined, or on a request that has closed. */}
+          {onEdit !== null && (
+            <button className="secondary-btn factory-rfq-edit-btn" type="button" onClick={onEdit}>Edit quote</button>
+          )}
         </header>
 
         <div className="factory-submit-layout factory-rfq-read-layout">

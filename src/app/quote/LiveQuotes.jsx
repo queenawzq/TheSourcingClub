@@ -4,59 +4,46 @@
  * `QuotesScreen` and `FlowShell` come from src/prototype/main.jsx. This file
  * is the seam.
  *
- * Choosing a quote awards it, and awarding creates the production order in the
- * same transaction with a snapshot of the quote's commercial terms. The design
- * walks to a separate "contract" card first; live there is nothing to agree
- * there that award_quote does not already record, so choosing goes straight
- * to the order it creates.
+ * The design walks from here to one quote in full ("Review quote"), to the
+ * conversation with that vendor ("Message"), and to the contract step
+ * ("Choose quote"), where the terms are read back before award_quote commits
+ * them. All three used to do nothing live: the screen was handed a goTo that
+ * went nowhere.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useState } from "react";
 import { FlowShell, QuotesScreen } from "../../prototype/main.jsx";
-import { awardQuote, listQuotesForRfq, quoteTotalCents } from "../../lib/domain/quote.js";
-import { formatMoney } from "../../lib/money.js";
+import { openRfqThread } from "../../lib/domain/message.js";
+import { useRouter } from "../../lib/router.jsx";
+import { useQuoteReview } from "./useQuoteReview.js";
 
-const initialsOf = (name) =>
-  (name ?? "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word[0].toUpperCase())
-    .join("") || "??";
-
-export default function LiveQuotes({ rfqId, onAwarded }) {
-  const [quotes, setQuotes] = useState(null);
+export default function LiveQuotes({ rfqId }) {
+  const { navigate } = useRouter();
+  const { state, error: loadError } = useQuoteReview(rfqId);
   const [selected, setSelected] = useState(null);
   const [compare, setCompare] = useState([]);
   const [compareOpen, setCompareOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const reload = useCallback(async () => {
-    try {
-      setQuotes(await listQuotesForRfq(rfqId));
-    } catch (failure) {
-      setError(failure);
-    }
-  }, [rfqId]);
-
-  useEffect(() => { reload(); }, [reload]);
-
-  async function award(quoteId) {
-    setBusy(true);
+  async function message(card) {
     setError(null);
     try {
-      await awardQuote(quoteId);
-      onAwarded?.(quoteId);
+      const thread = await openRfqThread(rfqId, card.factoryOrgId);
+      navigate(`/messages/${thread.id}`);
     } catch (failure) {
       setError(failure);
-    } finally {
-      setBusy(false);
     }
   }
 
-  if (!quotes) return null;
+  if (loadError) {
+    return (
+      <FlowShell screen="quotes" canBack={false} primaryLabel="">
+        <p className="composer-error" role="alert">{loadError.message}</p>
+      </FlowShell>
+    );
+  }
+  if (!state) return null;
 
-  if (!quotes.length) {
+  if (!state.quotes.length) {
     return (
       <FlowShell screen="quotes" canBack={false}>
         <p className="projects-empty" data-testid="quotes-empty">
@@ -74,38 +61,47 @@ export default function LiveQuotes({ rfqId, onAwarded }) {
    * recorded at all — both are left empty rather than filled with a number
    * that came from nowhere.
    */
-  const shaped = quotes.map((quote) => {
-    const total = quoteTotalCents(quote);
-    const name = quote.orgs?.name ?? quote.factory_name ?? "Vendor";
-    return {
-      id: quote.id,
-      initials: initialsOf(name),
-      name,
-      location: "",
-      trust: "trusted",
-      fit: "",
-      response: "",
-      fitType: `Version ${quote.version}`,
-      fitSummary: quote.factory_notes ?? "",
-      factoryNote: quote.shipping_notes ?? "",
-      price: quote.unit_price_cents == null ? "—" : formatMoney(quote.unit_price_cents, quote.currency),
-      quoteQuantity: quote.production_quantity ? `${quote.production_quantity} units` : "—",
-      lead: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "—",
-      total: total == null ? "—" : formatMoney(total, quote.currency),
-      stats: [
-        ["Unit price", quote.unit_price_cents == null ? "—" : formatMoney(quote.unit_price_cents, quote.currency)],
-        ["Quantity", quote.production_quantity ? String(quote.production_quantity) : "—"],
-        ["Bulk lead time", quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "—"],
-        ["Total", total == null ? "—" : formatMoney(total, quote.currency)],
-      ],
-      products: [],
-      categories: [],
-      capabilities: [],
-      notes: quote.factory_notes ? [quote.factory_notes] : [],
-      materialCosts: [],
-      samples: [],
-    };
-  });
+  const shaped = state.quotes.map(({ raw, view }) => ({
+    id: view.id,
+    factoryOrgId: raw.factory_org_id,
+    initials: view.initials,
+    name: view.name,
+    location: "",
+    trust: "trusted",
+    fit: "",
+    response: "",
+    fitType: `Version ${view.version}`,
+    fitSummary: view.notes,
+    factoryNote: raw.shipping_notes ?? "",
+    price: view.price || "—",
+    quoteQuantity: view.quantity || "—",
+    lead: view.lead || "—",
+    total: view.total || "—",
+    stats: [
+      ["Unit price", view.price || "—"],
+      ["Quantity", view.quantity || "—"],
+      ["Bulk lead time", view.lead || "—"],
+      ["Total", view.total || "—"],
+    ],
+    // What the compare table prints, from this quote rather than the
+    // prototype's per-vendor constants. Blank where the vendor gave nothing.
+    comparison: {
+      productionSubtotal: view.productionSubtotal || "—",
+      sampleSubtotal: view.sampleSubtotal || "—",
+      additionalMaterialSubtotal: "—",
+      paymentTerms: view.paymentTerms || "—",
+      samplePlan: view.samplePlan || "—",
+      shipping: view.shipping || "—",
+      capacityWindow: view.capacityWindow || "—",
+      total: view.total || "—",
+    },
+    products: [],
+    categories: [],
+    capabilities: [],
+    notes: view.notes ? [view.notes] : [],
+    materialCosts: [],
+    samples: [],
+  }));
 
   return (
     <FlowShell screen="quotes" canBack={false} primaryLabel="">
@@ -119,8 +115,9 @@ export default function LiveQuotes({ rfqId, onAwarded }) {
         setQuoteCompareOpen={setCompareOpen}
         setSelectedReorderProject={() => {}}
         goTo={() => {}}
-        onAward={award}
-        busy={busy}
+        onReview={(card) => navigate(`/rfqs/${rfqId}/quotes/${card.id}`)}
+        onChoose={(card) => navigate(`/rfqs/${rfqId}/quotes/${card.id}/contract`)}
+        onMessage={message}
         error={error}
       />
     </FlowShell>
