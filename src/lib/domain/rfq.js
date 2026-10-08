@@ -428,3 +428,29 @@ export async function unsaveBrand(orgId, brandOrgId) {
     "remove this saved brand",
   );
 }
+
+/** The brand's saved vendors, newest first, with each vendor's name. */
+export async function listSavedFactories(orgId) {
+  return unwrap(
+    await supabase
+      .from("saved_factories")
+      .select("factory_org_id, created_at, orgs!saved_factories_factory_org_id_fkey (id, name)")
+      .eq("org_id", orgId)
+      .order("created_at", { ascending: false }),
+    "load your saved vendors",
+  );
+}
+
+export async function saveFactory(orgId, factoryOrgId, userId) {
+  return unwrap(
+    await supabase.from("saved_factories").insert({ org_id: orgId, factory_org_id: factoryOrgId, saved_by: userId }),
+    "save this vendor",
+  );
+}
+
+export async function unsaveFactory(orgId, factoryOrgId) {
+  return unwrap(
+    await supabase.from("saved_factories").delete().eq("org_id", orgId).eq("factory_org_id", factoryOrgId),
+    "remove this saved vendor",
+  );
+}

@@ -8,12 +8,14 @@
  * (load-profile.js's loadVendorDirectory). A card opens the vendor's profile
  * as a brand sees it (/factories/:id). "Request quote" opens the composer
  * with the vendor ticked; "Message" opens the brand's latest conversation
- * with it, and is left out when there is none, as on the profile.
+ * with it, and is left out when there is none, as on the profile. "Save"
+ * keeps the vendor on the brand's Saved page.
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { FactoryMarketplaceScreen, FactorySearchScreen } from "../../prototype/main.jsx";
 import { useRouter } from "../../lib/router.jsx";
 import { loadVendorDirectory } from "../profile/load-profile.js";
+import { useSavedVendors } from "./useSavedVendors.js";
 import {
   activeFilterCount,
   emptyFilters,
@@ -46,8 +48,9 @@ function matchingLine(panel, filters, query) {
   return words.length ? `matching ${words.join(", ")}` : "every vendor listed on TSC, best fit first";
 }
 
-export default function LiveBrandBrowse({ org, view = "cards" }) {
+export default function LiveBrandBrowse({ org, user, view = "cards" }) {
   const { navigate } = useRouter();
+  const { saveFor, error: saveError } = useSavedVendors(org, user);
   const [state, setState] = useState({ data: null, error: null });
   const [vendorType, setVendorType] = useState(
     () => (new URLSearchParams(window.location.search).get("type") === "trading" ? "trading" : "factories"),
@@ -91,7 +94,7 @@ export default function LiveBrandBrowse({ org, view = "cards" }) {
       onOpen: () => navigate(`/factories/${vendor.id}?from=browse`),
       onQuote: () => navigate(`/rfqs/new?invite=${vendor.id}`),
       onMessage: thread ? () => navigate(`/messages/${thread.id}`) : null,
-      save: null,
+      save: saveFor(vendor.id),
     };
   };
 
@@ -121,9 +124,14 @@ export default function LiveBrandBrowse({ org, view = "cards" }) {
     card,
   };
 
+  const saveAlert = saveError
+    ? <p className="live-profile-error directory-save-error" role="alert">Couldn't update your saved vendors: {saveError.message}</p>
+    : null;
+
   if (view === "list") {
     return (
       <main className="directory-page">
+        {saveAlert}
         <FactorySearchScreen
           goTo={() => {}}
           live={{
@@ -138,6 +146,7 @@ export default function LiveBrandBrowse({ org, view = "cards" }) {
 
   return (
     <main className="directory-page">
+      {saveAlert}
       <FactoryMarketplaceScreen
         goTo={() => {}}
         live={{

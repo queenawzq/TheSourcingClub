@@ -193,6 +193,25 @@ try {
     "the vendor marketplace renders its example factories, with no database",
   );
 
+  // Saved and Payments too: without `live`, the design's saved vendors, and
+  // its payments, fee row and $50 discount.
+  const savedVendors = await stagehand.browser.context.newPage(`${BASE}/prototype.html?screen=saved`);
+  await savedVendors.setViewportSize(1440, 1100);
+  await savedVendors.waitForTimeout(3000);
+  const savedVendorsBody = await savedVendors.locator("body").innerText();
+  check(
+    savedVendorsBody.includes("Vendors Maison Rue saved") && savedVendorsBody.includes("Atelier Minho") && savedVendorsBody.includes("Highest rating"),
+    "the brand's Saved page renders its example vendors",
+  );
+  const billing = await stagehand.browser.context.newPage(`${BASE}/prototype.html?screen=billing`);
+  await billing.setViewportSize(1440, 1100);
+  await billing.waitForTimeout(3000);
+  const billingBody = await billing.locator("body").innerText();
+  check(
+    billingBody.includes("$2,539.00") && billingBody.includes("Platform service fee") && billingBody.includes("Atelier Minho"),
+    "the brand's Payments page renders its example payments",
+  );
+
   // The brand's own profile, its completion page, and a factory's view of a
   // brand take a `live` prop too; without one they keep the design's example.
   const brandProfile = await stagehand.browser.context.newPage(`${BASE}/prototype.html?screen=profile`);

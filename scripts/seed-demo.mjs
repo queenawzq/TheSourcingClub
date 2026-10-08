@@ -755,6 +755,84 @@ await orderWithCancelProposed({
   reason: "The windbreaker was cut from the AW27 range.",
 });
 
+// Payments in each state the brand's Payments page lists, walked through the
+// real steps: the factory sends its fit sample for approval, the brand
+// approves it (its payment falls due) and marks the money sent, and the demo
+// admin, through its own login, confirms it arrived and releases it. Three
+// running orders, because one order's payments move one after the other.
+console.log("payments");
+// Where a brand is told to send Demo Factory's money, so a due payment's page
+// lets the brand record it as sent. Plainly not a real account.
+must(await factory.client.from("factory_payout_accounts").insert({
+  org_id: factoryOrg.id, label: "Demo account", bank_name: "Demo Bank (test data, not a real account)",
+  account_name: "Demo Factory", account_number_last4: "0000", bank_country: "PT",
+  instructions: "Demo data only. Nothing is ever sent to this account.", is_primary: true,
+}), "the factory's payout details");
+async function runningOrder({ title, brief, quantity, unitPrice }) {
+  const rfq = await publishRequest({
+    title, brief, quantity,
+    colours: [["Ecru", quantity]],
+    material: "As per the tech pack",
+    samples: "Fit sample before bulk",
+    extra: "",
+    month: "2027-03-01",
+    tags: [["product_category", "tops"], ["region", "portugal"]],
+    question: "Can you hold this price for the reorder?",
+  });
+  let order = await award(await sendQuote(factory, factoryOrg, rfq, {
+    price: unitPrice, quantity, lead: 30, note: "Fit sample, then bulk.",
+  }));
+  must(await brand.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `brand confirms: ${title}`);
+  order = must(await admin.from("production_orders").select("*").eq("id", order.id).single(), `order: ${title}`);
+  if (order.status === "pending_schedule") {
+    must(await factory.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `factory agrees: ${title}`);
+  }
+  return order;
+}
+/** The fit sample sent for approval and approved: its payment is due. */
+async function approveFitSample(order, title) {
+  const step = must(await admin.from("order_milestones").select("id")
+    .eq("order_id", order.id).eq("state", "active").order("sort").limit(1).single(), `first step: ${title}`);
+  must(await factory.client.rpc("post_milestone_update", {
+    target_milestone: step.id, body: "Fit sample is sewn and measured against the spec sheet.", document_ids: [],
+  }), `factory update: ${title}`);
+  must(await factory.client.rpc("submit_milestone", { target_milestone: step.id }), `send for approval: ${title}`);
+  must(await brand.client.rpc("approve_milestone", { target_milestone: step.id, note: "Fit approved." }), `approve: ${title}`);
+  return must(await admin.from("order_payments").select("id, state").eq("milestone_id", step.id).single(), `fit payment: ${title}`);
+}
+const dueNow = async (order, title) => must(await admin.from("order_payments").select("id, state")
+  .eq("order_id", order.id).eq("state", "due").single(), `the payment due: ${title}`);
+const markSent = async (payment, reference) =>
+  must(await brand.client.rpc("mark_payment_sent", { target_payment: payment.id, reference, note: null }), `sent: ${reference}`);
+const confirmArrived = async (payment) =>
+  must(await adminUser.client.rpc("confirm_payment_received", { target_payment: payment.id, amount_received: null, note: "Arrived in full." }), "confirm");
+
+// 1. Fit sample paid on to the factory ("Paid"); the bulk deposit confirmed
+//    by TSC and not released yet ("Funded").
+const poplinTitle = "Organic poplin shirt, AW27";
+const poplin = await runningOrder({ title: poplinTitle, brief: "160 organic poplin shirts, relaxed fit.", quantity: 160, unitPrice: 2600 });
+const poplinFit = await approveFitSample(poplin, poplinTitle);
+await markSent(poplinFit, "DB-AW27-0412");
+await confirmArrived(poplinFit);
+must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Released after the fit approval." }), "release the fit sample");
+const poplinDeposit = await dueNow(poplin, poplinTitle);
+await markSent(poplinDeposit, "DB-AW27-0419");
+await confirmArrived(poplinDeposit);
+// 2. Fit sample wired, waiting for TSC to confirm it arrived ("Sent").
+const ribTitle = "Merino rib tank, AW27";
+const rib = await runningOrder({ title: ribTitle, brief: "120 fine merino rib tanks.", quantity: 120, unitPrice: 3100 });
+await markSent(await approveFitSample(rib, ribTitle), "DB-AW27-0423");
+// 3. Fit sample approved and owed ("Due").
+const denimTitle = "Washed denim jacket, AW27";
+const denim = await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme washed.", quantity: 90, unitPrice: 4800 });
+await approveFitSample(denim, denimTitle);
+
+// The brand's saved vendors (Saved), saved through its own login.
+must(await brand.client.from("saved_factories").insert([
+  { org_id: brandOrg.id, factory_org_id: factoryOrg.id, saved_by: brand.id },
+  { org_id: brandOrg.id, factory_org_id: tradingOrg.id, saved_by: brand.id },
+]), "the brand saves two vendors");
+
 // Credits and a discount code, so the Savings card has real figures.
 must(await admin.from("credit_ledger").insert({
   org_id: brandOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
@@ -782,9 +860,14 @@ done. Every login uses the password "${PASSWORD}".
     - "${tote.title}": an order cancelled by both sides
     - "Linen trousers, SS27": the factory proposed cancelling (Accept / Keep order)
     - "Recycled nylon windbreaker": the brand proposed cancelling (Withdraw)
+    - "Organic poplin shirt, AW27": fit sample paid to the factory, bulk deposit funded
+    - "Merino rib tank, AW27": fit sample payment sent, waiting for TSC to confirm
+    - "Washed denim jacket, AW27": fit sample payment due
+  Payments lists those four payments (Paid, Funded, Sent, Due) and its discount code.
   Its profile (/profile) is filled in, with a pending invitation.
   ${LOGINS.factory.name} has it under Saved → Saved brands.
   Browse vendors lists ${LOGINS.factory.name} and ${LOGINS.secondFactory.name} (Factories) and ${LOGINS.tradingCompany.name} (Trading companies).
+  Saved has ${LOGINS.factory.name} and ${LOGINS.tradingCompany.name}.
   The admin's verification queue has ${LOGINS.newFactory.name}.
 
   Run this again at any time to put the demo companies back to this state.

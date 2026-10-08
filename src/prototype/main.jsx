@@ -1484,18 +1484,24 @@ function CloseIconButton({ label }) {
   );
 }
 
-function BillingScreen({ accountType = "brand" }) {
+/**
+ * `live` (the brand's Payments page in the app): { metrics: [[label, value,
+ * tone]], rows: [{ id, title, client, meta, status, amount, href, onOpen }],
+ * empty, discount: { amount, note } | null, codes, onCopy(code), copied }.
+ * Without it the prototype draws its examples, unchanged.
+ */
+export function BillingScreen({ accountType = "brand", live = null }) {
   const isFactory = accountType === "factory";
   const [tab, setTab] = useState(isFactory ? "earnings" : "payments");
   const defaultFilter = isFactory ? "All clients" : "All vendors";
   const [client, setClient] = useState(defaultFilter);
-  const allRows = isFactory ? factoryBillingHistory[tab] : tab === "discounts" ? [] : brandBillingHistory;
+  const allRows = live ? (tab === "discounts" ? [] : live.rows) : isFactory ? factoryBillingHistory[tab] : tab === "discounts" ? [] : brandBillingHistory;
   const clients = [defaultFilter, ...Array.from(new Set(allRows.map((row) => row.client)))];
   const selectedClient = clients.includes(client) ? client : defaultFilter;
   const rows = selectedClient === defaultFilter ? allRows : allRows.filter((row) => row.client === selectedClient);
   const total = rows.reduce((sum, row) => sum + Number(row.amount.replace(/[$,]/g, "")), 0);
   const formattedTotal = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  const brandSummaryMetrics = [
+  const brandSummaryMetrics = live ? live.metrics : [
     ["total paid", formattedTotal],
     ["funded", "$120.00"],
     ["remaining", "$5,660.00"],
@@ -1550,6 +1556,15 @@ function BillingScreen({ accountType = "brand" }) {
       )}
       {!isFactory && tab === "discounts" && (
         <section className="brand-discounts-tab">
+          {live ? live.discount && (
+            <section className="brand-discount-summary-card">
+              <div>
+                <span>Available discount</span>
+                <strong>{live.discount.amount}</strong>
+              </div>
+              <p>{live.discount.note}</p>
+            </section>
+          ) : (
           <section className="brand-discount-summary-card">
             <div>
               <span>Available discount</span>
@@ -1557,18 +1572,24 @@ function BillingScreen({ accountType = "brand" }) {
             </div>
             <p>For eligible orders. Invite a brand to earn another $50 discount.</p>
           </section>
+          )}
           <header>
             <h2>Discount codes</h2>
             <p>Use an unused code at payment. Used codes stay here so finance can track order discounts.</p>
           </header>
           <div className="brand-discount-code-list">
-            {brandDiscountCodes.map((item) => (
+            {live && !live.codes.length && <p className="billing-empty-note">No discount codes yet.</p>}
+            {(live ? live.codes : brandDiscountCodes).map((item) => (
               <article className={item.status === "Used" ? "brand-discount-code-row used" : "brand-discount-code-row"} key={item.code}>
                 <div>
                   <span>{item.source}</span>
                   <strong>{item.code}</strong>
                   {item.usedOn && <p>Used on {item.usedOn}</p>}
-                  {item.status === "Unused" && <button className="brand-copy-code-btn" type="button">Copy code</button>}
+                  {item.status === "Unused" && (live ? (
+                    <button className="brand-copy-code-btn" type="button" onClick={() => live.onCopy(item.code)}>
+                      {live.copied === item.code ? "Copied" : "Copy code"}
+                    </button>
+                  ) : <button className="brand-copy-code-btn" type="button">Copy code</button>)}
                 </div>
                 <div>
                   <b>{item.value}</b>
@@ -1597,10 +1618,25 @@ function BillingScreen({ accountType = "brand" }) {
       )}
       {(isFactory || tab === "payments") && (
         <div className="billing-history-list">
+          {live && !rows.length && <p className="billing-empty-note">{live.empty}</p>}
           {rows.map((row) => (
-            <article className="billing-history-row" key={`${row.title}-${row.meta}`}>
+            <article className="billing-history-row" key={live ? row.id : `${row.title}-${row.meta}`}>
               <div>
-                <strong>{row.title}</strong>
+                {live ? (
+                  <strong>
+                    <a
+                      className="billing-row-link"
+                      href={row.href}
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                        event.preventDefault();
+                        row.onOpen();
+                      }}
+                    >
+                      {row.title}
+                    </a>
+                  </strong>
+                ) : <strong>{row.title}</strong>}
                 <span>{row.client} - {row.meta}</span>
               </div>
               <span className="billing-status">{row.status}</span>
@@ -4168,8 +4204,9 @@ function HomeProjectMiniCard({ project, goTo, onOpen }) {
  * performance: { primary, primaryLabel, metrics }, intro, overviewRows,
  * fitSections: [[label, items]], samples: [{ title, meta, src }], location,
  * capacityRows, trust: [{ name, status, verified }], back: { label, onClick },
- * onSave, onMessage, onRequestQuote, contact: { label, onClick } }`. A button
- * whose handler is missing is left out. Without `live` the screen shows the
+ * onSave, save: { saved, busy, onToggle }, onMessage, onRequestQuote,
+ * contact: { label, onClick } }`. A button whose handler is missing is left
+ * out; `save` makes "Save factory" a toggle ("Saved"). Without `live` the screen shows the
  * design's example, unchanged.
  */
 export function BrandFactoryProfileScreen({ goTo, live = null }) {
@@ -4255,7 +4292,11 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
             </div>
           </div>
           <div className="factory-profile-actions">
-            {view.onSave && <button className="secondary-btn" type="button" onClick={live ? view.onSave : undefined}>Save factory</button>}
+            {view.save ? (
+              <button className="secondary-btn" type="button" aria-pressed={view.save.saved} disabled={view.save.busy} onClick={view.save.onToggle}>
+                {view.save.saved ? "Saved" : "Save factory"}
+              </button>
+            ) : view.onSave && <button className="secondary-btn" type="button" onClick={live ? view.onSave : undefined}>Save factory</button>}
             {view.onMessage && <button className="secondary-btn" type="button" onClick={live ? view.onMessage : undefined}>Message</button>}
             {view.onRequestQuote && <button className="primary-btn" type="button" onClick={view.onRequestQuote}>Request quote</button>}
           </div>
@@ -6529,17 +6570,22 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote, live
   );
 }
 
-function SavedFactoriesScreen({ goTo }) {
-  const savedFactories = marketplaceFactories.slice(0, 4);
+/**
+ * `live` (the brand's Saved page in the app): { brandName, vendors, search,
+ * onSearch, sort, onSort, onBrowse, empty, card(vendor) → SavedFactoryCard's
+ * `live` }. Without it the prototype draws its examples, unchanged.
+ */
+export function SavedFactoriesScreen({ goTo, live = null }) {
+  const savedFactories = live ? live.vendors : marketplaceFactories.slice(0, 4);
 
   return (
     <div className="rfqs-shell saved-shell">
       <header className="rfqs-header saved-header">
         <div>
           <h1>Saved vendors</h1>
-          <p>Vendors Maison Rue saved for current quotes, future sourcing, and production follow-up.</p>
+          <p>Vendors {live ? live.brandName : "Maison Rue"} saved for current quotes, future sourcing, and production follow-up.</p>
         </div>
-        <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse vendors</button>
+        <button className="secondary-btn" type="button" onClick={live ? live.onBrowse : () => goTo("factoryMarketplace")}>Browse vendors</button>
       </header>
 
       <section className="rfqs-controls saved-controls" aria-label="Saved vendor filters">
@@ -6547,29 +6593,43 @@ function SavedFactoriesScreen({ goTo }) {
           <span>Search saved vendors</span>
           <div>
             <SearchIcon />
-            <input placeholder="Vendor name, category, location..." />
+            {live ? (
+              <input placeholder="Vendor name, category, location..." value={live.search} aria-label="Search saved vendors" onChange={(event) => live.onSearch(event.target.value)} />
+            ) : (
+              <input placeholder="Vendor name, category, location..." />
+            )}
           </div>
         </label>
         <label className="rfqs-sort">
           <span>Sort By</span>
+          {live ? (
+            // Nothing records a rating, so live sorts by when it was saved or by fit.
+            <select value={live.sort} onChange={(event) => live.onSort(event.target.value)}>
+              <option value="recent">Recently saved</option>
+              <option value="fit">Best fit</option>
+            </select>
+          ) : (
           <select defaultValue="recent">
             <option value="recent">Recently saved</option>
             <option value="fit">Best fit</option>
             <option value="rating">Highest rating</option>
           </select>
+          )}
         </label>
       </section>
 
       <section className="saved-card-grid" aria-label="Saved vendors">
         {savedFactories.map((factory) => (
-          <SavedFactoryCard factory={factory} goTo={goTo} key={factory.name} />
+          <SavedFactoryCard factory={factory} goTo={goTo} key={live ? factory.id : factory.name} live={live ? live.card(factory) : null} />
         ))}
+        {live && !savedFactories.length && <p className="directory-empty-note">{live.empty}</p>}
       </section>
     </div>
   );
 }
 
-function SavedFactoryCard({ factory, goTo }) {
+/** `live`: { href, onOpen, onMessage, onQuote }; null links for a vendor no longer listed. */
+function SavedFactoryCard({ factory, goTo, live = null }) {
   const previews = factory.products || [];
   const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
   const updateSampleScroll = (element) => {
@@ -6584,6 +6644,27 @@ function SavedFactoryCard({ factory, goTo }) {
   return (
     <article className="saved-factory-card">
       <header className="saved-factory-card-top">
+        {live ? (
+          <a
+            className="marketplace-factory-title saved-factory-identity marketplace-factory-profile-link"
+            href={live.href ?? undefined}
+            aria-label={live.href ? `View ${factory.name} profile` : undefined}
+            onClick={(event) => {
+              if (!live.onOpen || event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+              event.preventDefault();
+              live.onOpen();
+            }}
+          >
+            <div className="factory-avatar">{factory.logoUrl ? <img src={factory.logoUrl} alt="" /> : factory.initials}</div>
+            <div>
+              <div className="factory-name-row">
+                <h2>{factory.name}</h2>
+                {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} vendor`} />}
+              </div>
+              <p>{factory.location}</p>
+            </div>
+          </a>
+        ) : (
         <div className="marketplace-factory-title saved-factory-identity">
           <div className="factory-avatar">{factory.initials}</div>
           <div>
@@ -6594,15 +6675,25 @@ function SavedFactoryCard({ factory, goTo }) {
             <p>{factory.location}</p>
           </div>
         </div>
+        )}
+        {live ? <div className="saved-factory-meta" aria-hidden="true" /> : (
         <div className="saved-factory-meta">
           <Metric label="match" value={factory.match} className={matchTierClass(factory.match)} />
           <Metric label="rating" value={factory.rating} />
           <span className="saved-factory-orders">{factory.orders}</span>
         </div>
+        )}
+        {live ? (
+          <div className="saved-factory-actions">
+            {live.onMessage && <button className="secondary-btn" type="button" onClick={live.onMessage}>Message</button>}
+            {live.onQuote && <button className="primary-btn" type="button" onClick={live.onQuote}>Request quote</button>}
+          </div>
+        ) : (
         <div className="saved-factory-actions">
           <button className="secondary-btn" type="button">Message</button>
           <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Request quote</button>
         </div>
+        )}
       </header>
 
       <div className="saved-factory-card-body">
@@ -6615,15 +6706,17 @@ function SavedFactoryCard({ factory, goTo }) {
               </div>
             ))}
           </div>
-          <p>{factory.notes?.[0]}</p>
+          {(!live || factory.notes?.[0]) && <p>{factory.notes?.[0]}</p>}
+          {(!live || factory.categories.length > 0) && (
           <div className="saved-factory-tag-section">
-            <span className="marketplace-tag-label">Makes</span>
+            <span className="marketplace-tag-label">{factory.vendorType === "trading" ? "Sources" : "Makes"}</span>
             <div className="tag-row compact-tags">
               {factory.categories.slice(0, 4).map((tag) => (
                 <span className="tag garment-tag" key={tag}>{tag}</span>
               ))}
             </div>
           </div>
+          )}
         </aside>
         {previews.length > 0 && (
           <div className="saved-factory-samples-shell">

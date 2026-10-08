@@ -1828,7 +1828,15 @@ async function main() {
     check(paymentQueueText.includes(bornOrder.order_number),
       "the payment is in the queue, named by the order the brand referenced");
 
-    await page.locator('[data-testid="confirm-payment"]').first().click();
+    // This order's row: the queue also holds any other payment waiting on
+    // staff (the demo data leaves one there on purpose).
+    const confirmedOwnRow = await page.evaluate((orderNumber) => {
+      const button = [...document.querySelectorAll('[data-testid="confirm-payment"]')]
+        .find((candidate) => candidate.closest("tr")?.innerText.includes(orderNumber));
+      button?.click();
+      return Boolean(button);
+    }, bornOrder.order_number);
+    check(confirmedOwnRow, "the admin confirms this order's payment, by its row in the queue");
     await page.waitForTimeout(3500);
     await record(page, "Confirmed", "this click is what a factory on the other side of the world is relying on");
 
@@ -2128,6 +2136,66 @@ async function main() {
     await clickButton(page, "back to vendors");
     await waitFor(page, ".marketplace-factory-card", 15000);
     check((await page.evaluate(() => location.pathname)).endsWith("/browse"), "Back to vendors returns to Browse vendors");
+
+    // ================= SAVED VENDORS =================
+    // Save on a Browse card, find it on Saved, remove it from its profile.
+    console.log("\nSAVED VENDORS");
+    const savedOnCard = await page.evaluate(async (name) => {
+      const card = [...document.querySelectorAll(".marketplace-factory-card")].find((item) => item.querySelector("h2")?.textContent === name);
+      [...(card?.querySelectorAll("button") ?? [])].find((button) => button.textContent === "Save")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return [...(card?.querySelectorAll(".marketplace-factory-actions button") ?? [])].map((button) => button.textContent);
+    }, factoryName);
+    check(savedOnCard.includes("Saved"), `Save on a Browse card turns it to "Saved" (${savedOnCard.join(", ")})`);
+    const { data: savedRows } = await db.from("saved_factories").select("factory_org_id").eq("org_id", brandOrg.id);
+    check(savedRows?.length === 1 && savedRows[0].factory_org_id === factoryOrg.id, "it is on the brand's own list in the database");
+
+    await page.evaluate(() => [...document.querySelectorAll(".side-nav button")].find((button) => button.textContent.trim() === "Saved")?.click());
+    await waitFor(page, ".saved-factory-card", 20000);
+    await record(page, "Saved vendors", "the vendors this brand saved, on the designed Saved page");
+    const savedText = await page.locator(".saved-shell").innerText();
+    check(savedText.includes(factoryName) && savedText.includes(brandName), "Saved lists that vendor, under the brand's own name");
+    check(!/Maison Rue|Atelier Minho|96%|Club orders/.test(savedText), "none of the design's example brand, vendors or scores");
+
+    await page.evaluate(() => document.querySelector(".saved-factory-card a.marketplace-factory-profile-link")?.click());
+    await waitFor(page, ".factory-profile-hero", 20000);
+    const savedProfile = await page.locator(".factory-profile-page").innerText();
+    check(savedProfile.includes("Back to saved vendors") && /\bSaved\b/.test(savedProfile), "its profile says Saved, with the way back to Saved");
+    await page.evaluate(() => [...document.querySelectorAll(".factory-profile-actions button")].find((button) => button.textContent === "Saved")?.click());
+    await page.waitForTimeout(1500);
+    const unsaved = await page.evaluate(() => [...document.querySelectorAll(".factory-profile-actions button")].map((button) => button.textContent));
+    check(unsaved.includes("Save factory"), "pressing Saved removes it (Save factory again)");
+    await clickButton(page, "back to saved vendors");
+    await waitFor(page, ".saved-shell", 15000);
+    await page.waitForTimeout(1500);
+    const emptySaved = await page.locator(".saved-shell").innerText();
+    check(!emptySaved.includes(factoryName) && /No saved vendors yet/.test(emptySaved), "Saved is empty again, and says how to save one");
+
+    // ================= PAYMENTS =================
+    // The brand's own order payments, where each stands, and its discounts.
+    console.log("\nPAYMENTS");
+    await page.evaluate(() => [...document.querySelectorAll(".side-nav button")].find((button) => button.textContent.trim() === "Payments")?.click());
+    await waitFor(page, ".billing-history-row", 20000);
+    await record(page, "Payments", "the brand's order payments, on the designed Payments page");
+    const paymentsText = await page.locator(".billing-history-page").innerText();
+    const { data: brandPayments } = await db.from("order_payments")
+      .select("id, state, amount_cents, order_id").eq("order_id", bornOrder.id).neq("state", "not_due");
+    check(brandPayments.length > 0 && brandPayments.every((payment) => paymentsText.includes(`$${(payment.amount_cents / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`)),
+      `every payment on the brand's order that is due or further along is listed (${brandPayments.length})`);
+    check(/Funded|Paid/.test(paymentsText) && paymentsText.includes(factoryName), "with its state in the design's words and the factory's name");
+    const { data: header } = await db.from("production_order_summary").select("paid_cents").eq("id", bornOrder.id).single();
+    check(paymentsText.includes(`$${(Number(header.paid_cents) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`),
+      "total paid is the order's own figure");
+    check(!/Atelier Minho|Platform service fee|Amex|Visa ending/i.test(paymentsText), "none of the design's example payments, fees or cards");
+    await clickButton(page, "discounts");
+    await page.waitForTimeout(500);
+    const discountsText = await page.locator(".brand-discounts-tab").innerText();
+    check(!discountsText.includes("$50 discount") && /Discount codes/.test(discountsText), "Discounts shows the brand's own codes, not the design's $50 example");
+    await page.evaluate(() => [...document.querySelectorAll(".billing-tabs button")].find((button) => button.textContent === "Payments")?.click());
+    await page.waitForTimeout(400);
+    await page.evaluate(() => document.querySelector(".billing-row-link")?.click());
+    await page.waitForTimeout(2500);
+    check(/\/orders\/[^/]+\/payments\/[^/]+$/.test(await page.evaluate(() => location.pathname)), "a payment opens its page on the order");
 
     // ================= THE HOME SCREEN =================
     // It used to be a heading, a notification list and a row of buttons, with

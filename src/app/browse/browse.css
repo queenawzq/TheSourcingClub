@@ -102,3 +102,25 @@
   color: var(--muted, #667085);
   font-size: 14px;
 }
+
+.directory-save-error {
+  margin: 0 0 12px;
+}
+
+/* Payments: a row's title opens that payment's page on its order. */
+.billing-row-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.billing-row-link:hover,
+.billing-row-link:focus-visible {
+  text-decoration: underline;
+}
+
+.billing-empty-note {
+  margin: 0;
+  padding: 20px 16px;
+  color: var(--muted, #667085);
+  font-size: 14px;
+}
