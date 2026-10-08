@@ -7790,6 +7790,18 @@ body:has(.factory-onboarding-page) {
   padding: var(--button-padding);
 }
 
+/* Live only: Edit and Withdraw side by side in the same slot. */
+.factory-rfq-read-header .factory-rfq-read-actions {
+  grid-area: edit;
+  display: flex;
+  gap: 10px;
+}
+
+.factory-rfq-read-header .factory-rfq-read-actions .secondary-btn {
+  min-height: var(--button-height);
+  padding: var(--button-padding);
+}
+
 .factory-review-header-top {
   display: flex;
   align-items: center;
@@ -8444,7 +8456,8 @@ body:has(.factory-onboarding-page) {
       "edit";
   }
 
-  .factory-rfq-read-header .factory-rfq-edit-btn {
+  .factory-rfq-read-header .factory-rfq-edit-btn,
+  .factory-rfq-read-header .factory-rfq-read-actions {
     justify-self: start;
   }
 

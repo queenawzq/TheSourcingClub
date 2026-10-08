@@ -5244,7 +5244,7 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   );
 }
 
-export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, onEdit, quote, status, priceTotal }) {
+export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, onEdit, onWithdraw, quote, status, priceTotal }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-rfq-read-page">
       <div className="factory-submit-content">
@@ -5254,7 +5254,17 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
           <p>Review the brand request and the quote you submitted.</p>
           {/* Live passes null once the quote can no longer change: accepted,
               declined, or on a request that has closed. */}
-          {onEdit !== null && (
+          {/* Not in the design: a live-only way to pull a sent quote back.
+              The prototype passes no handler, and the header is exactly as
+              drawn; with one, the two actions share the header's edit slot. */}
+          {onWithdraw ? (
+            <div className="factory-rfq-read-actions">
+              {onEdit !== null && (
+                <button className="secondary-btn" type="button" onClick={onEdit}>Edit quote</button>
+              )}
+              <button className="secondary-btn" type="button" data-testid="withdraw-quote" onClick={onWithdraw}>Withdraw quote</button>
+            </div>
+          ) : onEdit !== null && (
             <button className="secondary-btn factory-rfq-edit-btn" type="button" onClick={onEdit}>Edit quote</button>
           )}
         </header>
@@ -8982,6 +8992,10 @@ export function FactorySubmitQuote({
   onSubmit,
   busy = false,
   error = null,
+  // "Save draft" keeps the card without moving on. draftState is "saving" or
+  // "saved" while live reports back; the prototype passes neither.
+  onSaveDraft,
+  draftState = null,
 }) {
   const isZh = language === "zh";
   const cardRef = useRef(null);
@@ -9022,7 +9036,15 @@ export function FactorySubmitQuote({
       </div>
       <footer className="factory-submit-bottom-bar">
         <div className="factory-submit-bottom-actions">
-          <button className="secondary-btn" type="button">Save draft</button>
+          <button
+            className="secondary-btn"
+            type="button"
+            data-testid="save-quote-draft"
+            disabled={busy || draftState === "saving"}
+            onClick={() => onSaveDraft?.(readQuote())}
+          >
+            {draftState === "saving" ? "Saving…" : draftState === "saved" ? "Draft saved" : "Save draft"}
+          </button>
           {error && <p className="composer-error" role="alert">{error.message ?? String(error)}</p>}
           <button
             className="primary-btn"
@@ -9058,6 +9080,7 @@ export function FactoryReviewTotal({
   quoteValues,
   busy = false,
   error = null,
+  onSaveDraft,
 }) {
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
@@ -9127,7 +9150,7 @@ export function FactoryReviewTotal({
               </div>
               <div className="factory-ready-actions">
                 <button className="primary-btn" type="button" disabled={busy || short} onClick={onSendQuote}>{sendForCredits}</button>
-                <button className="secondary-btn" type="button">Save draft</button>
+                <button className="secondary-btn" type="button" onClick={onSaveDraft}>Save draft</button>
               </div>
             </section>
           </aside>
@@ -9136,7 +9159,7 @@ export function FactoryReviewTotal({
       <footer className="factory-submit-bottom-bar">
         <button className="secondary-btn" type="button" onClick={onBack}>Back</button>
         <div className="factory-submit-bottom-actions">
-          <button className="secondary-btn" type="button">Save draft</button>
+          <button className="secondary-btn" type="button" onClick={onSaveDraft}>Save draft</button>
           <button className="primary-btn" type="button" disabled={busy || short} onClick={onSendQuote}>{sendForCredits}</button>
         </div>
       </footer>
@@ -9434,6 +9457,7 @@ export function FactoryQuoteSent({
   language = "en",
   onBack,
   onDashboard,
+  onBrowse,
   // Live mounts pass the quote that was actually sent; the prototype passes
   // none and keeps the design's example figures.
   sent,
@@ -9471,7 +9495,7 @@ export function FactoryQuoteSent({
 
             <div className="success-actions">
               <button className="primary-btn" type="button" onClick={onDashboard}>{tx("Go to dashboard")}</button>
-              <button className="secondary-btn" type="button">{tx("Browse more requests")}</button>
+              <button className="secondary-btn" type="button" onClick={onBrowse}>{tx("Browse more requests")}</button>
             </div>
           </section>
 
