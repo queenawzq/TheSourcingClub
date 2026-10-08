@@ -52,6 +52,7 @@ import LiveHome from "./home/LiveHome.jsx";
 import LiveComposer from "./rfq/LiveComposer.jsx";
 import LiveOrderDetail from "./order/LiveOrderDetail.jsx";
 import LiveSettings from "./settings/LiveSettings.jsx";
+import LiveFactoryProfile from "./profile/LiveFactoryProfile.jsx";
 import NotificationList from "./NotificationList.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
 import "./shell.css";
@@ -595,6 +596,11 @@ function activeNavFor(path, isFactory) {
   return "";
 }
 
+/** Manufacturers have their designed profile page live; trading companies not yet. */
+function hasFactoryProfilePage(isFactory, profile) {
+  return isFactory && profile?.vendor_kind !== "trading_company";
+}
+
 const initialsOf = (name) =>
   (name ?? "")
     .split(/\s+/)
@@ -638,7 +644,7 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
           navigate(paths[label] ?? "/");
           if (window.matchMedia("(max-width: 760px)").matches) setCollapsed(true);
         }}
-        onProfile={() => navigate("/team")}
+        onProfile={() => navigate(hasFactoryProfilePage(isFactory, profile) ? "/profile" : "/team")}
         onToggle={() => setCollapsed((value) => !value)}
         onSignOut={onSignOut}
       />
@@ -953,6 +959,11 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
         throw new Error("Deliberate crash from /__crash — this is a self-test.");
       },
     },
+    // The factory's own profile. Brands and trading companies get theirs in
+    // later changes; until then /profile is the dashboard for them, as before.
+    ...(hasFactoryProfilePage(isFactory, profile)
+      ? [{ path: "/profile", render: () => <LiveFactoryProfile org={activeOrg} /> }]
+      : []),
     {
       path: "/team",
       render: () => (

@@ -69,7 +69,8 @@ On the design, live: **auth**, **brand and factory onboarding**, **the
 dashboard**, **requests**, **orders**, the **request composer and its invite
 step**, **comparing quotes**, the **order interior** (each side on its own
 designed screens), **setting the production steps**, the **factory's marketplace**,
-**conversations**, **settings**, and the whole **admin console**
+**conversations**, **settings**, the **factory's own profile** (`/profile`,
+read-only until its edit dialogs are wired), and the whole **admin console**
 (`admin.html`).
 
 **Only the brand sets the production steps** (design review, Oct 2; migration

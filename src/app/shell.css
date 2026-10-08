@@ -136,7 +136,9 @@
   --card: var(--surface);
   --paper: var(--bg-page);
   --ink: var(--text);
-  --tag-fill: var(--soft-blue-fill);
+  /* Only the prototype's stylesheet reads this, for every .tag and .pill; it
+     takes the prototype's own value, or each designed tag is tinted blue. */
+  --tag-fill: #ecf1f6;
 }
 
 * { box-sizing: border-box; }
