@@ -1105,6 +1105,36 @@ async function main() {
     check(savedSample?.bucket === "org-public" && savedSample?.caption === "Wovens · fit sample",
       "stored as a public sample image, name and description with it");
 
+    // The same company as a trading company: the account card opens the
+    // trading design (not Settings), and its commercial-terms dialog saves to
+    // the trading company's own columns. Switched back straight after.
+    await db.from("factory_profiles").update({ vendor_kind: "trading_company" }).eq("org_id", factoryOrg.id);
+    await page.goto(`${APP}/profile`);
+    await waitFor(page, "main.trading-company-profile-page", 20000);
+    await record(page, "Trading company profile", "the trading company's own design, with its real answers");
+    const tradingText = await page.locator("main.trading-company-profile-page").innerText();
+    check(tradingText.includes(factoryName) && /Supplier network/.test(tradingText) && /Commercial terms/.test(tradingText),
+      "a trading company gets its own designed profile, under its own name");
+    check(!/Pacific Source Partners|Maison Rue · Ari Chen|4\.9/.test(tradingText), "none of the design's example company");
+    await page.evaluate(() => [...document.querySelectorAll(".factory-profile-card")]
+      .find((card) => card.querySelector("h2")?.textContent === "Commercial terms")
+      ?.querySelector(".factory-profile-edit-button")?.click());
+    await waitFor(page, ".factory-profile-modal", 10000);
+    await page.evaluate(() => {
+      const input = [...document.querySelectorAll(".factory-profile-modal label")]
+        .find((label) => label.querySelector("span")?.textContent === "Number of active partner factories")
+        ?.querySelector("input");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, "12");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await page.locator(".factory-profile-modal .factory-onboarding-actions .primary-btn").click();
+    await page.waitForTimeout(2500);
+    check((await page.locator("main.trading-company-profile-page").innerText()).includes("12 active"),
+      "the commercial-terms dialog saves, and the profile shows it");
+    const { data: tradingRow } = await db.from("factory_profiles").select("partner_factory_count").eq("org_id", factoryOrg.id).single();
+    check(tradingRow.partner_factory_count === 12, "into the trading company's own column");
+    await db.from("factory_profiles").update({ vendor_kind: "manufacturer", partner_factory_count: null }).eq("org_id", factoryOrg.id);
+
     await page.goto(`${APP}/browse`);
     await waitForHeading(page, "browse rfqs");
     await waitFor(page, '[data-testid="open-rfq-card"]', 20000);
@@ -1936,6 +1966,22 @@ async function main() {
       () => document.querySelector('input[name="open-to-all"]')?.checked === false,
     );
     check(toggleOff, "the open-to-all toggle is off before publishing");
+
+    // A vendor's name opens its profile in place, and coming back keeps the
+    // vendors already chosen.
+    const chosenName = await page.evaluate(() => document.querySelector(".invite-selection-factory-card h3")?.textContent);
+    await page.locator(".invite-selection-factory-card a.marketplace-factory-profile-link").first().click();
+    await waitFor(page, ".brand-factory-public-profile .factory-profile-hero", 20000);
+    await record(page, "A vendor's profile, from the invite step", "the brand's designed view of the vendor, real data");
+    const brandViewText = await page.locator(".brand-factory-public-profile").innerText();
+    check(brandViewText.includes(chosenName) && brandViewText.includes("Back to vendor selection"),
+      "it is that vendor's profile, with the design's way back to the selection");
+    check(!/Atelier Minho|Club Standard|4\.9|Club orders/.test(brandViewText),
+      "none of the design's example vendor, and no order count a brand can't know");
+    await clickButton(page, "back to vendor selection");
+    await waitFor(page, ".invite-results", 15000);
+    const stillChosen = await page.evaluate(() => [...document.querySelectorAll(".invite-selection-factory-card.selected h3")].map((h) => h.textContent));
+    check(stillChosen.length === 1 && stillChosen[0] === chosenName, "back on the invite step, the same vendor is still chosen");
 
     // By label, not by position: the bottom bar's primary button is the one
     // that publishes, and clicking a vendor card first can leave the pointer

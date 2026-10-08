@@ -1,33 +1,26 @@
 /**
- * The factory's own profile, on Queena's designed page
- * (`FactoryManufacturingProfilePage`), with the factory's real records behind
- * it: what onboarding saved, its capacity, documents and orders. Its edit
- * dialogs save through factory-profile-save.js, and "See details" opens the
+ * The vendor's own profile, on Queena's designed pages, with the vendor's real
+ * records behind them: what onboarding saved, its capacity, documents and
+ * orders. A manufacturer gets `FactoryManufacturingProfilePage`, a trading
+ * company `TradingCompanyProfilePage`. The edit dialogs save through
+ * factory-profile-save.js, and "See details" / "Review profile" open the
  * designed completion page (`FactoryProfileCompletionPage`) on the same data.
  *
- * Everything is the factory reading and writing its own rows, so no new access
+ * Everything is the vendor reading and writing its own rows, so no new access
  * rule is involved.
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { FactoryManufacturingProfilePage, FactoryProfileCompletionPage } from "../../factory-prototype/main.jsx";
-import { getFactoryProfile, getSelectedTerms } from "../../lib/domain/profile.js";
-import { listTermsByKind } from "../../lib/domain/taxonomy.js";
-import { getCapacity } from "../../lib/domain/capacity-store.js";
-import { listDocuments, urlFor } from "../../lib/domain/documents.js";
-import { loadCertifications } from "../../lib/domain/certifications.js";
-import { listOrders } from "../../lib/domain/order.js";
-import { supabase, unwrap } from "../../lib/supabase.js";
+import { FactoryManufacturingProfilePage, FactoryProfileCompletionPage, TradingCompanyProfilePage } from "../../factory-prototype/main.jsx";
 import { useRouter } from "../../lib/router.jsx";
 import {
-  CHIP_KINDS,
   bookingMonths,
   documentStatus,
   factoryProfileEditForm,
   factoryProfileEditOptions,
   factoryProfileView,
-  titleFromFileName,
 } from "./factory-profile-view.js";
-import { SAVED_EDITORS, saveProfileSection } from "./factory-profile-save.js";
+import { tradingProfileEditForm, tradingProfileEditOptions, tradingProfileView } from "./trading-profile-view.js";
+import { SAVED_EDITORS, TRADING_EDITORS, saveProfileSection } from "./factory-profile-save.js";
 import {
   DOCUMENT_ACCEPT,
   FILE_EDITORS,
@@ -40,63 +33,8 @@ import {
   viewDocument,
   withdrawCertification,
 } from "./factory-profile-files.js";
+import { loadOwnProfile as loadParts } from "./load-profile.js";
 import "./profile.css";
-
-// `country` lets a saved location carry its country code, as onboarding does.
-const KINDS = [...Object.values(CHIP_KINDS), "capacity_category", "certification", "country"];
-
-/** Every record the page draws, loaded side by side. */
-async function loadParts(org) {
-  const [profile, terms, selected, capacity, references, registrations, logos, samples, walkthroughs, orders] =
-    await Promise.all([
-      getFactoryProfile(org.id),
-      listTermsByKind(KINDS),
-      getSelectedTerms("factory_profile", org.id),
-      getCapacity(org.id),
-      supabase.from("profile_references").select("id, title, counterparty, sort").eq("org_id", org.id).order("sort")
-        .then((result) => unwrap(result, "load your client references")),
-      listDocuments(org.id, "business_registration"),
-      listDocuments(org.id, "logo"),
-      listDocuments(org.id, "product_image"),
-      listDocuments(org.id, "walkthrough"),
-      listOrders(org.id),
-    ]);
-
-  const [certificationRows, logoUrl, sampleImages, walkthrough] = await Promise.all([
-    loadCertifications(org.id, terms.certification ?? []),
-    logos[0] ? urlFor(logos[0], 3600) : null,
-    // listDocuments is newest first; the design reads its samples in the
-    // order they were added.
-    Promise.all([...samples].reverse().map(async (doc) => ({
-      title: doc.title || titleFromFileName(doc.file_name),
-      caption: doc.caption ?? "",
-      src: await urlFor(doc, 3600),
-      doc,
-    }))),
-    // "#t=0.5" makes the browser draw a frame from the video as its preview,
-    // rather than a black box until it plays.
-    walkthroughs[0] ? urlFor(walkthroughs[0], 3600).then((url) => ({ ...walkthroughs[0], url: `${url}#t=0.5` })) : null,
-  ]);
-
-  return {
-    orgName: org.name,
-    profile,
-    terms,
-    selected,
-    capacity,
-    references,
-    certifications: certificationRows.map((row) => ({ ...row, hasFile: Boolean(row.document) })),
-    registrationDoc: registrations[0] ?? null,
-    logoUrl,
-    logos,
-    samples: sampleImages,
-    walkthrough,
-    walkthroughs,
-    // Only the orders this factory makes: a person in both a brand and a
-    // factory org gets the active org's side.
-    orders: orders.filter((order) => order.factory_org_id === org.id),
-  };
-}
 
 /** The page's data, and a reload that keeps the page up while it fetches. */
 function useProfileParts(org) {
@@ -213,6 +151,32 @@ function fileDialogs(org, parts, reload) {
   };
 }
 
+/** The completion page, on either kind of vendor's checks. */
+function Completion({ view, verified, editors, isTrading }) {
+  const { navigate } = useRouter();
+  const who = isTrading ? "your company" : "the factory";
+  return (
+    <FactoryProfileCompletionPage
+      onBack={() => navigate("/profile")}
+      live={{
+        percent: view.status.percent,
+        intro: verified
+          ? `You can receive matching RFQs now. Complete the items below to improve trust signals and help brands understand ${who} faster.`
+          : `Brands can see your profile now. Quoting opens once your business registration is approved. Complete the items below to help brands understand ${who} faster.`,
+        summaryLabel: "Complete",
+        checks: view.checks.map((check) => ({
+          ...check,
+          // A button only where the dialog that fixes it is live.
+          action: check.action && editors.includes(check.action.editor)
+            ? { label: check.action.label, onClick: () => navigate(`/profile/edit/${check.action.editor}`) }
+            : null,
+        })),
+        suggestions: view.checks.filter((check) => check.suggestion).map((check) => check.suggestion),
+      }}
+    />
+  );
+}
+
 /**
  * `page`: "profile" (the default) or "completion". `editor`, on the profile,
  * opens that dialog on arrival (the completion page's buttons link to
@@ -224,27 +188,36 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
 
   if (!parts) return <Waiting error={error} />;
 
-  const view = factoryProfileView(parts);
+  const isTrading = parts.profile?.vendor_kind === "trading_company";
+  const verified = parts.profile?.verification_status === "verified";
+  const view = isTrading ? tradingProfileView(parts) : factoryProfileView(parts);
+  const editors = isTrading ? TRADING_EDITORS : SAVED_EDITORS;
 
-  if (page === "completion") {
-    const verified = parts.profile?.verification_status === "verified";
+  if (page === "completion") return <Completion view={view} verified={verified} editors={editors} isTrading={isTrading} />;
+
+  const dialogs = {
+    editors,
+    initialEditor: editor,
+    files: fileDialogs(org, parts, reload),
+    onSave: async (section, form) => {
+      await saveProfileSection(org, section, form, parts);
+      await reload();
+    },
+    // Leave a dialog's own address once it closes, so a refresh shows the
+    // profile rather than reopening it.
+    onEditorClosed: () => editor && navigate("/profile", { replace: true }),
+  };
+
+  if (isTrading) {
     return (
-      <FactoryProfileCompletionPage
-        onBack={() => navigate("/profile")}
+      <TradingCompanyProfilePage
+        key={editor ?? "profile"}
+        onViewCompletion={() => navigate("/profile/completion")}
         live={{
-          percent: view.status.percent,
-          intro: verified
-            ? "You can receive matching RFQs now. Complete the items below to improve trust signals and help brands understand the factory faster."
-            : "Brands can see your profile now. Quoting opens once your business registration is approved. Complete the items below to help brands understand the factory faster.",
-          summaryLabel: "Complete",
-          checks: view.checks.map((check) => ({
-            ...check,
-            // A button only where the dialog that fixes it is live.
-            action: check.action && SAVED_EDITORS.includes(check.action.editor)
-              ? { label: check.action.label, onClick: () => navigate(`/profile/edit/${check.action.editor}`) }
-              : null,
-          })),
-          suggestions: view.checks.filter((check) => check.suggestion).map((check) => check.suggestion),
+          ...view,
+          ...dialogs,
+          form: tradingProfileEditForm(parts),
+          options: tradingProfileEditOptions(parts.terms),
         }}
       />
     );
@@ -258,19 +231,10 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
       onViewCompletion={() => navigate("/profile/completion")}
       live={{
         ...view,
-        editors: SAVED_EDITORS,
-        initialEditor: editor,
+        ...dialogs,
         form: factoryProfileEditForm(parts),
         options: factoryProfileEditOptions(parts.terms),
         months: bookingMonths(),
-        files: fileDialogs(org, parts, reload),
-        onSave: async (section, form) => {
-          await saveProfileSection(org, section, form, parts);
-          await reload();
-        },
-        // Leave a dialog's own address once it closes, so a refresh shows the
-        // profile rather than reopening it.
-        onEditorClosed: () => editor && navigate("/profile", { replace: true }),
       }}
     />
   );

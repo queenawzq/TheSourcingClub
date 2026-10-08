@@ -69,9 +69,12 @@ On the design, live: **auth**, **brand and factory onboarding**, **the
 dashboard**, **requests**, **orders**, the **request composer and its invite
 step**, **comparing quotes**, the **order interior** (each side on its own
 designed screens), **setting the production steps**, the **factory's marketplace**,
-**conversations**, **settings**, the **factory's own profile** (`/profile`,
-with every designed edit dialog, files included, and the completion page at
-`/profile/completion`), and the whole **admin console**
+**conversations**, **settings**, the **vendor's own profile** (`/profile`:
+a manufacturer's or a trading company's design, with every designed edit
+dialog, files included, and the completion page at `/profile/completion`),
+the **brand's view of a vendor** (`/factories/:id`, opened from the invite
+step, the dashboard's recommended factories, quote cards and the order
+page), and the whole **admin console**
 (`admin.html`).
 
 **Only the brand sets the production steps** (design review, Oct 2; migration
@@ -178,7 +181,7 @@ npm run seed:demo     # demo companies with fixed logins; run again to reset the
 
 Put the local URL and publishable key in `.env.local` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; `app.html` shows a setup message rather than crashing when they are absent.
 
-**Demo data.** `npm run seed:demo` (`scripts/seed-demo.mjs`) fills the database with demo companies, requests, quotes and orders behind fixed logins, all with the password `demo password 8`: `demo-brand@example.com`, `demo-factory@example.com`, `demo-factory-two@example.com` (a competing quote), `demo-factory-new@example.com` (waiting for verification) and `demo-admin@example.com` (platform admin, `/admin.html`). Each run deletes the demo companies and every order one of them is part of, then builds them again, so running it again is the reset. It only targets a local stack unless given `--remote` with `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` for a test database, and it refuses the production project. A PR that adds a state a tester needs to see adds it here. **A scenario that needs an account of its own** (a role or company state none of the logins has) adds the login to `src/shared/demo-logins.mjs` and its setup to the seed; the seed stops if a listed login has no setup. That list is also what the test sites' one-click sign-in shows: on test builds only (the dev server, PR previews and the qa site: `__DEMO_SIGN_IN__` in `vite.config.js`), the sign-in screens offer a button per login (`src/shared/DemoSignIn.jsx`). A production build leaves that code and the list out, and the buttons hide themselves when connected to the production database.
+**Demo data.** `npm run seed:demo` (`scripts/seed-demo.mjs`) fills the database with demo companies, requests, quotes and orders behind fixed logins, all with the password `demo password 8`: `demo-brand@example.com`, `demo-factory@example.com`, `demo-factory-two@example.com` (a competing quote), `demo-factory-new@example.com` (waiting for verification), `demo-brand-new@example.com` (a brand with nothing yet, so its dashboard recommends factories), `demo-trading@example.com` (a trading company) and `demo-admin@example.com` (platform admin, `/admin.html`). Each run deletes the demo companies and every order one of them is part of, then builds them again, so running it again is the reset. It only targets a local stack unless given `--remote` with `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` for a test database, and it refuses the production project. A PR that adds a state a tester needs to see adds it here. **A scenario that needs an account of its own** (a role or company state none of the logins has) adds the login to `src/shared/demo-logins.mjs` and its setup to the seed; the seed stops if a listed login has no setup. That list is also what the test sites' one-click sign-in shows: on test builds only (the dev server, PR previews and the qa site: `__DEMO_SIGN_IN__` in `vite.config.js`), the sign-in screens offer a button per login (`src/shared/DemoSignIn.jsx`). A production build leaves that code and the list out, and the buttons hide themselves when connected to the production database.
 
 **PR previews get their own database.** Supabase branching (GitHub integration, "Supabase changes only") creates a database branch when a PR that changes `supabase/` is opened, runs its migrations and `seed.sql`, and writes the branch's details into Vercel for that PR's preview. It deletes the branch when the PR is merged or closed. It writes its own variable names, so on a Vercel **preview** build only:
 - `vite.config.js` bakes `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` into `__PREVIEW_SUPABASE__`, which `src/lib/supabase.js` prefers;

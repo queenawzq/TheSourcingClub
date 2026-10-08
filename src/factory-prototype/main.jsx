@@ -2881,12 +2881,25 @@ function FactoryProfilePage({ companyType = "factory", language, onViewCompletio
     : <FactoryManufacturingProfilePage language={language} onViewCompletion={onViewCompletion} />;
 }
 
-function TradingCompanyProfilePage({ language = "en" }) {
+/**
+ * `live`, when the real app mounts this page: the company's real profile, in
+ * the shape trading-profile-view.js gives (`name`, `overviewRows`,
+ * `networkSections`, `commercialRows`, `trust`, `status`, …), plus the edit
+ * dialogs' props as on the factory's page (`editors`, `form`, `options`,
+ * `files`, `onSave`, `initialEditor`, `onEditorClosed`). Without it the page
+ * shows the design's example company, unchanged.
+ */
+export function TradingCompanyProfilePage({ language = "en", onViewCompletion, live = null }) {
   const [profileMode, setProfileMode] = useState(new URLSearchParams(window.location.search).get("view") === "public" ? "public" : "edit");
   const isOwnerView = profileMode === "edit";
   const isZh = language === "zh";
   const text = (en, zh) => isZh ? zh : en;
-  const overviewRows = [
+  const [activeEditor, setActiveEditor] = useState(() => (live?.editors?.includes(live.initialEditor) ? live.initialEditor : null));
+  // The design draws an Edit on every card; live, only the dialogs wired to
+  // the database get one.
+  const canEdit = (editor) => isOwnerView && (!live || Boolean(live.editors?.includes(editor)));
+  const editProps = (editor) => (live ? { editable: canEdit(editor), onEdit: () => setActiveEditor(editor) } : { editable: isOwnerView });
+  const overviewRows = live ? live.overviewRows : [
     [text("Company name", "公司名称"), "Pacific Source Partners"],
     [text("Year founded", "成立年份"), "2016"],
     [text("Website URL", "官网"), "pacificsourcepartners.com"],
@@ -2894,7 +2907,7 @@ function TradingCompanyProfilePage({ language = "en" }) {
     [text("Team size", "团队人数"), text("25 people", "25 人")],
     [text("Languages", "支持语言"), text("English, Mandarin, Cantonese", "英语、普通话、粤语")]
   ];
-  const commercialRows = [
+  const commercialRows = live ? live.commercialRows : [
     [text("Typical MOQ", "常规最低起订量"), text("300 units / style", "300 件 / 款")],
     [text("Typical lead time", "常规交期"), text("45-60 days", "45-60 天")],
     [text("Typical order value", "常规订单金额"), "$15,000-$100,000"],
@@ -2902,25 +2915,30 @@ function TradingCompanyProfilePage({ language = "en" }) {
     [text("Incoterms", "国际贸易术语"), "FOB · EXW · DDP"],
     [text("Payment terms", "付款条件"), text("30% deposit · 70% before shipment", "30% 定金 · 出货前付清 70%")]
   ];
+  const name = live ? live.name : "Pacific Source Partners";
+  const initials = live ? live.initials : "PS";
+  const place = live ? live.location : text("Hong Kong / Shenzhen, China", "中国香港 / 深圳");
 
   const renderStatusCard = (responsiveClass) => (
     <section className={`factory-profile-card factory-profile-owner-card ${responsiveClass}`}>
       <div className="factory-profile-card-header">
         <h2>{text("Profile status", "资料状态")}</h2>
-        <button className="factory-profile-edit-button" type="button">{text("Review profile", "检查资料")}</button>
+        {(!live || onViewCompletion) && <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>{text("Review profile", "检查资料")}</button>}
       </div>
-      <div className="factory-profile-status-meter"><strong>92%</strong><span>{text("Profile complete", "资料已完成")}</span></div>
-      <div className="factory-profile-status-track"><span style={{ width: "92%" }} /></div>
-      <p>{text("Keep supplier coverage, compliance checks, and sourcing services current.", "请及时更新供应商覆盖、合规检查和采购服务信息。")}</p>
-      <div className="factory-profile-owner-actions"><button className="primary-btn" type="button">{text("Publish changes", "发布更改")}</button></div>
+      <div className="factory-profile-status-meter"><strong>{live ? `${live.status.percent}%` : "92%"}</strong><span>{text("Profile complete", "资料已完成")}</span></div>
+      <div className="factory-profile-status-track"><span style={{ width: live ? `${live.status.percent}%` : "92%" }} /></div>
+      <p>{live ? live.status.note : text("Keep supplier coverage, compliance checks, and sourcing services current.", "请及时更新供应商覆盖、合规检查和采购服务信息。")}</p>
+      {/* Live saves go out as they are made, so there is nothing to publish. */}
+      {!live && <div className="factory-profile-owner-actions"><button className="primary-btn" type="button">{text("Publish changes", "发布更改")}</button></div>}
     </section>
   );
 
   const renderContactCard = (responsiveClass) => (
     <section className={`factory-profile-card factory-profile-contact-card ${responsiveClass}`}>
       <h2>{text("Contact trading company", "联系贸易公司")}</h2>
-      <div className="factory-profile-contact-row"><div className="factory-avatar">PS</div><div><strong>Pacific Source Partners</strong><span>{text("Hong Kong / Shenzhen, China", "中国香港 / 深圳")}</span></div></div>
-      <button className="primary-btn" type="button">{text("Start conversation", "发起沟通")}</button>
+      <div className="factory-profile-contact-row"><div className="factory-avatar">{initials}</div><div><strong>{name}</strong><span>{place}</span></div></div>
+      {/* In the company's own preview this shows what brands will press. */}
+      <button className="primary-btn" type="button" title={live ? "Brands use this to message you" : undefined}>{text("Start conversation", "发起沟通")}</button>
     </section>
   );
 
@@ -2938,14 +2956,14 @@ function TradingCompanyProfilePage({ language = "en" }) {
         {isOwnerView ? renderStatusCard("factory-profile-compact-status-card") : renderContactCard("factory-profile-compact-contact-card")}
 
         <section className="factory-profile-hero">
-          {isOwnerView && <button className="factory-profile-banner-edit" type="button">{text("Edit", "编辑")}</button>}
+          {canEdit("banner") && <button className="factory-profile-banner-edit" type="button" onClick={live ? () => setActiveEditor("banner") : undefined}>{text("Edit", "编辑")}</button>}
           <div className="factory-profile-identity">
-            <div className="factory-profile-logo-wrap"><div className="factory-profile-logo">PS</div></div>
+            <div className="factory-profile-logo-wrap"><div className="factory-profile-logo">{live?.logoUrl ? <img src={live.logoUrl} alt={`${name} logo`} /> : initials}</div></div>
             <div>
-              <div className="factory-profile-title-row"><h1>Pacific Source Partners</h1><span className="factory-profile-verified" title={text("Business verified", "企业已验证")}><img src="/assets/prototype-icons/basic.svg" alt="" /></span></div>
-              <p>{text("Hong Kong / Shenzhen, China", "中国香港 / 深圳")} · {text("Trading company", "贸易公司")} · {text("25-person sourcing team", "25 人采购团队")}</p>
+              <div className="factory-profile-title-row"><h1>{name}</h1>{(!live || live.verifiedIcon) && <span className="factory-profile-verified" title={live ? live.verifiedLabel : text("Business verified", "企业已验证")}><img src={`/assets/prototype-icons/${live ? live.verifiedIcon : "basic"}.svg`} alt="" /></span>}</div>
+              <p>{live ? live.heroLine : <>{text("Hong Kong / Shenzhen, China", "中国香港 / 深圳")} · {text("Trading company", "贸易公司")} · {text("25-person sourcing team", "25 人采购团队")}</>}</p>
               <div className="tag-row compact-tags factory-profile-hero-tags">
-                {[text("Supplier network management", "供应商网络管理"), text("Apparel sourcing", "服装采购"), text("Quality oversight", "质量监督")].map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                {(live ? live.tags : [text("Supplier network management", "供应商网络管理"), text("Apparel sourcing", "服装采购"), text("Quality oversight", "质量监督")]).map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
               </div>
             </div>
           </div>
@@ -2955,9 +2973,9 @@ function TradingCompanyProfilePage({ language = "en" }) {
           <section className="factory-profile-main">
             <ProfilePerformanceCard
               eyebrow={text("Sourcing performance", "采购表现")}
-              primary="4.9"
-              primaryLabel={text("18 brand reviews · 6 hr avg. response", "18 条品牌评价 · 平均 6 小时回复")}
-              metrics={[
+              primary={live ? live.performance.primary : "4.9"}
+              primaryLabel={live ? live.performance.primaryLabel : text("18 brand reviews · 6 hr avg. response", "18 条品牌评价 · 平均 6 小时回复")}
+              metrics={live ? live.performance.metrics : [
                 { label: text("Club orders", "平台订单"), value: "22" },
                 { label: text("Repeat brands", "复购品牌"), value: "9" },
                 { label: text("Verified partners", "已验证合作工厂"), value: "14" }
@@ -2965,75 +2983,119 @@ function TradingCompanyProfilePage({ language = "en" }) {
             />
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title={text("Company overview", "公司概览")} editable={isOwnerView} />
-              <p>{text("Multi-region apparel sourcing and production-management partner for premium brands. The team coordinates supplier matching, costing, development, quality control, and logistics through a verified factory network.", "为高级服装品牌提供跨地区采购与生产管理服务。团队通过已验证的工厂网络协调供应商匹配、成本核算、产品开发、质量控制和物流。")}</p>
+              <ProfileCardHeader title={text("Company overview", "公司概览")} {...editProps("company")} />
+              {live ? live.intro && <p>{live.intro}</p> : <p>{text("Multi-region apparel sourcing and production-management partner for premium brands. The team coordinates supplier matching, costing, development, quality control, and logistics through a verified factory network.", "为高级服装品牌提供跨地区采购与生产管理服务。团队通过已验证的工厂网络协调供应商匹配、成本核算、产品开发、质量控制和物流。")}</p>}
               <div className="factory-profile-detail-grid">{overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title={text("Supplier network", "供应商网络")} editable={isOwnerView} />
-              <ProfileChipSection label={text("Production programs", "生产合作模式")} items={isZh ? ["OEM / 按品牌规格生产", "全包生产 FPP", "小批量 / 低起订量"] : ["OEM / made to specification", "Full package production", "Small-batch / low MOQ"]} />
-              <ProfileChipSection label={text("Production type", "生产类型")} items={isZh ? ["针织裁剪缝制", "梭织"] : ["Cut & sew knits", "Wovens"]} />
-              <ProfileChipSection label={text("Product categories", "产品品类")} items={isZh ? ["上装", "下装", "连衣裙", "外套", "针织成衣"] : ["Tops", "Bottoms", "Dresses", "Outerwear", "Knitwear"]} />
-              <ProfileChipSection label={text("Products sourced", "采购产品")} items={isZh ? ["纽扣衬衫", "府绸上衣", "梭织连衣裙"] : ["Button-down shirts", "Poplin blouses", "Woven dresses"]} />
-              <ProfileChipSection label={text("Sourcing regions", "采购地区")} items={isZh ? ["中国", "葡萄牙"] : ["China", "Portugal"]} />
-              <ProfileChipSection label={text("Market level", "市场层级")} items={[text("Premium / contemporary (retail $100-$500)", "高端 / 当代（零售价 $100-$500）")]} />
+              <ProfileCardHeader title={text("Supplier network", "供应商网络")} {...editProps("network")} />
+              {live ? live.networkSections.map(([label, items]) => <ProfileChipSection label={label} items={items} key={label} />) : (
+                <>
+                  <ProfileChipSection label={text("Production programs", "生产合作模式")} items={isZh ? ["OEM / 按品牌规格生产", "全包生产 FPP", "小批量 / 低起订量"] : ["OEM / made to specification", "Full package production", "Small-batch / low MOQ"]} />
+                  <ProfileChipSection label={text("Production type", "生产类型")} items={isZh ? ["针织裁剪缝制", "梭织"] : ["Cut & sew knits", "Wovens"]} />
+                  <ProfileChipSection label={text("Product categories", "产品品类")} items={isZh ? ["上装", "下装", "连衣裙", "外套", "针织成衣"] : ["Tops", "Bottoms", "Dresses", "Outerwear", "Knitwear"]} />
+                  <ProfileChipSection label={text("Products sourced", "采购产品")} items={isZh ? ["纽扣衬衫", "府绸上衣", "梭织连衣裙"] : ["Button-down shirts", "Poplin blouses", "Woven dresses"]} />
+                  <ProfileChipSection label={text("Sourcing regions", "采购地区")} items={isZh ? ["中国", "葡萄牙"] : ["China", "Portugal"]} />
+                  <ProfileChipSection label={text("Market level", "市场层级")} items={[text("Premium / contemporary (retail $100-$500)", "高端 / 当代（零售价 $100-$500）")]} />
+                </>
+              )}
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title={text("Services and oversight", "服务与监督")} editable={isOwnerView} />
-              <ProfileChipSection label={text("Core services", "核心服务")} items={isZh ? ["供应商匹配", "样品管理", "生产管理"] : ["Supplier matching", "Sample management", "Production management"]} />
-              <ProfileChipSection label={text("Product development", "产品开发")} items={isZh ? ["技术包支持", "样衣开发", "材料采购"] : ["Tech pack support", "Sample development", "Material sourcing"]} />
-              <ProfileChipSection label={text("Quality and compliance", "质量与合规")} items={isZh ? ["工厂验证", "中期验货", "终期验货"] : ["Factory verification", "In-line inspection", "Final inspection"]} />
-              <ProfileChipSection label={text("Primary destination markets", "主要销售市场")} items={isZh ? ["美国与加拿大", "欧盟"] : ["United States & Canada", "European Union"]} />
-              <ProfileChipSection label={text("Digital tools", "数字工具")} items={[text("None selected", "未选择")]} />
+              <ProfileCardHeader title={text("Services and oversight", "服务与监督")} {...editProps("services")} />
+              {live ? live.servicesSections.map(([label, items]) => <ProfileChipSection label={label} items={items} key={label} />) : (
+                <>
+                  <ProfileChipSection label={text("Core services", "核心服务")} items={isZh ? ["供应商匹配", "样品管理", "生产管理"] : ["Supplier matching", "Sample management", "Production management"]} />
+                  <ProfileChipSection label={text("Product development", "产品开发")} items={isZh ? ["技术包支持", "样衣开发", "材料采购"] : ["Tech pack support", "Sample development", "Material sourcing"]} />
+                  <ProfileChipSection label={text("Quality and compliance", "质量与合规")} items={isZh ? ["工厂验证", "中期验货", "终期验货"] : ["Factory verification", "In-line inspection", "Final inspection"]} />
+                  <ProfileChipSection label={text("Primary destination markets", "主要销售市场")} items={isZh ? ["美国与加拿大", "欧盟"] : ["United States & Canada", "European Union"]} />
+                  <ProfileChipSection label={text("Digital tools", "数字工具")} items={[text("None selected", "未选择")]} />
+                </>
+              )}
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title={text("Commercial terms", "商务条件")} editable={isOwnerView} />
+              <ProfileCardHeader title={text("Commercial terms", "商务条件")} {...editProps("commercial")} />
               <div className="factory-profile-detail-grid">{commercialRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title={text("Recent sourcing work", "近期采购项目")} editable={isOwnerView} actionLabel={text("Manage case studies", "管理案例")} />
-              <div className="factory-profile-product-grid">
-                <article className="factory-profile-product"><img src="/assets/dashboard-rfq-shirt.jpg" alt="" /><strong>{text("Organic cotton shirt program", "有机棉衬衫项目")}</strong><span>{text("Supplier matching · sampling · QC", "供应商匹配 · 打样 · 质检")}</span></article>
-                <article className="factory-profile-product"><img src="/assets/dashboard-rfq-knit.jpg" alt="" /><strong>{text("Premium knit capsule", "高端针织系列")}</strong><span>{text("Yarn sourcing · production management", "纱线采购 · 生产管理")}</span></article>
-                <article className="factory-profile-product"><img src="/assets/dashboard-rfq-denim.jpg" alt="" /><strong>{text("Denim wash development", "牛仔洗水开发")}</strong><span>{text("Factory verification · final inspection", "工厂验证 · 终期验货")}</span></article>
-              </div>
+              <ProfileCardHeader title={text("Recent sourcing work", "近期采购项目")} {...editProps("samples")} actionLabel={text("Manage case studies", "管理案例")} />
+              {live ? (
+                live.samples.length
+                  ? (
+                    <div className="factory-profile-product-grid">
+                      {live.samples.map((sample) => (
+                        <article className="factory-profile-product" key={sample.src}><img src={sample.src} alt="" /><strong>{sample.title}</strong>{sample.meta && <span>{sample.meta}</span>}</article>
+                      ))}
+                    </div>
+                  )
+                  : <p>No sourcing work added yet.</p>
+              ) : (
+                <div className="factory-profile-product-grid">
+                  <article className="factory-profile-product"><img src="/assets/dashboard-rfq-shirt.jpg" alt="" /><strong>{text("Organic cotton shirt program", "有机棉衬衫项目")}</strong><span>{text("Supplier matching · sampling · QC", "供应商匹配 · 打样 · 质检")}</span></article>
+                  <article className="factory-profile-product"><img src="/assets/dashboard-rfq-knit.jpg" alt="" /><strong>{text("Premium knit capsule", "高端针织系列")}</strong><span>{text("Yarn sourcing · production management", "纱线采购 · 生产管理")}</span></article>
+                  <article className="factory-profile-product"><img src="/assets/dashboard-rfq-denim.jpg" alt="" /><strong>{text("Denim wash development", "牛仔洗水开发")}</strong><span>{text("Factory verification · final inspection", "工厂验证 · 终期验货")}</span></article>
+                </div>
+              )}
             </section>
           </section>
 
           <aside className="factory-profile-side">
             {isOwnerView ? renderStatusCard("factory-profile-sidebar-status-card") : renderContactCard("factory-profile-sidebar-contact-card")}
             <section className="factory-profile-card">
-              <ProfileCardHeader title={text("Trust and verification", "信任与验证")} editable={isOwnerView} />
+              <ProfileCardHeader title={text("Trust and verification", "信任与验证")} {...editProps("verification")} />
               <div className="factory-profile-cert-list">
-                <div className="factory-profile-cert"><strong>{text("Business registration", "企业注册")}</strong><span className="verified">{text("Verified", "已验证")}</span></div>
-                <div className="factory-profile-cert"><strong>{text("Supplier verification process", "供应商验证流程")}</strong><span className="verified">{text("Reviewed", "已审核")}</span></div>
-                <div className="factory-profile-cert"><strong>{text("Sedex membership", "Sedex 会员资质")}</strong><span className="verified">{text("Uploaded", "已上传")}</span></div>
-                <div className="factory-profile-cert"><strong>ISO 9001</strong><span>{text("Not uploaded", "未上传")}</span></div>
-                <div className="factory-profile-cert"><strong>BSCI</strong><span>{text("Not uploaded", "未上传")}</span></div>
+                {live ? live.trust.map((item) => (
+                  <div className="factory-profile-cert" key={item.name}><strong>{item.name}</strong><span className={item.verified ? "verified" : undefined}>{item.status}</span></div>
+                )) : (
+                  <>
+                    <div className="factory-profile-cert"><strong>{text("Business registration", "企业注册")}</strong><span className="verified">{text("Verified", "已验证")}</span></div>
+                    <div className="factory-profile-cert"><strong>{text("Supplier verification process", "供应商验证流程")}</strong><span className="verified">{text("Reviewed", "已审核")}</span></div>
+                    <div className="factory-profile-cert"><strong>{text("Sedex membership", "Sedex 会员资质")}</strong><span className="verified">{text("Uploaded", "已上传")}</span></div>
+                    <div className="factory-profile-cert"><strong>ISO 9001</strong><span>{text("Not uploaded", "未上传")}</span></div>
+                    <div className="factory-profile-cert"><strong>BSCI</strong><span>{text("Not uploaded", "未上传")}</span></div>
+                  </>
+                )}
               </div>
             </section>
             <section className="factory-profile-card">
-              <ProfileCardHeader title={text("Client references", "客户参考")} editable={isOwnerView} />
+              <ProfileCardHeader title={text("Client references", "客户参考")} {...editProps("references")} />
               <div className="factory-profile-reference-list">
-                <div><span>MR</span><strong>Maison Rue · Ari Chen</strong></div>
+                {live
+                  ? live.references.map((reference) => <div key={reference}><span>{reference.slice(0, 2).toUpperCase()}</span><strong>{reference}</strong></div>)
+                  : <div><span>MR</span><strong>Maison Rue · Ari Chen</strong></div>}
               </div>
             </section>
             <section className="factory-profile-card">
-              <ProfileCardHeader title={text("Network snapshot", "网络概览")} editable={isOwnerView} />
+              <ProfileCardHeader title={text("Network snapshot", "网络概览")} {...editProps("snapshot")} />
               <div className="factory-profile-detail-grid">
-                <ProfileDetailPair label={text("Active factories", "活跃工厂")} value="18" />
-                <ProfileDetailPair label={text("Verified factories", "已验证工厂")} value="14" />
-                <ProfileDetailPair label={text("Sourcing regions", "采购地区")} value="3" />
-                <ProfileDetailPair label={text("Primary markets", "主要市场")} value={text("US · EU · UK", "美国 · 欧盟 · 英国")} />
+                {live ? live.snapshotRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />) : (
+                  <>
+                    <ProfileDetailPair label={text("Active factories", "活跃工厂")} value="18" />
+                    <ProfileDetailPair label={text("Verified factories", "已验证工厂")} value="14" />
+                    <ProfileDetailPair label={text("Sourcing regions", "采购地区")} value="3" />
+                    <ProfileDetailPair label={text("Primary markets", "主要市场")} value={text("US · EU · UK", "美国 · 欧盟 · 英国")} />
+                  </>
+                )}
               </div>
             </section>
           </aside>
         </div>
       </div>
+      {live && activeEditor && createPortal((
+        <FactoryProfileEditModal
+          editor={activeEditor}
+          data={{}}
+          live={live}
+          onClose={() => {
+            setActiveEditor(null);
+            live.onEditorClosed?.();
+          }}
+          onSave={() => setActiveEditor(null)}
+        />
+      ), document.body)}
     </main>
   );
 }
@@ -3529,7 +3591,14 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
     walkthrough: ["Manage walkthrough", "Update the verified production-floor walkthrough and covered areas."],
     samples: ["Update sample images", "Add images of sample garments, development examples, and finished pieces that represent the factory's strongest production fit."],
     projects: ["Manage projects", "Update completed and in-production project proof for brands."],
-    verification: ["Manage verification documents", "Upload certificates and registration documents for profile review."]
+    verification: ["Manage verification documents", "Upload certificates and registration documents for profile review."],
+    // The trading company's page draws Edit on these four cards but has no
+    // dialogs of its own; these are built from this dialog's own fields and
+    // chip groups, with the trading onboarding's labels.
+    company: ["Edit company overview", "Update the company details brands see at the top of this profile."],
+    network: ["Edit supplier network", "Update the production programs, categories and regions your partner network covers."],
+    services: ["Edit services and oversight", "Update what your team manages directly across development and production."],
+    commercial: ["Edit commercial terms", "Keep MOQ, lead time, order value and partner factory details current."]
   };
   const [title, designHelper] = editorTitles[editor] || editorTitles.overview;
   // Live there is no banner (the page never shows one), so the helper only
@@ -3693,6 +3762,54 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
             <ProfileEditField label="Factory location" value={form.location} onChange={(value) => updateField("location", value)} />
             <ProfileEditField label="Nearest port" value={form.nearestPort} onChange={(value) => updateField("nearestPort", value)} />
             <ProfileEditField label="Total employees" value={form.employees} onChange={(value) => updateField("employees", value)} />
+          </div>
+        )}
+
+        {editor === "company" && (
+          <div className="factory-onboarding-form-grid">
+            <label className="factory-onboarding-field full-width">
+              <span>Company overview</span>
+              <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
+            </label>
+            <ProfileEditField label="Company name" value={form.name} onChange={(value) => updateField("name", value)} />
+            <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
+            <ProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
+            <ProfileEditField label="Headquarters" value={form.location} onChange={(value) => updateField("location", value)} />
+            <ProfileEditField label="Team size" value={form.employees} onChange={(value) => updateField("employees", value)} />
+            <ProfileEditField label="Languages supported" value={form.languages} onChange={(value) => updateField("languages", value)} />
+          </div>
+        )}
+
+        {editor === "network" && (
+          <div className="factory-onboarding-section production-fit-section">
+            <ProfileChipEditor label="Production programs supported" options={options("productionPrograms")} selected={form.productionPrograms} onChange={(items) => updateField("productionPrograms", items)} />
+            <ProfileChipEditor label="Production type" options={options("productionTypes")} selected={form.productionTypes} onChange={(items) => updateField("productionTypes", items)} />
+            <ProfileChipEditor label="Product categories" options={options("categories")} selected={form.categories} onChange={(items) => updateField("categories", items)} />
+            <ProfileChipEditor label="Products sourced" options={options("makes")} selected={form.makes} onChange={(items) => updateField("makes", items)} allowCustom />
+            <ProfileChipEditor label="Sourcing regions" options={options("sourcingRegions")} selected={form.sourcingRegions} onChange={(items) => updateField("sourcingRegions", items)} />
+            <ProfileChipEditor label="Market level" options={options("marketLevel")} selected={form.marketLevel} onChange={(items) => updateField("marketLevel", items)} singleSelect />
+          </div>
+        )}
+
+        {editor === "services" && (
+          <div className="factory-onboarding-section production-fit-section">
+            <ProfileChipEditor label="Core services" options={options("coreServices")} selected={form.coreServices} onChange={(items) => updateField("coreServices", items)} />
+            <ProfileChipEditor label="Product development" options={options("productDevelopment")} selected={form.productDevelopment} onChange={(items) => updateField("productDevelopment", items)} />
+            <ProfileChipEditor label="Quality & compliance" options={options("qualityCompliance")} selected={form.qualityCompliance} onChange={(items) => updateField("qualityCompliance", items)} />
+            <ProfileChipEditor label="Primary destination markets" options={options("destinationMarkets")} selected={form.destinationMarkets} onChange={(items) => updateField("destinationMarkets", items)} />
+            <ProfileChipEditor label="Digital tools" options={options("tools")} selected={form.tools} onChange={(items) => updateField("tools", items)} />
+            <ProfileChipEditor label="Other capabilities" options={[]} selected={form.otherCapabilities} onChange={(items) => updateField("otherCapabilities", items)} allowCustom />
+          </div>
+        )}
+
+        {editor === "commercial" && (
+          <div className="factory-onboarding-form-grid">
+            <ProfileEditField label="Typical minimum order" value={form.moq} onChange={(value) => updateField("moq", value)} />
+            <ProfileEditField label="Typical lead time" value={form.leadTime} onChange={(value) => updateField("leadTime", value)} />
+            <ProfileEditField label="Typical order value" value={form.orderValue} onChange={(value) => updateField("orderValue", value)} />
+            <ProfileEditField label="Number of active partner factories" value={form.partnerFactories} onChange={(value) => updateField("partnerFactories", value)} />
+            <ProfileEditField label="Supported Incoterms" value={form.incoterms} onChange={(value) => updateField("incoterms", value)} />
+            <ProfileEditField label="Typical payment terms" value={form.paymentTerms} onChange={(value) => updateField("paymentTerms", value)} />
           </div>
         )}
 

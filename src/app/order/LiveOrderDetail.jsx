@@ -440,7 +440,12 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         onAction={(_kind, milestone) => act(milestone)}
         tab={activeTab}
         onTabChange={onTabChange}
-        counterparty={counterparty}
+        // The brand opens the factory's profile from its name.
+        counterparty={{
+          ...counterparty,
+          profileHref: `/app.html/factories/${order.factory_org_id}?from=order`,
+          onOpenProfile: () => navigate(`/factories/${order.factory_org_id}?from=order`),
+        }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
         activity={activityLines(activity, { order, viewerOrgId: org.id })}
         files={orderFiles(requestFiles, updates, milestones)}
