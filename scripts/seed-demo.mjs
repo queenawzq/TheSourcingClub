@@ -250,13 +250,25 @@ const [oekoTex] = must(await factory.client.from("factory_certifications").inser
   }).select("id").single(), `record ${name}`);
   must(await factory.client.from("factory_certifications")
     .update({ document_id: certificate.id, status: "pending" }).eq("id", oekoTex.id), "attach the OEKO-TEX certificate");
+
+  // The business registration behind the verified profile, as TSC's review
+  // leaves it, so the verification dialog has a file to show.
+  const registrationName = "Business registration.pdf";
+  const registrationPath = `${factoryOrg.id}/business_registration/${crypto.randomUUID()}-Business-registration.pdf`;
+  must(await factory.client.storage.from("org-private").upload(registrationPath, bytes, { contentType: "application/pdf" }), `upload ${registrationName}`);
+  must(await admin.from("documents").insert({
+    org_id: factoryOrg.id, kind: "business_registration", bucket: "org-private", storage_path: registrationPath,
+    file_name: registrationName, mime_type: "application/pdf", size_bytes: bytes.length, status: "verified",
+    reviewed_at: new Date().toISOString(),
+  }), `record ${registrationName}`);
 }
 // The repo's own sample-garment photos, uploaded as the factory's sample
 // images, the way the profile's image upload stores them (public bucket).
-for (const [file, name] of [
-  ["dashboard-rfq-shirt.jpg", "Organic cotton poplin shirt.jpg"],
-  ["dashboard-rfq-knit.jpg", "Fine-gauge knit capsule.jpg"],
-  ["dashboard-rfq-denim.jpg", "Denim jacket development.jpg"],
+// Each with the name and description the profile's image dialog gives it.
+for (const [file, name, caption] of [
+  ["dashboard-rfq-shirt.jpg", "Organic cotton poplin shirt.jpg", "Wovens · MOQ 150"],
+  ["dashboard-rfq-knit.jpg", "Fine-gauge knit capsule.jpg", "Knitwear · sample room"],
+  ["dashboard-rfq-denim.jpg", "Denim jacket development.jpg", "Denim · wash sample"],
 ]) {
   const path = `${factoryOrg.id}/product_image/${crypto.randomUUID()}-${name.replace(/\s+/g, "-")}`;
   const bytes = readFileSync(new globalThis.URL(`../assets/${file}`, import.meta.url));
@@ -264,6 +276,7 @@ for (const [file, name] of [
   must(await factory.client.from("documents").insert({
     org_id: factoryOrg.id, kind: "product_image", bucket: "org-public", storage_path: path,
     file_name: name, mime_type: "image/jpeg", size_bytes: bytes.length,
+    title: name.replace(/\.jpg$/, ""), caption,
   }), `record ${name}`);
 }
 

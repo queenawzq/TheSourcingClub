@@ -3531,7 +3531,10 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
     projects: ["Manage projects", "Update completed and in-production project proof for brands."],
     verification: ["Manage verification documents", "Upload certificates and registration documents for profile review."]
   };
-  const [title, helper] = editorTitles[editor] || editorTitles.overview;
+  const [title, designHelper] = editorTitles[editor] || editorTitles.overview;
+  // Live there is no banner (the page never shows one), so the helper only
+  // promises the profile image.
+  const helper = live && editor === "banner" ? "Upload or replace the profile image used on this profile." : designHelper;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(null);
   const options = (key) => live?.options?.[key] ?? factoryProfileEditorOptions[key];
@@ -3721,13 +3724,14 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
         )}
 
         {editor === "verification" && (
-          <ProfileVerificationEditor certifications={form.certifications} onChange={(items) => updateField("certifications", items)} />
+          <ProfileVerificationEditor certifications={form.certifications} onChange={(items) => updateField("certifications", items)} live={live?.files?.verification} />
         )}
 
         {isSimpleMediaEditor && (
           <FactoryProfileMediaEditor
             assets={getFactoryProfileMediaAssets(editor, data)}
-            uploadHelper={editor === "projects" ? "Add completed work, in-production orders, or project proof that helps brands understand your reliability." : editor === "samples" ? "Add sample garments, development examples, construction details, or finished pieces." : "Add another image or file."}
+            live={live?.files?.[editor]}
+            uploadHelper={editor === "projects" ? "Add completed work, in-production orders, or project proof that helps brands understand your reliability." : editor === "samples" ? "Add sample garments, development examples, construction details, or finished pieces." : live && editor === "walkthrough" ? "Add a short production-floor video, MP4 or MOV up to 50 MB." : "Add another image or file."}
             itemType={editor === "projects" ? "project" : "image"}
           />
         )}
@@ -3743,7 +3747,173 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
   );
 }
 
-function ProfileVerificationEditor({ certifications, onChange }) {
+/**
+ * A file button on the designed upload control: click to pick, or drop a
+ * file on it. `onFile` is a promise; the label says so while it runs.
+ */
+function ProfileFileButton({ className, accept, label, busyLabel = "Uploading…", onFile }) {
+  const input = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const take = async (file) => {
+    if (!file || busy) return;
+    setBusy(true);
+    try {
+      await onFile(file);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <button
+        className={className}
+        type="button"
+        disabled={busy}
+        onClick={() => input.current?.click()}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          take(event.dataTransfer.files?.[0]);
+        }}
+      >
+        {busy ? busyLabel : label}
+      </button>
+      <input
+        ref={input}
+        type="file"
+        accept={accept}
+        hidden
+        onChange={(event) => {
+          take(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * The verification dialog on real documents. `live`: `{ accept,
+ * registration: { fileName, status, onView | null } | null, canUploadRegistration,
+ * certifications: [{ name, status, fileName, onView }],
+ * onUploadRegistration(file), onAdd(name), onUpload(name, file),
+ * onRemove(name) }`, each a promise that saves straight away.
+ */
+function LiveProfileVerificationEditor({ live }) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState(null);
+  const attempt = async (work) => {
+    setError(null);
+    try {
+      await work();
+    } catch (failure) {
+      setError(failure);
+    }
+  };
+  const viewButton = (onView) => (
+    <button type="button" onClick={() => attempt(onView)}>
+      <img src="/assets/prototype-icons/download.svg" alt="" />
+      View
+    </button>
+  );
+
+  return (
+    <div className="factory-onboarding-section verification-step profile-verification-editor">
+      <div className="verification-upload-block">
+        <strong>Business registration certificate</strong>
+        {live.registration && (
+          <div className="certification-file-row">
+            <div>
+              <span>{live.registration.fileName}</span>
+              <small>{live.registration.status}</small>
+            </div>
+            {live.registration.onView && viewButton(live.registration.onView)}
+          </div>
+        )}
+        {live.canUploadRegistration && (
+          <>
+            <ProfileFileButton
+              className="onboarding-file-upload certification-file-upload"
+              accept={live.accept}
+              label={live.registration ? "Click or drag a new registration to upload" : "Click or drag registration to upload"}
+              onFile={(file) => attempt(() => live.onUploadRegistration(file))}
+            />
+            <small>PDF, PNG, or JPG</small>
+          </>
+        )}
+      </div>
+
+      <form
+        className="certification-add-control"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const next = name.trim();
+          if (!next || live.certifications.some((cert) => cert.name.toLowerCase() === next.toLowerCase())) return;
+          attempt(async () => {
+            await live.onAdd(next);
+            setName("");
+          });
+        }}
+      >
+        <label className="factory-onboarding-field">
+          <span>Add certifications you hold</span>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Type certification name, e.g. WRAP, SEDEX, ISO 9001"
+          />
+        </label>
+        <button className="secondary-btn" type="submit">Add certification</button>
+      </form>
+
+      {error && <p className="factory-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
+
+      <div className="certification-upload-list">
+        {live.certifications.map((cert) => {
+          const isUploaded = cert.status === "Uploaded" || cert.status === "Verified";
+
+          return (
+            <div className="certification-upload-row" key={cert.name}>
+              <div className="certification-upload-heading">
+                <strong>{cert.name}</strong>
+                <small>{cert.status}</small>
+              </div>
+              {isUploaded ? (
+                <div className="certification-file-row">
+                  <div>
+                    <span>{cert.fileName}</span>
+                    <small>{cert.status === "Verified" ? "Certificate verified" : "Certificate uploaded"}</small>
+                  </div>
+                  {viewButton(cert.onView)}
+                </div>
+              ) : (
+                <>
+                  <ProfileFileButton
+                    className="onboarding-file-upload certification-file-upload"
+                    accept={live.accept}
+                    label="Click or drag certificate to upload"
+                    onFile={(file) => attempt(() => live.onUpload(cert.name, file))}
+                  />
+                  <small>PDF, PNG, or JPG</small>
+                </>
+              )}
+              <button className="text-link profile-certification-remove" type="button" onClick={() => attempt(() => live.onRemove(cert.name))}>
+                Remove {cert.name}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ProfileVerificationEditor({ certifications, onChange, live = null }) {
+  if (live) return <LiveProfileVerificationEditor live={live} />;
+  return <DesignProfileVerificationEditor certifications={certifications} onChange={onChange} />;
+}
+
+function DesignProfileVerificationEditor({ certifications, onChange }) {
   const [customCertificationName, setCustomCertificationName] = useState("");
   const displayedCertifications = certifications.filter((cert) => cert.name !== "Business registration");
   const addCustomCertification = (event) => {
@@ -3842,11 +4012,20 @@ function getFactoryProfileMediaAssets(editor, data) {
   return [];
 }
 
-function FactoryProfileMediaEditor({ assets, uploadHelper, itemType = "image" }) {
-  const [items, setItems] = useState(assets);
+/**
+ * `live`, when the real app mounts this dialog: `{ assets, accept, video,
+ * addLabel, onAdd(file, details), onEdit(asset, file, details),
+ * onDelete(asset) }`, each a promise that saves straight away; the assets
+ * come back fresh from the page. Without it, edits stay in the dialog as the
+ * design has them.
+ */
+function FactoryProfileMediaEditor({ assets, uploadHelper, itemType = "image", live = null }) {
+  const [localItems, setItems] = useState(assets);
+  const items = live ? live.assets : localItems;
   const [addImageOpen, setAddImageOpen] = useState(false);
   const [openAssetMenu, setOpenAssetMenu] = useState("");
   const [editingAsset, setEditingAsset] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
   const isProject = itemType === "project";
 
   return (
@@ -3879,9 +4058,18 @@ function FactoryProfileMediaEditor({ assets, uploadHelper, itemType = "image" })
                       className="danger"
                       type="button"
                       role="menuitem"
-                      onClick={() => {
-                        setItems((current) => current.filter((item) => item.title !== asset.title));
+                      onClick={async () => {
                         setOpenAssetMenu("");
+                        if (!live) {
+                          setItems((current) => current.filter((item) => item.title !== asset.title));
+                          return;
+                        }
+                        setDeleteError(null);
+                        try {
+                          await live.onDelete(asset);
+                        } catch (error) {
+                          setDeleteError(error);
+                        }
                       }}
                     >
                       Delete
@@ -3889,7 +4077,9 @@ function FactoryProfileMediaEditor({ assets, uploadHelper, itemType = "image" })
                   </div>
                 )}
               </div>
-              <img src={asset.src} alt={`${asset.title} preview`} />
+              {asset.video
+                ? <video src={asset.src} muted preload="metadata" aria-label={`${asset.title} preview`} />
+                : <img src={asset.src} alt={`${asset.title} preview`} />}
               <div>
                 <strong>{asset.title}</strong>
                 <span>{asset.meta}</span>
@@ -3898,11 +4088,13 @@ function FactoryProfileMediaEditor({ assets, uploadHelper, itemType = "image" })
           ))}
         </div>
       )}
-      <button className="secondary-btn profile-asset-add-button" type="button" onClick={() => setAddImageOpen(true)}>{isProject ? "+ Add project" : "+ Add image"}</button>
+      {deleteError && <p className="factory-onboarding-save-error" role="alert">{deleteError.message ?? String(deleteError)}</p>}
+      <button className="secondary-btn profile-asset-add-button" type="button" onClick={() => setAddImageOpen(true)}>{isProject ? "+ Add project" : live?.addLabel ?? "+ Add image"}</button>
       {addImageOpen && (
         <FactoryProfileAssetUploadDialog
           helper={uploadHelper}
           itemType={itemType}
+          live={live}
           onClose={() => setAddImageOpen(false)}
         />
       )}
@@ -3912,6 +4104,7 @@ function FactoryProfileMediaEditor({ assets, uploadHelper, itemType = "image" })
           helper={isProject ? "Update the project image, title, or summary shown on this card." : "Update the image, name, or description shown on this card."}
           itemType={itemType}
           mode="edit"
+          live={live}
           onClose={() => setEditingAsset(null)}
         />
       )}
@@ -3919,9 +4112,45 @@ function FactoryProfileMediaEditor({ assets, uploadHelper, itemType = "image" })
   );
 }
 
-function FactoryProfileAssetUploadDialog({ asset = null, helper, itemType = "image", mode = "add", onClose }) {
+/**
+ * Live (`live` from the media editor): the upload button picks a real file
+ * (click or drop), the name and description are kept, and the primary button
+ * saves through `live.onAdd` / `live.onEdit`, staying open on an error.
+ */
+function FactoryProfileAssetUploadDialog({ asset = null, helper, itemType = "image", mode = "add", live = null, onClose }) {
   const isEdit = mode === "edit";
   const isProject = itemType === "project";
+  const fileInput = useRef(null);
+  const [file, setFile] = useState(null);
+  const [title, setTitle] = useState(asset?.editTitle ?? asset?.title ?? "");
+  const [caption, setCaption] = useState(asset?.editCaption ?? asset?.meta ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const pickFile = (picked) => {
+    if (!picked) return;
+    setFile(picked);
+    setSaveError(null);
+  };
+  const submit = async () => {
+    if (!live) {
+      onClose();
+      return;
+    }
+    if (!isEdit && !file) {
+      setSaveError(new Error(live.video ? "Choose a video to upload first." : "Choose an image to upload first."));
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      if (isEdit) await live.onEdit(asset, file, { title, caption });
+      else await live.onAdd(file, { title, caption });
+      onClose();
+    } catch (error) {
+      setSaveError(error);
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="profile-asset-upload-layer" role="presentation">
@@ -3929,28 +4158,59 @@ function FactoryProfileAssetUploadDialog({ asset = null, helper, itemType = "ima
       <section className="profile-asset-upload-dialog" role="dialog" aria-modal="true" aria-labelledby="profile-asset-upload-title">
         <CloseIconButton className="factory-update-close profile-asset-upload-close" label={isEdit ? "Close edit image dialog" : "Close add image dialog"} onClick={onClose} />
         <header>
-          <h2 id="profile-asset-upload-title">{isEdit ? (isProject ? "Edit project" : "Edit image") : (isProject ? "Add project" : "Add image")}</h2>
+          <h2 id="profile-asset-upload-title">{isEdit ? (isProject ? "Edit project" : live?.video ? "Edit video" : "Edit image") : (isProject ? "Add project" : live?.video ? "Add video" : "Add image")}</h2>
           <p>{helper}</p>
         </header>
         {isEdit && asset?.src && (
           <div className="profile-asset-edit-preview">
-            <img src={asset.src} alt={`${asset.title} preview`} />
+            {asset.video
+              ? <video src={asset.src} muted preload="metadata" aria-label={`${asset.title} preview`} />
+              : <img src={asset.src} alt={`${asset.title} preview`} />}
           </div>
         )}
-        <button className="onboarding-file-upload" type="button">{isEdit ? (isProject ? "Click or drag files to replace project image" : "Click or drag files to replace image") : "Click or drag files to upload"}</button>
+        <button
+          className="onboarding-file-upload"
+          type="button"
+          onClick={live ? () => fileInput.current?.click() : undefined}
+          onDragOver={live ? (event) => event.preventDefault() : undefined}
+          onDrop={live ? (event) => {
+            event.preventDefault();
+            pickFile(event.dataTransfer.files?.[0]);
+          } : undefined}
+        >
+          {isEdit ? (isProject ? "Click or drag files to replace project image" : live?.video ? "Click or drag a video to replace it" : "Click or drag files to replace image") : live?.video ? "Click or drag a video to upload" : "Click or drag files to upload"}
+          {file && <small>{file.name}</small>}
+        </button>
+        {live && (
+          <input
+            ref={fileInput}
+            type="file"
+            accept={live.accept}
+            hidden
+            onChange={(event) => {
+              pickFile(event.target.files?.[0]);
+              event.target.value = "";
+            }}
+          />
+        )}
         <div className="profile-asset-metadata-grid">
           <label className="factory-onboarding-field">
-            <span>{isProject ? "Project title" : "Image name"}</span>
-            <input defaultValue={asset?.title || ""} placeholder={isProject ? "e.g. Organic cotton woven shirt production" : "e.g. Organic poplin fit sample"} />
+            <span>{isProject ? "Project title" : live?.video ? "Video name" : "Image name"}</span>
+            {live
+              ? <input value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder={live.video ? "e.g. Production-floor walkthrough" : "e.g. Organic poplin fit sample"} />
+              : <input defaultValue={asset?.title || ""} placeholder={isProject ? "e.g. Organic cotton woven shirt production" : "e.g. Organic poplin fit sample"} />}
           </label>
           <label className="factory-onboarding-field">
             <span>{isProject ? "Project summary" : "Description"}</span>
-            <input defaultValue={asset?.meta || ""} placeholder={isProject ? "e.g. Maison Rue · Completed on time" : "e.g. Wovens · sample development"} />
+            {live
+              ? <input value={caption} maxLength={240} onChange={(event) => setCaption(event.target.value)} placeholder={live.video ? "e.g. Cutting, sewing lines, QC and packing" : "e.g. Wovens · sample development"} />
+              : <input defaultValue={asset?.meta || ""} placeholder={isProject ? "e.g. Maison Rue · Completed on time" : "e.g. Wovens · sample development"} />}
           </label>
         </div>
+        {saveError && <p className="factory-onboarding-save-error" role="alert">{saveError.message ?? String(saveError)}</p>}
         <footer className="profile-asset-upload-actions">
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="primary-btn" type="button" onClick={onClose}>{isEdit ? "Save changes" : (isProject ? "Add project" : "Add image")}</button>
+          <button className="primary-btn" type="button" onClick={submit} disabled={saving}>{saving ? "Saving…" : isEdit ? "Save changes" : (isProject ? "Add project" : live?.video ? "Add video" : "Add image")}</button>
         </footer>
       </section>
     </div>

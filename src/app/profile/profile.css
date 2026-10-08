@@ -38,3 +38,32 @@
   margin: 0;
   text-align: left;
 }
+
+/* A walkthrough video previews where the design draws an image. */
+.profile-asset-manager-card > video {
+  display: block;
+  width: 100%;
+  height: 104px;
+  object-fit: cover;
+  background: #0b1020;
+}
+
+.profile-asset-edit-preview video {
+  display: block;
+  width: 100%;
+  height: 156px;
+  object-fit: cover;
+  background: #0b1020;
+}
+
+/* The chosen file's name, under the designed upload button's label. */
+.onboarding-file-upload small {
+  color: #5b6475;
+  font-size: 12px;
+}
+
+.profile-verification-editor .profile-certification-remove {
+  justify-self: start;
+  margin-top: 6px;
+  font-size: 13px;
+}

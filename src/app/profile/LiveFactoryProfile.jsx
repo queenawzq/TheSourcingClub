@@ -11,21 +11,35 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { FactoryManufacturingProfilePage, FactoryProfileCompletionPage } from "../../factory-prototype/main.jsx";
 import { getFactoryProfile, getSelectedTerms } from "../../lib/domain/profile.js";
-import { listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
+import { listTermsByKind } from "../../lib/domain/taxonomy.js";
 import { getCapacity } from "../../lib/domain/capacity-store.js";
 import { listDocuments, urlFor } from "../../lib/domain/documents.js";
+import { loadCertifications } from "../../lib/domain/certifications.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { useRouter } from "../../lib/router.jsx";
 import {
   CHIP_KINDS,
   bookingMonths,
+  documentStatus,
   factoryProfileEditForm,
   factoryProfileEditOptions,
   factoryProfileView,
   titleFromFileName,
 } from "./factory-profile-view.js";
 import { SAVED_EDITORS, saveProfileSection } from "./factory-profile-save.js";
+import {
+  DOCUMENT_ACCEPT,
+  FILE_EDITORS,
+  addProfileFile,
+  claimCertification,
+  editProfileFile,
+  removeProfileFile,
+  uploadCertificate,
+  uploadRegistration,
+  viewDocument,
+  withdrawCertification,
+} from "./factory-profile-files.js";
 import "./profile.css";
 
 // `country` lets a saved location carry its country code, as onboarding does.
@@ -33,7 +47,7 @@ const KINDS = [...Object.values(CHIP_KINDS), "capacity_category", "certification
 
 /** Every record the page draws, loaded side by side. */
 async function loadParts(org) {
-  const [profile, terms, selected, capacity, references, certificationRows, registrations, logos, samples, walkthroughs, orders] =
+  const [profile, terms, selected, capacity, references, registrations, logos, samples, walkthroughs, orders] =
     await Promise.all([
       getFactoryProfile(org.id),
       listTermsByKind(KINDS),
@@ -41,8 +55,6 @@ async function loadParts(org) {
       getCapacity(org.id),
       supabase.from("profile_references").select("id, title, counterparty, sort").eq("org_id", org.id).order("sort")
         .then((result) => unwrap(result, "load your client references")),
-      supabase.from("factory_certifications").select("id, term_id, status, document_id").eq("org_id", org.id).order("created_at")
-        .then((result) => unwrap(result, "load your certifications")),
       listDocuments(org.id, "business_registration"),
       listDocuments(org.id, "logo"),
       listDocuments(org.id, "product_image"),
@@ -50,13 +62,20 @@ async function loadParts(org) {
       listOrders(org.id),
     ]);
 
-  const certificationTerms = terms.certification ?? [];
-  const [logoUrl, sampleImages, walkthrough] = await Promise.all([
+  const [certificationRows, logoUrl, sampleImages, walkthrough] = await Promise.all([
+    loadCertifications(org.id, terms.certification ?? []),
     logos[0] ? urlFor(logos[0], 3600) : null,
     // listDocuments is newest first; the design reads its samples in the
     // order they were added.
-    Promise.all([...samples].reverse().map(async (doc) => ({ title: titleFromFileName(doc.file_name), src: await urlFor(doc, 3600) }))),
-    walkthroughs[0] ? urlFor(walkthroughs[0], 3600).then((url) => ({ ...walkthroughs[0], url })) : null,
+    Promise.all([...samples].reverse().map(async (doc) => ({
+      title: doc.title || titleFromFileName(doc.file_name),
+      caption: doc.caption ?? "",
+      src: await urlFor(doc, 3600),
+      doc,
+    }))),
+    // "#t=0.5" makes the browser draw a frame from the video as its preview,
+    // rather than a black box until it plays.
+    walkthroughs[0] ? urlFor(walkthroughs[0], 3600).then((url) => ({ ...walkthroughs[0], url: `${url}#t=0.5` })) : null,
   ]);
 
   return {
@@ -66,16 +85,13 @@ async function loadParts(org) {
     selected,
     capacity,
     references,
-    certifications: certificationRows
-      .map((row) => {
-        const term = certificationTerms.find((item) => item.id === row.term_id);
-        return term ? { name: termLabel(term), status: row.status, hasFile: Boolean(row.document_id) } : null;
-      })
-      .filter(Boolean),
+    certifications: certificationRows.map((row) => ({ ...row, hasFile: Boolean(row.document) })),
     registrationDoc: registrations[0] ?? null,
     logoUrl,
+    logos,
     samples: sampleImages,
     walkthrough,
+    walkthroughs,
     // Only the orders this factory makes: a person in both a brand and a
     // factory org gets the active org's side.
     orders: orders.filter((order) => order.factory_org_id === org.id),
@@ -113,6 +129,88 @@ function Waiting({ error }) {
         : <p className="live-profile-loading">Loading your profile…</p>}
     </main>
   );
+}
+
+const dayMonth = (iso) => new Date(iso).toLocaleString("en", { month: "short", day: "numeric" });
+
+/**
+ * The file dialogs' live props. Each action saves at once and then reloads
+ * the page, so the dialog and the profile behind it show the result.
+ */
+function fileDialogs(org, parts, reload) {
+  const after = (work) => async (...args) => {
+    await work(...args);
+    await reload();
+  };
+  const certificationTerms = parts.terms.certification ?? [];
+  const mediaFor = (editor, assets, existing, extra) => ({
+    assets,
+    accept: FILE_EDITORS[editor].types.join(","),
+    onAdd: after((file, details) => addProfileFile(org, editor, file, details, existing)),
+    onEdit: after((asset, file, details) => editProfileFile(org, editor, asset.doc, file, details)),
+    onDelete: after((asset) => removeProfileFile(asset.doc)),
+    ...extra,
+  });
+  const logo = parts.logos[0];
+  const walkthrough = parts.walkthrough;
+  const registration = parts.registrationDoc;
+  const registrationStatus = registration ? documentStatus(registration.status, true) : null;
+  // TSC can verify a company without a file on record; it is verified all the same.
+  const companyVerified = parts.profile?.verification_status === "verified";
+
+  return {
+    banner: mediaFor(
+      "banner",
+      logo ? [{ title: logo.title || "Profile image", meta: logo.caption || "Current factory profile image", editTitle: logo.title ?? "", editCaption: logo.caption ?? "", src: parts.logoUrl, doc: logo }] : [],
+      parts.logos,
+      { addLabel: logo ? "+ Replace image" : "+ Add image" },
+    ),
+    walkthrough: mediaFor(
+      "walkthrough",
+      walkthrough ? [{
+        title: walkthrough.title || "Factory walkthrough",
+        meta: walkthrough.caption || `Uploaded ${dayMonth(walkthrough.created_at)}`,
+        editTitle: walkthrough.title ?? "",
+        editCaption: walkthrough.caption ?? "",
+        src: walkthrough.url,
+        video: true,
+        doc: walkthrough,
+      }] : [],
+      parts.walkthroughs,
+      { video: true, addLabel: walkthrough ? "+ Replace video" : "+ Add video" },
+    ),
+    samples: mediaFor(
+      "samples",
+      parts.samples.map((sample) => ({
+        title: sample.title,
+        meta: sample.caption,
+        editTitle: sample.doc.title ?? sample.title,
+        editCaption: sample.caption,
+        src: sample.src,
+        doc: sample.doc,
+      })),
+      [],
+    ),
+    verification: {
+      accept: DOCUMENT_ACCEPT,
+      registration: registration
+        ? { fileName: registration.file_name, status: companyVerified ? "Verified" : registrationStatus, onView: () => viewDocument(registration) }
+        : companyVerified ? { fileName: "Verified by TSC", status: "Verified", onView: null } : null,
+      // A verified registration stays as it is: a new file would send the
+      // factory back to review.
+      canUploadRegistration: !companyVerified && (!registration || registrationStatus === "Rejected"),
+      certifications: parts.certifications.map((cert) => ({
+        name: cert.name,
+        status: documentStatus(cert.status, cert.hasFile),
+        fileName: cert.fileName,
+        onView: () => viewDocument(cert.document),
+      })),
+      onUploadRegistration: after((file) => uploadRegistration(org, file)),
+      onAdd: after((name) => claimCertification(org, name, certificationTerms)),
+      onUpload: after((name, file) => uploadCertificate(org, name, file, parts.certifications, certificationTerms)),
+      onRemove: after((name) => withdrawCertification(name, parts.certifications)),
+    },
+  };
 }
 
 /**
@@ -165,6 +263,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
         form: factoryProfileEditForm(parts),
         options: factoryProfileEditOptions(parts.terms),
         months: bookingMonths(),
+        files: fileDialogs(org, parts, reload),
         onSave: async (section, form) => {
           await saveProfileSection(org, section, form, parts);
           await reload();
