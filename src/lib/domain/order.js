@@ -36,7 +36,10 @@ export async function listOrders(orgId) {
   return unwrap(
     await supabase
       .from("production_order_summary")
-      .select(`${SUMMARY_COLUMNS}, rfqs (title), brand:brand_org_id (name), factory:factory_org_id (name)`)
+      // The steps ride along so each card can draw its own rail rather than
+      // the design's fixed five, and `brief` so the card's description line
+      // has something in it.
+      .select(`${SUMMARY_COLUMNS}, rfqs (title, brief), brand:brand_org_id (name), factory:factory_org_id (name), order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state))`)
       // RLS already scopes this, but a person can belong to both a brand and a
       // factory org, and the question being asked is about the ACTIVE one.
       .or(`brand_org_id.eq.${orgId},factory_org_id.eq.${orgId}`)
@@ -49,7 +52,7 @@ export async function getOrder(orderId) {
   return unwrap(
     await supabase
       .from("production_order_summary")
-      .select(`${SUMMARY_COLUMNS}, rfqs (title, brief), brand:brand_org_id (name), factory:factory_org_id (name)`)
+      .select(`${SUMMARY_COLUMNS}, rfqs (title, brief), brand:brand_org_id (name), factory:factory_org_id (name, factory_profiles (location, country_code))`)
       .eq("id", orderId)
       .maybeSingle(),
     "load the order",
@@ -60,6 +63,18 @@ export async function agreeSchedule(orderId, revision) {
   return unwrap(
     await supabase.rpc("agree_schedule", { target_order: orderId, revision }),
     "agree the schedule",
+  );
+}
+
+/**
+ * What has happened on an order, newest first: `{ at, kind, actor_org_id,
+ * milestone_title, detail }`. Read through each table's own RLS (the function
+ * is security invoker), so it shows a party nothing it could not already read.
+ */
+export async function orderActivity(orderId) {
+  return unwrap(
+    await supabase.rpc("order_activity", { target_order: orderId }),
+    "load the order's activity",
   );
 }
 

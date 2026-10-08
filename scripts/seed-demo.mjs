@@ -275,7 +275,7 @@ async function sendQuote(vendor, vendorOrg, rfq, { price, quantity, lead, note, 
     factory_notes: note,
   }).select("id").single(), "quote");
   must(await vendor.client.from("quote_sample_lines").insert({
-    quote_id: quote.id, stage: "fit_sample", cost_cents: 6500, timing_days: 10, sort: 0,
+    quote_id: quote.id, stage: "Fit sample", cost_cents: 6500, timing_days: 10, sort: 0,
   }), "sample line");
   if (answer) {
     const [question] = must(await vendor.client.from("rfq_questions").select("id").eq("rfq_id", rfq.id), "questions");

@@ -707,6 +707,19 @@ console.log("\nphase 3 — the order runs");
     embedError ? fail("milestone → payment embed parses", embedError)
                : ok("the embed src/lib/domain/milestone.js uses parses");
 
+    // The order list and detail embed through the summary VIEW, which only
+    // works while PostgREST can see the base table's foreign keys through it.
+    const { data: listed, error: listEmbedError } = await brand.client
+      .from("production_order_summary")
+      .select("id, rfqs (title, brief), brand:brand_org_id (name), factory:factory_org_id (name, factory_profiles (location, country_code)), order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state))")
+      .eq("id", order.id)
+      .maybeSingle();
+    listEmbedError
+      ? fail("the order list's embeds parse through the summary view", listEmbedError)
+      : Array.isArray(listed?.order_milestones) && listed.order_milestones.length > 0
+      ? ok("the order list's embeds parse through the summary view, steps included")
+      : fail("the order list's step embed came back empty");
+
 
     const { error: updateEmbedError } = await admin
       .from("milestone_updates")
@@ -809,20 +822,57 @@ console.log("\nphase 3 — the order runs");
     posted.error ? fail("the factory posts an update", posted.error)
                  : ok("the factory posts an update against the step it is working on");
 
-    const { error: brandPost } = await brand.client.rpc("post_milestone_update", {
+    // Since 065 a brand comments on a step through the same RPC. What must
+    // never happen is the comment being stored as the factory's own work.
+    const brandPost = await brand.client.rpc("post_milestone_update", {
       target_milestone: first.id, body: "Looks good", document_ids: [],
     });
-    brandPost ? ok("a brand CANNOT post an update as though it were the factory")
-              : fail("LEAK: the brand posted a factory update");
+    brandPost.error
+      ? fail("the brand comments on the step", brandPost.error)
+      : brandPost.data?.author_org_id === org.id
+      ? ok("a brand comments on a step as itself, never as the factory")
+      : fail("LEAK: the brand's comment was stored as another company's post");
 
     // The brand can read what the factory posted. This is the positive twin of
     // every isolation check, and the one whose absence is silent: get the
     // policy wrong and the gallery is simply empty, with no error at all.
     const { data: seen } = await brand.client
-      .from("milestone_updates").select("id, body").eq("milestone_id", first.id);
+      .from("milestone_updates").select("id, body")
+      .eq("milestone_id", first.id).eq("author_org_id", winner.factory_org_id);
     (seen ?? []).length === 1
       ? ok("the brand CAN read the factory's update — the counterparty policy works")
-      : fail(`the brand sees ${(seen ?? []).length} updates, expected 1`);
+      : fail(`the brand sees ${(seen ?? []).length} factory updates, expected 1`);
+
+    const { data: commentSeen } = await factoryClient
+      .from("milestone_updates").select("id")
+      .eq("milestone_id", first.id).eq("author_org_id", org.id);
+    (commentSeen ?? []).length === 1
+      ? ok("the factory CAN read the brand's comment")
+      : fail(`the factory sees ${(commentSeen ?? []).length} brand comments, expected 1`);
+
+    // Reminders: once a day per step, and only between the two parties.
+    const reminded = await brand.client.rpc("remind_milestone", { target_milestone: first.id });
+    reminded.error ? fail("the brand reminds the factory about an open step", reminded.error)
+                   : ok("the brand reminds the factory about an open step");
+    const { error: remindedTwice } = await brand.client.rpc("remind_milestone", { target_milestone: first.id });
+    remindedTwice ? ok("a second reminder the same day is refused")
+                  : fail("a second reminder the same day went through");
+    const { error: strangerRemind } = await losingFactory.rpc("remind_milestone", { target_milestone: first.id });
+    strangerRemind ? ok("a factory that lost the bid CANNOT send a reminder on the order")
+                   : fail("LEAK: an outsider sent a reminder");
+
+    // The activity list: the parties' own rows, and nothing for anyone else.
+    const { data: activity, error: activityError } = await brand.client
+      .rpc("order_activity", { target_order: order.id });
+    activityError
+      ? fail("order_activity answers a party", activityError)
+      : (activity ?? []).some((row) => row.kind === "update_posted" && row.actor_org_id === winner.factory_org_id)
+      ? ok("order_activity shows the brand the factory's update, credited to the factory")
+      : fail("order_activity is missing the factory's update");
+    const { data: outsiderActivity } = await losingFactory.rpc("order_activity", { target_order: order.id });
+    (outsiderActivity ?? []).length === 0
+      ? ok("order_activity is empty for a factory that lost the bid")
+      : fail("LEAK: an outsider read the order's activity");
 
     const { data: notSeen } = await losingFactory
       .from("milestone_updates").select("id").eq("milestone_id", first.id);
@@ -830,12 +880,12 @@ console.log("\nphase 3 — the order runs");
       ? ok("a competing factory CANNOT read that update")
       : fail("LEAK: a competitor read the update");
 
-    await factoryClient.rpc("submit_milestone", { target_milestone: first.id });
+    // Straight from the factory's update: nothing was sent for approval.
     const approved = await brand.client.rpc("approve_milestone", {
       target_milestone: first.id, note: "Approved from the smoke test",
     });
-    approved.error ? fail("the brand approves the sample", approved.error)
-                   : ok("the brand approves the sample");
+    approved.error ? fail("the brand approves the sample from the factory's update", approved.error)
+                   : ok("the brand approves the sample from the factory's update, with no send-for-approval step");
 
     const { data: deposit } = await admin
       .from("order_payments").select("*").eq("milestone_id", first.id).single();

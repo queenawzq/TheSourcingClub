@@ -8508,6 +8508,14 @@ select {
   padding: 32px;
 }
 
+/* The dialog is sized for 16px either side of a phone screen, so the layer
+   must not pad it by 32px there: it ran off the right edge. */
+@media (max-width: 760px) {
+  .approve-fund-modal-layer {
+    padding: 16px;
+  }
+}
+
 .approve-fund-modal-scrim {
   position: absolute;
   inset: 0;
@@ -8771,6 +8779,13 @@ select {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: white;
+}
+
+/* The latest update spans the row under the step and its actions, so a note
+   reads at a normal line length rather than in the title's column. */
+.project-milestone-item > .project-update-card {
+  grid-column: 2 / -1;
+  max-width: none;
 }
 
 .project-update-header {

@@ -84,9 +84,13 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
         amount_cents: PAYS.has(row.kind) ? toCents(row.amount) : null,
         due_on: row.due_on,
       })));
-      navigate(`/orders/${orderId}`);
+      // Reload in place. This editor is usually mounted AT /orders/:id, where
+      // navigating to that same path does nothing, and the button used to sit
+      // on "Saving…" over agreement stamps the save had just cleared.
+      await load();
     } catch (failure) {
       setError(failure);
+    } finally {
       setBusy(false);
     }
   }
@@ -129,9 +133,16 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
               data-testid="agree-schedule"
               disabled={Boolean(isFactory ? order.schedule_factory_agreed_at : order.schedule_brand_agreed_at)}
               onClick={async () => {
-                await agreeSchedule(order.id, order.schedule_revision);
-                await load();
-                onAgreed?.();
+                // A refused agreement (someone saved a change a moment ago)
+                // has to say so; it used to vanish into an unhandled promise.
+                setError(null);
+                try {
+                  await agreeSchedule(order.id, order.schedule_revision);
+                  await load();
+                  onAgreed?.();
+                } catch (failure) {
+                  setError(failure);
+                }
               }}
             >
               {(isFactory ? order.schedule_factory_agreed_at : order.schedule_brand_agreed_at)
