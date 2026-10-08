@@ -6357,6 +6357,9 @@ export function ProjectsScreen({
   goTo,
   setSelectedReorderProject,
   onViewOrder,
+  // Live passes this: "Reorder style" starts a new draft request from the
+  // order. The prototype keeps the design's jump to the contract screen.
+  onReorder = null,
   live = false,
   // Live passes the company's saved tabs (src/app/order/useOrderTabs.js); the
   // prototype passes nothing and keeps its tabs in local state, as drawn.
@@ -6671,6 +6674,7 @@ export function ProjectsScreen({
               archiveAction={archiveActionFor(tabStore, project)}
               onViewOrder={onViewOrder}
               setSelectedReorderProject={setSelectedReorderProject}
+              onReorder={onReorder}
               key={project.id ?? project.title}
             />
           ))
@@ -6681,7 +6685,7 @@ export function ProjectsScreen({
 }
 
 
-function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, onViewOrder, setSelectedReorderProject = null }) {
+function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, onViewOrder, setSelectedReorderProject = null, onReorder = null }) {
   const projectFacts = [
     ["Current step", project.currentStep],
     ["Next due", project.nextDue]
@@ -6707,8 +6711,12 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setSelectedReorderProject?.(project);
                     close();
+                    if (onReorder) {
+                      onReorder(project);
+                      return;
+                    }
+                    setSelectedReorderProject?.(project);
                     goTo("contract");
                   }}
                 >

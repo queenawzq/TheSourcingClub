@@ -17691,6 +17691,18 @@ button.sort-button {
   font-size: 13px;
 }
 
+/* What the composer is working on, when it is not a fresh request: a reorder
+   says which order it repeats and with whom. Live-only, like the error. */
+.composer-note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #e3e6ee);
+  border-radius: 10px;
+  background: #f4f7ff;
+  color: var(--ink, #1f2430);
+  font-size: 13px;
+}
+
 /* The questions a vendor answers against, typed rather than listed. */
 .question-box .question-input {
   display: block;
