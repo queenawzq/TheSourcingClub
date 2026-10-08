@@ -23,6 +23,7 @@
 import React, { useEffect, useState } from "react";
 import { FactoryProjectDetail, FactoryReadOnlyRfqPage } from "../../factory-prototype/main.jsx";
 import {
+  brandProfileForFactory,
   brandSummary,
   getQuestions,
   getRfq,
@@ -38,6 +39,7 @@ import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import QuoteActionDialog, { reviseCopy } from "../quote/QuoteActionDialog.jsx";
+import "../profile/profile.css";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -131,12 +133,14 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
       lastBrandView(rfq.id),
       listRfqDocuments(rfq.id).catch(() => []),
       isRequestSaved(org.id, rfq.id).catch(() => false),
+      // Its club orders: the summary predates orders and returns none.
+      rfq.brand_org_id ? brandProfileForFactory(rfq.brand_org_id).catch(() => null) : null,
     ])
-      .then(([scores, summary, viewed, files, savedAlready]) => {
+      .then(([scores, summary, viewed, files, savedAlready, profile]) => {
         if (cancelled) return;
         setExtras({
           match: scores.get(org.id) ?? null,
-          brand: summary,
+          brand: summary && { ...summary, club_order_count: summary.club_order_count ?? profile?.club_order_count ?? null },
           lastView: viewed,
           files: files ?? [],
           saved: Boolean(savedAlready),
@@ -261,6 +265,9 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           brand={extras.brand ? {
             initials: (extras.brand.name ?? "??").slice(0, 2).toUpperCase(),
             name: extras.brand.name ?? "",
+            // The brand's name opens its profile.
+            profileHref: `/app.html/brands/${rfq.brand_org_id}?from=request`,
+            onOpenProfile: () => navigate(`/brands/${rfq.brand_org_id}?from=request`),
             location: extras.brand.hq_location ?? "",
             verified: extras.brand.verified ? "Yes" : "Not yet",
             clubOrders: String(extras.brand.club_order_count ?? 0),

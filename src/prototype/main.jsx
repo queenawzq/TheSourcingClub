@@ -4339,11 +4339,25 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
   );
 }
 
-function BrandProfileScreen({ onViewCompletion }) {
+/**
+ * The brand's own profile.
+ *
+ * `live`, when the real app mounts this screen, replaces the example brand:
+ * `{ name, initials, logoUrl, location, categoryLine, revenue, tags,
+ * performance: { primary, primaryLabel, metrics }, intro, introEmpty,
+ * overviewRows, privateRows, publicOverviewRows, fitSections: [[label, items]], volumeRows,
+ * assets: [{ title, meta, src }], assetsEmpty, status: { percent },
+ * verification: [{ name, status, verified }], stakeholders: [{ key, initials,
+ * label }], projects: { completed, active }, projectsEmpty, editors,
+ * initialEditor, onEditorClosed, dialog }`. Edit buttons show only for the
+ * dialogs in `editors`; `dialog` is BrandProfileEditModal's `live`. Without
+ * `live` the screen shows the design's example, unchanged.
+ */
+export function BrandProfileScreen({ onViewCompletion, live = null }) {
   const [projectTab, setProjectTab] = useState("completed");
   const [profileMode, setProfileMode] = useState(new URLSearchParams(window.location.search).get("view") === "public" ? "public" : "edit");
   const isOwnerView = profileMode === "edit";
-  const [activeEditor, setActiveEditor] = useState(null);
+  const [activeEditor, setActiveEditor] = useState(live?.initialEditor ?? null);
   const [profileData, setProfileData] = useState({
     name: "Maison Rue",
     location: "New York, USA",
@@ -4434,28 +4448,77 @@ function BrandProfileScreen({ onViewCompletion }) {
     setProfileMode("edit");
     setActiveEditor(editor);
   };
+  const closeEditor = () => {
+    setActiveEditor(null);
+    live?.onEditorClosed?.();
+  };
+  // Live, a button shows only where its dialog is wired.
+  const canEdit = (editor) => isOwnerView && (!live || live.editors.includes(editor));
   const saveProfileSection = (updates) => {
     setProfileData((current) => ({ ...current, ...updates }));
     setActiveEditor(null);
   };
-  const visibleProjects = projectTab === "completed" ? data.completedProjects : data.activeProjects;
-  const overviewRows = [
-    ["Brand name", data.name],
-    ["Brand category", data.brandCategories.join(" · ")],
-    ["Business email", data.businessEmail],
-    ["Year founded", data.founded],
-    ["Website URL", data.website],
-    ["HQ location", data.location],
-    ...(isOwnerView ? [["Annual revenue", data.annualRevenue]] : []),
-  ];
-  const sourcingVolumeRows = [
-    ["Annual order volume", data.sourcingVolume.annualVolume],
-    ["Typical order size", data.sourcingVolume.orderSize],
-    ["Collections per year", data.sourcingVolume.collectionsPerYear],
-    ["Typical price range for core styles", data.sourcingVolume.targetPrice],
-    ["Reorder cadence", data.sourcingVolume.reorderCadence],
-    ["Current sourcing stage", data.sourcingVolume.sourcingStage]
-  ];
+  const view = live ?? {
+    name: data.name,
+    initials: "MR",
+    logoUrl: null,
+    location: data.location,
+    categoryLine: data.brandCategories.join(" · "),
+    revenue: data.annualRevenue,
+    tags: [...data.products, ...data.marketLevel],
+    performance: {
+      primary: data.clubOrders,
+      primaryLabel: `Club orders · ${data.responseTime} avg. response`,
+      metrics: [
+        { label: "Active quotes", value: data.activeRfqs },
+        { label: "Repeat vendors", value: data.repeatFactories },
+        { label: "Payment status", value: data.paymentStatus }
+      ]
+    },
+    intro: data.intro,
+    overviewRows: [
+      ["Brand name", data.name],
+      ["Brand category", data.brandCategories.join(" · ")],
+      ["Business email", data.businessEmail],
+      ["Year founded", data.founded],
+      ["Website URL", data.website],
+      ["HQ location", data.location]
+    ],
+    privateRows: [["Annual revenue", data.annualRevenue]],
+    fitSections: [
+      ["What the brand makes", data.products],
+      ["Market level", data.marketLevel],
+      ["Preferred regions", data.preferredRegions],
+      ["Certifications requested", data.certifications],
+      ["Services needed", data.services]
+    ],
+    volumeRows: [
+      ["Annual order volume", data.sourcingVolume.annualVolume],
+      ["Typical order size", data.sourcingVolume.orderSize],
+      ["Collections per year", data.sourcingVolume.collectionsPerYear],
+      ["Typical price range for core styles", data.sourcingVolume.targetPrice],
+      ["Reorder cadence", data.sourcingVolume.reorderCadence],
+      ["Current sourcing stage", data.sourcingVolume.sourcingStage]
+    ],
+    assets: data.assets,
+    status: { percent: null },
+    verification: data.verification.map((item) => ({
+      name: item.name,
+      status: item.status,
+      verified: ["Verified", "Uploaded", "Added"].includes(item.status)
+    })),
+    stakeholders: data.stakeholders.map((stakeholder) => ({
+      key: typeof stakeholder === "string" ? stakeholder : stakeholder.email || stakeholder.name,
+      initials: (typeof stakeholder === "string" ? stakeholder : stakeholder.name).slice(0, 2).toUpperCase(),
+      label: typeof stakeholder === "string" ? stakeholder : `${stakeholder.name} · ${stakeholder.role}`
+    })),
+    projects: { completed: data.completedProjects, active: data.activeProjects }
+  };
+  const visibleProjects = projectTab === "completed" ? view.projects.completed : view.projects.active;
+  // Live, the public preview leaves out what vendors can't read.
+  const overviewRows = isOwnerView
+    ? [...view.overviewRows, ...view.privateRows]
+    : view.publicOverviewRows ?? view.overviewRows;
   const renderProfileStatusCard = (responsiveClass) => (
     <section className={`factory-profile-card factory-profile-owner-card ${responsiveClass}`}>
       <div className="factory-profile-card-header">
@@ -4463,24 +4526,27 @@ function BrandProfileScreen({ onViewCompletion }) {
         <button className="factory-profile-edit-button" type="button" onClick={onViewCompletion}>View details</button>
       </div>
       <div className="factory-profile-status-meter">
-        <strong>88%</strong>
+        <strong>{live ? `${view.status.percent}%` : "88%"}</strong>
         <span>Profile complete</span>
       </div>
-      <div className="factory-profile-status-track"><span /></div>
+      <div className="factory-profile-status-track"><span style={live ? { width: `${view.status.percent}%` } : undefined} /></div>
       <p>Review what is complete, what is in progress, and what would strengthen this profile.</p>
-      <div className="factory-profile-owner-actions">
-        <button className="primary-btn" type="button">Publish changes</button>
-      </div>
+      {/* Live, every dialog saves as it closes: there is nothing to publish. */}
+      {!live && (
+        <div className="factory-profile-owner-actions">
+          <button className="primary-btn" type="button">Publish changes</button>
+        </div>
+      )}
     </section>
   );
   const renderContactCard = (responsiveClass) => (
     <section className={`factory-profile-card factory-profile-contact-card ${responsiveClass}`}>
       <h2>Brand contact</h2>
       <div className="factory-profile-contact-row">
-        <div className="factory-avatar">MR</div>
+        <div className="factory-avatar">{view.initials}</div>
         <div>
-          <strong>{data.name}</strong>
-          <span>{data.location}</span>
+          <strong>{view.name}</strong>
+          <span>{view.location}</span>
         </div>
       </div>
       <button className="primary-btn" type="button">Contact brand</button>
@@ -4493,7 +4559,7 @@ function BrandProfileScreen({ onViewCompletion }) {
         <ProfileOwnerBar
           ariaLabel="Brand profile view"
           isOwnerView={isOwnerView}
-          onEdit={() => isOwnerView ? openEditor("overview") : setProfileMode("edit")}
+          onEdit={() => isOwnerView && canEdit("overview") ? openEditor("overview") : setProfileMode("edit")}
           onPublic={() => setProfileMode("public")}
           ownerText="Edit what vendors see"
           profileLabel="Brand profile"
@@ -4503,20 +4569,19 @@ function BrandProfileScreen({ onViewCompletion }) {
         {!isOwnerView && renderContactCard("brand-profile-compact-contact-card")}
 
         <section className="factory-profile-hero brand-profile-hero">
-          {isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
+          {canEdit("banner") && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
           {!isOwnerView && <button className="factory-profile-banner-edit" type="button">Save brand</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
-              <div className="factory-profile-logo">MR</div>
+              <div className="factory-profile-logo">{view.logoUrl ? <img src={view.logoUrl} alt={`${view.name} logo`} /> : view.initials}</div>
             </div>
             <div>
               <div className="factory-profile-title-row">
-                <h1>{data.name}</h1>
+                <h1>{view.name}</h1>
               </div>
-              <p>{data.location} · {data.brandCategories.join(" · ")}{isOwnerView ? ` · ${data.annualRevenue} revenue` : ""}</p>
+              <p>{[view.location, view.categoryLine].filter(Boolean).join(" · ")}{isOwnerView && view.revenue ? ` · ${view.revenue} revenue` : ""}</p>
               <div className="tag-row compact-tags factory-profile-hero-tags">
-                {data.products.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
-                {data.marketLevel.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                {view.tags.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
               </div>
             </div>
           </div>
@@ -4526,50 +4591,44 @@ function BrandProfileScreen({ onViewCompletion }) {
           <main className="factory-profile-main">
             <ProfilePerformanceCard
               eyebrow="Brand activity"
-              primary={data.clubOrders}
-              primaryLabel={`Club orders · ${data.responseTime} avg. response`}
-              metrics={[
-                { label: "Active quotes", value: data.activeRfqs },
-                { label: "Repeat vendors", value: data.repeatFactories },
-                { label: "Payment status", value: data.paymentStatus }
-              ]}
+              primary={view.performance.primary}
+              primaryLabel={view.performance.primaryLabel}
+              metrics={view.performance.metrics}
             />
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Overview" editable={isOwnerView} onEdit={() => openEditor("overview")} />
-              <p>{data.intro}</p>
+              <ProfileCardHeader title="Overview" editable={canEdit("overview")} onEdit={() => openEditor("overview")} />
+              {view.intro ? <p>{view.intro}</p> : <p>{view.introEmpty}</p>}
               <div className="factory-profile-detail-grid">
                 {overviewRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Sourcing fit" editable={isOwnerView} onEdit={() => openEditor("sourcing")} />
-              <ProfileChipSection label="What the brand makes" items={data.products} />
-              <ProfileChipSection label="Market level" items={data.marketLevel} />
-              <ProfileChipSection label="Preferred regions" items={data.preferredRegions} />
-              <ProfileChipSection label="Certifications requested" items={data.certifications} />
-              <ProfileChipSection label="Services needed" items={data.services} />
+              <ProfileCardHeader title="Sourcing fit" editable={canEdit("sourcing")} onEdit={() => openEditor("sourcing")} />
+              {view.fitSections.map(([label, items]) => <ProfileChipSection label={label} items={items} key={label} />)}
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Sourcing volume" editable={isOwnerView} onEdit={() => openEditor("sourcingVolume")} />
+              <ProfileCardHeader title="Sourcing volume" editable={canEdit("sourcingVolume")} onEdit={() => openEditor("sourcingVolume")} />
               <div className="factory-profile-detail-grid">
-                {sourcingVolumeRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
+                {view.volumeRows.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Brand assets" editable={isOwnerView} actionLabel="Manage assets" onEdit={() => openEditor("assets")} />
-              <div className="factory-profile-product-grid">
-                {data.assets.map((asset) => (
-                  <article className="factory-profile-product brand-profile-asset" key={asset.title}>
-                    <img src={asset.src} alt={`${asset.title} preview`} />
-                    <strong>{asset.title}</strong>
-                    <span>{asset.meta}</span>
-                  </article>
-                ))}
-              </div>
+              <ProfileCardHeader title="Brand assets" editable={canEdit("assets")} actionLabel="Manage assets" onEdit={() => openEditor("assets")} />
+              {view.assets.length > 0 ? (
+                <div className="factory-profile-product-grid">
+                  {view.assets.map((asset) => (
+                    <article className="factory-profile-product brand-profile-asset" key={asset.key ?? asset.title}>
+                      <img src={asset.src} alt={`${asset.title} preview`} />
+                      <strong>{asset.title}</strong>
+                      <span>{asset.meta}</span>
+                    </article>
+                  ))}
+                </div>
+              ) : <p>{view.assetsEmpty}</p>}
             </section>
 
             <section className="factory-profile-card">
@@ -4588,7 +4647,7 @@ function BrandProfileScreen({ onViewCompletion }) {
                   role="tab"
                   aria-selected={projectTab === "completed"}
                 >
-                  Completed ({data.completedProjects.length})
+                  Completed ({view.projects.completed.length})
                 </button>
                 <button
                   className={projectTab === "active" ? "active" : ""}
@@ -4597,34 +4656,38 @@ function BrandProfileScreen({ onViewCompletion }) {
                   role="tab"
                   aria-selected={projectTab === "active"}
                 >
-                  Active ({data.activeProjects.length})
+                  Active ({view.projects.active.length})
                 </button>
               </div>
-              <div className="factory-profile-project-list">
-                {visibleProjects.map((project) => (
-                  <article className="factory-profile-history-card" key={project.title}>
-                    <header>
-                      <div>
-                        <h3>{project.title}</h3>
-                        <p>{project.partner} · {project.date}</p>
-                      </div>
-                      <span>{project.result}</span>
-                    </header>
-                    <p>{project.summary}</p>
-                    {projectTab === "completed" && (
-                      <div className="factory-profile-history-review">
-                        <strong>{project.rating}</strong>
-                        <p>"{project.review}"</p>
-                      </div>
-                    )}
-                    <div className="factory-profile-history-footer">
-                      <div className="tag-row compact-tags">
-                        {project.tags.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
+              {visibleProjects.length > 0 ? (
+                <div className="factory-profile-project-list">
+                  {visibleProjects.map((project) => (
+                    <article className="factory-profile-history-card" key={project.key ?? project.title}>
+                      <header>
+                        <div>
+                          <h3>{project.title}</h3>
+                          <p>{project.partner} · {project.date}</p>
+                        </div>
+                        <span>{project.result}</span>
+                      </header>
+                      <p>{project.summary}</p>
+                      {projectTab === "completed" && project.review && (
+                        <div className="factory-profile-history-review">
+                          <strong>{project.rating}</strong>
+                          <p>"{project.review}"</p>
+                        </div>
+                      )}
+                      {project.tags.length > 0 && (
+                        <div className="factory-profile-history-footer">
+                          <div className="tag-row compact-tags">
+                            {project.tags.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}
+                          </div>
+                        </div>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              ) : <p>{view.projectsEmpty?.[projectTab]}</p>}
             </section>
           </main>
 
@@ -4636,24 +4699,24 @@ function BrandProfileScreen({ onViewCompletion }) {
             )}
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Verification" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("verification")} />
+              <ProfileCardHeader title="Verification" editable={canEdit("verification")} actionLabel="Edit" onEdit={() => openEditor("verification")} />
               <div className="factory-profile-cert-list">
-                {data.verification.map((item) => (
+                {view.verification.map((item) => (
                   <div className="factory-profile-cert" key={item.name}>
                     <strong>{item.name}</strong>
-                    <span className={["Verified", "Uploaded", "Added"].includes(item.status) ? "verified" : ""}>{item.status}</span>
+                    <span className={item.verified ? "verified" : ""}>{item.status}</span>
                   </div>
                 ))}
               </div>
             </section>
 
             <section className="factory-profile-card">
-              <ProfileCardHeader title="Decision makers" editable={isOwnerView} actionLabel="Edit" onEdit={() => openEditor("stakeholders")} />
+              <ProfileCardHeader title="Decision makers" editable={canEdit("stakeholders")} actionLabel="Edit" onEdit={() => openEditor("stakeholders")} />
               <div className="factory-profile-reference-list">
-                {data.stakeholders.map((stakeholder) => (
-                  <div key={typeof stakeholder === "string" ? stakeholder : stakeholder.email || stakeholder.name}>
-                    <span>{(typeof stakeholder === "string" ? stakeholder : stakeholder.name).slice(0, 2).toUpperCase()}</span>
-                    <strong>{typeof stakeholder === "string" ? stakeholder : `${stakeholder.name} · ${stakeholder.role}`}</strong>
+                {view.stakeholders.map((stakeholder) => (
+                  <div key={stakeholder.key}>
+                    <span>{stakeholder.initials}</span>
+                    <strong>{stakeholder.label}</strong>
                   </div>
                 ))}
               </div>
@@ -4666,7 +4729,8 @@ function BrandProfileScreen({ onViewCompletion }) {
         <BrandProfileEditModal
           editor={activeEditor}
           data={data}
-          onClose={() => setActiveEditor(null)}
+          live={live?.dialog ?? null}
+          onClose={closeEditor}
           onSave={saveProfileSection}
         />
       ), document.body)}
@@ -4723,10 +4787,18 @@ const brandProfileCompletionIconMap = {
   missing: "/assets/prototype-icons/warning.svg"
 };
 
-function BrandProfileCompletionPage({ onBack, onAddPayment }) {
-  const completeCount = brandProfileCompletionChecks.filter((item) => item.tone === "complete").length;
-  const progressCount = brandProfileCompletionChecks.filter((item) => item.tone === "progress").length;
-  const attentionCount = brandProfileCompletionChecks.filter((item) => item.tone === "missing").length;
+/**
+ * `live`, when the real app mounts this page: `{ percent, intro, checks:
+ * [{ title, status, tone, description, action: { label, onClick } | null }],
+ * suggestions: [label] }`, computed from the brand's own records. Without it
+ * the page shows the design's example, unchanged.
+ */
+export function BrandProfileCompletionPage({ onBack, onAddPayment, live = null }) {
+  const checks = live ? live.checks : brandProfileCompletionChecks;
+  const completeCount = checks.filter((item) => item.tone === "complete").length;
+  const progressCount = checks.filter((item) => item.tone === "progress").length;
+  const attentionCount = checks.filter((item) => item.tone === "missing").length;
+  const itemsWord = (count) => (live ? `${count} ${count === 1 ? "item" : "items"}` : null);
 
   return (
     <main className="factory-profile-page factory-profile-completion-page brand-profile-completion-page">
@@ -4737,12 +4809,12 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
           <div>
             <span>Profile verification</span>
             <h1>Profile completion summary</h1>
-            <p>You can browse vendors and draft quotes now. Complete the items below to improve trust signals and make the brand easier for vendors to evaluate.</p>
+            <p>{live ? live.intro : "You can browse vendors and draft quotes now. Complete the items below to improve trust signals and make the brand easier for vendors to evaluate."}</p>
           </div>
           <div className="factory-profile-completion-score">
-            <strong>88%</strong>
+            <strong>{live ? `${live.percent}%` : "88%"}</strong>
             <span>Profile complete</span>
-            <div className="factory-profile-status-track"><span /></div>
+            <div className="factory-profile-status-track"><span style={live ? { width: `${live.percent}%` } : undefined} /></div>
           </div>
         </section>
 
@@ -4756,7 +4828,7 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
                 </div>
               </div>
               <div className="profile-completion-check-list">
-                {brandProfileCompletionChecks.map((item) => (
+                {checks.map((item) => (
                   <article className={`profile-completion-check ${item.tone}`} key={item.title}>
                     <span className="profile-completion-check-icon" aria-hidden="true">
                       <img src={brandProfileCompletionIconMap[item.tone]} alt="" />
@@ -4769,9 +4841,9 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
                         <button
                           className="secondary-btn compact-btn"
                           type="button"
-                          onClick={item.title === "Payment method" ? onAddPayment : undefined}
+                          onClick={live ? item.action.onClick : item.title === "Payment method" ? onAddPayment : undefined}
                         >
-                          {item.action}
+                          {live ? item.action.label : item.action}
                         </button>
                       )}
                     </div>
@@ -4785,15 +4857,17 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
             <section className="factory-profile-card">
               <h2>Summary</h2>
               <div className="profile-completion-summary-grid">
-                <ProfileCompletionSummaryRow label="Complete" value={`${completeCount} items`} />
-                <ProfileCompletionSummaryRow label="In progress" value={`${progressCount} item`} />
-                <ProfileCompletionSummaryRow label="Needs attention" value={`${attentionCount} item`} />
+                <ProfileCompletionSummaryRow label="Complete" value={itemsWord(completeCount) ?? `${completeCount} items`} />
+                <ProfileCompletionSummaryRow label="In progress" value={itemsWord(progressCount) ?? `${progressCount} item`} />
+                <ProfileCompletionSummaryRow label="Needs attention" value={itemsWord(attentionCount) ?? `${attentionCount} item`} />
               </div>
             </section>
             <section className="factory-profile-card">
               <h2>Suggested updates</h2>
               <div className="factory-profile-owner-task-list">
-                <span>Add payment method</span>
+                {live
+                  ? (live.suggestions.length ? live.suggestions.map((label) => <span key={label}>{label}</span>) : <span>Nothing to add right now</span>)
+                  : <span>Add payment method</span>}
               </div>
             </section>
           </aside>
@@ -4803,7 +4877,15 @@ function BrandProfileCompletionPage({ onBack, onAddPayment }) {
   );
 }
 
-function BrandProfileEditModal({ editor, data, onClose, onSave }) {
+/**
+ * `live`, when the real app mounts this dialog: `{ form, options,
+ * onSave(editor, form), stakeholders: { members, invitations, canInvite,
+ * onInvite(email), onRevoke(invitation) }, files: { banner, assets,
+ * verification } }`. Save waits for `onSave` and stays open on an error;
+ * file changes save as they are made. Without it, edits stay in the page as
+ * the design has them.
+ */
+function BrandProfileEditModal({ editor, data, live = null, onClose, onSave }) {
   const isUploadEditor = ["banner", "assets", "projects"].includes(editor);
   const editorTitles = {
     overview: ["Edit overview", "Update the brand details vendors see on this profile."],
@@ -4816,8 +4898,14 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
     payment: ["Add payment method", "Add a card or bank account so payment status can be verified on the brand profile."],
     stakeholders: ["Edit decision makers", "Add or update the people vendors should expect to work with."]
   };
-  const [title, helper] = editorTitles[editor] || editorTitles.overview;
-  const [form, setForm] = useState(() => ({
+  const [title, designHelper] = editorTitles[editor] || editorTitles.overview;
+  // Live there is no banner image (nothing stores one), so the helper only
+  // promises the profile image.
+  const helper = live && editor === "banner" ? "Upload or replace the profile image used on this profile." : designHelper;
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const options = (key) => live?.options?.[key] ?? brandProfileEditorOptions[key];
+  const [form, setForm] = useState(() => live ? { ...live.form, inviteDrafts: [] } : ({
     name: data.name,
     location: data.location,
     brandCategories: data.brandCategories,
@@ -4897,7 +4985,56 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
       stakeholders: current.stakeholders.filter((_, stakeholderIndex) => stakeholderIndex !== index)
     }));
   };
+  // Live: stakeholders are invited one email at a time, through the page.
+  const sendLiveInvite = async (index) => {
+    const email = String(form.inviteDrafts[index] ?? "").trim();
+    if (!email) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await live.stakeholders.onInvite(email);
+      setForm((current) => ({ ...current, inviteDrafts: current.inviteDrafts.filter((_, draftIndex) => draftIndex !== index) }));
+    } catch (error) {
+      setSaveError(error);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const revokeLiveInvite = async (invitation) => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await live.stakeholders.onRevoke(invitation);
+    } catch (error) {
+      setSaveError(error);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const saveLive = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      if (editor === "stakeholders") {
+        // An email typed but not sent yet is sent on Save, not dropped.
+        for (const email of form.inviteDrafts.map((draft) => String(draft).trim()).filter(Boolean)) {
+          await live.stakeholders.onInvite(email);
+        }
+      } else if (["overview", "sourcing", "sourcingVolume", "verification"].includes(editor)) {
+        await live.onSave(editor, form);
+      }
+      onClose();
+    } catch (error) {
+      setSaveError(error);
+      setSaving(false);
+    }
+  };
   const save = () => {
+    if (live) {
+      saveLive();
+      return;
+    }
+
     if (editor === "overview") {
       onSave({
         name: form.name,
@@ -4990,7 +5127,7 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
             <section className="brand-profile-edit-section full-width">
               <BrandProfileChipEditor
                 label="Brand category"
-                options={brandProfileEditorOptions.brandCategories}
+                options={options("brandCategories")}
                 selected={form.brandCategories}
                 onChange={(items) => updateField("brandCategories", items)}
               />
@@ -5006,14 +5143,14 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
           <div className="brand-profile-edit-stack">
             <section className="brand-profile-edit-section">
               <h2>What do you make?</h2>
-              <BrandProfileChipEditor label="What does your brand make?" options={brandProfileEditorOptions.products} selected={form.products} onChange={(items) => updateField("products", items)} />
-              <BrandProfileChipEditor label="Market level" options={brandProfileEditorOptions.marketLevel} selected={form.marketLevel} onChange={(items) => updateField("marketLevel", items)} singleSelect />
+              <BrandProfileChipEditor label="What does your brand make?" options={options("products")} selected={form.products} onChange={(items) => updateField("products", items)} />
+              <BrandProfileChipEditor label="Market level" options={options("marketLevel")} selected={form.marketLevel} onChange={(items) => updateField("marketLevel", items)} singleSelect />
             </section>
             <section className="brand-profile-edit-section">
               <h2>Vendor preferences</h2>
-              <BrandProfileChipEditor label="Preferred regions" options={brandProfileEditorOptions.preferredRegions} selected={form.preferredRegions} onChange={(items) => updateField("preferredRegions", items)} />
-              <BrandProfileChipEditor label="Certifications" options={brandProfileEditorOptions.certifications} selected={form.certifications} onChange={(items) => updateField("certifications", items)} />
-              <BrandProfileChipEditor label="Services needed" options={brandProfileEditorOptions.services} selected={form.services} onChange={(items) => updateField("services", items)} />
+              <BrandProfileChipEditor label="Preferred regions" options={options("preferredRegions")} selected={form.preferredRegions} onChange={(items) => updateField("preferredRegions", items)} />
+              <BrandProfileChipEditor label="Certifications" options={options("certifications")} selected={form.certifications} onChange={(items) => updateField("certifications", items)} />
+              <BrandProfileChipEditor label="Services needed" options={options("services")} selected={form.services} onChange={(items) => updateField("services", items)} />
             </section>
           </div>
         )}
@@ -5029,7 +5166,50 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
           </div>
         )}
 
-        {editor === "stakeholders" && (
+        {/* Live: the team and its pending invitations, as they are. A new
+            stakeholder is an email invitation; the design's free-text role
+            and authority boxes have nothing behind them (two roles only). */}
+        {live && editor === "stakeholders" && (
+          <div className="brand-stakeholder-fields">
+            {live.stakeholders.members.map((member) => (
+              <section className="brand-stakeholder-editor-card" key={member.key}>
+                <div className="brand-stakeholder-editor-header">
+                  <strong>{member.name}</strong>
+                  <span>{member.role}</span>
+                </div>
+                {member.email && <p>{member.email}</p>}
+              </section>
+            ))}
+            {live.stakeholders.invitations.map((invitation) => (
+              <section className="brand-stakeholder-editor-card" key={invitation.id}>
+                <div className="brand-stakeholder-editor-header">
+                  <strong>{invitation.email}</strong>
+                  {live.stakeholders.onRevoke && (
+                    <button className="text-link" type="button" disabled={saving} onClick={() => revokeLiveInvite(invitation)}>Remove</button>
+                  )}
+                </div>
+                <p>Invitation sent · joins as a member</p>
+              </section>
+            ))}
+            {form.inviteDrafts.map((draft, index) => (
+              <section className="brand-stakeholder-editor-card" key={`draft-${index}`}>
+                <div className="brand-stakeholder-editor-header">
+                  <strong>{`Stakeholder ${live.stakeholders.members.length + live.stakeholders.invitations.length + index + 1}`}</strong>
+                  <button className="text-link" type="button" onClick={() => updateField("inviteDrafts", form.inviteDrafts.filter((_, draftIndex) => draftIndex !== index))}>Remove</button>
+                </div>
+                <BrandProfileEditField label="Email" value={draft} onChange={(value) => updateField("inviteDrafts", form.inviteDrafts.map((item, draftIndex) => draftIndex === index ? value : item))} />
+                <div className="brand-stakeholder-invite-actions">
+                  <button className="primary-btn compact-btn" type="button" disabled={saving || !String(draft).trim()} onClick={() => sendLiveInvite(index)}>Send invite</button>
+                </div>
+              </section>
+            ))}
+            {live.stakeholders.canInvite && (
+              <button className="secondary-btn" type="button" onClick={() => updateField("inviteDrafts", [...form.inviteDrafts, ""])}>+ Add another stakeholder</button>
+            )}
+          </div>
+        )}
+
+        {!live && editor === "stakeholders" && (
           <div className="brand-stakeholder-fields">
             {form.stakeholders.map((stakeholder, index) => (
               <section className="brand-stakeholder-editor-card" key={`${stakeholder.email}-${index}`}>
@@ -5069,7 +5249,17 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
           </div>
         )}
 
-        {editor === "verification" && (
+        {/* Live: the registration goes to TSC's review, as onboarding's does.
+            Payment details are never typed into this form. */}
+        {live && editor === "verification" && (
+          <BrandVerificationLive
+            files={live.files.verification}
+            email={form.businessEmail}
+            onEmail={(value) => updateField("businessEmail", value)}
+          />
+        )}
+
+        {!live && editor === "verification" && (
           <div className="brand-verification-editor">
             <section className="brand-verification-edit-row">
               <div>
@@ -5150,17 +5340,94 @@ function BrandProfileEditModal({ editor, data, onClose, onSave }) {
 
         {isUploadEditor && (
           <BrandProfileAssetEditor
-            assets={editor === "assets" ? data.assets : getBrandProfileMediaAssets(editor, data)}
+            assets={live ? live.files[editor].assets : editor === "assets" ? data.assets : getBrandProfileMediaAssets(editor, data)}
+            live={live?.files?.[editor] ?? null}
             uploadHelper={editor === "projects" ? "Add completed work, active production, or sampling proof that helps vendors understand how this brand works." : editor === "assets" ? "Add logos, product photos, direction files, or brand references." : "Add another image or file."}
             itemType={editor === "projects" ? "project" : "image"}
           />
         )}
 
         <footer className="brand-profile-modal-actions">
+          {saveError && <p className="brand-onboarding-save-error brand-profile-modal-error" role="alert">{saveError.message ?? String(saveError)}</p>}
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="primary-btn" type="button" onClick={save}>Save changes</button>
+          <button className="primary-btn" type="button" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save changes"}</button>
         </footer>
       </section>
+    </div>
+  );
+}
+
+/**
+ * The verification dialog, live: the business registration (view the file on
+ * record, or upload one for TSC's review) and the business email. `files`:
+ * `{ registration: { fileName, status, onView } | null, canUpload, accept,
+ * onUpload(file) }`.
+ */
+function BrandVerificationLive({ files, email, onEmail }) {
+  const fileInput = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const run = async (work) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await work();
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="brand-verification-editor">
+      <section className="brand-verification-edit-row">
+        <div>
+          <strong>Business registration</strong>
+          <span>{files.registration ? files.registration.status : "Not uploaded"}</span>
+        </div>
+        {files.registration?.onView && (
+          <button className="text-link" type="button" onClick={() => run(files.registration.onView)}>View {files.registration.fileName}</button>
+        )}
+        {files.canUpload && (
+          <>
+            <button
+              className="brand-onboarding-upload-row"
+              type="button"
+              disabled={busy}
+              onClick={() => fileInput.current?.click()}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                const file = event.dataTransfer.files?.[0];
+                if (file) run(() => files.onUpload(file));
+              }}
+            >
+              <img src="/assets/prototype-icons/upload.svg" alt="" />
+              <strong>{busy ? "Uploading…" : "Click or drag files to upload"}</strong>
+            </button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept={files.accept}
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) run(() => files.onUpload(file));
+              }}
+            />
+          </>
+        )}
+      </section>
+      <section className="brand-verification-edit-row">
+        <div>
+          <strong>Business email</strong>
+          <span>{email ? "Added" : "Not added"}</span>
+        </div>
+        <BrandProfileEditField label="Email address" value={email} onChange={onEmail} />
+      </section>
+      {error && <p className="brand-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
     </div>
   );
 }
@@ -5186,11 +5453,19 @@ function getBrandProfileMediaAssets(editor, data) {
   return [];
 }
 
-function BrandProfileAssetEditor({ assets, uploadHelper, itemType = "image" }) {
-  const [items, setItems] = useState(assets);
+/**
+ * `live`: `{ assets, accept, addLabel, onAdd(file, details), onEdit(asset,
+ * file, details), onDelete(asset) }`, each saving straight away; the assets
+ * come back fresh from the page. Without it, edits stay in the dialog as the
+ * design has them.
+ */
+function BrandProfileAssetEditor({ assets, uploadHelper, itemType = "image", live = null }) {
+  const [localItems, setItems] = useState(assets);
+  const items = live ? live.assets : localItems;
   const [addImageOpen, setAddImageOpen] = useState(false);
   const [openAssetMenu, setOpenAssetMenu] = useState("");
   const [editingAsset, setEditingAsset] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
   const isProject = itemType === "project";
 
   return (
@@ -5223,9 +5498,18 @@ function BrandProfileAssetEditor({ assets, uploadHelper, itemType = "image" }) {
                       className="danger"
                       type="button"
                       role="menuitem"
-                      onClick={() => {
-                        setItems((current) => current.filter((item) => item.title !== asset.title));
+                      onClick={async () => {
                         setOpenAssetMenu("");
+                        if (!live) {
+                          setItems((current) => current.filter((item) => item.title !== asset.title));
+                          return;
+                        }
+                        setDeleteError(null);
+                        try {
+                          await live.onDelete(asset);
+                        } catch (error) {
+                          setDeleteError(error);
+                        }
                       }}
                     >
                       Delete
@@ -5242,11 +5526,13 @@ function BrandProfileAssetEditor({ assets, uploadHelper, itemType = "image" }) {
           ))}
         </div>
       )}
-      <button className="secondary-btn profile-asset-add-button" type="button" onClick={() => setAddImageOpen(true)}>{isProject ? "+ Add project" : "+ Add image"}</button>
+      {deleteError && <p className="brand-onboarding-save-error" role="alert">{deleteError.message ?? String(deleteError)}</p>}
+      <button className="secondary-btn profile-asset-add-button" type="button" onClick={() => setAddImageOpen(true)}>{isProject ? "+ Add project" : live?.addLabel ?? "+ Add image"}</button>
       {addImageOpen && (
         <ProfileAssetUploadDialog
           helper={uploadHelper}
           itemType={itemType}
+          live={live}
           onClose={() => setAddImageOpen(false)}
         />
       )}
@@ -5256,6 +5542,7 @@ function BrandProfileAssetEditor({ assets, uploadHelper, itemType = "image" }) {
           helper={isProject ? "Update the project image, title, or summary shown on this card." : "Update the image, name, or description shown on this card."}
           itemType={itemType}
           mode="edit"
+          live={live}
           onClose={() => setEditingAsset(null)}
         />
       )}
@@ -5263,9 +5550,45 @@ function BrandProfileAssetEditor({ assets, uploadHelper, itemType = "image" }) {
   );
 }
 
-function ProfileAssetUploadDialog({ asset = null, helper, itemType = "image", mode = "add", onClose }) {
+/**
+ * Live (`live` from the asset editor): the upload button picks a real file
+ * (click or drop), the name and description are kept, and the primary button
+ * saves through `live.onAdd` / `live.onEdit`, staying open on an error.
+ */
+function ProfileAssetUploadDialog({ asset = null, helper, itemType = "image", mode = "add", live = null, onClose }) {
   const isEdit = mode === "edit";
   const isProject = itemType === "project";
+  const fileInput = useRef(null);
+  const [file, setFile] = useState(null);
+  const [title, setTitle] = useState(asset?.editTitle ?? asset?.title ?? "");
+  const [caption, setCaption] = useState(asset?.editCaption ?? asset?.meta ?? "");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+  const pickFile = (picked) => {
+    if (!picked) return;
+    setFile(picked);
+    setSaveError(null);
+  };
+  const submit = async () => {
+    if (!live) {
+      onClose();
+      return;
+    }
+    if (!isEdit && !file) {
+      setSaveError(new Error("Choose an image to upload first."));
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      if (isEdit) await live.onEdit(asset, file, { title, caption });
+      else await live.onAdd(file, { title, caption });
+      onClose();
+    } catch (error) {
+      setSaveError(error);
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="profile-asset-upload-layer" role="presentation">
@@ -5281,23 +5604,50 @@ function ProfileAssetUploadDialog({ asset = null, helper, itemType = "image", mo
             <img src={asset.src} alt={`${asset.title} preview`} />
           </div>
         )}
-        <button className="brand-profile-file-upload" type="button">
+        <button
+          className="brand-profile-file-upload"
+          type="button"
+          onClick={live ? () => fileInput.current?.click() : undefined}
+          onDragOver={live ? (event) => event.preventDefault() : undefined}
+          onDrop={live ? (event) => {
+            event.preventDefault();
+            pickFile(event.dataTransfer.files?.[0]);
+          } : undefined}
+        >
           <img src="/assets/prototype-icons/upload.svg" alt="" />
           <strong>{isEdit ? (isProject ? "Click or drag files to replace project image" : "Click or drag files to replace image") : "Click or drag files to upload"}</strong>
+          {file && <small>{file.name}</small>}
         </button>
+        {live && (
+          <input
+            ref={fileInput}
+            type="file"
+            accept={live.accept}
+            hidden
+            onChange={(event) => {
+              pickFile(event.target.files?.[0]);
+              event.target.value = "";
+            }}
+          />
+        )}
         <div className="profile-asset-metadata-grid">
           <label>
             <span>{isProject ? "Project title" : "Image name"}</span>
-            <input defaultValue={asset?.title || ""} placeholder={isProject ? "e.g. Organic cotton woven shirt production" : "e.g. Organic poplin fit sample"} />
+            {live
+              ? <input value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Organic poplin fit sample" />
+              : <input defaultValue={asset?.title || ""} placeholder={isProject ? "e.g. Organic cotton woven shirt production" : "e.g. Organic poplin fit sample"} />}
           </label>
           <label>
             <span>{isProject ? "Project summary" : "Description"}</span>
-            <input defaultValue={asset?.meta || ""} placeholder={isProject ? "e.g. Vendor partner · Completed on time" : "e.g. Wovens · sample development"} />
+            {live
+              ? <input value={caption} maxLength={240} onChange={(event) => setCaption(event.target.value)} placeholder="e.g. Wovens · sample development" />
+              : <input defaultValue={asset?.meta || ""} placeholder={isProject ? "e.g. Vendor partner · Completed on time" : "e.g. Wovens · sample development"} />}
           </label>
         </div>
+        {saveError && <p className="brand-onboarding-save-error" role="alert">{saveError.message ?? String(saveError)}</p>}
         <footer className="profile-asset-upload-actions">
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
-          <button className="primary-btn" type="button" onClick={onClose}>{isEdit ? "Save changes" : (isProject ? "Add project" : "Add image")}</button>
+          <button className="primary-btn" type="button" onClick={submit} disabled={saving}>{saving ? "Saving…" : isEdit ? "Save changes" : (isProject ? "Add project" : "Add image")}</button>
         </footer>
       </section>
     </div>

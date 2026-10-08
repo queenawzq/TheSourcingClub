@@ -79,6 +79,20 @@ export async function inviteMember(orgId, email, role = "member") {
   );
 }
 
+/** Withdraw a pending invitation. Only owners may do this; RLS enforces it. */
+export async function revokeInvitation(invitationId) {
+  return unwrap(
+    await supabase
+      .from("org_invitations")
+      .update({ status: "revoked" })
+      .eq("id", invitationId)
+      .eq("status", "pending")
+      .select("id")
+      .single(),
+    "remove the invitation",
+  );
+}
+
 /** Invitations addressed to the signed-in user's own email address. */
 export async function listMyInvitations() {
   return unwrap(

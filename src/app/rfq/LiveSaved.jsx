@@ -1,36 +1,50 @@
 /**
- * The vendor's saved requests, on Queena's designed Saved page.
+ * The vendor's saved brands and saved requests, on Queena's designed Saved
+ * page.
  *
- * "Save request" on the RFQ detail screen had nowhere to put anything and the
- * Saved nav item went nowhere. Both ends exist now: saved_rfqs holds the list,
- * and this is the page that reads it back.
- *
- * The design's other tab, saved brands, has no storage behind it, so a live
- * mount shows only the requests.
+ * "Save request" on the RFQ detail screen fills saved_rfqs, and "Save brand"
+ * on a brand's profile fills saved_brands; this is the page that reads both
+ * back. A brand card opens the brand's profile (/brands/:id).
  */
 import React, { useEffect, useState } from "react";
 import { FactorySavedPage } from "../../factory-prototype/main.jsx";
 import { listSavedRequests } from "../../lib/domain/rfq.js";
+import { listThreads } from "../../lib/domain/message.js";
+import { savedBrandCard } from "../profile/brand-profile-view.js";
+import { loadSavedBrands } from "../profile/load-profile.js";
 import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import "../profile/profile.css";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
 export default function LiveSaved({ org }) {
   const { navigate } = useRouter();
   const [rows, setRows] = useState(null);
+  const [brands, setBrands] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    listSavedRequests(org.id)
-      .then((saved) => !cancelled && setRows(saved ?? []))
+    Promise.all([listSavedRequests(org.id), loadSavedBrands(org), listThreads(org.id)])
+      .then(([saved, savedBrands, threads]) => {
+        if (cancelled) return;
+        setRows(saved ?? []);
+        setBrands(savedBrands.brands.map((brand) => {
+          // The latest conversation with the brand, as on its profile.
+          const thread = threads.find((item) => item.brand_org_id === brand.orgId && item.factory_org_id === org.id);
+          return {
+            ...savedBrandCard(brand, savedBrands.terms),
+            contact: thread ? { label: "Contact brand", onClick: () => navigate(`/messages/${thread.id}`) } : null,
+          };
+        }));
+      })
       .catch((failure) => !cancelled && setError(failure));
     return () => { cancelled = true; };
   }, [org.id]);
 
   if (error) return <p className="composer-error" role="alert">{error.message}</p>;
-  if (!rows) return null;
+  if (!rows || !brands) return null;
 
   const saved = rows
     .filter((row) => row.rfqs)
@@ -62,8 +76,11 @@ export default function LiveSaved({ org }) {
     <FactorySavedPage
       language="en"
       rfqs={saved}
+      brands={brands}
+      // Saved brands first, as the design; a vendor with none opens on its requests.
+      initialTab={brands.length || !saved.length ? "brands" : "rfqs"}
       onViewRfq={(project) => navigate(project?.id ? `/browse/${project.id}` : "/browse")}
-      onViewBrand={() => navigate("/browse")}
+      onViewBrand={(brand) => navigate(`/brands/${brand.orgId}?from=saved`)}
     />
   );
 }

@@ -282,6 +282,71 @@ for (const [file, name, caption] of [
   }), `record ${name}`);
 }
 
+// The demo brand's profile, filled in the way brand onboarding fills it,
+// through its own login: the answers, tags, brand images, a pending invitation
+// for a second decision maker, and the verified registration behind its
+// verified status. Its profile page (/profile) shows all of it, and a factory
+// that can see one of its requests reads the vendor-safe part.
+console.log("brand profile");
+must(await brand.client.from("brand_profiles").update({
+  legal_name: LOGINS.brand.name,
+  business_email: "hello@demobrand.example.com",
+  website_url: "https://demobrand.example.com",
+  founded_year: 2019,
+  brand_category: "direct-to-consumer-brand",
+  intro: "London womenswear label making organic cotton shirts and light outerwear in small, repeatable runs. We send full tech packs, approve samples within a week and reorder the styles that sell.",
+  annual_revenue_band: "$1M-$5M",
+  pieces_per_year_band: "5,000-20,000 pieces",
+  order_size_band: "300-1,000 pieces per style",
+  collections_per_year: "3-4",
+  reorder_cadence: "Quarterly reorders",
+  sourcing_stage: "Producing now",
+  target_price_min_cents: 1200,
+  target_price_max_cents: 2800,
+}).eq("org_id", brandOrg.id), "brand profile answers");
+const brandTags = [
+  ["brand_category", "direct-to-consumer-brand"], ["brand_category", "wholesale-brand"],
+  ["product_category", "womenswear"], ["product_category", "tops"], ["product_category", "outerwear"],
+  ["market_level", "premium-contemporary"],
+  ["region", "portugal"], ["region", "europe"], ["region", "china"],
+  ["certification", "gots"], ["certification", "oeko-tex-standard-100"],
+  ["service", "full-package"], ["service", "sample-development"],
+];
+must(await brand.client.from("taxonomy_links").insert(await Promise.all(brandTags.map(async ([kind, slug]) => ({
+  subject_type: "brand_profile", subject_id: brandOrg.id, org_id: brandOrg.id, term_id: await termId(kind, slug),
+})))), "brand profile tags");
+for (const [file, name, caption] of [
+  ["moodboard-warm-clay.jpg", "SS27 colour story.jpg", "Moodboard · warm clay and sand"],
+  ["moodboard-soft-concrete.jpg", "Poplin shirt references.jpg", "Wovens · fit and finish"],
+  ["moodboard-internet-blue.jpg", "Outerwear direction.jpg", "Light outerwear · trims"],
+]) {
+  const path = `${brandOrg.id}/product_image/${crypto.randomUUID()}-${name.replace(/\s+/g, "-")}`;
+  const bytes = readFileSync(new globalThis.URL(`../assets/${file}`, import.meta.url));
+  must(await brand.client.storage.from("org-public").upload(path, bytes, { contentType: "image/jpeg" }), `upload ${name}`);
+  must(await brand.client.from("documents").insert({
+    org_id: brandOrg.id, kind: "product_image", bucket: "org-public", storage_path: path,
+    file_name: name, mime_type: "image/jpeg", size_bytes: bytes.length,
+    title: name.replace(/\.jpg$/, ""), caption,
+  }), `record ${name}`);
+}
+must(await brand.client.from("org_invitations").insert({
+  org_id: brandOrg.id, email: "production@demobrand.example.com", role: "member",
+}), "brand decision maker invitation");
+{
+  const name = "Business registration.pdf";
+  const path = `${brandOrg.id}/business_registration/${crypto.randomUUID()}-Business-registration.pdf`;
+  const bytes = new TextEncoder().encode(
+    "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n"
+    + "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 120]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
+  );
+  must(await brand.client.storage.from("org-private").upload(path, bytes, { contentType: "application/pdf" }), `upload brand ${name}`);
+  must(await admin.from("documents").insert({
+    org_id: brandOrg.id, kind: "business_registration", bucket: "org-private", storage_path: path,
+    file_name: name, mime_type: "application/pdf", size_bytes: bytes.length, status: "verified",
+    reviewed_at: new Date().toISOString(),
+  }), `record brand ${name}`);
+}
+
 // A second verified factory, so a request can have two quotes to compare.
 const secondFactoryOrg = must(await secondFactory.client.rpc("create_org", { org_name: LOGINS.secondFactory.name, org_kind: "factory" }), "create second factory org");
 must(await admin.from("factory_profiles").upsert({
@@ -507,6 +572,12 @@ must(await brand.client.from("messages").insert({
   body: "Could you confirm the lab dip timing before we award?",
 }), "message");
 
+// The factory keeps the brand on its Saved page (Saved brands), the way its
+// profile's "Save brand" does. It can: it sees the brand's open request.
+must(await factory.client.from("saved_brands").insert({
+  org_id: factoryOrg.id, brand_org_id: brandOrg.id, saved_by: factory.id,
+}), "factory saves the brand");
+
 console.log("orders");
 // 1. Waiting for its production steps, the state right after an award.
 const merino = await publishRequest({
@@ -675,6 +746,8 @@ done. Every login uses the password "${PASSWORD}".
     - "${tote.title}": an order cancelled by both sides
     - "Linen trousers, SS27": the factory proposed cancelling (Accept / Keep order)
     - "Recycled nylon windbreaker": the brand proposed cancelling (Withdraw)
+  Its profile (/profile) is filled in, with a pending invitation.
+  ${LOGINS.factory.name} has it under Saved → Saved brands.
   The admin's verification queue has ${LOGINS.newFactory.name}.
 
   Run this again at any time to put the demo companies back to this state.

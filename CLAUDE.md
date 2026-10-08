@@ -74,7 +74,11 @@ a manufacturer's or a trading company's design, with every designed edit
 dialog, files included, and the completion page at `/profile/completion`),
 the **brand's view of a vendor** (`/factories/:id`, opened from the invite
 step, the dashboard's recommended factories, quote cards and the order
-page), and the whole **admin console**
+page), the **brand's own profile** (`/profile` for a brand, with its edit
+dialogs and completion page), the **vendor's view of a brand**
+(`/brands/:id`, read through `brand_profile_for_factory()`: never revenue,
+email, website or documents; opened from Saved brands, the request's brand
+card and the order page), and the whole **admin console**
 (`admin.html`).
 
 **Only the brand sets the production steps** (design review, Oct 2; migration

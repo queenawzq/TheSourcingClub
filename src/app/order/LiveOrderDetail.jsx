@@ -42,6 +42,7 @@ import {
   orderFiles,
   updateTime,
 } from "./order-view.js";
+import "../profile/profile.css";
 
 /**
  * Whether the brand can approve this step now. The factory's update is what
@@ -388,7 +389,12 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         error={error}
         tab={activeTab}
         onTabChange={onTabChange}
-        counterparty={counterparty}
+        // The factory opens the brand's profile from its name.
+        counterparty={{
+          ...counterparty,
+          profileHref: `/app.html/brands/${order.brand_org_id}?from=order`,
+          onOpenProfile: () => navigate(`/brands/${order.brand_org_id}?from=order`),
+        }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
         activity={activityLines(activity, { order, viewerOrgId: org.id })}
         files={orderFiles(requestFiles, updates, milestones)}

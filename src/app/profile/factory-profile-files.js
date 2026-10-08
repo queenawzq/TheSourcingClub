@@ -1,6 +1,7 @@
 /**
- * The factory profile's file dialogs: profile image, walkthrough video,
- * sample images and verification documents.
+ * The profile file dialogs: the factory's profile image, walkthrough video,
+ * sample images and verification documents, and the brand's profile image,
+ * brand assets and business registration.
  *
  * Files save the moment they are added, replaced or removed, as onboarding's
  * do, through the same document and certification functions. Which bucket a
@@ -25,6 +26,8 @@ export const FILE_EDITORS = {
   banner: { kind: "logo", types: IMAGE_TYPES, maxBytes: 10 * MB, single: true },
   walkthrough: { kind: "walkthrough", types: VIDEO_TYPES, maxBytes: 50 * MB, single: true },
   samples: { kind: "product_image", types: IMAGE_TYPES, maxBytes: 10 * MB, single: false },
+  // The brand's "Manage brand assets": its product images, as onboarding saves them.
+  assets: { kind: "product_image", types: IMAGE_TYPES, maxBytes: 10 * MB, single: false },
 };
 export const DOCUMENT_ACCEPT = DOCUMENT_TYPES.join(",");
 

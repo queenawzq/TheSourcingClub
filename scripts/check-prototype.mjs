@@ -181,6 +181,38 @@ try {
     "the brand's view of a factory renders its example vendor, every button drawn",
   );
 
+  // The brand's own profile, its completion page, and a factory's view of a
+  // brand take a `live` prop too; without one they keep the design's example.
+  const brandProfile = await stagehand.browser.context.newPage(`${BASE}/prototype.html?screen=profile`);
+  await brandProfile.setViewportSize(1440, 1100);
+  await brandProfile.waitForTimeout(3500);
+  const brandProfileBody = await brandProfile.locator("body").innerText();
+  check(
+    brandProfileBody.includes("Maison Rue") && brandProfileBody.includes("88%") && brandProfileBody.includes("Publish changes")
+      && brandProfileBody.includes("Ari Chen") && brandProfileBody.includes("Payment status"),
+    "the brand profile renders its example brand, Publish changes and the payment rows",
+  );
+  const brandCompletion = await stagehand.browser.context.newPage(`${BASE}/prototype.html?screen=profileCompletion`);
+  await brandCompletion.setViewportSize(1440, 1100);
+  await brandCompletion.waitForTimeout(3000);
+  const brandCompletionBody = await brandCompletion.locator("body").innerText();
+  check(
+    brandCompletionBody.includes("88%") && brandCompletionBody.includes("Add payment method"),
+    "the brand's completion page keeps its example too",
+  );
+  const factoryBrandView = await stagehand.browser.context.newPage(`${BASE}/factory-prototype.html?screen=saved`);
+  await factoryBrandView.setViewportSize(1440, 1100);
+  await factoryBrandView.waitForTimeout(3500);
+  const savedBody = await factoryBrandView.locator("body").innerText();
+  check(savedBody.includes("Saved brands (3)") && savedBody.includes("Payment verified"), "the factory's Saved page keeps its example brands");
+  await factoryBrandView.evaluate(() => document.querySelector(".factory-saved-brand-link")?.click());
+  await factoryBrandView.waitForTimeout(1500);
+  const factoryBrandBody = await factoryBrandView.locator("body").innerText();
+  check(
+    factoryBrandBody.includes("Back to saved brands") && factoryBrandBody.includes("revenue") && factoryBrandBody.includes("Repeat factories"),
+    "and a saved brand opens the design's example profile",
+  );
+
   // The admin workspace now reads through the same seam, so it makes the same
   // promise and can break the same way. Every screen here is behind a
   // security-definer RPC in the live console; with no database it must still

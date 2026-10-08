@@ -54,6 +54,8 @@ import LiveOrderDetail from "./order/LiveOrderDetail.jsx";
 import LiveSettings from "./settings/LiveSettings.jsx";
 import LiveFactoryProfile from "./profile/LiveFactoryProfile.jsx";
 import LiveBrandFactoryProfile from "./profile/LiveBrandFactoryProfile.jsx";
+import LiveBrandProfile from "./profile/LiveBrandProfile.jsx";
+import LiveFactoryBrandProfile from "./profile/LiveFactoryBrandProfile.jsx";
 import NotificationList from "./NotificationList.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
 import "./shell.css";
@@ -591,6 +593,8 @@ function activeNavFor(path, isFactory) {
   if (path.startsWith("/team")) return "Settings";
   if (isFactory && path.startsWith("/browse")) return "Browse RFQs";
   if (isFactory && path.startsWith("/saved")) return "Saved";
+  // A brand's profile sits under Saved, as in the design.
+  if (isFactory && path.startsWith("/brands")) return "Saved";
   if (isFactory && path.startsWith("/payout")) return "Payments";
   if (isFactory && path.startsWith("/rfqs")) return "RFQs";
   if (!isFactory && path.startsWith("/rfqs")) return "Quotes";
@@ -641,8 +645,8 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
           navigate(paths[label] ?? "/");
           if (window.matchMedia("(max-width: 760px)").matches) setCollapsed(true);
         }}
-        // Vendors have their designed profile page; brands get theirs later.
-        onProfile={() => navigate(isFactory ? "/profile" : "/team")}
+        // Each side's designed profile page.
+        onProfile={() => navigate("/profile")}
         onToggle={() => setCollapsed((value) => !value)}
         onSignOut={onSignOut}
       />
@@ -752,7 +756,8 @@ function navigateFromPrototype(screenKey, navigate) {
     // "describe" is its first step, and it maps to the composer that does.
     describe: "/rfqs/new",
     factoryMarketplace: "/browse",
-    profile: "/",
+    profile: "/profile",
+    profileCompletion: "/profile/completion",
     notifications: "/notifications",
     // Keys the designed cards emit that used to fall through to the
     // dashboard, which read as a dead button. Without an id they can only
@@ -957,16 +962,34 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
         throw new Error("Deliberate crash from /__crash — this is a self-test.");
       },
     },
-    // The vendor's own profile (a manufacturer's or a trading company's
-    // design). Brands get theirs in a later change; until then /profile is
-    // the dashboard for them, as before.
+    // The company's own profile: a manufacturer's, a trading company's or a
+    // brand's design, each with its completion page and edit dialogs.
     ...(isFactory
       ? [
         { path: "/profile", render: () => <LiveFactoryProfile org={activeOrg} /> },
         { path: "/profile/completion", render: () => <LiveFactoryProfile org={activeOrg} page="completion" /> },
         { path: "/profile/edit/:editor", render: (params) => <LiveFactoryProfile org={activeOrg} editor={params.editor} /> },
       ]
-      : []),
+      : [
+        { path: "/profile", render: () => <LiveBrandProfile org={activeOrg} /> },
+        { path: "/profile/completion", render: () => <LiveBrandProfile org={activeOrg} page="completion" /> },
+        { path: "/profile/edit/:editor", render: (params) => <LiveBrandProfile org={activeOrg} editor={params.editor} /> },
+      ]),
+    {
+      // A brand's profile as a vendor sees it. `?from=` says where it was
+      // opened, for the design's back link.
+      path: "/brands/:id",
+      render: (params) =>
+        isFactory ? (
+          <LiveFactoryBrandProfile
+            key={params.id}
+            org={activeOrg}
+            user={user}
+            brandOrgId={params.id}
+            from={new URLSearchParams(window.location.search).get("from")}
+          />
+        ) : <NotForThisSide isFactory={false} />,
+    },
     {
       // A vendor's profile as a brand sees it. `?from=` says where it was
       // opened, for the design's back link.

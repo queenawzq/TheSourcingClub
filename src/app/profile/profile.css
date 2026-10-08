@@ -67,3 +67,40 @@
   margin-top: 6px;
   font-size: 13px;
 }
+
+/* The brand's completion page. In the prototype the shared page padding
+   (48px top) is the last rule to apply; the live build links the factory
+   sheet after the brand one, so its "padding-bottom: 96px" and the brand
+   sheet's "padding-top: 72px" won instead. Scoped to the live mount. */
+.profile-completion-shell > .brand-profile-completion-page {
+  padding-top: 48px;
+  padding-bottom: var(--page-top-standard);
+}
+
+/* A saved brand's logo, where the design draws initials. */
+.factory-saved-brand-card .factory-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+/* The brand's name in a vendor's side panels opens its profile. It reads as
+   the name it was, with the underline a link gets on hover. */
+.factory-client-row .factory-client-profile-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.factory-client-row .factory-client-profile-link:hover,
+.factory-client-row .factory-client-profile-link:focus-visible {
+  text-decoration: underline;
+}
+
+/* A save error in the brand profile dialog's footer, left of the buttons. */
+.brand-profile-modal .brand-profile-modal-error {
+  flex: 1;
+  margin: 0;
+  text-align: left;
+}
