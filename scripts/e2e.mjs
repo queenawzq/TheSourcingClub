@@ -1036,6 +1036,37 @@ async function main() {
       "View as public switches to what brands see");
     await page.locator(".factory-profile-view-toggle button").nth(0).click();
 
+    // Its edit dialogs save to the database: a new overview, then the page
+    // shows it without a reload.
+    // Some cards are drawn twice for different widths; open the one shown.
+    await page.evaluate(() => [...document.querySelectorAll(".factory-profile-card")]
+      .find((card) => card.offsetParent && card.querySelector("h2")?.textContent === "Overview")
+      ?.querySelector(".factory-profile-edit-button")?.click());
+    await waitFor(page, ".factory-profile-modal textarea", 10000);
+    const newIntro = `Woven shirts and light outerwear, edited ${stamp}.`;
+    await page.evaluate((text) => {
+      const area = document.querySelector(".factory-profile-modal textarea");
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value").set.call(area, text);
+      area.dispatchEvent(new Event("input", { bubbles: true }));
+    }, newIntro);
+    await record(page, "Edit overview", "the designed dialog, starting from what onboarding saved");
+    await page.locator(".factory-profile-modal .factory-onboarding-actions .primary-btn").click();
+    await page.waitForTimeout(3000);
+    check(!(await page.evaluate(() => Boolean(document.querySelector(".factory-profile-modal")))), "saving closes the dialog");
+    check((await page.locator("main.factory-profile-page").first().innerText()).includes(newIntro), "and the new overview is on the profile");
+    const { data: editedProfile } = await db.from("factory_profiles").select("intro").eq("org_id", factoryOrg.id).single();
+    check(editedProfile.intro === newIntro, "it is the saved profile, not just the screen");
+
+    // "See details" opens the completion page, scored the same way as the card.
+    const cardPercent = await page.evaluate(() => document.querySelector(".factory-profile-status-meter strong")?.textContent);
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent === "See details" && button.offsetParent)?.click());
+    await waitFor(page, ".factory-profile-completion-page", 15000);
+    await record(page, "Profile completion", "the checklist behind the profile's percentage");
+    const completionText = await page.locator(".factory-profile-completion-page").innerText();
+    check(completionText.includes(cardPercent) && completionText.includes("Verification checklist"),
+      `the completion page shows the same ${cardPercent} as the profile`);
+    check(!/Atelier Minho|GOTS and BSCI/.test(completionText), "with none of the design's example checks");
+
     await page.goto(`${APP}/browse`);
     await waitForHeading(page, "browse rfqs");
     await waitFor(page, '[data-testid="open-rfq-card"]', 20000);

@@ -138,6 +138,29 @@ try {
     profileBody.includes("Maison Rue · May 2026 - Jul 2026"),
     "past projects keep the brand's name in the example",
   );
+  // Live, the dialogs start from the factory's answers and save to the
+  // database; here they must still open on the example with no database.
+  // The page draws some cards twice for different widths; click the one shown.
+  await factoryProfile.evaluate(() => [...document.querySelectorAll(".factory-profile-card")]
+    .find((card) => card.offsetParent && card.querySelector("h2")?.textContent === "Overview")
+    ?.querySelector(".factory-profile-edit-button")?.click());
+  await factoryProfile.waitForTimeout(800);
+  const overviewDialog = await factoryProfile.evaluate(() => ({
+    title: document.querySelector("#factory-profile-edit-title")?.textContent ?? "",
+    values: [...document.querySelectorAll(".factory-profile-modal input")].map((input) => input.value),
+  }));
+  check(
+    overviewDialog.title === "Edit overview" && overviewDialog.values.includes("Atelier Minho"),
+    "its Edit overview dialog opens on the example factory",
+  );
+  const completion = await stagehand.browser.context.newPage(`${BASE}/factory-prototype.html?screen=profileCompletion`);
+  await completion.setViewportSize(1440, 1100);
+  await completion.waitForTimeout(3500);
+  const completionBody = await completion.locator("body").innerText();
+  check(
+    completionBody.includes("Profile completion summary") && completionBody.includes("88%") && completionBody.includes("Upload GOTS certificate"),
+    "the profile completion page keeps its example too",
+  );
 
   // The admin workspace now reads through the same seam, so it makes the same
   // promise and can break the same way. Every screen here is behind a

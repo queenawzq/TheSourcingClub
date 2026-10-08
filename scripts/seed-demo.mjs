@@ -229,10 +229,28 @@ must(await factory.client.from("factory_capacity_months").insert(
 must(await factory.client.from("profile_references").insert(
   ["Northline Studio", "Elara Studio", "Harbour & Co"].map((title, sort) => ({ org_id: factoryOrg.id, title, sort })),
 ), "factory references");
-must(await factory.client.from("factory_certifications").insert([
+const [oekoTex] = must(await factory.client.from("factory_certifications").insert([
   { org_id: factoryOrg.id, term_id: await termId("certification", "oeko-tex-standard-100") },
   { org_id: factoryOrg.id, term_id: await termId("certification", "gots") },
-]), "factory certifications");
+]).select("id"), "factory certifications");
+// OEKO-TEX has its certificate uploaded and waiting for an admin, the way the
+// profile's upload leaves it; GOTS has none. So the profile's completion page
+// shows an item in review and one that needs attention.
+{
+  const name = "OEKO-TEX certificate.pdf";
+  const path = `${factoryOrg.id}/certificate/${crypto.randomUUID()}-${name.replace(/\s+/g, "-")}`;
+  const bytes = new TextEncoder().encode(
+    "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n"
+    + "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 120]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
+  );
+  must(await factory.client.storage.from("org-private").upload(path, bytes, { contentType: "application/pdf" }), `upload ${name}`);
+  const certificate = must(await factory.client.from("documents").insert({
+    org_id: factoryOrg.id, kind: "certificate", bucket: "org-private", storage_path: path,
+    file_name: name, mime_type: "application/pdf", size_bytes: bytes.length, status: "pending",
+  }).select("id").single(), `record ${name}`);
+  must(await factory.client.from("factory_certifications")
+    .update({ document_id: certificate.id, status: "pending" }).eq("id", oekoTex.id), "attach the OEKO-TEX certificate");
+}
 // The repo's own sample-garment photos, uploaded as the factory's sample
 // images, the way the profile's image upload stores them (public bucket).
 for (const [file, name] of [

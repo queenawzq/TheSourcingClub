@@ -31,6 +31,37 @@ const FACTORY_COLUMNS = `
   onboarding_completed_at, created_at, updated_at
 `;
 
+/**
+ * The first number in a free-text answer: "30-45 days" is 30, and
+ * "1,200 units" is 1200 (a thousands comma is not the end of the number).
+ */
+export function firstNumber(text) {
+  const match = String(text ?? "").replace(/(\d),(?=\d{3}(?!\d))/g, "$1").match(/\d+/);
+  return match ? Number(match[0]) : null;
+}
+
+/**
+ * The design asks for "Factory Location" as free text ("Porto, Portugal")
+ * and never for a country code. But country_code is what match_score
+ * compares, so a profile without one is invisible to half the marketplace.
+ *
+ * Rather than adding a field the design does not have, the country is read
+ * out of what the factory already typed, against the country taxonomy
+ * (`countryTerms`). No match gives null, which is honest: better absent than
+ * wrong, because a wrong code silently mis-matches rather than failing.
+ * No location at all gives undefined: nothing to read.
+ */
+export function countryCodeFrom(location, countryTerms = []) {
+  if (!location) return undefined;
+  const text = String(location).toLowerCase();
+  const hit = countryTerms.find((term) => {
+    const en = String(term.label_en ?? "").toLowerCase();
+    const zh = String(term.label_zh ?? "");
+    return (en && text.includes(en)) || (zh && String(location).includes(zh));
+  });
+  return hit?.extra?.code ?? null;
+}
+
 export async function getBrandProfile(orgId) {
   return unwrap(
     await supabase.from("brand_profiles").select(BRAND_COLUMNS).eq("org_id", orgId).maybeSingle(),

@@ -185,7 +185,8 @@ export default function LiveFactoryHome({ org, profile }) {
       title: "Verification in review",
       meta: "Brands can see your profile now. Quoting opens once your business registration is approved.",
       action: "View checklist",
-      onAction: () => navigate(profilePath),
+      // The checklist is the profile's completion page.
+      onAction: () => navigate(isTrading ? profilePath : "/profile/completion"),
     });
   }
   if (!isTrading && !capacity.set) {

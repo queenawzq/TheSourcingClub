@@ -1,0 +1,132 @@
+/**
+ * Saving the factory's profile from its designed edit dialogs.
+ *
+ * Every write here is one onboarding (or the dashboard's capacity drawer)
+ * already makes, through the same functions, so a profile edited here reads
+ * back the same in onboarding, on the dashboard and in brand matching. Each
+ * dialog saves only its own section: a save never touches a field or chip
+ * group that dialog doesn't show.
+ */
+import { countryCodeFrom, firstNumber, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { CUSTOM_KINDS, addCustomTerm, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
+import { saveCapacity } from "../../lib/domain/capacity-store.js";
+import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
+import { supabase, unwrap } from "../../lib/supabase.js";
+import { CHIP_KINDS } from "./factory-profile-view.js";
+
+const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
+const textOrNull = (value) => String(value ?? "").trim() || null;
+
+async function saveOverview(org, form, terms) {
+  const location = textOrNull(form.location);
+  const patch = {
+    intro: textOrNull(form.intro),
+    legal_name: textOrNull(form.name),
+    founded_year: firstNumber(form.founded),
+    website_url: textOrNull(form.website),
+    location,
+    nearest_port: textOrNull(form.nearestPort),
+    employee_count: firstNumber(form.employees),
+  };
+  // Re-read the country only when there is a location to read it from, so
+  // clearing the field doesn't erase a code onboarding found.
+  const code = countryCodeFrom(location, terms.country ?? []);
+  if (code) patch.country_code = code;
+  await saveFactoryProfile(org.id, patch);
+}
+
+/**
+ * Labels back to term ids, kind by kind. A label the factory typed into
+ * "Add your own" becomes its own term where the platform allows that, as in
+ * onboarding.
+ */
+async function saveProduction(org, form, terms) {
+  for (const [key, kind] of Object.entries(CHIP_KINDS)) {
+    const chosen = form[key] ?? [];
+    const known = terms[kind] ?? [];
+    const termIds = [];
+    for (const label of chosen) {
+      let term = known.find((item) => termLabel(item) === label || termLabel(item, "zh") === label);
+      if (!term && CUSTOM_KINDS.has(kind)) term = await addCustomTerm(org.id, kind, label);
+      if (term) termIds.push(term.id);
+    }
+    await setLinks({ subjectType: "factory_profile", subjectId: org.id, orgId: org.id, kind, termIds });
+  }
+  // Key machines are free text on the profile row, one per comma, as
+  // onboarding writes them.
+  await saveFactoryProfile(org.id, { equipment_notes: (form.equipment ?? []).join(", ") || null });
+}
+
+/**
+ * Terms plus capacity. Months the dialog doesn't show (it shows three of the
+ * six the calendar keeps) keep their saved level; the three it shows save
+ * what is on screen, where an untouched month reads "Mostly open".
+ *
+ * A factory with no capacity yet can save its terms alone; one that has
+ * capacity can't blank it out (the table needs the figure for its mode), and
+ * is told so before anything is written.
+ */
+async function saveCapacityAndTerms(org, form, terms, hadCapacity, now) {
+  const mode = form.capacityInputMode === "hours" ? "hours" : "units";
+  const figure = mode === "hours" ? firstNumber(form.lineHoursInput) : firstNumber(form.capacityMonthlyUnits);
+  if (!figure && hadCapacity) {
+    throw new Error(mode === "hours"
+      ? "Add the line-hours you have each month to save your capacity."
+      : "Add the units you can make each month to save your capacity.");
+  }
+
+  await saveFactoryProfile(org.id, {
+    moq: firstNumber(form.moq),
+    typical_lead_days: firstNumber(form.leadTime),
+    sample_lead_days: firstNumber(form.sampleLeadTime),
+  });
+  if (!figure) return;
+
+  const category = (terms.capacity_category ?? []).find((term) => term.slug === form.capacityCategoryKey);
+  const selections = form.capacityMonthSelections ?? {};
+  const byKey = {};
+  capacityWindow(6, now).forEach((month, index) => {
+    const level = selections[shortMonth(month)] ?? (index < 3 ? "open" : null);
+    if (level) byKey[monthKey(month)] = level;
+  });
+  await saveCapacity(
+    org.id,
+    { category_term_id: category?.id ?? null, input_mode: mode, line_hours: figure, monthly_units: figure },
+    byKey,
+  );
+}
+
+/**
+ * The references card is the complete list, so it is replaced as a whole,
+ * as onboarding does. A contact onboarding saved against a name is kept
+ * while that name stays on the list.
+ */
+async function saveReferences(org, form, existing) {
+  const contactFor = new Map(existing.map((reference) => [reference.title, reference.counterparty ?? null]));
+  const titles = [...new Set(String(form.referencesText ?? "").split("\n").map((line) => line.trim()).filter(Boolean))];
+  unwrap(await supabase.from("profile_references").delete().eq("org_id", org.id), "update your references");
+  if (titles.length) {
+    unwrap(
+      await supabase.from("profile_references").insert(
+        titles.map((title, sort) => ({ org_id: org.id, title, counterparty: contactFor.get(title) ?? null, sort })),
+      ),
+      "save your references",
+    );
+  }
+}
+
+/** The dialogs this file saves, in the order the page draws them. */
+export const SAVED_EDITORS = ["overview", "production", "capacity", "references"];
+
+/**
+ * Save one dialog. `parts` is what the page loaded (terms, references,
+ * capacity), so labels resolve against the same lists the dialog showed.
+ */
+export async function saveProfileSection(org, editor, form, parts, now = new Date()) {
+  const terms = parts.terms ?? {};
+  if (editor === "overview") return saveOverview(org, form, terms);
+  if (editor === "production") return saveProduction(org, form, terms);
+  if (editor === "capacity") return saveCapacityAndTerms(org, form, terms, Boolean(parts.capacity?.capacity), now);
+  if (editor === "references") return saveReferences(org, form, parts.references ?? []);
+  throw new Error(`The ${editor} section can't be saved yet.`);
+}

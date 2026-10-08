@@ -18,7 +18,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/main.jsx";
 import { addCustomTerm, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
-import { completeOnboarding, getSelectedTerms, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, saveFactoryProfile } from "../../lib/domain/profile.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import { getCapacity, saveCapacity } from "../../lib/domain/capacity-store.js";
@@ -112,12 +112,6 @@ const KIND_FOR_LABEL = {
   "Quality & compliance": "quality_compliance",
   "Primary destination markets": "region",
   "Digital tools (optional)": "digital_tool",
-};
-
-/** The first number in a free-text answer — "30-45 days" is 30. */
-const firstNumber = (text) => {
-  const match = String(text ?? "").match(/\d+/);
-  return match ? Number(match[0]) : null;
 };
 
 /**
@@ -289,29 +283,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
     [terms, language],
   );
 
-  /**
-   * The design asks for "Factory Location" as free text — "Porto, Portugal" —
-   * and never for a country code. But country_code is what match_score
-   * compares, so a profile without one is invisible to half the marketplace.
-   *
-   * Rather than adding a field the design does not have, the country is read
-   * out of what the factory already typed, against the country taxonomy. No
-   * match leaves it null, which is honest: better absent than wrong, because a
-   * wrong code silently mis-matches rather than failing.
-   */
-  const countryCodeFrom = useCallback(
-    (location) => {
-      if (!location) return undefined;
-      const text = String(location).toLowerCase();
-      const hit = (terms.country ?? []).find((term) => {
-        const en = String(term.label_en ?? "").toLowerCase();
-        const zh = String(term.label_zh ?? "");
-        return (en && text.includes(en)) || (zh && String(location).includes(zh));
-      });
-      return hit?.extra?.code ?? null;
-    },
-    [terms],
-  );
+  /** The country read out of the typed location (see countryCodeFrom in profile.js). */
+  const countryCodeFrom = useCallback((location) => countryCodeIn(location, terms.country ?? []), [terms]);
 
   const certificationTerm = (name) =>
     (terms.certification ?? []).find((term) => termLabel(term, "en") === name || termLabel(term, language) === name);
