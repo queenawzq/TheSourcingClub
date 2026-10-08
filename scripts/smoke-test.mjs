@@ -922,6 +922,28 @@ console.log("\nphase 3 — the order runs");
         : fail(`save_order_tabs left ${JSON.stringify(kept)}`);
     }
 
+    // The archive: closed orders only, and each company's own. This order is
+    // still running, so every archive below must be refused.
+    {
+      const { error: openArchive } = await brand.client
+        .from("order_archives").insert({ org_id: org.id, order_id: order.id, archived_by: brand.id });
+      openArchive ? ok("an order still running CANNOT be archived")
+                  : fail("LEAK: an open order was archived");
+
+      const { error: strangerArchive } = await losingFactory
+        .from("order_archives").insert({ org_id: org.id, order_id: order.id });
+      strangerArchive ? ok("an outsider CANNOT archive the brand's order")
+                      : fail("LEAK: an outsider archived the brand's order");
+
+      const { data: factoryArchive, error: factoryArchiveError } = await factoryClient
+        .from("order_archives").select("order_id").eq("org_id", org.id);
+      factoryArchiveError
+        ? fail("the factory's read of the brand's archive answers", factoryArchiveError)
+        : (factoryArchive ?? []).length === 0
+        ? ok("the factory on the order CANNOT see the brand's archive")
+        : fail("LEAK: the factory read the brand's archive");
+    }
+
     const { data: notSeen } = await losingFactory
       .from("milestone_updates").select("id").eq("milestone_id", first.id);
     (notSeen ?? []).length === 0

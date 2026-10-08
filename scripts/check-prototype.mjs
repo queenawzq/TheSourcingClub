@@ -37,6 +37,8 @@ try {
   // Tabs are saved per company in the live app; the prototype keeps its own.
   check(body.includes("Active orders (4)") && body.includes("Closed (6)") && body.includes("Spring 27"),
     "the design's example tabs and counts");
+  // The live archive adds an "Archived" tab; the design has none.
+  check(!/Archived \(/.test(body), "and no Archived tab, which only the live app adds");
 
   const cards = await page.locator("article").count();
   check(cards >= 3, `the project cards render (${cards} articles)`);
@@ -87,6 +89,9 @@ try {
   await factoryOrders.waitForTimeout(500);
   check((await factoryOrders.locator(".project-overflow-menu").count()) === 1,
     "the factory card's menu opens, with no database");
+  // The design draws no archive item on the factory's card; live adds one.
+  check(!/archive/i.test(await factoryOrders.locator(".project-overflow-menu").innerText()),
+    "and it has no archive item, as drawn");
 
   const factoryDetail = await stagehand.browser.context.newPage(`${BASE}/factory-prototype.html?screen=projectDetail`);
   await factoryDetail.setViewportSize(1440, 1100);

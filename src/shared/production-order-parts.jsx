@@ -30,19 +30,51 @@ export function filterOrders(rows, { search, vendor, dateRange, sortBy }) {
   return [...filtered].sort((a, b) => time(b.createdAt, 0) - time(a.createdAt, 0));
 }
 
+const isClosedOrder = (project) => project.state === "completed" || project.state === "cancelled";
+
 /**
  * Which orders a tab shows. Active and Closed split on the order's state; a
  * custom tab shows the orders filed in it, open or closed. `membership` (tab
  * key → Set of order ids) comes from the live store; the prototype has none,
  * so there a custom tab keeps showing what it always did.
+ *
+ * `archived` (a Set of order ids, live only) is the company's archive: those
+ * orders show under "archived" and in no other tab, custom ones included.
+ * Their filing is kept, so unarchiving puts them back where they were.
  */
-export function rowsForTab(rows, tabKey, membership = null) {
-  const isClosed = (project) => project.state === "completed" || project.state === "cancelled";
+export function rowsForTab(rows, tabKey, membership = null, archived = null) {
+  if (tabKey === "archived") return rows.filter((project) => archived?.has(project.id));
+  const kept = archived?.size ? rows.filter((project) => !archived.has(project.id)) : rows;
   if (membership && tabKey !== "active" && tabKey !== "closed") {
     const filed = membership.get(tabKey);
-    return rows.filter((project) => filed?.has(project.id));
+    return kept.filter((project) => filed?.has(project.id));
   }
-  return rows.filter((project) => (tabKey === "closed" ? isClosed(project) : !isClosed(project)));
+  return kept.filter((project) => (tabKey === "closed" ? isClosedOrder(project) : !isClosedOrder(project)));
+}
+
+/**
+ * The tab strip as drawn, plus "Archived" at the end while the company has
+ * archived something. It is not one of the company's saved tabs, so it never
+ * reaches "Manage tabs" and cannot be renamed or moved.
+ */
+export function withArchivedTab(tabs, rows, archived) {
+  return rowsForTab(rows, "archived", null, archived).length
+    ? [...tabs, { key: "archived", label: "Archived", locked: true }]
+    : tabs;
+}
+
+/**
+ * The card menu's archive item, live. `undefined` without a store, so the
+ * prototype keeps the design's own item; `null` on an open order, which has
+ * nothing to archive.
+ */
+export function archiveActionFor(store, project) {
+  if (!store) return undefined;
+  if (store.archived.has(project.id)) {
+    return { label: "Unarchive order", run: () => store.unarchive(project.id) };
+  }
+  if (isClosedOrder(project)) return { label: "Archive order", run: () => store.archive(project.id) };
+  return null;
 }
 
 /**

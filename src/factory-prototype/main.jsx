@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
-import { filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab } from "../shared/production-order-parts.jsx";
+import { archiveActionFor, filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab, withArchivedTab } from "../shared/production-order-parts.jsx";
 import "../prototype/styles.css";
 import "./styles.css";
 import "../shared/profile-shell.css";
@@ -5392,11 +5392,16 @@ export function FactoryProjectsPage({
   const [newTabName, setNewTabName] = useState("");
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
   const [draftTabs, setDraftTabs] = useState(projectTabs);
+  const orderRows = live?.projects ?? [];
+  // "Archived" joins the strip only while the company has archived something.
+  const stripTabs = tabStore ? withArchivedTab(projectTabs, orderRows, tabStore.archived) : projectTabs;
 
-  // A tab a teammate deleted, or this person just did, falls back to Active.
+  // A tab a teammate deleted, or this person just did, falls back to Active;
+  // an archive emptied by Unarchive falls back to Closed, where the order went.
   useEffect(() => {
-    if (tabStore && !projectTabs.some((tab) => tab.key === activeTab)) setActiveTab("active");
-  }, [tabStore, projectTabs, activeTab]);
+    if (live?.loading || !tabStore || stripTabs.some((tab) => tab.key === activeTab)) return;
+    setActiveTab(activeTab === "archived" ? "closed" : "active");
+  }, [live?.loading, tabStore, stripTabs, activeTab]);
 
   /**
    * Live rows carry their state, so the tabs count and filter them; the
@@ -5404,9 +5409,7 @@ export function FactoryProjectsPage({
    * The filters are the brand screen's own (src/shared), with "Brand" as the
    * counterparty column.
    */
-  const orderRows = live?.projects ?? [];
-  const isClosed = (project) => project.state === "completed" || project.state === "cancelled";
-  const tabRows = rowsForTab(orderRows, activeTab, tabStore?.membership);
+  const tabRows = rowsForTab(orderRows, activeTab, tabStore?.membership, tabStore?.archived);
   const brandOptions = live
     ? [...new Set(orderRows.map((project) => project.brand).filter(Boolean))].sort()
     : null;
@@ -5420,9 +5423,7 @@ export function FactoryProjectsPage({
     : [];
   const tabLabel = (tab) => {
     if (!live || !tab.locked) return tab.label;
-    const count = tab.key === "closed"
-      ? orderRows.filter(isClosed).length
-      : orderRows.filter((project) => !isClosed(project)).length;
+    const count = rowsForTab(orderRows, tab.key, null, tabStore?.archived).length;
     return `${tab.label} (${count})`;
   };
 
@@ -5549,7 +5550,7 @@ export function FactoryProjectsPage({
 
         <nav className="rfqs-tabs projects-tabs" aria-label="Production order status">
           <div className="project-tabs-scroll">
-            {projectTabs.map((tab) => (
+            {stripTabs.map((tab) => (
               !tab.locked ? (
                 <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
                   <button
@@ -5665,6 +5666,8 @@ export function FactoryProjectsPage({
                 ? "No orders match these filters."
                 : activeTab === "closed"
                 ? "Nothing closed yet."
+                : activeTab === "archived"
+                ? "No archived orders."
                 : activeTab !== "active"
                 ? "No orders in this tab yet. Add one from an order's ··· menu."
                 : "No production orders yet. One appears here when a brand awards you a quote."}
@@ -5678,6 +5681,7 @@ export function FactoryProjectsPage({
                 customTabs={customTabs}
                 isFiled={tabStore ? (tab) => tabStore.membership.get(tab.key)?.has(project.id) : null}
                 onToggleTab={tabStore ? (tab) => tabStore.toggle(tab.key, project.id) : null}
+                archiveAction={archiveActionFor(tabStore, project)}
                 key={project.id}
               />
             ))
@@ -5688,7 +5692,7 @@ export function FactoryProjectsPage({
   );
 }
 
-export function FactoryProjectListCard({ project, language, onViewProject, customTabs = [], isFiled = null, onToggleTab = null }) {
+export function FactoryProjectListCard({ project, language, onViewProject, customTabs = [], isFiled = null, onToggleTab = null, archiveAction = null }) {
   const isZh = language === "zh";
   const [primaryImage] = project.images || [];
   const productionFacts = [
@@ -5715,7 +5719,22 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
           status={project.status}
           statusTone={project.statusTone}
         >
-          <OrderCardMenu customTabs={customTabs} isFiled={isFiled} onToggleTab={onToggleTab} />
+          {/* The design draws no archive item here; live adds the one the
+              order allows, the same as the brand's card. */}
+          <OrderCardMenu customTabs={customTabs} isFiled={isFiled} onToggleTab={onToggleTab}>
+            {archiveAction ? (close) => (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  close();
+                  archiveAction.run();
+                }}
+              >
+                {archiveAction.label}
+              </button>
+            ) : null}
+          </OrderCardMenu>
         </ProjectCardActions>
       </header>
 
