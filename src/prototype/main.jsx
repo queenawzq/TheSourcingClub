@@ -9124,10 +9124,13 @@ export function QuotesScreen({
                       <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>
                       <p>{factory.fitSummary}</p>
                     </div>
+                    {/* Live, a vendor who wrote no note gets no empty box. */}
+                    {factory.factoryNote && (
                     <div className="factory-note-box">
                       <strong>Notes from vendor</strong>
                       <span>{factory.factoryNote}</span>
                     </div>
+                    )}
                   </div>
                 </div>
               </div>

@@ -522,3 +522,17 @@ body {
   outline-offset: 2px;
   border-radius: 4px;
 }
+
+/* Review quotes: live cards add a Total tile to the design's three. It joins
+   their row instead of wrapping onto a second one. */
+.marketplace-stat-grid.quote-stat-grid:has(> div:nth-child(4)) {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* At phone width four tiles in a row cut off the figures; two rows of two
+   keep each one readable. */
+@media (max-width: 760px) {
+  .marketplace-stat-grid.quote-stat-grid:has(> div:nth-child(4)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
