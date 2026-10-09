@@ -479,3 +479,12 @@ body {
 .home-production-card .home-production-title:not(:has(> img)) {
   grid-template-columns: minmax(0, 1fr) !important;
 }
+
+/* Conversations: live has no calls, so no "Scheduled call" column. On wide
+   screens the conversation takes that column's room instead of leaving it
+   empty; narrower screens already lay the page out without it. */
+@media (min-width: 1221px) {
+  .messages-shell:not(:has(> .message-side-panel)) {
+    grid-template-columns: 300px minmax(480px, 1fr);
+  }
+}
