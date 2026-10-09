@@ -333,7 +333,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const counterparty = { name: other ?? "", initials: initials(other), location };
   const header = {
     title: order.rfqs?.title || order.order_number,
-    subtitle: [other, order.order_number, order.activated_at ? `started ${day(order.activated_at)}` : null]
+    subtitle: [other, order.order_number, order.activated_at ? `Started ${day(order.activated_at)}` : null]
       .filter(Boolean)
       .join(" · "),
     total: money(order.total_cents),
