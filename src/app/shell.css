@@ -534,3 +534,28 @@ body {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Production steps: the step's name and description are textareas so they
+   wrap as the design's read-back does, rather than cutting off at 390 px. */
+.field textarea.field-input {
+  display: block;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+  line-height: inherit;
+}
+
+/* Production steps: typed values read like the design's read-back (14 px,
+   medium), so they wrap at the same places in its narrow phone columns. */
+.production-step-grid .field .field-input {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* The phone column is a couple of px narrower than the design's, which was
+   enough to split "sample" mid-word. A few px of the field's padding to
+   spare; only a word longer than the whole column still breaks. */
+.production-step-grid .field textarea.field-input {
+  width: calc(100% + 6px);
+  margin-right: -6px;
+}
