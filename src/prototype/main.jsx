@@ -1656,6 +1656,9 @@ export function MessagesScreen({
   onSelectThread,
   onSend,
   sending = false,
+  // The reader's own company. With it, a live message marks itself `own`
+  // and the bubble no longer assumes the reader is the brand.
+  ownName,
 }) {
   const messageThreads = liveThreads ?? mockMessageThreads;
   const isLive = Boolean(liveThreads);
@@ -1753,7 +1756,9 @@ export function MessagesScreen({
               <h2>{activeThread.primaryContact || activeThread.name}</h2>
               <p>
                 {activeThread.primaryContactTitle && <>{activeThread.primaryContactTitle} · </>}
-                {[activeThread.name, activeThread.localTime, activeThread.project].filter(Boolean).join(" · ")}
+                {/* Live, the heading already names the company (there is no
+                    contact person), so the line says what the talk is about. */}
+                {isLive ? activeThread.project : [activeThread.name, activeThread.localTime, activeThread.project].filter(Boolean).join(" · ")}
               </p>
             </div>
           </div>
@@ -1784,6 +1789,7 @@ export function MessagesScreen({
                 message={message}
                 showTranslation={showTranslation}
                 onToggleTranslation={() => toggleTranslation(activeThread.id, index)}
+                ownName={ownName}
                 otherName={activeThread.name}
                 key={`${message.time}-${index}`}
               />
@@ -1825,7 +1831,9 @@ export function MessagesScreen({
       {isCallPanelOpen && (
         <button className="message-side-panel-scrim" type="button" aria-label="Hide scheduled call" onClick={() => setIsCallPanelOpen(false)} />
       )}
-      <aside className={isCallPanelOpen ? "message-side-panel open" : "message-side-panel"}>
+      {/* Live has no calls, so no empty "Scheduled call" panel (it was also
+          what made the page scroll sideways at phone width). */}
+      {!isLive && <aside className={isCallPanelOpen ? "message-side-panel open" : "message-side-panel"}>
         <header className="message-side-panel-header">
           <h2>Scheduled call</h2>
           <button className="settings-drawer-close message-side-panel-close" type="button" aria-label="Hide scheduled call" onClick={() => setIsCallPanelOpen(false)}>
@@ -1833,7 +1841,7 @@ export function MessagesScreen({
           </button>
         </header>
         {activeScheduledCall && <UpcomingCallCard call={activeScheduledCall} thread={activeThread} />}
-      </aside>
+      </aside>}
       {showSchedule && createPortal((
         <div className="message-schedule-modal-layer" role="presentation">
           <button className="message-schedule-modal-scrim" type="button" aria-label="Close schedule call" onClick={() => setShowSchedule(false)} />
@@ -1858,13 +1866,15 @@ export function MessagesScreen({
 }
 
 function MessageBubble({ message, showTranslation, onToggleTranslation, ownName, otherName }) {
-  const isBrand = message.from === "brand";
+  // Live messages say whether they are the reader's own; the design's are
+  // always read by the brand.
+  const isOwn = message.own ?? message.from === "brand";
   const hasTranslation = Boolean(message.translation);
 
   return (
-    <article className={isBrand ? "message-bubble own" : "message-bubble"}>
+    <article className={isOwn ? "message-bubble own" : "message-bubble"}>
       <div>
-        <span>{isBrand ? ownName ?? "Maison Rue" : otherName ?? "Factory"}</span>
+        <span>{isOwn ? ownName ?? "Maison Rue" : otherName ?? "Factory"}</span>
         <time>{message.time}</time>
       </div>
       <p>{showTranslation && hasTranslation ? message.translation : message.body || message.original}</p>
@@ -4081,7 +4091,12 @@ function InviteBrandModal({ onInvite, onClose }) {
   ), document.body);
 }
 
-function ActivityDrawer({ onClose }) {
+/**
+ * The bell's drawer. Live mounts pass `items` (same shape as
+ * `passiveActivityItems`, plus an optional `id`) and `onOpenItem`, which
+ * makes each row open what it is about. The prototype passes neither.
+ */
+export function ActivityDrawer({ onClose, items, onOpenItem }) {
   return createPortal((
     <div className="activity-drawer-layer" role="presentation">
       <button className="activity-drawer-scrim" type="button" aria-label="Close activity" onClick={onClose} />
@@ -4096,8 +4111,17 @@ function ActivityDrawer({ onClose }) {
           </button>
         </header>
         <div className="activity-drawer-list">
-          {passiveActivityItems.map((item) => (
-            <article className={item.unread ? "activity-drawer-item unread" : "activity-drawer-item"} key={item.title}>
+          {(items ?? passiveActivityItems).map((item) => (
+            <article
+              className={item.unread ? "activity-drawer-item unread" : "activity-drawer-item"}
+              key={item.id ?? item.title}
+              {...(onOpenItem ? {
+                role: "button",
+                tabIndex: 0,
+                onClick: () => onOpenItem(item),
+                onKeyDown: (event) => (event.key === "Enter" || event.key === " ") && onOpenItem(item),
+              } : {})}
+            >
               <div>
                 <div className="activity-drawer-meta">
                   <span>{item.type}</span>
@@ -4215,7 +4239,9 @@ function HomeRfqMiniCard({ rfq, goTo, onOpen }) {
 }
 
 function HomeProjectMiniCard({ project, goTo, onOpen }) {
-  const compactStatus = project.statusTone === "warning" ? "Lab dip review" : project.statusTone === "ready" ? "Sample approval" : project.status;
+  // Live cards say their own status; the short labels are the design's
+  // examples for its two sample orders.
+  const compactStatus = project.compactStatus ?? (project.statusTone === "warning" ? "Lab dip review" : project.statusTone === "ready" ? "Sample approval" : project.status);
 
   return (
     <article className="home-production-card shared-responsive-card shared-dashboard-card">
@@ -4241,7 +4267,7 @@ function HomeProjectMiniCard({ project, goTo, onOpen }) {
         </div>
       </div>
       <div className="home-production-progress">
-        <ProjectProgress progress={project.progress} />
+        <ProjectProgress progress={project.progress} steps={project.steps} />
       </div>
     </article>
   );

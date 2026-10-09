@@ -31,6 +31,34 @@ export async function listThreads(orgId) {
   );
 }
 
+/**
+ * What each conversation is about, by name. The summary view names an order's
+ * conversation by its order number alone ("TSC-000090"); here it gets the
+ * project name in front ("Linen overshirt, SS27 · TSC-000090"), read in one
+ * query for all order threads. The number stays so the order's conversation
+ * and its request's conversation still tell apart. Returns a Map of thread id
+ * → project line.
+ */
+export async function threadProjectNames(threads) {
+  const names = new Map();
+  const orderIds = [...new Set((threads ?? []).map((thread) => thread.order_id).filter(Boolean))];
+  if (orderIds.length) {
+    const orders = unwrap(
+      await supabase.from("production_orders").select("id, rfqs (title)").in("id", orderIds),
+      "load your conversations",
+    );
+    const titleByOrder = new Map((orders ?? []).map((order) => [order.id, order.rfqs?.title]));
+    for (const thread of threads) {
+      const title = thread.order_id && titleByOrder.get(thread.order_id);
+      if (title) names.set(thread.id, [title, thread.subject_title].filter(Boolean).join(" · "));
+    }
+  }
+  for (const thread of threads ?? []) {
+    if (!names.has(thread.id)) names.set(thread.id, thread.subject_title ?? "");
+  }
+  return names;
+}
+
 export async function getThread(threadId) {
   return unwrap(
     await supabase
