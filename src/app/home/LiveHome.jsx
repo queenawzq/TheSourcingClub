@@ -23,6 +23,7 @@ import { listRfqs } from "../../lib/domain/rfq.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { listArchivedOrderIds } from "../../lib/domain/order-tabs.js";
 import { listThreads } from "../../lib/domain/message.js";
+import { countUnreadNotifications } from "../../lib/domain/notifications.js";
 import { inviteBrand, savingsFor } from "../../lib/domain/credits.js";
 import { toProjectCard, toRfqCard } from "../live-adapter.js";
 import { formatMoney } from "../../lib/money.js";
@@ -139,6 +140,9 @@ function attentionFrom(snapshot, isFactory, goTo) {
 export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewRfq, onViewProject }) {
   const { navigate } = useRouter();
   const [state, setState] = useState({ snapshot: null, rfqs: [], projects: [], savings: null, loaded: false });
+  // The bell is the Activity drawer's, so it counts unread activity, not
+  // unread messages (those have their own card in "Needs your attention").
+  const [unreadActivity, setUnreadActivity] = useState(0);
   const [error, setError] = useState(null);
   const [recommended, setRecommended] = useState([]);
 
@@ -181,6 +185,14 @@ export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewR
     return () => { cancelled = true; };
   }, [org.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    countUnreadNotifications(org.id)
+      .then((count) => !cancelled && setUnreadActivity(count))
+      .catch((failure) => !cancelled && setError(failure));
+    return () => { cancelled = true; };
+  }, [org.id]);
+
   const { snapshot, rfqs, projects, savings } = state;
   const attention = attentionFrom(snapshot, isFactory, goTo) ?? [];
   const isNewcomer = state.loaded && !rfqs.length && !projects.length;
@@ -218,7 +230,7 @@ export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewR
         showCalls={false}
         onViewRfq={onViewRfq}
         onViewProject={onViewProject}
-        unreadCount={Number(snapshot?.unread_messages) || 0}
+        unreadCount={unreadActivity}
       />
     </>
   );

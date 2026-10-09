@@ -21,6 +21,20 @@ export async function listNotifications(orgId, { limit = 20 } = {}) {
   );
 }
 
+/**
+ * How many notifications this org has not read: the figure on the dashboard's
+ * bell. Counted in the database, since the list above stops at 20.
+ */
+export async function countUnreadNotifications(orgId) {
+  const result = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("org_id", orgId)
+    .is("read_at", null);
+  unwrap(result, "count your notifications");
+  return result.count ?? 0;
+}
+
 export async function markRead(notificationId) {
   return unwrap(
     await supabase

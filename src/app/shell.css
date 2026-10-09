@@ -471,3 +471,11 @@ body {
   padding: 16px 0;
   color: var(--text-muted);
 }
+
+/* The designed order card keeps a column for its reference photo. Real orders
+   have none, and the title was left in that 46 px column ("Washe deni…"), so
+   a card without a photo gives the title the whole row. (The prototype has a
+   rule for this, but the card's own !important column rule outranks it.) */
+.home-production-card .home-production-title:not(:has(> img)) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}

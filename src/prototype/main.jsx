@@ -4215,7 +4215,9 @@ function HomeRfqMiniCard({ rfq, goTo, onOpen }) {
 }
 
 function HomeProjectMiniCard({ project, goTo, onOpen }) {
-  const compactStatus = project.statusTone === "warning" ? "Lab dip review" : project.statusTone === "ready" ? "Sample approval" : project.status;
+  // Live cards say their own status; the short labels are the design's
+  // examples for its two sample orders.
+  const compactStatus = project.compactStatus ?? (project.statusTone === "warning" ? "Lab dip review" : project.statusTone === "ready" ? "Sample approval" : project.status);
 
   return (
     <article className="home-production-card shared-responsive-card shared-dashboard-card">
@@ -4241,7 +4243,7 @@ function HomeProjectMiniCard({ project, goTo, onOpen }) {
         </div>
       </div>
       <div className="home-production-progress">
-        <ProjectProgress progress={project.progress} />
+        <ProjectProgress progress={project.progress} steps={project.steps} />
       </div>
     </article>
   );
