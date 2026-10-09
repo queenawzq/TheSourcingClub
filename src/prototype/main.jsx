@@ -8909,7 +8909,7 @@ export function QuotesScreen({
                   <div>
                     <div className="factory-name-row">
                       <h3>{factory.name}</h3>
-                      <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />
+                      {factory.trust && <img className="trust-icon" src={`/assets/prototype-icons/${factory.trust}.svg`} alt={`${factory.trust} factory`} />}
                     </div>
                     <p>{factory.location}</p>
                   </div>
