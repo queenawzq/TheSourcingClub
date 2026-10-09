@@ -488,3 +488,49 @@ body {
     grid-template-columns: 300px minmax(480px, 1fr);
   }
 }
+
+/* Review brief: the request's name is a textarea so a long one wraps inside
+   the card, as the design's heading does. One row tall until it needs more. */
+.card textarea.card-title-input {
+  display: block;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+  line-height: inherit;
+}
+
+/* Review brief: the questions are the design's one numbered list; each line
+   is typed in place rather than drawn as three separate boxes. */
+.question-box .question-line {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 20px;
+}
+
+.question-box .question-line:focus {
+  outline: 2px solid var(--blue, #2458ff);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Review quotes: live cards add a Total tile to the design's three. It joins
+   their row instead of wrapping onto a second one. */
+.marketplace-stat-grid.quote-stat-grid:has(> div:nth-child(4)) {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* At phone width four tiles in a row cut off the figures; two rows of two
+   keep each one readable. */
+@media (max-width: 760px) {
+  .marketplace-stat-grid.quote-stat-grid:has(> div:nth-child(4)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

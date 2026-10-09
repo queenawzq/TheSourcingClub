@@ -180,7 +180,7 @@ export async function listQuotesForRfq(rfqId) {
   const quotes = unwrap(
     await supabase
       .from("quotes")
-      .select(`${QUOTE_COLUMNS}, orgs!quotes_factory_org_id_fkey (id, name, slug, factory_profiles (verification_status))`)
+      .select(`${QUOTE_COLUMNS}, orgs!quotes_factory_org_id_fkey (id, name, slug, factory_profiles (verification_status, location))`)
       .eq("rfq_id", rfqId)
       .in("status", ["submitted", "accepted", "declined"])
       .order("unit_price_cents", { ascending: true }),

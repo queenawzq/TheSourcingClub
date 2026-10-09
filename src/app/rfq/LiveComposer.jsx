@@ -141,6 +141,22 @@ const firstNumber = (text) => {
   return match ? Number(match[0].replace(/,/g, "")) : null;
 };
 
+/**
+ * The invite step's "Filters preselected from your request" chips, read from
+ * the request itself: category, the quantity as an MOQ ceiling,
+ * certifications and regions. Blank fields give no chip.
+ */
+export function requestFilters(values) {
+  const text = (key) => String(values[key] ?? "").trim();
+  const quantity = firstNumber(values.quantity);
+  return [
+    text("category"),
+    quantity ? `MOQ ≤ ${quantity.toLocaleString("en-US")}` : "",
+    text("certifications"),
+    text("regions").split(/\s*(?:,|\/|\bor\b|\band\b)\s*/i).filter(Boolean).join(" / "),
+  ].filter(Boolean);
+}
+
 export default function LiveComposer({ org, rfqId }) {
   const { navigate } = useRouter();
   const [step, setStep] = useState(rfqId ? "review" : "describe");
@@ -580,6 +596,7 @@ export default function LiveComposer({ org, rfqId }) {
       >
         <InviteScreen
           vendors={shaped}
+          filters={requestFilters(values)}
           selectedFactories={selectedVendors}
           setSelectedFactories={setSelectedVendors}
           openToAll={openToAll}

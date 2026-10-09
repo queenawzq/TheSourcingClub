@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
@@ -1101,9 +1101,12 @@ export function FlowShell({
   const meta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
   // The prototype's App gives the contract and schedule screens this class too.
   const actionFlow = ["contract", "milestones"].includes(screen) ? " quote-action-flow" : "";
+  // And Review brief its own, which lines the "What vendors need" card up with
+  // the form instead of a fixed margin above it.
+  const reviewFlow = screen === "review" ? " review-flow" : "";
 
   return (
-    <main className={`flow-page${["invite", "quotes", "quoteDetail"].includes(screen) ? " wide-flow" : ""}${actionFlow}`}>
+    <main className={`flow-page${["invite", "quotes", "quoteDetail"].includes(screen) ? " wide-flow" : ""}${actionFlow}${reviewFlow}`}>
       <JourneyRail current={meta.step} isMilestoneFunding={Boolean(fundingMilestone)} />
       <section className="flow-content">
         {screen !== "quoteDetail" && (
@@ -3551,7 +3554,8 @@ function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
         ) : (
           <section className="accepted-reminder">
             <h3>TSC reminder</h3>
-            <p>Message the vendor to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
+            {/* Live says "factory", as the button above it does. */}
+            <p>Message the factory to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
           </section>
         )}
       </aside>
@@ -8380,6 +8384,37 @@ export function DescribeScreen({
   );
 }
 
+/**
+ * A live one-line box (the request's name, a question) that grows to its
+ * text, so a long one wraps instead of being cut off. Refitted whenever the
+ * text changes (typed or loaded) and when the window is resized. Enter does
+ * not add a line, and a pasted line break becomes a space.
+ */
+function GrowingLine({ value, onValue, ...props }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    const fit = () => {
+      if (!element) return;
+      element.style.height = "auto";
+      element.style.height = `${element.scrollHeight}px`;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [value]);
+  return (
+    <textarea
+      {...props}
+      ref={ref}
+      rows={1}
+      value={value}
+      onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }}
+      onChange={(event) => onValue(event.target.value.replace(/\s*\n\s*/g, " "))}
+    />
+  );
+}
+
 export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments = null, onAddFiles, onRemoveFile, uploading = false }) {
   // The prototype passes none of these and reads exactly as drawn.
   const isLive = Boolean(values);
@@ -8394,12 +8429,14 @@ export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments
             /* The design takes the request's name from the model's draft. With
                "Skip AI" there is no draft, and a request with no name is one
                nobody can find later — so the heading is typed here. */
-            <input
+            /* Grows so a long name wraps inside the card, as the design's
+               heading does. */
+            <GrowingLine
               className="card-title-input"
               name="title"
               value={values.title ?? ""}
               placeholder="Name this request"
-              onChange={(event) => onChange("title", event.target.value)}
+              onValue={(value) => onChange("title", value)}
             />
           ) : (
             "Organic cotton woven shirt production"
@@ -8537,24 +8574,28 @@ export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments
       </Card>
       <Card title="Questions vendors should answer">
         {/* Each question becomes a row a vendor answers against, so they are
-            typed rather than listed. Drawn as three examples; they are the
-            three placeholders. */}
+            typed — but into the design's one numbered list, a line each.
+            Drawn as three examples; they are the three placeholders. */}
         {isLive ? (
           <div className="question-box">
-            {[0, 1, 2].map((index) => (
-              <input
-                key={index}
-                className="question-input"
-                name={`question-${index}`}
-                value={values[`question-${index}`] ?? ""}
-                placeholder={[
-                  "Can you quote fit sample and PP sample separately?",
-                  "Can you support 3 colors at 100 units each?",
-                  "Which materials can you source, and what should the brand provide?",
-                ][index]}
-                onChange={(event) => onChange(`question-${index}`, event.target.value)}
-              />
-            ))}
+            <ol className="question-list">
+              {[0, 1, 2].map((index) => (
+                <li key={index}>
+                  <GrowingLine
+                    className="question-line"
+                    name={`question-${index}`}
+                    aria-label={`Question ${index + 1}`}
+                    value={values[`question-${index}`] ?? ""}
+                    placeholder={[
+                      "Can you quote fit sample and PP sample separately?",
+                      "Can you support 3 colors at 100 units each?",
+                      "Which materials can you source, and what should the brand provide?",
+                    ][index]}
+                    onValue={(value) => onChange(`question-${index}`, value)}
+                  />
+                </li>
+              ))}
+            </ol>
           </div>
         ) : (
           <div className="question-box">
@@ -8577,6 +8618,9 @@ export function InviteScreen({
   vendors: liveVendors,
   openToAll,
   onOpenToAllChange,
+  // Live: the chips are the request's own facts (category, quantity,
+  // certifications, regions), not the design's sample ones.
+  filters: liveFilters = null,
 }) {
   const [vendorType, setVendorType] = useState("factories");
   const isTrading = vendorType === "trading";
@@ -8610,7 +8654,7 @@ export function InviteScreen({
       <div className="invite-toolbar">
         <label className="search-field">
           <SearchIcon />
-          <input placeholder={isTrading ? "Search trading companies" : "Search factories"} />
+          <input placeholder={isLive ? "Search vendors" : isTrading ? "Search trading companies" : "Search factories"} />
         </label>
         <label className="toggle-row">
           <input type="checkbox" />
@@ -8633,8 +8677,23 @@ export function InviteScreen({
           <span className="toggle" />
           Open to all vendors
         </label>
-        <button className="filter-button" type="button">≡ Filter</button>
+        {/* Live there is no filter panel behind this button, so it is left out. */}
+        {!isLive && <button className="filter-button" type="button">≡ Filter</button>}
       </div>
+      {isLive ? (
+        liveFilters?.length > 0 && (
+          <div className="filter-strip">
+            <div className="filter-strip-header">
+              <span>Filters preselected from your request</span>
+            </div>
+            <div className="filter-chip-row">
+              {liveFilters.map((filter) => (
+                <span className="filter-chip" key={filter}>{filter}</span>
+              ))}
+            </div>
+          </div>
+        )
+      ) : (
       <div className="filter-strip">
         <div className="filter-strip-header">
           <span>Filters preselected from your request</span>
@@ -8646,6 +8705,7 @@ export function InviteScreen({
           ))}
         </div>
       </div>
+      )}
       <Card className="invite-results">
         <div className="factory-list">
           {inviteVendors.map((factory) => (
@@ -8744,6 +8804,8 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
               <p>{factory.note}</p>
             </div>
           </div>
+          {/* A vendor with no sample photos gets no strip, so no lone arrow. */}
+          {factory.products.length > 0 && (
           <div className="marketplace-samples-shell invite-samples-shell">
             <button
               className={sampleScroll.left ? "marketplace-samples-prev visible" : "marketplace-samples-prev"}
@@ -8786,6 +8848,7 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
               <img src="/assets/prototype-icons/dropdown.svg" alt="" />
             </button>
           </div>
+          )}
         </div>
       </div>
     </article>
@@ -9074,10 +9137,13 @@ export function QuotesScreen({
                       <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>
                       <p>{factory.fitSummary}</p>
                     </div>
+                    {/* Live, a vendor who wrote no note gets no empty box. */}
+                    {factory.factoryNote && (
                     <div className="factory-note-box">
                       <strong>Notes from vendor</strong>
                       <span>{factory.factoryNote}</span>
                     </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -9456,7 +9522,11 @@ export function ContractScreen({ selectedQuote, reorderProject = null, terms: li
         <section className="confirmed-trade-term">
           <div>
             <label htmlFor="contract-delivery-term">Delivery term from quote</label>
-            <input id="contract-delivery-term" value={live.shipping} readOnly />
+            {/* The design's dropdown, holding the one term the vendor quoted:
+                the term is the quote's, so there is nothing else to pick. */}
+            <select id="contract-delivery-term" defaultValue={live.shipping}>
+              <option value={live.shipping}>{live.shipping}</option>
+            </select>
           </div>
         </section>
         )

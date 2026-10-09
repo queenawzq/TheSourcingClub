@@ -68,7 +68,8 @@ export default function LiveQuotes({ rfqId }) {
     onOpenProfile: () => navigate(`/factories/${raw.factory_org_id}?from=quotes`),
     initials: view.initials,
     name: view.name,
-    location: "",
+    // As the vendor typed it on their profile ("Porto, Portugal").
+    location: raw.orgs?.factory_profiles?.location ?? "",
     // The badge says TSC has checked this vendor, so only a verified one gets it.
     trust: raw.orgs?.factory_profiles?.verification_status === "verified" ? "trusted" : "",
     fit: "",
@@ -107,7 +108,7 @@ export default function LiveQuotes({ rfqId }) {
   }));
 
   return (
-    <FlowShell screen="quotes" canBack={false} primaryLabel="">
+    <FlowShell screen="quotes" canBack onBack={() => navigate("/rfqs")} primaryLabel="">
       <QuotesScreen
         quotes={shaped}
         selectedQuote={selected}
