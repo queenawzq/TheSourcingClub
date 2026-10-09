@@ -2047,7 +2047,7 @@ export const settingsPermissionLabels = [
 ];
 
 export const factoryAccountPermissionLabels = [
-  { key: "rfqFlow", label: "Quote flow", detail: "Give quotes and submit quote details", single: true },
+  { key: "rfqFlow", label: "RFQ flow", detail: "Give quotes and submit RFQ details", single: true },
   { key: "addUpdate", label: "Add update", detail: "Post production updates and files" },
   { key: "primaryContact", label: "Primary contact", detail: "Main contact for messages and calls", single: true },
   { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
@@ -2073,11 +2073,14 @@ const factoryBillingHistory = {
 
 export function SettingsScreen({
   accountType = "brand",
+  // A factory's copy follows factory-prototype.html's FactorySettingsScreen.
+  companyType = "factory",
   // Live mounts pass these; the prototype passes none and is unchanged.
   team: liveTeam,
   account: liveAccount,
   paymentMethods: livePaymentMethods,
   invites: liveInvites,
+  onAddPaymentMethod,
   onInvite,
   onRemove,
   busy = false,
@@ -2133,6 +2136,8 @@ export function SettingsScreen({
       { label: "Secondary", name: account.billingSecondary, note: "Backup method for billing charges." }
     ]
   };
+  // Live passes { earnings, billing } for a factory; an empty list shows the empty row.
+  const factoryMethods = livePaymentMethods ?? factoryPaymentMethods;
   const pendingInvites = liveInvites ?? (isFactory
     ? [
         { email: "quality@atelierminho.pt", role: "Production lead", sent: "Sent today" },
@@ -2182,7 +2187,7 @@ export function SettingsScreen({
     ["account", "Basic information"],
     ["security", "Password & security"],
     ["payment", "Payment method"],
-    ["team", "Roles & access"],
+    ["team", isFactory ? "Team & stakeholders" : "Roles & access"],
     ["notifications", "Notifications"]
   ];
   const goToSettingsSection = (id) => {
@@ -2214,7 +2219,7 @@ export function SettingsScreen({
       <section className="settings-content">
         <header className="settings-heading">
           <div>
-            <p>{isFactory ? "Factory account" : "Brand account"}</p>
+            <p>{isFactory ? (companyType === "trading" ? "Trading company account" : "Factory account") : "Brand account"}</p>
             <h2>Account settings</h2>
           </div>
           <button className="primary-btn" type="button">Save changes</button>
@@ -2223,7 +2228,7 @@ export function SettingsScreen({
         <section className="settings-section" id="settings-account">
               <div className="settings-section-header">
                 <h3>Basic information</h3>
-                <p>Edit the details other teams use for orders, calls, and account verification.</p>
+                <p>{isFactory ? "Edit the details brands use for orders, calls, and account verification." : "Edit the details other teams use for orders, calls, and account verification."}</p>
               </div>
               <div className="settings-form-grid">
                 <label>
@@ -2248,7 +2253,7 @@ export function SettingsScreen({
             <section className="settings-section" id="settings-security">
               <div className="settings-section-header">
                 <h3>Password & security</h3>
-                <p>Update login access and keep payment or approval actions protected.</p>
+                <p>{isFactory ? "Update login access and keep payout or approval actions protected." : "Update login access and keep payment or approval actions protected."}</p>
               </div>
               <div className="settings-form-grid">
                 <label>
@@ -2289,7 +2294,20 @@ export function SettingsScreen({
                     Billing
                   </button>
                 </div>
-                {factoryPaymentMethods[paymentTab].map((method) => (
+                {factoryMethods[paymentTab].length === 0 && (
+                  <div className="settings-payment-list">
+                    <div>
+                      <span className="settings-card-brand">None saved</span>
+                      <strong>{paymentTab === "earnings" ? "No payout account saved" : "No billing method saved"}</strong>
+                      <small>
+                        {paymentTab === "earnings"
+                          ? "Add the account brands send your milestone payments to."
+                          : "No card or account is stored for platform charges."}
+                      </small>
+                    </div>
+                  </div>
+                )}
+                {factoryMethods[paymentTab].map((method) => (
                   <div className="settings-payment-list" key={`${paymentTab}-${method.label}`}>
                     <div>
                       <span className="settings-card-brand">{method.label}</span>
@@ -2328,14 +2346,16 @@ export function SettingsScreen({
                 </div>
               </>
             )}
-            {!livePaymentMethods && <button className="settings-add-btn" type="button">+ Add payment method</button>}
+            {(!livePaymentMethods || (isFactory && paymentTab === "earnings" && onAddPaymentMethod)) && (
+              <button className="settings-add-btn" type="button" onClick={livePaymentMethods ? onAddPaymentMethod : undefined}>+ Add payment method</button>
+            )}
           </section>
 
         <section className="settings-section" id="settings-team">
             <div className="settings-section-header split">
               <div>
                 <h3>{isFactory ? "Manage team & stakeholders" : "Stakeholder authority"}</h3>
-                <p>{isFactory ? "Control who can quote requests, post updates, and act as the primary contact." : "Assign quote flow, sample approvals, fund release, and the primary vendor contact."}</p>
+                <p>{isFactory ? "Control who can quote RFQs, post updates, and act as the primary contact." : "Assign quote flow, sample approvals, fund release, and the primary vendor contact."}</p>
               </div>
               <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
             </div>
@@ -2362,7 +2382,7 @@ export function SettingsScreen({
             </div>
 
             {stakeholderTab === "members" ? (
-              <div className="settings-permission-table" role="table" aria-label="Stakeholder authority">
+              <div className="settings-permission-table" role="table" aria-label={isFactory ? "Team permissions" : "Stakeholder authority"}>
                 <div className="settings-permission-row header" role="row">
                   <span>Member</span>
                   {activePermissionLabels.map((permission) => (
@@ -2389,7 +2409,13 @@ export function SettingsScreen({
                         <span>{permission.label}</span>
                       </label>
                     ))}
-                    <button className="settings-remove-member-btn" type="button" aria-label={`Remove ${member.name}`} onClick={() => removeMember(member.email)}>
+                    <button
+                      className="settings-remove-member-btn"
+                      type="button"
+                      aria-label={`Remove ${member.name}`}
+                      disabled={isFactory ? member.role === "Owner" : undefined}
+                      onClick={() => removeMember(member.email)}
+                    >
                       <img src="/assets/prototype-icons/trash.svg" alt="" />
                     </button>
                   </div>
@@ -2444,13 +2470,22 @@ export function SettingsScreen({
                 </label>
                 <label>
                   <span>Role</span>
-                  <select defaultValue="Stakeholder">
-                    <option>Stakeholder</option>
-                    <option>Founder</option>
-                    <option>Production lead</option>
-                    <option>Finance</option>
-                    <option>View only</option>
-                  </select>
+                  {isFactory ? (
+                    <select defaultValue="Stakeholder">
+                      <option value="Stakeholder">Stakeholder</option>
+                      <option value="Production lead">Production lead</option>
+                      <option value="Finance">Finance</option>
+                      <option value="Viewer">Viewer</option>
+                    </select>
+                  ) : (
+                    <select defaultValue="Stakeholder">
+                      <option>Stakeholder</option>
+                      <option>Founder</option>
+                      <option>Production lead</option>
+                      <option>Finance</option>
+                      <option>View only</option>
+                    </select>
+                  )}
                 </label>
                 <fieldset className="settings-drawer-authority">
                   <legend>Authority</legend>
@@ -2494,7 +2529,7 @@ export function SettingsScreen({
               <h3>Notifications</h3>
               <p>Choose which updates should reach your team by email.</p>
             </div>
-            {["New quote activity", "Payment and approval requests", "Messages and call invites"].map((label) => (
+            {[isFactory ? "New RFQ matches" : "New quote activity", "Payment and approval requests", "Messages and call invites"].map((label) => (
               <div className="settings-inline-row" key={label}>
                 <div>
                   <strong>{label}</strong>

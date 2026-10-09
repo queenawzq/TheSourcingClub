@@ -71,6 +71,19 @@ export async function payoutAccountFor(factoryOrgId) {
   );
 }
 
+/** The factory's own payout accounts, primary first, for its Settings page. */
+export async function listPayoutAccounts(factoryOrgId) {
+  return unwrap(
+    await supabase
+      .from("factory_payout_accounts")
+      .select("id, label, bank_name, account_name, account_number_last4, is_primary")
+      .eq("org_id", factoryOrgId)
+      .order("is_primary", { ascending: false })
+      .order("created_at", { ascending: true }),
+    "load your payout accounts",
+  );
+}
+
 export async function markPaymentSent(paymentId, { reference, note } = {}) {
   return unwrap(
     await supabase.rpc("mark_payment_sent", {
