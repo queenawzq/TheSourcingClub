@@ -497,7 +497,6 @@ body {
   resize: none;
   overflow: hidden;
   line-height: inherit;
-  field-sizing: content;
 }
 
 /* Review brief: the questions are the design's one numbered list; each line
@@ -508,7 +507,6 @@ body {
   min-height: 0;
   resize: none;
   overflow: hidden;
-  field-sizing: content;
   padding: 0;
   border: 0;
   background: transparent;

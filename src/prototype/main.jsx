@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
@@ -8384,11 +8384,35 @@ export function DescribeScreen({
   );
 }
 
-/** Grows a live one-line box (title, a question) to its text, so it wraps instead of being cut off. */
-function fitTitleHeight(element) {
-  if (!element) return;
-  element.style.height = "auto";
-  element.style.height = `${element.scrollHeight}px`;
+/**
+ * A live one-line box (the request's name, a question) that grows to its
+ * text, so a long one wraps instead of being cut off. Refitted whenever the
+ * text changes (typed or loaded) and when the window is resized. Enter does
+ * not add a line, and a pasted line break becomes a space.
+ */
+function GrowingLine({ value, onValue, ...props }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    const fit = () => {
+      if (!element) return;
+      element.style.height = "auto";
+      element.style.height = `${element.scrollHeight}px`;
+    };
+    fit();
+    window.addEventListener("resize", fit);
+    return () => window.removeEventListener("resize", fit);
+  }, [value]);
+  return (
+    <textarea
+      {...props}
+      ref={ref}
+      rows={1}
+      value={value}
+      onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }}
+      onChange={(event) => onValue(event.target.value.replace(/\s*\n\s*/g, " "))}
+    />
+  );
 }
 
 export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments = null, onAddFiles, onRemoveFile, uploading = false }) {
@@ -8405,20 +8429,14 @@ export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments
             /* The design takes the request's name from the model's draft. With
                "Skip AI" there is no draft, and a request with no name is one
                nobody can find later — so the heading is typed here. */
-            /* A textarea so a long name wraps inside the card, as the
-               design's heading does; Enter does not add a line. */
-            <textarea
+            /* Grows so a long name wraps inside the card, as the design's
+               heading does. */
+            <GrowingLine
               className="card-title-input"
               name="title"
-              rows={1}
               value={values.title ?? ""}
               placeholder="Name this request"
-              ref={fitTitleHeight}
-              onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }}
-              onChange={(event) => {
-                onChange("title", event.target.value.replace(/\s*\n\s*/g, " "));
-                fitTitleHeight(event.target);
-              }}
+              onValue={(value) => onChange("title", value)}
             />
           ) : (
             "Organic cotton woven shirt production"
@@ -8563,23 +8581,17 @@ export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments
             <ol className="question-list">
               {[0, 1, 2].map((index) => (
                 <li key={index}>
-                  <textarea
+                  <GrowingLine
                     className="question-line"
-                    rows={1}
                     name={`question-${index}`}
                     aria-label={`Question ${index + 1}`}
-                    ref={fitTitleHeight}
-                    onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }}
                     value={values[`question-${index}`] ?? ""}
                     placeholder={[
                       "Can you quote fit sample and PP sample separately?",
                       "Can you support 3 colors at 100 units each?",
                       "Which materials can you source, and what should the brand provide?",
                     ][index]}
-                    onChange={(event) => {
-                      onChange(`question-${index}`, event.target.value.replace(/\s*\n\s*/g, " "));
-                      fitTitleHeight(event.target);
-                    }}
+                    onValue={(value) => onChange(`question-${index}`, value)}
                   />
                 </li>
               ))}
