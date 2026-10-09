@@ -2038,7 +2038,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
   );
 }
 
-const settingsPermissionLabels = [
+export const settingsPermissionLabels = [
   { key: "rfqFlow", label: "Quote flow", detail: "Create quote request, choose quote, set terms and milestones", single: true },
   { key: "approve", label: "Approve samples", detail: "Lab dip, strike-off, sample, and more" },
   { key: "releaseFunds", label: "Release funds", detail: "Release approved payments from project funds" },
@@ -2046,7 +2046,7 @@ const settingsPermissionLabels = [
   { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
 ];
 
-const factoryAccountPermissionLabels = [
+export const factoryAccountPermissionLabels = [
   { key: "rfqFlow", label: "Quote flow", detail: "Give quotes and submit quote details", single: true },
   { key: "addUpdate", label: "Add update", detail: "Post production updates and files" },
   { key: "primaryContact", label: "Primary contact", detail: "Main contact for messages and calls", single: true },
@@ -2075,6 +2075,9 @@ export function SettingsScreen({
   accountType = "brand",
   // Live mounts pass these; the prototype passes none and is unchanged.
   team: liveTeam,
+  account: liveAccount,
+  paymentMethods: livePaymentMethods,
+  invites: liveInvites,
   onInvite,
   onRemove,
   busy = false,
@@ -2099,7 +2102,7 @@ export function SettingsScreen({
           { name: "Jon Bell", email: "jon@maisonrue.com", role: "Finance", permissions: ["releaseFunds"] }
         ]
   );
-  const account = isFactory
+  const account = liveAccount ?? (isFactory
     ? {
         name: "Atelier Minho",
         email: "ops@atelierminho.pt",
@@ -2119,7 +2122,7 @@ export function SettingsScreen({
         location: "New York, USA",
         payment: "American Express ending in 1021",
         backup: "ACH ending in 7782"
-      };
+      });
   const factoryPaymentMethods = {
     earnings: [
       { label: "Primary", name: account.earningsPrimary, note: "Receives released milestone funds from brand orders." },
@@ -2130,7 +2133,7 @@ export function SettingsScreen({
       { label: "Secondary", name: account.billingSecondary, note: "Backup method for billing charges." }
     ]
   };
-  const pendingInvites = isFactory
+  const pendingInvites = liveInvites ?? (isFactory
     ? [
         { email: "quality@atelierminho.pt", role: "Production lead", sent: "Sent today" },
         { email: "finance@atelierminho.pt", role: "Finance", sent: "Sent yesterday" }
@@ -2138,7 +2141,7 @@ export function SettingsScreen({
     : [
         { email: "lena@maisonrue.com", role: "Stakeholder", sent: "Sent today" },
         { email: "ops@maisonrue.com", role: "View only", sent: "Sent yesterday" }
-      ];
+      ]);
   const activePermissionLabels = isFactory ? factoryAccountPermissionLabels : settingsPermissionLabels;
   const team = liveTeam ?? mockTeam;
   const isLive = Boolean(liveTeam);
@@ -2297,6 +2300,14 @@ export function SettingsScreen({
                   </div>
                 ))}
               </>
+            ) : livePaymentMethods?.length === 0 ? (
+              <div className="settings-payment-list">
+                <div>
+                  <span className="settings-card-brand">None saved</span>
+                  <strong>No payment method saved</strong>
+                  <small>Payments are made by bank transfer from each order's payment page.</small>
+                </div>
+              </div>
             ) : (
               <>
                 <div className="settings-payment-list">
@@ -2317,7 +2328,7 @@ export function SettingsScreen({
                 </div>
               </>
             )}
-            <button className="settings-add-btn" type="button">+ Add payment method</button>
+            {!livePaymentMethods && <button className="settings-add-btn" type="button">+ Add payment method</button>}
           </section>
 
         <section className="settings-section" id="settings-team">
@@ -2392,6 +2403,11 @@ export function SettingsScreen({
                   <span>Status</span>
                   <span>Action</span>
                 </div>
+                {pendingInvites.length === 0 && (
+                  <div className="settings-invited-row" role="row">
+                    <small>No pending invites</small>
+                  </div>
+                )}
                 {pendingInvites.map((invite) => (
                   <div className="settings-invited-row" role="row" key={invite.email}>
                     <strong>{invite.email}</strong>
