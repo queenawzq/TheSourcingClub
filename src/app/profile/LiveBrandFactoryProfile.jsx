@@ -6,7 +6,8 @@
  * (load-profile.js says what, and what it leaves out). The designed buttons
  * go where something real is behind them: "Request quote" opens the composer
  * with this vendor ticked, "Message" opens the brand's conversation with it
- * when there is one. "Save factory" has nothing behind it yet and is left out.
+ * when there is one. "Save factory" keeps it on the brand's Saved page, and
+ * pressing it again ("Saved") removes it.
  */
 import React, { useEffect, useState } from "react";
 import { BrandFactoryProfileScreen } from "../../prototype/main.jsx";
@@ -14,22 +15,24 @@ import { listThreads } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
 import { BACK_LABELS, brandFactoryView } from "./brand-factory-view.js";
 import { loadVendorProfileForBrand } from "./load-profile.js";
+import { useSavedVendors } from "../browse/useSavedVendors.js";
 import "./profile.css";
 
 /** Where the back link goes when there is no in-app page to go back to. */
-const FALLBACK = { browse: "/browse", dashboard: "/", quotes: "/rfqs", order: "/orders", invite: "/rfqs" };
+const FALLBACK = { browse: "/browse", saved: "/saved", dashboard: "/", quotes: "/rfqs", order: "/orders", invite: "/rfqs" };
 
 function Frame({ children }) {
   return <main className="factory-profile-page brand-profile-page">{children}</main>;
 }
 
 /**
- * `from`: where it was opened ("browse", "dashboard", "quotes", "order", "invite"),
+ * `from`: where it was opened ("browse", "saved", "dashboard", "quotes", "order", "invite"),
  * which picks the back link's words. `onBack` / `onRequestQuote` replace the
  * default actions (the composer shows this in place of its invite step).
  */
-export default function LiveBrandFactoryProfile({ org, vendorOrgId, from = null, onBack = null, onRequestQuote = null }) {
+export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from = null, onBack = null, onRequestQuote = null }) {
   const { navigate } = useRouter();
+  const { saveFor, error: saveError } = useSavedVendors(org, user);
   const [state, setState] = useState({ parts: undefined, thread: null, error: null });
 
   useEffect(() => {
@@ -80,6 +83,8 @@ export default function LiveBrandFactoryProfile({ org, vendorOrgId, from = null,
         live={{
           ...brandFactoryView(state.parts),
           back: { label: backLabel, onClick: back },
+          // Only where the brand can save (the composer's invite step has no user).
+          save: user ? saveFor(vendorOrgId) : null,
           onSave: null,
           onMessage: message,
           onRequestQuote: requestQuote,
@@ -88,6 +93,7 @@ export default function LiveBrandFactoryProfile({ org, vendorOrgId, from = null,
           contact: message ? { label: "Message factory", onClick: message } : { label: "Request quote", onClick: requestQuote },
         }}
       />
+      {saveError && <p className="live-profile-error" role="alert">Couldn't update your saved vendors: {saveError.message}</p>}
     </Frame>
   );
 }

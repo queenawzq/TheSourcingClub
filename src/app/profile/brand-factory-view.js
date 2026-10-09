@@ -106,5 +106,6 @@ export const BACK_LABELS = {
   invite: "vendor selection",
   quotes: "quotes",
   order: "order",
+  saved: "saved vendors",
 };
 

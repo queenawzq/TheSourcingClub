@@ -55,6 +55,8 @@ import LiveSettings from "./settings/LiveSettings.jsx";
 import LiveFactoryProfile from "./profile/LiveFactoryProfile.jsx";
 import LiveBrandFactoryProfile from "./profile/LiveBrandFactoryProfile.jsx";
 import LiveBrandBrowse from "./browse/LiveBrandBrowse.jsx";
+import LiveSavedVendors from "./browse/LiveSavedVendors.jsx";
+import LiveBrandPayments from "./payments/LiveBrandPayments.jsx";
 import LiveBrandProfile from "./profile/LiveBrandProfile.jsx";
 import LiveFactoryBrandProfile from "./profile/LiveFactoryBrandProfile.jsx";
 import NotificationList from "./NotificationList.jsx";
@@ -574,6 +576,8 @@ const BRAND_NAV_PATHS = {
   "Production orders": "/orders",
   "Browse vendors": "/browse",
   Conversations: "/messages",
+  Saved: "/saved",
+  Payments: "/payments",
   Settings: "/team",
 };
 
@@ -601,6 +605,8 @@ function activeNavFor(path, isFactory) {
   if (isFactory && path.startsWith("/rfqs")) return "RFQs";
   // A vendor's profile sits under Browse vendors, as in the design.
   if (!isFactory && (path.startsWith("/browse") || path.startsWith("/factories"))) return "Browse vendors";
+  if (!isFactory && path.startsWith("/saved")) return "Saved";
+  if (!isFactory && path.startsWith("/payments")) return "Payments";
   if (!isFactory && path.startsWith("/rfqs")) return "Quotes";
   return "";
 }
@@ -771,7 +777,8 @@ function navigateFromPrototype(screenKey, navigate) {
     contract: "/orders",
     review: "/rfqs",
     invite: "/rfqs",
-    saved: "/browse",
+    saved: "/saved",
+    billing: "/payments",
   };
   navigate(paths[screenKey] ?? "/");
 }
@@ -838,14 +845,14 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/browse",
       render: () =>
-        isFactory ? <LiveBrowse profile={profile} /> : <LiveBrandBrowse org={activeOrg} />,
+        isFactory ? <LiveBrowse profile={profile} /> : <LiveBrandBrowse org={activeOrg} user={user} />,
     },
     {
       // Browse vendors as the design's directory list. Before /browse/:id,
       // which is a factory's view of one request.
       path: "/browse/list",
       render: () =>
-        isFactory ? <NotForThisSide isFactory /> : <LiveBrandBrowse org={activeOrg} view="list" />,
+        isFactory ? <NotForThisSide isFactory /> : <LiveBrandBrowse org={activeOrg} user={user} view="list" />,
     },
     {
       path: "/rfqs/:id/invite",
@@ -884,7 +891,14 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/saved",
       render: () =>
-        isFactory ? <LiveSaved org={activeOrg} /> : <NotForThisSide isFactory={false} />,
+        isFactory ? <LiveSaved org={activeOrg} /> : <LiveSavedVendors org={activeOrg} />,
+    },
+    {
+      // The brand's payments and discount codes. A factory's money page is
+      // /payout (its bank details), so it goes there.
+      path: "/payments",
+      render: () =>
+        isFactory ? <PayoutRedirect navigate={navigate} /> : <LiveBrandPayments org={activeOrg} />,
     },
     {
       // The design's third step: the total the brand will see, and what
@@ -1010,6 +1024,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
           <LiveBrandFactoryProfile
             key={params.id}
             org={activeOrg}
+            user={user}
             vendorOrgId={params.id}
             from={new URLSearchParams(window.location.search).get("from")}
           />
@@ -1092,6 +1107,14 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
   // sign-out button with it. Keyed on the path so navigating away from a
   // broken screen clears the error instead of showing the crash card again.
   return <ErrorBoundary key={path} label="This screen">{routed}</ErrorBoundary>;
+}
+
+/** A factory's Payments item is /payout; a brand's address sends it there. */
+function PayoutRedirect({ navigate }) {
+  useEffect(() => {
+    navigate("/payout", { replace: true });
+  }, [navigate]);
+  return null;
 }
 
 function NotForThisSide({ isFactory }) {
