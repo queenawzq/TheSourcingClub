@@ -3554,7 +3554,8 @@ function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
         ) : (
           <section className="accepted-reminder">
             <h3>TSC reminder</h3>
-            <p>Message the vendor to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
+            {/* Live says "factory", as the button above it does. */}
+            <p>Message the factory to confirm sample scope, revisions, QC, delivery terms, and final pricing before funding.</p>
           </section>
         )}
       </aside>
@@ -9509,7 +9510,11 @@ export function ContractScreen({ selectedQuote, reorderProject = null, terms: li
         <section className="confirmed-trade-term">
           <div>
             <label htmlFor="contract-delivery-term">Delivery term from quote</label>
-            <input id="contract-delivery-term" value={live.shipping} readOnly />
+            {/* The design's dropdown, holding the one term the vendor quoted:
+                the term is the quote's, so there is nothing else to pick. */}
+            <select id="contract-delivery-term" defaultValue={live.shipping}>
+              <option value={live.shipping}>{live.shipping}</option>
+            </select>
           </div>
         </section>
         )
