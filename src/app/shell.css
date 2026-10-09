@@ -488,3 +488,37 @@ body {
     grid-template-columns: 300px minmax(480px, 1fr);
   }
 }
+
+/* Review brief: the request's name is a textarea so a long one wraps inside
+   the card, as the design's heading does. One row tall until it needs more. */
+.card textarea.card-title-input {
+  display: block;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+  line-height: inherit;
+  field-sizing: content;
+}
+
+/* Review brief: the questions are the design's one numbered list; each line
+   is typed in place rather than drawn as three separate boxes. */
+.question-box .question-line {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 20px;
+}
+
+.question-box .question-line:focus {
+  outline: 2px solid var(--blue, #2458ff);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

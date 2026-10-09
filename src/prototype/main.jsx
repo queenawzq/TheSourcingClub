@@ -1101,9 +1101,12 @@ export function FlowShell({
   const meta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
   // The prototype's App gives the contract and schedule screens this class too.
   const actionFlow = ["contract", "milestones"].includes(screen) ? " quote-action-flow" : "";
+  // And Review brief its own, which lines the "What vendors need" card up with
+  // the form instead of a fixed margin above it.
+  const reviewFlow = screen === "review" ? " review-flow" : "";
 
   return (
-    <main className={`flow-page${["invite", "quotes", "quoteDetail"].includes(screen) ? " wide-flow" : ""}${actionFlow}`}>
+    <main className={`flow-page${["invite", "quotes", "quoteDetail"].includes(screen) ? " wide-flow" : ""}${actionFlow}${reviewFlow}`}>
       <JourneyRail current={meta.step} isMilestoneFunding={Boolean(fundingMilestone)} />
       <section className="flow-content">
         {screen !== "quoteDetail" && (
@@ -8380,6 +8383,13 @@ export function DescribeScreen({
   );
 }
 
+/** Grows a live one-line box (title, a question) to its text, so it wraps instead of being cut off. */
+function fitTitleHeight(element) {
+  if (!element) return;
+  element.style.height = "auto";
+  element.style.height = `${element.scrollHeight}px`;
+}
+
 export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments = null, onAddFiles, onRemoveFile, uploading = false }) {
   // The prototype passes none of these and reads exactly as drawn.
   const isLive = Boolean(values);
@@ -8394,12 +8404,20 @@ export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments
             /* The design takes the request's name from the model's draft. With
                "Skip AI" there is no draft, and a request with no name is one
                nobody can find later — so the heading is typed here. */
-            <input
+            /* A textarea so a long name wraps inside the card, as the
+               design's heading does; Enter does not add a line. */
+            <textarea
               className="card-title-input"
               name="title"
+              rows={1}
               value={values.title ?? ""}
               placeholder="Name this request"
-              onChange={(event) => onChange("title", event.target.value)}
+              ref={fitTitleHeight}
+              onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }}
+              onChange={(event) => {
+                onChange("title", event.target.value.replace(/\s*\n\s*/g, " "));
+                fitTitleHeight(event.target);
+              }}
             />
           ) : (
             "Organic cotton woven shirt production"
@@ -8537,24 +8555,34 @@ export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments
       </Card>
       <Card title="Questions vendors should answer">
         {/* Each question becomes a row a vendor answers against, so they are
-            typed rather than listed. Drawn as three examples; they are the
-            three placeholders. */}
+            typed — but into the design's one numbered list, a line each.
+            Drawn as three examples; they are the three placeholders. */}
         {isLive ? (
           <div className="question-box">
-            {[0, 1, 2].map((index) => (
-              <input
-                key={index}
-                className="question-input"
-                name={`question-${index}`}
-                value={values[`question-${index}`] ?? ""}
-                placeholder={[
-                  "Can you quote fit sample and PP sample separately?",
-                  "Can you support 3 colors at 100 units each?",
-                  "Which materials can you source, and what should the brand provide?",
-                ][index]}
-                onChange={(event) => onChange(`question-${index}`, event.target.value)}
-              />
-            ))}
+            <ol className="question-list">
+              {[0, 1, 2].map((index) => (
+                <li key={index}>
+                  <textarea
+                    className="question-line"
+                    rows={1}
+                    name={`question-${index}`}
+                    aria-label={`Question ${index + 1}`}
+                    ref={fitTitleHeight}
+                    onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }}
+                    value={values[`question-${index}`] ?? ""}
+                    placeholder={[
+                      "Can you quote fit sample and PP sample separately?",
+                      "Can you support 3 colors at 100 units each?",
+                      "Which materials can you source, and what should the brand provide?",
+                    ][index]}
+                    onChange={(event) => {
+                      onChange(`question-${index}`, event.target.value.replace(/\s*\n\s*/g, " "));
+                      fitTitleHeight(event.target);
+                    }}
+                  />
+                </li>
+              ))}
+            </ol>
           </div>
         ) : (
           <div className="question-box">
