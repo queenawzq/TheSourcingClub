@@ -6,7 +6,7 @@
  * Money comes from the order snapshot and production_order_summary, formatted
  * with formatMoney. Nothing here sums or splits an amount.
  */
-import { formatMoney, fromCents, toCents } from "../../lib/money.js";
+import { formatMoney, toCents } from "../../lib/money.js";
 import { formatCapacityWindow } from "../../lib/domain/quote.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -205,6 +205,11 @@ export function kindFor(type, originalKind) {
 
 const PAID_ON_OPEN = "Paid when this step opens: there is nothing for the brand to approve first.";
 
+/** A step's amount as the design's steps screen writes it: "$1,656", cents only when there are some ("$12.50"). */
+export function stepAmount(cents, currency) {
+  return formatMoney(cents, currency, { whole: cents % 100 === 0 });
+}
+
 /** Loaded milestones → the builder's editable rows. */
 export function scheduleRows(milestones) {
   return milestones.map((milestone) => ({
@@ -215,7 +220,8 @@ export function scheduleRows(milestones) {
     type: typeOf(milestone.kind),
     title: milestone.title,
     description: milestone.description ?? "",
-    amount: milestone.amount_cents ? String(fromCents(milestone.amount_cents)) : "",
+    // Shown as the design's steps write money ("$1,656"); toCents reads it back.
+    amount: milestone.amount_cents ? stepAmount(milestone.amount_cents, milestone.currency ?? undefined) : "",
     due_on: milestone.due_on ?? "",
     note: milestone.kind === "payment_only" ? PAID_ON_OPEN : "",
   }));

@@ -8385,6 +8385,30 @@ export function DescribeScreen({
 }
 
 /**
+ * A live date that reads as the design writes it ("Aug 16, 2026") and becomes
+ * the browser's date picker while it has focus. The value stays ISO.
+ */
+function DateLine({ value, onValue, name }) {
+  const [editing, setEditing] = useState(false);
+  const shown = value
+    ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
+        .format(new Date(`${value}T00:00:00Z`))
+    : "";
+  return (
+    <input
+      className="field-input"
+      name={name}
+      type={editing ? "date" : "text"}
+      value={editing ? value ?? "" : shown}
+      placeholder="—"
+      onFocus={() => setEditing(true)}
+      onBlur={() => setEditing(false)}
+      onChange={(event) => { if (editing) onValue(event.target.value); }}
+    />
+  );
+}
+
+/**
  * A live one-line box (the request's name, a question) that grows to its
  * text, so a long one wraps instead of being cut off. Refitted whenever the
  * text changes (typed or loaded) and when the window is resized. Enter does
@@ -9720,21 +9744,38 @@ export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = nul
                   </div>
                 </div>
                 {row.note && <p className="muted production-schedule-helper">{row.note}</p>}
+                {/* Name and description wrap like the design's read-back;
+                    money and dates read as the design writes them ("$1,836.00",
+                    "Aug 16, 2026") and turn into an editor on focus. */}
                 <div className="production-step-grid">
-                  <Field label="Step name" name="title" value={row.title} onChange={field} />
-                  <Field label="Description" name="description" value={row.description} onChange={field} />
+                  <div className="field">
+                    <span>Step name</span>
+                    <GrowingLine className="field-input" name="title" value={row.title} placeholder="—" onValue={(value) => field("title", value)} />
+                  </div>
+                  <div className="field">
+                    <span>Description</span>
+                    <GrowingLine className="field-input" name="description" value={row.description} placeholder="—" onValue={(value) => field("description", value)} />
+                  </div>
                   {row.type === "Paid release" ? (
-                    <Field label="Amount" name="amount" value={row.amount} onChange={field} />
+                    <div className="field">
+                      <span>Amount</span>
+                      <input
+                        className="field-input"
+                        name="amount"
+                        inputMode="decimal"
+                        value={row.amount}
+                        placeholder="—"
+                        onChange={(event) => field("amount", event.target.value)}
+                        onBlur={(event) => field("amount", live.formatAmount?.(event.target.value) ?? event.target.value)}
+                      />
+                    </div>
                   ) : (
                     <Field label="Amount" value="No payment" muted />
                   )}
-                  <Field
-                    label={row.type === "Update only" ? "Update timing" : "Due date"}
-                    name="due_on"
-                    type="date"
-                    value={row.due_on}
-                    onChange={field}
-                  />
+                  <div className="field">
+                    <span>{row.type === "Update only" ? "Update timing" : "Due date"}</span>
+                    <DateLine name="due_on" value={row.due_on} onValue={(value) => field("due_on", value)} />
+                  </div>
                 </div>
               </div>
             );

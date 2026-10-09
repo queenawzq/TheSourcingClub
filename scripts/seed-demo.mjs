@@ -827,6 +827,23 @@ const denimTitle = "Washed denim jacket, AW27";
 const denim = await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme washed.", quantity: 90, unitPrice: 4800 });
 await approveFitSample(denim, denimTitle);
 
+// Dates on the steps not done yet, as a brand sets them on "Production
+// steps", so "Next due" on the dashboard and the orders list, and each step's
+// due date, show a real day instead of "—". Two weeks apart from today.
+console.log("step dates");
+const brandOrders = must(await admin.from("production_orders").select("id")
+  .eq("brand_org_id", brandOrg.id).in("status", ["pending_schedule", "active"]), "the brand's open orders");
+for (const { id } of brandOrders) {
+  const steps = must(await admin.from("order_milestones").select("id, state, sort").eq("order_id", id).order("sort"), "steps");
+  let n = 0;
+  for (const step of steps) {
+    if (step.state === "complete" || step.state === "cancelled") continue;
+    n += 1;
+    const day = new Date(Date.now() + n * 14 * 864e5).toISOString().slice(0, 10);
+    must(await admin.from("order_milestones").update({ due_on: day }).eq("id", step.id), "a step's date");
+  }
+}
+
 // The brand's saved vendors (Saved), saved through its own login.
 must(await brand.client.from("saved_factories").insert([
   { org_id: brandOrg.id, factory_org_id: factoryOrg.id, saved_by: brand.id },
