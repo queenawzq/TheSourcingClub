@@ -10,7 +10,14 @@
 @font-face {
   font-family: "Satoshi";
   src: url("/assets/fonts/Satoshi-Bold.otf") format("opentype");
-  font-weight: 700 900;
+  font-weight: 700;
+  font-display: swap;
+}
+/* 800 resolves to Black, as in the prototype's styles.css (Bold 700, Black 950). */
+@font-face {
+  font-family: "Satoshi";
+  src: url("/assets/fonts/Satoshi-Black.otf") format("opentype");
+  font-weight: 800 950;
   font-display: swap;
 }
 

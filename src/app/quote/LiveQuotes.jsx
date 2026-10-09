@@ -69,7 +69,8 @@ export default function LiveQuotes({ rfqId }) {
     initials: view.initials,
     name: view.name,
     location: "",
-    trust: "trusted",
+    // The badge says TSC has checked this vendor, so only a verified one gets it.
+    trust: raw.orgs?.factory_profiles?.verification_status === "verified" ? "trusted" : "",
     fit: "",
     response: "",
     fitType: `Version ${view.version}`,
