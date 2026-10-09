@@ -17,13 +17,15 @@
  * prototype cannot have and the product cannot do without.
  */
 import React, { useEffect, useState } from "react";
-import { HomeScreen } from "../../prototype/main.jsx";
+import { ActivityDrawer, HomeScreen } from "../../prototype/main.jsx";
 import { dashboardSnapshot } from "../../lib/domain/dashboard.js";
 import { listRfqs } from "../../lib/domain/rfq.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { listArchivedOrderIds } from "../../lib/domain/order-tabs.js";
 import { listThreads } from "../../lib/domain/message.js";
-import { countUnreadNotifications } from "../../lib/domain/notifications.js";
+import {
+  activityType, countUnreadNotifications, listNotifications, markAllRead, notificationLink, timeAgo,
+} from "../../lib/domain/notifications.js";
 import { inviteBrand, savingsFor } from "../../lib/domain/credits.js";
 import { toProjectCard, toRfqCard } from "../live-adapter.js";
 import { formatMoney } from "../../lib/money.js";
@@ -137,12 +139,27 @@ function attentionFrom(snapshot, isFactory, goTo) {
   return items;
 }
 
-export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewRfq, onViewProject }) {
+/** A notification as a row of the designed Activity drawer. */
+function toActivityItem(notification) {
+  return {
+    id: notification.id,
+    notification,
+    type: activityType(notification.kind),
+    title: notification.title,
+    meta: notification.body ?? "",
+    time: timeAgo(notification.created_at),
+    unread: !notification.read_at,
+  };
+}
+
+export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProject }) {
   const { navigate } = useRouter();
   const [state, setState] = useState({ snapshot: null, rfqs: [], projects: [], savings: null, loaded: false });
   // The bell is the Activity drawer's, so it counts unread activity, not
   // unread messages (those have their own card in "Needs your attention").
   const [unreadActivity, setUnreadActivity] = useState(0);
+  // null while the drawer is shut; the rows once it is open.
+  const [activity, setActivity] = useState(null);
   const [error, setError] = useState(null);
   const [recommended, setRecommended] = useState([]);
 
@@ -193,6 +210,32 @@ export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewR
     return () => { cancelled = true; };
   }, [org.id]);
 
+  /**
+   * The bell opens the designed drawer. Opening it reads everything in it, the
+   * way a bell does: the count clears, while the rows keep their unread look
+   * for this opening so it is clear what was new.
+   */
+  async function openActivity() {
+    setActivity([]);
+    try {
+      const rows = await listNotifications(org.id);
+      setActivity((rows ?? []).map(toActivityItem));
+      if (rows?.some((row) => !row.read_at)) {
+        await markAllRead(org.id);
+        setUnreadActivity(0);
+      }
+    } catch (failure) {
+      setError(failure);
+    }
+  }
+
+  function openActivityItem(item) {
+    const link = notificationLink(item.notification, { isFactory });
+    if (!link) return;
+    setActivity(null);
+    navigate(link);
+  }
+
   const { snapshot, rfqs, projects, savings } = state;
   const attention = attentionFrom(snapshot, isFactory, goTo) ?? [];
   const isNewcomer = state.loaded && !rfqs.length && !projects.length;
@@ -218,7 +261,7 @@ export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewR
         dashboardState={rfqs.length || projects.length ? "active" : "newcomer"}
         factories={recommended.map((vendor) => toRecommendedCard(vendor, navigate))}
         goTo={goTo}
-        onOpenActivity={onOpenActivity}
+        onOpenActivity={openActivity}
         orgName={org.name}
         attention={attention}
         rfqs={rfqs}
@@ -232,6 +275,9 @@ export default function LiveHome({ org, isFactory, goTo, onOpenActivity, onViewR
         onViewProject={onViewProject}
         unreadCount={unreadActivity}
       />
+      {activity && (
+        <ActivityDrawer items={activity} onOpenItem={openActivityItem} onClose={() => setActivity(null)} />
+      )}
     </>
   );
 }

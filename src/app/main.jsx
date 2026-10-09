@@ -1077,8 +1077,9 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     },
     {
       // The designed home puts notifications behind the activity button in its
-      // header rather than listing them inline, so they need a page of their
-      // own — there was never a route for them before.
+      // header rather than listing them inline. The brand's bell opens the
+      // designed drawer (LiveHome); this page stays for the factory's bell and
+      // for links that already point here.
       path: "/notifications",
       render: () => <main className="home-page"><NotificationList org={activeOrg} isFactory={isFactory} /></main>,
     },
@@ -1092,7 +1093,6 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
               org={activeOrg}
               isFactory={isFactory}
               goTo={(next) => navigateFromPrototype(next, navigate)}
-              onOpenActivity={() => navigate("/notifications")}
               // The designed cards carry ids; the screen keys do not, which is
               // why "View quote" used to land back on the list it came from.
               onViewRfq={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/quotes` : "/rfqs")}

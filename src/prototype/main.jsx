@@ -4081,7 +4081,12 @@ function InviteBrandModal({ onInvite, onClose }) {
   ), document.body);
 }
 
-function ActivityDrawer({ onClose }) {
+/**
+ * The bell's drawer. Live mounts pass `items` (same shape as
+ * `passiveActivityItems`, plus an optional `id`) and `onOpenItem`, which
+ * makes each row open what it is about. The prototype passes neither.
+ */
+export function ActivityDrawer({ onClose, items, onOpenItem }) {
   return createPortal((
     <div className="activity-drawer-layer" role="presentation">
       <button className="activity-drawer-scrim" type="button" aria-label="Close activity" onClick={onClose} />
@@ -4096,8 +4101,17 @@ function ActivityDrawer({ onClose }) {
           </button>
         </header>
         <div className="activity-drawer-list">
-          {passiveActivityItems.map((item) => (
-            <article className={item.unread ? "activity-drawer-item unread" : "activity-drawer-item"} key={item.title}>
+          {(items ?? passiveActivityItems).map((item) => (
+            <article
+              className={item.unread ? "activity-drawer-item unread" : "activity-drawer-item"}
+              key={item.id ?? item.title}
+              {...(onOpenItem ? {
+                role: "button",
+                tabIndex: 0,
+                onClick: () => onOpenItem(item),
+                onKeyDown: (event) => (event.key === "Enter" || event.key === " ") && onOpenItem(item),
+              } : {})}
+            >
               <div>
                 <div className="activity-drawer-meta">
                   <span>{item.type}</span>

@@ -91,3 +91,32 @@ export function notificationLink(notification, { isFactory }) {
 
   return null;
 }
+
+/**
+ * The label the Activity drawer puts on a notification. The design types its
+ * examples Quote / File / Status / Vendor; these are the kinds that exist.
+ */
+export function activityType(kind = "") {
+  if (kind.startsWith("quote_")) return "Quote";
+  if (kind === "message") return "Message";
+  if (kind.startsWith("payment_") || kind === "funds_released") return "Payment";
+  if (kind.startsWith("verification_")) return "Verification";
+  if (kind.startsWith("rfq_")) return "Request";
+  return "Status";
+}
+
+const RELATIVE = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+/** "12 minutes ago", "yesterday", "just now". */
+export function timeAgo(iso) {
+  const seconds = Math.round((new Date(iso) - Date.now()) / 1000);
+  const units = [
+    ["day", 86400],
+    ["hour", 3600],
+    ["minute", 60],
+  ];
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) return RELATIVE.format(Math.round(seconds / size), unit);
+  }
+  return "just now";
+}
