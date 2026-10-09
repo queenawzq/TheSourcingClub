@@ -8605,6 +8605,9 @@ export function InviteScreen({
   vendors: liveVendors,
   openToAll,
   onOpenToAllChange,
+  // Live: the chips are the request's own facts (category, quantity,
+  // certifications, regions), not the design's sample ones.
+  filters: liveFilters = null,
 }) {
   const [vendorType, setVendorType] = useState("factories");
   const isTrading = vendorType === "trading";
@@ -8638,7 +8641,7 @@ export function InviteScreen({
       <div className="invite-toolbar">
         <label className="search-field">
           <SearchIcon />
-          <input placeholder={isTrading ? "Search trading companies" : "Search factories"} />
+          <input placeholder={isLive ? "Search vendors" : isTrading ? "Search trading companies" : "Search factories"} />
         </label>
         <label className="toggle-row">
           <input type="checkbox" />
@@ -8661,8 +8664,23 @@ export function InviteScreen({
           <span className="toggle" />
           Open to all vendors
         </label>
-        <button className="filter-button" type="button">≡ Filter</button>
+        {/* Live there is no filter panel behind this button, so it is left out. */}
+        {!isLive && <button className="filter-button" type="button">≡ Filter</button>}
       </div>
+      {isLive ? (
+        liveFilters?.length > 0 && (
+          <div className="filter-strip">
+            <div className="filter-strip-header">
+              <span>Filters preselected from your request</span>
+            </div>
+            <div className="filter-chip-row">
+              {liveFilters.map((filter) => (
+                <span className="filter-chip" key={filter}>{filter}</span>
+              ))}
+            </div>
+          </div>
+        )
+      ) : (
       <div className="filter-strip">
         <div className="filter-strip-header">
           <span>Filters preselected from your request</span>
@@ -8674,6 +8692,7 @@ export function InviteScreen({
           ))}
         </div>
       </div>
+      )}
       <Card className="invite-results">
         <div className="factory-list">
           {inviteVendors.map((factory) => (
@@ -8772,6 +8791,8 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
               <p>{factory.note}</p>
             </div>
           </div>
+          {/* A vendor with no sample photos gets no strip, so no lone arrow. */}
+          {factory.products.length > 0 && (
           <div className="marketplace-samples-shell invite-samples-shell">
             <button
               className={sampleScroll.left ? "marketplace-samples-prev visible" : "marketplace-samples-prev"}
@@ -8814,6 +8835,7 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
               <img src="/assets/prototype-icons/dropdown.svg" alt="" />
             </button>
           </div>
+          )}
         </div>
       </div>
     </article>
