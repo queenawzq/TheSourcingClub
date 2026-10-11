@@ -64,6 +64,9 @@ const LAST_STEP = 9;
 /** Index of the designed terms card. */
 const TERMS_STEP = 8;
 
+/** Index of the designed "What are you looking to make?" card. */
+const MAKE_STEP = 3;
+
 /** Index of the designed profile review card. */
 const REVIEW_STEP = 7;
 
@@ -345,6 +348,9 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
         window.scrollTo({ top: 0, behavior: "smooth" });
       }}
       onNext={next}
+      extraChipGroups={optionsByLabel["Production type"] ? {
+        [MAKE_STEP]: [["Production type", optionsByLabel["Production type"], []]],
+      } : undefined}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
       onLogout={onSignOut}
       documents={documents}
