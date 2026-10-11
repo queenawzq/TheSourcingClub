@@ -791,9 +791,11 @@ console.log("\nphase 3 — the order runs");
       ? ok("the payment embed is to-ONE and comes back as an object — domain code must not index it")
       : fail(`the payment embed came back as ${Array.isArray(embedded) ? "an array" : typeof embedded}`);
 
-    payments.every((p) => p.fee_bps === 0 && p.currency === "USD")
-      ? ok("every payment stores its own fee rate and currency, rather than inheriting a default")
-      : fail("a payment is missing its fee rate or currency");
+    // The service fee is fixed per order when its payments are created: 5% at
+    // $5,000 and over, 7% under (20261012000200).
+    payments.every((p) => [500, 700].includes(p.fee_bps) && p.fee_bps === payments[0].fee_bps && p.currency === "USD")
+      ? ok(`every payment stores the order's fee rate (${payments[0]?.fee_bps / 100}%) and currency, rather than inheriting a default`)
+      : fail("a payment is missing its fee rate or currency, or the rates differ within one order");
 
     // ---- the gate ---------------------------------------------------------
     // The first sample is what actually opens: the deposit sits AFTER the
@@ -1010,122 +1012,148 @@ console.log("\nphase 3 — the order runs");
       ? ok("a competing factory CANNOT read that update")
       : fail("LEAK: a competitor read the update");
 
-    // Straight from the factory's update: nothing was sent for approval.
-    const approved = await brand.client.rpc("approve_milestone", {
+    // TSC holds the money (20261012000200): a paid step is funded as it
+    // opens, and approving it is what pays the factory. Stripe's word comes in
+    // through service-only functions, called here with the service key the
+    // way /api/stripe-webhook calls them.
+    const unfundedApproval = await brand.client.rpc("approve_milestone", {
       target_milestone: first.id, note: "Approved from the smoke test",
     });
-    approved.error ? fail("the brand approves the sample from the factory's update", approved.error)
-                   : ok("the brand approves the sample from the factory's update, with no send-for-approval step");
+    /fund .* first/.test(unfundedApproval.error?.message ?? "")
+      ? ok("the brand CANNOT approve a paid step before its money is held")
+      : fail("approving an unfunded paid step was not refused", unfundedApproval.error);
 
     const { data: deposit } = await admin
       .from("order_payments").select("*").eq("milestone_id", first.id).single();
 
     deposit.state === "due"
-      ? ok("approving the sample made its payment due")
-      : fail(`payment is ${deposit.state} after approval, expected due`);
+      ? ok("the open paid step's payment is due: it is funded before the work")
+      : fail(`payment is ${deposit.state} on an open paid step, expected due`);
 
     {
       const { data: payout } = await brand.client
         .from("factory_payout_accounts").select("id").eq("org_id", winner.factory_org_id);
       (payout ?? []).length === 1
-        ? ok("and NOW the brand can read where to send it — because money is owed")
+        ? ok("and the brand can read the factory's bank details — because money is owed")
         : fail("the brand cannot read the payout account with a payment due");
 
-      const sent = await brand.client.rpc("mark_payment_sent", {
-        target_payment: deposit.id, reference: "SMOKE-REF", note: null,
-      });
-      sent.error ? fail("the brand records the payment as sent", sent.error)
-                 : ok("the brand records the payment as sent");
+      const checkout = await brand.client.rpc("begin_payment_checkout", { target_payment: deposit.id });
+      checkout.error ? fail("the brand owner starts paying", checkout.error)
+        : Number(checkout.data.charged_cents) === Number(deposit.amount_cents) + Number(checkout.data.fee_cents)
+            && [500, 700].includes(checkout.data.fee_bps)
+          ? ok(`the brand owner starts paying: the step plus a ${checkout.data.fee_bps / 100}% service fee`)
+          : fail(`checkout charges ${checkout.data.charged_cents} for a ${deposit.amount_cents} step`);
 
-      const { data: afterSent } = await admin
+      const factoryCheckout = await factoryClient.rpc("begin_payment_checkout", { target_payment: deposit.id });
+      factoryCheckout.error ? ok("the factory CANNOT start a payment to itself")
+                            : fail("LEAK: the factory started a checkout");
+
+      const brandFunds = await brand.client.rpc("record_payment_funded", {
+        target_payment: deposit.id, charge: null, method_type: "card", method_label: "Visa ···4242", received: null,
+      });
+      brandFunds.error ? ok("the brand that pays CANNOT say its own payment arrived")
+                       : fail("LEAK: the payer recorded its own payment as funded");
+
+      const factoryFunds = await factoryClient.rpc("record_payment_funded", {
+        target_payment: deposit.id, charge: null, method_type: "card", method_label: "Visa ···4242", received: null,
+      });
+      factoryFunds.error ? ok("the factory that is owed the money CANNOT say it arrived")
+                         : fail("LEAK: the payee recorded the payment as funded");
+
+      const clearing = await admin.rpc("record_payment_processing", {
+        target_payment: deposit.id, method_type: "us_bank_account", method_label: "STRIPE TEST BANK ···6789",
+      });
+      clearing.error ? fail("a bank payment is recorded as clearing", clearing.error)
+                     : ok("a bank payment is recorded as clearing, as the webhook does");
+
+      const { data: afterClearing } = await admin
         .from("production_order_summary").select("paid_cents").eq("id", order.id).single();
-      Number(afterSent.paid_cents) === 0
-        ? ok("the brand SAYING it paid does not count as funded")
-        : fail(`paid_cents is ${afterSent.paid_cents} on the brand's word alone`);
-
-      const { data: blockedStep } = await admin
-        .from("order_milestones").select("state").eq("id", first.id).single();
-      blockedStep.state !== "complete"
-        ? ok("the step does not complete while the payment is only claimed sent")
-        : fail("LEAK: a claimed payment completed the step");
-
-      const { data: nextStep } = await admin
-        .from("order_milestones").select("state").eq("id", milestones[1].id).single();
-      nextStep.state === "pending"
-        ? ok("the NEXT step stays shut while the payment is only claimed sent")
-        : fail(`next step is ${nextStep.state} on the brand's word alone`);
-
-      const brandConfirm = await brand.client.rpc("confirm_payment_received", {
-        target_payment: deposit.id, amount_received: null, note: null,
-      });
-      brandConfirm.error ? ok("the brand that sent the money CANNOT confirm it arrived")
-                         : fail("LEAK: the payer confirmed its own payment");
-
-      const factoryConfirm = await factoryClient.rpc("confirm_payment_received", {
-        target_payment: deposit.id, amount_received: null, note: null,
-      });
-      factoryConfirm.error ? ok("the factory that is owed the money CANNOT confirm it arrived")
-                           : fail("LEAK: the payee confirmed its own payment");
+      Number(afterClearing.paid_cents) === 0
+        ? ok("a bank payment still clearing does not count as funded")
+        : fail(`paid_cents is ${afterClearing.paid_cents} while the payment is only clearing`);
 
       const staff = await signedInUser(`payments-admin-${stamp}@example.com`);
       await admin.from("platform_admins").insert({ user_id: staff.id });
 
-      const { data: queue, error: queueError } = await staff.client.rpc("admin_payment_queue");
-      if (queueError) fail("the admin payment queue is readable by staff", queueError);
-      else queue.some((row) => row.payment_id === deposit.id)
-        ? ok("the payment appears in the queue an admin actually watches")
-        : fail("the sent payment is not in the admin queue");
+      const { data: board, error: boardError } = await staff.client.rpc("admin_payment_board");
+      if (boardError) fail("the staff payments board is readable by staff", boardError);
+      else board.some((row) => row.payment_id === deposit.id && row.state === "processing")
+        ? ok("the clearing payment is on the board staff watch")
+        : fail("the clearing payment is not on the staff board");
 
-      const { error: queueLeak } = await brand.client.rpc("admin_payment_queue");
-      queueLeak ? ok("a brand CANNOT read the platform-wide payment queue")
-                : fail("LEAK: the payment queue is readable by a party");
+      const { error: boardLeak } = await brand.client.rpc("admin_payment_board");
+      boardLeak ? ok("a brand CANNOT read the platform-wide payments board")
+                : fail("LEAK: the payments board is readable by a party");
 
-      const confirmed = await staff.client.rpc("confirm_payment_received", {
-        target_payment: deposit.id, amount_received: null, note: "seen on the statement",
+      const funded = await admin.rpc("record_payment_funded", {
+        target_payment: deposit.id, charge: null, method_type: "us_bank_account",
+        method_label: "STRIPE TEST BANK ···6789", received: null,
       });
-      confirmed.error ? fail("an admin confirms the payment", confirmed.error)
-                      : ok("an admin confirms the payment arrived");
+      funded.error ? fail("the payment is recorded as held by TSC", funded.error)
+                   : ok("the payment cleared: TSC holds it");
 
-      const { data: afterConfirm } = await admin
+      const { data: heldStep } = await admin
         .from("order_milestones").select("state").eq("id", first.id).single();
-      afterConfirm.state === "complete"
-        ? ok("the step completes on the ADMIN's confirmation — it said otherwise a moment ago")
-        : fail(`step is ${afterConfirm.state} after confirmation`);
+      heldStep.state === "active"
+        ? ok("funding does not finish a paid step: the brand still approves the work")
+        : fail(`step is ${heldStep.state} after funding`);
+
+      const { data: stillShut } = await admin
+        .from("order_milestones").select("state").eq("id", milestones[1].id).single();
+      stillShut.state === "pending"
+        ? ok("the NEXT step stays shut until the brand approves")
+        : fail(`next step is ${stillShut.state} before the approval`);
+
+      const approved = await brand.client.rpc("approve_milestone", {
+        target_milestone: first.id, note: "Approved from the smoke test",
+      });
+      approved.error ? fail("the brand approves the funded sample from the factory's update", approved.error)
+                     : ok("the brand approves the funded sample from the factory's update, with no send-for-approval step");
+
+      const { data: afterApproval } = await admin
+        .from("order_milestones").select("state").eq("id", first.id).single();
+      afterApproval.state === "complete"
+        ? ok("the step completes on the brand's approval")
+        : fail(`step is ${afterApproval.state} after approval`);
 
       const { data: opened } = await admin
         .from("order_milestones").select("state").eq("id", milestones[1].id).single();
       opened.state === "active"
-        ? ok("and the next step opens, WITHOUT waiting for the funds to be released")
-        : fail(`next step is ${opened.state} after confirmation`);
+        ? ok("and the next step opens, WITHOUT waiting for the payout")
+        : fail(`next step is ${opened.state} after approval`);
 
-      const { data: funded } = await admin
+      const { data: owed } = await admin
+        .from("order_payments").select("state, release_requested_at").eq("id", deposit.id).single();
+      owed.state === "confirmed" && owed.release_requested_at
+        ? ok("the held money is now owed to the factory (payout requested)")
+        : fail(`after approval the payment is ${owed.state}, payout requested: ${Boolean(owed.release_requested_at)}`);
+
+      const { data: paid } = await admin
         .from("production_order_summary").select("paid_cents").eq("id", order.id).single();
-      Number(funded.paid_cents) === Number(deposit.amount_cents)
+      Number(paid.paid_cents) === Number(deposit.amount_cents)
         ? ok("the header total moved because a payment row moved, not because anything was typed")
-        : fail(`paid_cents is ${funded.paid_cents}, expected ${deposit.amount_cents}`);
+        : fail(`paid_cents is ${paid.paid_cents}, expected ${deposit.amount_cents}`);
 
       const { data: told } = await admin
         .from("notifications").select("kind, org_id, order_id")
         .eq("order_id", order.id).eq("kind", "payment_confirmed");
       told.some((n) => n.org_id === winner.factory_org_id)
-        ? ok("the factory was told, in the same transaction, that it can start")
-        : fail("the factory was not notified of the confirmation");
+        ? ok("the factory was told, in the same transaction, that the money is held")
+        : fail("the factory was not notified of the funding");
 
       told.every((n) => n.order_id === order.id)
         ? ok("payment notifications carry their order, so the link in the feed resolves")
         : fail("a payment notification has no order to link to");
 
-      const released = await staff.client.rpc("release_payment_to_factory", {
-        target_payment: deposit.id, note: null,
-      });
-      released.error ? fail("an admin releases the funds", released.error)
-                     : ok("an admin releases the funds");
+      const released = await admin.rpc("record_payment_released", { target_payment: deposit.id, transfer: null });
+      released.error ? fail("the payout is recorded", released.error)
+                     : ok("the payout to the factory is recorded");
 
       const { data: stillOpen } = await admin
         .from("order_milestones").select("state").eq("id", milestones[1].id).single();
       stillOpen.state === "active"
-        ? ok("releasing changes no milestone state — the work opened at confirmation")
-        : fail(`releasing moved the next step to ${stillOpen.state}`);
+        ? ok("paying out changes no milestone state — the work opened at approval")
+        : fail(`paying out moved the next step to ${stillOpen.state}`);
 
       const { data: events } = await admin
         .from("payment_events").select("to_state").eq("payment_id", deposit.id).order("created_at");

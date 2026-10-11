@@ -77,7 +77,9 @@ function apiRoutes() {
       // on Vercel the platform already provides them.
       const env = loadEnv(server.config.mode, process.cwd(), "");
       for (const [key, value] of Object.entries(env)) {
-        if (!key.startsWith("VITE_") && !(key in process.env)) process.env[key] = value;
+        // VITE_ ones too: the handlers fall back to VITE_SUPABASE_URL /
+        // VITE_SUPABASE_ANON_KEY locally (api/_supabase-env.js).
+        if (!(key in process.env)) process.env[key] = value;
       }
 
       server.middlewares.use(async (req, res, next) => {
@@ -88,7 +90,10 @@ function apiRoutes() {
           const module = await server.ssrLoadModule(`.${path}.js`);
           const chunks = [];
           for await (const chunk of req) chunks.push(chunk);
-          req.body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : {};
+          // Kept byte for byte too: a signed webhook (api/stripe-webhook.js) is
+          // checked against the raw body, not the parsed JSON.
+          req.rawBody = Buffer.concat(chunks);
+          req.body = chunks.length ? JSON.parse(req.rawBody.toString()) : {};
 
           // The shape Vercel's runtime gives a handler.
           res.status = (code) => { res.statusCode = code; return res; };

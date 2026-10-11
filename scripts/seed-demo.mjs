@@ -755,14 +755,16 @@ await orderWithCancelProposed({
   reason: "The windbreaker was cut from the AW27 range.",
 });
 
-// Payments in each state the brand's Payments page lists, walked through the
-// real steps: the factory sends its fit sample for approval, the brand
-// approves it (its payment falls due) and marks the money sent, and the demo
-// admin, through its own login, confirms it arrived and releases it. Three
-// running orders, because one order's payments move one after the other.
+// Payments in each state the brand's Payments page lists. TSC holds the
+// money through Stripe: a step's payment falls due as the step opens, the
+// brand funds it, and approving the step pays the factory. The seed makes no
+// Stripe calls: it records each payment the way the Stripe webhook does,
+// through the same service-only functions (record_payment_*), so the states
+// are real database states with nothing at Stripe behind them. Paying a
+// "Due" or "Failed" one on a test site goes through Stripe test mode for real.
 console.log("payments");
-// Where a brand is told to send Demo Factory's money, so a due payment's page
-// lets the brand record it as sent. Plainly not a real account.
+// Where staff would pay Demo Factory by bank if it had no Stripe account.
+// Plainly not a real account.
 must(await factory.client.from("factory_payout_accounts").insert({
   org_id: factoryOrg.id, label: "Demo account", bank_name: "Demo Bank (test data, not a real account)",
   account_name: "Demo Factory", account_number_last4: "0000", bank_country: "PT",
@@ -789,43 +791,68 @@ async function runningOrder({ title, brief, quantity, unitPrice }) {
   }
   return order;
 }
-/** The fit sample sent for approval and approved: its payment is due. */
-async function approveFitSample(order, title) {
+const dueNow = async (order, title) => must(await admin.from("order_payments").select("id, state, amount_cents")
+  .eq("order_id", order.id).in("state", ["due", "failed"]).single(), `the payment due: ${title}`);
+const CARD = ["card", "Visa ···4242"];
+const BANK = ["us_bank_account", "STRIPE TEST BANK ···6789"];
+/** What the brand is charged: the step plus the fee, as checkout charges it. */
+async function charged(payment) {
+  const fee = must(await admin.rpc("payment_fee_cents", { target_payment: payment.id }), "the fee");
+  const total = Number(payment.amount_cents) + Number(fee);
+  must(await admin.rpc("attach_payment_intent", { target_payment: payment.id, payment_intent: null, charged: total }), "the charge");
+  return total;
+}
+const clearing = async (payment, [type, label]) =>
+  must(await admin.rpc("record_payment_processing", { target_payment: payment.id, method_type: type, method_label: label }), "a bank payment clearing");
+const failed = async (payment, reason) =>
+  must(await admin.rpc("record_payment_failed", { target_payment: payment.id, reason }), "a payment that came back");
+async function funded(payment, [type, label]) {
+  const total = await charged(payment);
+  return must(await admin.rpc("record_payment_funded", {
+    target_payment: payment.id, charge: null, method_type: type, method_label: label, received: total,
+  }), "a payment held by TSC");
+}
+/** The factory posts on the open step and the brand approves it (it must be funded). */
+async function approveOpenStep(order, title) {
   const step = must(await admin.from("order_milestones").select("id")
-    .eq("order_id", order.id).eq("state", "active").order("sort").limit(1).single(), `first step: ${title}`);
+    .eq("order_id", order.id).eq("state", "active").order("sort").limit(1).single(), `open step: ${title}`);
   must(await factory.client.rpc("post_milestone_update", {
     target_milestone: step.id, body: "Fit sample is sewn and measured against the spec sheet.", document_ids: [],
   }), `factory update: ${title}`);
-  must(await factory.client.rpc("submit_milestone", { target_milestone: step.id }), `send for approval: ${title}`);
   must(await brand.client.rpc("approve_milestone", { target_milestone: step.id, note: "Fit approved." }), `approve: ${title}`);
-  return must(await admin.from("order_payments").select("id, state").eq("milestone_id", step.id).single(), `fit payment: ${title}`);
 }
-const dueNow = async (order, title) => must(await admin.from("order_payments").select("id, state")
-  .eq("order_id", order.id).eq("state", "due").single(), `the payment due: ${title}`);
-const markSent = async (payment, reference) =>
-  must(await brand.client.rpc("mark_payment_sent", { target_payment: payment.id, reference, note: null }), `sent: ${reference}`);
-const confirmArrived = async (payment) =>
-  must(await adminUser.client.rpc("confirm_payment_received", { target_payment: payment.id, amount_received: null, note: "Arrived in full." }), "confirm");
 
-// 1. Fit sample paid on to the factory ("Paid"); the bulk deposit confirmed
-//    by TSC and not released yet ("Funded").
+// 1. Fit sample funded by card, approved and paid to the factory ("Paid";
+//    by hand, as staff do for a factory with no Stripe account), then the
+//    bulk deposit funded by card: a payment-only step, so it is owed to the
+//    factory at once and waits on staff ("Funded", payout pending).
 const poplinTitle = "Organic poplin shirt, AW27";
 const poplin = await runningOrder({ title: poplinTitle, brief: "160 organic poplin shirts, relaxed fit.", quantity: 160, unitPrice: 2600 });
-const poplinFit = await approveFitSample(poplin, poplinTitle);
-await markSent(poplinFit, "DB-AW27-0412");
-await confirmArrived(poplinFit);
-must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Released after the fit approval." }), "release the fit sample");
-const poplinDeposit = await dueNow(poplin, poplinTitle);
-await markSent(poplinDeposit, "DB-AW27-0419");
-await confirmArrived(poplinDeposit);
-// 2. Fit sample wired, waiting for TSC to confirm it arrived ("Sent").
+const poplinFit = await dueNow(poplin, poplinTitle);
+await funded(poplinFit, CARD);
+await approveOpenStep(poplin, poplinTitle);
+must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Demo data: paid out by bank by staff." }), "release the fit sample");
+await funded(await dueNow(poplin, poplinTitle), CARD);
+// 2. Fit sample funded by card and held while the factory works ("Funded").
+const twillTitle = "Cotton twill overshirt, AW27";
+const twill = await runningOrder({ title: twillTitle, brief: "140 cotton twill overshirts, garment-dyed.", quantity: 140, unitPrice: 2900 });
+await funded(await dueNow(twill, twillTitle), CARD);
+// 3. Fit sample paid by bank, clearing ("Processing").
 const ribTitle = "Merino rib tank, AW27";
 const rib = await runningOrder({ title: ribTitle, brief: "120 fine merino rib tanks.", quantity: 120, unitPrice: 3100 });
-await markSent(await approveFitSample(rib, ribTitle), "DB-AW27-0423");
-// 3. Fit sample approved and owed ("Due").
+const ribFit = await dueNow(rib, ribTitle);
+await charged(ribFit);
+await clearing(ribFit, BANK);
+// 4. A bank payment that came back ("Failed"): the brand pays again.
+const chinoTitle = "Stretch chino, AW27";
+const chino = await runningOrder({ title: chinoTitle, brief: "200 stretch cotton chinos.", quantity: 200, unitPrice: 2400 });
+const chinoFit = await dueNow(chino, chinoTitle);
+await charged(chinoFit);
+await clearing(chinoFit, BANK);
+await failed(chinoFit, "The bank account has been closed.");
+// 5. Fit sample owed ("Due").
 const denimTitle = "Washed denim jacket, AW27";
-const denim = await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme washed.", quantity: 90, unitPrice: 4800 });
-await approveFitSample(denim, denimTitle);
+await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme washed.", quantity: 90, unitPrice: 4800 });
 
 // Dates on the steps not done yet, as a brand sets them on "Production
 // steps", so "Next due" on the dashboard and the orders list, and each step's
@@ -877,10 +904,12 @@ done. Every login uses the password "${PASSWORD}".
     - "${tote.title}": an order cancelled by both sides
     - "Linen trousers, SS27": the factory proposed cancelling (Accept / Keep order)
     - "Recycled nylon windbreaker": the brand proposed cancelling (Withdraw)
-    - "Organic poplin shirt, AW27": fit sample paid to the factory, bulk deposit funded
-    - "Merino rib tank, AW27": fit sample payment sent, waiting for TSC to confirm
+    - "Organic poplin shirt, AW27": fit sample paid out, bulk deposit held and owed to the factory
+    - "Cotton twill overshirt, AW27": fit sample funded by card, held while the factory works
+    - "Merino rib tank, AW27": fit sample paid by bank, clearing
+    - "Stretch chino, AW27": fit sample bank payment failed, to pay again
     - "Washed denim jacket, AW27": fit sample payment due
-  Payments lists those four payments (Paid, Funded, Sent, Due) and its discount code.
+  Payments lists those payments (Paid, Funded, Processing, Failed, Due) and its discount code.
   Its profile (/profile) is filled in, with a pending invitation.
   ${LOGINS.factory.name} has it under Saved → Saved brands.
   Browse vendors lists ${LOGINS.factory.name} and ${LOGINS.secondFactory.name} (Factories) and ${LOGINS.tradingCompany.name} (Trading companies).

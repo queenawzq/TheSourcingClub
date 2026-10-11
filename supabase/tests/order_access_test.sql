@@ -18,7 +18,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(67);
+select plan(69);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures
@@ -530,20 +530,26 @@ reset role;
 set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000001","email":"p3-brandowner@example.com","role":"authenticated"}';
 set local role authenticated;
 
-select lives_ok(
+-- Since payments are held by TSC (20261012000200), a paid step is funded as
+-- it opens and approving it is what pays the factory, so there has to be
+-- money held first. (Before: approving made the payment due.)
+select throws_ok(
   $$select public.approve_milestone((select fit_id from p3m), 'Nice work')$$,
-  'the brand owner approves the sample'
+  '22023',
+  null,
+  'the brand owner CANNOT approve a paid step before its money is held'
 );
 
 select is(
   (select state::text from public.order_payments
      where milestone_id = (select fit_id from p3m)),
   'due',
-  'approving the sample makes its payment due'
+  'the open paid step''s payment is due: it is funded before approval'
 );
 
 -- ---------------------------------------------------------------------------
--- The payment gate
+-- The payment gate (the old bank-wire path, still honoured for a wire claimed
+-- before the switch to Stripe)
 -- ---------------------------------------------------------------------------
 
 reset role;
@@ -602,7 +608,7 @@ select is(
 
 select is(
   (select state::text from public.order_milestones where id = (select fit_id from p3m)),
-  'approved',
+  'submitted',
   'the step does not complete while the payment is only claimed sent'
 );
 
@@ -631,15 +637,30 @@ select lives_ok(
 
 select is(
   (select state::text from public.order_milestones where id = (select fit_id from p3m)),
+  'submitted',
+  'confirmed money funds the step; the step still waits for the brand''s approval'
+);
+
+reset role;
+set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000001","email":"p3-brandowner@example.com","role":"authenticated"}';
+set local role authenticated;
+
+select lives_ok(
+  $$select public.approve_milestone((select fit_id from p3m), 'Nice work')$$,
+  'the brand owner approves the funded sample'
+);
+
+select is(
+  (select state::text from public.order_milestones where id = (select fit_id from p3m)),
   'complete',
-  'the step completes on the admin''s confirmation'
+  'the step completes on the brand''s approval'
 );
 
 select is(
   (select count(*)::int from public.order_milestones
      where order_id = (select order_id from p3) and title = 'PP sample' and state = 'active'),
   1,
-  'the next step opens once the admin confirms, WITHOUT waiting for release'
+  'the next step opens on the approval, WITHOUT waiting for release'
 );
 
 select is(
@@ -647,6 +668,10 @@ select is(
   5000::bigint,
   'the header total moves because a payment row moved, not because anything was typed'
 );
+
+reset role;
+set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000005","email":"p3-admin@example.com","role":"authenticated"}';
+set local role authenticated;
 
 select throws_ok(
   $$select public.confirm_payment_received((select pay_id from p3p))$$,
