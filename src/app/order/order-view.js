@@ -67,6 +67,12 @@ export function latestUpdateFor(milestoneId, updates, { urls = {}, onViewAll } =
     photos: photos.map((doc) => ({ id: doc.id, url: urls[doc.id] ?? null, label: doc.file_name })),
     extraFiles: documents.length - photos.length,
     total: mine.length,
+    history: mine.map((update) => ({
+      id: update.id,
+      author: update.orgs?.name ?? "",
+      when: updateTime(update.created_at),
+      body: update.body,
+    })),
     onViewAll,
   };
 }

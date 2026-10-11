@@ -1,22 +1,14 @@
 /**
- * Where a factory's money goes.
+ * The factory Payments page, using the tabbed design from the factory app.
  *
- * This screen exists because the e2e run found the hole it fills: the brand's
- * "I have sent this payment" button is correctly disabled while there is no
- * destination, and nothing anywhere let a factory supply one. A table nothing
- * writes to is the same defect as a screen nothing links to.
- *
- * We deliberately do not store a full account number. The platform is not in
- * the payment path, so it has no use for one, and holding every factory's
- * banking details would create a breach class the rest of this schema does not
- * have. The last four digits identify the account on a statement; anything
- * more that a factory wants a brand to see goes in the free-text instructions,
- * which is its own decision about its own data rather than ours about
- * everyone's.
+ * Earnings and credits come from the real ledgers. Platform charges do not
+ * have a table yet, so that tab has an honest empty state instead of the
+ * prototype's invented history. The payout account remains editable from the
+ * Earnings tab because brands cannot pay an order until it exists.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase, unwrap } from "../../lib/supabase.js";
-import { useRouter } from "../../lib/router.jsx";
+import { formatMoney } from "../../lib/money.js";
 import "./order.css";
 
 const FIELDS = [
@@ -27,85 +19,160 @@ const FIELDS = [
   ["iban", "IBAN", "PT50 0002 0123 1234 5678 9015 4"],
 ];
 
+const PAYMENT_STATUS = {
+  not_due: "Scheduled",
+  due: "Due",
+  sent: "Transfer sent",
+  confirmed: "Confirmed",
+  released: "Received",
+  cancelled: "Cancelled",
+};
+
+const CREDIT_REASON = {
+  onboarding_grant: "Verified onboarding bonus",
+  referral_grant: "Referral bonus",
+  purchase: "Credit purchase",
+  admin_adjustment: "Account adjustment",
+  quote_submission: "Quote submitted",
+  refund: "Credit refund",
+};
+
+const dateLabel = (value) => value
+  ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  : "Date pending";
+
+const blankPayout = (row) => ({
+  bank_name: row?.bank_name ?? "",
+  account_name: row?.account_name ?? "",
+  account_number_last4: row?.account_number_last4 ?? "",
+  swift: row?.swift ?? "",
+  iban: row?.iban ?? "",
+  instructions: row?.instructions ?? "",
+});
+
 export default function PayoutDetails({ org, isFactory }) {
-  const { navigate } = useRouter();
+  const [tab, setTab] = useState("earnings");
+  const [client, setClient] = useState("All clients");
+  const [account, setAccount] = useState(null);
   const [form, setForm] = useState(null);
-  const [existingId, setExistingId] = useState(null);
+  const [earnings, setEarnings] = useState(null);
+  const [credits, setCredits] = useState(null);
+  const [editingAccount, setEditingAccount] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
-    const row = unwrap(
-      await supabase
+    setError(null);
+    const [accountResult, ordersResult, creditsResult] = await Promise.all([
+      supabase
         .from("factory_payout_accounts")
         .select("id, bank_name, account_name, account_number_last4, swift, iban, bank_country, instructions")
         .eq("org_id", org.id)
         .eq("is_primary", true)
         .maybeSingle(),
-      "load your payment details",
-    );
-    setExistingId(row?.id ?? null);
-    setForm({
-      bank_name: row?.bank_name ?? "",
-      account_name: row?.account_name ?? "",
-      account_number_last4: row?.account_number_last4 ?? "",
-      swift: row?.swift ?? "",
-      iban: row?.iban ?? "",
-      instructions: row?.instructions ?? "",
-    });
+      supabase
+        .from("production_orders")
+        .select("id, order_number, brand_org_id, orgs!production_orders_brand_org_id_fkey (name)")
+        .eq("factory_org_id", org.id)
+        .order("created_at", { ascending: false }),
+      supabase
+        .from("credit_ledger")
+        .select("id, delta, reason, note, created_at")
+        .eq("org_id", org.id)
+        .order("created_at", { ascending: false }),
+    ]);
+
+    const payout = unwrap(accountResult, "load your payout account");
+    const orders = unwrap(ordersResult, "load your payment orders");
+    const creditRows = unwrap(creditsResult, "load your credits");
+    const orderById = new Map(orders.map((order) => [order.id, order]));
+
+    let paymentRows = [];
+    if (orders.length) {
+      paymentRows = unwrap(
+        await supabase
+          .from("order_payments")
+          .select("id, order_id, amount_cents, amount_received_cents, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title)")
+          .in("order_id", orders.map((order) => order.id))
+          .order("created_at", { ascending: false }),
+        "load your earnings",
+      );
+    }
+
+    setAccount(payout);
+    setForm(blankPayout(payout));
+    setCredits(creditRows);
+    setEarnings(paymentRows.map((payment) => ({ ...payment, order: orderById.get(payment.order_id) })));
   }, [org.id]);
 
-  useEffect(() => { load().catch(setError); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    load().catch((failure) => {
+      if (!cancelled) setError(failure);
+    });
+    return () => { cancelled = true; };
+  }, [load]);
+
+  const clients = useMemo(
+    () => ["All clients", ...new Set((earnings ?? []).map((row) => row.order?.orgs?.name).filter(Boolean))],
+    [earnings],
+  );
+  const visibleEarnings = client === "All clients"
+    ? (earnings ?? [])
+    : (earnings ?? []).filter((row) => row.order?.orgs?.name === client);
+  const totalEarned = (earnings ?? [])
+    .filter((row) => row.state === "released")
+    .reduce((sum, row) => sum + (row.amount_received_cents ?? row.amount_cents), 0);
+  const pendingRelease = (earnings ?? [])
+    .filter((row) => ["sent", "confirmed"].includes(row.state))
+    .reduce((sum, row) => sum + row.amount_cents, 0);
+  const nextPayment = (earnings ?? []).find((row) => ["due", "not_due"].includes(row.state));
+  const creditBalance = (credits ?? []).reduce((sum, row) => sum + row.delta, 0);
 
   if (!isFactory) {
+    return <section className="billing-history-page"><h1>Payments</h1><p className="projects-empty">Factory payment tools are not available on a brand account.</p></section>;
+  }
+
+  if (error && (!earnings || !credits || !form)) {
     return (
-      <div className="rfq-page">
-        <h1>Not for this side</h1>
-        <p className="ob-hint">Brands pay; factories are paid. This page is for a factory account.</p>
-        <button type="button" className="quiet-btn" onClick={() => navigate("/")}>← Back</button>
-      </div>
+      <section className="billing-history-page live-payments-page">
+        <header className="billing-history-header"><div><h1>Payments</h1></div></header>
+        <p className="projects-empty projects-error" role="alert">{error.message}</p>
+      </section>
     );
   }
 
-  if (error && !form) {
+  if (!earnings || !credits || !form) {
     return (
-      <div className="rfq-page">
-        <h1>Payment details</h1>
-        <p className="ob-error">{error.message}</p>
-      </div>
+      <section className="billing-history-page live-payments-page">
+        <div className="spinner" aria-hidden="true" />
+        <p>Loading payments…</p>
+      </section>
     );
   }
-  if (!form) return <div className="rfq-page"><div className="spinner" aria-hidden="true" /></div>;
 
   const set = (key) => (event) => {
     setSaved(false);
     setForm((current) => ({ ...current, [key]: event.target.value }));
   };
 
-  async function save() {
+  async function saveAccount() {
     setBusy(true);
     setError(null);
     try {
       const payload = {
         org_id: org.id,
         is_primary: true,
-        ...Object.fromEntries(
-          Object.entries(form).map(([key, value]) => [key, value.trim() === "" ? null : value.trim()]),
-        ),
+        ...Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim() || null])),
       };
-      if (existingId) {
-        unwrap(
-          await supabase.from("factory_payout_accounts").update(payload).eq("id", existingId).select().single(),
-          "save your payment details",
-        );
-      } else {
-        const created = unwrap(
-          await supabase.from("factory_payout_accounts").insert(payload).select().single(),
-          "save your payment details",
-        );
-        setExistingId(created.id);
-      }
+      const result = account?.id
+        ? await supabase.from("factory_payout_accounts").update(payload).eq("id", account.id).select().single()
+        : await supabase.from("factory_payout_accounts").insert(payload).select().single();
+      const updated = unwrap(result, "save your payout account");
+      setAccount(updated);
+      setForm(blankPayout(updated));
+      setEditingAccount(false);
       setSaved(true);
     } catch (failure) {
       setError(failure);
@@ -115,50 +182,102 @@ export default function PayoutDetails({ org, isFactory }) {
   }
 
   return (
-    <div className="rfq-page">
-      <button type="button" className="quiet-btn" onClick={() => navigate("/orders")}>
-        ← Back to production orders
-      </button>
+    <section className="billing-history-page live-payments-page">
+      <header className="billing-history-header"><div><h1>Payments</h1></div></header>
 
-      <header className="rfq-page-head">
-        <div>
-          <h1>Where you get paid</h1>
-          <p>
-            Brands see this when a payment on one of your orders falls due, and not before.
-            Until it is filled in, nobody can pay you.
-          </p>
+      <div className="billing-controls">
+        <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Payment activity type">
+          {[["earnings", "Earnings"], ["payments", "Payments"], ["credits", "Credits"]].map(([key, label]) => (
+            <button className={tab === key ? "active" : ""} type="button" role="tab" aria-selected={tab === key}
+                    onClick={() => { setTab(key); setClient("All clients"); }} key={key}>{label}</button>
+          ))}
         </div>
-      </header>
+        {tab === "earnings" ? (
+          <label>
+            <span>Filter by client</span>
+            <select value={clients.includes(client) ? client : "All clients"} onChange={(event) => setClient(event.target.value)}>
+              {clients.map((name) => <option value={name} key={name}>{name}</option>)}
+            </select>
+          </label>
+        ) : <span className="live-payments-control-spacer" />}
+      </div>
 
-      <section className="detail-card">
-        {FIELDS.map(([key, label, placeholder]) => (
-          <React.Fragment key={key}>
-            <label className="ob-label" htmlFor={`payout-${key}`}>{label}</label>
-            <input id={`payout-${key}`} data-field={`payout_${key}`} type="text"
-                   value={form[key]} placeholder={placeholder} onChange={set(key)} />
-          </React.Fragment>
-        ))}
+      {tab === "earnings" && (
+        <>
+          <div className="factory-project-summary-card factory-billing-summary-strip" aria-label="Earnings summary">
+            <div className="metric"><strong>{formatMoney(totalEarned)}</strong><span>Total earned</span></div>
+            <div className="metric"><strong>{formatMoney(pendingRelease)}</strong><span>Pending release</span></div>
+            <div className="metric highlight"><strong>{nextPayment ? formatMoney(nextPayment.amount_cents, nextPayment.currency) : "—"}</strong><span>Next payment</span></div>
+          </div>
 
-        <label className="ob-label" htmlFor="payout-instructions">Anything else a brand needs</label>
-        <textarea id="payout-instructions" data-field="payout_instructions" rows={3}
-                  value={form.instructions} onChange={set("instructions")}
-                  placeholder="Intermediary bank, a reference format you prefer, anything unusual about your account." />
+          <section className="live-payout-method-card">
+            <div>
+              <span>Payout account</span>
+              <strong>{account ? `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}` : "No payout account added"}</strong>
+              <p>Brands only see these instructions when a payment is due.</p>
+            </div>
+            <button className="secondary-btn compact-btn" type="button" onClick={() => setEditingAccount((open) => !open)}>
+              {editingAccount ? "Cancel" : account ? "Edit details" : "Add details"}
+            </button>
+          </section>
 
-        <p className="ob-hint">
-          We do not ask for your full account number and do not store one. Only staff confirming a
-          payment, and a brand that currently owes you money, can see any of this.
-        </p>
+          {editingAccount && (
+            <section className="live-payout-form">
+              <div className="live-payout-form-grid">
+                {FIELDS.map(([key, label, placeholder]) => (
+                  <label key={key}><span>{label}</span><input id={`payout-${key}`} data-field={`payout_${key}`} value={form[key]} placeholder={placeholder} onChange={set(key)} /></label>
+                ))}
+              </div>
+              <label>
+                <span>Anything else a brand needs</span>
+                <textarea id="payout-instructions" data-field="payout_instructions" rows={3} value={form.instructions}
+                          onChange={set("instructions")} placeholder="Intermediary bank or transfer instructions." />
+              </label>
+              <p>For security, use the last four digits above. Only provide additional account information when your bank requires it.</p>
+              <button className="primary-btn" type="button" data-testid="save-payout" disabled={busy} onClick={saveAccount}>{busy ? "Saving…" : "Save payout details"}</button>
+            </section>
+          )}
 
-        {error ? <p className="ob-error">{error.message}</p> : null}
+          {saved && <p className="live-payment-notice">Payout details saved.</p>}
+          {visibleEarnings.length ? (
+            <div className="billing-history-list">
+              {visibleEarnings.map((row) => (
+                <article className="billing-history-row" key={row.id}>
+                  <div>
+                    <strong>{row.order_milestones?.title || row.order?.order_number || "Order payment"}</strong>
+                    <span>{row.order?.orgs?.name || "Brand"} · {row.order?.order_number || "Production order"} · {dateLabel(row.released_at || row.confirmed_at || row.sent_at || row.due_at || row.created_at)}</span>
+                  </div>
+                  <span className="billing-status">{PAYMENT_STATUS[row.state] || row.state}</span>
+                  <strong>{formatMoney(row.amount_received_cents ?? row.amount_cents, row.currency)}</strong>
+                </article>
+              ))}
+            </div>
+          ) : <p className="projects-empty">No earnings yet. Payment activity appears here once a production order reaches a payment milestone.</p>}
+        </>
+      )}
 
-        <div className="order-actions">
-          <button type="button" className="primary-btn" data-testid="save-payout"
-                  disabled={busy} onClick={save}>
-            {busy ? "Saving…" : "Save payment details"}
-          </button>
-          {saved ? <span className="ob-hint">Saved. Brands can pay you now.</span> : null}
-        </div>
-      </section>
-    </div>
+      {tab === "payments" && <p className="projects-empty">No platform payments yet. Fees and service charges will appear here when they are recorded.</p>}
+
+      {tab === "credits" && (
+        <>
+          <section className="factory-credit-billing-card">
+            <div><span>Credit balance</span><strong>{creditBalance.toLocaleString()} credits</strong><p>Credits earned and used by this factory account.</p></div>
+          </section>
+          {credits.length ? (
+            <div className="billing-history-list">
+              {credits.map((row) => (
+                <article className="billing-history-row" key={row.id}>
+                  <div><strong>{CREDIT_REASON[row.reason] || row.reason}</strong><span>{row.note || dateLabel(row.created_at)}</span></div>
+                  <span className="billing-status">{row.delta > 0 ? "Earned" : "Used"}</span>
+                  <strong>{row.delta > 0 ? "+" : ""}{row.delta.toLocaleString()} credits</strong>
+                </article>
+              ))}
+            </div>
+          ) : <p className="projects-empty">No credit activity yet.</p>}
+        </>
+      )}
+
+      {error && <p className="projects-empty projects-error" role="alert">{error.message}</p>}
+    </section>
   );
 }

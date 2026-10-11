@@ -1568,7 +1568,9 @@ async function main() {
     check(stepsTotal === Number(bornOrder.order_total_cents),
       `the steps total exactly what was agreed (${stepsTotal})`);
 
-    await page.goto(`${APP}/orders/${bornOrder.id}/schedule`);
+    // A new order opens on its steps builder; /schedule is the editor for a
+    // running order.
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="schedule-row"]', 25000);
     const scheduleRows = await page.locator('[data-testid="schedule-row"]').count();
     check(scheduleRows === draftSteps.length,
@@ -1701,8 +1703,11 @@ async function main() {
     // Where the money goes. This run is what found that nothing wrote to this
     // table: the brand's pay button is correctly disabled with no destination,
     // and a factory had no way anywhere to supply one.
+    // The factory's Payments page: "Add details" on its Earnings tab opens
+    // the payout form.
     await page.goto(`${APP}/payout`);
-    await waitForHeading(page, "where you get paid", 25000);
+    await waitForHeading(page, "payments", 25000);
+    await clickButton(page, "add details");
     await page.locator('[data-field="payout_bank_name"]').fill("Banco de Porto");
     await page.locator('[data-field="payout_account_name"]').fill(factoryName);
     await page.locator('[data-field="payout_account_number_last4"]').fill("4417");
@@ -1725,20 +1730,20 @@ async function main() {
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-action"]', 25000);
     const rowAction = await page.locator('[data-testid="milestone-action"]').first().innerText();
-    check(/^approve$/i.test(rowAction.trim()),
+    // A paying step reads "Approve fund"; an approval-only one, "Approve".
+    check(/^approve( fund)?$/i.test(rowAction.trim()),
       `the step the factory posted on offers the brand "Approve" (${rowAction.trim()})`);
     await record(page, "Waiting on the brand", "the factory has posted; the row says Approve");
 
     // The brand can actually see the factory's update. If the counterparty
     // policy were missing this is an empty panel and no error anywhere, which
-    // is the failure this assertion exists to make loud. "View all updates"
-    // opens the step's pop-up over the order, not a page of its own.
-    await page.locator('[data-testid="update-card"] button').first().click();
-    await waitFor(page, '[data-testid="step-update"]', 15000);
-    const brandSeesUpdate = await page.locator('[data-testid="step-update"]').count();
-    check(brandSeesUpdate === 1,
+    // is the failure this assertion exists to make loud. A step with one
+    // update shows it on the row; "View all updates" appears from two.
+    await waitFor(page, '[data-testid="update-card"]', 15000);
+    const brandSeesUpdate = await page.locator('[data-testid="update-card"]').first().innerText();
+    check(brandSeesUpdate.includes("Fit sample finished"),
       "the brand can read the factory's update across the org boundary");
-    await record(page, "The brand reads the update", "in the step's pop-up, over the order");
+    await record(page, "The brand reads the update", "on the step's row, over the order");
 
     // A step's own address — what notifications link to — opens the same pop-up.
     await page.goto(`${APP}/orders/${bornOrder.id}/milestones/${firstStep.id}`);
@@ -2316,9 +2321,11 @@ async function main() {
     check(row.cancel_proposed_by_org === null && row.status === "active",
       "the brand withdraws it from the same menu, and the order carries on");
 
+    // On the brand's order page, "Cancel order" is in the header's menu.
     await page.goto(`${APP}/orders/${bornOrder.id}`);
-    await waitFor(page, ".order-cancel-link", 25000);
-    await page.locator(".order-cancel-link").first().click();
+    await waitFor(page, '.project-detail-header button[aria-label="More order actions"]', 25000);
+    await page.locator('.project-detail-header button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "cancel order");
     await proposeIn("Season dropped");
     await waitFor(page, '[data-testid="cancel-notice"][data-state="mine"]', 15000);
     check(/waiting for/i.test(await page.locator('[data-testid="cancel-notice"]').innerText()),

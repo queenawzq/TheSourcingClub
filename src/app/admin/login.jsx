@@ -8,7 +8,9 @@ import "./admin-login.css";
 
 // One-click demo sign-in, on test builds only: a production build has
 // __DEMO_SIGN_IN__ = false and leaves this import out (see vite.config.js).
-const DemoSignIn = __DEMO_SIGN_IN__ ? lazy(() => import("../../shared/DemoSignIn.jsx")) : null;
+const DemoSignIn = (import.meta.env.DEV || __DEMO_SIGN_IN__)
+  ? lazy(() => import("../../shared/DemoSignIn.jsx"))
+  : null;
 
 const SIGNED_IN = ["ready", "no-org"];
 

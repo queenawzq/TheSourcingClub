@@ -44,7 +44,7 @@ function payoutName(account) {
   return account.account_number_last4 ? `${bank} ending in ${account.account_number_last4}` : bank;
 }
 
-export default function LiveSettings({ org, isFactory }) {
+export default function LiveSettings({ org, isFactory, onSignOut }) {
   const { navigate } = useRouter();
   const [members, setMembers] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -84,6 +84,7 @@ export default function LiveSettings({ org, isFactory }) {
       setBusy(false);
     }
   }
+
 
   /**
    * The designed team rows.
@@ -145,6 +146,7 @@ export default function LiveSettings({ org, isFactory }) {
       onInvite={invite}
       busy={busy}
       error={error}
+      onSignOut={onSignOut}
     />
   );
 }

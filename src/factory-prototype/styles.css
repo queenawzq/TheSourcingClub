@@ -6828,6 +6828,21 @@ body:has(.factory-onboarding-page) {
 .factory-milestone-item > .factory-posted-update-card {
   grid-column: 2 / -1;
   width: auto;
+  margin-right: 202px;
+}
+
+.factory-posted-update-history {
+  display: grid;
+  gap: 8px;
+}
+
+.factory-posted-update-entry {
+  display: grid;
+  gap: 6px;
+}
+
+.factory-posted-update-entry + .factory-posted-update-entry {
+  padding-top: 4px;
 }
 
 .factory-posted-update-header {
@@ -6870,6 +6885,7 @@ body:has(.factory-onboarding-page) {
   text-decoration: underline;
 }
 
+.factory-posted-update-entry > p,
 .factory-posted-update-card > p {
   margin: 0;
   color: #0f172a;
@@ -10968,6 +10984,7 @@ button.sort-button {
 @media (max-width: 760px) {
   .factory-milestone-item > .factory-posted-update-card {
     min-width: 0;
+    margin-right: 0;
   }
 
   .factory-posted-update-header {

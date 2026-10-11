@@ -81,11 +81,30 @@ export async function saveSchedule(orderId, lines) {
   );
 }
 
+/** Update an active order's schedule in place, preserving started-step history. */
+export async function updateScheduleDetails(orderId, lines) {
+  return unwrap(
+    await supabase.rpc("update_order_milestone_details", {
+      target_order: orderId,
+      lines: lines.map((line, index) => ({
+        id: line.id ?? null,
+        kind: line.kind,
+        title: line.title,
+        description: line.description || null,
+        amount_cents: line.amount_cents ?? null,
+        due_on: line.due_on || null,
+        sort: line.sort ?? (index + 1) * 10,
+      })),
+    }),
+    "update the milestones",
+  );
+}
+
 export async function listUpdates(milestoneId) {
   return unwrap(
     await supabase
       .from("milestone_updates")
-      .select("id, milestone_id, body, created_at, author_org_id, orgs:author_org_id (name), documents (id, bucket, storage_path, file_name, mime_type, size_bytes)")
+      .select("id, milestone_id, kind, body, created_at, author_org_id, orgs:author_org_id (name), documents (id, bucket, storage_path, file_name, mime_type, size_bytes)")
       // Filtered in SQL by the milestone that owns them. The prototype renders
       // every update under milestone one regardless of which opened it.
       .eq("milestone_id", milestoneId)
@@ -105,7 +124,7 @@ export async function listOrderUpdates(orderId) {
   return unwrap(
     await supabase
       .from("milestone_updates")
-      .select("id, milestone_id, body, created_at, author_org_id, orgs:author_org_id (name), documents (id, bucket, storage_path, file_name, mime_type, size_bytes)")
+      .select("id, milestone_id, kind, body, created_at, author_org_id, orgs:author_org_id (name), documents (id, bucket, storage_path, file_name, mime_type, size_bytes)")
       .eq("order_id", orderId)
       .order("created_at", { ascending: false }),
     "load the updates on this order",
@@ -158,6 +177,30 @@ export async function postUpdate({ orderId, milestoneId, orgId, body, files = []
   }
 }
 
+/** Open a brand-side dispute and attach private supporting evidence. */
+export async function initiateDispute({ orderId, milestoneId, orgId, reason, files = [] }) {
+  const documentIds = [];
+
+  for (const file of files) {
+    const doc = await uploadDocument({
+      orgId,
+      kind: "milestone_update",
+      file,
+      scopeId: orderId,
+    });
+    documentIds.push(doc.id);
+  }
+
+  return unwrap(
+    await supabase.rpc("initiate_milestone_dispute", {
+      target_milestone: milestoneId,
+      reason,
+      document_ids: documentIds,
+    }),
+    "initiate the dispute",
+  );
+}
+
 export async function approveMilestone(milestoneId, note) {
   return unwrap(
     await supabase.rpc("approve_milestone", {
@@ -176,4 +219,3 @@ export const KIND_LABEL = {
   payment_only: "Payment only",
   progress_only: "Progress update",
 };
-
