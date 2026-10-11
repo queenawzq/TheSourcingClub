@@ -22,7 +22,7 @@ import { deleteDocument, listRfqDocuments, uploadDocument } from "../../lib/doma
 import { getOrder } from "../../lib/domain/order.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
-import { fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
+import { categoryTermIds, fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
 import { listLinks, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { linkedLabels, mentionsLabel, monthLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
 import { toCents } from "../../lib/money.js";
@@ -222,7 +222,7 @@ export default function LiveComposer({ org, rfqId }) {
         });
         // A reorder leaves the delivery month blank on purpose: the last run's
         // is most likely past, so the brief must not fill it back in.
-        const fromBrief = fieldsFromBrief(row.brief, terms.product_category);
+        const fromBrief = fieldsFromBrief(row.brief, byKind.product_category, byKind);
         if (row.reorder_of_order_id) delete fromBrief.timeline;
         setValues((current) => fillBlanks(current, fromBrief));
 
@@ -244,11 +244,12 @@ export default function LiveComposer({ org, rfqId }) {
       .catch(setError);
   }, [rfqId, kinds]);
 
-  // The category is matched against the term labels, which load on their own
-  // and may arrive after a resumed draft does.
+  // The category, certifications and regions are matched against the term
+  // labels, which load on their own and may arrive after a resumed draft does.
   useEffect(() => {
     if (step !== "review" || !terms.product_category?.length || !freeText) return;
-    setValues((current) => fillBlanks(current, { category: fieldsFromBrief(freeText, terms.product_category).category }));
+    const { category, certifications, regions } = fieldsFromBrief(freeText, terms.product_category, terms);
+    setValues((current) => fillBlanks(current, { category, certifications, regions }));
   }, [step, terms, freeText]);
 
   // The request's files, so a resumed draft shows what is already attached.
@@ -314,7 +315,9 @@ export default function LiveComposer({ org, rfqId }) {
     const high = fields.target_unit_price_max ?? low;
     return {
       title: fields.title ?? "",
-      category: labels("product_category", fields.product_category_slugs),
+      // As specific as the brief ("Womenswear / woven shirting"), not just
+      // the taxonomy's "Tops"; the save step links the terms from it.
+      category: fields.product_type || labels("product_category", fields.product_category_slugs),
       quantity: quantityLine(total, evenly ? splits.length : null),
       material: fields.material_notes ?? "",
       samples: fields.sample_notes ?? "",
@@ -348,7 +351,7 @@ export default function LiveComposer({ org, rfqId }) {
       // The model's reading first, then whatever the text itself says for
       // what is still blank — with the model off, skipped or failed, the card
       // still opens with the brief's own facts rather than empty fields.
-      setValues((current) => fillBlanks(fillBlanks(current, fromModel(fields)), fieldsFromBrief(freeText, terms.product_category)));
+      setValues((current) => fillBlanks(fillBlanks(current, fromModel(fields)), fieldsFromBrief(freeText, terms.product_category, terms)));
 
       setStep("review");
     } catch (failure) {
@@ -404,9 +407,13 @@ export default function LiveComposer({ org, rfqId }) {
       ];
       for (const [kind, typed] of linkKinds) {
         if (typed === undefined) continue;
-        const termIds = (terms[kind] ?? [])
-          .filter((term) => mentionsLabel(typed, termLabel(term)))
-          .map((term) => term.id);
+        // The category line is prose ("Womenswear / poplin shirts"), so a
+        // garment word links its category too.
+        const termIds = kind === "product_category"
+          ? categoryTermIds(typed, terms[kind])
+          : (terms[kind] ?? [])
+            .filter((term) => mentionsLabel(typed, termLabel(term)))
+            .map((term) => term.id);
         await setLinks({ subjectType: "rfq", subjectId: draftId, orgId: org.id, kind, termIds });
       }
 
@@ -578,6 +585,8 @@ export default function LiveComposer({ org, rfqId }) {
       categories: [],
       capabilities: [],
       notes: vendor.intro ? [vendor.intro] : [],
+      // No intro, no note box (QA, Oct 5: an empty box under the stats).
+      note: vendor.intro || null,
       profileHref: `/app.html/factories/${vendor.org_id}?from=invite`,
       onOpenProfile: () => {
         setProfileOf(vendor.org_id);

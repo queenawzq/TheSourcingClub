@@ -93,9 +93,9 @@ function attentionFrom(snapshot, isFactory, goTo) {
       type: "Schedule",
       tone: "warning",
       title: `${snapshot.orders_awaiting_schedule} order${snapshot.orders_awaiting_schedule === 1 ? "" : "s"} awaiting a schedule`,
-      meta: "Both sides have to agree the steps before production can begin.",
+      meta: "Confirm the production steps to start production.",
       facts: [],
-      action: "Agree the schedule",
+      action: "Confirm steps",
       onClick: () => goTo("projects"),
     });
   }
@@ -271,6 +271,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         // design's $50 shown to a brand that has none.
         showSavings={Boolean(savings)}
         showCalls={false}
+        showSearch={false}
         onViewRfq={onViewRfq}
         onViewProject={onViewProject}
         unreadCount={unreadActivity}

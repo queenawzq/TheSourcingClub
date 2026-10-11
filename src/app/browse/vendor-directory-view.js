@@ -207,8 +207,11 @@ export function filterVendors(cards, filters, query = "") {
       if (ids.length && !ids.some((id) => facts.termIds.has(id))) return false;
     }
     if (filters.moq) {
+      // The scale's ends are open: 50 means "any below", 500 means "500+".
       const [min, max] = filters.moq;
-      if (facts.moq == null || facts.moq < min || facts.moq > max) return false;
+      if (facts.moq == null) return false;
+      if (min > MOQ_SCALE.min && facts.moq < min) return false;
+      if (max < MOQ_SCALE.max && facts.moq > max) return false;
     }
     if (filters.countries.length && !filters.countries.includes(facts.countryCode)) return false;
     if (filters.certifications.length && !filters.certifications.some((id) => facts.certificationIds.has(id))) return false;
@@ -236,28 +239,33 @@ export function activeFilterCount(filters) {
     + (filters.quantity ? 1 : 0);
 }
 
+/** The MOQ range's fixed scale (QA, Oct 7): 50 to 500+ units. */
+export const MOQ_SCALE = { min: 50, max: 500, step: 25 };
+
 /**
- * The MOQ range: the span of the vendors' own MOQs and nine bars counting
- * how many vendors fall in each ninth of it, drawn at the design's heights
- * (up to 58 px).
+ * The MOQ range: a fixed 50 to 500+ scale, and nine bars counting how many
+ * vendors fall in each ninth of it, drawn at the design's heights (up to
+ * 58 px). A vendor below 50 counts in the first bar, one above 500 in the
+ * last.
  */
 export function moqScale(cards) {
-  const values = cards.map((card) => card.facts.moq).filter((value) => value != null);
-  if (!values.length) return null;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const step = (max - min) / 9 || 1;
+  const { min, max, step } = MOQ_SCALE;
+  const width = (max - min) / 9;
   const bins = Array.from({ length: 9 }, () => 0);
-  for (const value of values) bins[Math.min(8, Math.floor((value - min) / step))] += 1;
+  for (const card of cards) {
+    const value = card.facts.moq;
+    if (value == null) continue;
+    bins[Math.max(0, Math.min(8, Math.floor((value - min) / width)))] += 1;
+  }
   const most = Math.max(...bins);
   return {
     min,
     max,
-    step: Math.max(1, Math.round(step / 10) * 10 || 1),
+    step,
     bars: bins.map((n, index) => ({
       height: n ? Math.round(14 + (44 * n) / most) : 8,
-      from: min + index * step,
-      to: min + (index + 1) * step,
+      from: min + index * width,
+      to: min + (index + 1) * width,
     })),
   };
 }

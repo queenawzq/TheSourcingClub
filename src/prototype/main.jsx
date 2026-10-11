@@ -3677,6 +3677,9 @@ export function HomeScreen({
   // neither and keeps the design's examples: a $50 discount and two calls.
   showSavings = true,
   showCalls = true,
+  // The search and its suggested actions are not built yet (QA, Oct 5):
+  // live hides them, the prototype keeps them.
+  showSearch = true,
   onViewRfq,
   onViewProject,
 }) {
@@ -3739,6 +3742,7 @@ export function HomeScreen({
           {(unreadCount ?? (isNewcomer ? 0 : 4)) > 0 && <b aria-hidden="true">{unreadCount ?? 4}</b>}
         </button>
       </header>
+      {showSearch && (
       <section className="card home-search-card">
         <label className="search-field home-search-field">
           <SearchIcon />
@@ -3753,6 +3757,7 @@ export function HomeScreen({
           <button className="pill" type="button" onClick={() => goTo("describe")}>Start a new project</button>
         </div>
       </section>
+      )}
       {isNewcomer ? (
         <>
           <div className="home-recommendations-layout">
@@ -6491,7 +6496,7 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote, live
   };
 
   return (
-    <article className={`marketplace-factory-card${factory.featured ? " featured" : ""}${["Tirupur Natural Studio", "Hangzhou Denim Lab"].includes(factory.name) ? " marketplace-tight-wrapped-name" : ""}`}>
+    <article className={`marketplace-factory-card${factory.featured ? " featured" : ""}${["Tirupur Natural Studio", "Hangzhou Denim Lab"].includes(factory.name) ? " marketplace-tight-wrapped-name" : ""}${live ? " live-factory-card" : ""}`}>
       <div className="marketplace-factory-top">
         {live ? (
           <a
@@ -6723,7 +6728,7 @@ function SavedFactoryCard({ factory, goTo, live = null }) {
   };
 
   return (
-    <article className="saved-factory-card">
+    <article className={live ? "saved-factory-card live-factory-card" : "saved-factory-card"}>
       <header className="saved-factory-card-top">
         {live ? (
           <a
@@ -8375,7 +8380,7 @@ export function DescribeScreen({
               cannot draft would be a button that does nothing. */}
           {(!isLive || modelEnabled) && (
             <button className="primary-btn" type="button" disabled={busy} onClick={onContinue}>
-              {busy ? "Drafting…" : "Generate request brief"}
+              {busy ? "Generating…" : "Generate request brief"}
             </button>
           )}
         </div>
@@ -8824,9 +8829,12 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
                 </div>
               ))}
             </div>
+            {/* Live passes null for a vendor with no intro, so no empty box. */}
+            {factory.note !== null && (
             <div className="marketplace-note-list invite-note-list">
               <p>{factory.note}</p>
             </div>
+            )}
           </div>
           {/* A vendor with no sample photos gets no strip, so no lone arrow. */}
           {factory.products.length > 0 && (

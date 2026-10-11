@@ -40,7 +40,7 @@ function matchingLine(panel, filters, query) {
     ...panel.countries.filter((option) => filters.countries.includes(option.id)).map((option) => option.label),
     ...filters.certifications.map((id) => byId.get(id)),
     ...panel.leadTimes.filter((option) => filters.leadTimes.includes(option.id)).map((option) => `${option.label.toLowerCase()} lead`),
-    filters.moq ? `MOQ ${filters.moq[0].toLocaleString("en")}-${filters.moq[1].toLocaleString("en")}` : null,
+    filters.moq ? `MOQ ${filters.moq[0].toLocaleString("en")}-${filters.moq[1].toLocaleString("en")}${filters.moq[1] >= panel.moq.max ? "+" : ""}` : null,
     panel.startWindows.find((option) => option.key === filters.startWindow)?.label,
     panel.quantities.find((option) => option.id === filters.quantity)?.label,
     query.trim() ? `"${query.trim()}"` : null,

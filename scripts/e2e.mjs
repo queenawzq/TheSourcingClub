@@ -956,8 +956,9 @@ async function main() {
     // Even with the model skipped, the card opens with what the brief says.
     const prefilled = (name) => page.evaluate(
       (field) => document.querySelector(`.review-brief-stack [name="${field}"]`)?.value ?? "", name);
-    check(/tops/i.test(await prefilled("category")),
-      "the review card reads the category out of the brief (shirts → Tops)");
+    // As specific as the brief (QA, Oct 5), not just the taxonomy's "Tops".
+    check(/^womenswear \/ woven shirts$/i.test(await prefilled("category")),
+      `the review card reads a specific category out of the brief (${await prefilled("category")})`);
     check(/300 units · 3 colours, 100 each/.test(await prefilled("quantity")),
       "the review card reads the quantity and colour split out of the brief");
     await record(page, "Review the brief", "filled from the brief itself, and correctable");

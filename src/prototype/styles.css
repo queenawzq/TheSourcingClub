@@ -17745,3 +17745,41 @@ textarea.note-field {
 .brand-uploaded-file small.is-pending {
   color: #62748e;
 }
+
+/* Live vendor cards have no metrics (no rating, no order count), so the
+   name takes that column and stays on one line (QA, Oct 7). The
+   prototype's cards keep the design's three columns. */
+.marketplace-factory-card.live-factory-card .marketplace-factory-top,
+.saved-factory-card.live-factory-card .saved-factory-card-top {
+  grid-template-columns: minmax(0, 1fr) max-content !important;
+  grid-template-areas: "identity actions" !important;
+}
+
+.marketplace-factory-card.live-factory-card .marketplace-factory-metrics,
+.saved-factory-card.live-factory-card .saved-factory-meta {
+  display: none !important;
+}
+
+.marketplace-factory-card.live-factory-card .marketplace-factory-title,
+.saved-factory-card.live-factory-card .saved-factory-identity {
+  grid-area: identity !important;
+}
+
+.marketplace-factory-card.live-factory-card .marketplace-factory-actions,
+.saved-factory-card.live-factory-card .saved-factory-actions {
+  grid-area: actions !important;
+  justify-self: end;
+}
+
+/* On a phone the whole name doesn't fit beside "Request quote": live cards
+   wrap it rather than cutting it to eight characters. */
+@media (max-width: 560px) {
+  .marketplace-factory-card.live-factory-card .marketplace-factory-title .factory-name-row h2,
+  .saved-factory-card.live-factory-card .saved-factory-identity .factory-name-row h2 {
+    flex: 0 1 auto !important;
+    max-width: none !important;
+    overflow: visible;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
