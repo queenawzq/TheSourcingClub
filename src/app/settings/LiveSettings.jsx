@@ -13,19 +13,28 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { SettingsScreen } from "../../prototype/main.jsx";
 import { inviteMember, listMembers } from "../../lib/domain/org.js";
+import { addPayoutAccount, listPayoutAccounts } from "../../lib/domain/payment.js";
+import { useRouter } from "../../lib/router.jsx";
 
-export default function LiveSettings({ org, isFactory }) {
+export default function LiveSettings({ org, isFactory, onSignOut }) {
+  const { navigate } = useRouter();
   const [members, setMembers] = useState(null);
+  const [payoutAccounts, setPayoutAccounts] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   const reload = useCallback(async () => {
     try {
-      setMembers(await listMembers(org.id));
+      const [nextMembers, nextPayoutAccounts] = await Promise.all([
+        listMembers(org.id),
+        isFactory ? listPayoutAccounts(org.id) : Promise.resolve([]),
+      ]);
+      setMembers(nextMembers);
+      setPayoutAccounts(nextPayoutAccounts);
     } catch (failure) {
       setError(failure);
     }
-  }, [org.id]);
+  }, [org.id, isFactory]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -37,6 +46,20 @@ export default function LiveSettings({ org, isFactory }) {
       await reload();
     } catch (failure) {
       setError(failure);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addPaymentMethod(values) {
+    setBusy(true);
+    setError(null);
+    try {
+      await addPayoutAccount(org.id, values, { primary: payoutAccounts.length === 0 });
+      await reload();
+    } catch (failure) {
+      setError(failure);
+      throw failure;
     } finally {
       setBusy(false);
     }
@@ -66,6 +89,10 @@ export default function LiveSettings({ org, isFactory }) {
       onInvite={invite}
       busy={busy}
       error={error}
+      onSignOut={onSignOut}
+      onManagePayments={() => navigate("/payout")}
+      paymentMethods={payoutAccounts}
+      onAddPaymentMethod={isFactory ? addPaymentMethod : undefined}
     />
   );
 }

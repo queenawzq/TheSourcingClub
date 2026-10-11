@@ -55,6 +55,42 @@ export async function payoutAccountFor(factoryOrgId) {
   );
 }
 
+/** Every payout account the factory has added, primary first. */
+export async function listPayoutAccounts(factoryOrgId) {
+  return unwrap(
+    await supabase
+      .from("factory_payout_accounts")
+      .select("id, label, bank_name, account_name, account_number_last4, swift, iban, bank_country, instructions, is_primary, verified_at, created_at")
+      .eq("org_id", factoryOrgId)
+      .order("is_primary", { ascending: false })
+      .order("created_at", { ascending: true }),
+    "load your payout accounts",
+  );
+}
+
+/** Add a payout destination. The first one is automatically the primary. */
+export async function addPayoutAccount(factoryOrgId, values, { primary = false } = {}) {
+  return unwrap(
+    await supabase
+      .from("factory_payout_accounts")
+      .insert({
+        org_id: factoryOrgId,
+        is_primary: primary,
+        label: values.label?.trim() || null,
+        bank_name: values.bank_name?.trim() || null,
+        account_name: values.account_name?.trim() || null,
+        account_number_last4: values.account_number_last4?.trim() || null,
+        swift: values.swift?.trim() || null,
+        iban: values.iban?.trim() || null,
+        bank_country: values.bank_country?.trim().toUpperCase() || null,
+        instructions: values.instructions?.trim() || null,
+      })
+      .select()
+      .single(),
+    "add your payout account",
+  );
+}
+
 export async function markPaymentSent(paymentId, { reference, note } = {}) {
   return unwrap(
     await supabase.rpc("mark_payment_sent", {

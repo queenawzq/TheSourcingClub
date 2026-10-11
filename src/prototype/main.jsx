@@ -7249,11 +7249,12 @@ export function ProjectDetailScreen({
   contract,
   onApprove,
   onPostComment,
+  onInitiateDispute,
   onRemind,
+  onManageMilestones,
   onDialogClose,
-  // Live only, with no design yet: a banner above the money strip while a
-  // cancellation is proposed (or once the order is cancelled), and a quiet
-  // "Cancel order" under Message.
+  // Live only: a banner above the money strip while a cancellation is
+  // proposed (or once the order is cancelled), and the order-level menu.
   banner = null,
   onCancelOrder = null,
 }) {
@@ -7267,6 +7268,7 @@ export function ProjectDetailScreen({
   const [approvalMilestone, setApprovalMilestone] = useState(null);
   const [approvedMilestones, setApprovedMilestones] = useState([]);
   const [commentMilestone, setCommentMilestone] = useState(null);
+  const [disputeMilestone, setDisputeMilestone] = useState(null);
   const detailTabs = [
     ["overview", "Overview"],
     ["files", "Files"],
@@ -7277,8 +7279,24 @@ export function ProjectDetailScreen({
     <div className="project-detail-shell">
       <button className="project-back-link" type="button" onClick={() => goTo("projects")}>‹ Back to production orders</button>
       <header className="project-detail-header">
-        <h1>{order?.title ?? "Organic cotton woven shirt production"}</h1>
-        <p>{order?.subtitle ?? "Atelier Minho · Porto, Portugal · Started Jul 19"}</p>
+        <div className="project-detail-heading">
+          <h1>{order?.title ?? "Organic cotton woven shirt production"}</h1>
+          <p>{order?.subtitle ?? "Atelier Minho · Porto, Portugal · Started Jul 19"}</p>
+        </div>
+        {onCancelOrder && (
+          <OrderCardMenu customTabs={[]} onToggleTab={() => {}}>
+            {(close) => (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  close();
+                  onCancelOrder();
+                }}
+              >Cancel order</button>
+            )}
+          </OrderCardMenu>
+        )}
       </header>
 
       <div className="project-detail-layout">
@@ -7330,12 +7348,17 @@ export function ProjectDetailScreen({
                       : setApprovalMilestone}
                     onOpen={isLive ? () => onAction?.("open", milestone) : undefined}
                     onComment={setCommentMilestone}
+                    onDispute={milestone.canDispute ? setDisputeMilestone : null}
                     onRemind={onRemind}
                     key={milestone.id ?? milestone.title}
                   />
                 ))}
               </div>
-              {!isLive && <button className="secondary-btn manage-milestones" type="button">Manage milestones</button>}
+              {(!isLive || onManageMilestones) && (
+                <button className="secondary-btn manage-milestones" type="button" onClick={onManageMilestones}>
+                  Manage milestones
+                </button>
+              )}
             </section>
           )}
           {activeDetailTab === "files" && <ProjectFilesPanel files={files} onOpenFile={onOpenFile} />}
@@ -7356,7 +7379,6 @@ export function ProjectDetailScreen({
               </div>
             </div>
             <button className="secondary-btn" type="button" onClick={onMessage}>Message</button>
-            {onCancelOrder && <button className="order-cancel-link" type="button" onClick={onCancelOrder}>Cancel order</button>}
           </section>
           <section className="project-activity-panel">
             <h2>Project activity</h2>
@@ -7427,6 +7449,24 @@ export function ProjectDetailScreen({
               return;
             }
             setCommentMilestone(null);
+          }}
+        />
+      ), document.body)}
+      {disputeMilestone && createPortal((
+        <MilestoneCommentModal
+          milestone={disputeMilestone}
+          mode="dispute"
+          live={isLive ? { counterparty: counterparty?.name, busy, error } : null}
+          onClose={() => {
+            setDisputeMilestone(null);
+            onDialogClose?.();
+          }}
+          onPost={async (dispute) => {
+            if (isLive) {
+              if (await onInitiateDispute?.(disputeMilestone, dispute)) setDisputeMilestone(null);
+              return;
+            }
+            setDisputeMilestone(null);
           }}
         />
       ), document.body)}
@@ -7561,10 +7601,12 @@ function ProjectContractSections({ workDetails, acceptedQuote, paymentTerms, att
   );
 }
 
-function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = false, onApproveFund, onFundMilestone, onApprove, onComment, onOpen, onRemind }) {
+function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = false, onApproveFund, onFundMilestone, onApprove, onComment, onDispute, onOpen, onRemind }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [reminderSent, setReminderSent] = useState(false);
   const menuRef = useRef(null);
+  const showReminder = Boolean(milestone.current) || milestone.canRemind !== false || Boolean(milestone.reminderReason);
+  const updateOnlyMenu = milestone.stepKind === "progress_only";
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -7593,7 +7635,7 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
   };
 
   return (
-    <article className="project-milestone-item" data-testid="milestone-row">
+    <article className={menuOpen ? "project-milestone-item menu-open" : "project-milestone-item"} data-testid="milestone-row">
       <span className={(milestone.current ?? index === 0) ? "milestone-number current" : "milestone-number"}>{index + 1}</span>
       <div className="milestone-body">
         <div className="milestone-title-line">
@@ -7609,7 +7651,6 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
         {milestone.dueStatus && (
           <span className={`project-status shared-card-status ${milestone.dueTone}`}>{milestone.dueStatus}</span>
         )}
-        {(milestone.canRemind !== false || milestone.canComment !== false) && (
         <div className="project-overflow milestone-more" ref={menuRef}>
           <button
             className="rfq-more milestone-more-button"
@@ -7620,11 +7661,20 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
           >...</button>
           {menuOpen && (
             <div className="project-overflow-menu milestone-action-menu" role="menu">
-              {milestone.canRemind !== false && (
+              <button
+                type="button"
+                role="menuitem"
+                disabled={milestone.canComment === false && !updateOnlyMenu}
+                onClick={() => {
+                  setMenuOpen(false);
+                  onComment?.(milestone);
+                }}
+              >Add comment</button>
+              {showReminder && (
                 <button
                   type="button"
                   role="menuitem"
-                  disabled={reminderSent}
+                  disabled={reminderSent || milestone.canRemind === false}
                   onClick={async () => {
                     setMenuOpen(false);
                     // Live, the label changes only once the reminder is
@@ -7639,27 +7689,34 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
                   {reminderSent ? "Reminder sent" : "Send reminder"}
                 </button>
               )}
-              {milestone.canComment !== false && (
+              {onDispute && (
                 <button
                   type="button"
                   role="menuitem"
+                  className="milestone-dispute-action"
                   onClick={() => {
                     setMenuOpen(false);
-                    onComment?.(milestone);
+                    onDispute(milestone);
                   }}
-                >Add comment</button>
+                >Initiate dispute</button>
               )}
             </div>
           )}
         </div>
-        )}
         {(isPaid || isApproved) && (
           <span className={isApproved ? "milestone-paid-status approved" : "milestone-paid-status"}>
             {isApproved ? "Approved" : "Paid"}
           </span>
         )}
         {milestone.action && !isPaid && !isApproved && (
-          <button className={milestone.tone === "primary" ? "primary-btn milestone-action" : "secondary-btn milestone-action"} type="button" data-testid="milestone-action" onClick={handleAction}>
+          <button
+            className={milestone.tone === "primary" ? "primary-btn milestone-action" : "secondary-btn milestone-action"}
+            type="button"
+            data-testid="milestone-action"
+            disabled={milestone.actionDisabled || undefined}
+            title={milestone.actionDisabled ? "Available when this milestone opens" : undefined}
+            onClick={handleAction}
+          >
             {milestone.action}
           </button>
         )}
@@ -7671,35 +7728,36 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
   );
 }
 
-function MilestoneCommentModal({ milestone, onClose, onPost, live = null }) {
+function MilestoneCommentModal({ milestone, onClose, onPost, live = null, mode = "comment" }) {
   // Live: a real note and real photos, handed to onPost({ body, files }).
   const [body, setBody] = useState("");
   const [photos, setPhotos] = useState([]);
   const fileInput = useRef(null);
   const other = live?.counterparty ?? "Atelier Minho";
+  const isDispute = mode === "dispute";
 
   return (
     <div className="approve-fund-modal-layer" role="presentation">
-      <button className="approve-fund-modal-scrim" type="button" aria-label="Close comment" onClick={onClose} />
+      <button className="approve-fund-modal-scrim" type="button" aria-label={isDispute ? "Close dispute" : "Close comment"} onClick={onClose} />
       <section className="approve-fund-modal milestone-comment-modal" role="dialog" aria-modal="true" aria-labelledby="milestone-comment-title">
-        <button className="settings-drawer-close" type="button" aria-label="Close comment" onClick={onClose}>
+        <button className="settings-drawer-close" type="button" aria-label={isDispute ? "Close dispute" : "Close comment"} onClick={onClose}>
           <img src="/assets/prototype-icons/close.svg" alt="" />
         </button>
         <header>
-          <h2 id="milestone-comment-title">Add {milestone.title.toLowerCase()} comment</h2>
-          <span>Share feedback, questions, or files with {other} for this production step.</span>
+          <h2 id="milestone-comment-title">{isDispute ? `Initiate dispute for ${milestone.title.toLowerCase()}` : `Add ${milestone.title.toLowerCase()} comment`}</h2>
+          <span>{isDispute ? `Explain the issue for ${other} and attach any supporting evidence. The dispute will be recorded on this production step.` : `Share feedback, questions, or files with ${other} for this production step.`}</span>
         </header>
         <label className="approve-fund-note">
-          <span>Comment</span>
+          <span>{isDispute ? "Reason for dispute" : "Comment"}</span>
           {live ? (
-            <textarea rows={3} placeholder={`Write a comment for ${other}...`} autoFocus value={body} onChange={(event) => setBody(event.target.value)} />
+            <textarea rows={3} placeholder={isDispute ? "Describe what happened and the resolution you are requesting..." : `Write a comment for ${other}...`} autoFocus value={body} onChange={(event) => setBody(event.target.value)} />
           ) : (
-            <textarea rows={3} placeholder="Write a comment for Atelier Minho..." autoFocus />
+            <textarea rows={3} placeholder={isDispute ? "Describe what happened and the resolution you are requesting..." : "Write a comment for Atelier Minho..."} autoFocus />
           )}
         </label>
         <button className="milestone-comment-upload" type="button" onClick={live ? () => fileInput.current?.click() : undefined}>
-          <strong>+ Upload photos</strong>
-          <span>{live && photos.length ? photos.map((file) => file.name).join(", ") : "JPG or PNG, up to 10 files"}</span>
+          <strong>{isDispute ? "+ Upload supporting evidence" : "+ Upload photos"}</strong>
+          <span>{live && photos.length ? photos.map((file) => file.name).join(", ") : isDispute ? "JPG, PNG, or PDF, up to 10 files" : "JPG or PNG, up to 10 files"}</span>
         </button>
         {live && (
           <input
@@ -7721,7 +7779,7 @@ function MilestoneCommentModal({ milestone, onClose, onPost, live = null }) {
             disabled={live ? live.busy || !body.trim() : undefined}
             onClick={live ? () => onPost({ body, files: photos }) : onPost}
           >
-            {live?.busy ? "Posting…" : "Post comment"}
+            {live?.busy ? (isDispute ? "Initiating…" : "Posting…") : (isDispute ? "Initiate dispute" : "Post comment")}
           </button>
         </footer>
       </section>
@@ -7822,7 +7880,7 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
           <button className="primary-btn" type="button" disabled={live?.busy || undefined} onClick={live ? () => onApprove(note) : onApprove}>
-            {live ? (live.busy ? "Approving…" : "Approve step") : "Approve and release fund"}
+            {live ? (live.busy ? "Approving…" : "Approve fund") : "Approve and release fund"}
           </button>
         </footer>
       </section>
@@ -7831,17 +7889,31 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
 }
 
 function ProjectUpdateCard({ update }) {
+  const [expanded, setExpanded] = useState(false);
   // Live passes the step's latest real update:
-  // `{ author, when, body, photos: [{ id, url, label }], extraFiles, total, onViewAll }`.
+  // `{ author, when, body, photos, extraFiles, total, history, onViewAll }`.
   if (update) {
+    const visibleUpdates = expanded ? update.history : update.history?.slice(0, 1);
     return (
       <div className="project-update-card" data-testid="update-card">
-        <div className="project-update-header">
-          <strong>{update.author}</strong>
-          <span>{update.when}</span>
-          <button type="button" onClick={update.onViewAll}>View all updates ({update.total})</button>
+        <div className="project-update-history">
+          {(visibleUpdates?.length ? visibleUpdates : [update]).map((item, index) => (
+            <div className="project-update-entry" key={item.id ?? `${item.author}-${item.when}`}>
+              <div className="project-update-header">
+                <div>
+                  <strong>{item.author}</strong>
+                  <span>{item.when}</span>
+                </div>
+                {index === 0 && update.total > 1 && (
+                  <button className="project-update-toggle" type="button" onClick={() => setExpanded((open) => !open)}>
+                    {expanded ? "Collapse comments" : `View all updates (${update.total})`}
+                  </button>
+                )}
+              </div>
+              <p>{item.body}</p>
+            </div>
+          ))}
         </div>
-        <p>{update.body}</p>
         {(update.photos.length > 0 || update.extraFiles > 0) && (
           <div className="sample-file-row">
             {update.photos.map((photo) => (
@@ -9117,6 +9189,63 @@ function PaymentScreen() {
  * amount, due_on, note }` with `type` one of the design's three step types.
  * Without it the screen draws the design's four example steps, as before.
  */
+const STEP_TYPES = ["Paid release", "Approval only", "Update only"];
+const stepTypeClass = (value) => value.toLowerCase().replaceAll(" ", "-");
+
+function StepTypeSelect({ value, onChange, disabled = false }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (event.key === "Escape" || (event.type === "pointerdown" && !rootRef.current?.contains(event.target))) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  return (
+    <div className="step-type-picker" ref={rootRef}>
+      <button
+        className={`step-type-select ${stepTypeClass(value)}`}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {value}
+      </button>
+      {open ? (
+        <div className="step-type-menu" role="listbox" aria-label="Production step type">
+          {STEP_TYPES.map((option) => (
+            <button
+              className={stepTypeClass(option)}
+              type="button"
+              role="option"
+              aria-selected={option === value}
+              onClick={() => {
+                onChange(option);
+                setOpen(false);
+              }}
+              key={option}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = null }) {
   const productionSteps = [
     {
@@ -9157,8 +9286,10 @@ export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = nul
     <div className="stack">
       <Card title="Production schedule">
         <p className="muted production-schedule-helper">
-          Select a step type for every production checkpoint. Use the helper text under the
-          dropdown while deciding how that step should work.
+          {live?.helper ?? (
+            <>Select a step type for every production checkpoint. Use the helper text under the
+              dropdown while deciding how that step should work.</>
+          )}
         </p>
         <div className="step-type-guide">
           <div className="selected">
@@ -9182,27 +9313,24 @@ export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = nul
                 <div className="milestone-title-row">
                   <h3>Step {i + 1}</h3>
                   <div className="milestone-controls">
-                    <select
-                      className={`step-type-select ${row.type.toLowerCase().replaceAll(" ", "-")}`}
+                    <StepTypeSelect
                       value={row.type}
-                      data-field={`step_${i}_kind`}
-                      onChange={(event) => live.onChange(i, { type: event.target.value })}
-                    >
-                      <option>Paid release</option>
-                      <option>Approval only</option>
-                      <option>Update only</option>
-                    </select>
-                    <button className="trash-btn" type="button" aria-label={`Remove step ${i + 1}`} onClick={() => live.onRemove(i)}>
-                      <img src="/assets/prototype-icons/trash.svg" alt="" />
-                    </button>
+                      disabled={Boolean(live.typeLocked || row.typeLocked || live.readOnly)}
+                      onChange={(type) => live.onChange(i, { type })}
+                    />
+                    {live.allowRemove !== false && !row.removeLocked && !live.readOnly ? (
+                      <button className="trash-btn" type="button" aria-label={`Remove step ${i + 1}`} onClick={() => live.onRemove(i)}>
+                        <img src="/assets/prototype-icons/trash.svg" alt="" />
+                      </button>
+                    ) : null}
                   </div>
                 </div>
                 {row.note && <p className="muted production-schedule-helper">{row.note}</p>}
                 <div className="production-step-grid">
-                  <Field label="Step name" name="title" value={row.title} onChange={field} />
-                  <Field label="Description" name="description" value={row.description} onChange={field} />
+                  <Field label="Step name" name="title" value={row.title} onChange={live.readOnly ? undefined : field} />
+                  <Field label="Description" name="description" value={row.description} onChange={live.readOnly ? undefined : field} />
                   {row.type === "Paid release" ? (
-                    <Field label="Amount" name="amount" value={row.amount} onChange={field} />
+                    <Field label="Amount" name="amount" value={row.amount} onChange={live.amountLocked || row.amountLocked || live.readOnly ? undefined : field} />
                   ) : (
                     <Field label="Amount" value="No payment" muted />
                   )}
@@ -9211,7 +9339,7 @@ export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = nul
                     name="due_on"
                     type="date"
                     value={row.due_on}
-                    onChange={field}
+                    onChange={live.readOnly ? undefined : field}
                   />
                 </div>
               </div>
@@ -9223,20 +9351,15 @@ export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = nul
                 <div className="milestone-title-row">
                   <h3>Step {i + 1}</h3>
                   <div className="milestone-controls">
-                    <select
-                      className={`step-type-select ${type.toLowerCase().replaceAll(" ", "-")}`}
+                    <StepTypeSelect
                       value={type}
-                      onChange={(event) =>
+                      onChange={(nextType) =>
                         setMilestoneTypes((current) => ({
                           ...current,
-                          [milestone.name]: event.target.value
+                          [milestone.name]: nextType
                         }))
                       }
-                    >
-                      <option>Paid release</option>
-                      <option>Approval only</option>
-                      <option>Update only</option>
-                    </select>
+                    />
                     <button className="trash-btn" type="button" aria-label={`Remove step ${i + 1}`}>
                       <img src="/assets/prototype-icons/trash.svg" alt="" />
                     </button>
@@ -9251,7 +9374,9 @@ export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = nul
               </div>
             );
           })}
-          <button className="add-step-btn" type="button" onClick={live?.onAdd}>+ Add production step</button>
+          {!live || (live.allowAdd !== false && !live.readOnly) ? (
+            <button className="add-step-btn" type="button" onClick={live?.onAdd}>+ Add production step</button>
+          ) : null}
         </div>
       </Card>
     </div>
@@ -9340,6 +9465,101 @@ function Card({ title, children, className = "", tone = "" }) {
   );
 }
 
+function TscDatePicker({ name, value, onChange }) {
+  const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value ?? "")
+    ? new Date(`${value}T12:00:00`)
+    : null;
+  const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState("below");
+  const [visibleMonth, setVisibleMonth] = useState(() => parsed ?? new Date());
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (event.key === "Escape" || (event.type === "pointerdown" && !rootRef.current?.contains(event.target))) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const year = visibleMonth.getFullYear();
+  const month = visibleMonth.getMonth();
+  const leadingBlanks = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const days = [
+    ...Array.from({ length: leadingBlanks }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
+  ];
+  const selectedDay = parsed && parsed.getFullYear() === year && parsed.getMonth() === month
+    ? parsed.getDate()
+    : null;
+  const label = parsed
+    ? parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : "Select date";
+  const monthLabel = visibleMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const shiftMonth = (amount) => setVisibleMonth(new Date(year, month + amount, 1));
+  const chooseDay = (day) => {
+    const next = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    onChange(name, next);
+    setOpen(false);
+  };
+  const toggle = () => {
+    if (!open) {
+      const bounds = rootRef.current?.getBoundingClientRect();
+      setPlacement(bounds && bounds.bottom + 320 > window.innerHeight && bounds.top > 320 ? "above" : "below");
+    }
+    setOpen((current) => !current);
+  };
+
+  return (
+    <div className="tsc-date-picker" ref={rootRef}>
+      <button
+        className={parsed ? "field-input tsc-date-trigger" : "field-input tsc-date-trigger placeholder"}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={toggle}
+      >
+        <span>{label}</span>
+        <i aria-hidden="true" />
+      </button>
+      {open ? (
+        <section className={`schedule-calendar tsc-date-popover ${placement}`} role="dialog" aria-label="Choose a due date">
+          <div className="schedule-calendar-heading">
+            <button type="button" aria-label="Previous month" onClick={() => shiftMonth(-1)}>‹</button>
+            <strong>{monthLabel}</strong>
+            <button type="button" aria-label="Next month" onClick={() => shiftMonth(1)}>›</button>
+          </div>
+          <div className="schedule-calendar-weekdays" aria-hidden="true">
+            {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
+          </div>
+          <div className="schedule-calendar-days">
+            {days.map((day, index) => day ? (
+              <button
+                className={day === selectedDay ? "selected" : ""}
+                type="button"
+                aria-label={`${monthLabel} ${day}`}
+                aria-pressed={day === selectedDay}
+                onClick={() => chooseDay(day)}
+                key={day}
+              >
+                {day}
+              </button>
+            ) : <span key={`blank-${index}`} />)}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function Field({ label, value, muted = false, className = "", name, onChange, type }) {
   return (
     <div className={`${muted ? "field muted-field" : "field"} ${className}`}>
@@ -9347,7 +9567,9 @@ function Field({ label, value, muted = false, className = "", name, onChange, ty
       {/* Read-back until the live mount hands it a change handler. The design
           shows a brief the AI drafted; with "Skip AI" there is nothing drafted,
           and a review you cannot correct is not a review. */}
-      {onChange ? (
+      {onChange && type === "date" ? (
+        <TscDatePicker name={name} value={value} onChange={onChange} />
+      ) : onChange ? (
         <input
           className="field-input"
           name={name}

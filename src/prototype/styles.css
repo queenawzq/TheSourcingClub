@@ -5845,7 +5845,8 @@ select {
   font-weight: 700;
 }
 
-.milestone-controls select {
+.milestone-controls select,
+.step-type-select {
   min-width: 132px;
   height: 32px;
   padding-right: 30px;
@@ -5854,15 +5855,72 @@ select {
   font-size: 12px;
 }
 
-.step-type-select.paid-release {
+.step-type-picker {
+  position: relative;
+  z-index: 2;
+}
+
+.step-type-select {
+  display: flex;
+  align-items: center;
+  width: 132px;
+  padding-left: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  font-family: "Satoshi", Arial, sans-serif;
+  font-weight: 700;
+  text-align: left;
+}
+
+.step-type-select:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.step-type-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  display: grid;
+  width: 172px;
+  padding: 6px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.step-type-menu button {
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-family: "Satoshi", Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  text-align: left;
+}
+
+.step-type-menu button:hover,
+.step-type-menu button[aria-selected="true"] {
+  background: #f3f7fb;
+}
+
+.step-type-select.paid-release,
+.step-type-menu .paid-release {
   color: #174df2;
 }
 
-.step-type-select.approval-only {
+.step-type-select.approval-only,
+.step-type-menu .approval-only {
   color: #08768d;
 }
 
-.step-type-select.update-only {
+.step-type-select.update-only,
+.step-type-menu .update-only {
   color: #5a6b87;
 }
 
@@ -8088,8 +8146,22 @@ select {
 
 .project-detail-header {
   display: grid;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  width: min(100%, 1022px);
   margin-bottom: 10px;
+}
+
+.project-detail-heading {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.project-detail-header > .project-overflow {
+  align-self: start;
+  justify-self: end;
 }
 
 .project-detail-header h1 {
@@ -8375,6 +8447,10 @@ select {
   align-items: start;
 }
 
+.project-milestone-item.menu-open {
+  z-index: 30;
+}
+
 .project-milestone-item:last-child::before {
   content: "";
   position: absolute;
@@ -8519,8 +8595,12 @@ select {
 }
 
 .milestone-action-menu button:disabled {
-  color: #08768d;
+  color: #0b1020;
   cursor: default;
+}
+
+.milestone-action-menu .milestone-dispute-action {
+  color: #b42318;
 }
 
 .milestone-action {
@@ -8818,13 +8898,46 @@ select {
 .project-milestone-item > .project-update-card {
   grid-column: 2 / -1;
   max-width: none;
+  margin-right: 202px;
+}
+
+.project-update-toggle {
+  justify-self: end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #174df2;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.project-update-history {
+  display: grid;
+  gap: 8px;
+}
+
+.project-update-entry {
+  display: grid;
+  gap: 6px;
+}
+
+.project-update-entry + .project-update-entry {
+  padding-top: 4px;
 }
 
 .project-update-header {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
+}
+
+.project-update-header > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
 
 .project-update-header strong {
@@ -8838,16 +8951,7 @@ select {
   font-weight: 500;
 }
 
-.project-update-header button {
-  justify-self: end;
-  border: 0;
-  background: transparent;
-  color: #174df2;
-  font-size: 12px;
-  font-weight: 700;
-  text-decoration: underline;
-}
-
+.project-update-entry > p,
 .project-update-card > p {
   margin: 0;
   color: #0f172a;
@@ -8915,15 +9019,15 @@ select {
 
 .project-factory-panel {
   display: grid;
-  gap: 16px;
-  padding: 24px;
+  gap: 12px;
+  padding: 20px;
 }
 
 .project-factory-row {
   display: flex;
   gap: 16px;
   align-items: center;
-  padding-bottom: 16px;
+  padding-bottom: 12px;
   border-bottom: 1px solid #d3e0f0;
 }
 
@@ -9898,6 +10002,10 @@ select {
 }
 
 @media (max-width: 1180px) {
+  .project-detail-header {
+    width: 100%;
+  }
+
   .side-nav {
     width: 78px;
     padding: 28px 15px;
@@ -16637,6 +16745,11 @@ button.sort-button {
     grid-row: 2;
     justify-self: start;
   }
+
+  .project-milestone-item > .project-update-card {
+    grid-column: 2 / -1;
+    margin-right: 0;
+  }
 }
 
 /* Keep every quote-request flow screen on the same responsive page gutters. */
@@ -17679,6 +17792,71 @@ button.sort-button {
   border-radius: 4px;
 }
 
+.tsc-date-picker {
+  position: relative;
+  margin-top: 6px;
+}
+
+.field .tsc-date-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 22px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.field .tsc-date-trigger > span {
+  color: #0b1020;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.field .tsc-date-trigger.placeholder > span {
+  color: #8291aa;
+}
+
+.tsc-date-trigger > i {
+  position: relative;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 13px;
+  border: 1.5px solid #60769b;
+  border-radius: 2px;
+}
+
+.tsc-date-trigger > i::before {
+  position: absolute;
+  top: 3px;
+  right: -1.5px;
+  left: -1.5px;
+  height: 1.5px;
+  background: #60769b;
+  content: "";
+}
+
+.tsc-date-popover {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(300px, calc(100vw - 48px));
+  box-shadow: 0 16px 38px rgba(11, 16, 32, 0.16);
+}
+
+.tsc-date-popover.above {
+  top: auto;
+  bottom: calc(100% + 10px);
+}
+
+@media (max-width: 600px) {
+  .tsc-date-popover {
+    right: auto;
+    left: 0;
+  }
+}
+
 /* The composer has no slot for a refused save — in the prototype it always
    succeeds. */
 .composer-error {
@@ -17744,4 +17922,128 @@ textarea.note-field {
    stored. Same row, quieter status. */
 .brand-uploaded-file small.is-pending {
   color: #62748e;
+}
+.settings-signout-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.settings-signout-section .settings-section-header {
+  margin: 0;
+}
+
+.settings-signout-button {
+  flex: 0 0 auto;
+  min-width: 120px;
+}
+
+@media (max-width: 760px) {
+  .settings-signout-section {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-signout-button {
+    width: 100%;
+  }
+}
+.settings-payment-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 18px;
+  border: 1px dashed #d7e0ea;
+  border-radius: 8px;
+  background: #fbfcfe;
+}
+
+.settings-payment-empty p {
+  margin: 0;
+  color: #5a6b87;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.settings-payment-empty .secondary-btn {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 760px) {
+  .settings-payment-empty {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+.settings-payment-manage-link {
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #174df2;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.settings-payment-modal {
+  width: min(720px, calc(100vw - 40px));
+  max-height: min(760px, calc(100vh - 40px));
+  overflow: auto;
+}
+
+.settings-payment-modal > .brand-profile-modal-close {
+  width: 32px;
+  height: 32px;
+  padding: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.settings-payment-modal > .brand-profile-modal-close img {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.settings-payment-modal-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 22px 0;
+}
+
+.settings-payment-modal-form .settings-payment-instructions-field {
+  grid-column: 1 / -1;
+}
+
+.settings-payment-modal-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #0b1020;
+  font: inherit;
+  resize: vertical;
+}
+
+.settings-payment-security-note {
+  margin: 0;
+  color: #5a6b87;
+  font-size: 13px;
+  line-height: 19px;
+}
+
+@media (max-width: 760px) {
+  .settings-payment-modal-form {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-payment-modal-form .settings-payment-instructions-field {
+    grid-column: auto;
+  }
 }

@@ -717,6 +717,47 @@ function DocumentRow({ document, onDocumentUrl }) {
   );
 }
 
+function EvidencePreview({ document, onDocumentUrl }) {
+  const [preview, setPreview] = useState({ url: null, error: null });
+
+  useEffect(() => {
+    if (!document || !onDocumentUrl) return undefined;
+    let cancelled = false;
+    setPreview({ url: null, error: null });
+    onDocumentUrl(document).then(
+      (url) => { if (!cancelled) setPreview({ url, error: null }); },
+      (error) => { if (!cancelled) setPreview({ url: null, error: error.message || "The file could not be loaded." }); },
+    );
+    return () => { cancelled = true; };
+  }, [document, onDocumentUrl]);
+
+  const type = document?.mime_type?.toLowerCase() ?? "";
+  const isPdf = type === "application/pdf" || /\.pdf$/i.test(document?.file_name ?? "");
+  const isImage = ["image/png", "image/jpeg", "image/webp", "image/gif", "image/svg+xml"].includes(type);
+
+  return (
+    <div className="admin-document-viewer" aria-label={document ? `${document.file_name} preview` : "No document"}>
+      <div className="admin-document-toolbar">
+        <span>{document ? document.file_name : "No document"}</span>
+        {preview.url && <a className="admin-document-open" href={preview.url} target="_blank" rel="noopener noreferrer">Open in a new tab</a>}
+      </div>
+      {preview.url && isPdf ? (
+        <iframe className="admin-document-preview" src={preview.url} title={`${document.file_name} preview`} />
+      ) : preview.url && isImage ? (
+        <div className="admin-document-image-wrap"><img src={preview.url} alt={document.file_name} /></div>
+      ) : (
+        <div className="admin-document-preview-message" role="status">
+          {!document ? "No file was submitted for this check."
+            : preview.error ? preview.error
+            : !onDocumentUrl ? "Preview is unavailable in the sample workspace."
+            : !preview.url ? "Loading file preview…"
+            : "This file type cannot be previewed here. Open it in a new tab to view it."}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /**
  * One check, and the file it rests on.
  *
@@ -725,7 +766,7 @@ function DocumentRow({ document, onDocumentUrl }) {
  * mock data that was set dressing; wired to the marketplace it put an invented
  * document in front of a reviewer deciding whether a real company may trade,
  * which is the same failure as an invented score and a worse one, because it
- * looks like evidence. The viewer now shows the actual upload or says plainly
+ * looks like evidence. The viewer now embeds the actual upload or says plainly
  * that there is not one.
  */
 function EvidenceDetailModal({ profile, check, documents, onDocumentUrl, onClose }) {
@@ -755,35 +796,7 @@ function EvidenceDetailModal({ profile, check, documents, onDocumentUrl, onClose
             <div className="admin-evidence-note"><span>Check summary</span><p>{detail}</p><StatusPill tone={tone}>{result}</StatusPill></div>
           </aside>
 
-          <div className="admin-document-viewer" aria-label={primary ? `${primary.file_name} preview` : "No document"}>
-            <div className="admin-document-toolbar">
-              <span>{primary ? primary.file_name : "No document"}</span>
-              {primary ? <DocumentLink document={primary} onDocumentUrl={onDocumentUrl}>Open in a new tab</DocumentLink> : null}
-            </div>
-            <article className="admin-certificate-page admin-evidence-empty">
-              <div className="admin-certificate-mark">TSC</div>
-              {primary ? (
-                <>
-                  <h3>{primary.file_name}</h3>
-                  <div className="admin-certificate-rule" />
-                  <p>Submitted by {profile.name}.</p>
-                  <div className="admin-certificate-fields">
-                    <div><span>Type</span><strong>{primary.mime_type || primary.kind}</strong></div>
-                    <div><span>Size</span><strong>{formatBytes(primary.size_bytes) || "Unknown"}</strong></div>
-                    <div><span>Review status</span><strong>{primary.status ?? "unverified"}</strong></div>
-                  </div>
-                  <p className="admin-evidence-caption">Open it to read the file. Its contents are not checked against any registry or certifier.</p>
-                </>
-              ) : (
-                <>
-                  <h3>Nothing to open</h3>
-                  <div className="admin-certificate-rule" />
-                  <p>{detail}</p>
-                  <p className="admin-evidence-caption">This check compares what is already on file. There is no uploaded document behind it.</p>
-                </>
-              )}
-            </article>
-          </div>
+          <EvidencePreview document={primary} onDocumentUrl={onDocumentUrl} />
         </div>
       </section>
     </div>

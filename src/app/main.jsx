@@ -51,6 +51,7 @@ import LiveMessages from "./message/LiveMessages.jsx";
 import LiveHome from "./home/LiveHome.jsx";
 import LiveComposer from "./rfq/LiveComposer.jsx";
 import LiveOrderDetail from "./order/LiveOrderDetail.jsx";
+import ScheduleEditor from "./order/ScheduleEditor.jsx";
 import LiveSettings from "./settings/LiveSettings.jsx";
 import LiveFactoryProfile from "./profile/LiveFactoryProfile.jsx";
 import LiveBrandFactoryProfile from "./profile/LiveBrandFactoryProfile.jsx";
@@ -64,7 +65,9 @@ import "./shell.css";
 const LegalPage = lazy(() => import("./LegalPage.jsx"));
 // One-click demo sign-in, on test builds only: a production build has
 // __DEMO_SIGN_IN__ = false and leaves this import out (see vite.config.js).
-const DemoSignIn = __DEMO_SIGN_IN__ ? lazy(() => import("../shared/DemoSignIn.jsx")) : null;
+const DemoSignIn = (import.meta.env.DEV || __DEMO_SIGN_IN__)
+  ? lazy(() => import("../shared/DemoSignIn.jsx"))
+  : null;
 
 function Loading({ label }) {
   return (
@@ -916,11 +919,13 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       ),
     },
     {
-      // An unagreed order opens on its schedule anyway; once agreed, the
-      // order's timeline IS the schedule, so this is the same screen.
+      // Brands manage an active order's non-commercial milestone details here;
+      // types and payment amounts remain locked to the agreed order.
       path: "/orders/:id/schedule",
       render: (params) => (
-        <LiveOrderDetail org={activeOrg} orderId={params.id} isFactory={isFactory} isOwner={isOwner} />
+        <main className="rfqs-page">
+          <ScheduleEditor orderId={params.id} isFactory={isFactory} onAgreed={() => navigate(`/orders/${params.id}`)} />
+        </main>
       ),
     },
     {

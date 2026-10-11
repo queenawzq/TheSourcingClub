@@ -9393,7 +9393,6 @@ export function FactoryProjectProgressDetail({
   onTabChange,
   onMessage,
   onOpenFile,
-  onRemind,
   dialog,
   error,
   // Live only: a line above the timeline, e.g. while the brand is still
@@ -9468,7 +9467,6 @@ export function FactoryProjectProgressDetail({
                     index={index}
                     key={milestone.id ?? milestone.title}
                     onAddUpdate={setUpdateMilestone}
-                    onRemind={onRemind}
                     live={isLive}
                     showUpdate={isLive ? Boolean(milestone.update) : showPostedUpdate && index === 0}
                   />
@@ -9653,11 +9651,10 @@ function FactoryContractDetailsPanel({ contract }) {
   );
 }
 
-function FactoryMilestoneItem({ milestone, index, onAddUpdate, onRemind, live = false, showUpdate = false }) {
+function FactoryMilestoneItem({ milestone, index, onAddUpdate, live = false, showUpdate = false }) {
   // Live rows say what they allow: "Add update" only while work is happening
-  // on the step, and a reminder only while it waits on the brand.
+  // on the step.
   const canUpdate = !live || milestone.canComment;
-  const [reminded, setReminded] = useState(false);
 
   return (
     <article
@@ -9680,16 +9677,6 @@ function FactoryMilestoneItem({ milestone, index, onAddUpdate, onRemind, live = 
         {canUpdate && (
           <button className="secondary-btn" type="button" onClick={() => onAddUpdate(milestone)}>Add update</button>
         )}
-        {live && milestone.canRemind && (
-          <button
-            className="secondary-btn"
-            type="button"
-            disabled={reminded}
-            onClick={async () => setReminded(Boolean(await onRemind?.(milestone)))}
-          >
-            {reminded ? "Reminder sent" : "Send reminder"}
-          </button>
-        )}
       </div>
       {/* Below the step and its actions, across the row, so the note is not
           squeezed into the title's column. */}
@@ -9699,19 +9686,31 @@ function FactoryMilestoneItem({ milestone, index, onAddUpdate, onRemind, live = 
 }
 
 function FactoryPostedUpdateCard({ update }) {
+  const [expanded, setExpanded] = useState(false);
   // Live passes the step's latest real update:
-  // `{ author, when, body, photos: [{ id, url, label }], extraFiles, total, onViewAll }`.
+  // `{ author, when, body, photos, extraFiles, total, history, onViewAll }`.
   if (update) {
+    const visibleUpdates = expanded ? update.history : update.history?.slice(0, 1);
     return (
       <div className="factory-posted-update-card" data-testid="update-card">
-        <div className="factory-posted-update-header">
-          <div>
-            <strong>{update.author}</strong>
-            <span>{update.when}</span>
-          </div>
-          <button type="button" onClick={update.onViewAll}>View all updates ({update.total})</button>
+        <div className="factory-posted-update-history">
+          {(visibleUpdates?.length ? visibleUpdates : [update]).map((item, index) => (
+            <div className="factory-posted-update-entry" key={item.id ?? `${item.author}-${item.when}`}>
+              <div className="factory-posted-update-header">
+                <div>
+                  <strong>{item.author}</strong>
+                  <span>{item.when}</span>
+                </div>
+                {index === 0 && update.total > 1 && (
+                  <button type="button" onClick={() => setExpanded((open) => !open)}>
+                    {expanded ? "Collapse comments" : `View all updates (${update.total})`}
+                  </button>
+                )}
+              </div>
+              <p>{item.body}</p>
+            </div>
+          ))}
         </div>
-        <p>{update.body}</p>
         {(update.photos.length > 0 || update.extraFiles > 0) && (
           <div className="factory-posted-file-row">
             {update.photos.map((photo) => (

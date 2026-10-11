@@ -1,0 +1,144 @@
+.live-company-profile .live-profile-card {
+  padding: 24px;
+}
+
+.live-profile-settings-button {
+  margin-top: 18px;
+  min-height: 40px;
+  padding: 0 18px;
+}
+
+.live-company-profile .factory-profile-owner-bar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  min-height: 56px;
+  padding: 10px 12px 10px 20px;
+  border: 1px solid #d6e0ec;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.live-company-profile .factory-profile-owner-bar > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.live-company-profile .factory-profile-owner-bar span {
+  color: #60769b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.live-company-profile .factory-profile-owner-bar strong {
+  color: #0b1020;
+  font-size: 15px;
+  line-height: 19px;
+}
+
+.live-company-profile .factory-profile-view-toggle {
+  display: inline-flex;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid #d6e0ec;
+  border-radius: 999px;
+  background: #fff;
+}
+
+.live-company-profile .factory-profile-view-toggle button {
+  min-height: 32px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #536b94;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.live-company-profile .factory-profile-view-toggle button.active {
+  background: #0b1020;
+  color: #fff;
+}
+
+.live-company-profile.is-public-view .factory-profile-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.live-profile-editor-modal {
+  width: min(720px, calc(100vw - 40px));
+}
+
+.live-profile-editor-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.live-profile-editor-form .live-profile-editor-wide {
+  grid-column: 1 / -1;
+}
+
+.live-profile-editor-form textarea {
+  min-height: 132px;
+  resize: vertical;
+}
+
+.live-company-profile .live-profile-hero {
+  align-items: center;
+}
+
+.live-profile-verified,
+.live-profile-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #e8efff;
+  color: #174df2;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.live-profile-status.verified {
+  background: #e7f7ed;
+  color: #207244;
+}
+
+.live-profile-intro,
+.live-profile-note {
+  margin: 14px 0 0;
+  color: #536b94;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+@media (max-width: 760px) {
+  .live-company-profile .factory-profile-owner-bar {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 14px;
+  }
+
+  .live-company-profile .factory-profile-view-toggle,
+  .live-company-profile .factory-profile-view-toggle button {
+    width: 100%;
+  }
+
+  .live-profile-settings-button {
+    width: 100%;
+  }
+
+  .live-profile-editor-form {
+    grid-template-columns: 1fr;
+  }
+
+  .live-profile-editor-form .live-profile-editor-wide {
+    grid-column: auto;
+  }
+}

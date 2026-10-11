@@ -21,6 +21,7 @@ import {
   approveMilestone,
   listMilestones,
   listOrderUpdates,
+  initiateDispute,
   postUpdate,
   remindMilestone,
 } from "../../lib/domain/milestone.js";
@@ -75,7 +76,25 @@ function actionFor(milestone, { isFactory, isOwner, posted }) {
     // approve_milestone refuses a member on a paying step; say so on the row
     // instead of offering a dialog that can only fail.
     if (milestone.kind === "approval_and_payment" && !isOwner) return none;
-    return { action: "Approve", tone: "primary", kind: "approve" };
+    return {
+      action: milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve",
+      tone: "primary",
+      kind: "approve",
+    };
+  }
+  // Keep the next action visible on every upcoming step. The database still
+  // owns sequencing, so a future CTA is disabled until that step opens rather
+  // than disappearing and leaving the schedule without a clear action.
+  if (milestone.state === "pending") {
+    if (milestone.kind === "payment_only" && payment?.state === "not_due") {
+      return { action: "Fund milestone", tone: "primary", kind: "fund", actionDisabled: true };
+    }
+    if (milestone.kind === "approval_and_payment") {
+      return { action: "Approve fund", tone: "primary", kind: "approve", actionDisabled: true };
+    }
+    if (milestone.kind === "approval_only") {
+      return { action: "Approve", tone: "primary", kind: "approve", actionDisabled: true };
+    }
   }
   return none;
 }
@@ -128,6 +147,29 @@ function dueBadge(milestone, today = new Date()) {
 const waitingOnOther = (milestone, isFactory, posted) => (isFactory
   ? approvable(milestone, posted) || milestone.payment?.state === "due"
   : milestone.state === "active" && !posted);
+
+/** Brands nudge factories only when the current work is genuinely close. */
+function nearOrPastDue(milestone, today = new Date()) {
+  if (!milestone.due_on) return false;
+  const due = new Date(`${milestone.due_on}T00:00:00`);
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((due - start) / 86400000) <= 7;
+}
+
+function brandReminderState(milestone, { running, posted, current }) {
+  if (!current) return { canRemind: false, reminderReason: "" };
+  if (!running) return { canRemind: false, reminderReason: "Reminders are unavailable on closed orders" };
+  if (milestone.state !== "active" || posted) {
+    return { canRemind: false, reminderReason: "This step is waiting for your approval" };
+  }
+  if (!milestone.due_on) {
+    return { canRemind: false, reminderReason: "" };
+  }
+  if (!nearOrPastDue(milestone)) {
+    return { canRemind: false, reminderReason: "Available seven days before the due date" };
+  }
+  return { canRemind: true, reminderReason: "" };
+}
 
 const TABS = new Set(["overview", "files", "contract"]);
 
@@ -287,7 +329,11 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
 
   const shaped = milestones.map((milestone) => {
     const stepUpdates = updates.filter((update) => update.milestone_id === milestone.id);
+    const hasDispute = stepUpdates.some((update) => update.kind === "dispute");
     const posted = stepUpdates.some((update) => update.author_org_id === order.factory_org_id);
+    const reminder = isFactory
+      ? { canRemind: running && waitingOnOther(milestone, true, posted), reminderReason: "" }
+      : brandReminderState(milestone, { running, posted, current: milestone.id === order.current_milestone_id });
     const next = actionFor(milestone, { ...viewer, posted });
     const fileCount = stepUpdates.reduce((sum, update) => sum + (update.documents?.length ?? 0), 0);
     return {
@@ -309,15 +355,16 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         milestone.payment?.state === "confirmed" ? "Funded" : null,
         milestone.due_on ? `due ${day(milestone.due_on)}` : null,
       ].filter(Boolean).join(" · "),
-      ...dueBadge(milestone),
+      ...(hasDispute ? { dueStatus: "Dispute opened", dueTone: "danger" } : dueBadge(milestone)),
       amount: milestone.amount_cents ? money(milestone.amount_cents) : "",
       description: milestone.description ?? "",
       reviewItem: stepUpdates.length
         ? `${stepUpdates.length} ${stepUpdates.length === 1 ? "update" : "updates"}, ${fileCount} ${fileCount === 1 ? "file" : "files"} posted on this step`
         : "Nothing posted on this step yet",
-      canRemind: running && waitingOnOther(milestone, isFactory, posted),
+      ...reminder,
       // post_milestone_update takes a post only while work is happening.
       canComment: running && (milestone.state === "active" || milestone.state === "submitted"),
+      canDispute: running && !hasDispute && (milestone.state === "active" || milestone.state === "submitted"),
       ...next,
       // The latest real update, on the steps where work is happening.
       update: milestone.state === "active" || milestone.state === "submitted"
@@ -405,7 +452,6 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         onPostUpdate={(milestone, { body, files }) => fromDialog(() => postUpdate({
           orderId, milestoneId: milestone.id, orgId: org.id, body, files,
         }))}
-        onRemind={remind}
         dialog={{ busy, error: dialogError, onClose: () => setDialogError(null) }}
         notice={pending
           ? `${other ?? "The brand"} is setting the production steps. Nothing starts until they confirm them, and you are told of every change. If something doesn't work for you, message them.`
@@ -461,7 +507,11 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         onPostComment={(milestone, { body, files }) => fromDialog(() => postUpdate({
           orderId, milestoneId: milestone.id, orgId: org.id, body, files,
         }))}
+        onInitiateDispute={(milestone, { body, files }) => fromDialog(() => initiateDispute({
+          orderId, milestoneId: milestone.id, orgId: org.id, reason: body, files,
+        }))}
         onRemind={remind}
+        onManageMilestones={() => navigate(`/orders/${orderId}/schedule`)}
         // A refusal belongs to the dialog it happened in, not the next one.
         onDialogClose={() => setDialogError(null)}
         banner={cancelBanner}
