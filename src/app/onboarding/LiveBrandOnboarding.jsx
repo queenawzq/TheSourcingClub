@@ -129,6 +129,10 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
           if (profile[column] != null) restored[onboardingFieldName(label)] = String(profile[column]);
         }
+        // The brand name was asked at sign-up and named the company; asking
+        // again on step 2 meant typing it a second time.
+        const brandNameField = onboardingFieldName("Brand name");
+        if (!restored[brandNameField] && org.name) restored[brandNameField] = org.name;
         // Links come back as term ids; the design speaks in labels.
         for (const [label, kind] of Object.entries(KIND_FOR_LABEL)) {
           const ids = selected?.[kind] ?? [];
