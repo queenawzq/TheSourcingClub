@@ -17,7 +17,7 @@
  * sends a reset link, and that link is how someone locked out gets back in.
  * It is not a way to sign in without a password.
  */
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isConfigured, setKeepSignedIn } from "./supabase.js";
 import { createOrg, listMyOrgs } from "./domain/org.js";
 
@@ -69,6 +69,16 @@ export function AuthProvider({ children }) {
   );
   const [status, setStatus] = useState(isConfigured ? "loading" : "unconfigured");
   const [error, setError] = useState(null);
+  // A signup creates its company after the session exists, so for a moment
+  // the new user has none. Without this the shell drew the "Which side are
+  // you on?" card in that moment, for a question the signup form had already
+  // answered.
+  const [creatingOrg, setCreatingOrg] = useState(false);
+  // Each membership lookup takes a number; only the latest one may set the
+  // status. The lookup the new session starts can finish after the signup's
+  // own reload, and its "no company yet" then overwrote the company that had
+  // just been created, leaving the card up for good.
+  const orgLoadSeq = useRef(0);
 
   // Restore an existing session, then follow every change.
   useEffect(() => {
@@ -143,6 +153,7 @@ export function AuthProvider({ children }) {
 
     let cancelled = false;
     let loadFinished = false;
+    const seq = ++orgLoadSeq.current;
     setStatus("loading");
 
     const loadTimeout = window.setTimeout(() => {
@@ -161,6 +172,7 @@ export function AuthProvider({ children }) {
         if (cancelled || loadFinished) return;
         loadFinished = true;
         window.clearTimeout(loadTimeout);
+        if (seq !== orgLoadSeq.current) return;
         setOrgs(rows);
         setStatus(rows.length ? "ready" : "no-org");
         setError(null);
@@ -197,7 +209,9 @@ export function AuthProvider({ children }) {
   }, [orgs, activeOrgId]);
 
   const reloadOrgs = useCallback(async () => {
+    const seq = ++orgLoadSeq.current;
     const rows = await listMyOrgs(session?.user?.id);
+    if (seq !== orgLoadSeq.current) return rows;
     setOrgs(rows);
     setStatus(rows.length ? "ready" : "no-org");
     return rows;
@@ -207,7 +221,7 @@ export function AuthProvider({ children }) {
     const activeOrg = orgs.find((org) => org.id === activeOrgId) ?? orgs[0] ?? null;
 
     return {
-      status,
+      status: creatingOrg && status === "no-org" ? "loading" : status,
       error,
       session,
       user: session?.user ?? null,
@@ -257,7 +271,11 @@ export function AuthProvider({ children }) {
           email: email.trim().toLowerCase(),
           password,
           options: {
-            data: { full_name: fullName?.trim() || null, company_name: companyName?.trim() || null },
+            data: {
+              full_name: fullName?.trim() || null,
+              company_name: companyName?.trim() || null,
+              account_type: accountType === "factory" ? "factory" : "brand",
+            },
             emailRedirectTo: window.location.origin + window.location.pathname,
           },
         });
@@ -274,11 +292,14 @@ export function AuthProvider({ children }) {
         }
 
         if (companyName?.trim()) {
+          setCreatingOrg(true);
           try {
             await createOrg(companyName.trim(), accountType === "factory" ? "factory" : "brand");
             await reloadOrgs();
           } catch (orgError) {
             setError(orgError);
+          } finally {
+            setCreatingOrg(false);
           }
         }
         return true;
@@ -431,7 +452,7 @@ export function AuthProvider({ children }) {
 
       refreshOrgs: reloadOrgs,
     };
-  }, [status, error, session, orgs, activeOrgId, reloadOrgs]);
+  }, [status, creatingOrg, error, session, orgs, activeOrgId, reloadOrgs]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

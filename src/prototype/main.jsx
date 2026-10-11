@@ -2628,11 +2628,17 @@ export function BrandOnboarding({
   // The published terms and their full page. Absent, the designed copy shows.
   terms,
   fullTerms,
+  // Chip groups a live mount puts in front of a step's own, by step index.
+  // Absent, every step is exactly as designed.
+  extraChipGroups,
 }) {
   const designedStep = brandOnboardingSteps[step];
+  const extraGroups = designedStep.type === "chips" ? extraChipGroups?.[step] : null;
   const current = designedStep.type === "terms" && (terms || fullTerms)
     ? { ...designedStep, terms: terms ?? designedStep.terms, fullTerms }
-    : designedStep;
+    : extraGroups?.length
+      ? { ...designedStep, groups: [...extraGroups, ...designedStep.groups] }
+      : designedStep;
   const isFirst = step === 0;
   const isLast = step === brandOnboardingSteps.length - 1;
 

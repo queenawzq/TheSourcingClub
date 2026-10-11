@@ -559,3 +559,11 @@ body {
   width: calc(100% + 6px);
   margin-right: -6px;
 }
+
+/* Onboarding's terms box: the design draws it unticked with the card's own
+   divider colour (#e2e8f0), so on white it all but disappears, and it is the
+   one box a brand must tick to go on. Same size; a slate border it can be
+   seen by. Ticked, the design's blue still wins. */
+.brand-onboarding-check input:not(:checked):not(:disabled) {
+  border-color: #90a1b9;
+}

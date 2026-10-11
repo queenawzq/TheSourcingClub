@@ -432,18 +432,48 @@ function SetNewPassword({ onDone }) {
 
 function ChooseOrgType() {
   const { user, refreshOrgs, signOut } = useAuth();
-  const [kind, setKind] = useState(null);
-  const [name, setName] = useState("");
+  // What the signup form already asked. The portal it was filled in decides
+  // the side, so someone who signed up here is not asked either question
+  // again: their company is created from those answers, and this card shows
+  // only if that fails (prefilled), or for an account with no answers
+  // (Google, an older signup).
+  const signedUpAs = user?.user_metadata ?? {};
+  const answeredKind = ["brand", "factory"].includes(signedUpAs.account_type) ? signedUpAs.account_type : null;
+  const answeredName = String(signedUpAs.company_name ?? "").trim();
+  const [kind, setKind] = useState(answeredKind);
+  const [name, setName] = useState(answeredName);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [autoCreating, setAutoCreating] = useState(Boolean(answeredKind && answeredName));
   // Someone who was invited lands here, and used to be told to create an
   // organisation of their own — the one thing they should not do. The
   // invitation existed in the database and no screen ever showed it.
   const [invitations, setInvitations] = useState([]);
 
   useEffect(() => {
-    listMyInvitations().then(setInvitations).catch(() => {});
+    let cancelled = false;
+    listMyInvitations()
+      .catch(() => [])
+      .then(async (pending) => {
+        if (cancelled) return;
+        setInvitations(pending);
+        // An invitation wins: joining is what an invited person should do.
+        if (pending.length || !answeredKind || !answeredName) {
+          setAutoCreating(false);
+          return;
+        }
+        try {
+          await createOrg(answeredName, answeredKind);
+          await refreshOrgs();
+        } catch (createError) {
+          if (!cancelled) setError(createError);
+        }
+        if (!cancelled) setAutoCreating(false);
+      });
+    return () => { cancelled = true; };
   }, []);
+
+  if (autoCreating) return <Loading label="Setting up your account…" />;
 
   async function submit(event) {
     event.preventDefault();
@@ -541,7 +571,7 @@ function ChooseOrgType() {
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder={kind === "factory" ? "Atelier Minho" : "Maison Rue"}
+            placeholder={kind === "factory" ? "Your company" : "Your brand"}
             autoComplete="organization"
           />
         </label>
