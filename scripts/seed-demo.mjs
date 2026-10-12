@@ -614,6 +614,22 @@ must(await factory.client.from("saved_brands").insert({
   org_id: factoryOrg.id, brand_org_id: brandOrg.id, saved_by: factory.id,
 }), "factory saves the brand");
 
+// A message staff already turned down: the brand shared an email address. It
+// was held, then rejected with a reason, so the brand sees "Not delivered"
+// and has the notification; the factory never saw it.
+const rejectedMessage = must(await brand.client.from("messages").insert({
+  thread_id: threadId, sender_org_id: brandOrg.id, sender_user_id: brand.id,
+  body: "You can also email me directly at sourcing@demo-brand.example.",
+  delivery: "checking",
+}).select("id").single(), "message to reject");
+must(await admin.rpc("record_message_screening", {
+  target_message: rejectedMessage.id, outcome: "held", method: "pattern", reason: "email address",
+}), "hold the message to reject");
+must(await adminUser.client.rpc("reject_held_message", {
+  target_message: rejectedMessage.id,
+  note: "Email addresses can't be shared here. Please keep the conversation on The Sourcing Club.",
+}), "reject the message");
+
 // A message held for review: the brand asks to move to WeChat. It is saved to
 // be checked first, and the verdict is recorded with the secret key, as the
 // server does. The brand sees it in the thread; the factory sees nothing of

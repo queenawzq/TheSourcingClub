@@ -85,12 +85,13 @@ export async function openRfqThread(rfqId, factoryOrgId) {
 }
 
 export async function listMessages(threadId) {
-  return unwrap(
+  const rows = unwrap(
     await supabase
       .from("messages")
       .select(`
         id, thread_id, sender_org_id, sender_user_id, body, body_lang,
         body_translated, body_translated_lang, translated_by, created_at,
+        delivery, delivered_at, review_note,
         orgs:sender_org_id (name),
         documents (id, bucket, storage_path, file_name, mime_type, size_bytes)
       `)
@@ -98,7 +99,14 @@ export async function listMessages(threadId) {
       .order("created_at"),
     "load the messages",
   );
+  // A released message arrives when staff release it, not when it was typed,
+  // so the thread reads in delivery order. The sender's own held or rejected
+  // messages were never delivered and keep the time they were written.
+  return [...(rows ?? [])].sort((a, b) => Date.parse(sentAt(a)) - Date.parse(sentAt(b)));
 }
+
+/** When a message reached the thread: its delivery, or its writing if it has not. */
+export const sentAt = (message) => message.delivered_at ?? message.created_at;
 
 export async function markRead(threadId) {
   return unwrap(
@@ -211,3 +219,28 @@ export function readable(message, { preferred = "en" } = {}) {
 }
 
 export const LANGUAGE_NAME = { en: "English", zh: "中文" };
+
+/**
+ * Staff: the messages waiting on a person. Held ones, and any still being
+ * checked after two minutes (the screen never answered). Platform staff have
+ * no org and cannot be notified, so this list is the only prompt there is.
+ */
+export async function heldMessageQueue() {
+  return unwrap(await supabase.rpc("admin_message_queue"), "load the messages held for review");
+}
+
+/** Staff: deliver a held message. The recipient is notified as if it had just been sent. */
+export async function releaseHeldMessage(messageId, note = null) {
+  return unwrap(
+    await supabase.rpc("release_held_message", { target_message: messageId, note: note?.trim() || null }),
+    "release the message",
+  );
+}
+
+/** Staff: refuse a held message. The reason is required: the sender is shown it. */
+export async function rejectHeldMessage(messageId, note) {
+  return unwrap(
+    await supabase.rpc("reject_held_message", { target_message: messageId, note }),
+    "reject the message",
+  );
+}

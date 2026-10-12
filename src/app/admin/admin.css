@@ -120,3 +120,8 @@
 .admin-pill--sent { background: #fff3d6; }
 .admin-pill--confirmed { background: #e6f4ea; }
 .admin-pill--released { background: #eef2ff; }
+
+/* Messages held for review: the message itself is the thing being judged. */
+.admin-message-body { min-width: 260px; max-width: 420px; }
+.admin-message-body p { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-table-hint { margin: 0 0 8px; }

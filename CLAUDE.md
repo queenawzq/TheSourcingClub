@@ -113,6 +113,9 @@ screens below — each held back for a stated reason, not a backlog entry:
   to the designed Fund screen.
 - **The factory's "Get paid with Stripe" card** (`StripePayoutCard`, on
   Queena's `PayoutDetails`). No design draws payout setup.
+- **`AdminMessages`.** No designed queue for messages held for review, and a
+  decision is a required step: the other side sees nothing until staff
+  release a held message.
 - **`AdminPayments`.** No designed payments board, and some payments only a
   person can move: staff have no org and cannot be notified (see **Payments**).
 - The brand's own **`RfqDetail`** — no designed counterpart yet.
@@ -284,6 +287,7 @@ A thread belongs to the **request or order it is about**, never to a pair of com
   - `record_message_screening` is the server's verdict, granted to `service_role` alone, because a client that could call it would deliver its own message unchecked.
   - `release_held_message` and `reject_held_message` are staff decisions. `admin_message_queue()` is their queue, since staff cannot be notified.
   - **Hiding is done in `messages_read`:** the recipient reads only `delivered` rows, and the sender's company reads its own in every state. So the thread summary, the dashboard's unread figure and the order activity hide a held message without each having to know. Attachments follow their message through `can_read_message()`, in both the `documents` and the `storage.objects` policies.
+  - **Staff decide on `/app.html/admin/messages`** (`AdminMessages.jsx`, hand-built like `AdminPayments`: no design has a moderation queue). The admin overview counts them in a live-only fifth card, read from `admin_message_queue()` rather than `admin_overview_metrics`. The sender's own held or rejected message is drawn by the designed bubble with an optional `status` (`LiveMessages.jsx`); the prototypes pass none.
   - **Delivery is the event, not the insert.** The bump, the notification and unread (`delivered_at`) happen when a message is delivered, so a released message arrives as new. What the screen found lives in staff-only `message_screenings`; the sender sees only `review_note` on a rejected message, plus a notification.
 - **Translation is stored, not computed on read.** `body` is what was typed and is never overwritten; `body_translated` is the other language. `/api/translate` **must never block a send** — any failure stores the message untranslated and the reader sees the original. This is the opposite of the taxonomy rule (`label_en`/`label_zh` are hand-written, never machine-translated) and deliberately so: a mistranslated *category* silently corrupts matching, while a mistranslated sentence is visibly a sentence and the person can ask.
 - **Unread is derived per user** from `message_reads.last_read_at`, not stored on the thread. The prototype's thread-level integer is never decremented anywhere in either app.

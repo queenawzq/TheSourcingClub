@@ -1,4 +1,4 @@
-/* Live only: the overview's payments card links to the payments board. */
+/* Live only: the overview's cards link to the boards that act on them. */
 .admin-metric-link {
   display: inline-block;
   margin-top: 8px;
@@ -10,4 +10,13 @@
 
 .admin-metric-link:hover {
   text-decoration: underline;
+}
+
+/* Live only: a fifth card (messages held for review) beside the design's
+   four. Five across on a wide screen; the design's own breakpoints take over
+   below that. */
+@media (min-width: 1121px) {
+  .admin-metrics:has(> .admin-metric-card:nth-child(5)) {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
 }

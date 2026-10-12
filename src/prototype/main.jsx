@@ -1886,9 +1886,12 @@ function MessageBubble({ message, showTranslation, onToggleTranslation, ownName,
   // always read by the brand.
   const isOwn = message.own ?? message.from === "brand";
   const hasTranslation = Boolean(message.translation);
+  // Live only: a message of the reader's own that has not reached the other
+  // side (held for review, or not delivered). The design has no such state.
+  const status = message.status ?? null;
 
   return (
-    <article className={isOwn ? "message-bubble own" : "message-bubble"}>
+    <article className={`${isOwn ? "message-bubble own" : "message-bubble"}${status ? ` message-bubble-${status.kind}` : ""}`}>
       <div>
         <span>{isOwn ? ownName ?? "Maison Rue" : otherName ?? "Factory"}</span>
         <time>{message.time}</time>
@@ -1914,6 +1917,12 @@ function MessageBubble({ message, showTranslation, onToggleTranslation, ownName,
               <img src="/assets/prototype-icons/download.svg" alt="" />
             </button>
           ))}
+        </div>
+      )}
+      {status && (
+        <div className="message-status-note" role="status">
+          <strong>{status.label}</strong>
+          {status.note && <span>{status.note}</span>}
         </div>
       )}
     </article>
