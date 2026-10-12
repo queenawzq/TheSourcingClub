@@ -3,13 +3,19 @@
  *
  * Earnings and credits come from the real ledgers. Platform charges do not
  * have a table yet, so that tab has an honest empty state instead of the
- * prototype's invented history. The payout account remains editable from the
- * Earnings tab because brands cannot pay an order until it exists.
+ * prototype's invented history.
+ *
+ * TSC holds what a brand funds and pays the factory when the brand approves
+ * the step: through Stripe where Stripe can pay out (StripePayoutCard), or by
+ * bank transfer from staff to the bank details on this page where it cannot
+ * (mainland China, Hong Kong…). Brands never see these bank details.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
+import StripePayoutCard from "./StripePayoutCard.jsx";
 import "./order.css";
+import "./payout.css";
 
 const FIELDS = [
   ["bank_name", "Bank", "Banco de Porto"],
@@ -21,10 +27,13 @@ const FIELDS = [
 
 const PAYMENT_STATUS = {
   not_due: "Scheduled",
-  due: "Due",
+  due: "Awaiting brand",
+  failed: "Awaiting brand",
+  processing: "Bank payment clearing",
+  // A bank-wire claim made before payments moved to Stripe.
   sent: "Transfer sent",
-  confirmed: "Confirmed",
-  released: "Received",
+  confirmed: "Held by TSC",
+  released: "Paid out",
   cancelled: "Cancelled",
 };
 
@@ -41,6 +50,13 @@ const dateLabel = (value) => value
   ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
   : "Date pending";
 
+/**
+ * What the factory gets for a payment. A Stripe charge records what the brand
+ * paid, fee included, as received; the factory is paid the step's amount.
+ * A bank wire from the old site records what actually arrived.
+ */
+const factoryAmount = (row) => (row.charged_cents ? row.amount_cents : row.amount_received_cents ?? row.amount_cents);
+
 const blankPayout = (row) => ({
   bank_name: row?.bank_name ?? "",
   account_name: row?.account_name ?? "",
@@ -50,7 +66,7 @@ const blankPayout = (row) => ({
   instructions: row?.instructions ?? "",
 });
 
-export default function PayoutDetails({ org, isFactory }) {
+export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const [tab, setTab] = useState("earnings");
   const [client, setClient] = useState("All clients");
   const [account, setAccount] = useState(null);
@@ -93,7 +109,7 @@ export default function PayoutDetails({ org, isFactory }) {
       paymentRows = unwrap(
         await supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, release_requested_at, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title)")
           .in("order_id", orders.map((order) => order.id))
           .order("created_at", { ascending: false }),
         "load your earnings",
@@ -123,11 +139,11 @@ export default function PayoutDetails({ org, isFactory }) {
     : (earnings ?? []).filter((row) => row.order?.orgs?.name === client);
   const totalEarned = (earnings ?? [])
     .filter((row) => row.state === "released")
-    .reduce((sum, row) => sum + (row.amount_received_cents ?? row.amount_cents), 0);
+    .reduce((sum, row) => sum + factoryAmount(row), 0);
   const pendingRelease = (earnings ?? [])
-    .filter((row) => ["sent", "confirmed"].includes(row.state))
+    .filter((row) => ["processing", "sent", "confirmed"].includes(row.state))
     .reduce((sum, row) => sum + row.amount_cents, 0);
-  const nextPayment = (earnings ?? []).find((row) => ["due", "not_due"].includes(row.state));
+  const nextPayment = (earnings ?? []).find((row) => ["due", "failed", "not_due"].includes(row.state));
   const creditBalance = (credits ?? []).reduce((sum, row) => sum + row.delta, 0);
 
   if (!isFactory) {
@@ -210,11 +226,13 @@ export default function PayoutDetails({ org, isFactory }) {
             <div className="metric highlight"><strong>{nextPayment ? formatMoney(nextPayment.amount_cents, nextPayment.currency) : "—"}</strong><span>Next payment</span></div>
           </div>
 
+          <StripePayoutCard org={org} isOwner={isOwner} />
+
           <section className="live-payout-method-card">
             <div>
-              <span>Payout account</span>
-              <strong>{account ? `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}` : "No payout account added"}</strong>
-              <p>Brands only see these instructions when a payment is due.</p>
+              <span>Bank details for manual payouts</span>
+              <strong>{account ? `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}` : "No bank details added"}</strong>
+              <p>Where Stripe can't pay out to your country, TSC staff pay you by bank transfer to this account.</p>
             </div>
             <button className="secondary-btn compact-btn" type="button" onClick={() => setEditingAccount((open) => !open)}>
               {editingAccount ? "Cancel" : account ? "Edit details" : "Add details"}
@@ -229,7 +247,7 @@ export default function PayoutDetails({ org, isFactory }) {
                 ))}
               </div>
               <label>
-                <span>Anything else a brand needs</span>
+                <span>Anything else our staff need</span>
                 <textarea id="payout-instructions" data-field="payout_instructions" rows={3} value={form.instructions}
                           onChange={set("instructions")} placeholder="Intermediary bank or transfer instructions." />
               </label>
@@ -247,8 +265,8 @@ export default function PayoutDetails({ org, isFactory }) {
                     <strong>{row.order_milestones?.title || row.order?.order_number || "Order payment"}</strong>
                     <span>{row.order?.orgs?.name || "Brand"} · {row.order?.order_number || "Production order"} · {dateLabel(row.released_at || row.confirmed_at || row.sent_at || row.due_at || row.created_at)}</span>
                   </div>
-                  <span className="billing-status">{PAYMENT_STATUS[row.state] || row.state}</span>
-                  <strong>{formatMoney(row.amount_received_cents ?? row.amount_cents, row.currency)}</strong>
+                  <span className="billing-status">{row.state === "confirmed" && row.release_requested_at ? "Payout on its way" : PAYMENT_STATUS[row.state] || row.state}</span>
+                  <strong>{formatMoney(factoryAmount(row), row.currency)}</strong>
                 </article>
               ))}
             </div>

@@ -1345,6 +1345,146 @@ revoke all on function public.admin_payment_board() from public;
 grant execute on function public.admin_payment_board() to authenticated;
 
 -- ---------------------------------------------------------------------------
+-- admin_overview_metrics(): the overview's payments card
+-- ---------------------------------------------------------------------------
+-- Copied from 20260912000100, with one change. Staff have no org and cannot
+-- be notified, so this count is the only prompt they get. It used to count
+-- bank-wire claims (sent) only; it now also counts the payments only a person
+-- can move on: payouts owed that Stripe did not make (a factory in mainland
+-- China, say, is paid by bank by staff) and money still held on a cancelled
+-- order. The column keeps its name, so the old admin page reads it unchanged.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.admin_overview_metrics()
+returns table (
+  profiles_awaiting_review integer,
+  rfqs_submitted_today     integer,
+  quotes_submitted_today   integer,
+  payments_awaiting_confirmation integer,
+  profiles_submitted_today integer
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not public.is_platform_admin() then
+    raise exception 'these metrics are limited to platform staff' using errcode = '42501';
+  end if;
+
+  return query
+  select
+    (select count(*)::integer from public.admin_verification_queue() q
+      where q.state in ('ready_for_review', 'in_review', 'needs_information')),
+    (select count(*)::integer from public.rfqs r
+      where r.published_at >= date_trunc('day', now())),
+    (select count(*)::integer from public.quotes q
+      where q.submitted_at >= date_trunc('day', now())),
+    (select count(*)::integer from public.order_payments p
+      join public.production_orders o on o.id = p.order_id
+      where p.state = 'sent'
+         or (p.state = 'confirmed' and p.release_requested_at is not null)
+         or (p.state in ('confirmed', 'processing') and o.status = 'cancelled')),
+    (select count(*)::integer from public.admin_verification_queue() q
+      where q.submitted_at >= date_trunc('day', now()));
+end;
+$$;
+
+revoke all on function public.admin_overview_metrics() from public;
+grant execute on function public.admin_overview_metrics() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- order_activity(): a bank payment clearing, and one that came back
+-- ---------------------------------------------------------------------------
+-- Copied from 20260930000300, with one change: the payment events it lists
+-- now include processing and failed, so the order's activity says when a
+-- bank payment is clearing and when one did not go through.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.order_activity(target_order uuid)
+returns table (
+  at              timestamptz,
+  kind            text,
+  actor_org_id    uuid,
+  milestone_title text,
+  detail          text
+)
+language sql
+stable
+security invoker
+set search_path = public, pg_temp
+as $$
+  with o as (
+    select * from public.production_orders where id = target_order
+  )
+  select * from (
+    select o.created_at, 'order_created', null::uuid, null::text, o.order_number from o
+    union all
+    select o.schedule_brand_agreed_at, 'schedule_agreed', o.brand_org_id, null, null
+      from o where o.schedule_brand_agreed_at is not null
+    union all
+    select o.schedule_factory_agreed_at, 'schedule_agreed', o.factory_org_id, null, null
+      from o where o.schedule_factory_agreed_at is not null
+    union all
+    select o.activated_at, 'order_activated', null, null, null
+      from o where o.activated_at is not null
+    union all
+    select o.cancel_proposed_at, 'cancellation_proposed', o.cancel_proposed_by_org, null, o.cancel_reason
+      from o where o.cancel_proposed_at is not null
+    union all
+    select o.completed_at, 'order_completed', null, null, null
+      from o where o.completed_at is not null
+    union all
+    select o.cancelled_at, 'order_cancelled', null, null, null
+      from o where o.cancelled_at is not null
+
+    union all
+    select m.submitted_at, 'step_submitted', o.factory_org_id, m.title, null
+      from public.order_milestones m join o on o.id = m.order_id
+     where m.submitted_at is not null
+    union all
+    select m.approved_at, 'step_approved', o.brand_org_id, m.title, m.approval_note
+      from public.order_milestones m join o on o.id = m.order_id
+     where m.approved_at is not null
+    union all
+    -- A step that was approved and completed in one go already has its line.
+    select m.completed_at, 'step_completed', null, m.title, null
+      from public.order_milestones m join o on o.id = m.order_id
+     where m.completed_at is not null
+       and m.completed_at is distinct from m.approved_at
+
+    union all
+    select u.created_at, 'update_posted', u.author_org_id, m.title, left(u.body, 140)
+      from public.milestone_updates u
+      join public.order_milestones m on m.id = u.milestone_id
+     where u.order_id = target_order
+
+    union all
+    select e.created_at, 'payment_' || e.to_state::text,
+           case e.actor_kind when 'brand' then o.brand_org_id
+                             when 'factory' then o.factory_org_id end,
+           m.title, p.amount_cents::text
+      from public.payment_events e
+      join public.order_payments p on p.id = e.payment_id
+      join public.order_milestones m on m.id = p.milestone_id
+      join o on o.id = p.order_id
+     where e.to_state in ('due', 'sent', 'processing', 'failed', 'confirmed', 'released')
+
+    union all
+    (select msg.created_at, 'message', msg.sender_org_id, null, null
+       from public.messages msg
+       join public.message_threads t on t.id = msg.thread_id
+      where t.order_id = target_order
+      order by msg.created_at desc
+      limit 1)
+  ) activity (at, kind, actor_org_id, milestone_title, detail)
+  order by at desc;
+$$;
+
+revoke all on function public.order_activity(uuid) from public;
+grant execute on function public.order_activity(uuid) to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Orders already under way
 -- ---------------------------------------------------------------------------
 -- An open Paid release step used to wait for approval before its money fell

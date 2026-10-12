@@ -734,7 +734,7 @@ async function orderWithCancelProposed({ title, brief, quantity, unitPrice, prop
   must(await brand.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `brand confirms: ${title}`);
   const { data: after } = await brand.client.from("production_orders").select("status").eq("id", order.id).single();
   if (after?.status === "pending_schedule") {
-    must(await factory.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `factory agrees: ${title}`);
+    must(await vendor.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `factory agrees: ${title}`);
   }
   must(await proposer.client.rpc("propose_cancellation", { target_order: order.id, reason }), `propose: ${title}`);
 }
@@ -770,7 +770,7 @@ must(await factory.client.from("factory_payout_accounts").insert({
   account_name: "Demo Factory", account_number_last4: "0000", bank_country: "PT",
   instructions: "Demo data only. Nothing is ever sent to this account.", is_primary: true,
 }), "the factory's payout details");
-async function runningOrder({ title, brief, quantity, unitPrice }) {
+async function runningOrder({ title, brief, quantity, unitPrice, vendor = factory, vendorOrg = factoryOrg }) {
   const rfq = await publishRequest({
     title, brief, quantity,
     colours: [["Ecru", quantity]],
@@ -781,13 +781,13 @@ async function runningOrder({ title, brief, quantity, unitPrice }) {
     tags: [["product_category", "tops"], ["region", "portugal"]],
     question: "Can you hold this price for the reorder?",
   });
-  let order = await award(await sendQuote(factory, factoryOrg, rfq, {
+  let order = await award(await sendQuote(vendor, vendorOrg, rfq, {
     price: unitPrice, quantity, lead: 30, note: "Fit sample, then bulk.",
   }));
   must(await brand.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `brand confirms: ${title}`);
   order = must(await admin.from("production_orders").select("*").eq("id", order.id).single(), `order: ${title}`);
   if (order.status === "pending_schedule") {
-    must(await factory.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `factory agrees: ${title}`);
+    must(await vendor.client.rpc("agree_schedule", { target_order: order.id, revision: order.schedule_revision }), `factory agrees: ${title}`);
   }
   return order;
 }
@@ -813,10 +813,10 @@ async function funded(payment, [type, label]) {
   }), "a payment held by TSC");
 }
 /** The factory posts on the open step and the brand approves it (it must be funded). */
-async function approveOpenStep(order, title) {
+async function approveOpenStep(order, title, vendor = factory) {
   const step = must(await admin.from("order_milestones").select("id")
     .eq("order_id", order.id).eq("state", "active").order("sort").limit(1).single(), `open step: ${title}`);
-  must(await factory.client.rpc("post_milestone_update", {
+  must(await vendor.client.rpc("post_milestone_update", {
     target_milestone: step.id, body: "Fit sample is sewn and measured against the spec sheet.", document_ids: [],
   }), `factory update: ${title}`);
   must(await brand.client.rpc("approve_milestone", { target_milestone: step.id, note: "Fit approved." }), `approve: ${title}`);
@@ -853,6 +853,21 @@ await failed(chinoFit, "The bank account has been closed.");
 // 5. Fit sample owed ("Due").
 const denimTitle = "Washed denim jacket, AW27";
 await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme washed.", quantity: 90, unitPrice: 4800 });
+// 6. Ningbo Loomworks is in mainland China, where Stripe cannot pay out: its
+//    fit sample is funded and approved, and the payout waits on staff to pay
+//    it by bank ("Payout owed" on the staff payments page).
+must(await secondFactory.client.from("factory_payout_accounts").insert({
+  org_id: secondFactoryOrg.id, label: "Demo account", bank_name: "Demo Bank Ningbo (test data, not a real account)",
+  account_name: LOGINS.secondFactory.name, account_number_last4: "0000", bank_country: "CN",
+  instructions: "Demo data only. Nothing is ever sent to this account.", is_primary: true,
+}), "the second factory's payout details");
+const seersuckerTitle = "Seersucker camp shirt, AW27";
+const seersucker = await runningOrder({
+  title: seersuckerTitle, brief: "180 cotton seersucker camp-collar shirts.", quantity: 180, unitPrice: 1900,
+  vendor: secondFactory, vendorOrg: secondFactoryOrg,
+});
+await funded(await dueNow(seersucker, seersuckerTitle), CARD);
+await approveOpenStep(seersucker, seersuckerTitle, secondFactory);
 
 // Dates on the steps not done yet, as a brand sets them on "Production
 // steps", so "Next due" on the dashboard and the orders list, and each step's
@@ -909,6 +924,8 @@ done. Every login uses the password "${PASSWORD}".
     - "Merino rib tank, AW27": fit sample paid by bank, clearing
     - "Stretch chino, AW27": fit sample bank payment failed, to pay again
     - "Washed denim jacket, AW27": fit sample payment due
+    - "Seersucker camp shirt, AW27" (${LOGINS.secondFactory.name}): fit sample approved, owed to a factory
+      Stripe cannot pay (China): staff pay it by bank from the admin's Payments page
   Payments lists those payments (Paid, Funded, Processing, Failed, Due) and its discount code.
   Its profile (/profile) is filled in, with a pending invitation.
   ${LOGINS.factory.name} has it under Saved → Saved brands.

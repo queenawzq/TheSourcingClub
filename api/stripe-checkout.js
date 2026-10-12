@@ -86,7 +86,16 @@ export default async function handler(request, response) {
       const { error: attachError } = await db.rpc("attach_payment_intent", {
         target_payment: checkout.payment_id, payment_intent: intent.id, charged: Number(checkout.charged_cents),
       });
-      if (attachError) throw new Error(attachError.message);
+      if (attachError?.code === "22023") {
+        // Another request (a double click) attached its intent first: cancel
+        // this spare one and hand back the attached intent instead.
+        await stripe.paymentIntents.cancel(intent.id).catch(() => null);
+        const { data: attached } = await db.from("order_payments")
+          .select("stripe_payment_intent_id").eq("id", checkout.payment_id).single();
+        intent = await stripe.paymentIntents.retrieve(attached.stripe_payment_intent_id);
+      } else if (attachError) {
+        throw new Error(attachError.message);
+      }
     } else if (!checkout.stripe_payment_intent_id || intent.amount !== Number(checkout.charged_cents)) {
       await db.rpc("attach_payment_intent", {
         target_payment: checkout.payment_id, payment_intent: intent.id, charged: Number(checkout.charged_cents),

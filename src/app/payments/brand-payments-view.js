@@ -1,22 +1,27 @@
 /**
  * The brand's Payments page, in the shape the designed `BillingScreen` draws.
  *
- * Pure. Payments are track-only: the brand wires money off-platform, marks it
- * sent, TSC confirms it arrived (the order page calls that "Funded") and later
- * releases it to the factory. So the design's figures read:
- *   total paid   payments TSC confirmed or released (the orders' paid_cents)
- *   funded       confirmed and not yet released
+ * Pure. The brand funds each paid step through Stripe (card or US bank
+ * account) and TSC holds the money until the brand approves the step, then
+ * pays the factory. So the design's figures read:
+ *   total paid   payments held or paid out (the orders' paid_cents)
+ *   funded       held by TSC now, not yet paid out
  *   remaining    what is still to pay on open orders (outstanding_cents)
  *   next payment the open orders' next payment, soonest due first
  * Every sum comes from production_order_summary except "funded", which is the
- * confirmed payments' own amounts. The list shows what has happened or is
- * owed now; a step not reached yet counts only in "remaining".
+ * held payments' own amounts. The list shows what has happened or is owed
+ * now; a step not reached yet counts only in "remaining". A row's amount is
+ * what the brand is charged: the step plus the service fee.
  */
+import { feeCents } from "../../lib/domain/payment.js";
 import { formatMoney } from "../../lib/money.js";
 
 /** The design's status word for each payment state that is listed. */
 export const PAYMENT_STATUS = {
   due: "Due",
+  failed: "Failed",
+  processing: "Processing",
+  // A bank-wire claim made before payments moved to Stripe.
   sent: "Sent",
   confirmed: "Funded",
   released: "Paid",
@@ -27,7 +32,11 @@ const day = (iso) => new Date(iso).toLocaleDateString("en-US", { month: "short",
 const sum = (items, pick) => items.reduce((total, item) => total + Number(pick(item) ?? 0), 0);
 
 /** When the payment last moved, which is the date its row shows. */
-const movedAt = (payment) => payment.released_at ?? payment.confirmed_at ?? payment.sent_at ?? payment.due_at ?? payment.created_at;
+const movedAt = (payment) => payment.released_at ?? payment.confirmed_at ?? payment.failed_at ?? payment.processing_at
+  ?? payment.sent_at ?? payment.due_at ?? payment.created_at;
+
+/** What the brand is (or was) charged: recorded at checkout, else step + fee. */
+const charged = (payment) => Number(payment.charged_cents ?? payment.amount_cents + feeCents(payment));
 
 /**
  * orders: the brand's production_order_summary rows (listOrders), payments:
@@ -51,10 +60,12 @@ export function brandPaymentsView({ orders, payments }) {
         orderId: payment.order_id,
         title: payment.order_milestones?.title || "Payment",
         client: order.factory?.name ?? "Factory",
-        meta: `${orderTitle} - ${payment.state === "due" && payment.order_milestones?.due_on ? `due ${day(payment.order_milestones.due_on)}` : day(movedAt(payment))}`,
+        meta: `${orderTitle} - ${payment.state === "failed" && payment.failure_reason
+          ? payment.failure_reason
+          : payment.state === "due" && payment.order_milestones?.due_on ? `due ${day(payment.order_milestones.due_on)}` : day(movedAt(payment))}`,
         status: PAYMENT_STATUS[payment.state],
         state: payment.state,
-        amount: formatMoney(payment.amount_cents, payment.currency),
+        amount: formatMoney(charged(payment), payment.currency),
       };
     });
 

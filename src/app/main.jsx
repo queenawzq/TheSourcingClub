@@ -45,6 +45,7 @@ import { createLiveAdapter } from "./live-adapter.js";
 import LiveBrandOrders from "./order/LiveBrandOrders.jsx";
 import LiveFactoryOrders from "./order/LiveFactoryOrders.jsx";
 import PaymentInstructions from "./order/PaymentInstructions.jsx";
+import LiveFund from "./order/LiveFund.jsx";
 import PayoutDetails from "./order/PayoutDetails.jsx";
 import AdminPayments from "./admin/AdminPayments.jsx";
 import LiveMessages from "./message/LiveMessages.jsx";
@@ -1094,14 +1095,22 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // pay it. Registered before the :id routes so "payout" is never read as
       // an order id.
       path: "/payout",
-      render: () => <main className="home-page"><PayoutDetails org={activeOrg} isFactory={isFactory} /></main>,
+      render: () => <main className="home-page"><PayoutDetails org={activeOrg} isFactory={isFactory} isOwner={isOwner} /></main>,
     },
     {
       path: "/orders/:id/payments/:pid",
       render: (params) =>
         isFactory
           ? <NotForThisSide isFactory />
-          : <main className="home-page"><PaymentInstructions orderId={params.id} paymentId={params.pid} /></main>,
+          // Due or failed: the designed Fund screen (Stripe). Anything else
+          // has nothing to pay and shows where the payment stands.
+          : (
+            <LiveFund
+              orderId={params.id}
+              paymentId={params.pid}
+              fallback={<main className="home-page"><PaymentInstructions orderId={params.id} paymentId={params.pid} /></main>}
+            />
+          ),
     },
     {
       path: "/browse/:id",

@@ -121,9 +121,12 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
       case "step_approved": return `${who(row.actor_org_id)} approved ${step}`;
       case "step_completed": return `${step} is complete`;
       case "payment_due": return `${money(row.detail)} is due for ${step}`;
+      // A bank-wire claim from before payments moved to Stripe.
       case "payment_sent": return `${who(row.actor_org_id)} marked ${money(row.detail)} sent for ${step}`;
-      case "payment_confirmed": return `TSC confirmed ${money(row.detail)} for ${step}`;
-      case "payment_released": return `TSC released ${money(row.detail)} for ${step}`;
+      case "payment_processing": return `Bank payment for ${step} is clearing`;
+      case "payment_failed": return `The payment for ${step} did not go through`;
+      case "payment_confirmed": return `${money(row.detail)} funded for ${step}, held by TSC`;
+      case "payment_released": return `TSC paid out ${money(row.detail)} for ${step}`;
       case "schedule_agreed": return `${who(row.actor_org_id)} confirmed the production steps`;
       case "order_activated": return "Production started";
       case "cancellation_proposed": return `${who(row.actor_org_id)} proposed cancelling`;

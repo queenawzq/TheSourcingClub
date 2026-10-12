@@ -1,9 +1,11 @@
 /**
- * Payments — tracked, never held.
+ * Payments — held by TSC through Stripe until the brand approves the step.
  *
- * The platform is not in the money path. What it provides is the record that
- * a transfer happened and the third party who confirms it, which is the only
- * reason a factory in Ningbo would extend credit to a brand it has never met.
+ * The brand pays by card or US bank account (src/lib/domain/stripe.js and
+ * api/stripe-*); only the server records what Stripe says. The functions
+ * here read payments and carry the staff actions that stay by hand: legacy
+ * wire claims (confirm / not received) and paying a factory by bank where
+ * Stripe cannot pay out.
  *
  * The fee is read from fee_bps on the row rather than a constant here, so the
  * screen and the database cannot disagree about what a brand was shown, and
@@ -15,7 +17,9 @@ const PAYMENT_COLUMNS = `
   id, order_id, milestone_id, amount_cents, currency, fee_bps, state,
   due_at, brand_reference, sent_at, sent_note,
   confirmed_at, confirmed_note, amount_received_cents,
-  released_at, released_note, created_at
+  released_at, released_note, created_at,
+  charged_cents, payment_method_type, payment_method_label, failure_reason,
+  processing_at, failed_at, release_requested_at, stripe_payment_intent_id
 `;
 
 export async function listPayments(orderId) {
@@ -120,8 +124,13 @@ export async function markPaymentSent(paymentId, { reference, note } = {}) {
 
 /* --------------------------------- admin -------------------------------- */
 
-export async function paymentQueue() {
-  return unwrap(await supabase.rpc("admin_payment_queue"), "load the payment queue");
+/**
+ * Staff's payments board: every payment that needs a person or is worth
+ * watching (wire claims, bank payments clearing, failed, held, payouts owed).
+ * The old admin_payment_queue() stays for the old site only.
+ */
+export async function paymentBoard() {
+  return unwrap(await supabase.rpc("admin_payment_board"), "load the payments board");
 }
 
 export async function confirmPaymentReceived(paymentId, { amountReceived, note } = {}) {

@@ -1,0 +1,83 @@
+/* The factory Payments page's two live cards: "Get paid with Stripe" and the
+   bank details for manual payouts. No design draws them; they follow the
+   design's credit card on the same page (.factory-credit-billing-card). */
+.live-payout-method-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  margin: 0 0 14px;
+  padding: 18px 22px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.live-payout-method-card > div > span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.live-payout-method-card strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.live-payout-method-card p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.live-stripe-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.live-stripe-country {
+  display: grid;
+  gap: 6px;
+  max-width: 320px;
+  margin-top: 10px;
+}
+
+.live-stripe-country span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.live-stripe-country select {
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+}
+
+.live-stripe-error {
+  color: var(--danger);
+}
+
+@media (max-width: 760px) {
+  .live-payout-method-card {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+
+  .live-stripe-actions {
+    justify-content: flex-start;
+  }
+}

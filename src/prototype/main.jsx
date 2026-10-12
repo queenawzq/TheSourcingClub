@@ -1097,8 +1097,21 @@ export function FlowShell({
   // cannot be agreed while it has unsaved edits or does not add up).
   centerAction = null,
   primaryDisabled = false,
+  // Live only: a heading for what actually happened (a bank payment still
+  // clearing is not yet "funded").
+  heading = null,
 }) {
-  const meta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
+  const designMeta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
+  const baseMeta = heading ? { ...designMeta, ...heading } : designMeta;
+  // Funding a later step reads as App reads it: "Fund <step>", "Fund $X".
+  const meta = screen === "fund" && fundingMilestone
+    ? {
+        ...baseMeta,
+        title: `Fund ${fundingMilestone.title.toLowerCase()}`,
+        description: `Add ${fundingMilestone.amount} to project funds for ${fundingMilestone.title.toLowerCase()}. Funds stay protected until the related step is approved.`,
+        cta: `Fund ${fundingMilestone.amount}`
+      }
+    : baseMeta;
   // The prototype's App gives the contract and schedule screens this class too.
   const actionFlow = ["contract", "milestones"].includes(screen) ? " quote-action-flow" : "";
   // And Review brief its own, which lines the "What vendors need" card up with
@@ -3456,30 +3469,41 @@ function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
     );
   }
 
-  if (screen === "fund") {
-    const fundingSummary = calculateFundingSummary(fundingMilestone);
+  if (screen === "fund" || (screen === "success" && rail?.fund)) {
+    // Live: the real factory, step, fee and total from LiveFund; the
+    // design's estimated taxes are not charged, so that row is not drawn.
+    const live = rail?.fund ?? null;
+    const fundingSummary = live ?? calculateFundingSummary(fundingMilestone);
     return (
       <aside className="right-rail">
         <section className="project-funds-panel">
           <div className="accepted-factory">
-            <div className="factory-avatar">AM</div>
+            <div className="factory-avatar">{live ? live.initials : "AM"}</div>
             <div>
-              <strong>{selectedQuote}</strong>
-              <span>Porto, Portugal</span>
+              <strong>{live ? live.factory : selectedQuote}</strong>
+              <span>{live ? live.location : "Porto, Portugal"}</span>
             </div>
           </div>
           <h2>Project funds</h2>
           <div className="fund-summary-rows">
-            <Metric label={fundingMilestone ? "Payment" : "Payment 1"} value={fundingSummary.paymentLabel} />
+            <Metric label={live ? "Payment" : fundingMilestone ? "Payment" : "Payment 1"} value={fundingSummary.paymentLabel} />
             <Metric label="Subtotal" value={fundingSummary.subtotal} />
-            <Metric label="TSC service fee" value={fundingSummary.fee} />
-            <Metric label="Estimated taxes" value={fundingSummary.taxes} />
+            <Metric label={live ? live.feeLabel : "TSC service fee"} value={fundingSummary.fee} />
+            {live ? null : <Metric label="Estimated taxes" value={fundingSummary.taxes} />}
           </div>
           <div className="fund-total-row">
-            <span>Estimated total</span>
+            <span>{live ? live.totalLabel : "Estimated total"}</span>
             <strong>{fundingSummary.total}</strong>
           </div>
-          <button className="primary-btn fund-side-btn" type="button">{fundingMilestone ? "Fund milestone" : "Fund payment & start"}</button>
+          {live ? (
+            live.onSubmit ? (
+              <button className="primary-btn fund-side-btn" type="button" onClick={live.onSubmit} disabled={live.disabled}>
+                {live.cta}
+              </button>
+            ) : null
+          ) : (
+            <button className="primary-btn fund-side-btn" type="button">{fundingMilestone ? "Fund milestone" : "Fund payment & start"}</button>
+          )}
           <p className="payment-protection">
             <img src="/assets/prototype-icons/payment-protection.svg" alt="" />
             TSC Payment Protection
@@ -8308,16 +8332,15 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
           <img src="/assets/prototype-icons/close.svg" alt="" />
         </button>
         <header>
-          <p>{live ? "Approve and pay" : "Approve fund"}</p>
+          <p>Approve fund</p>
           <h2 id="approve-fund-title">
-            {live ? `Approve ${milestone.title.toLowerCase()}` : `Release ${milestone.amount} for ${milestone.title.toLowerCase()}`}
+            {`Release ${milestone.amount} for ${milestone.title.toLowerCase()}`}
           </h2>
-          {/* Live, payments are tracked bank transfers: approving makes this
-              step's payment due, and the brand sends it next. Nothing moves
-              on its own, so the design's "funds will move" would be untrue. */}
+          {/* Live, the brand funded this step through Stripe and TSC holds
+              the money: approving pays it to the factory. */}
           <span>
             {live
-              ? `Approving signs this step off and makes ${milestone.amount} due to ${other}. You'll send it by bank transfer from the step's payment page.`
+              ? `Approving releases ${milestone.amount} held by TSC to ${other}.`
               : "Funds will move from project funds to Atelier Minho after approval."}
           </span>
         </header>
@@ -8347,7 +8370,7 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
           <button className="primary-btn" type="button" disabled={live?.busy || undefined} onClick={live ? () => onApprove(note) : onApprove}>
-            {live ? (live.busy ? "Approving…" : "Approve fund") : "Approve and release fund"}
+            {live?.busy ? "Approving…" : "Approve and release fund"}
           </button>
         </footer>
       </section>
@@ -9962,34 +9985,48 @@ export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = nul
   );
 }
 
-function FundScreen({ fundingMilestone, goTo, setFundingMilestone }) {
+export function FundScreen({ fundingMilestone, goTo, setFundingMilestone, live = null }) {
+  // Live (src/app/order/LiveFund.jsx): Stripe's Payment Element takes the
+  // place of the example saved card, the discount code is not drawn (credits
+  // come later), and both "Before funding" boxes are the brand's to tick.
+  const agreed = live?.agreed ?? [];
+  const agreeBox = (index, defaultChecked) =>
+    live
+      ? { checked: Boolean(agreed[index]), onChange: (event) => live.onAgree(index, event.target.checked), name: `before_funding_${index + 1}` }
+      : { defaultChecked };
   return (
     <div className="stack">
       <Card title="Select billing method">
-        <div className="billing-method selected">
-          <span className="radio-mark" aria-hidden="true" />
-          <div>
-            <strong>Visa ending in 4242</strong>
-            <span>Default billing method</span>
-          </div>
-        </div>
-        <button className="billing-add-btn" type="button">+ Add a new billing method</button>
-        <label className="discount-code-field">
-          <span>Discount code</span>
-          <div>
-            <input type="text" placeholder="Enter code" />
-            <button className="secondary-btn compact-btn" type="button">Apply</button>
-          </div>
-          <small>$50 discounts can be applied to eligible orders.</small>
-        </label>
+        {live ? (
+          live.paymentElement
+        ) : (
+          <>
+            <div className="billing-method selected">
+              <span className="radio-mark" aria-hidden="true" />
+              <div>
+                <strong>Visa ending in 4242</strong>
+                <span>Default billing method</span>
+              </div>
+            </div>
+            <button className="billing-add-btn" type="button">+ Add a new billing method</button>
+            <label className="discount-code-field">
+              <span>Discount code</span>
+              <div>
+                <input type="text" placeholder="Enter code" />
+                <button className="secondary-btn compact-btn" type="button">Apply</button>
+              </div>
+              <small>$50 discounts can be applied to eligible orders.</small>
+            </label>
+          </>
+        )}
         <section className="before-funding">
           <h3>Before funding</h3>
           <label>
-            <input type="checkbox" defaultChecked />
+            <input type="checkbox" {...agreeBox(0, true)} />
             <span>I understand funds are only released after I approve the payment.</span>
           </label>
           <label>
-            <input type="checkbox" />
+            <input type="checkbox" {...agreeBox(1, false)} />
             <span>TSC may hold funds until the payment is approved or disputed.</span>
           </label>
         </section>
@@ -9998,35 +10035,45 @@ function FundScreen({ fundingMilestone, goTo, setFundingMilestone }) {
   );
 }
 
-function SuccessScreen({ goTo }) {
+export function SuccessScreen({ goTo, live = null }) {
   const goToDashboard = () => {
     window.history.replaceState(null, "", `${window.location.pathname}?screen=home`);
     goTo("home");
   };
 
+  // Live: what Stripe actually did (a card charged, or a bank payment still
+  // clearing) and the real factory, step and buttons.
   return (
     <div className="stack">
       <section className="success-card">
         <span className="success-mark">✓</span>
         <div className="success-copy">
-          <h2>Payment received</h2>
+          <h2>{live ? live.title : "Payment received"}</h2>
           <p>
-            $124.14 was charged to Visa ending in 4242. Atelier Minho has been notified that the
-            fit sample is ready to begin.
+            {live ? live.message : (
+              <>
+                $124.14 was charged to Visa ending in 4242. Atelier Minho has been notified that the
+                fit sample is ready to begin.
+              </>
+            )}
           </p>
         </div>
         <section className="success-next-panel">
           <h3>What happens next</h3>
           <p>
-            Atelier Minho prepares the fit sample and uploads photos when it is ready. You can
-            message the factory or review files from the project workspace.
+            {live ? live.next : (
+              <>
+                Atelier Minho prepares the fit sample and uploads photos when it is ready. You can
+                message the factory or review files from the project workspace.
+              </>
+            )}
           </p>
         </section>
         <div className="success-actions">
-          <button className="primary-btn" type="button" onClick={goToDashboard}>
-            Go to dashboard
+          <button className="primary-btn" type="button" onClick={live ? live.onDashboard : goToDashboard}>
+            {live?.dashboardLabel ?? "Go to dashboard"}
           </button>
-          <button className="secondary-btn" type="button">
+          <button className="secondary-btn" type="button" onClick={live?.onMessage}>
             Message factory
           </button>
         </div>

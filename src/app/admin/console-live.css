@@ -1,0 +1,13 @@
+/* Live only: the overview's payments card links to the payments board. */
+.admin-metric-link {
+  display: inline-block;
+  margin-top: 8px;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.admin-metric-link:hover {
+  text-decoration: underline;
+}

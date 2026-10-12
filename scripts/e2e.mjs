@@ -25,6 +25,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { Stagehand, localBrowser } from "@browserbasehq/stagehand";
 import { createClient } from "@supabase/supabase-js";
+import Stripe from "stripe";
 
 const APP = process.env.E2E_URL ?? "http://127.0.0.1:5173/app.html";
 const OUT = path.resolve("e2e-evidence");
@@ -49,6 +50,42 @@ const db = createClient(
   process.env.SUPABASE_SERVICE_KEY ?? stack.SECRET_KEY ?? stack.SERVICE_ROLE_KEY,
   { auth: { persistSession: false } },
 );
+
+// Stripe test mode, when this checkout has keys (.env.local, as the dev
+// server reads them). Without them the brand's payment is recorded through
+// the same service-only function the webhook uses, and the run says so.
+async function stripeKeys() {
+  const env = { ...process.env };
+  try {
+    for (const line of (await fs.readFile(".env.local", "utf8")).split("\n")) {
+      const at = line.indexOf("=");
+      if (at > 0 && !(line.slice(0, at) in env)) env[line.slice(0, at)] = line.slice(at + 1).trim();
+    }
+  } catch {
+    // No .env.local: the environment alone decides.
+  }
+  const secret = env.STRIPE_SECRET_KEY ?? "";
+  return {
+    stripe: secret.startsWith("sk_test_") ? new Stripe(secret) : null,
+    publishable: (env.VITE_STRIPE_PUBLISHABLE_KEY ?? "").startsWith("pk_test_"),
+  };
+}
+const STRIPE = await stripeKeys();
+const API = new URL(APP).origin;
+
+/** POST to one of the app's api routes as whoever the page is signed in as. */
+async function apiAs(page, route, body) {
+  const token = await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((name) => name.endsWith("-auth-token"));
+    return key ? JSON.parse(localStorage.getItem(key))?.access_token ?? "" : "";
+  });
+  const response = await fetch(`${API}/api/${route}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  return { status: response.status, body: await response.json().catch(() => ({})) };
+}
 
 const FIXTURE = path.join(OUT, "..", "e2e-fixture-registration.pdf");
 
@@ -1587,6 +1624,18 @@ async function main() {
     await page.waitForTimeout(3000);
     await record(page, "Brand confirms the steps", "its confirmation alone starts the order");
 
+    // Confirming opens the first step, its payment falls due at once, and
+    // "Continue to funding" lands on that payment's designed Fund screen.
+    check(/\/orders\/[^/]+\/payments\/[^/]+$/.test(await page.evaluate(() => location.pathname)),
+      "\"Continue to funding\" lands on the first payment's Fund screen");
+    if (STRIPE.publishable) {
+      await waitFor(page, '[data-testid="payment-element"] iframe', 30000);
+      check(true, "the Fund screen draws Stripe's Payment Element inside the design's billing card");
+      await record(page, "Fund first payment", "Stripe's card and bank form in the designed screen, fee and total beside it");
+    } else {
+      console.log("  (no pk_test_ key here: the Fund screen says payments are not set up, and the Payment Element is not checked)");
+    }
+
     const { data: confirmed } = await db.from("production_orders")
       .select("status, schedule_brand_agreed_at, schedule_factory_agreed_at")
       .eq("id", bornOrder.id).single();
@@ -1700,11 +1749,9 @@ async function main() {
       "posting is all the factory does: the step stays open, for the brand to approve from the update");
     await record(page, "Update posted", "the brand decides; the factory does not mark its own work done");
 
-    // Where the money goes. This run is what found that nothing wrote to this
-    // table: the brand's pay button is correctly disabled with no destination,
-    // and a factory had no way anywhere to supply one.
-    // The factory's Payments page: "Add details" on its Earnings tab opens
-    // the payout form.
+    // Where staff pay the factory by bank when Stripe cannot pay it out (this
+    // factory has no Stripe account). The factory's Payments page: "Add
+    // details" on its Earnings tab opens the form.
     await page.goto(`${APP}/payout`);
     await waitForHeading(page, "payments", 25000);
     await clickButton(page, "add details");
@@ -1712,7 +1759,7 @@ async function main() {
     await page.locator('[data-field="payout_account_name"]').fill(factoryName);
     await page.locator('[data-field="payout_account_number_last4"]').fill("4417");
     await page.locator('[data-field="payout_swift"]').fill("BCOMPTPL");
-    await record(page, "Where the factory gets paid", "no full account number is asked for, or stored");
+    await record(page, "Bank details for manual payouts", "no full account number is asked for, or stored");
 
     await page.locator('[data-testid="save-payout"]').click();
     await page.waitForTimeout(2500);
@@ -1720,20 +1767,35 @@ async function main() {
     const { data: payout } = await db.from("factory_payout_accounts")
       .select("id, account_number_last4").eq("org_id", factoryOrg.id).single();
     check(payout.account_number_last4 === "4417",
-      "the factory can say where its money goes — without which nobody can pay it");
+      "the factory can say where staff pay it by bank");
 
-    // ================= THE BRAND APPROVES, AND PAYS =================
-    console.log("\nTHE BRAND APPROVES, AND PAYS");
+    // ================= THE BRAND FUNDS THE STEP =================
+    // TSC holds the money through Stripe: the step's payment fell due as the
+    // step opened, and the brand funds it before the factory is told to go.
+    console.log("\nTHE BRAND FUNDS THE STEP");
+    const { data: dueNow } = await db.from("order_payments")
+      .select("id, state, amount_cents, fee_bps").eq("milestone_id", firstStep.id).single();
+    check(dueNow.state === "due", "the open step's payment is due before any work is approved");
+
+    // The factory has posted, but the money is not held yet: the screen
+    // must not tell it to rely on anything.
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="milestone-row"]', 25000);
+    const unfundedText = await page.locator("body").innerText();
+    check(/awaiting funding from the brand/i.test(unfundedText),
+      "the factory is told plainly the brand has not funded the step yet");
+    check(!/held by TSC/i.test(unfundedText), "and nothing says the money is held");
+    await record(page, "The factory waits", "nothing is held yet, and the screen says so");
+
     await signOutFully(page);
-    await signIn(page, brandEmail, "Brand approving");
+    await signIn(page, brandEmail, "Brand funding");
 
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-action"]', 25000);
     const rowAction = await page.locator('[data-testid="milestone-action"]').first().innerText();
-    // A paying step reads "Approve fund"; an approval-only one, "Approve".
-    check(/^approve( fund)?$/i.test(rowAction.trim()),
-      `the step the factory posted on offers the brand "Approve" (${rowAction.trim()})`);
-    await record(page, "Waiting on the brand", "the factory has posted; the row says Approve");
+    check(/^fund milestone$/i.test(rowAction.trim()),
+      `an unfunded paid step offers "Fund milestone", not "Approve" (${rowAction.trim()})`);
+    await record(page, "Fund before approving", "approval needs the money held");
 
     // The brand can actually see the factory's update. If the counterparty
     // policy were missing this is an empty panel and no error anywhere, which
@@ -1750,130 +1812,145 @@ async function main() {
     await waitFor(page, '[data-testid="step-updates"]', 25000);
     check((await page.locator('[data-testid="milestone-row"]').count()) > 0,
       "a step link opens its pop-up on top of the order, with the timeline behind it");
-    await page.locator(".step-updates-modal .secondary-btn").first().click();
-    await waitFor(page, '[data-testid="milestone-action"]', 25000);
-    // The row's action is the one its state allows, and approving opens the
-    // design's own dialog: an approval is never one stray click. The note
-    // typed there reaches approve_milestone.
-    await page.locator('[data-testid="milestone-action"]').first().click();
-    await waitFor(page, ".approve-fund-modal textarea", 10000);
-    await page.locator(".approve-fund-modal textarea").first().click();
-    await page.type("Fit approved, go ahead with bulk.");
-    await record(page, "Approve dialog", "the designed dialog, with real copy for a tracked payment");
-    await page.locator(".approve-fund-modal .primary-btn").first().click();
-    await page.waitForTimeout(4000);
-    await record(page, "Approved", "from the row's dialog, on the state that row is actually in");
 
-    const { data: dueNow } = await db.from("order_payments")
-      .select("id, state, amount_cents").eq("milestone_id", firstStep.id).single();
-    check(dueNow.state === "due", "approving the sample made its payment due");
-    const { data: approvedStep } = await db.from("order_milestones")
-      .select("approval_note").eq("id", firstStep.id).single();
-    check(approvedStep.approval_note === "Fit approved, go ahead with bulk.",
-      "the note typed in the approve dialog is stored with the approval");
+    // Approving before the money is held is refused by the database itself.
+    const { error: earlyApprove } = await (async () => {
+      const client = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });
+      await client.auth.signInWithPassword({ email: brandEmail, password: PASSWORD });
+      return client.rpc("approve_milestone", { target_milestone: firstStep.id, note: "too early" });
+    })();
+    check(Boolean(earlyApprove), `approving an unfunded paid step is refused (${earlyApprove?.message ?? "no error"})`);
 
-    await page.goto(`${APP}/orders/${bornOrder.id}/payments/${dueNow.id}`);
-    await waitFor(page, '[data-testid="pay-reference"]', 25000);
-    await record(page, "How to pay", "amount, destination, and the reference an admin will match");
+    if (STRIPE.stripe) {
+      // The Payment Element takes the card in Stripe's own frame, which a
+      // test cannot type into; the same PaymentIntent is confirmed here with
+      // Stripe's test card, and the page's own sync records it.
+      const checkout = await apiAs(page, "stripe-checkout", { paymentId: dueNow.id });
+      check(checkout.status === 200 && Boolean(checkout.body.clientSecret),
+        `checkout gives the Payment Element its client secret (${checkout.status})`);
+      check(Number(checkout.body.chargedCents) === Number(dueNow.amount_cents) + Math.floor(Number(dueNow.amount_cents) * Number(dueNow.fee_bps) / 10000),
+        `the charge is the step plus the service fee (${checkout.body.feeBps / 100}%)`);
+      const intentId = checkout.body.clientSecret.split("_secret_")[0];
+      await STRIPE.stripe.paymentIntents.confirm(intentId, { payment_method: "pm_card_visa", return_url: APP });
+      const synced = await apiAs(page, "stripe-sync", { paymentId: dueNow.id });
+      check(synced.body.state === "confirmed", `Stripe's answer is recorded: held by TSC (${synced.body.state})`);
+      check(/visa/i.test(synced.body.payment_method_label ?? ""), `with the card it was paid by (${synced.body.payment_method_label})`);
+    } else {
+      console.log("  (no sk_test_ key here: the payment is recorded through record_payment_funded, as the webhook would)");
+      const fee = Math.floor(Number(dueNow.amount_cents) * Number(dueNow.fee_bps) / 10000);
+      const charged = Number(dueNow.amount_cents) + fee;
+      await db.rpc("attach_payment_intent", { target_payment: dueNow.id, payment_intent: null, charged });
+      const { error: fundError } = await db.rpc("record_payment_funded", {
+        target_payment: dueNow.id, charge: null, method_type: "card", method_label: "Visa ···4242", received: charged,
+      });
+      check(!fundError, `the payment is recorded as funded (${fundError?.message ?? "ok"})`);
+    }
 
-    const shownReference = await page.locator('[data-testid="pay-reference"]').innerText();
-    check(shownReference.trim() === bornOrder.order_number,
-      `the reference on screen is the stored order number, not one composed in the browser (${shownReference})`);
-
-    const shownFee = await page.locator('[data-testid="pay-fee"]').innerText();
-    check(shownFee.replace(/[^0-9]/g, "") === "000",
-      `the platform fee is shown and charged at zero (${shownFee})`);
-
-    await clickButton(page, "i have sent this payment");
-    await page.waitForTimeout(3000);
-    await record(page, "Marked sent", "the brand's claim — not yet an arrival");
-
-    const { data: claimed } = await db.from("order_payments")
-      .select("state").eq("id", dueNow.id).single();
-    check(claimed.state === "sent", "the payment is recorded as sent");
-
-    const { data: notFunded } = await db.from("production_order_summary")
+    const { data: held } = await db.from("order_payments")
+      .select("state, release_requested_at").eq("id", dueNow.id).single();
+    check(held.state === "confirmed" && !held.release_requested_at,
+      "the money is held by TSC, and nothing is owed to the factory yet");
+    const { data: fundedHeader } = await db.from("production_order_summary")
       .select("paid_cents").eq("id", bornOrder.id).single();
-    check(Number(notFunded.paid_cents) === 0,
-      "the brand saying it paid does NOT count as funded");
-
-    // ================= THE FACTORY IS NOT TOLD TO START =================
-    // The negative half of the pair that carries this whole phase.
-    console.log("\nTHE FACTORY IS NOT TOLD TO START");
-    await signOutFully(page);
-    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory waiting", "factory");
+    check(Number(fundedHeader.paid_cents) === Number(dueNow.amount_cents),
+      `the header moved because a payment row moved (${fundedHeader.paid_cents})`);
 
     const secondStep = draftSteps[1];
-    await page.goto(`${APP}/orders/${bornOrder.id}`);
-    await waitFor(page, '[data-testid="milestone-row"]', 25000);
-    const waitingText = await page.locator("body").innerText();
-    check(!/you can start this step/i.test(waitingText),
-      "nothing tells the factory to start on the strength of the brand's word");
-    check(/awaiting our confirmation/i.test(waitingText),
-      "the factory is told plainly that we have not confirmed it yet");
-    await record(page, "The factory waits", "the brand says it paid. That is not enough, and the screen says so");
-
     const { data: stillShut } = await db.from("order_milestones")
       .select("state").eq("id", secondStep.id).single();
-    check(stillShut.state === "pending",
-      "the next step is still shut while the payment is only claimed");
+    check(stillShut.state === "pending", "the next step waits for the brand's approval, not for the money");
 
-    // ================= AN ADMIN CONFIRMS =================
-    console.log("\nAN ADMIN CONFIRMS");
+    // ================= THE FACTORY SEES THE MONEY HELD =================
+    console.log("\nTHE FACTORY SEES THE MONEY HELD");
     await signOutFully(page);
-    await signIn(page, adminEmail, "Admin confirming");
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory, funded", "factory");
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="milestone-row"]', 25000);
+    const heldText = await page.locator("body").innerText();
+    check(/held by TSC/i.test(heldText),
+      "the same screen that said \"awaiting funding\" now says the money is held");
+    await record(page, "Funded: held by TSC", "the factory can rely on money TSC holds, not on the brand's word");
 
+    // ================= THE BRAND APPROVES, AND TSC PAYS OUT =================
+    console.log("\nTHE BRAND APPROVES, AND TSC PAYS OUT");
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand approving");
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="milestone-action"]', 25000);
+    const approveAction = await page.locator('[data-testid="milestone-action"]').first().innerText();
+    check(/^approve fund$/i.test(approveAction.trim()),
+      `once funded, the step offers "Approve fund" (${approveAction.trim()})`);
+    // Approving opens the design's own dialog: an approval is never one
+    // stray click. The note typed there reaches approve_milestone.
+    await page.locator('[data-testid="milestone-action"]').first().click();
+    await waitFor(page, ".approve-fund-modal textarea", 10000);
+    const dialogText = await page.locator(".approve-fund-modal").innerText();
+    check(/releases .* held by TSC to /i.test(dialogText),
+      "the dialog says approving releases the money TSC holds to the factory");
+    await page.locator(".approve-fund-modal textarea").first().click();
+    await page.type("Fit approved, go ahead with bulk.");
+    await record(page, "Approve dialog", "the designed dialog: approving releases what TSC holds");
+    await page.locator(".approve-fund-modal .primary-btn").first().click();
+    await page.waitForTimeout(5000);
+    await record(page, "Approved", "the step is done and its payout requested");
+
+    const { data: approvedStep } = await db.from("order_milestones")
+      .select("state, approval_note").eq("id", firstStep.id).single();
+    check(approvedStep.approval_note === "Fit approved, go ahead with bulk.",
+      "the note typed in the approve dialog is stored with the approval");
+    check(approvedStep.state === "complete", "approving a funded step completes it");
+    const { data: owed } = await db.from("order_payments")
+      .select("state, release_requested_at").eq("id", dueNow.id).single();
+    check(Boolean(owed.release_requested_at), "and asks for the factory's payout");
+    // This factory has no Stripe account, so nothing is transferred: the
+    // payout waits for staff.
+    check(owed.state === "confirmed",
+      `a factory with no Stripe account is not paid automatically; staff pay it (${owed.state})`);
+    const { data: opened } = await db.from("order_milestones")
+      .select("state").eq("id", secondStep.id).single();
+    check(opened.state === "active", "the next step opened on the approval");
+
+    // ================= STAFF PAY THE FACTORY BY BANK =================
+    console.log("\nSTAFF PAY THE FACTORY BY BANK");
+    await signOutFully(page);
+    await signIn(page, adminEmail, "Admin paying out");
     await page.goto(`${APP}/admin/payments`);
     await waitForHeading(page, "payments", 25000);
     const adminHeading = await page.locator("h1").first().innerText();
-    check(/payment/i.test(adminHeading),
-      `the payments queue is its own page (${adminHeading})`);
-    await record(page, "The payment queue", "a required step, not a convenience: staff have no org to notify");
+    check(/payment/i.test(adminHeading), `the payments board is its own page (${adminHeading})`);
+    // The heading is drawn while the board is still loading.
+    await waitFor(page, '[data-section="payout"]', 25000);
+    const owedSection = await page.locator('[data-section="payout"]').innerText();
+    check(owedSection.includes(bornOrder.order_number),
+      "the approved payment is under \"Payout owed\", named by its order");
+    check(/pay by bank/i.test(owedSection), "with the factory's bank details to pay it by hand");
+    await record(page, "The payments board", "a required step: staff have no org to notify");
 
-    const paymentQueueText = await page.locator("body").innerText();
-    check(paymentQueueText.includes(bornOrder.order_number),
-      "the payment is in the queue, named by the order the brand referenced");
-
-    // This order's row: the queue also holds any other payment waiting on
-    // staff (the demo data leaves one there on purpose).
-    const confirmedOwnRow = await page.evaluate((orderNumber) => {
-      const button = [...document.querySelectorAll('[data-testid="confirm-payment"]')]
+    // This order's row: the board also holds the demo data's own rows.
+    const paidOwnRow = await page.evaluate((orderNumber) => {
+      const button = [...document.querySelectorAll('[data-section="payout"] [data-testid="release-payment"]')]
         .find((candidate) => candidate.closest("tr")?.innerText.includes(orderNumber));
       button?.click();
       return Boolean(button);
     }, bornOrder.order_number);
-    check(confirmedOwnRow, "the admin confirms this order's payment, by its row in the queue");
+    check(paidOwnRow, "staff mark it paid out by bank, from its row");
     await page.waitForTimeout(3500);
-    await record(page, "Confirmed", "this click is what a factory on the other side of the world is relying on");
+    await record(page, "Paid out by bank", "for a factory Stripe cannot pay");
 
-    const { data: confirmedRow } = await db.from("order_payments")
-      .select("state, confirmed_by").eq("id", dueNow.id).single();
-    check(confirmedRow.state === "confirmed", "the payment is confirmed");
-    check(Boolean(confirmedRow.confirmed_by), "and stamped with which member of staff did it");
+    const { data: paidOut } = await db.from("order_payments")
+      .select("state, released_by").eq("id", dueNow.id).single();
+    check(paidOut.state === "released", "the payment is paid out");
+    check(Boolean(paidOut.released_by), "and stamped with which member of staff did it");
 
-    const { data: opened } = await db.from("order_milestones")
-      .select("state").eq("id", secondStep.id).single();
-    check(opened.state === "active",
-      "the next step opened on the confirmation, without waiting for funds to be released");
-
-    // ================= AND NOW IT MAY START =================
-    // The same screen, the same factory, the opposite answer — with only an
-    // admin's click in between. This pair is the whole phase.
-    console.log("\nAND NOW IT MAY START");
+    // ================= AND THE FACTORY SEES IT PAID =================
+    console.log("\nAND THE FACTORY SEES IT PAID");
     await signOutFully(page);
-    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory told to start", "factory");
-
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory paid", "factory");
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-row"]', 25000);
-    const clearedText = await page.locator("body").innerText();
-    check(/you can start this step/i.test(clearedText),
-      "the same screen that refused two steps ago now says the work may start");
-    await record(page, "Cleared to work", "nothing changed but an admin confirming the money arrived");
-
-    const { data: finalHeader } = await db.from("production_order_summary")
-      .select("paid_cents, outstanding_cents").eq("id", bornOrder.id).single();
-    check(Number(finalHeader.paid_cents) === Number(dueNow.amount_cents),
-      `the header moved because a payment row moved (${finalHeader.paid_cents})`);
+    check(/paid out/i.test(await page.locator("body").innerText()),
+      "the factory's order says the step was paid out");
+    await record(page, "Paid out", "the step done and the money with the factory");
 
     // ================= THEY TALK =================
     // Both prototypes design a messaging screen and neither one works: Send is
@@ -2185,9 +2262,11 @@ async function main() {
     await record(page, "Payments", "the brand's order payments, on the designed Payments page");
     const paymentsText = await page.locator(".billing-history-page").innerText();
     const { data: brandPayments } = await db.from("order_payments")
-      .select("id, state, amount_cents, order_id").eq("order_id", bornOrder.id).neq("state", "not_due");
-    check(brandPayments.length > 0 && brandPayments.every((payment) => paymentsText.includes(`$${(payment.amount_cents / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`)),
-      `every payment on the brand's order that is due or further along is listed (${brandPayments.length})`);
+      .select("id, state, amount_cents, fee_bps, charged_cents, order_id").eq("order_id", bornOrder.id).neq("state", "not_due");
+    // Each row is what the brand is charged: the step plus the service fee.
+    const chargedOf = (payment) => Number(payment.charged_cents ?? Number(payment.amount_cents) + Math.floor(Number(payment.amount_cents) * Number(payment.fee_bps) / 10000));
+    check(brandPayments.length > 0 && brandPayments.every((payment) => paymentsText.includes(`$${(chargedOf(payment) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`)),
+      `every payment on the brand's order that is due or further along is listed, fee included (${brandPayments.length})`);
     check(/Funded|Paid/.test(paymentsText) && paymentsText.includes(factoryName), "with its state in the design's words and the factory's name");
     const { data: header } = await db.from("production_order_summary").select("paid_cents").eq("id", bornOrder.id).single();
     check(paymentsText.includes(`$${(Number(header.paid_cents) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`),
@@ -2719,20 +2798,17 @@ async function main() {
       "",
       "## And the one worth reading twice again",
       "",
-      "Four assertions describe the same screen, seen by the same factory, four",
-      "minutes apart:",
+      "Three assertions describe the same screen, seen by the same factory:",
       "",
-      "> nothing tells the factory to start on the strength of the brand's word  ",
-      "> the next step is still shut while the payment is only claimed  ",
-      "> *(an admin confirms the money arrived)*  ",
-      "> the next step opened on the confirmation, without waiting for funds to be released  ",
-      "> the same screen that refused two steps ago now says the work may start",
+      "> the factory is told plainly the brand has not funded the step yet  ",
+      "> *(the brand pays by card through Stripe; TSC holds it)*  ",
+      "> the same screen that said \"awaiting funding\" now says the money is held  ",
+      "> *(the brand approves; staff pay a factory Stripe cannot reach by bank)*  ",
+      "> the factory's order says the step was paid out",
       "",
-      "Nothing changed in between but one click by a member of staff. That click is",
-      "the entire reason a factory in Ningbo would extend credit to a brand in",
-      "Brooklyn it has never met: it is not taking the brand's word, and it is not",
-      "taking ours either — it is reading a stamp written by a third party who",
-      "checked the account. Remove the admin step and the platform is a notepad.",
+      "A factory in Ningbo extends credit to a brand in Brooklyn it has never met",
+      "because it is not taking the brand's word: the money is held by TSC before",
+      "the work, and released to it when the brand approves.",
       "",
       "## And the conversation",
       "",
