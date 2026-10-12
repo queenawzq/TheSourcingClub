@@ -614,6 +614,20 @@ must(await factory.client.from("saved_brands").insert({
   org_id: factoryOrg.id, brand_org_id: brandOrg.id, saved_by: factory.id,
 }), "factory saves the brand");
 
+// A message held for review: the brand asks to move to WeChat. It is saved to
+// be checked first, and the verdict is recorded with the secret key, as the
+// server does. The brand sees it in the thread; the factory sees nothing of
+// it until staff release it.
+const heldMessage = must(await brand.client.from("messages").insert({
+  thread_id: threadId, sender_org_id: brandOrg.id, sender_user_id: brand.id,
+  body: "Easier to sort the details on WeChat, my ID is demo_brand_88.",
+  delivery: "checking",
+}).select("id").single(), "message to check");
+must(await admin.rpc("record_message_screening", {
+  target_message: heldMessage.id, outcome: "held", method: "pattern", reason: "WeChat ID",
+}), "hold the message");
+console.log("a message held for review, on the request conversation above");
+
 console.log("orders");
 // 1. Waiting for its production steps, the state right after an award.
 const merino = await publishRequest({
