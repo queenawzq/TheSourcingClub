@@ -26,7 +26,7 @@ export default function QuoteActionDialog({ title, body, confirmLabel, busyLabel
   }
 
   return createPortal(
-    <div className="brand-profile-modal-layer" data-testid={testId}>
+    <div className="brand-profile-modal-layer quote-action-dialog-layer" data-testid={testId}>
       <button className="brand-profile-modal-scrim" type="button" aria-label={keepLabel} onClick={onClose} />
       <section className="brand-profile-modal" role="dialog" aria-modal="true" aria-labelledby={`${testId}-title`}>
         <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={onClose}>×</button>

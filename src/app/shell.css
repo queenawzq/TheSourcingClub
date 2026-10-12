@@ -527,6 +527,54 @@ body {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.quote-review-stack,
+.quote-review-stack .quote-list,
+.quote-review-stack .quote-card,
+.quote-review-stack .quote-factory-content,
+.quote-review-stack .quote-factory-top,
+.quote-review-stack .quote-factory-body,
+.quote-review-stack .quote-spec-panel {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.quote-review-stack .quote-stat-grid strong,
+.quote-review-stack .factory-note-box span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .quote-review-stack .quote-compare-topbar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .quote-review-stack .quote-compare-topbar-actions {
+    justify-content: space-between;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .quote-review-stack .quote-factory-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-review-stack .quote-actions {
+    justify-self: start;
+    justify-content: flex-start;
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap !important;
+  }
+
+  .marketplace-stat-grid.quote-stat-grid:has(> div:nth-child(4)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* At phone width four tiles in a row cut off the figures; two rows of two
    keep each one readable. */
 @media (max-width: 760px) {

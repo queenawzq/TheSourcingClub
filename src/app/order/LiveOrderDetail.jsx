@@ -364,6 +364,14 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       ...reminder,
       // post_milestone_update takes a post only while work is happening.
       canComment: running && (milestone.state === "active" || milestone.state === "submitted"),
+      // Keep the factory's next action visible on every work/approval step,
+      // just as the brand sees its future milestone CTAs. Pending buttons are
+      // disabled until sequencing opens the step; payment-only rows need no
+      // factory update at all.
+      showUpdateAction: running
+        && milestone.state !== "complete"
+        && milestone.state !== "cancelled"
+        && milestone.kind !== "payment_only",
       canDispute: running && !hasDispute && (milestone.state === "active" || milestone.state === "submitted"),
       ...next,
       // The latest real update, on the steps where work is happening.

@@ -58,21 +58,23 @@ export function latestUpdateFor(milestoneId, updates, { urls = {}, onViewAll } =
   const mine = updates.filter((update) => update.milestone_id === milestoneId);
   if (!mine.length) return null;
   const latest = mine[0];
-  const documents = latest.documents ?? [];
-  const photos = documents.filter((doc) => PHOTO.test(doc.mime_type ?? "")).slice(0, 3);
-  return {
-    author: latest.orgs?.name ?? "",
-    when: updateTime(latest.created_at),
-    body: latest.body,
-    photos: photos.map((doc) => ({ id: doc.id, url: urls[doc.id] ?? null, label: doc.file_name })),
-    extraFiles: documents.length - photos.length,
-    total: mine.length,
-    history: mine.map((update) => ({
+  const shapeUpdate = (update) => {
+    const documents = update.documents ?? [];
+    const photos = documents.filter((doc) => PHOTO.test(doc.mime_type ?? "")).slice(0, 3);
+    return {
       id: update.id,
       author: update.orgs?.name ?? "",
       when: updateTime(update.created_at),
       body: update.body,
-    })),
+      photos: photos.map((doc) => ({ id: doc.id, url: urls[doc.id] ?? null, label: doc.file_name })),
+      extraFiles: documents.length - photos.length,
+    };
+  };
+  const latestShaped = shapeUpdate(latest);
+  return {
+    ...latestShaped,
+    total: mine.length,
+    history: mine.map(shapeUpdate),
     onViewAll,
   };
 }
@@ -260,6 +262,19 @@ export function newRow(rows) {
     due_on: "",
     note: "",
   };
+}
+
+/** Move one schedule row by swapping its stored position with its neighbour. */
+export function moveScheduleRow(rows, index, offset) {
+  const destination = index + offset;
+  if (index < 0 || index >= rows.length || destination < 0 || destination >= rows.length) return rows;
+  const reordered = [...rows];
+  [reordered[index], reordered[destination]] = [reordered[destination], reordered[index]];
+  const sourceSort = rows[index].sort;
+  const destinationSort = rows[destination].sort;
+  reordered[index] = { ...reordered[index], sort: sourceSort };
+  reordered[destination] = { ...reordered[destination], sort: destinationSort };
+  return reordered;
 }
 
 const PAYS = new Set(["approval_and_payment", "payment_only"]);

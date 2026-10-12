@@ -5780,12 +5780,12 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   );
 }
 
-export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, onEdit, onWithdraw, quote, status, priceTotal }) {
+export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, backLabel = "‹ Back to RFQs", onEdit, onWithdraw, quote, status, priceTotal }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-rfq-read-page">
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header factory-rfq-read-header">
-          <button className="text-link" type="button" onClick={onBack}>‹ Back to RFQs</button>
+          <button className="text-link" type="button" onClick={onBack}>{backLabel}</button>
           <h1>View RFQ</h1>
           <p>Review the brand request and the quote you submitted.</p>
           {/* Live passes null once the quote can no longer change: accepted,
@@ -9060,6 +9060,7 @@ export function FactoryProjectDetail({
   companyType = "factory",
   language,
   onBack,
+  backLabel = "‹ Back to explore",
   onSendQuote,
   // Live mounts pass these; the prototype passes none and is unchanged.
   brief,
@@ -9091,7 +9092,7 @@ export function FactoryProjectDetail({
   return (
     <main className="factory-detail-page factory-rfq-detail-page">
       <header className="factory-detail-header">
-        <button className="text-link" type="button" onClick={onBack}>‹ Back to explore</button>
+        <button className="text-link" type="button" onClick={onBack}>{backLabel}</button>
         <h1>RFQ details</h1>
         <p>{companyType === "trading" ? "Review the brand request, attachments, and quote requirements before sending your company response." : "Review the brand request, attachments, and quote requirements before sending your factory response."}</p>
       </header>
@@ -9428,7 +9429,21 @@ export function FactoryProjectProgressDetail({
       <header className="factory-detail-header factory-project-detail-header">
         <button className="text-link" type="button" onClick={onBack}>‹ Back to production orders</button>
         <h1 data-no-translate>{isZh ? getTranslatedProjectTitle(title) : title}</h1>
-        <p data-no-translate>{isZh ? getTranslatedListMeta(subtitle) : subtitle}</p>
+        <p className="factory-project-detail-subtitle" data-no-translate>{isZh ? getTranslatedListMeta(subtitle) : subtitle}</p>
+        {onCancelOrder && (
+          <OrderCardMenu customTabs={[]} onToggleTab={() => {}}>
+            {(close) => (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  close();
+                  onCancelOrder();
+                }}
+              >Cancel order</button>
+            )}
+          </OrderCardMenu>
+        )}
         {error && <p className="composer-error" role="alert">{error.message}</p>}
       </header>
 
@@ -9492,7 +9507,6 @@ export function FactoryProjectProgressDetail({
               </div>
             </div>
             <button className="secondary-btn" type="button" onClick={onMessage}>Message</button>
-            {onCancelOrder && <button className="order-cancel-link" type="button" onClick={onCancelOrder}>Cancel order</button>}
           </section>
 
           <section className="factory-side-card activity-card">
@@ -9652,9 +9666,11 @@ function FactoryContractDetailsPanel({ contract }) {
 }
 
 function FactoryMilestoneItem({ milestone, index, onAddUpdate, live = false, showUpdate = false }) {
-  // Live rows say what they allow: "Add update" only while work is happening
-  // on the step.
-  const canUpdate = !live || milestone.canComment;
+  // Live rows keep the next action visible on every work/approval step. The
+  // database still owns sequencing, so future actions are disabled until the
+  // step opens rather than disappearing from the schedule.
+  const showUpdateAction = !live || milestone.showUpdateAction || milestone.canComment;
+  const updateDisabled = live && !milestone.canComment;
 
   return (
     <article
@@ -9674,8 +9690,14 @@ function FactoryMilestoneItem({ milestone, index, onAddUpdate, live = false, sho
         {milestone.dueStatus && (
           <span className={`project-status shared-card-status ${milestone.dueTone}`}>{milestone.dueStatus}</span>
         )}
-        {canUpdate && (
-          <button className="secondary-btn" type="button" onClick={() => onAddUpdate(milestone)}>Add update</button>
+        {showUpdateAction && (
+          <button
+            className="secondary-btn"
+            type="button"
+            disabled={updateDisabled || undefined}
+            title={updateDisabled ? "Available when this milestone opens" : undefined}
+            onClick={() => onAddUpdate(milestone)}
+          >Add update</button>
         )}
       </div>
       {/* Below the step and its actions, across the row, so the note is not
@@ -9688,7 +9710,8 @@ function FactoryMilestoneItem({ milestone, index, onAddUpdate, live = false, sho
 function FactoryPostedUpdateCard({ update }) {
   const [expanded, setExpanded] = useState(false);
   // Live passes the step's latest real update:
-  // `{ author, when, body, photos, extraFiles, total, history, onViewAll }`.
+  // Each history item carries its own photos/files, so attachments remain
+  // directly beneath the update that introduced them.
   if (update) {
     const visibleUpdates = expanded ? update.history : update.history?.slice(0, 1);
     return (
@@ -9708,22 +9731,22 @@ function FactoryPostedUpdateCard({ update }) {
                 )}
               </div>
               <p>{item.body}</p>
+              {(item.photos?.length > 0 || item.extraFiles > 0) && (
+                <div className="factory-posted-file-row">
+                  {item.photos?.map((photo) => (
+                    <div className="factory-posted-file" key={photo.id}>
+                      {photo.url ? <img src={photo.url} alt="" /> : null}
+                      <span>{photo.label}</span>
+                    </div>
+                  ))}
+                  {item.extraFiles > 0 && (
+                    <button type="button" onClick={update.onViewAll}>+{item.extraFiles} {item.extraFiles === 1 ? "file" : "files"}</button>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
-        {(update.photos.length > 0 || update.extraFiles > 0) && (
-          <div className="factory-posted-file-row">
-            {update.photos.map((photo) => (
-              <div className="factory-posted-file" key={photo.id}>
-                {photo.url ? <img src={photo.url} alt="" /> : null}
-                <span>{photo.label}</span>
-              </div>
-            ))}
-            {update.extraFiles > 0 && (
-              <button type="button" onClick={update.onViewAll}>+{update.extraFiles} {update.extraFiles === 1 ? "file" : "files"}</button>
-            )}
-          </div>
-        )}
       </div>
     );
   }
@@ -9756,10 +9779,52 @@ function AddUpdateModal({ language, milestone, onClose, onPost, live = null }) {
   // Live: a real note and real photos, handed to onPost({ body, files }).
   const [body, setBody] = useState("");
   const [photos, setPhotos] = useState([]);
+  const [draggingPhotos, setDraggingPhotos] = useState(false);
+  const [uploadError, setUploadError] = useState("");
   const fileInput = useRef(null);
+  const previewUrls = useRef(new Set());
   const isZh = language === "zh";
   const milestoneTitle = isZh ? translateFactoryMainText(milestone.title) : milestone.title.toLowerCase();
   const brand = live?.counterparty || "Maison Rue";
+
+  useEffect(() => () => {
+    previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    previewUrls.current.clear();
+  }, []);
+
+  function addPhotos(files) {
+    const candidates = Array.from(files ?? []);
+    const images = candidates.filter((file) => (
+      ["image/jpeg", "image/png"].includes(file.type)
+      || /\.(jpe?g|png)$/i.test(file.name)
+    ));
+    if (images.length !== candidates.length) {
+      setUploadError("Only JPG and PNG images can be added.");
+    } else {
+      setUploadError("");
+    }
+
+    const existing = new Set(photos.map(({ file }) => `${file.name}-${file.size}-${file.lastModified}`));
+    const uniqueImages = images.filter((file) => !existing.has(`${file.name}-${file.size}-${file.lastModified}`));
+    const available = Math.max(0, 10 - photos.length);
+    const added = uniqueImages.slice(0, available).map((file) => {
+      const url = URL.createObjectURL(file);
+      previewUrls.current.add(url);
+      return { file, url, id: `${file.name}-${file.size}-${file.lastModified}` };
+    });
+    if (uniqueImages.length > added.length) setUploadError("You can add up to 10 photos.");
+    setPhotos([...photos, ...added]);
+  }
+
+  function removePhoto(id) {
+    setPhotos((current) => current.filter((photo) => {
+      if (photo.id !== id) return true;
+      URL.revokeObjectURL(photo.url);
+      previewUrls.current.delete(photo.url);
+      return false;
+    }));
+    setUploadError("");
+  }
 
   return (
     <div className="factory-update-modal-layer" role="presentation">
@@ -9786,21 +9851,53 @@ function AddUpdateModal({ language, milestone, onClose, onPost, live = null }) {
           )}
         </label>
 
-        <button className="factory-update-upload" type="button" onClick={live ? () => fileInput.current?.click() : undefined}>
-          <strong>{isZh ? "+ 上传照片" : "+ Upload photos"}</strong>
-          <span>{live && photos.length ? photos.map((file) => file.name).join(", ") : isZh ? "JPG 或 PNG，最多 10 个文件" : "JPG or PNG, up to 10 files"}</span>
+        {live && photos.length > 0 && (
+          <div className="factory-update-file-list" aria-label={`${photos.length} selected photos`}>
+            {photos.map((photo) => (
+              <div className="factory-update-file" key={photo.id}>
+                <img src={photo.url} alt="" />
+                <div>
+                  <strong>{photo.file.name}</strong>
+                  <span>{(photo.file.size / 1024).toFixed(photo.file.size < 10240 ? 1 : 0)} KB</span>
+                </div>
+                <button type="button" aria-label={`Remove ${photo.file.name}`} onClick={() => removePhoto(photo.id)}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          className={`factory-update-upload${draggingPhotos ? " is-dragging" : ""}`}
+          type="button"
+          onClick={live ? () => fileInput.current?.click() : undefined}
+          onDragEnter={live ? (event) => { event.preventDefault(); setDraggingPhotos(true); } : undefined}
+          onDragOver={live ? (event) => { event.preventDefault(); setDraggingPhotos(true); } : undefined}
+          onDragLeave={live ? (event) => {
+            if (!event.currentTarget.contains(event.relatedTarget)) setDraggingPhotos(false);
+          } : undefined}
+          onDrop={live ? (event) => {
+            event.preventDefault();
+            setDraggingPhotos(false);
+            addPhotos(event.dataTransfer.files);
+          } : undefined}
+        >
+          <strong>{isZh ? (photos.length ? "+ 添加更多照片" : "+ 上传照片") : (photos.length ? "+ Add more photos" : "+ Upload photos")}</strong>
+          <span>{isZh ? "拖放或点击选择 · JPG 或 PNG，最多 10 个文件" : "Drag and drop or click to choose · JPG or PNG, up to 10 files"}</span>
         </button>
         {live && (
           <input
             ref={fileInput}
             type="file"
-            accept="image/*,application/pdf"
+            accept="image/jpeg,image/png"
             multiple
             hidden
             data-testid="update-files"
-            onChange={(event) => setPhotos(Array.from(event.target.files ?? []).slice(0, 10))}
+            onChange={(event) => {
+              addPhotos(event.target.files);
+              event.target.value = "";
+            }}
           />
         )}
+        {uploadError && <p className="factory-update-upload-error" role="alert">{uploadError}</p>}
         {live?.error && <p className="composer-error" role="alert">{live.error.message}</p>}
 
         <footer>
@@ -9812,7 +9909,7 @@ function AddUpdateModal({ language, milestone, onClose, onPost, live = null }) {
               className="primary-btn"
               type="button"
               disabled={live.busy || !body.trim()}
-              onClick={() => onPost({ body, files: photos })}
+              onClick={() => onPost({ body, files: photos.map((photo) => photo.file) })}
             >
               {live.busy ? "Posting…" : "Post update"}
             </button>
@@ -9844,6 +9941,12 @@ export function FactorySubmitQuote({
 }) {
   const isZh = language === "zh";
   const cardRef = useRef(null);
+  const warningRef = useRef(null);
+
+  useEffect(() => {
+    if (!error) return;
+    warningRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [error]);
 
   /**
    * Read the quote off the card.
@@ -9855,7 +9958,7 @@ export function FactorySubmitQuote({
   const readQuote = () => {
     const out = {};
     for (const node of cardRef.current?.querySelectorAll("[data-quote-field]") ?? []) {
-      out[node.dataset.quoteField] = node.textContent?.trim() ?? "";
+      out[node.dataset.quoteField] = node.dataset.quoteValue ?? node.textContent?.trim() ?? "";
     }
     return out;
   };
@@ -9869,6 +9972,15 @@ export function FactorySubmitQuote({
           <p>Set the unit price, sample path, lead time, and any questions before sending your quote.</p>
           {isZh && <small className="submit-page-language-hint">You can fill this page in Chinese. We'll create an English version for you to review before sending.</small>}
         </header>
+
+        {error && (
+          <section ref={warningRef} className="factory-review-warning factory-quote-form-warning" role="alert" aria-live="assertive">
+            <div className="factory-review-warning-copy">
+              <strong>{isZh ? "报价信息尚未填写完整" : "Complete the quote before reviewing"}</strong>
+              <p>{error.message ?? String(error)}</p>
+            </div>
+          </section>
+        )}
 
         <div className="factory-submit-layout">
           <section className="factory-submit-main">
@@ -9890,7 +10002,6 @@ export function FactorySubmitQuote({
           >
             {draftState === "saving" ? "Saving…" : draftState === "saved" ? "Draft saved" : "Save draft"}
           </button>
-          {error && <p className="composer-error" role="alert">{error.message ?? String(error)}</p>}
           <button
             className="primary-btn"
             type="button"
@@ -9950,6 +10061,30 @@ export function FactoryReviewTotal({
           {isZh && <small className="submit-page-language-hint">以下英文发送版本已自动翻译，可直接在原字段中编辑。</small>}
         </header>
 
+        {(short || error) && (
+          <section className="factory-review-warning" role="alert" aria-live="assertive">
+            <div className="factory-review-warning-copy">
+              <strong>
+                {error
+                  ? (isZh ? "报价尚未准备好发送" : "Quote not ready to send")
+                  : (isZh ? "额度不足" : "Not enough credits")}
+              </strong>
+              <p>
+                {error
+                  ? error
+                  : `Sending costs ${cost} credits and you have ${creditBalance}. Buy more to send this quote.`}
+              </p>
+            </div>
+            <button
+              className="secondary-btn compact-btn"
+              type="button"
+              onClick={error ? onEdit : onPurchaseCredits}
+            >
+              {error ? (isZh ? "编辑报价" : "Edit quote") : tx("Purchase more credits")}
+            </button>
+          </section>
+        )}
+
         <div className="factory-review-layout">
           <section className="factory-review-main">
             <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} />
@@ -9958,14 +10093,6 @@ export function FactoryReviewTotal({
 
           <aside className="factory-review-side">
             <FactoryPriceTotalCard project={project} total={priceTotal} />
-
-            {(short || error) && (
-              <p className="factory-credit-short" role="alert">
-                {error
-                  ? error
-                  : `Sending costs ${cost} credits and you have ${creditBalance}. Buy more to send this quote.`}
-              </p>
-            )}
 
             <section className="factory-submit-card factory-credit-cost-card">
               <div className="factory-credit-card-header">
@@ -10018,6 +10145,9 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
   const requestImages = project.images || [];
   const [primaryImage, ...supportImages] = requestImages;
   const hasGallery = requestImages.length >= 3;
+  const fitLabel = companyType === "trading"
+    ? "Network fit · Supplier coverage confirmed"
+    : project.capacity?.join(" · ");
   const requestFacts = [
     ["Unit target", project.budget],
     ["Quantity", project.quantity],
@@ -10036,7 +10166,7 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
           </div>
         </div>
         <div className="factory-request-card-actions">
-          <span className={`factory-project-fit ${project.fitTone}`}>{companyType === "trading" ? "Network fit · Supplier coverage confirmed" : project.capacity.join(" · ")}</span>
+          {fitLabel && <span className={`factory-project-fit ${project.fitTone}`}>{fitLabel}</span>}
         </div>
       </header>
 
@@ -10183,9 +10313,15 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
             value={values?.capacityWindow ?? (values ? "" : (companyType === "trading" ? "Aug 12-30 · partner confirmed" : "Aug 12-30 · 420 units"))}
             {...reviewFieldProps}
           />
-          <QuoteField name="paymentTerms" label="Payment terms" value={values?.paymentTerms ?? "30% deposit / 70% before shipment"} {...reviewFieldProps} />
+          <QuoteField
+            name="paymentTerms"
+            label="Payment terms *"
+            value={values?.paymentTerms ?? "30% deposit / 70% before shipment"}
+            placeholder="e.g. 30/70, paid in full, or Net 30"
+            {...reviewFieldProps}
+          />
           <QuoteField name="incoterms" label="Shipping / incoterms" value={values?.incoterms ?? "EXW quoted; shipping TBD"} {...reviewFieldProps} />
-          <QuoteField name="validUntil" label="Quote valid until" value={values?.validUntil ?? "Aug 1, 2026"} {...reviewFieldProps} />
+          <QuoteDateField name="validUntil" label="Quote valid until" value={values?.validUntil ?? "Aug 1, 2026"} {...reviewFieldProps} />
         </div>
       </SubmitSection>
 
@@ -10226,12 +10362,16 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
           ))}
         </div>
         <div className="factory-material-cost-summary">
-          <QuoteField label="Materials included in unit price" value={`$${includedMaterialCost.toFixed(2)} / unit`} {...reviewFieldProps} />
+          <QuoteField
+            label="Materials included in unit price"
+            value={`$${includedMaterialCost.toFixed(2)} / unit`}
+            calculated
+          />
           <QuoteField
             label="Additional material charges"
             value={`$${additionalMaterialCost.toFixed(2)} / unit · $${(additionalMaterialCost * 300).toFixed(2)} order total`}
             helper="Charged separately from the quoted unit price"
-            {...reviewFieldProps}
+            calculated
           />
         </div>
         {!readOnly && <button className="factory-add-stage" type="button" onClick={addMaterialCost}>+ Add material cost</button>}
@@ -10379,15 +10519,140 @@ function SubmitSection({ title, description, helper, children, descriptionNoTran
   );
 }
 
-function QuoteField({ label, value, helper, valueNoTranslate = false, editable = false, name }) {
+function quoteDateIso(value) {
+  const raw = String(value ?? "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, "0")}-${String(parsed.getDate()).padStart(2, "0")}`;
+}
+
+function QuoteDatePicker({ name, value }) {
+  const today = new Date();
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const initial = quoteDateIso(value);
+  const [selectedValue, setSelectedValue] = useState(initial >= todayIso ? initial : "");
+  const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState("below");
+  const selectedDate = selectedValue ? new Date(`${selectedValue}T12:00:00`) : null;
+  const [visibleMonth, setVisibleMonth] = useState(() => selectedDate ?? today);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (event.key === "Escape" || (event.type === "pointerdown" && !rootRef.current?.contains(event.target))) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const year = visibleMonth.getFullYear();
+  const month = visibleMonth.getMonth();
+  const leadingBlanks = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const days = [
+    ...Array.from({ length: leadingBlanks }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
+  ];
+  const selectedDay = selectedDate && selectedDate.getFullYear() === year && selectedDate.getMonth() === month
+    ? selectedDate.getDate()
+    : null;
+  const label = selectedDate
+    ? selectedDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+    : "Select date";
+  const monthLabel = visibleMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+  const shiftMonth = (amount) => setVisibleMonth(new Date(year, month + amount, 1));
+  const chooseDay = (day) => {
+    const next = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    if (next < todayIso) return;
+    setSelectedValue(next);
+    setOpen(false);
+  };
+  const toggle = () => {
+    if (!open) {
+      const bounds = rootRef.current?.getBoundingClientRect();
+      setPlacement(bounds && bounds.bottom + 320 > window.innerHeight && bounds.top > 320 ? "above" : "below");
+    }
+    setOpen((current) => !current);
+  };
+
   return (
-    <label className="factory-quote-field">
+    <div className="factory-quote-date-picker" ref={rootRef}>
+      <button
+        className={`factory-quote-date-trigger${selectedDate ? "" : " placeholder"}`}
+        type="button"
+        data-quote-field={name}
+        data-quote-value={selectedValue}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={toggle}
+      >
+        <span>{label}</span>
+        <i aria-hidden="true" />
+      </button>
+      {open ? (
+        <section className={`schedule-calendar tsc-date-popover ${placement}`} role="dialog" aria-label="Choose a quote validity date">
+          <div className="schedule-calendar-heading">
+            <button type="button" aria-label="Previous month" onClick={() => shiftMonth(-1)}>‹</button>
+            <strong>{monthLabel}</strong>
+            <button type="button" aria-label="Next month" onClick={() => shiftMonth(1)}>›</button>
+          </div>
+          <div className="schedule-calendar-weekdays" aria-hidden="true">
+            {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
+          </div>
+          <div className="schedule-calendar-days">
+            {days.map((day, index) => {
+              if (!day) return <span key={`blank-${index}`} />;
+              const option = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+              const disabled = option < todayIso;
+              return (
+                <button
+                  className={day === selectedDay ? "selected" : ""}
+                  type="button"
+                  aria-label={`${monthLabel} ${day}`}
+                  aria-pressed={day === selectedDay}
+                  disabled={disabled}
+                  onClick={() => chooseDay(day)}
+                  key={day}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function QuoteDateField({ label, value, editable = false, name, ...fieldProps }) {
+  if (!editable) return <QuoteField label={label} value={value} name={name} {...fieldProps} />;
+  return (
+    <div className="factory-quote-field is-editable factory-quote-date-field">
+      <span>{label}</span>
+      <QuoteDatePicker name={name} value={value} />
+    </div>
+  );
+}
+
+function QuoteField({ label, value, helper, valueNoTranslate = false, editable = false, calculated = false, name, placeholder }) {
+  return (
+    <label className={`factory-quote-field${editable ? " is-editable" : ""}${calculated ? " is-calculated" : ""}`}>
       <span>{label}</span>
       {/* The design makes these contentEditable rather than inputs, so a named
           one is read back by its text on submit. */}
       <strong
         data-quote-field={name}
         data-no-translate={valueNoTranslate || undefined}
+        data-placeholder={editable ? (placeholder ?? `Enter ${label.replace(/\s*\*$/, "").toLowerCase()}`) : undefined}
         contentEditable={editable || undefined}
         suppressContentEditableWarning={editable || undefined}
       >{value}</strong>
@@ -10398,11 +10663,12 @@ function QuoteField({ label, value, helper, valueNoTranslate = false, editable =
 
 function QuoteTextarea({ value, label, editable = false, name }) {
   return (
-    <div className="factory-quote-textarea">
+    <div className={`factory-quote-textarea${editable ? " is-editable" : ""}`}>
       {label && <span className="factory-quote-textarea-label">{label}</span>}
       <strong
         data-quote-field={name}
         data-no-translate
+        data-placeholder={editable ? "Enter information" : undefined}
         contentEditable={editable || undefined}
         suppressContentEditableWarning={editable || undefined}
       >{value}</strong>
