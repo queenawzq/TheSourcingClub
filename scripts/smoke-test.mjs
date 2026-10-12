@@ -71,6 +71,16 @@ const fail = (message, detail) => {
  */
 const TEST_PASSWORD = "smoke test 8";
 
+// Where Stripe can pay out: the server (api/_stripe.js) and the factory's
+// Payments page keep their own copies, because Vercel builds api/ on its own.
+{
+  const { PAYOUT_COUNTRIES: server } = await import("../api/_stripe.js");
+  const { PAYOUT_COUNTRIES: page } = await import("../src/shared/stripe-payout-countries.mjs");
+  const same = server.size === page.size && [...server].every((code) => page.has(code));
+  if (same) ok("the server and the factory page agree on where Stripe can pay out");
+  else fail("the payout country lists differ between api/_stripe.js and src/shared/stripe-payout-countries.mjs");
+}
+
 /**
  * Create a confirmed user and return a client signed in as them.
  *

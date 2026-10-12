@@ -4,8 +4,9 @@
  * 2026-10-11). A factory elsewhere (mainland China, Hong Kong, Vietnam…) is
  * paid by bank transfer by staff from the money TSC holds.
  *
- * Shared by api/stripe-connect.js, which refuses the rest, and the factory's
- * Payments page, which says so before anyone clicks.
+ * The factory's Payments page says so before anyone clicks; api/_stripe.js
+ * keeps its own copy (Vercel builds api/ on its own) and refuses the rest.
+ * The smoke test fails if the two lists differ.
  */
 export const PAYOUT_COUNTRIES = new Set([
   "US", "CA", "GB", "CH",
