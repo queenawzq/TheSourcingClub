@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { MessagesScreen } from "../../prototype/main.jsx";
 import "./messages.css";
-import { LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
+import { LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -104,14 +104,21 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const loadThread = useCallback(async (threadId) => {
     if (!threadId) return;
     try {
-      const rows = await listMessages(threadId);
+      let rows = await listMessages(threadId);
       setMessagesByThread((current) => ({ ...current, [threadId]: rows ?? [] }));
       await markRead(threadId);
       reload();
+      // Your own messages still being checked from an earlier visit: ask the
+      // screen again, and show what it decided.
+      if (await rescreenStale(rows, user.id)) {
+        rows = await listMessages(threadId);
+        setMessagesByThread((current) => ({ ...current, [threadId]: rows ?? [] }));
+        reload();
+      }
     } catch (failure) {
       setError(failure);
     }
-  }, [reload]);
+  }, [reload, user.id]);
 
   // Open the conversation that was asked for — an order's own thread, say —
   // or the newest one, the way the design does.
@@ -123,7 +130,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   async function send(threadId, body) {
     setSending(true);
     try {
-      await sendMessage({ threadId, orgId: org.id, userId: user.id, body });
+      // Shown as soon as it is saved, then again once the screen has decided
+      // (delivered, or "Held for review").
+      await sendMessage({ threadId, orgId: org.id, userId: user.id, body, onSaved: () => loadThread(threadId) });
       await loadThread(threadId);
     } catch (failure) {
       setError(failure);

@@ -141,8 +141,13 @@ async function translate(text) {
  * a message to belong to; if an upload then fails, the message stands with a
  * note about what did not arrive rather than vanishing along with it. Somebody
  * who has typed a paragraph should not lose it because a photo was too large.
+ *
+ * The row is saved as `checking` (the database insists), and only the screen
+ * delivers it, after the files are linked so their names are checked too.
+ * `onSaved` runs as soon as the row exists, so the sender sees their message
+ * at once rather than after the screen.
  */
-export async function sendMessage({ threadId, orgId, userId, body, files = [] }) {
+export async function sendMessage({ threadId, orgId, userId, body, files = [], onSaved }) {
   const text = body.trim();
   if (!text) throw new Error("there is nothing to send");
 
@@ -165,6 +170,7 @@ export async function sendMessage({ threadId, orgId, userId, body, files = [] })
       .single(),
     "send your message",
   );
+  onSaved?.(message);
 
   const failed = [];
   for (const file of files) {
@@ -186,7 +192,50 @@ export async function sendMessage({ threadId, orgId, userId, body, files = [] })
     }
   }
 
-  return { message, failed };
+  const screened = await screenMessage(message.id);
+  return { message, failed, delivery: screened?.delivery ?? message.delivery };
+}
+
+/**
+ * Ask the server to screen one of your own messages (api/screen-message.js).
+ * Never throws: a screen that does not answer leaves the message `checking`,
+ * where the next visit asks again and staff see it after two minutes.
+ */
+export async function screenMessage(messageId) {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) return null;
+    const response = await fetch("/api/screen-message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ messageId }),
+    });
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+/** How long a message may sit in `checking` before its sender's page asks again. */
+const STALE_CHECK_MS = 30 * 1000;
+
+/**
+ * Re-screen the caller's own messages that have been `checking` for a while:
+ * the page closed before the screen answered, or the message was sent from a
+ * tab that predates screening. Returns whether any of them moved.
+ */
+export async function rescreenStale(messages, userId, now = Date.now()) {
+  const stale = (messages ?? []).filter((message) =>
+    message.delivery === "checking"
+    && message.sender_user_id === userId
+    && now - Date.parse(message.created_at) > STALE_CHECK_MS);
+  let moved = false;
+  for (const message of stale) {
+    const result = await screenMessage(message.id);
+    if (result?.delivery && result.delivery !== "checking") moved = true;
+  }
+  return moved;
 }
 
 /**

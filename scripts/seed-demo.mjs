@@ -603,10 +603,15 @@ await sendQuote(secondFactory, secondFactoryOrg, shirting, {
 // A conversation, so the request card's third metric is a real number.
 const thread = must(await brand.client.rpc("open_rfq_thread", { target_rfq: shirting.id, factory_org: factoryOrg.id }), "thread");
 const threadId = thread?.id ?? thread;
-must(await brand.client.from("messages").insert({
+// A user's message is saved to be checked first (the database insists), and
+// the screen delivers it, as api/screen-message.js does with the secret key.
+const deliverMessage = async (message, label) => must(await admin.rpc("record_message_screening", {
+  target_message: message.id, outcome: "delivered", method: "pattern_only",
+}), label);
+await deliverMessage(must(await brand.client.from("messages").insert({
   thread_id: threadId, sender_org_id: brandOrg.id, sender_user_id: brand.id,
   body: "Could you confirm the lab dip timing before we award?",
-}), "message");
+}).select("id").single(), "message"), "deliver the message");
 
 // The factory keeps the brand on its Saved page (Saved brands), the way its
 // profile's "Save brand" does. It can: it sees the brand's open request.
@@ -620,7 +625,6 @@ must(await factory.client.from("saved_brands").insert({
 const rejectedMessage = must(await brand.client.from("messages").insert({
   thread_id: threadId, sender_org_id: brandOrg.id, sender_user_id: brand.id,
   body: "You can also email me directly at sourcing@demo-brand.example.",
-  delivery: "checking",
 }).select("id").single(), "message to reject");
 must(await admin.rpc("record_message_screening", {
   target_message: rejectedMessage.id, outcome: "held", method: "pattern", reason: "email address",
@@ -631,13 +635,12 @@ must(await adminUser.client.rpc("reject_held_message", {
 }), "reject the message");
 
 // A message held for review: the brand asks to move to WeChat. It is saved to
-// be checked first, and the verdict is recorded with the secret key, as the
+// be checked first, like every message, and the verdict is recorded with the secret key, as the
 // server does. The brand sees it in the thread; the factory sees nothing of
 // it until staff release it.
 const heldMessage = must(await brand.client.from("messages").insert({
   thread_id: threadId, sender_org_id: brandOrg.id, sender_user_id: brand.id,
   body: "Easier to sort the details on WeChat, my ID is demo_brand_88.",
-  delivery: "checking",
 }).select("id").single(), "message to check");
 must(await admin.rpc("record_message_screening", {
   target_message: heldMessage.id, outcome: "held", method: "pattern", reason: "WeChat ID",
@@ -695,10 +698,10 @@ must(await factory.client.rpc("post_milestone_update", {
 }), "factory update");
 must(await factory.client.rpc("submit_milestone", { target_milestone: firstStep.id }), "send the step for approval");
 const orderThread = must(await brand.client.rpc("open_order_thread", { target_order: running.id }), "order thread");
-must(await brand.client.from("messages").insert({
+await deliverMessage(must(await brand.client.from("messages").insert({
   thread_id: orderThread?.id ?? orderThread, sender_org_id: brandOrg.id, sender_user_id: brand.id,
   body: "Thanks, we'll review the fit sample today.",
-}), "order message");
+}).select("id").single(), "order message"), "deliver the order message");
 
 // 3. Cancelled by both sides, so the Closed tab and archiving have an order.
 const tote = await publishRequest({

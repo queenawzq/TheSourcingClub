@@ -2074,9 +2074,12 @@ async function main() {
     let exchanged = 0;
     const sendDeadline = Date.now() + 45000;
     while (Date.now() < sendDeadline) {
+      // Delivered, not merely saved: every message is checked first, and an
+      // ordinary one has to come out of the screen delivered.
       const { count } = await db.from("messages")
         .select("*", { count: "exact", head: true })
-        .eq("thread_id", runThread.id);
+        .eq("thread_id", runThread.id)
+        .eq("delivery", "delivered");
       exchanged = count ?? 0;
       if (exchanged >= 2) break;
       await page.waitForTimeout(500);
@@ -2084,8 +2087,71 @@ async function main() {
     // Counted on this thread, not across the database. A bare count(*) passes
     // on a fresh stack and fails the moment the smoke suite has run first,
     // which is the failure this file has already been bitten by once.
-    check(exchanged === 2, `both sides have now said something (${exchanged} messages on this thread)`);
+    check(exchanged === 2, `both sides have now said something (${exchanged} delivered messages on this thread)`);
     await record(page, "A reply", "the first conversation either prototype could not actually have");
+
+    // ================= HELD FOR REVIEW =================
+    // A phone number is a way off the platform. The screen holds it on the
+    // patterns: the brand sees it marked, the factory sees nothing and is told
+    // nothing, and only staff can let it through.
+    console.log("\nHELD FOR REVIEW");
+    const phoneLine = `Call me on +44 7700 900123 to sort the rest (${stamp}).`;
+    const factoryNotices = async () => (await db.from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("org_id", factoryOrg.id).eq("subject_type", "thread").eq("subject_id", runThread.id)).count ?? 0;
+    const noticesBefore = await factoryNotices();
+
+    await page.locator('.message-composer textarea').fill(phoneLine);
+    await page.locator('[data-testid="send-message"]').click();
+    let heldRow = null;
+    const holdDeadline = Date.now() + 30000;
+    while (Date.now() < holdDeadline) {
+      ({ data: heldRow } = await db.from("messages")
+        .select("id, delivery, message_screenings (method, reason)")
+        .eq("thread_id", runThread.id).eq("body", phoneLine).maybeSingle());
+      if (heldRow && heldRow.delivery !== "checking") break;
+      await page.waitForTimeout(500);
+    }
+    check(heldRow?.delivery === "held", `a phone number is held, not delivered (${heldRow?.delivery})`);
+    const screening = Array.isArray(heldRow?.message_screenings) ? heldRow.message_screenings[0] : heldRow?.message_screenings;
+    check(screening?.method === "pattern", `the patterns caught it without asking a model (${screening?.method}: ${screening?.reason})`);
+
+    let senderSees = "";
+    const labelDeadline = Date.now() + 15000;
+    while (Date.now() < labelDeadline) {
+      senderSees = (await eachText(page, ".message-bubble")).join("\n");
+      if (/held for review/i.test(senderSees)) break;
+      await page.waitForTimeout(300);
+    }
+    check(/held for review/i.test(senderSees), "the brand sees its message marked \"Held for review\"");
+    check(await factoryNotices() === noticesBefore, "and the factory is told nothing");
+    await record(page, "Held for review", "contact details wait for staff; the factory sees nothing");
+
+    await signOutFully(page);
+    await signIn(page, adminEmail, "Admin reviewing messages");
+    await page.goto(`${APP}/admin/messages`);
+    await waitFor(page, '[data-testid="held-message"]', 25000);
+    const heldRows = await page.locator('[data-testid="held-message"]').count();
+    let released = false;
+    for (let index = 0; index < heldRows; index += 1) {
+      const row = page.locator('[data-testid="held-message"]').nth(index);
+      if (!(await row.innerText().catch(() => "")).includes(stamp)) continue;
+      await record(page, "Messages held for review", "staff see the brand, the factory, the order and why");
+      await page.locator('[data-testid="held-message"] [data-testid="release-message"]').nth(index).click();
+      released = true;
+      break;
+    }
+    check(released, "staff find the held message on their page");
+
+    let afterRelease = null;
+    const releaseDeadline = Date.now() + 20000;
+    while (Date.now() < releaseDeadline) {
+      ({ data: afterRelease } = await db.from("messages").select("delivery, delivered_at").eq("id", heldRow?.id).single());
+      if (afterRelease?.delivery === "delivered") break;
+      await page.waitForTimeout(500);
+    }
+    check(afterRelease?.delivery === "delivered", "staff release it, and it is delivered");
+    check(await factoryNotices() === noticesBefore + 1, "the factory is notified once, as for any new message");
 
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.

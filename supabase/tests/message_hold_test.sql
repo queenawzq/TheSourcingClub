@@ -76,14 +76,14 @@ select lives_ok(
     values ('b5000000-0000-0000-0000-000000000002', 'b4000000-0000-0000-0000-000000000001',
             'b2000000-0000-0000-0000-00000000000b', 'b1000000-0000-0000-0000-000000000001',
             'Hello, can you do 300 pieces?')$$,
-  'an ordinary send still works exactly as before'
+  'an ordinary send still works: a send is never refused'
 );
 
 select is(
   (select delivery || ':' || (delivered_at is not null)::text
      from public.messages where id = 'b5000000-0000-0000-0000-000000000002'),
-  'delivered:true',
-  'and is delivered, with a delivery time'
+  'checking:false',
+  'but it is saved to be checked first, with no delivery time: only the screen delivers it'
 );
 
 select lives_ok(
@@ -102,24 +102,6 @@ select is(
   'a sender CANNOT write its own delivery time or review note (both are cleared)'
 );
 
-select throws_ok(
-  $$insert into public.messages (thread_id, sender_org_id, sender_user_id, body, delivery)
-    values ('b4000000-0000-0000-0000-000000000002', 'b2000000-0000-0000-0000-00000000000b',
-            'b1000000-0000-0000-0000-000000000001', 'Straight to held', 'held')$$,
-  '42501',
-  null,
-  'a sender CANNOT write a message straight into held'
-);
-
-select throws_ok(
-  $$insert into public.messages (thread_id, sender_org_id, sender_user_id, body, delivery)
-    values ('b4000000-0000-0000-0000-000000000002', 'b2000000-0000-0000-0000-00000000000b',
-            'b1000000-0000-0000-0000-000000000001', 'Straight to rejected', 'rejected')$$,
-  '42501',
-  null,
-  'or into rejected'
-);
-
 -- The rest of the fixtures: the message on T3 to be rejected, one stuck at
 -- checking, and one just sent.
 insert into public.messages (id, thread_id, sender_org_id, sender_user_id, body, delivery) values
@@ -134,6 +116,11 @@ insert into public.messages (id, thread_id, sender_org_id, sender_user_id, body,
    'Just sent', 'checking');
 
 reset role;
+
+-- The ordinary message passes the screen, as the server records it.
+do $$ begin
+  perform public.record_message_screening('b5000000-0000-0000-0000-000000000002', 'delivered', 'pattern_only');
+end $$;
 
 -- Attachments: one on the ordinary message, one on the message to be held.
 insert into public.documents (id, org_id, kind, bucket, storage_path, file_name, message_id) values
@@ -595,6 +582,47 @@ select is(
   'rejected|true|ai',
   'the decision is recorded beside the verdict, with who made it'
 );
+
+-- ---------------------------------------------------------------------------
+-- Whatever a sender asks for, its message is checked first (20261013000200)
+-- ---------------------------------------------------------------------------
+-- Last, on the rejected thread, so nothing above counts these rows.
+
+set local request.jwt.claims = '{"sub":"b1000000-0000-0000-0000-000000000001","email":"p15-brand@example.com","role":"authenticated"}';
+set local role authenticated;
+
+insert into public.messages (id, thread_id, sender_org_id, sender_user_id, body, delivery) values
+  ('b5000000-0000-0000-0000-000000000006', 'b4000000-0000-0000-0000-000000000003',
+   'b2000000-0000-0000-0000-00000000000b', 'b1000000-0000-0000-0000-000000000001', 'Asks for delivered', 'delivered'),
+  ('b5000000-0000-0000-0000-000000000007', 'b4000000-0000-0000-0000-000000000003',
+   'b2000000-0000-0000-0000-00000000000b', 'b1000000-0000-0000-0000-000000000001', 'Asks for held', 'held'),
+  ('b5000000-0000-0000-0000-000000000008', 'b4000000-0000-0000-0000-000000000003',
+   'b2000000-0000-0000-0000-00000000000b', 'b1000000-0000-0000-0000-000000000001', 'Asks for rejected', 'rejected');
+
+select is(
+  (select string_agg(delivery || ':' || (delivered_at is null)::text, ',' order by id)
+     from public.messages
+    where id in ('b5000000-0000-0000-0000-000000000006', 'b5000000-0000-0000-0000-000000000007',
+                 'b5000000-0000-0000-0000-000000000008')),
+  'checking:true,checking:true,checking:true',
+  'a sender CANNOT deliver its own message, nor write it straight into held or rejected: all three are saved as checking'
+);
+
+reset role;
+set local role service_role;
+
+insert into public.messages (id, thread_id, sender_org_id, sender_user_id, body) values
+  ('b5000000-0000-0000-0000-000000000009', 'b4000000-0000-0000-0000-000000000003',
+   'b2000000-0000-0000-0000-00000000000b', 'b1000000-0000-0000-0000-000000000001', 'Written by the server');
+
+select is(
+  (select delivery || ':' || (delivered_at is not null)::text
+     from public.messages where id = 'b5000000-0000-0000-0000-000000000009'),
+  'delivered:true',
+  'a message the server writes with the secret key keeps the default: delivered'
+);
+
+reset role;
 
 select * from finish();
 rollback;
