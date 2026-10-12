@@ -29,6 +29,22 @@ export async function listPayments(orderId) {
   );
 }
 
+/**
+ * Every payment on these orders, with its step's title, order and due date:
+ * the brand's Payments page. RLS gives a brand only its own orders' rows.
+ */
+export async function listPaymentsForOrders(orderIds) {
+  if (!orderIds.length) return [];
+  return unwrap(
+    await supabase
+      .from("order_payments")
+      .select(`${PAYMENT_COLUMNS}, order_milestones (title, sort, due_on)`)
+      .in("order_id", orderIds)
+      .order("created_at"),
+    "load your payments",
+  );
+}
+
 export async function getPayment(orderId, paymentId) {
   return unwrap(
     await supabase
@@ -55,7 +71,7 @@ export async function payoutAccountFor(factoryOrgId) {
   );
 }
 
-/** Every payout account the factory has added, primary first. */
+/** The factory's own payout accounts, primary first, for its Settings page. */
 export async function listPayoutAccounts(factoryOrgId) {
   return unwrap(
     await supabase

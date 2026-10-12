@@ -81,7 +81,14 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
       onNext={award}
       busy={busy}
       primaryLabel={blocked ? "" : busy ? "Creating the order…" : "Confirm and create order"}
-      rail={found ? { vendor: { initials: found.view.initials, name: found.view.name, onMessage: message } } : null}
+      rail={found ? {
+        vendor: {
+          initials: found.view.initials,
+          name: found.view.name,
+          location: found.raw.orgs?.factory_profiles?.location ?? "",
+          onMessage: message,
+        },
+      } : null}
     >
       {blocked && <p className="composer-error" role="status" data-testid="contract-blocked">{blocked}</p>}
       {found && (

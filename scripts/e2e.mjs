@@ -956,8 +956,9 @@ async function main() {
     // Even with the model skipped, the card opens with what the brief says.
     const prefilled = (name) => page.evaluate(
       (field) => document.querySelector(`.review-brief-stack [name="${field}"]`)?.value ?? "", name);
-    check(/tops/i.test(await prefilled("category")),
-      "the review card reads the category out of the brief (shirts → Tops)");
+    // As specific as the brief (QA, Oct 5), not just the taxonomy's "Tops".
+    check(/^womenswear \/ woven shirts$/i.test(await prefilled("category")),
+      `the review card reads a specific category out of the brief (${await prefilled("category")})`);
     check(/300 units · 3 colours, 100 each/.test(await prefilled("quantity")),
       "the review card reads the quantity and colour split out of the brief");
     await record(page, "Review the brief", "filled from the brief itself, and correctable");
@@ -1567,7 +1568,9 @@ async function main() {
     check(stepsTotal === Number(bornOrder.order_total_cents),
       `the steps total exactly what was agreed (${stepsTotal})`);
 
-    await page.goto(`${APP}/orders/${bornOrder.id}/schedule`);
+    // A new order opens on its steps builder; /schedule is the editor for a
+    // running order.
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="schedule-row"]', 25000);
     const scheduleRows = await page.locator('[data-testid="schedule-row"]').count();
     check(scheduleRows === draftSteps.length,
@@ -1700,8 +1703,11 @@ async function main() {
     // Where the money goes. This run is what found that nothing wrote to this
     // table: the brand's pay button is correctly disabled with no destination,
     // and a factory had no way anywhere to supply one.
+    // The factory's Payments page: "Add details" on its Earnings tab opens
+    // the payout form.
     await page.goto(`${APP}/payout`);
-    await waitForHeading(page, "where you get paid", 25000);
+    await waitForHeading(page, "payments", 25000);
+    await clickButton(page, "add details");
     await page.locator('[data-field="payout_bank_name"]').fill("Banco de Porto");
     await page.locator('[data-field="payout_account_name"]').fill(factoryName);
     await page.locator('[data-field="payout_account_number_last4"]').fill("4417");
@@ -1724,20 +1730,20 @@ async function main() {
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-action"]', 25000);
     const rowAction = await page.locator('[data-testid="milestone-action"]').first().innerText();
-    check(/^approve$/i.test(rowAction.trim()),
+    // A paying step reads "Approve fund"; an approval-only one, "Approve".
+    check(/^approve( fund)?$/i.test(rowAction.trim()),
       `the step the factory posted on offers the brand "Approve" (${rowAction.trim()})`);
     await record(page, "Waiting on the brand", "the factory has posted; the row says Approve");
 
     // The brand can actually see the factory's update. If the counterparty
     // policy were missing this is an empty panel and no error anywhere, which
-    // is the failure this assertion exists to make loud. "View all updates"
-    // opens the step's pop-up over the order, not a page of its own.
-    await page.locator('[data-testid="update-card"] button').first().click();
-    await waitFor(page, '[data-testid="step-update"]', 15000);
-    const brandSeesUpdate = await page.locator('[data-testid="step-update"]').count();
-    check(brandSeesUpdate === 1,
+    // is the failure this assertion exists to make loud. A step with one
+    // update shows it on the row; "View all updates" appears from two.
+    await waitFor(page, '[data-testid="update-card"]', 15000);
+    const brandSeesUpdate = await page.locator('[data-testid="update-card"]').first().innerText();
+    check(brandSeesUpdate.includes("Fit sample finished"),
       "the brand can read the factory's update across the org boundary");
-    await record(page, "The brand reads the update", "in the step's pop-up, over the order");
+    await record(page, "The brand reads the update", "on the step's row, over the order");
 
     // A step's own address — what notifications link to — opens the same pop-up.
     await page.goto(`${APP}/orders/${bornOrder.id}/milestones/${firstStep.id}`);
@@ -1828,7 +1834,15 @@ async function main() {
     check(paymentQueueText.includes(bornOrder.order_number),
       "the payment is in the queue, named by the order the brand referenced");
 
-    await page.locator('[data-testid="confirm-payment"]').first().click();
+    // This order's row: the queue also holds any other payment waiting on
+    // staff (the demo data leaves one there on purpose).
+    const confirmedOwnRow = await page.evaluate((orderNumber) => {
+      const button = [...document.querySelectorAll('[data-testid="confirm-payment"]')]
+        .find((candidate) => candidate.closest("tr")?.innerText.includes(orderNumber));
+      button?.click();
+      return Boolean(button);
+    }, bornOrder.order_number);
+    check(confirmedOwnRow, "the admin confirms this order's payment, by its row in the queue");
     await page.waitForTimeout(3500);
     await record(page, "Confirmed", "this click is what a factory on the other side of the world is relying on");
 
@@ -2062,6 +2076,133 @@ async function main() {
       .select("*", { count: "exact", head: true }).eq("rfq_id", privateRfq.id);
     check(inviteCount === 1, `one factory was invited (${inviteCount})`);
 
+    // ================= BROWSE VENDORS =================
+    // The brand's sidebar item, on the designed marketplace: every published
+    // vendor and nothing else, with real filters, search and both layouts.
+    console.log("\nBROWSE VENDORS");
+    await page.evaluate(() => [...document.querySelectorAll(".side-nav button, nav button")].find((button) => button.textContent.trim() === "Browse vendors")?.click());
+    await waitFor(page, ".marketplace-factory-card", 25000);
+    await record(page, "Browse vendors", "every published vendor, on the designed marketplace");
+    const cardNames = () => page.evaluate(() => [...document.querySelectorAll(".marketplace-factory-card h2")].map((h) => h.textContent));
+    const browseNames = await cardNames();
+    check(browseNames.includes(factoryName), `the e2e factory is listed (${browseNames.length} factories)`);
+    const { data: unpublished } = await db.from("factory_profiles").select("orgs (name)").is("published_at", null);
+    const hidden = (unpublished ?? []).map((row) => row.orgs?.name).filter(Boolean);
+    check(!browseNames.some((name) => hidden.includes(name)), `no unpublished vendor is listed (${hidden.length} unpublished in the database)`);
+    const browseText = await page.locator(".marketplace-results").innerText();
+    check(!/Atelier Minho|Seoul Knit Works|96%|Club orders/.test(browseText), "none of the design's example vendors, scores or order counts");
+
+    // Search by the e2e factory's name, then a filter, then Reset.
+    await page.evaluate((value) => {
+      const input = document.querySelector(".marketplace-search input");
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value").set.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }, factoryName);
+    await page.waitForTimeout(400);
+    const searched = await cardNames();
+    check(searched.includes(factoryName) && searched.length < browseNames.length, `search narrows the list to that factory (${searched.join(", ")})`);
+    await clickButton(page, "reset");
+    await page.waitForTimeout(400);
+    check((await cardNames()).length === browseNames.length, "Reset brings every vendor back");
+    const filterResult = await page.evaluate(async () => {
+      const box = [...document.querySelectorAll(".marketplace-filter-panel .directory-check")].find((label) => label.textContent.trim() === "Wovens")?.querySelector("input");
+      box?.click();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return { found: Boolean(box), shown: document.querySelectorAll(".marketplace-factory-card").length };
+    });
+    check(filterResult.found && filterResult.shown <= browseNames.length, `a production-type filter narrows the list (${filterResult.shown} of ${browseNames.length})`);
+    await record(page, "Filtered by production type", "options from the taxonomy, not the design's list");
+    await clickButton(page, "reset");
+    await page.waitForTimeout(300);
+
+    // Trading companies on their own tab.
+    await page.evaluate(() => document.querySelectorAll(".marketplace-vendor-toggle button")[1]?.click());
+    await page.waitForTimeout(500);
+    const tradingCards = await page.evaluate(() => [...document.querySelectorAll(".marketplace-factory-card")].map((card) => card.innerText));
+    check(tradingCards.every((text) => /trading company/i.test(text)), `the Trading companies tab lists only trading companies (${tradingCards.length})`);
+    await page.evaluate(() => document.querySelectorAll(".marketplace-vendor-toggle button")[0]?.click());
+    await page.waitForTimeout(400);
+
+    // The directory list, and back to the cards.
+    await clickButton(page, "list view");
+    await waitFor(page, ".directory-factory-card", 15000);
+    check((await page.evaluate(() => location.pathname)).endsWith("/browse/list"), "List view opens the designed directory list");
+    await record(page, "Browse vendors, list view", "the design's directory layout, same vendors and filters");
+    await clickButton(page, "marketplace cards");
+    await waitFor(page, ".marketplace-factory-card", 15000);
+
+    // A card opens the vendor's profile, with the way back to Browse.
+    await page.evaluate((name) => {
+      const link = [...document.querySelectorAll(".marketplace-factory-card a.marketplace-factory-profile-link")].find((a) => a.querySelector("h2")?.textContent === name);
+      link?.click();
+    }, factoryName);
+    await waitFor(page, ".factory-profile-hero", 20000);
+    const fromBrowse = await page.locator(".factory-profile-page").innerText();
+    check(fromBrowse.includes(factoryName) && fromBrowse.includes("Back to vendors"), "a card opens that vendor's profile, with \"Back to vendors\"");
+    await clickButton(page, "back to vendors");
+    await waitFor(page, ".marketplace-factory-card", 15000);
+    check((await page.evaluate(() => location.pathname)).endsWith("/browse"), "Back to vendors returns to Browse vendors");
+
+    // ================= SAVED VENDORS =================
+    // Save on a Browse card, find it on Saved, remove it from its profile.
+    console.log("\nSAVED VENDORS");
+    const savedOnCard = await page.evaluate(async (name) => {
+      const card = [...document.querySelectorAll(".marketplace-factory-card")].find((item) => item.querySelector("h2")?.textContent === name);
+      [...(card?.querySelectorAll("button") ?? [])].find((button) => button.textContent === "Save")?.click();
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return [...(card?.querySelectorAll(".marketplace-factory-actions button") ?? [])].map((button) => button.textContent);
+    }, factoryName);
+    check(savedOnCard.includes("Saved"), `Save on a Browse card turns it to "Saved" (${savedOnCard.join(", ")})`);
+    const { data: savedRows } = await db.from("saved_factories").select("factory_org_id").eq("org_id", brandOrg.id);
+    check(savedRows?.length === 1 && savedRows[0].factory_org_id === factoryOrg.id, "it is on the brand's own list in the database");
+
+    await page.evaluate(() => [...document.querySelectorAll(".side-nav button")].find((button) => button.textContent.trim() === "Saved")?.click());
+    await waitFor(page, ".saved-factory-card", 20000);
+    await record(page, "Saved vendors", "the vendors this brand saved, on the designed Saved page");
+    const savedText = await page.locator(".saved-shell").innerText();
+    check(savedText.includes(factoryName) && savedText.includes(brandName), "Saved lists that vendor, under the brand's own name");
+    check(!/Maison Rue|Atelier Minho|96%|Club orders/.test(savedText), "none of the design's example brand, vendors or scores");
+
+    await page.evaluate(() => document.querySelector(".saved-factory-card a.marketplace-factory-profile-link")?.click());
+    await waitFor(page, ".factory-profile-hero", 20000);
+    const savedProfile = await page.locator(".factory-profile-page").innerText();
+    check(savedProfile.includes("Back to saved vendors") && /\bSaved\b/.test(savedProfile), "its profile says Saved, with the way back to Saved");
+    await page.evaluate(() => [...document.querySelectorAll(".factory-profile-actions button")].find((button) => button.textContent === "Saved")?.click());
+    await page.waitForTimeout(1500);
+    const unsaved = await page.evaluate(() => [...document.querySelectorAll(".factory-profile-actions button")].map((button) => button.textContent));
+    check(unsaved.includes("Save factory"), "pressing Saved removes it (Save factory again)");
+    await clickButton(page, "back to saved vendors");
+    await waitFor(page, ".saved-shell", 15000);
+    await page.waitForTimeout(1500);
+    const emptySaved = await page.locator(".saved-shell").innerText();
+    check(!emptySaved.includes(factoryName) && /No saved vendors yet/.test(emptySaved), "Saved is empty again, and says how to save one");
+
+    // ================= PAYMENTS =================
+    // The brand's own order payments, where each stands, and its discounts.
+    console.log("\nPAYMENTS");
+    await page.evaluate(() => [...document.querySelectorAll(".side-nav button")].find((button) => button.textContent.trim() === "Payments")?.click());
+    await waitFor(page, ".billing-history-row", 20000);
+    await record(page, "Payments", "the brand's order payments, on the designed Payments page");
+    const paymentsText = await page.locator(".billing-history-page").innerText();
+    const { data: brandPayments } = await db.from("order_payments")
+      .select("id, state, amount_cents, order_id").eq("order_id", bornOrder.id).neq("state", "not_due");
+    check(brandPayments.length > 0 && brandPayments.every((payment) => paymentsText.includes(`$${(payment.amount_cents / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`)),
+      `every payment on the brand's order that is due or further along is listed (${brandPayments.length})`);
+    check(/Funded|Paid/.test(paymentsText) && paymentsText.includes(factoryName), "with its state in the design's words and the factory's name");
+    const { data: header } = await db.from("production_order_summary").select("paid_cents").eq("id", bornOrder.id).single();
+    check(paymentsText.includes(`$${(Number(header.paid_cents) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`),
+      "total paid is the order's own figure");
+    check(!/Atelier Minho|Platform service fee|Amex|Visa ending/i.test(paymentsText), "none of the design's example payments, fees or cards");
+    await clickButton(page, "discounts");
+    await page.waitForTimeout(500);
+    const discountsText = await page.locator(".brand-discounts-tab").innerText();
+    check(!discountsText.includes("$50 discount") && /Discount codes/.test(discountsText), "Discounts shows the brand's own codes, not the design's $50 example");
+    await page.evaluate(() => [...document.querySelectorAll(".billing-tabs button")].find((button) => button.textContent === "Payments")?.click());
+    await page.waitForTimeout(400);
+    await page.evaluate(() => document.querySelector(".billing-row-link")?.click());
+    await page.waitForTimeout(2500);
+    check(/\/orders\/[^/]+\/payments\/[^/]+$/.test(await page.evaluate(() => location.pathname)), "a payment opens its page on the order");
+
     // ================= THE HOME SCREEN =================
     // It used to be a heading, a notification list and a row of buttons, with
     // a line telling people the real screens lived in the prototype.
@@ -2180,9 +2321,11 @@ async function main() {
     check(row.cancel_proposed_by_org === null && row.status === "active",
       "the brand withdraws it from the same menu, and the order carries on");
 
+    // On the brand's order page, "Cancel order" is in the header's menu.
     await page.goto(`${APP}/orders/${bornOrder.id}`);
-    await waitFor(page, ".order-cancel-link", 25000);
-    await page.locator(".order-cancel-link").first().click();
+    await waitFor(page, '.project-detail-header button[aria-label="More order actions"]', 25000);
+    await page.locator('.project-detail-header button[aria-label="More order actions"]').first().click();
+    await clickButton(page, "cancel order");
     await proposeIn("Season dropped");
     await waitFor(page, '[data-testid="cancel-notice"][data-state="mine"]', 15000);
     check(/waiting for/i.test(await page.locator('[data-testid="cancel-notice"]').innerText()),

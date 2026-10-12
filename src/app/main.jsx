@@ -55,6 +55,9 @@ import ScheduleEditor from "./order/ScheduleEditor.jsx";
 import LiveSettings from "./settings/LiveSettings.jsx";
 import LiveFactoryProfile from "./profile/LiveFactoryProfile.jsx";
 import LiveBrandFactoryProfile from "./profile/LiveBrandFactoryProfile.jsx";
+import LiveBrandBrowse from "./browse/LiveBrandBrowse.jsx";
+import LiveSavedVendors from "./browse/LiveSavedVendors.jsx";
+import LiveBrandPayments from "./payments/LiveBrandPayments.jsx";
 import LiveBrandProfile from "./profile/LiveBrandProfile.jsx";
 import LiveFactoryBrandProfile from "./profile/LiveFactoryBrandProfile.jsx";
 import NotificationList from "./NotificationList.jsx";
@@ -432,18 +435,48 @@ function SetNewPassword({ onDone }) {
 
 function ChooseOrgType() {
   const { user, refreshOrgs, signOut } = useAuth();
-  const [kind, setKind] = useState(null);
-  const [name, setName] = useState("");
+  // What the signup form already asked. The portal it was filled in decides
+  // the side, so someone who signed up here is not asked either question
+  // again: their company is created from those answers, and this card shows
+  // only if that fails (prefilled), or for an account with no answers
+  // (Google, an older signup).
+  const signedUpAs = user?.user_metadata ?? {};
+  const answeredKind = ["brand", "factory"].includes(signedUpAs.account_type) ? signedUpAs.account_type : null;
+  const answeredName = String(signedUpAs.company_name ?? "").trim();
+  const [kind, setKind] = useState(answeredKind);
+  const [name, setName] = useState(answeredName);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [autoCreating, setAutoCreating] = useState(Boolean(answeredKind && answeredName));
   // Someone who was invited lands here, and used to be told to create an
   // organisation of their own — the one thing they should not do. The
   // invitation existed in the database and no screen ever showed it.
   const [invitations, setInvitations] = useState([]);
 
   useEffect(() => {
-    listMyInvitations().then(setInvitations).catch(() => {});
+    let cancelled = false;
+    listMyInvitations()
+      .catch(() => [])
+      .then(async (pending) => {
+        if (cancelled) return;
+        setInvitations(pending);
+        // An invitation wins: joining is what an invited person should do.
+        if (pending.length || !answeredKind || !answeredName) {
+          setAutoCreating(false);
+          return;
+        }
+        try {
+          await createOrg(answeredName, answeredKind);
+          await refreshOrgs();
+        } catch (createError) {
+          if (!cancelled) setError(createError);
+        }
+        if (!cancelled) setAutoCreating(false);
+      });
+    return () => { cancelled = true; };
   }, []);
+
+  if (autoCreating) return <Loading label="Setting up your account…" />;
 
   async function submit(event) {
     event.preventDefault();
@@ -541,7 +574,7 @@ function ChooseOrgType() {
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder={kind === "factory" ? "Atelier Minho" : "Maison Rue"}
+            placeholder={kind === "factory" ? "Your company" : "Your brand"}
             autoComplete="organization"
           />
         </label>
@@ -574,7 +607,10 @@ const BRAND_NAV_PATHS = {
   Dashboard: "/",
   Quotes: "/rfqs",
   "Production orders": "/orders",
+  "Browse vendors": "/browse",
   Conversations: "/messages",
+  Saved: "/saved",
+  Payments: "/payments",
   Settings: "/team",
 };
 
@@ -600,6 +636,10 @@ function activeNavFor(path, isFactory) {
   if (isFactory && path.startsWith("/brands")) return "Saved";
   if (isFactory && path.startsWith("/payout")) return "Payments";
   if (isFactory && path.startsWith("/rfqs")) return "RFQs";
+  // A vendor's profile sits under Browse vendors, as in the design.
+  if (!isFactory && (path.startsWith("/browse") || path.startsWith("/factories"))) return "Browse vendors";
+  if (!isFactory && path.startsWith("/saved")) return "Saved";
+  if (!isFactory && path.startsWith("/payments")) return "Payments";
   if (!isFactory && path.startsWith("/rfqs")) return "Quotes";
   return "";
 }
@@ -770,7 +810,8 @@ function navigateFromPrototype(screenKey, navigate) {
     contract: "/orders",
     review: "/rfqs",
     invite: "/rfqs",
-    saved: "/browse",
+    saved: "/saved",
+    billing: "/payments",
   };
   navigate(paths[screenKey] ?? "/");
 }
@@ -837,7 +878,14 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/browse",
       render: () =>
-        isFactory ? <LiveBrowse profile={profile} /> : <NotForThisSide isFactory={false} />,
+        isFactory ? <LiveBrowse profile={profile} /> : <LiveBrandBrowse org={activeOrg} user={user} />,
+    },
+    {
+      // Browse vendors as the design's directory list. Before /browse/:id,
+      // which is a factory's view of one request.
+      path: "/browse/list",
+      render: () =>
+        isFactory ? <NotForThisSide isFactory /> : <LiveBrandBrowse org={activeOrg} user={user} view="list" />,
     },
     {
       path: "/rfqs/:id/invite",
@@ -876,7 +924,14 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/saved",
       render: () =>
-        isFactory ? <LiveSaved org={activeOrg} /> : <NotForThisSide isFactory={false} />,
+        isFactory ? <LiveSaved org={activeOrg} /> : <LiveSavedVendors org={activeOrg} />,
+    },
+    {
+      // The brand's payments and discount codes. A factory's money page is
+      // /payout (its bank details), so it goes there.
+      path: "/payments",
+      render: () =>
+        isFactory ? <PayoutRedirect navigate={navigate} /> : <LiveBrandPayments org={activeOrg} />,
     },
     {
       // The design's third step: the total the brand will see, and what
@@ -1004,6 +1059,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
           <LiveBrandFactoryProfile
             key={params.id}
             org={activeOrg}
+            user={user}
             vendorOrgId={params.id}
             from={new URLSearchParams(window.location.search).get("from")}
           />
@@ -1056,8 +1112,9 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     },
     {
       // The designed home puts notifications behind the activity button in its
-      // header rather than listing them inline, so they need a page of their
-      // own — there was never a route for them before.
+      // header rather than listing them inline. The brand's bell opens the
+      // designed drawer (LiveHome); this page stays for the factory's bell and
+      // for links that already point here.
       path: "/notifications",
       render: () => <main className="home-page"><NotificationList org={activeOrg} isFactory={isFactory} /></main>,
     },
@@ -1071,7 +1128,6 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
               org={activeOrg}
               isFactory={isFactory}
               goTo={(next) => navigateFromPrototype(next, navigate)}
-              onOpenActivity={() => navigate("/notifications")}
               // The designed cards carry ids; the screen keys do not, which is
               // why "View quote" used to land back on the list it came from.
               onViewRfq={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/quotes` : "/rfqs")}
@@ -1086,6 +1142,14 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
   // sign-out button with it. Keyed on the path so navigating away from a
   // broken screen clears the error instead of showing the crash card again.
   return <ErrorBoundary key={path} label="This screen">{routed}</ErrorBoundary>;
+}
+
+/** A factory's Payments item is /payout; a brand's address sends it there. */
+function PayoutRedirect({ navigate }) {
+  useEffect(() => {
+    navigate("/payout", { replace: true });
+  }, [navigate]);
+  return null;
 }
 
 function NotForThisSide({ isFactory }) {

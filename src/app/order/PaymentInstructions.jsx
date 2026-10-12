@@ -146,7 +146,7 @@ export default function PaymentInstructions({ orderId, paymentId }) {
         ) : (
           <>
             <h2>
-              {payment.state === "sent" ? "Waiting on us" : "Done"}
+              {{ sent: "Waiting on us", not_due: "Not due yet", cancelled: "Cancelled" }[payment.state] ?? "Done"}
             </h2>
             <p className="ob-hint" data-testid="payment-state">
               {payment.state === "sent"
@@ -155,7 +155,12 @@ export default function PaymentInstructions({ orderId, paymentId }) {
                   ? "We confirmed this arrived. The factory has been told it can start."
                   : payment.state === "released"
                     ? "Confirmed and paid on to the factory."
-                    : `This payment is ${payment.state}.`}
+                    : payment.state === "not_due"
+                      ? "Nothing to send yet. This payment falls due when its step is approved (or, for a step that is only a payment, when the step opens)."
+                      : payment.state === "cancelled"
+                        ? "This payment was cancelled with the order. Nothing is owed."
+                        // Never the raw state name ("not_due") in front of a person.
+                        : "Nothing to do on this payment right now."}
             </p>
           </>
         )}

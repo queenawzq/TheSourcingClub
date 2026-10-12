@@ -78,7 +78,15 @@ page), the **brand's own profile** (`/profile` for a brand, with its edit
 dialogs and completion page), the **vendor's view of a brand**
 (`/brands/:id`, read through `brand_profile_for_factory()`: never revenue,
 email, website or documents; opened from Saved brands, the request's brand
-card and the order page), and the whole **admin console**
+card and the order page), the brand's **Browse vendors** (`/browse`, the
+designed marketplace, and `/browse/list`, the designed directory list: every
+published vendor, filters from the taxonomy, ranked like the dashboard's
+recommended factories), the brand's **Saved** vendors (`/saved`;
+`saved_factories` is the brand's own list, filled by "Save" on Browse and
+"Save factory" on a vendor's profile), the brand's **Payments** (`/payments`,
+the designed `BillingScreen`: its order payments as Due / Sent / Funded / Paid
+with the order summary's figures, and its discount codes; nothing on it takes
+a card or bank number), and the whole **admin console**
 (`admin.html`).
 
 **Only the brand sets the production steps** (design review, Oct 2; migration

@@ -79,6 +79,20 @@ export async function inviteMember(orgId, email, role = "member") {
   );
 }
 
+/** An org's own pending invitations, for the settings screen. Owners only; RLS enforces it. */
+export async function listPendingInvitations(orgId) {
+  return unwrap(
+    await supabase
+      .from("org_invitations")
+      .select("id, email, role, created_at")
+      .eq("org_id", orgId)
+      .eq("status", "pending")
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false }),
+    "load pending invitations",
+  );
+}
+
 /** Withdraw a pending invitation. Only owners may do this; RLS enforces it. */
 export async function revokeInvitation(invitationId) {
   return unwrap(

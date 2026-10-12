@@ -21,6 +21,20 @@ export async function listNotifications(orgId, { limit = 20 } = {}) {
   );
 }
 
+/**
+ * How many notifications this org has not read: the figure on the dashboard's
+ * bell. Counted in the database, since the list above stops at 20.
+ */
+export async function countUnreadNotifications(orgId) {
+  const result = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .eq("org_id", orgId)
+    .is("read_at", null);
+  unwrap(result, "count your notifications");
+  return result.count ?? 0;
+}
+
 export async function markRead(notificationId) {
   return unwrap(
     await supabase
@@ -76,4 +90,33 @@ export function notificationLink(notification, { isFactory }) {
   if (type === "thread") return `/messages/${id}`;
 
   return null;
+}
+
+/**
+ * The label the Activity drawer puts on a notification. The design types its
+ * examples Quote / File / Status / Vendor; these are the kinds that exist.
+ */
+export function activityType(kind = "") {
+  if (kind.startsWith("quote_")) return "Quote";
+  if (kind === "message") return "Message";
+  if (kind.startsWith("payment_") || kind === "funds_released") return "Payment";
+  if (kind.startsWith("verification_")) return "Verification";
+  if (kind.startsWith("rfq_")) return "Request";
+  return "Status";
+}
+
+const RELATIVE = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+/** "12 minutes ago", "yesterday", "just now". */
+export function timeAgo(iso) {
+  const seconds = Math.round((new Date(iso) - Date.now()) / 1000);
+  const units = [
+    ["day", 86400],
+    ["hour", 3600],
+    ["minute", 60],
+  ];
+  for (const [unit, size] of units) {
+    if (Math.abs(seconds) >= size) return RELATIVE.format(Math.round(seconds / size), unit);
+  }
+  return "just now";
 }

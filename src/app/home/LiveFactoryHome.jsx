@@ -203,7 +203,7 @@ export default function LiveFactoryHome({ org, profile }) {
       type: "Schedule",
       tone: "warning",
       title: `${snapshot.orders_awaiting_schedule} order${snapshot.orders_awaiting_schedule === 1 ? "" : "s"} awaiting a schedule`,
-      meta: "Both sides have to agree the steps before production can begin.",
+      meta: "The brand is confirming the production steps. You will be notified when production can start.",
       action: "Review",
       onAction: () => navigate("/orders"),
     });

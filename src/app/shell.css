@@ -10,7 +10,14 @@
 @font-face {
   font-family: "Satoshi";
   src: url("/assets/fonts/Satoshi-Bold.otf") format("opentype");
-  font-weight: 700 900;
+  font-weight: 700;
+  font-display: swap;
+}
+/* 800 resolves to Black, as in the prototype's styles.css (Bold 700, Black 950). */
+@font-face {
+  font-family: "Satoshi";
+  src: url("/assets/fonts/Satoshi-Black.otf") format("opentype");
+  font-weight: 800 950;
   font-display: swap;
 }
 
@@ -463,4 +470,100 @@ body {
   margin: 0;
   padding: 16px 0;
   color: var(--text-muted);
+}
+
+/* The designed order card keeps a column for its reference photo. Real orders
+   have none, and the title was left in that 46 px column ("Washe deni…"), so
+   a card without a photo gives the title the whole row. (The prototype has a
+   rule for this, but the card's own !important column rule outranks it.) */
+.home-production-card .home-production-title:not(:has(> img)) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+
+/* Conversations: live has no calls, so no "Scheduled call" column. On wide
+   screens the conversation takes that column's room instead of leaving it
+   empty; narrower screens already lay the page out without it. */
+@media (min-width: 1221px) {
+  .messages-shell:not(:has(> .message-side-panel)) {
+    grid-template-columns: 300px minmax(480px, 1fr);
+  }
+}
+
+/* Review brief: the request's name is a textarea so a long one wraps inside
+   the card, as the design's heading does. One row tall until it needs more. */
+.card textarea.card-title-input {
+  display: block;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+  line-height: inherit;
+}
+
+/* Review brief: the questions are the design's one numbered list; each line
+   is typed in place rather than drawn as three separate boxes. */
+.question-box .question-line {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 20px;
+}
+
+.question-box .question-line:focus {
+  outline: 2px solid var(--blue, #2458ff);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Review quotes: live cards add a Total tile to the design's three. It joins
+   their row instead of wrapping onto a second one. */
+.marketplace-stat-grid.quote-stat-grid:has(> div:nth-child(4)) {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* At phone width four tiles in a row cut off the figures; two rows of two
+   keep each one readable. */
+@media (max-width: 760px) {
+  .marketplace-stat-grid.quote-stat-grid:has(> div:nth-child(4)) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Production steps: the step's name and description are textareas so they
+   wrap as the design's read-back does, rather than cutting off at 390 px. */
+.field textarea.field-input {
+  display: block;
+  min-height: 0;
+  resize: none;
+  overflow: hidden;
+  line-height: inherit;
+}
+
+/* Production steps: typed values read like the design's read-back (14 px,
+   medium), so they wrap at the same places in its narrow phone columns. */
+.production-step-grid .field .field-input {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* The phone column is a couple of px narrower than the design's, which was
+   enough to split "sample" mid-word. A few px of the field's padding to
+   spare; only a word longer than the whole column still breaks. */
+.production-step-grid .field textarea.field-input {
+  width: calc(100% + 6px);
+  margin-right: -6px;
+}
+
+/* Onboarding's terms box: the design draws it unticked with the card's own
+   divider colour (#e2e8f0), so on white it all but disappears, and it is the
+   one box a brand must tick to go on. Same size; a slate border it can be
+   seen by. Ticked, the design's blue still wins. */
+.brand-onboarding-check input:not(:checked):not(:disabled) {
+  border-color: #90a1b9;
 }

@@ -12,7 +12,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { agreeSchedule, getOrder } from "../../lib/domain/order.js";
 import { saveSchedule } from "../../lib/domain/milestone.js";
-import { editRow, newRow, scheduleLines, scheduleRows, scheduleTotal } from "./order-view.js";
+import { toCents } from "../../lib/money.js";
+import { editRow, newRow, scheduleLines, scheduleRows, scheduleTotal, stepAmount } from "./order-view.js";
 
 const sameRows = (a, b) => JSON.stringify(scheduleLines(a)) === JSON.stringify(scheduleLines(b));
 
@@ -57,6 +58,12 @@ export function useScheduleDraft({ order, milestones, reload }) {
     error,
     hint,
     canSave: dirty && balances && !busy,
+    // An amount as typed ("1836") back in the design's form ("$1,836");
+    // text that is not a number is left for the save to refuse.
+    formatAmount: (text) => {
+      const cents = toCents(text);
+      return cents === null ? text : stepAmount(cents, order.currency ?? undefined);
+    },
     // Confirming signs what is SAVED, so edits on screen are saved first.
     canConfirm: balances && !busy,
     onChange: (index, patch) => setRows((current) => current.map((row, i) => (i === index ? editRow(row, patch) : row))),

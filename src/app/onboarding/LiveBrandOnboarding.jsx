@@ -64,6 +64,9 @@ const LAST_STEP = 9;
 /** Index of the designed terms card. */
 const TERMS_STEP = 8;
 
+/** Index of the designed "What are you looking to make?" card. */
+const MAKE_STEP = 3;
+
 /** Index of the designed profile review card. */
 const REVIEW_STEP = 7;
 
@@ -129,6 +132,10 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
         for (const [label, column] of Object.entries(COLUMN_FOR_LABEL)) {
           if (profile[column] != null) restored[onboardingFieldName(label)] = String(profile[column]);
         }
+        // The brand name was asked at sign-up and named the company; asking
+        // again on step 2 meant typing it a second time.
+        const brandNameField = onboardingFieldName("Brand name");
+        if (!restored[brandNameField] && org.name) restored[brandNameField] = org.name;
         // Links come back as term ids; the design speaks in labels.
         for (const [label, kind] of Object.entries(KIND_FOR_LABEL)) {
           const ids = selected?.[kind] ?? [];
@@ -341,6 +348,9 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
         window.scrollTo({ top: 0, behavior: "smooth" });
       }}
       onNext={next}
+      extraChipGroups={optionsByLabel["Production type"] ? {
+        [MAKE_STEP]: [["Production type", optionsByLabel["Production type"], []]],
+      } : undefined}
       onSaveAndExit={onSignOut ? saveAndExit : undefined}
       onLogout={onSignOut}
       documents={documents}

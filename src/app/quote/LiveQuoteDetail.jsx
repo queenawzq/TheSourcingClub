@@ -49,7 +49,13 @@ export default function LiveQuoteDetail({ rfqId, quoteId }) {
       primaryLabel="Choose quote"
     >
       <QuoteDetailScreen
-        quote={{ ...found.view, fitType: `Version ${found.view.version}` }}
+        quote={{
+          ...found.view,
+          fitType: `Version ${found.view.version}`,
+          // The same badge and place line as the vendor's card on Review quotes.
+          trust: found.raw.orgs?.factory_profiles?.verification_status === "verified" ? "trusted" : "",
+          location: found.raw.orgs?.factory_profiles?.location ?? "",
+        }}
         request={state.request}
         onBack={() => navigate(`/rfqs/${rfqId}/quotes`)}
         onMessage={message}

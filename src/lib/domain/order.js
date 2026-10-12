@@ -39,7 +39,7 @@ export async function listOrders(orgId) {
       // The steps ride along so each card can draw its own rail rather than
       // the design's fixed five, and `brief` so the card's description line
       // has something in it.
-      .select(`${SUMMARY_COLUMNS}, rfqs (title, brief), brand:brand_org_id (name), factory:factory_org_id (name), order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state))`)
+      .select(`${SUMMARY_COLUMNS}, rfqs (title, brief), brand:brand_org_id (name), factory:factory_org_id (name), order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state, due_at))`)
       // RLS already scopes this, but a person can belong to both a brand and a
       // factory org, and the question being asked is about the ACTIVE one.
       .or(`brand_org_id.eq.${orgId},factory_org_id.eq.${orgId}`)
@@ -173,11 +173,24 @@ export function paymentStatusLabel(state, { isFactory }) {
   return isFactory ? pair.factory : pair.brand;
 }
 
-/** ready | warning | neutral, per the design system's signal colours. */
+/**
+ * ready | warning | neutral, per the design system's signal colours.
+ *
+ * The colour follows the label, as in the design, where each status has one
+ * colour: "In production" is always the same pill. It used to turn orange
+ * whenever the brand owed something, so two orders both "In production" wore
+ * different colours; what is owed is shown on the step bar instead. Setting
+ * the steps is the brand's to do, so it is the one warning.
+ */
 export function statusTone(order, { isFactory }) {
   if (!order) return "neutral";
-  if (order.status === "cancelled") return "neutral";
-  if (order.status === "completed") return "ready";
-  const waiting = isFactory ? order.awaiting_factory : order.awaiting_brand;
-  return waiting ? "warning" : "ready";
+  switch (order.status) {
+    case "pending_schedule":
+      return isFactory ? "neutral" : "warning";
+    case "active":
+    case "completed":
+      return "ready";
+    default:
+      return "neutral";
+  }
 }

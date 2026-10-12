@@ -12,7 +12,7 @@
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { MessagesScreen } from "../../prototype/main.jsx";
-import { LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, sendMessage } from "../../lib/domain/message.js";
+import { LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, sendMessage, threadProjectNames } from "../../lib/domain/message.js";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -35,6 +35,7 @@ function dayLabel(value) {
 
 export default function LiveMessages({ org, isFactory, user, threadId, orderId }) {
   const [threads, setThreads] = useState(null);
+  const [projectNames, setProjectNames] = useState(new Map());
   const [messagesByThread, setMessagesByThread] = useState({});
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
@@ -63,6 +64,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const reload = useCallback(async () => {
     try {
       const rows = await listThreads(org.id);
+      setProjectNames(await threadProjectNames(rows ?? []));
       setThreads(rows ?? []);
       return rows ?? [];
     } catch (failure) {
@@ -143,7 +145,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       id: thread.id,
       name: counterparty ?? "—",
       initials: initialsOf(counterparty),
-      project: thread.subject_title ?? "",
+      // The project's name, so two conversations with one company differ.
+      project: projectNames.get(thread.id) ?? thread.subject_title ?? "",
       kind: thread.subject_kind === "order" ? "Production order" : "Request for quote",
       lastDate: dayLabel(thread.last_message_at),
       lastPreview: thread.last_body ?? "No messages yet.",
@@ -154,6 +157,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         const mine = message.sender_org_id === org.id;
         return {
           from: mine ? (isFactory ? "factory" : "brand") : (isFactory ? "brand" : "factory"),
+          // The bubble's side and label: the reader's own messages on the
+          // right with their own name, whichever side the reader is on.
+          own: mine,
           time: message.created_at ? TIME.format(new Date(message.created_at)) : "",
           // The reader's own language first, with the original one click
           // away — the rule in CLAUDE.md. The designed bubble shows `body`
@@ -183,6 +189,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         onSelectThread={loadThread}
         onSend={send}
         sending={sending}
+        ownName={org.name}
       />
     </>
   );

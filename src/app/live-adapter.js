@@ -122,8 +122,29 @@ function railSteps(order, isFactory) {
     });
 }
 
+/**
+ * When the next thing on the order is due, in this order:
+ * - the next payment's step date (what the summary view gives);
+ * - the first unfinished step's own date;
+ * - a payment that is due now: the day it fell due (steps often carry no
+ *   date, but a payment waiting on the brand always has one).
+ * Nothing at all means no date was ever set, and the card says "—".
+ */
+function nextDueOn(order) {
+  if (order.next_payment_due_on) return order.next_payment_due_on;
+  const steps = [...(order.order_milestones ?? [])].sort((a, b) => a.sort - b.sort);
+  const dated = steps.find((milestone) => milestone.state !== "complete" && milestone.due_on);
+  if (dated) return dated.due_on;
+  for (const milestone of steps) {
+    const payment = Array.isArray(milestone.order_payments) ? milestone.order_payments[0] : milestone.order_payments;
+    if (payment?.state === "due" && payment.due_at) return payment.due_at;
+  }
+  return null;
+}
+
 /** A database row in the shape the designed card reads. */
 export function toProjectCard(order, isFactory) {
+  const dueOn = nextDueOn(order);
   return {
     id: order.id,
     // The raw state, so a screen can tell an open order from a finished one
@@ -137,18 +158,21 @@ export function toProjectCard(order, isFactory) {
       : `Awarded ${MONTH_DAY.format(new Date(order.created_at))}`,
     description: order.rfqs?.brief ?? "",
     status: orderStatusLabel(order, { isFactory }),
+    // The dashboard card's pill. Without it the design's own labels ("Lab dip
+    // review", "Sample approval") were shown for whatever tone the order had.
+    compactStatus: orderStatusLabel(order, { isFactory }),
     statusTone: statusTone(order, { isFactory }),
     statusDetail: statusDetail(order, isFactory),
     currentStep: order.current_milestone_title ?? "—",
-    nextDue: order.next_payment_due_on
-      ? MONTH_DAY.format(new Date(order.next_payment_due_on))
+    nextDue: dueOn
+      ? MONTH_DAY.format(new Date(dueOn))
       : "—",
     progress: progressPosition(order),
     steps: railSteps(order, isFactory),
     // What the list's search, date range and sort read.
     orderNumber: order.order_number,
     createdAt: order.created_at,
-    nextDueOn: order.next_payment_due_on ?? null,
+    nextDueOn: dueOn,
     // What the card's menu offers about cancelling (live only).
     cancelProposal: cancelProposal(order, isFactory),
     // The prototype shows a reference photograph on every card. Real orders

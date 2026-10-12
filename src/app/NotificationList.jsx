@@ -6,24 +6,9 @@
  * time, and nothing showed it.
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { listNotifications, markAllRead, markRead, notificationLink } from "../lib/domain/notifications.js";
+import { listNotifications, markAllRead, markRead, notificationLink, timeAgo as ago } from "../lib/domain/notifications.js";
 import { useRouter } from "../lib/router.jsx";
 import "./notifications.css";
-
-const RELATIVE = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-
-function ago(iso) {
-  const seconds = Math.round((new Date(iso) - Date.now()) / 1000);
-  const units = [
-    ["day", 86400],
-    ["hour", 3600],
-    ["minute", 60],
-  ];
-  for (const [unit, size] of units) {
-    if (Math.abs(seconds) >= size) return RELATIVE.format(Math.round(seconds / size), unit);
-  }
-  return "just now";
-}
 
 export default function NotificationList({ org, isFactory }) {
   const { navigate } = useRouter();

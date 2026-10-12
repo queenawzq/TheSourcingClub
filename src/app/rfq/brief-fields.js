@@ -15,8 +15,16 @@
 
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
 
+/** Who the garment is for → the product_category slug that says so. */
+const GENDER_WORDS = {
+  womenswear: ["womenswear", "women's", "womens", "women", "ladies", "ladieswear"],
+  menswear: ["menswear", "men's", "mens", "men"],
+  "childrenswear-baby": ["childrenswear", "kidswear", "children's", "kids"],
+};
+
 /** Garment words → the product_category slug they belong to. */
 const CATEGORY_WORDS = {
+  ...GENDER_WORDS,
   tops: ["top", "shirt", "overshirt", "t-shirt", "tee", "blouse", "polo", "hoodie", "sweatshirt", "sweater", "jumper", "cardigan", "tank", "knitwear"],
   bottoms: ["bottom", "trouser", "pant", "jean", "short", "skirt", "chino", "jogger", "sweatpant"],
   "dresses-jumpsuits": ["dress", "jumpsuit", "romper", "playsuit"],
@@ -29,6 +37,9 @@ const CATEGORY_WORDS = {
   "uniforms-workwear": ["uniform", "workwear", "scrub", "overall"],
   accessories: ["accessory", "accessories", "bag", "tote", "hat", "cap", "beanie", "scarf", "sock", "glove", "belt"],
 };
+
+/** Words that say what kind of garment, kept in front of it: "poplin shirts". */
+const GARMENT_DESCRIBERS = ["woven", "knit", "knitted", "denim", "poplin", "linen", "jersey", "fleece", "rib", "ribbed", "twill", "corduroy", "silk", "satin", "wool", "cashmere", "leather", "nylon", "canvas", "oxford", "chambray", "flannel", "terry"];
 
 const FABRICS = ["organic cotton", "recycled polyester", "cotton", "linen", "wool", "merino", "cashmere", "silk", "denim", "polyester", "nylon", "viscose", "tencel", "modal", "jersey", "fleece", "corduroy", "twill", "poplin", "satin", "leather"];
 
@@ -66,22 +77,80 @@ function priceFrom(text) {
   return single ? `$${single[1]}` : "";
 }
 
-/** "delivery by March" → "Delivery by March". The month is what gets stored. */
+/**
+ * "delivery by March" → "Delivery by March". The month is what gets stored.
+ * With no month, the sentence that gives a span ("Delivery in 60 days") is
+ * still the brand's timeline, and is shown rather than left blank.
+ */
 function timelineFrom(text) {
   const month = MONTHS.join("|");
   const match = text.match(new RegExp(`((?:[A-Za-z-]+\\s+){0,3})\\b(${month}|${MONTHS.map((name) => name.slice(0, 3)).join("|")})\\b\\.?(\\s+20\\d{2})?`, "i"));
-  if (!match) return "";
-  return capitalise(match[0].replace(/\.$/, "").trim());
+  if (match) return capitalise(match[0].replace(/\.$/, "").trim());
+  const span = clauses(text).find((clause) => /\b\d+\s*(?:business\s+|working\s+)?(?:days?|weeks?|months?)\b/i.test(clause) && !/\bquotes?\b/i.test(clause));
+  return span ? capitalise(span) : "";
 }
 
-function categoriesFrom(text, terms) {
+/** The category terms the text names, by label, alias or garment word, in reading order. */
+function categoryTermsIn(text, terms) {
   const found = [];
   for (const term of terms ?? []) {
     const words = [term.label_en, ...(term.aliases ?? []), ...(CATEGORY_WORDS[term.slug] ?? [])].filter(Boolean);
     const at = Math.min(...words.map((word) => firstIndex(text, word)).filter((index) => index >= 0));
+    if (Number.isFinite(at)) found.push({ at, term });
+  }
+  return found.sort((a, b) => a.at - b.at).map((entry) => entry.term);
+}
+
+/**
+ * The product categories a category line links to. The line is prose
+ * ("Womenswear / poplin shirts"), so a garment word counts as well as a
+ * label: "shirts" links Tops, and matching keeps working.
+ */
+export function categoryTermIds(typed, terms) {
+  return categoryTermsIn(String(typed ?? ""), terms).map((term) => term.id);
+}
+
+/** "300 women's organic cotton poplin shirts" → "poplin shirts". */
+function garmentFrom(text) {
+  const garments = Object.entries(CATEGORY_WORDS)
+    .filter(([slug]) => !GENDER_WORDS[slug])
+    .flatMap(([, words]) => words);
+  let best = null;
+  for (const word of garments) {
+    const match = text.match(new RegExp(`(?:\\b([A-Za-z-]+)\\s+)?\\b${escape(word)}(?:e?s)?\\b`, "i"));
+    if (match && (best === null || match.index < best.index)) best = match;
+  }
+  if (!best) return "";
+  const [phrase, before] = best;
+  const describer = before && GARMENT_DESCRIBERS.includes(before.toLowerCase());
+  return (describer ? phrase : phrase.slice(phrase.length - phrase.trimStart().split(/\s+/).pop().length)).toLowerCase();
+}
+
+/**
+ * The review card's product category, as specific as the brief is:
+ * "Womenswear / poplin shirts" rather than "Tops" (QA, Oct 5). Without a
+ * garment word, the category labels the text names.
+ */
+function productTypeFrom(text, terms) {
+  const named = categoryTermsIn(text, terms);
+  const gender = named.find((term) => GENDER_WORDS[term.slug]);
+  const garment = garmentFrom(text);
+  if (garment) return gender ? `${gender.label_en} / ${garment}` : capitalise(garment);
+  return named.map((term) => term.label_en).join(", ");
+}
+
+/**
+ * Taxonomy labels the text names, for regions and certifications: "Portugal
+ * or Turkey" → "Portugal, Turkey"; "OEKO-TEX" names OEKO-TEX Standard 100.
+ */
+function labelsIn(text, terms) {
+  const found = [];
+  for (const term of terms ?? []) {
+    const words = [term.label_en, term.label_en?.split(/\s+standard\b/i)[0], ...(term.aliases ?? [])].filter(Boolean);
+    const at = Math.min(...words.map((word) => firstIndex(text, word)).filter((index) => index >= 0));
     if (Number.isFinite(at)) found.push({ at, label: term.label_en });
   }
-  return found.sort((a, b) => a.at - b.at).map((entry) => entry.label);
+  return found.sort((a, b) => a.at - b.at).map((entry) => entry.label).join(", ");
 }
 
 function materialFrom(text) {
@@ -108,16 +177,18 @@ export function quantityLine(total, colours) {
 
 /**
  * Every review-card field the brief supports, keyed like the card's values.
- * `categoryTerms` is the product_category term list (the labels are what the
- * save step links on).
+ * `categoryTerms` is the product_category term list; `otherTerms` holds the
+ * certification and region lists (the labels are what the save step links on).
  */
-export function fieldsFromBrief(brief, categoryTerms) {
+export function fieldsFromBrief(brief, categoryTerms, otherTerms = {}) {
   const text = String(brief ?? "").trim();
   if (!text) return {};
   const samples = clauses(text).find((clause) => /\bsamples?\b/i.test(clause)) ?? "";
 
   return {
-    category: categoriesFrom(text, categoryTerms).join(", "),
+    category: productTypeFrom(text, categoryTerms),
+    certifications: labelsIn(text, otherTerms.certification),
+    regions: labelsIn(text, otherTerms.region),
     quantity: quantityLine(quantityFrom(text), colourCountFrom(text)),
     material: materialFrom(text),
     samples: capitalise(samples),

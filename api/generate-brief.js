@@ -47,6 +47,7 @@ Rules:
 - Quantities and prices are numbers, not text. Price is per unit in whole dollars.
 - Category, certification and region must be chosen from the slugs listed below, or omitted. Never invent a slug.
 - title is a short human name for the request, as a person would write it.
+- product_type says what is being made as specifically as the description allows: who it is for and the garment, e.g. "Womenswear / woven shirting". It is shown to vendors, so no slugs.
 - brief is a cleaned-up version of their description: same substance, better organised, no invented detail.
 
 product_category slugs: ${categories.join(", ")}
@@ -61,6 +62,10 @@ const SCHEMA = {
   required: ["title", "brief"],
   properties: {
     title: { type: "string", description: "Short name for the request" },
+    product_type: {
+      type: ["string", "null"],
+      description: "What is being made, as specific as the description allows, e.g. \"Womenswear / woven shirting\"",
+    },
     brief: { type: "string", description: "Tidied version of the description" },
     quantity_total: { type: ["integer", "null"] },
     material_notes: { type: ["string", "null"] },

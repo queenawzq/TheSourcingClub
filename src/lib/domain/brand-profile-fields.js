@@ -27,6 +27,9 @@ export const NUMERIC_COLUMNS = new Set(["founded_year"]);
 
 /** Designed chip-group label → taxonomy kind. */
 export const KIND_FOR_LABEL = {
+  // Not on the current design's step 4 (it was until 2026-09-10). Onboarding
+  // asks it anyway because match scores weigh it (migration 006).
+  "Production type": "production_type",
   "What does your brand make?": "product_category",
   "Market level": "market_level",
   "Preferred regions": "region",
