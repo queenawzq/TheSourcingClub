@@ -5,6 +5,7 @@ import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
 import { archiveActionFor, cancelActionFor, filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab, withArchivedTab } from "../shared/production-order-parts.jsx";
+import { clock, dateIn, dayLabel, theirTime, whenIn, zonedTime, zoneLabel } from "../shared/call-time.mjs";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
@@ -1675,6 +1676,11 @@ export function MessagesScreen({
   // The reader's own company. With it, a live message marks itself `own`
   // and the bubble no longer assumes the reader is the brand.
   ownName,
+  // Live calls: the cards for each conversation ({ [threadId]: [call] }) and
+  // the "Schedule call" dialog, opened and closed by the live mount (it also
+  // opens it to propose another time). Absent, live shows no calls at all.
+  calls: liveCalls,
+  scheduling: liveScheduling,
 }) {
   const messageThreads = liveThreads ?? mockMessageThreads;
   const isLive = Boolean(liveThreads);
@@ -1706,15 +1712,18 @@ export function MessagesScreen({
   // nothing behind them — see CLAUDE.md. Rather than render invented times and
   // availability as if they were real, the live mount goes without them.
   const activeScheduledCall = isLive ? null : scheduledCalls[activeThread?.id];
+  const liveCallCards = liveCalls ? liveCalls[activeThread?.id] ?? [] : [];
+  const scheduleOpen = liveScheduling ? liveScheduling.open : showSchedule;
+  const closeSchedule = liveScheduling ? liveScheduling.onClose : () => setShowSchedule(false);
 
   useEffect(() => {
-    if (!showSchedule) return undefined;
+    if (!scheduleOpen) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [showSchedule]);
+  }, [scheduleOpen]);
 
   const toggleTranslation = (threadId, index) => {
     const key = `${threadId}-${index}`;
@@ -1779,15 +1788,15 @@ export function MessagesScreen({
             </div>
           </div>
           <div className="message-room-actions">
-            {activeScheduledCall && !isCallPanelOpen && (
+            {(activeScheduledCall || liveCallCards.length > 0) && !isCallPanelOpen && (
               <button className="message-call-drawer-button" type="button" aria-label="Show scheduled call" onClick={() => setIsCallPanelOpen(true)}>
                 <img className="message-call-drawer-icon" src="/assets/prototype-icons/scheduled-call.svg" alt="" />
               </button>
             )}
-            {/* Call scheduling and video are drawn with nothing behind them.
-                They stay in the prototype and are absent live, rather than
-                offering a brand a call that cannot happen. */}
-            {!isLive && <button className="secondary-btn compact-btn" type="button" onClick={() => setShowSchedule(true)}>Schedule call</button>}
+            {/* Live schedules calls when the mount passes `scheduling`. An
+                instant "Live video chat" has nothing behind it (no presence:
+                the other side would not know), so it stays in the prototype. */}
+            {(!isLive || liveScheduling) && <button className="secondary-btn compact-btn" type="button" onClick={() => (liveScheduling ? liveScheduling.onOpen() : setShowSchedule(true))}>Schedule call</button>}
             {!isLive && <button className="primary-btn compact-btn" type="button" onClick={() => setCallMode("preview")}>Live video chat</button>}
           </div>
         </header>
@@ -1847,9 +1856,10 @@ export function MessagesScreen({
       {isCallPanelOpen && (
         <button className="message-side-panel-scrim" type="button" aria-label="Hide scheduled call" onClick={() => setIsCallPanelOpen(false)} />
       )}
-      {/* Live has no calls, so no empty "Scheduled call" panel (it was also
-          what made the page scroll sideways at phone width). */}
-      {!isLive && <aside className={isCallPanelOpen ? "message-side-panel open" : "message-side-panel"}>
+      {/* Live draws the panel only for a conversation with calls: an empty
+          "Scheduled call" heading also made the page scroll sideways at
+          phone width. */}
+      {(!isLive || liveCallCards.length > 0) && <aside className={isCallPanelOpen ? "message-side-panel open" : "message-side-panel"}>
         <header className="message-side-panel-header">
           <h2>Scheduled call</h2>
           <button className="settings-drawer-close message-side-panel-close" type="button" aria-label="Hide scheduled call" onClick={() => setIsCallPanelOpen(false)}>
@@ -1857,17 +1867,19 @@ export function MessagesScreen({
           </button>
         </header>
         {activeScheduledCall && <UpcomingCallCard call={activeScheduledCall} thread={activeThread} />}
+        {liveCallCards.map((call) => <UpcomingCallCard call={call} thread={activeThread} live={call.live} key={call.id} />)}
       </aside>}
-      {showSchedule && createPortal((
+      {scheduleOpen && createPortal((
         <div className="message-schedule-modal-layer" role="presentation">
-          <button className="message-schedule-modal-scrim" type="button" aria-label="Close schedule call" onClick={() => setShowSchedule(false)} />
+          <button className="message-schedule-modal-scrim" type="button" aria-label="Close schedule call" onClick={closeSchedule} />
           <div className="message-schedule-modal" role="dialog" aria-label="Schedule call">
-            <button className="settings-drawer-close" type="button" aria-label="Close schedule call" onClick={() => setShowSchedule(false)}>
+            <button className="settings-drawer-close" type="button" aria-label="Close schedule call" onClick={closeSchedule}>
               <img src="/assets/prototype-icons/close.svg" alt="" />
             </button>
             <ScheduleCallPanel
-              key={activeThread.id}
+              key={liveScheduling ? `${activeThread.id}-${liveScheduling.key ?? ""}` : activeThread.id}
               thread={activeThread}
+              live={liveScheduling}
               isOpen
               onSchedule={(call) => {
                 setScheduledCalls((current) => ({ ...current, [activeThread.id]: call }));
@@ -1951,7 +1963,11 @@ function VideoCallPanel({ thread, mode, setMode }) {
   );
 }
 
-function UpcomingCallCard({ call, thread }) {
+// Live passes `live`: where the call stands (`status`, `note`) and the
+// buttons that fit it (`actions`: Accept, Join call, Add to calendar…). The
+// design draws only an accepted call with "Join call"; the prototype passes
+// none and is unchanged.
+function UpcomingCallCard({ call, thread, live }) {
   return (
     <section className="upcoming-call-card home-upcoming-call-time">
       <div className="home-upcoming-call-heading">
@@ -1961,16 +1977,41 @@ function UpcomingCallCard({ call, thread }) {
         </div>
         <strong>{call.brandTime}</strong>
       </div>
+      {live?.status && <p className={`call-card-status ${live.tone ?? ""}`}>{live.status}</p>}
       <div className="home-upcoming-call-actions">
         <p className="home-upcoming-call-description">{call.agenda}</p>
-        <button className="secondary-btn compact-btn" type="button">Join call</button>
+        {live ? (
+          live.actions?.length > 0 && (
+            <div className="call-card-actions">
+              {live.actions.map((action) => (
+                <button
+                  className={`${action.primary ? "primary-btn" : "secondary-btn"} compact-btn`}
+                  type="button"
+                  disabled={action.disabled}
+                  onClick={action.onClick}
+                  key={action.label}
+                >
+                  {action.label}
+                </button>
+              ))}
+            </div>
+          )
+        ) : (
+          <button className="secondary-btn compact-btn" type="button">Join call</button>
+        )}
       </div>
+      {live?.note && <p className="call-card-note" role={live.noteIsError ? "alert" : undefined}>{live.note}</p>}
     </section>
   );
 }
 
-function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
-  const timezoneOptions = [
+// Live passes `live`: the person's own time zone and the zones offered, the
+// other side's name and zone, what to prefill (proposing another time), and
+// `onSubmit`. The calendar is then the real month and the times are every
+// half hour of the working day in the chosen zone, each with the other side's
+// time under it. The prototype passes none and keeps its drawn September.
+function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
+  const timezoneOptions = live?.zones ?? [
     { value: "ET", label: "Eastern Time (ET)", offset: -4 },
     { value: "CT", label: "Central Time (CT)", offset: -5 },
     { value: "PT", label: "Pacific Time (PT)", offset: -7 },
@@ -1979,11 +2020,17 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
   const availableTimes = [810, 840, 870, 900, 990];
   const calendarDays = Array.from({ length: 31 }, (_, index) => index === 0 ? null : index);
   const [scheduleStep, setScheduleStep] = useState(1);
-  const [timezone, setTimezone] = useState("ET");
+  const [timezone, setTimezone] = useState(live ? live.ownZone : "ET");
   const [selectedDate, setSelectedDate] = useState(8);
   const [selectedTime, setSelectedTime] = useState(840);
-  const [callTitle, setCallTitle] = useState("Sample review call");
-  const [callDescription, setCallDescription] = useState(`Review open questions with ${thread.name} and confirm next actions.`);
+  const [callTitle, setCallTitle] = useState(live ? live.initial?.title ?? `Call with ${live.otherName}` : "Sample review call");
+  const [callDescription, setCallDescription] = useState(live ? live.initial?.agenda ?? "" : `Review open questions with ${thread.name} and confirm next actions.`);
+  // Live only: the month on show, and the chosen day and time (minutes past
+  // midnight in the chosen zone).
+  const today = live ? dateIn(new Date(), timezone) : null;
+  const [viewMonth, setViewMonth] = useState(() => (live ? { year: today.year, month: today.month } : null));
+  const [liveDay, setLiveDay] = useState(null);
+  const [liveMinutes, setLiveMinutes] = useState(null);
   const selectedTimezone = timezoneOptions.find((option) => option.value === timezone) || timezoneOptions[0];
   const formatTime = (utcMinutes, offset) => {
     const minutesInDay = 24 * 60;
@@ -1993,16 +2040,57 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
     return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${hour >= 12 ? "PM" : "AM"}`;
   };
   const selectedWeekday = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][selectedDate % 7];
-  const selectedDateLabel = `${selectedWeekday}, Sep ${selectedDate}`;
-  const brandTime = `${selectedDateLabel} · ${formatTime(selectedTime, selectedTimezone.offset)} ${selectedTimezone.value}`;
-  const factoryTime = `${thread.name}: ${selectedDateLabel} · ${formatTime(selectedTime, 1)} Porto`;
+  let selectedDateLabel = `${selectedWeekday}, Sep ${selectedDate}`;
+  let brandTime = `${selectedDateLabel} · ${formatTime(selectedTime, selectedTimezone.offset)} ${selectedTimezone.value}`;
+  let factoryTime = `${thread.name}: ${selectedDateLabel} · ${formatTime(selectedTime, 1)} Porto`;
+  let scheduleNote = thread.scheduleNote;
+  let monthLabel = "September 2026";
+  let liveSlots = [];
+  let liveStart = null;
+  let liveCalendar = null;
+  if (live) {
+    const monthStart = new Date(Date.UTC(viewMonth.year, viewMonth.month - 1, 1));
+    const daysInMonth = new Date(Date.UTC(viewMonth.year, viewMonth.month, 0)).getUTCDate();
+    const lead = (monthStart.getUTCDay() + 6) % 7;
+    monthLabel = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" }).format(monthStart);
+    const isPastDay = (day) => viewMonth.year * 10000 + viewMonth.month * 100 + day < today.year * 10000 + today.month * 100 + today.day;
+    liveCalendar = { lead, daysInMonth, isPastDay };
+    const earliest = Date.now() + 15 * 60000;
+    if (liveDay) {
+      for (let minutes = 7 * 60; minutes <= 20 * 60 + 30; minutes += 30) {
+        const at = zonedTime(viewMonth.year, viewMonth.month, liveDay, minutes, timezone);
+        if (at.getTime() >= earliest) liveSlots.push({ minutes, at });
+      }
+    }
+    liveStart = liveDay && liveMinutes !== null ? zonedTime(viewMonth.year, viewMonth.month, liveDay, liveMinutes, timezone) : null;
+    selectedDateLabel = liveDay ? dayLabel(zonedTime(viewMonth.year, viewMonth.month, liveDay, 12 * 60, timezone), timezone) : "Pick a date";
+    brandTime = liveStart ? whenIn(liveStart, timezone) : "";
+    factoryTime = liveStart ? theirTime(liveStart, live.otherName, live.otherZone) : "";
+    scheduleNote = live.otherZone
+      ? `Your time: ${zoneLabel(timezone)} · ${live.otherName}: ${zoneLabel(live.otherZone)} time`
+      : `Your time: ${zoneLabel(timezone)}`;
+  }
+  const otherClock = (at) => {
+    // The other side's time, with its day when that differs from yours.
+    const sameDay = dayLabel(at, live.otherZone) === dayLabel(at, timezone);
+    return `${live.otherName}: ${sameDay ? "" : `${dayLabel(at, live.otherZone).split(",")[0]} `}${clock(at, live.otherZone)} ${zoneLabel(live.otherZone)}`;
+  };
+  const shiftMonth = (step) => {
+    setViewMonth(({ year, month }) => {
+      const next = month + step;
+      return { year: year + Math.floor((next - 1) / 12), month: ((next - 1) % 12 + 12) % 12 + 1 };
+    });
+    setLiveDay(null);
+    setLiveMinutes(null);
+  };
+  const atCurrentMonth = live ? viewMonth.year === today.year && viewMonth.month === today.month : false;
 
   return (
     <section className={isOpen ? "schedule-card open" : "schedule-card"}>
       <header>
         <div>
-          <h3>Schedule call</h3>
-          <p>{thread.scheduleNote}</p>
+          <h3>{live?.heading ?? "Schedule call"}</h3>
+          <p>{scheduleNote}</p>
         </div>
         {!isOpen && <button className="secondary-btn compact-btn" type="button" onClick={onOpen}>Open</button>}
       </header>
@@ -2019,17 +2107,32 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
                 <div><span>Duration</span><strong>30 minutes</strong></div>
                 <label>
                   <span>Time zone</span>
-                  <select value={timezone} onChange={(event) => setTimezone(event.target.value)}>
+                  <select value={timezone} onChange={(event) => { setTimezone(event.target.value); if (live) setLiveMinutes(null); }}>
                     {timezoneOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
                   </select>
                 </label>
               </div>
               <div className="schedule-when-layout">
                 <section className="schedule-calendar" aria-label="Select a date">
-                  <div className="schedule-calendar-heading"><button type="button" aria-label="Previous month">‹</button><strong>September 2026</strong><button type="button" aria-label="Next month">›</button></div>
+                  <div className="schedule-calendar-heading"><button type="button" aria-label="Previous month" disabled={live ? atCurrentMonth : undefined} onClick={live ? () => shiftMonth(-1) : undefined}>‹</button><strong>{monthLabel}</strong><button type="button" aria-label="Next month" onClick={live ? () => shiftMonth(1) : undefined}>›</button></div>
                   <div className="schedule-calendar-weekdays" aria-hidden="true">{["M", "T", "W", "T", "F", "S", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}</div>
                   <div className="schedule-calendar-days">
-                    {calendarDays.map((day, index) => day ? (
+                    {live ? (
+                      <>
+                        {Array.from({ length: liveCalendar.lead }, (_, index) => <span key={`blank-${index}`} />)}
+                        {Array.from({ length: liveCalendar.daysInMonth }, (_, index) => index + 1).map((day) => (
+                          <button
+                            className={day === liveDay ? "selected" : ""}
+                            type="button"
+                            disabled={liveCalendar.isPastDay(day)}
+                            onClick={() => { setLiveDay(day); setLiveMinutes(null); }}
+                            key={day}
+                          >
+                            {day}
+                          </button>
+                        ))}
+                      </>
+                    ) : calendarDays.map((day, index) => day ? (
                       <button className={day === selectedDate ? "selected" : ""} type="button" onClick={() => setSelectedDate(day)} key={day}>{day}</button>
                     ) : <span key={`blank-${index}`} />)}
                   </div>
@@ -2037,7 +2140,14 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
                 <section className="schedule-time-picker" aria-label="Select a time">
                   <h4>{selectedDateLabel}</h4>
                   <div className="schedule-time-list">
-                    {availableTimes.map((utcMinutes) => (
+                    {live && liveDay && liveSlots.length === 0 && <span>No times left on this day.</span>}
+                    {live && liveSlots.map((slot) => (
+                      <button className={slot.minutes === liveMinutes ? "selected" : ""} type="button" onClick={() => setLiveMinutes(slot.minutes)} key={slot.minutes}>
+                        <strong>{clock(slot.at, timezone)} {zoneLabel(timezone)}</strong>
+                        {live.otherZone && <span>{otherClock(slot.at)}</span>}
+                      </button>
+                    ))}
+                    {!live && availableTimes.map((utcMinutes) => (
                       <button className={utcMinutes === selectedTime ? "selected" : ""} type="button" onClick={() => setSelectedTime(utcMinutes)} key={utcMinutes}>
                         <strong>{formatTime(utcMinutes, selectedTimezone.offset)} {selectedTimezone.value}</strong>
                         <span>{thread.name}: {formatTime(utcMinutes, 1)} Porto</span>
@@ -2047,12 +2157,12 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
                 </section>
               </div>
               <div className="schedule-footer">
-                <button className="primary-btn compact-btn" type="button" onClick={() => setScheduleStep(2)}>Continue</button>
+                <button className="primary-btn compact-btn" type="button" disabled={live ? !liveStart : undefined} onClick={() => setScheduleStep(2)}>Continue</button>
               </div>
             </div>
           ) : (
             <div className="schedule-details-step">
-              <div className="schedule-selection-summary"><span>Selected time</span><strong>{brandTime}</strong><small>{factoryTime}</small></div>
+              <div className="schedule-selection-summary"><span>Selected time</span><strong>{brandTime}</strong>{(!live || factoryTime) && <small>{factoryTime}</small>}</div>
               <label className="schedule-field">
                 <span>Title</span>
                 <input value={callTitle} onChange={(event) => setCallTitle(event.target.value)} />
@@ -2063,8 +2173,18 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule }) {
               </label>
               <div className="schedule-footer split">
                 <button className="secondary-btn compact-btn" type="button" onClick={() => setScheduleStep(1)}>Back</button>
-                <button className="primary-btn compact-btn" type="button" onClick={() => onSchedule?.({ title: callTitle, brandTime, factoryTime, agenda: callDescription, hasVideo: true })}>Send invite</button>
+                <button
+                  className="primary-btn compact-btn"
+                  type="button"
+                  disabled={live ? live.busy || !callTitle.trim() : undefined}
+                  onClick={() => (live
+                    ? live.onSubmit({ startsAt: liveStart, timeZone: timezone, title: callTitle.trim(), agenda: callDescription.trim() })
+                    : onSchedule?.({ title: callTitle, brandTime, factoryTime, agenda: callDescription, hasVideo: true }))}
+                >
+                  {live ? (live.busy ? "Sending…" : live.submitLabel ?? "Send invite") : "Send invite"}
+                </button>
               </div>
+              {live?.error && <p className="call-card-note" role="alert">{live.error}</p>}
             </div>
           )}
         </>
@@ -3716,6 +3836,8 @@ export function HomeScreen({
   // neither and keeps the design's examples: a $50 discount and two calls.
   showSavings = true,
   showCalls = true,
+  // Live: the company's upcoming calls, drawn by the designed card.
+  calls,
   // The search and its suggested actions are not built yet (QA, Oct 5):
   // live hides them, the prototype keeps them.
   showSearch = true,
@@ -3885,7 +4007,7 @@ export function HomeScreen({
                   <BrandDashboardDiscountCard savings={savings} onInvite={() => setInviteBrandOpen(true)} onViewCodes={() => setDiscountCodesOpen(true)} />
                 </>
               )}
-              {showCalls && <HomeUpcomingCallCard />}
+              {showCalls && <HomeUpcomingCallCard calls={calls} />}
               <header className="home-panel-header compact">
                 <div>
                   <h2>Needs your attention</h2>
@@ -4186,8 +4308,8 @@ export function ActivityDrawer({ onClose, items, onOpenItem }) {
   ), document.body);
 }
 
-function HomeUpcomingCallCard() {
-  const calls = [
+function HomeUpcomingCallCard({ calls: liveCalls }) {
+  const calls = liveCalls ?? [
     {
       title: "Sample review call",
       time: "Tue 10:00 AM ET",
@@ -4207,7 +4329,7 @@ function HomeUpcomingCallCard() {
       <h2 className="home-upcoming-call-label">Scheduled calls</h2>
       <div className="home-upcoming-call-list">
         {calls.map((call) => (
-          <section className="home-upcoming-call-time" key={call.title}>
+          <section className="home-upcoming-call-time" key={call.id ?? call.title}>
             <div className="home-upcoming-call-heading">
               <h3>{call.title}</h3>
               <strong>{call.time}</strong>
@@ -4215,7 +4337,7 @@ function HomeUpcomingCallCard() {
             <span>{call.counterpartTime}</span>
             <div className="home-upcoming-call-actions">
               <p className="home-upcoming-call-description">{call.description}</p>
-              <button className="secondary-btn compact-btn" type="button">Join call</button>
+              <button className="secondary-btn compact-btn" type="button" onClick={call.onAction}>{call.action ?? "Join call"}</button>
             </div>
           </section>
         ))}

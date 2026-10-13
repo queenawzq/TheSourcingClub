@@ -1362,6 +1362,60 @@ console.log("\nphase 3 — the order runs");
       afterHold.length === 1
         ? ok("and is not notified of it")
         : fail(`expected still one notification, got ${afterHold.length}`);
+
+      // Calls on the same conversation: the exact signatures and the select
+      // string src/lib/domain/calls.js uses, so a renamed argument or an
+      // ambiguous embed fails here rather than on a screen.
+      const startsAt = new Date(Date.now() + 2 * 86400000).toISOString();
+      const { data: proposed, error: proposeError } = await brand.client.rpc("propose_call", {
+        target_thread: threadId, starts_at: startsAt, duration_minutes: 30,
+        title: "Smoke call", agenda: null, time_zone: "America/New_York",
+      });
+      proposeError ? fail("the brand proposes a call", proposeError) : ok("the brand proposes a call");
+
+      const { data: seenCalls, error: callsError } = await factoryClient.from("calls").select(`
+        id, thread_id, counter_of, title, agenda, starts_at, duration_minutes,
+        proposer_org_id, proposer_time_zone, status, responded_at, response_note,
+        cancelled_by_org_id, created_at,
+        thread:message_threads (
+          id, order_id, rfq_id, brand_org_id, factory_org_id,
+          brand:orgs!message_threads_brand_org_id_fkey (name),
+          factory:orgs!message_threads_factory_org_id_fkey (name)
+        )
+      `).eq("id", proposed?.id);
+      !callsError && seenCalls?.length === 1 && seenCalls[0].thread?.brand?.name
+        ? ok("the factory reads it, with both companies' names embedded")
+        : fail("the factory reads the call with its conversation", callsError);
+
+      const { error: zoneError } = await factoryClient.rpc("set_my_time_zone", { zone: "Europe/Lisbon" });
+      const { data: theirZone } = await brand.client.rpc("thread_counterparty_time_zone", { target_thread: threadId });
+      !zoneError && theirZone === "Europe/Lisbon"
+        ? ok("the brand reads the factory's time zone")
+        : fail(`the brand read the factory's zone as ${theirZone}`, zoneError);
+
+      const { error: ownAccept } = await brand.client.rpc("accept_call", { target_call: proposed?.id, time_zone: null });
+      ownAccept ? ok("the brand CANNOT accept its own invite")
+                : fail("LEAK: the proposer accepted its own call");
+
+      const { data: strangerCalls } = await losingFactory.from("calls").select("id").eq("thread_id", threadId);
+      (strangerCalls ?? []).length === 0
+        ? ok("an outsider CANNOT see the conversation's calls")
+        : fail("LEAK: an outsider read another conversation's calls");
+
+      const { error: accepted } = await factoryClient.rpc("accept_call", { target_call: proposed?.id, time_zone: "Europe/Lisbon" });
+      accepted ? fail("the factory accepts", accepted) : ok("the factory accepts");
+
+      const { data: meetings, error: meetingsError } = await factoryClient.from("call_meetings").select("*");
+      meetingsError || (meetings ?? []).length === 0
+        ? ok("the video meetings table is unreadable from the browser")
+        : fail("LEAK: a party read call_meetings");
+
+      const { error: claimError } = await factoryClient.rpc("claim_call_meeting", { target_call: proposed?.id });
+      claimError ? ok("a party CANNOT claim the meeting (the server's job)")
+                 : fail("LEAK: a party called claim_call_meeting");
+
+      const { error: cancelError } = await brand.client.rpc("cancel_call", { target_call: proposed?.id, note: null });
+      cancelError ? fail("either side cancels an accepted call", cancelError) : ok("either side cancels an accepted call");
     }
   }
 }

@@ -296,7 +296,16 @@ A thread belongs to the **request or order it is about**, never to a pair of com
 - Attachments are `documents` with `message_id` and kind `message_attachment`, and need the same three parts as milestone photos: the private bucket, a `documents` policy for the counterparty, and a matching `storage.objects` policy keyed on the thread in the path.
 - `documents` now has **three** FKs into this graph (`milestone_update_id`, `order_id`, `message_id`). An ambiguous embed is refused rather than guessed; the smoke test pins the exact select strings the domain modules use.
 
-Not built, deliberately: call scheduling (the prototype's slot proposals, timezones and video links), presence, and "usually replies in 2h". Every one of those is a hardcoded literal in the prototypes with nothing behind it.
+Not built, deliberately: presence and "usually replies in 2h" (hardcoded literals in the prototypes with nothing behind them), and so the instant "Live video chat" button, which needs presence.
+
+### Calls (scheduling, and joining by Zoom)
+
+A call belongs to a conversation (`calls.thread_id`), so `is_thread_party()` already says who sees it (`20261014000100`). The designed pieces are live through optional props: `MessagesScreen` takes `calls` (cards per thread) and `scheduling` (the dialog, opened by the live mount, also to propose another time), `ScheduleCallPanel` and `UpcomingCallCard` take `live`, and both dashboards' "Scheduled calls" cards take `calls`. `src/app/message/live-calls.js` shapes them; the prototypes pass none and are byte-identical.
+
+- **Only functions write.** `propose_call`, `accept_call`, `decline_call`, `counter_call`, `cancel_call`, each checking the party first, then the state. Only the OTHER side answers an invite; a counter is a new row (`counter_of`) and the old one becomes `countered`, so every time offered stays in the history. The proposer withdraws; either side cancels an accepted call before it starts. Each step notifies the other company with `subject_type 'thread'`, so the link opens the conversation.
+- **Times are UTC; zones are people's.** `user_profiles.time_zone` is saved from the browser on sign-in (`set_my_time_zone`, checked against `pg_timezone_names`); `thread_counterparty_time_zone()` gives the other company's most recently seen zone and nothing else. Words for times come from `src/shared/call-time.mjs` (shared with the prototype and the seed), never from the design's fixed offsets.
+- **Calendar entries point at the conversation, not at Zoom** (`.ics` built in the browser, folded per RFC 5545, and a Google Calendar link): people join on TSC.
+- **The Zoom meeting is TSC's and the browser never sees its details.** `call_meetings` has no grants; the server creates the meeting at the first Join (`claim_call_meeting` lets one request create it while a second waits) and records it with `record_call_meeting`. The Meeting SDK can only join meetings in its own account without Zoom's review, which is why TSC's account owns every meeting.
 
 ### Admin operations (Phase 6)
 
@@ -470,8 +479,8 @@ The pattern, used by every port so far:
   Matching is on slugs.
 - **Anything the design draws with nothing behind it is rendered
   conditionally**, so the prototype keeps it and the live mount goes without:
-  confidence scores in the admin queue, call scheduling and presence in
-  conversations, permission toggles in settings.
+  confidence scores in the admin queue, presence in conversations,
+  permission toggles in settings.
 
 ### Auth
 

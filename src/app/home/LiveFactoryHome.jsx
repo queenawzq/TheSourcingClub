@@ -24,6 +24,9 @@ import { formatMoney, formatRange } from "../../lib/money.js";
 import { supabase } from "../../lib/supabase.js";
 import { useRouter } from "../../lib/router.jsx";
 import { toProjectCard } from "../live-adapter.js";
+import { browserTimeZone } from "../../lib/domain/calls.js";
+import { dashboardCalls, inviteAttention } from "../message/live-calls.js";
+import { useDashboardCalls } from "../message/use-calls.js";
 
 const MONTH = new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -100,6 +103,7 @@ export default function LiveFactoryHome({ org, profile }) {
   const [reload, setReload] = useState(0);
   // The designed capacity drawer, opened from "Update capacity".
   const [drawer, setDrawer] = useState(null);
+  const { calls, zones } = useDashboardCalls(org.id);
 
   async function openCapacityDrawer() {
     try {
@@ -176,7 +180,10 @@ export default function LiveFactoryHome({ org, profile }) {
   const profilePath = "/profile";
   const activeOrders = orders.filter((order) => order.status === "active");
 
-  const attention = [];
+  const ownZone = browserTimeZone() ?? "UTC";
+  const openCall = (call) => navigate(`/messages/${call.thread_id}`);
+  // A call invite waiting on the factory comes first: it has a time on it.
+  const attention = inviteAttention(calls, { orgId: org.id, ownZone, open: openCall });
   if (profile?.verification_status !== "verified") {
     attention.push({
       type: "Verification",
@@ -262,6 +269,7 @@ export default function LiveFactoryHome({ org, profile }) {
       ]}
       capacity={capacity}
       attention={attention}
+      calls={dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall })}
       onUpdateCapacity={onUpdateCapacity}
       onPurchaseCredits={() => navigate("/payout")}
       onViewRfqs={() => navigate("/browse")}

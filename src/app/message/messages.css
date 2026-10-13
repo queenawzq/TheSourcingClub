@@ -38,3 +38,76 @@
   font-weight: 500;
   line-height: 16px;
 }
+
+/*
+ * Live only: where a call stands, its buttons, and a line under it. The
+ * designed card draws one "Join call" and nothing else; these use the card's
+ * own type sizes and the design's status colours.
+ */
+.call-card-status {
+  margin: 0;
+  color: #60769b;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.call-card-status.attention {
+  color: #8a5a00;
+}
+
+.call-card-status.confirmed {
+  color: #067647;
+}
+
+.call-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.call-card-note {
+  margin: 0;
+  color: #60769b;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+.call-card-note[role="alert"] {
+  color: #b42318;
+}
+
+/* A live card stacks its buttons under the description (there can be four),
+   and its time lines wrap: real dates are longer than the design's "Tue
+   10:00 AM ET". Scoped to cards that have a status, i.e. live ones. */
+.home-upcoming-call-time:has(> .call-card-status) .home-upcoming-call-heading {
+  flex-wrap: wrap;
+  row-gap: 2px;
+}
+
+.home-upcoming-call-time:has(> .call-card-status) .home-upcoming-call-heading strong {
+  flex: 0 1 auto;
+}
+
+.upcoming-call-card.home-upcoming-call-time:has(> .call-card-status) .home-upcoming-call-heading span {
+  white-space: normal;
+}
+
+.home-upcoming-call-actions:has(> .call-card-actions) {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.home-upcoming-call-actions:has(> .call-card-actions) .home-upcoming-call-description:empty {
+  display: none;
+}
+
+/* Live only: days before today can't be picked. The design's September has
+   no past days to draw. */
+.schedule-calendar-days button:disabled,
+.schedule-calendar-heading button:disabled {
+  color: #b8c4d6;
+  cursor: default;
+  background: transparent;
+}

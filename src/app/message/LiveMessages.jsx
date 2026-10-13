@@ -4,16 +4,19 @@
  * `MessagesScreen` is imported from src/prototype/main.jsx and mounted here
  * with live threads behind it. This file is the seam.
  *
- * Three things the design draws that have nothing behind them — call
- * scheduling, presence, and "usually replies in 2h" — are absent in the live
- * mount rather than rendered with invented values. The prototype keeps them.
- * Offering a brand a video call that cannot happen is worse than not offering
- * one.
+ * Calls are live: "Schedule call" opens the designed dialog, and the
+ * conversation's calls are the designed cards in the "Scheduled call" panel
+ * (see live-calls.js). Two things the design draws still have nothing behind
+ * them, presence and "usually replies in 2h", and an instant "Live video
+ * chat" needs presence, so all three stay absent here; the prototype keeps
+ * them.
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { MessagesScreen } from "../../prototype/main.jsx";
 import "./messages.css";
 import { LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
+import { acceptCall, browserTimeZone, cancelCall, counterCall, counterpartyTimeZone, declineCall, listCalls, proposeCall, zoneOptions } from "../../lib/domain/calls.js";
+import { callsForPanel, panelCard } from "./live-calls.js";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -60,6 +63,32 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const [sending, setSending] = useState(false);
   const [error, setError] = useState(null);
 
+  // Calls: every call in the company's conversations, the other side's time
+  // zone per conversation, the dialog (open to propose, or to answer one call
+  // with another time), and which call is being changed.
+  const ownZone = browserTimeZone() ?? "UTC";
+  const [calls, setCalls] = useState([]);
+  const [theirZones, setTheirZones] = useState({});
+  const [activeId, setActiveId] = useState(threadId ?? null);
+  const [dialog, setDialog] = useState(null);
+  const [callBusy, setCallBusy] = useState(null);
+  const [callNotes, setCallNotes] = useState({});
+
+  const reloadCalls = useCallback(async () => {
+    try {
+      setCalls(await listCalls(org.id));
+    } catch (failure) {
+      setError(failure);
+    }
+  }, [org.id]);
+
+  useEffect(() => { reloadCalls(); }, [reloadCalls]);
+
+  useEffect(() => {
+    if (!activeId || activeId in theirZones) return;
+    counterpartyTimeZone(activeId).then((zone) => setTheirZones((current) => ({ ...current, [activeId]: zone })));
+  }, [activeId, theirZones]);
+
   // An order's conversation is reached by the order, not by its thread id.
   // open_order_thread is idempotent — one thread per order — so this both
   // finds an existing conversation and starts the first one.
@@ -103,6 +132,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
    */
   const loadThread = useCallback(async (threadId) => {
     if (!threadId) return;
+    setActiveId(threadId);
+    setDialog((current) => (current?.threadId === threadId ? current : null));
     try {
       let rows = await listMessages(threadId);
       setMessagesByThread((current) => ({ ...current, [threadId]: rows ?? [] }));
@@ -138,6 +169,47 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       setError(failure);
     } finally {
       setSending(false);
+    }
+  }
+
+  async function changeCall(call, change) {
+    setCallBusy(call.id);
+    setCallNotes((current) => ({ ...current, [call.id]: null }));
+    try {
+      await change();
+      await reloadCalls();
+    } catch (failure) {
+      setCallNotes((current) => ({ ...current, [call.id]: { text: failure.message, error: true } }));
+    } finally {
+      setCallBusy(null);
+    }
+  }
+
+  const callHandlers = {
+    accept: (call) => changeCall(call, () => acceptCall(call.id, ownZone)),
+    decline: (call) => changeCall(call, () => declineCall(call.id)),
+    cancel: (call) => changeCall(call, () => cancelCall(call.id)),
+    counter: (call) => setDialog({ threadId: call.thread_id, counterOf: call, key: call.id, busy: false, error: null }),
+    // Video joining arrives with the Zoom set-up; until then the call is
+    // still confirmed and in both calendars.
+    join: (call) => setCallNotes((current) => ({
+      ...current,
+      [call.id]: { text: "Video isn't set up yet. The call is still confirmed and in both calendars." },
+    })),
+  };
+
+  async function submitSchedule({ startsAt, timeZone, title, agenda }) {
+    setDialog((current) => ({ ...current, busy: true, error: null }));
+    try {
+      if (dialog.counterOf) {
+        await counterCall({ callId: dialog.counterOf.id, startsAt, title, agenda, timeZone });
+      } else {
+        await proposeCall({ threadId: dialog.threadId, startsAt, title, agenda, timeZone });
+      }
+      setDialog(null);
+      await reloadCalls();
+    } catch (failure) {
+      setDialog((current) => current && { ...current, busy: false, error: failure.message });
     }
   }
 
@@ -212,10 +284,43 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     };
   });
 
+  // Each conversation's calls as the designed cards.
+  const callCards = {};
+  for (const thread of threads) {
+    const theirs = calls.filter((call) => call.thread_id === thread.id);
+    callCards[thread.id] = callsForPanel(theirs, org.id).map((call) => panelCard(call, {
+      orgId: org.id,
+      ownZone,
+      otherZone: theirZones[thread.id] ?? null,
+      handlers: callHandlers,
+      busyId: callBusy,
+      notes: callNotes,
+    }));
+  }
+  const dialogThread = dialog ? threads.find((thread) => thread.id === dialog.threadId) : null;
+  const dialogOther = dialogThread ? (isFactory ? dialogThread.brand_name : dialogThread.factory_name) ?? "" : "";
+
   return (
     <>
       {error && <p className="messages-load-error" role="alert">{error.message}</p>}
       <MessagesScreen
+        calls={callCards}
+        scheduling={{
+          open: Boolean(dialog),
+          key: dialog?.key ?? "new",
+          onOpen: () => activeId && setDialog({ threadId: activeId, key: `new-${Date.now()}`, busy: false, error: null }),
+          onClose: () => setDialog(null),
+          ownZone,
+          zones: zoneOptions(ownZone),
+          otherName: dialogOther,
+          otherZone: dialog ? theirZones[dialog.threadId] ?? null : null,
+          heading: dialog?.counterOf ? "Propose another time" : undefined,
+          submitLabel: dialog?.counterOf ? "Send new time" : undefined,
+          initial: dialog?.counterOf ? { title: dialog.counterOf.title, agenda: dialog.counterOf.agenda ?? "" } : undefined,
+          busy: dialog?.busy ?? false,
+          error: dialog?.error ?? null,
+          onSubmit: submitSchedule,
+        }}
         threads={shaped}
         initialThreadId={resolvedThreadId}
         onSelectThread={loadThread}

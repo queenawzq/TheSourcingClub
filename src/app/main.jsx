@@ -13,6 +13,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
+import { saveMyTimeZone } from "../lib/domain/calls.js";
 import { acceptInvitation, createOrg, listMyInvitations } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
@@ -721,6 +722,10 @@ function Shell() {
 
   const [profile, setProfile] = useState(undefined);
   const [profileError, setProfileError] = useState(null);
+
+  // The other side of a call is shown its time in this person's zone, so the
+  // browser's zone is saved once per sign-in (a no-op when unchanged).
+  useEffect(() => { saveMyTimeZone(); }, [user?.id]);
 
   const loadProfile = useCallback(() => {
     const load = isFactory ? getFactoryProfile : getBrandProfile;
