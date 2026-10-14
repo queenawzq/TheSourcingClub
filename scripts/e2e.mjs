@@ -2153,6 +2153,116 @@ async function main() {
     check(afterRelease?.delivery === "delivered", "staff release it, and it is delivered");
     check(await factoryNotices() === noticesBefore + 1, "the factory is notified once, as for any new message");
 
+    // ================= CALLS =================
+    // On the designed screens: the brand proposes a call from the
+    // conversation, the factory proposes another time, the brand accepts, and
+    // the call is on both dashboards. No Zoom here: joining is smoke's.
+    console.log("\nCALLS");
+    const callTitle = `E2E call ${stamp}`;
+    const inDialog = (label) => page.evaluate((label) => {
+      const button = [...document.querySelectorAll(".message-schedule-modal button")]
+        .find((node) => node.textContent.trim() === label || node.getAttribute("aria-label") === label);
+      if (button && !button.disabled) button.click();
+      return Boolean(button && !button.disabled);
+    }, label);
+    const inPanel = (label) => page.evaluate((label) => {
+      const button = [...document.querySelectorAll(".message-side-panel button")].find((node) => node.textContent.trim() === label && !node.disabled);
+      button?.click();
+      return Boolean(button);
+    }, label);
+    // A day next month (always in the future), the first time offered.
+    const pickTime = async (day) => {
+      await waitFor(page, ".message-schedule-modal .schedule-calendar-days button", 15000);
+      await inDialog("Next month");
+      await page.waitForTimeout(300);
+      await page.evaluate((day) => [...document.querySelectorAll(".message-schedule-modal .schedule-calendar-days button")].find((node) => node.textContent.trim() === String(day))?.click(), day);
+      await waitFor(page, ".message-schedule-modal .schedule-time-list button", 10000);
+      await page.locator(".message-schedule-modal .schedule-time-list button").first().click();
+      return inDialog("Continue");
+    };
+    const callsOnThread = async () => (await db.from("calls")
+      .select("id, title, status, proposer_org_id, counter_of, starts_at")
+      .eq("thread_id", runThread.id).order("created_at")).data ?? [];
+
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand proposing a call");
+    await page.goto(`${APP}/messages/${runThread.id}`);
+    await waitFor(page, ".message-room-actions", 25000);
+    check(await page.evaluate(() => [...document.querySelectorAll(".message-room-actions button")].some((node) => node.textContent.trim() === "Schedule call")),
+      "the conversation offers the designed \"Schedule call\"");
+    check(!(await page.evaluate(() => [...document.querySelectorAll(".message-room-actions button")].some((node) => node.textContent.trim() === "Live video chat"))),
+      "and not the instant \"Live video chat\" (no presence behind it)");
+    await page.evaluate(() => [...document.querySelectorAll(".message-room-actions button")].find((node) => node.textContent.trim() === "Schedule call")?.click());
+    await record(page, "Schedule call", "the designed dialog: a real month, times in your zone");
+    check(await pickTime(15), "a day and a time are picked, and Continue opens the details");
+    await page.locator('.message-schedule-modal .schedule-field input').fill(callTitle);
+    await record(page, "Call details");
+    check(await inDialog("Send invite"), "Send invite");
+    let proposedCall = null;
+    const proposeDeadline = Date.now() + 15000;
+    while (Date.now() < proposeDeadline && !proposedCall) {
+      proposedCall = (await callsOnThread()).find((call) => call.title === callTitle && call.status === "proposed") ?? null;
+      if (!proposedCall) await page.waitForTimeout(400);
+    }
+    check(Boolean(proposedCall), "the invite is saved as proposed");
+    const { count: callNotices } = await db.from("notifications").select("*", { count: "exact", head: true })
+      .eq("org_id", factoryOrg.id).eq("kind", "call_proposed").eq("subject_id", runThread.id);
+    check(callNotices === 1, `the factory is notified once (${callNotices})`);
+    await waitFor(page, ".message-side-panel .call-card-status", 15000);
+    const brandPanel = await page.locator(".message-side-panel").innerText();
+    check(/Waiting for/.test(brandPanel) && brandPanel.includes(callTitle), "the brand's panel shows the invite, waiting for the factory");
+    await record(page, "Invite sent", "Waiting for the factory to answer");
+
+    await signOutFully(page);
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory answering a call", "factory");
+    await page.goto(`${APP}/messages/${runThread.id}`);
+    await waitFor(page, ".message-side-panel .call-card-status", 25000);
+    const factoryPanel = await page.locator(".message-side-panel").innerText();
+    check(/invited you/.test(factoryPanel), "the factory sees the invite, with Accept / Propose another time / Decline");
+    check(await inPanel("Propose another time"), "the factory proposes another time");
+    check(await pickTime(16), "it picks another day and time");
+    await record(page, "Propose another time", "prefilled with the brand's title");
+    check(await inDialog("Send new time"), "Send new time");
+    let counter = null;
+    const counterDeadline = Date.now() + 15000;
+    while (Date.now() < counterDeadline && !counter) {
+      const rows = await callsOnThread();
+      const first = rows.find((call) => call.id === proposedCall?.id);
+      counter = first?.status === "countered" ? rows.find((call) => call.counter_of === proposedCall.id) ?? null : null;
+      if (!counter) await page.waitForTimeout(400);
+    }
+    check(counter?.status === "proposed" && counter.proposer_org_id === factoryOrg.id,
+      "the first time is marked countered, and the factory's new time waits on the brand");
+
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand accepting a call");
+    await page.goto(`${APP}/messages/${runThread.id}`);
+    await waitFor(page, ".message-side-panel .call-card-status", 25000);
+    check(await inPanel("Accept"), "the brand accepts the new time");
+    let accepted = null;
+    const acceptDeadline = Date.now() + 15000;
+    while (Date.now() < acceptDeadline && accepted?.status !== "accepted") {
+      accepted = (await callsOnThread()).find((call) => call.id === counter?.id) ?? null;
+      if (accepted?.status !== "accepted") await page.waitForTimeout(400);
+    }
+    check(accepted?.status === "accepted", "the call is confirmed");
+    await waitFor(page, ".message-side-panel .call-card-status.confirmed", 15000);
+    const confirmedPanel = await page.locator(".message-side-panel").innerText();
+    check(/Add to calendar/.test(confirmedPanel) && /Google Calendar/.test(confirmedPanel), "the confirmed call offers Add to calendar and Google Calendar");
+    await record(page, "Call confirmed", "Join opens 10 minutes before");
+
+    await page.goto(APP);
+    await waitFor(page, ".home-upcoming-call-card", 25000);
+    check((await page.locator(".home-upcoming-call-card").innerText()).includes(callTitle), "the brand's dashboard lists it under Scheduled calls");
+    await record(page, "Brand dashboard: Scheduled calls");
+
+    await signOutFully(page);
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory dashboard with a call", "factory");
+    await page.goto(APP);
+    await waitFor(page, ".factory-upcoming-call-card", 25000);
+    check((await page.locator(".factory-upcoming-call-card").innerText()).includes(callTitle), "the factory's dashboard lists it too");
+    await record(page, "Factory dashboard: Scheduled calls");
+
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
     console.log("\nINVITE ONLY");

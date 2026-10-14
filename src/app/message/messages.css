@@ -111,3 +111,27 @@
   cursor: default;
   background: transparent;
 }
+
+/* Live only: Zoom's own meeting view, inside the designed video panel. */
+.video-call-panel .video-call-zoom {
+  min-height: 360px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0b1020;
+}
+
+.video-call-panel .video-call-zoom:empty {
+  min-height: 0;
+}
+
+.video-call-panel .video-call-controls a.compact-btn {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+/* Zoom's own "Fail to join" dialog, drawn on <body> after a join failed:
+   the panel already says so and offers the Zoom app. */
+body.tsc-zoom-failed .zoom-MuiDialog-root {
+  display: none !important;
+}

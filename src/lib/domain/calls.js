@@ -224,3 +224,71 @@ export function googleCalendarUrl(call, otherName, link = callLink(call)) {
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
+
+// ---------------------------------------------------------------------------
+// Joining
+// ---------------------------------------------------------------------------
+
+/**
+ * Ask the server for what the Meeting SDK needs to join (api/call-join.js).
+ * Resolves { ok: true, join } or { ok: false, message } — never throws, so the
+ * card can say why ("opens 10 minutes before", "video isn't set up yet").
+ */
+export async function joinCall(callId) {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) return { ok: false, message: "Sign in again to join." };
+    const response = await fetch("/api/call-join", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ callId }),
+    });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const text = body.error ? body.error[0].toUpperCase() + body.error.slice(1) : "The call could not be opened.";
+      return { ok: false, message: /[.!?]$/.test(text) ? text : `${text}.` };
+    }
+    return { ok: true, join: body };
+  } catch {
+    return { ok: false, message: "The call could not be opened. Check your connection and try again." };
+  }
+}
+
+/**
+ * Zoom's Component View, from Zoom's own CDN, loaded only when someone joins.
+ * The CDN build brings its own React 18 and Redux as globals; the npm package
+ * would put a second React inside this React 19 bundle. Pinned version.
+ */
+export const ZOOM_SDK_VERSION = "6.5.0";
+let zoomLoading = null;
+
+export function loadZoomEmbedded() {
+  if (window.ZoomMtgEmbedded) return Promise.resolve(window.ZoomMtgEmbedded);
+  if (zoomLoading) return zoomLoading;
+  const base = `https://source.zoom.us/${ZOOM_SDK_VERSION}/lib/vendor`;
+  const scripts = [
+    `${base}/react.min.js`,
+    `${base}/react-dom.min.js`,
+    `${base}/redux.min.js`,
+    `${base}/redux-thunk.min.js`,
+    `${base}/lodash.min.js`,
+    `https://source.zoom.us/zoom-meeting-embedded-${ZOOM_SDK_VERSION}.min.js`,
+  ];
+  const load = (src) => new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = false;
+    script.onload = resolve;
+    script.onerror = () => reject(new Error("Zoom could not be loaded. Check your connection, or open the call in the Zoom app."));
+    document.head.appendChild(script);
+  });
+  zoomLoading = scripts
+    .reduce((chain, src) => chain.then(() => load(src)), Promise.resolve())
+    .then(() => window.ZoomMtgEmbedded)
+    .catch((failure) => {
+      zoomLoading = null;
+      throw failure;
+    });
+  return zoomLoading;
+}

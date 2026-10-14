@@ -11,11 +11,11 @@
  * chat" needs presence, so all three stay absent here; the prototype keeps
  * them.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { MessagesScreen } from "../../prototype/main.jsx";
 import "./messages.css";
 import { LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
-import { acceptCall, browserTimeZone, cancelCall, counterCall, counterpartyTimeZone, declineCall, listCalls, proposeCall, zoneOptions } from "../../lib/domain/calls.js";
+import { acceptCall, browserTimeZone, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, proposeCall, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
@@ -73,6 +73,11 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const [dialog, setDialog] = useState(null);
   const [callBusy, setCallBusy] = useState(null);
   const [callNotes, setCallNotes] = useState({});
+  // The call being joined: { call, join, text } while the designed video
+  // panel is open; Zoom draws into zoomRoot.
+  const [video, setVideo] = useState(null);
+  const zoomRoot = useRef(null);
+  const zoomClient = useRef(null);
 
   const reloadCalls = useCallback(async () => {
     try {
@@ -190,13 +195,90 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     decline: (call) => changeCall(call, () => declineCall(call.id)),
     cancel: (call) => changeCall(call, () => cancelCall(call.id)),
     counter: (call) => setDialog({ threadId: call.thread_id, counterOf: call, key: call.id, busy: false, error: null }),
-    // Video joining arrives with the Zoom set-up; until then the call is
-    // still confirmed and in both calendars.
-    join: (call) => setCallNotes((current) => ({
-      ...current,
-      [call.id]: { text: "Video isn't set up yet. The call is still confirmed and in both calendars." },
-    })),
+    join: async (call) => {
+      setCallBusy(call.id);
+      setCallNotes((current) => ({ ...current, [call.id]: null }));
+      const answer = await joinCall(call.id);
+      setCallBusy(null);
+      if (!answer.ok) {
+        setCallNotes((current) => ({ ...current, [call.id]: { text: answer.message, error: true } }));
+        return;
+      }
+      setVideo({ call, join: answer.join, text: "Connecting to the call…" });
+    },
   };
+
+  // Once the panel is drawn, Zoom joins inside it. Leaving (or switching
+  // conversation, or leaving the page) ends the meeting for this person only.
+  useEffect(() => {
+    // Once per join: a failure updates `video` too, which must not retry.
+    if (!video?.join || video.attempted || !zoomRoot.current) return undefined;
+    setVideo((current) => current && { ...current, attempted: true });
+    document.body.classList.remove("tsc-zoom-failed");
+    (async () => {
+      try {
+        const ZoomMtgEmbedded = await loadZoomEmbedded();
+        const client = ZoomMtgEmbedded.createClient();
+        zoomClient.current = client;
+        await client.init({
+          zoomAppRoot: zoomRoot.current,
+          language: "en-US",
+          patchJsMedia: true,
+          leaveOnPageUnload: true,
+        });
+        await client.join({
+          sdkKey: video.join.sdkKey,
+          signature: video.join.signature,
+          meetingNumber: video.join.meetingNumber,
+          password: video.join.passcode,
+          userName: video.join.userName,
+        });
+        setVideo((current) => current && { ...current, joined: true, text: "You're in the call. The other side joins from this conversation." });
+      } catch (failure) {
+        // Zoom's own error box would sit over the page with a Retry that
+        // fails the same way: take Zoom's view away and offer its app.
+        console.warn("zoom join", failure?.errorCode, failure?.reason ?? failure?.message);
+        try {
+          window.ZoomMtgEmbedded?.destroyClient();
+        } catch {
+          // Nothing to tidy.
+        }
+        // Zoom puts its error dialog on <body>, outside its own view, keeps
+        // drawing it after the client is gone, and its Retry fails the same
+        // way. Hidden until this panel closes (messages.css).
+        document.body.classList.add("tsc-zoom-failed");
+        zoomClient.current = null;
+        setVideo((current) => current && {
+          ...current,
+          failed: true,
+          text: "The video can't open inside this page right now. Join the same call in the Zoom app.",
+        });
+      }
+    })();
+    return undefined;
+  }, [video]);
+
+  // Opening another conversation leaves the call: its panel is this one's.
+  useEffect(() => {
+    if (video && video.call.thread_id !== activeId) leaveVideo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  async function leaveVideo() {
+    try {
+      await zoomClient.current?.leaveMeeting();
+    } catch {
+      // Already out.
+    }
+    try {
+      window.ZoomMtgEmbedded?.destroyClient();
+    } catch {
+      // Nothing to tidy.
+    }
+    zoomClient.current = null;
+    document.body.classList.remove("tsc-zoom-failed");
+    setVideo(null);
+  }
 
   async function submitSchedule({ startsAt, timeZone, title, agenda }) {
     setDialog((current) => ({ ...current, busy: true, error: null }));
@@ -305,6 +387,14 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       {error && <p className="messages-load-error" role="alert">{error.message}</p>}
       <MessagesScreen
         calls={callCards}
+        video={video ? {
+          title: video.call.title,
+          text: video.text,
+          mountRef: zoomRoot,
+          failed: Boolean(video.failed),
+          joinUrl: video.join.joinUrl,
+          onLeave: leaveVideo,
+        } : null}
         scheduling={{
           open: Boolean(dialog),
           key: dialog?.key ?? "new",
