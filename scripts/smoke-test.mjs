@@ -1476,6 +1476,91 @@ console.log("\nphase 3 — the order runs");
   }
 }
 
+console.log("\nnotification emails");
+{
+  // The server's copy of the link rules must open the same place as the bell.
+  const { notificationLink } = await import("../src/shared/notification-link.mjs");
+  const { notificationPath } = await import("./generate-notification-email.mjs");
+  const samples = [
+    ["rfq", "quote_received"], ["rfq", "rfq_invited"], ["order", "order_created"],
+    ["milestone", "milestone_submitted"], ["payment", "payment_due"], ["thread", "message"], ["unknown", "x"],
+  ].flatMap(([subject_type, kind]) => [true, false].map((isFactory) => [{
+    subject_type, kind, subject_id: "00000000-0000-0000-0000-000000000001", order_id: "00000000-0000-0000-0000-000000000002",
+  }, isFactory]));
+  samples.every(([n, isFactory]) => notificationLink(n, { isFactory }) === notificationPath(n, { isFactory }))
+    ? ok("an email's button opens where the bell's link does")
+    : fail("the email's link rules differ from the bell's");
+
+  const sender = await signedInUser(`notify-sender-${stamp}@example.com`);
+  const receiver = await signedInUser(`notify-receiver-${stamp}@example.com`);
+  const { data: senderOrg } = await sender.client.rpc("create_org", { org_name: `Notify Brand ${stamp}`, org_kind: "brand" });
+  const { data: receiverOrg } = await receiver.client.rpc("create_org", { org_name: `Notify Factory ${stamp}`, org_kind: "factory" });
+
+  const { error: strangerSet } = await sender.client.rpc("set_notification_preference", { target_org: receiverOrg?.id, category: "rfq", enabled: false });
+  strangerSet ? ok("a company CANNOT change another company's email switches")
+              : fail("LEAK: a company changed another's email switches");
+  const { data: strangerRead } = await sender.client.from("notification_preferences").select("org_id").eq("org_id", receiverOrg?.id);
+  (strangerRead ?? []).length === 0 ? ok("nor read them") : fail("LEAK: a company read another's email switches");
+  const { data: queueRead, error: queueError } = await sender.client.from("notification_email_outbox").select("id").limit(1);
+  queueError || (queueRead ?? []).length === 0 ? ok("the email queue is unreadable from the browser") : fail("LEAK: a user read the email queue");
+  const { error: claimError } = await sender.client.rpc("claim_notification_emails", { max_rows: 1 });
+  claimError ? ok("a user CANNOT claim emails (the server's job)") : fail("LEAK: a user claimed emails");
+
+  const { data: switched, error: switchError } = await receiver.client.rpc("set_notification_preference", { target_org: receiverOrg?.id, category: "messages", enabled: false });
+  !switchError && switched?.message_emails === false && switched?.rfq_emails === true
+    ? ok("a member turns one switch off, and only that one")
+    : fail("a member turns a switch off", switchError);
+
+  // Notifications are written by functions; the secret key stands in here.
+  const { data: quoteNote } = await admin.from("notifications").insert({
+    org_id: receiverOrg?.id, kind: "rfq_invited", subject_type: "rfq", subject_id: senderOrg?.id,
+    title: `Notify Brand ${stamp} invited you to quote`, body: "Quotes close soon.",
+  }).select().single();
+  const { data: messageNote } = await admin.from("notifications").insert({
+    org_id: receiverOrg?.id, kind: "message", subject_type: "thread", subject_id: senderOrg?.id, title: "A message",
+  }).select().single();
+  const { data: queued } = await admin.from("notification_email_outbox").select("notification_id, status").eq("org_id", receiverOrg?.id);
+  (queued ?? []).length === 1 && queued[0].notification_id === quoteNote?.id
+    ? ok("the invite is queued for email; the message, with its switch off, is not")
+    : fail(`queued ${JSON.stringify(queued)}`);
+
+  const { default: send } = await import("../api/notification-emails.js");
+  const callSender = async (token) => {
+    const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "RESEND_API_KEY", "RESEND_FROM_EMAIL", "MAILPIT_URL", "VERCEL"];
+    const saved = { ...process.env };
+    Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, MAILPIT_URL: "http://127.0.0.1:54324" });
+    for (const key of ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "VERCEL"]) delete process.env[key];
+    let status = 0;
+    let body = null;
+    const response = { status(code) { status = code; return response; }, json(payload) { body = payload; return response; } };
+    try {
+      await send({ method: "POST", headers: { host: "127.0.0.1:5173", ...(token ? { authorization: `Bearer ${token}` } : {}) } }, response);
+    } finally {
+      for (const key of keys) if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
+    }
+    return { status, ...body };
+  };
+
+  (await callSender(null)).status === 401 ? ok("sending needs a sign-in") : fail("a signed-out caller ran the sender");
+
+  const mailpitUp = await fetch("http://127.0.0.1:54324/api/v1/info").then((r) => r.ok).catch(() => false);
+  if (!mailpitUp) {
+    ok("(skipped: no local Mailpit to send to)");
+  } else {
+    const { data: session } = await sender.client.auth.getSession();
+    let row = null;
+    for (let round = 0; round < 30 && row?.status !== "sent"; round += 1) {
+      await callSender(session?.session?.access_token);
+      ({ data: row } = await admin.from("notification_email_outbox").select("status, last_error").eq("notification_id", quoteNote?.id).single());
+    }
+    row?.status === "sent" ? ok("the sender delivers it") : fail(`the queued email is ${row?.status}`, row?.last_error);
+    const search = await fetch(`http://127.0.0.1:54324/api/v1/search?query=${encodeURIComponent(`to:notify-receiver-${stamp}@example.com`)}`).then((r) => r.json());
+    const arrived = (search.messages ?? []).find((message) => message.Subject === quoteNote?.title);
+    arrived ? ok("and it arrives, with the notification's title as its subject") : fail("no email arrived in Mailpit");
+  }
+  void messageNote;
+}
+
 console.log("\nphase 5 — the home screen, and joining a team");
 {
   // dashboard_snapshot is the single source for every figure on the home

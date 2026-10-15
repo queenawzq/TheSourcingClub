@@ -1149,6 +1149,7 @@ const TEST_EMAILS = [
   { key: "review-approved", label: "Review decision · Approved", localized: true },
   { key: "review-needs-information", label: "Review decision · Needs information", localized: true },
   { key: "review-declined", label: "Review decision · Declined", localized: true },
+  { key: "notification", label: "Notification · New quote", localized: true },
 ];
 
 function TestEmailPanel({ email }) {

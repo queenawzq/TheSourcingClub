@@ -969,6 +969,17 @@ must(await admin.from("discount_codes").insert({
   code: "DEMO-BRAND", owner_org_id: brandOrg.id, amount_cents: 5000,
 }), "discount code");
 
+// Email switches: the brand has "Payment and approval requests" off, so a
+// tester sees a switch in both states. The seed's own notifications are not
+// news to anyone, so none of their queued emails go out.
+must(await brand.client.rpc("set_notification_preference", {
+  target_org: brandOrg.id, category: "payments", enabled: false,
+}), "the brand's email switches");
+must(await admin.from("notification_email_outbox")
+  .update({ status: "skipped", last_error: "demo seed" })
+  .in("recipient_user_id", demoUserIds)
+  .eq("status", "pending"), "skip the seed's own emails");
+
 const app = isLocal ? "http://127.0.0.1:5173/app.html" : "<the site>/app.html";
 console.log(`
 done. Every login uses the password "${PASSWORD}".
@@ -1000,6 +1011,7 @@ done. Every login uses the password "${PASSWORD}".
       Stripe cannot pay (China): staff pay it by bank from the admin's Payments page
   Payments lists those payments (Paid, Funded, Processing, Failed, Due) and its discount code.
   Its profile (/profile) is filled in, with a pending invitation.
+  Settings → Notifications: "Payment and approval requests" emails are off; the others are on.
   ${LOGINS.factory.name} has it under Saved → Saved brands.
   Browse vendors lists ${LOGINS.factory.name} and ${LOGINS.secondFactory.name} (Factories) and ${LOGINS.tradingCompany.name} (Trading companies).
   Saved has ${LOGINS.factory.name} and ${LOGINS.tradingCompany.name}.

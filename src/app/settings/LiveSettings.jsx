@@ -27,6 +27,7 @@ import { inviteMember, listMembers, listPendingInvitations } from "../../lib/dom
 import { listPayoutAccounts } from "../../lib/domain/payment.js";
 import { connectAccountFor, connectAction, startBillingSetup } from "../../lib/domain/stripe.js";
 import { getBrandProfile, getFactoryProfile } from "../../lib/domain/profile.js";
+import { getNotificationEmails, setNotificationEmail } from "../../lib/domain/notification-preferences.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import StripePayoutCard from "../order/StripePayoutCard.jsx";
 import { BillingMethodFlow } from "../order/PayoutDetails.jsx";
@@ -72,14 +73,17 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   const [billingBusy, setBillingBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [notificationEmails, setNotificationEmails] = useState(null);
 
   const reload = useCallback(async () => {
     try {
-      const [loadedMembers, loadedProfile, loadedInvites] = await Promise.all([
+      const [loadedMembers, loadedProfile, loadedInvites, loadedEmails] = await Promise.all([
         listMembers(org.id),
         isFactory ? getFactoryProfile(org.id) : getBrandProfile(org.id),
         listPendingInvitations(org.id),
+        getNotificationEmails(org.id),
       ]);
+      setNotificationEmails(loadedEmails);
       setProfile(loadedProfile);
       setInvites(loadedInvites);
       setMembers(loadedMembers);
@@ -237,6 +241,19 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
 
   const openPayoutFlow = (action) => setPayoutFlow({ action, id: Date.now() });
 
+  // The switch moves at once; a refused save puts it back and says why.
+  async function changeNotificationEmail(category, enabled) {
+    const before = notificationEmails;
+    setNotificationEmails({ ...before, [category]: enabled });
+    setError(null);
+    try {
+      setNotificationEmails(await setNotificationEmail(org.id, category, enabled));
+    } catch (problem) {
+      setNotificationEmails(before);
+      setError(problem.message);
+    }
+  }
+
   return (
     <>
       <SettingsScreen
@@ -249,6 +266,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         team={team}
         {...live}
         onInvite={invite}
+        notificationEmails={notificationEmails ?? undefined}
+        onNotificationEmailChange={changeNotificationEmail}
         busy={busy || billingBusy}
         error={error}
         onSignOut={onSignOut}

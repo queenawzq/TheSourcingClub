@@ -11,7 +11,7 @@
  * be able to stop a message going out: if the model is slow, misconfigured or
  * wrong, the message is sent exactly as typed and the reader sees that.
  */
-import { supabase, unwrap } from "../supabase.js";
+import { kickNotificationEmails, supabase, unwrap } from "../supabase.js";
 import { uploadDocument } from "./documents.js";
 
 const THREAD_COLUMNS = `
@@ -211,6 +211,8 @@ export async function screenMessage(messageId) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ messageId }),
     });
+    // Delivering the message is what notifies the other side.
+    kickNotificationEmails();
     return await response.json();
   } catch {
     return null;
