@@ -1,0 +1,40 @@
+/*
+ * Live only: the sender's own message that has not reached the other side.
+ * The designed bubble has no such state, so it is drawn as the bubble muted,
+ * with a note under the text in the bubble's own type sizes.
+ */
+.message-bubble.message-bubble-held,
+.message-bubble.message-bubble-rejected {
+  border-style: dashed;
+  background: #f7f8fa;
+}
+
+.message-bubble.message-bubble-held > p,
+.message-bubble.message-bubble-rejected > p {
+  color: #60769b;
+}
+
+.message-status-note {
+  display: grid;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.message-bubble .message-status-note strong {
+  color: #8a5a00;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.message-bubble-rejected .message-status-note strong {
+  color: #b42318;
+}
+
+.message-bubble .message-status-note span {
+  color: #60769b;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}

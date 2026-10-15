@@ -201,6 +201,13 @@ select throws_ok(
 -- ---------------------------------------------------------------------------
 
 reset role;
+
+-- The brand's message passes the screen, as the server records it
+-- (api/screen-message.js): a client's send is saved as checking first.
+do $$ begin
+  perform public.record_message_screening(m.id, 'delivered', 'pattern_only')
+     from public.messages m where m.thread_id = (select t1 from p4);
+end $$;
 set local request.jwt.claims = '{"sub":"c4000000-0000-0000-0000-000000000003","email":"p4-f2@example.com","role":"authenticated"}';
 set local role authenticated;
 

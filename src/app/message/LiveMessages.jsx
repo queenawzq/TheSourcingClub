@@ -12,7 +12,8 @@
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { MessagesScreen } from "../../prototype/main.jsx";
-import { LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, sendMessage, threadProjectNames } from "../../lib/domain/message.js";
+import "./messages.css";
+import { LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -24,6 +25,25 @@ const initialsOf = (name) =>
     .slice(0, 2)
     .map((word) => word[0].toUpperCase())
     .join("") || "??";
+
+/**
+ * What the sender is told about a message that has not reached the other side.
+ * Nothing while it is being checked: that takes seconds, and saying so on
+ * every message would make every message look suspect.
+ */
+function deliveryStatus(message) {
+  if (message.delivery === "held") {
+    return {
+      kind: "held",
+      label: "Held for review: not delivered yet",
+      note: "It looks like it shares contact details. Our team will check it before it is sent.",
+    };
+  }
+  if (message.delivery === "rejected") {
+    return { kind: "rejected", label: "Not delivered", note: message.review_note || null };
+  }
+  return null;
+}
 
 /** "Today" for anything from today, a date otherwise. */
 function dayLabel(value) {
@@ -84,14 +104,21 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const loadThread = useCallback(async (threadId) => {
     if (!threadId) return;
     try {
-      const rows = await listMessages(threadId);
+      let rows = await listMessages(threadId);
       setMessagesByThread((current) => ({ ...current, [threadId]: rows ?? [] }));
       await markRead(threadId);
       reload();
+      // Your own messages still being checked from an earlier visit: ask the
+      // screen again, and show what it decided.
+      if (await rescreenStale(rows, user.id)) {
+        rows = await listMessages(threadId);
+        setMessagesByThread((current) => ({ ...current, [threadId]: rows ?? [] }));
+        reload();
+      }
     } catch (failure) {
       setError(failure);
     }
-  }, [reload]);
+  }, [reload, user.id]);
 
   // Open the conversation that was asked for — an order's own thread, say —
   // or the newest one, the way the design does.
@@ -103,7 +130,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   async function send(threadId, body) {
     setSending(true);
     try {
-      await sendMessage({ threadId, orgId: org.id, userId: user.id, body });
+      // Shown as soon as it is saved, then again once the screen has decided
+      // (delivered, or "Held for review").
+      await sendMessage({ threadId, orgId: org.id, userId: user.id, body, onSaved: () => loadThread(threadId) });
       await loadThread(threadId);
     } catch (failure) {
       setError(failure);
@@ -160,7 +189,10 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           // The bubble's side and label: the reader's own messages on the
           // right with their own name, whichever side the reader is on.
           own: mine,
-          time: message.created_at ? TIME.format(new Date(message.created_at)) : "",
+          time: sentAt(message) ? TIME.format(new Date(sentAt(message))) : "",
+          // Only the sender's company ever reads a message that is not
+          // delivered (the read policy), so this is always the reader's own.
+          status: deliveryStatus(message),
           // The reader's own language first, with the original one click
           // away — the rule in CLAUDE.md. The designed bubble shows `body`
           // by default and `translation` when toggled, so the readable text

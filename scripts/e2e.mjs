@@ -1338,10 +1338,21 @@ async function main() {
     await setQuoteField("unitPrice", "$17.10 / unit");
     await setQuoteField("quantity", "300 units");
     await setQuoteField("leadTime", "26 days");
+    // Required since the quote form asks for the vendor's open window.
+    const windowStart = new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10);
+    const windowEnd = new Date(Date.now() + 45 * 864e5).toISOString().slice(0, 10);
+    await setQuoteField("capacityWindow", `${windowStart} to ${windowEnd} · 400 units`);
     await setQuoteField("paymentTerms", "30% deposit / 70% before shipment");
     await setQuoteField("incoterms", "FOB quoted");
-    const validUntil = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
-    await setQuoteField("validUntil", validUntil);
+    // "Quote valid until" is the design's date picker: open it, go to next
+    // month and pick the 15th, then read back the date it holds.
+    await page.locator('[data-quote-field="validUntil"]').first().click();
+    await page.locator('.tsc-date-popover button[aria-label="Next month"]').first().click();
+    await page.locator('.tsc-date-popover button[aria-label$=" 15"]').first().click();
+    const validUntil = await page.evaluate(() =>
+      document.querySelector('[data-quote-field="validUntil"]')?.dataset.quoteValue ?? "");
+    check(/^\d{4}-\d{2}-15$/.test(validUntil ?? "") && validUntil > new Date().toISOString().slice(0, 10),
+      `"validUntil" holds the picked date (${validUntil || "empty"})`);
     await setQuoteField("sample.0.stage", "Fit sample");
     await setQuoteField("sample.0.cost", "$95");
     await setQuoteField("sample.0.timing", "10 days");
@@ -1749,19 +1760,48 @@ async function main() {
       "posting is all the factory does: the step stays open, for the brand to approve from the update");
     await record(page, "Update posted", "the brand decides; the factory does not mark its own work done");
 
-    // Where staff pay the factory by bank when Stripe cannot pay it out (this
-    // factory has no Stripe account). The factory's Payments page: "Add
-    // details" on its Earnings tab opens the form.
+    // Where staff pay the factory by bank when Stripe cannot pay it out. The
+    // Payments page's payout dialog asks where the company is registered:
+    // Portugal is offered Stripe, a country Stripe cannot pay out to gets the
+    // bank form. The test picks China to reach that form.
     await page.goto(`${APP}/payout`);
     await waitForHeading(page, "payments", 25000);
-    await clickButton(page, "add details");
-    await page.locator('[data-field="payout_bank_name"]').fill("Banco de Porto");
-    await page.locator('[data-field="payout_account_name"]').fill(factoryName);
-    await page.locator('[data-field="payout_account_number_last4"]').fill("4417");
-    await page.locator('[data-field="payout_swift"]').fill("BCOMPTPL");
+    await clickButton(page, "payout method");
+    await page.waitForTimeout(600);
+    if (await page.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')]
+      .some((button) => /add payout method/i.test(button.innerText)))) {
+      await clickButton(page, "add payout method");
+      await page.waitForTimeout(600);
+    }
+    const setDialogValue = (selector, value) => page.evaluate(([sel, val]) => {
+      const field = document.querySelector(sel);
+      const proto = field instanceof HTMLSelectElement ? HTMLSelectElement.prototype
+        : field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, "value").set.call(field, val);
+      field.dispatchEvent(new Event(field instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
+    }, [selector, value]);
+    const dialogButtons = () => page.evaluate(() =>
+      [...document.querySelectorAll('[role="dialog"] button')].map((button) => button.innerText.trim()).join(" | "));
+    await setDialogValue('[role="dialog"] select', "PT");
+    await page.waitForTimeout(400);
+    check(/continue to stripe/i.test(await dialogButtons()), "a factory registered in Portugal is offered Stripe payouts");
+    await setDialogValue('[role="dialog"] select', "CN");
+    await page.waitForTimeout(400);
+    check(/save payout method/i.test(await dialogButtons()), "and one where Stripe cannot pay out gets the bank form");
+    const fieldByLabel = (label) =>
+      `[role="dialog"] label:has(> span) input[data-e2e-label="${label}"]`;
+    await page.evaluate(() => {
+      for (const input of document.querySelectorAll('[role="dialog"] .payout-form-grid label input')) {
+        input.dataset.e2eLabel = input.closest("label").querySelector("span").innerText.trim();
+      }
+    });
+    await setDialogValue(fieldByLabel("Bank"), "Bank of China");
+    await setDialogValue(fieldByLabel("Account name"), factoryName);
+    await setDialogValue(fieldByLabel("Last 4 digits"), "4417");
+    await setDialogValue(fieldByLabel("SWIFT / BIC"), "BKCHCNBJ");
     await record(page, "Bank details for manual payouts", "no full account number is asked for, or stored");
 
-    await page.locator('[data-testid="save-payout"]').click();
+    await clickButton(page, "save payout method");
     await page.waitForTimeout(2500);
 
     const { data: payout } = await db.from("factory_payout_accounts")
@@ -2074,9 +2114,12 @@ async function main() {
     let exchanged = 0;
     const sendDeadline = Date.now() + 45000;
     while (Date.now() < sendDeadline) {
+      // Delivered, not merely saved: every message is checked first, and an
+      // ordinary one has to come out of the screen delivered.
       const { count } = await db.from("messages")
         .select("*", { count: "exact", head: true })
-        .eq("thread_id", runThread.id);
+        .eq("thread_id", runThread.id)
+        .eq("delivery", "delivered");
       exchanged = count ?? 0;
       if (exchanged >= 2) break;
       await page.waitForTimeout(500);
@@ -2084,8 +2127,71 @@ async function main() {
     // Counted on this thread, not across the database. A bare count(*) passes
     // on a fresh stack and fails the moment the smoke suite has run first,
     // which is the failure this file has already been bitten by once.
-    check(exchanged === 2, `both sides have now said something (${exchanged} messages on this thread)`);
+    check(exchanged === 2, `both sides have now said something (${exchanged} delivered messages on this thread)`);
     await record(page, "A reply", "the first conversation either prototype could not actually have");
+
+    // ================= HELD FOR REVIEW =================
+    // A phone number is a way off the platform. The screen holds it on the
+    // patterns: the brand sees it marked, the factory sees nothing and is told
+    // nothing, and only staff can let it through.
+    console.log("\nHELD FOR REVIEW");
+    const phoneLine = `Call me on +44 7700 900123 to sort the rest (${stamp}).`;
+    const factoryNotices = async () => (await db.from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("org_id", factoryOrg.id).eq("subject_type", "thread").eq("subject_id", runThread.id)).count ?? 0;
+    const noticesBefore = await factoryNotices();
+
+    await page.locator('.message-composer textarea').fill(phoneLine);
+    await page.locator('[data-testid="send-message"]').click();
+    let heldRow = null;
+    const holdDeadline = Date.now() + 30000;
+    while (Date.now() < holdDeadline) {
+      ({ data: heldRow } = await db.from("messages")
+        .select("id, delivery, message_screenings (method, reason)")
+        .eq("thread_id", runThread.id).eq("body", phoneLine).maybeSingle());
+      if (heldRow && heldRow.delivery !== "checking") break;
+      await page.waitForTimeout(500);
+    }
+    check(heldRow?.delivery === "held", `a phone number is held, not delivered (${heldRow?.delivery})`);
+    const screening = Array.isArray(heldRow?.message_screenings) ? heldRow.message_screenings[0] : heldRow?.message_screenings;
+    check(screening?.method === "pattern", `the patterns caught it without asking a model (${screening?.method}: ${screening?.reason})`);
+
+    let senderSees = "";
+    const labelDeadline = Date.now() + 15000;
+    while (Date.now() < labelDeadline) {
+      senderSees = (await eachText(page, ".message-bubble")).join("\n");
+      if (/held for review/i.test(senderSees)) break;
+      await page.waitForTimeout(300);
+    }
+    check(/held for review/i.test(senderSees), "the brand sees its message marked \"Held for review\"");
+    check(await factoryNotices() === noticesBefore, "and the factory is told nothing");
+    await record(page, "Held for review", "contact details wait for staff; the factory sees nothing");
+
+    await signOutFully(page);
+    await signIn(page, adminEmail, "Admin reviewing messages");
+    await page.goto(`${APP}/admin/messages`);
+    await waitFor(page, '[data-testid="held-message"]', 25000);
+    const heldRows = await page.locator('[data-testid="held-message"]').count();
+    let released = false;
+    for (let index = 0; index < heldRows; index += 1) {
+      const row = page.locator('[data-testid="held-message"]').nth(index);
+      if (!(await row.innerText().catch(() => "")).includes(stamp)) continue;
+      await record(page, "Messages held for review", "staff see the brand, the factory, the order and why");
+      await page.locator('[data-testid="held-message"] [data-testid="release-message"]').nth(index).click();
+      released = true;
+      break;
+    }
+    check(released, "staff find the held message on their page");
+
+    let afterRelease = null;
+    const releaseDeadline = Date.now() + 20000;
+    while (Date.now() < releaseDeadline) {
+      ({ data: afterRelease } = await db.from("messages").select("delivery, delivered_at").eq("id", heldRow?.id).single());
+      if (afterRelease?.delivery === "delivered") break;
+      await page.waitForTimeout(500);
+    }
+    check(afterRelease?.delivery === "delivered", "staff release it, and it is delivered");
+    check(await factoryNotices() === noticesBefore + 1, "the factory is notified once, as for any new message");
 
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
@@ -2258,15 +2364,15 @@ async function main() {
     // The brand's own order payments, where each stands, and its discounts.
     console.log("\nPAYMENTS");
     await page.evaluate(() => [...document.querySelectorAll(".side-nav button")].find((button) => button.textContent.trim() === "Payments")?.click());
-    await waitFor(page, ".billing-history-row", 20000);
+    await waitFor(page, ".billing-row-link", 20000);
     await record(page, "Payments", "the brand's order payments, on the designed Payments page");
     const paymentsText = await page.locator(".billing-history-page").innerText();
     const { data: brandPayments } = await db.from("order_payments")
-      .select("id, state, amount_cents, fee_bps, charged_cents, order_id").eq("order_id", bornOrder.id).neq("state", "not_due");
+      .select("id, state, amount_cents, fee_bps, charged_cents, order_id").eq("order_id", bornOrder.id).not("state", "in", "(not_due,due)");
     // Each row is what the brand is charged: the step plus the service fee.
     const chargedOf = (payment) => Number(payment.charged_cents ?? Number(payment.amount_cents) + Math.floor(Number(payment.amount_cents) * Number(payment.fee_bps) / 10000));
     check(brandPayments.length > 0 && brandPayments.every((payment) => paymentsText.includes(`$${(chargedOf(payment) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`)),
-      `every payment on the brand's order that is due or further along is listed, fee included (${brandPayments.length})`);
+      `every payment on the brand's order that money has moved for is listed, fee included (${brandPayments.length})`);
     check(/Funded|Paid/.test(paymentsText) && paymentsText.includes(factoryName), "with its state in the design's words and the factory's name");
     const { data: header } = await db.from("production_order_summary").select("paid_cents").eq("id", bornOrder.id).single();
     check(paymentsText.includes(`$${(Number(header.paid_cents) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`),
@@ -2280,7 +2386,7 @@ async function main() {
     await page.waitForTimeout(400);
     await page.evaluate(() => document.querySelector(".billing-row-link")?.click());
     await page.waitForTimeout(2500);
-    check(/\/orders\/[^/]+\/payments\/[^/]+$/.test(await page.evaluate(() => location.pathname)), "a payment opens its page on the order");
+    check(/\/payments\/[^/]+\/[^/]+$/.test(await page.evaluate(() => location.pathname)), "a payment opens its own page");
 
     // ================= THE HOME SCREEN =================
     // It used to be a heading, a notification list and a row of buttons, with
