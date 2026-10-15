@@ -1503,19 +1503,29 @@ function CloseIconButton({ label }) {
 
 /**
  * `live` (the brand's Payments page in the app): { metrics: [[label, value,
- * tone]], rows: [{ id, title, client, meta, status, amount, href, onOpen }],
+ * tone]], rows: [{ id, title, client, meta, date, status, amount, href, onOpen }],
  * empty, discount: { amount, note } | null, codes, onCopy(code), copied }.
  * Without it the prototype draws its examples, unchanged.
  */
 export function BillingScreen({ accountType = "brand", live = null }) {
   const isFactory = accountType === "factory";
   const [tab, setTab] = useState(isFactory ? "earnings" : "payments");
+  const [paymentType, setPaymentType] = useState("All payment types");
+  const [paymentStatus, setPaymentStatus] = useState("All statuses");
   const defaultFilter = isFactory ? "All clients" : "All vendors";
   const [client, setClient] = useState(defaultFilter);
   const allRows = live ? (tab === "discounts" ? [] : live.rows) : isFactory ? factoryBillingHistory[tab] : tab === "discounts" ? [] : brandBillingHistory;
   const clients = [defaultFilter, ...Array.from(new Set(allRows.map((row) => row.client)))];
   const selectedClient = clients.includes(client) ? client : defaultFilter;
   const rows = selectedClient === defaultFilter ? allRows : allRows.filter((row) => row.client === selectedClient);
+  const paymentTypes = ["All payment types", ...Array.from(new Set(allRows.map((row) => row.title)))];
+  const paymentStatuses = ["All statuses", ...Array.from(new Set(allRows.map((row) => row.status)))];
+  const selectedPaymentType = paymentTypes.includes(paymentType) ? paymentType : "All payment types";
+  const selectedPaymentStatus = paymentStatuses.includes(paymentStatus) ? paymentStatus : "All statuses";
+  const visibleRows = rows.filter((row) => (
+    (selectedPaymentType === "All payment types" || row.title === selectedPaymentType)
+    && (selectedPaymentStatus === "All statuses" || row.status === selectedPaymentStatus)
+  ));
   const total = rows.reduce((sum, row) => sum + Number(row.amount.replace(/[$,]/g, "")), 0);
   const formattedTotal = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const brandSummaryMetrics = live ? live.metrics : [
@@ -1552,14 +1562,6 @@ export function BillingScreen({ accountType = "brand", live = null }) {
               {clients.map((item) => (
                 <option key={item}>{item}</option>
               ))}
-            </select>
-          </label>
-        )}
-        {!isFactory && tab === "discounts" && (
-          <label className="billing-filter-placeholder" aria-hidden="true">
-            <span>Filter by vendor</span>
-            <select tabIndex={-1} value="All vendors" readOnly>
-              <option>All vendors</option>
             </select>
           </label>
         )}
@@ -1633,7 +1635,72 @@ export function BillingScreen({ accountType = "brand", live = null }) {
           </div>
         </div>
       )}
-      {(isFactory || tab === "payments") && (
+      {!isFactory && live && tab === "payments" && (
+          <section className="payout-transactions-section brand-payment-transactions" aria-labelledby="brand-transactions-heading">
+            <div className="payout-transactions-header">
+              <div>
+                <h2 id="brand-transactions-heading">Transactions</h2>
+                <p>Payment attempts and completed payments across your production orders.</p>
+              </div>
+            </div>
+            <div className="brand-transaction-filters" aria-label="Transaction filters">
+              <label>
+                <span>Payment type</span>
+                <select value={selectedPaymentType} onChange={(event) => setPaymentType(event.target.value)}>
+                  {paymentTypes.map((type) => <option key={type}>{type}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>Status</span>
+                <select value={selectedPaymentStatus} onChange={(event) => setPaymentStatus(event.target.value)}>
+                  {paymentStatuses.map((status) => <option key={status}>{status}</option>)}
+                </select>
+              </label>
+            </div>
+            {visibleRows.length ? (
+              <div className="payout-transaction-table">
+                <div className="payout-transaction-labels" aria-hidden="true"><span>Date</span><span>Details</span><span>Status</span><span>Amount</span></div>
+                {visibleRows.map((row) => (
+                  <article className="payout-transaction-row" key={row.id}>
+                    <time>{row.date}</time>
+                    <div className="payout-transaction-details">
+                      <div>
+                        <strong>
+                          <a
+                            className="billing-row-link"
+                            href={row.href}
+                            onClick={(event) => {
+                              if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                              event.preventDefault();
+                              row.onOpen();
+                            }}
+                          >
+                            {row.title}
+                          </a>
+                        </strong>
+                        <span>{row.client} · {row.meta}</span>
+                      </div>
+                    </div>
+                    <span className={`billing-status payout-status-${row.status.toLowerCase().replaceAll(" ", "-")}`}>{row.status}</span>
+                    <a
+                      className="brand-transaction-view"
+                      href={row.href}
+                      aria-label={`View ${row.title} transaction details`}
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                        event.preventDefault();
+                        row.onOpen();
+                      }}
+                    >
+                      <strong>{row.amount}</strong><span aria-hidden="true">›</span>
+                    </a>
+                  </article>
+                ))}
+              </div>
+            ) : <p className="projects-empty">{rows.length ? "No transactions match these filters." : live.empty}</p>}
+          </section>
+      )}
+      {(isFactory || (!live && tab === "payments")) && (
         <div className="billing-history-list">
           {live && !rows.length && <p className="billing-empty-note">{live.empty}</p>}
           {rows.map((row) => (
@@ -2251,6 +2318,9 @@ export function SettingsScreen({
   paymentMethods: livePaymentMethods,
   invites: liveInvites,
   onAddPaymentMethod,
+  onAddBillingMethod,
+  onEditPaymentMethod,
+  onDeletePaymentMethod,
   onInvite,
   onRemove,
   busy = false,
@@ -2262,6 +2332,7 @@ export function SettingsScreen({
   const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
   const [stakeholderTab, setStakeholderTab] = useState("members");
   const [paymentTab, setPaymentTab] = useState("earnings");
+  const [paymentMenu, setPaymentMenu] = useState(null);
   const [mockTeam, setTeam] = useState(
     isFactory
       ? [
@@ -2320,6 +2391,15 @@ export function SettingsScreen({
   const activePermissionLabels = isFactory ? factoryAccountPermissionLabels : settingsPermissionLabels;
   const team = liveTeam ?? mockTeam;
   const isLive = Boolean(liveTeam);
+
+  useEffect(() => {
+    if (!paymentMenu) return undefined;
+    const closeOnOutsideClick = (event) => {
+      if (!event.target.closest(".settings-payment-menu")) setPaymentMenu(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [paymentMenu]);
 
   const togglePermission = (memberEmail, permission) => {
     const permissionMeta = activePermissionLabels.find((item) => item.key === permission);
@@ -2444,7 +2524,7 @@ export function SettingsScreen({
             </div>
             {isFactory ? (
               <>
-                <div className="settings-access-tabs settings-payment-tabs" role="tablist" aria-label="Payment method type">
+                <div className="settings-access-tabs billing-tabs settings-payment-tabs" role="tablist" aria-label="Payment method type">
                   <button
                     className={paymentTab === "earnings" ? "active" : ""}
                     type="button"
@@ -2464,37 +2544,65 @@ export function SettingsScreen({
                     Billing
                   </button>
                 </div>
-                {factoryMethods[paymentTab].length === 0 && (
-                  <div className="settings-payment-list">
-                    <div>
-                      <span className="settings-card-brand">None saved</span>
-                      <strong>{paymentTab === "earnings" ? "No payout account saved" : "No billing method saved"}</strong>
-                      <small>
+                {factoryMethods[paymentTab].length === 0 ? (
+                  <div className="settings-payment-page-card">
+                    <div className="settings-payment-page-copy">
+                      <strong>{paymentTab === "earnings" ? "Payout methods" : "Billing methods"}</strong>
+                      <p>
                         {paymentTab === "earnings"
-                          ? "Add the account brands send your milestone payments to."
-                          : "No card or account is stored for platform charges."}
-                      </small>
+                          ? "Add a bank account to receive released earnings."
+                          : "Save a card to use when you purchase credits."}
+                      </p>
                     </div>
+                    {paymentTab === "billing" && onAddBillingMethod ? (
+                      <button className="primary-btn compact-btn" type="button" onClick={onAddBillingMethod}>+ Add payment method</button>
+                    ) : null}
                   </div>
-                )}
+                ) : null}
                 {factoryMethods[paymentTab].map((method) => (
-                  <div className="settings-payment-list" key={`${paymentTab}-${method.label}`}>
+                  <div className="settings-payment-list settings-payment-page-card" key={`${paymentTab}-${method.label}`}>
                     <div>
                       <span className="settings-card-brand">{method.label}</span>
                       <strong>{method.name}</strong>
                       <small>{method.note}</small>
                     </div>
-                    <button className="settings-menu-btn" type="button" aria-label={`More options for ${method.name}`} />
+                    <div className="settings-payment-page-actions">
+                      {method === factoryMethods[paymentTab][0] && paymentTab === "billing" && onAddBillingMethod ? (
+                        <button className="primary-btn compact-btn" type="button" onClick={onAddBillingMethod}>+ Add payment method</button>
+                      ) : null}
+                      <div className="settings-payment-menu">
+                        <button
+                          className="settings-menu-btn"
+                          type="button"
+                          aria-label={`More options for ${method.name}`}
+                          aria-expanded={paymentMenu === method.name}
+                          onClick={() => setPaymentMenu((open) => open === method.name ? null : method.name)}
+                        />
+                        {paymentMenu === method.name ? (
+                          <div className="settings-payment-popover" role="menu">
+                            <button type="button" role="menuitem" onClick={() => { setPaymentMenu(null); onEditPaymentMethod?.(method); }}>Edit method</button>
+                            <button className="danger" type="button" role="menuitem" onClick={() => { setPaymentMenu(null); onDeletePaymentMethod?.(method); }}>Remove method</button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
                 ))}
+                {paymentTab === "earnings" && onAddPaymentMethod ? (
+                  <button className="settings-add-btn" type="button" onClick={onAddPaymentMethod}>Manage payout methods</button>
+                ) : null}
               </>
             ) : livePaymentMethods?.length === 0 ? (
-              <div className="settings-payment-list">
-                <div>
-                  <span className="settings-card-brand">None saved</span>
-                  <strong>No payment method saved</strong>
-                  <small>Payments are made by bank transfer from each order's payment page.</small>
+              <div className="settings-payment-page-card">
+                <div className="settings-payment-page-copy">
+                  <strong>Payment method</strong>
+                  <p>Save a card to use when funding production milestones.</p>
                 </div>
+                {onAddBillingMethod ? (
+                  <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={onAddBillingMethod}>
+                    {busy ? "Opening…" : "+ Add payment method"}
+                  </button>
+                ) : null}
               </div>
             ) : (
               <>
@@ -2516,9 +2624,9 @@ export function SettingsScreen({
                 </div>
               </>
             )}
-            {(!livePaymentMethods || (isFactory && paymentTab === "earnings" && onAddPaymentMethod)) && (
-              <button className="settings-add-btn" type="button" onClick={livePaymentMethods ? onAddPaymentMethod : undefined}>+ Add payment method</button>
-            )}
+            {!livePaymentMethods && !isFactory ? (
+              <button className="settings-add-btn" type="button">+ Add payment method</button>
+            ) : null}
           </section>
 
         <section className="settings-section" id="settings-team">
@@ -8527,7 +8635,8 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
 function ProjectUpdateCard({ update }) {
   const [expanded, setExpanded] = useState(false);
   // Live passes the step's latest real update:
-  // `{ author, when, body, photos, extraFiles, total, history, onViewAll }`.
+  // Each history item carries its own photos/files, so attachments remain
+  // directly beneath the update that introduced them.
   if (update) {
     const visibleUpdates = expanded ? update.history : update.history?.slice(0, 1);
     return (
@@ -8547,22 +8656,22 @@ function ProjectUpdateCard({ update }) {
                 )}
               </div>
               <p>{item.body}</p>
+              {(item.photos?.length > 0 || item.extraFiles > 0) && (
+                <div className="sample-file-row">
+                  {item.photos?.map((photo) => (
+                    <div className="sample-file" key={photo.id}>
+                      {photo.url ? <img src={photo.url} alt="" /> : null}
+                      <span>{photo.label}</span>
+                    </div>
+                  ))}
+                  {item.extraFiles > 0 && (
+                    <button type="button" onClick={update.onViewAll}>+{item.extraFiles} {item.extraFiles === 1 ? "file" : "files"}</button>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
-        {(update.photos.length > 0 || update.extraFiles > 0) && (
-          <div className="sample-file-row">
-            {update.photos.map((photo) => (
-              <div className="sample-file" key={photo.id}>
-                {photo.url ? <img src={photo.url} alt="" /> : null}
-                <span>{photo.label}</span>
-              </div>
-            ))}
-            {update.extraFiles > 0 && (
-              <button type="button" onClick={update.onViewAll}>+{update.extraFiles} {update.extraFiles === 1 ? "file" : "files"}</button>
-            )}
-          </div>
-        )}
       </div>
     );
   }
@@ -8641,22 +8750,12 @@ export function DescribeScreen({
  * the browser's date picker while it has focus. The value stays ISO.
  */
 function DateLine({ value, onValue, name, readOnly = false }) {
-  const [editing, setEditing] = useState(false);
-  const shown = value
-    ? new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
-        .format(new Date(`${value}T00:00:00Z`))
-    : "";
   return (
-    <input
-      className="field-input"
+    <TscDatePicker
       name={name}
-      type={editing ? "date" : "text"}
-      value={editing ? value ?? "" : shown}
-      placeholder="—"
+      value={value}
       readOnly={readOnly}
-      onFocus={() => { if (!readOnly) setEditing(true); }}
-      onBlur={() => setEditing(false)}
-      onChange={(event) => { if (editing) onValue(event.target.value); }}
+      onChange={(_name, nextValue) => onValue(nextValue)}
     />
   );
 }
@@ -9194,7 +9293,7 @@ function matchTierClass(value) {
 
 function quoteFitClass(type) {
   if (type === "Strong fit") return "quote-fit strong-fit";
-  if (type === "Good fit") return "quote-fit good-fit";
+  if (type === "Great fit" || type === "Good fit") return "quote-fit good-fit";
   return "quote-fit tradeoff-fit";
 }
 
@@ -9744,8 +9843,8 @@ function DetailRows({ rows }) {
  *
  * Live mounts pass `terms` (a describeQuote() result plus the request's title
  * and brief) and `attachments`: award_quote snapshots the quote itself, so
- * live this step is a read-back of what is being agreed and every field is
- * read-only. Without them the prototype's editable example renders as before.
+ * live this step reads back the accepted quote while keeping the brand-owned
+ * work details editable before the order is created.
  */
 export function ContractScreen({ selectedQuote, reorderProject = null, terms: live = null, attachments = null, onOpenAttachment }) {
   const isReorder = Boolean(reorderProject);
@@ -9756,19 +9855,30 @@ export function ContractScreen({ selectedQuote, reorderProject = null, terms: li
   ];
   const [deliveryTerm, setDeliveryTerm] = useState("DDP");
   const reorderStyleName = reorderProject?.title?.replace(/\s+production$/i, "") || "";
-  const contractTitle = live
+  const initialContractTitle = live
     ? `${live.title || "Production"} with ${live.name}`
     : isReorder
     ? `${reorderStyleName} reorder with ${reorderProject.factory}`
     : "Organic cotton woven shirt sample + bulk production";
-  const scopeCopy = live
+  const initialScope = live
     ? live.brief || "The request as the brand wrote it."
     : isReorder
     ? `Repeat the previous ${reorderStyleName.toLowerCase()} order with ${reorderProject.factory}. Use the last approved style as the starting point, then confirm quantity, color breakdown, materials, trims, labels, packing, and any construction changes before funding.`
     : "Produce the woven shirt styles described in the attached tech pack, including approved fabric, trims, measurements, construction details, color standards, labels, and packing requirements.";
-  const approvalCopy = isReorder
+  const initialApprovals = live
+    ? ""
+    : isReorder
     ? "Brand and factory should confirm whether new fit or PP samples are needed for this reorder. Any changes to revisions, QC photos, delivery handoff, pricing, or timeline should be confirmed in writing before funding."
     : "Brand must approve samples before bulk starts. Factory will share QC photos before final balance release. Included revisions, extra revision fees, delivery handoff, and any change requests should be confirmed in writing before funding.";
+  const [workDetails, setWorkDetails] = useState({
+    title: initialContractTitle,
+    scope: initialScope,
+    approvals: initialApprovals,
+  });
+
+  function updateWorkDetail(name, value) {
+    setWorkDetails((current) => ({ ...current, [name]: value }));
+  }
 
   return (
     <div className="stack contract-stack">
@@ -9826,19 +9936,27 @@ export function ContractScreen({ selectedQuote, reorderProject = null, terms: li
       <Card title="Work details" className="work-details-card">
         <Field
           label="Contract title"
-          value={contractTitle}
+          name="title"
+          value={workDetails.title}
+          onChange={updateWorkDetail}
         />
         <section className="contract-section">
           <h3>Scope of work</h3>
-          <div className="contract-textarea">
-            {scopeCopy}
-          </div>
+          <textarea
+            className="contract-textarea"
+            value={workDetails.scope}
+            placeholder="Describe the products, quantities, materials, workmanship, and deliverables covered by this order."
+            onChange={(event) => updateWorkDetail("scope", event.target.value)}
+          />
         </section>
         <section className="contract-section">
           <h3>Approvals, revisions, and delivery</h3>
-          <div className="contract-textarea">
-            {approvalCopy}
-          </div>
+          <textarea
+            className="contract-textarea"
+            value={workDetails.approvals}
+            placeholder="Add required sample approvals, included revisions, QC checks, delivery handoff, and change-request terms."
+            onChange={(event) => updateWorkDetail("approvals", event.target.value)}
+          />
         </section>
         {attachments ? (
         attachments.length > 0 && (
@@ -9915,12 +10033,56 @@ function PaymentScreen() {
 
 /**
  * The schedule builder. Live mounts pass `live = { rows, onChange(index,
- * patch), onAdd, onRemove }`: each row is `{ key, type, title, description,
+ * patch), onMove, onAdd, onRemove }`: each row is `{ key, type, title, description,
  * amount, due_on, note }` with `type` one of the design's three step types.
  * Without it the screen draws the design's four example steps, as before.
  */
 const STEP_TYPES = ["Paid release", "Approval only", "Update only"];
 const stepTypeClass = (value) => value.toLowerCase().replaceAll(" ", "-");
+
+function StepActionsMenu({ index, total, canRemove, onMove, onRemove }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (event) => {
+      if (event.key === "Escape" || (event.type === "pointerdown" && !rootRef.current?.contains(event.target))) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", close);
+    };
+  }, [open]);
+
+  const act = (action) => {
+    setOpen(false);
+    action();
+  };
+
+  return (
+    <div className="project-overflow step-actions" ref={rootRef}>
+      <button
+        className="rfq-more step-actions-button"
+        type="button"
+        aria-label={`More actions for step ${index + 1}`}
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+      >...</button>
+      {open ? (
+        <div className="project-overflow-menu step-actions-menu" role="menu">
+          <button type="button" role="menuitem" disabled={index === 0} onClick={() => act(() => onMove(index, -1))}>Move up</button>
+          <button type="button" role="menuitem" disabled={index === total - 1} onClick={() => act(() => onMove(index, 1))}>Move down</button>
+          <button className="step-delete-action" type="button" role="menuitem" disabled={!canRemove} onClick={() => act(() => onRemove(index))}>Delete</button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function StepTypeSelect({ value, onChange, disabled = false }) {
   const [open, setOpen] = useState(false);
@@ -10048,10 +10210,14 @@ export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = nul
                       disabled={Boolean(live.typeLocked || row.typeLocked || live.readOnly)}
                       onChange={(type) => live.onChange(i, { type })}
                     />
-                    {live.allowRemove !== false && !row.removeLocked && !live.readOnly ? (
-                      <button className="trash-btn" type="button" aria-label={`Remove step ${i + 1}`} onClick={() => live.onRemove(i)}>
-                        <img src="/assets/prototype-icons/trash.svg" alt="" />
-                      </button>
+                    {!live.readOnly ? (
+                      <StepActionsMenu
+                        index={i}
+                        total={live.rows.length}
+                        canRemove={live.allowRemove !== false && !row.removeLocked}
+                        onMove={live.onMove}
+                        onRemove={live.onRemove}
+                      />
                     ) : null}
                   </div>
                 </div>
@@ -10237,7 +10403,7 @@ function Card({ title, children, className = "", tone = "" }) {
   );
 }
 
-function TscDatePicker({ name, value, onChange }) {
+function TscDatePicker({ name, value, onChange, readOnly = false }) {
   const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value ?? "")
     ? new Date(`${value}T12:00:00`)
     : null;
@@ -10278,11 +10444,13 @@ function TscDatePicker({ name, value, onChange }) {
   const monthLabel = visibleMonth.toLocaleDateString("en-US", { month: "long", year: "numeric" });
   const shiftMonth = (amount) => setVisibleMonth(new Date(year, month + amount, 1));
   const chooseDay = (day) => {
+    if (readOnly) return;
     const next = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     onChange(name, next);
     setOpen(false);
   };
   const toggle = () => {
+    if (readOnly) return;
     if (!open) {
       const bounds = rootRef.current?.getBoundingClientRect();
       setPlacement(bounds && bounds.bottom + 320 > window.innerHeight && bounds.top > 320 ? "above" : "below");
@@ -10297,6 +10465,7 @@ function TscDatePicker({ name, value, onChange }) {
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
+        disabled={readOnly}
         onClick={toggle}
       >
         <span>{label}</span>

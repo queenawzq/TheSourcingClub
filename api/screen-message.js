@@ -2,7 +2,7 @@
  * Screen a message before the other side can see it.
  *
  * Every message a brand or a factory writes is saved as `checking` (the
- * database forces it, migration 20261013000200), and this decides what
+ * database forces it, migration 20261013000500), and this decides what
  * happens next: delivered, or held for staff because it carries a way to talk
  * off the platform — an email, a phone number, a WeChat or WhatsApp id, a
  * link, "let's sort this outside".

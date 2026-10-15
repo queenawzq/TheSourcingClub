@@ -584,7 +584,7 @@ select is(
 );
 
 -- ---------------------------------------------------------------------------
--- Whatever a sender asks for, its message is checked first (20261013000200)
+-- Whatever a sender asks for, its message is checked first (20261013000500)
 -- ---------------------------------------------------------------------------
 -- Last, on the rejected thread, so nothing above counts these rows.
 

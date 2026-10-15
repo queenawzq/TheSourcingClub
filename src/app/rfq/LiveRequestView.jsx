@@ -39,6 +39,8 @@ import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import QuoteActionDialog, { reviseCopy } from "../quote/QuoteActionDialog.jsx";
+import { matchFit } from "./match-fit.js";
+import { getRequestBackTarget, getRequestOrigin, withRequestOrigin } from "./request-origin.js";
 import "../profile/profile.css";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -78,15 +80,11 @@ function statusOf(quote, rfq) {
   }
 }
 
-/** The score bands the database already defines, as the design draws them. */
-const MATCH_BANDS = [
-  [90, "Strong fit", "strong"],
-  [75, "Good fit", "good"],
-  [60, "Potential fit", "potential"],
-];
-
 export default function LiveRequestView({ org, user, rfqId, profile }) {
   const { navigate } = useRouter();
+  const requestOrigin = getRequestOrigin();
+  const backTarget = getRequestBackTarget(requestOrigin);
+  const quotePath = withRequestOrigin(`/browse/${rfqId}/quote`, requestOrigin);
   const [rfq, setRfq] = useState(null);
   const [questions, setQuestions] = useState([]);
   const [myQuote, setMyQuote] = useState(null);
@@ -182,7 +180,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           The brand may have cancelled it, and any quote you sent on it has been closed.
         </p>
         <p className="shell-note">
-          <button type="button" className="quiet-btn" onClick={() => navigate("/browse")}>← Browse open requests</button>
+          <button type="button" className="quiet-btn" onClick={() => navigate(backTarget.path)}>← Back to {backTarget.label}</button>
         </p>
       </main>
     );
@@ -191,6 +189,15 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
 
   const verified = profile?.verification_status === "verified";
   const isTrading = profile?.vendor_kind === "trading_company";
+  const fit = matchFit(extras.match);
+  const quoteUnitMax = myQuote?.unit_price_max_cents ?? myQuote?.unit_price_cents;
+  const quoteProductionMin = myQuote?.unit_price_cents && myQuote?.production_quantity
+    ? myQuote.unit_price_cents * myQuote.production_quantity
+    : null;
+  const quoteProductionMax = quoteUnitMax && myQuote?.production_quantity
+    ? quoteUnitMax * myQuote.production_quantity
+    : null;
+  const quoteSampleTotal = sampleLines.reduce((sum, line) => sum + (line.cost_cents ?? 0), 0);
 
   // The request itself, in the shape both designed screens read.
   const project = {
@@ -209,9 +216,9 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     paymentVerified: extras.brand ? Boolean(extras.brand.payment_verified) : false,
     trust: extras.brand?.trust_band ?? "",
     tags: [],
-    capacity: [],
+    capacity: fit ? [fit.label] : [],
     images: [],
-    fitTone: "",
+    fitTone: fit?.tone ?? "",
     insight: [],
   };
 
@@ -228,7 +235,6 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   // No quote from this vendor yet: the design's RFQ details screen, whose
   // primary action is the one thing this vendor is here to do.
   if (!myQuote) {
-    const band = MATCH_BANDS.find(([floor]) => (extras.match ?? -1) >= floor);
     return (
       <>
         {gate}
@@ -259,8 +265,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           capabilities={[]}
           match={extras.match === null ? null : {
             summary: `Your profile scores ${extras.match}% against this request.`,
-            label: band ? band[1] : "",
-            tone: band ? band[2] : "",
+            label: fit?.label ?? "",
+            tone: fit?.tone ?? "",
           }}
           brand={extras.brand ? {
             initials: (extras.brand.name ?? "??").slice(0, 2).toUpperCase(),
@@ -284,8 +290,9 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           ].filter(Boolean)}
           saved={extras.saved}
           onToggleSave={toggleSave}
-          onBack={() => navigate("/browse")}
-          onSendQuote={verified ? () => navigate(`/browse/${rfqId}/quote`) : undefined}
+          backLabel={`‹ Back to ${backTarget.label}`}
+          onBack={() => navigate(backTarget.path)}
+          onSendQuote={verified ? () => navigate(quotePath) : undefined}
         />
       </>
     );
@@ -296,7 +303,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
 
   async function revise() {
     await reviseQuote(myQuote.id);
-    navigate(`/browse/${rfqId}/quote`);
+    navigate(quotePath);
   }
 
   async function withdraw() {
@@ -309,7 +316,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   // becomes a new draft version; the old form used to open on the sent row
   // and fail to save, because only a draft is editable.
   let onEdit = null;
-  if (open && myQuote.status === "draft") onEdit = verified ? () => navigate(`/browse/${rfqId}/quote`) : undefined;
+  if (open && myQuote.status === "draft") onEdit = verified ? () => navigate(quotePath) : undefined;
   if (open && myQuote.status === "submitted") onEdit = verified ? () => setAsking("revise") : undefined;
 
   return (
@@ -350,7 +357,9 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         // sample plan it priced, not the design's example.
         quote={{
           brandQuestions: project.questions,
-          unitPrice: myQuote.unit_price_cents ? formatMoney(myQuote.unit_price_cents) : "",
+          unitPrice: myQuote.unit_price_cents
+            ? formatRange(myQuote.unit_price_cents, quoteUnitMax, myQuote.currency)
+            : "",
           quantity: myQuote.production_quantity ? `${myQuote.production_quantity} units` : "",
           leadTime: myQuote.bulk_lead_time_days ? `${myQuote.bulk_lead_time_days} days` : "",
           // What the vendor sent, as Review showed it before sending. Both read
@@ -374,10 +383,12 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         priceTotal={{
           brand: rfq.orgs?.name ?? "",
           location: extras.brand?.hq_location ?? "",
-          unitPrice: myQuote.unit_price_cents ? formatMoney(myQuote.unit_price_cents) : "—",
+          unitPrice: myQuote.unit_price_cents
+            ? formatRange(myQuote.unit_price_cents, quoteUnitMax, myQuote.currency)
+            : "—",
           quantity: myQuote.production_quantity ? `${myQuote.production_quantity} units` : "—",
-          productionSubtotal: myQuote.unit_price_cents && myQuote.production_quantity
-            ? formatMoney(myQuote.unit_price_cents * myQuote.production_quantity)
+          productionSubtotal: quoteProductionMin
+            ? formatRange(quoteProductionMin, quoteProductionMax, myQuote.currency)
             : "—",
           samplePlan: sampleLines.length
             ? sampleLines.map((line) => line.stage).filter(Boolean).join(" + ")
@@ -388,21 +399,25 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           paymentTerms: myQuote.deposit_pct
             ? `${myQuote.deposit_pct}% / ${myQuote.balance_pct ?? 100 - myQuote.deposit_pct}%`
             : "—",
-          brandSees: myQuote.unit_price_cents && myQuote.production_quantity
-            ? formatMoney(
-              myQuote.unit_price_cents * myQuote.production_quantity
-              + sampleLines.reduce((sum, line) => sum + (line.cost_cents ?? 0), 0),
+          brandSees: quoteProductionMin
+            ? formatRange(
+              quoteProductionMin + quoteSampleTotal,
+              quoteProductionMax + quoteSampleTotal,
+              myQuote.currency,
             )
             : "—",
         }}
         status={{
           ...statusOf(myQuote, rfq),
-          price: myQuote.unit_price_cents ? formatMoney(myQuote.unit_price_cents) : "—",
+          price: myQuote.unit_price_cents
+            ? formatRange(myQuote.unit_price_cents, quoteUnitMax, myQuote.currency)
+            : "—",
           sent: myQuote.submitted_at
             ? DAY.format(new Date(myQuote.submitted_at))
             : "—",
         }}
-        onBack={() => navigate("/browse")}
+        backLabel={`‹ Back to ${backTarget.label}`}
+        onBack={() => navigate(backTarget.path)}
         // Only a draft or a sent quote on an open request can still change.
         onEdit={onEdit}
         onWithdraw={open && myQuote.status === "submitted" ? () => setAsking("withdraw") : undefined}

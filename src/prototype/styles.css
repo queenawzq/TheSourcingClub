@@ -2971,6 +2971,11 @@ button {
   padding: 64px 24px;
 }
 
+.brand-profile-modal-layer.quote-action-dialog-layer {
+  place-items: center;
+  padding: 24px;
+}
+
 .brand-profile-modal-scrim {
   position: fixed;
   inset: 0;
@@ -4216,14 +4221,24 @@ textarea {
 }
 
 .contract-textarea {
+  box-sizing: border-box;
+  width: 100%;
   min-height: 72px;
   padding: 16px 18px;
   border: 1px solid var(--border);
   border-radius: 8px;
+  background: #fff;
   color: #0b1020;
+  font-family: inherit;
   font-size: 13px;
   font-weight: 500;
   line-height: 20px;
+  resize: vertical;
+}
+
+.contract-textarea::placeholder {
+  color: #8796ad;
+  opacity: 1;
 }
 
 .contract-section-header {
@@ -5941,6 +5956,33 @@ select {
   transform: translateX(0.5px);
 }
 
+.step-actions {
+  z-index: 3;
+}
+
+.step-actions-button {
+  width: 32px !important;
+  height: 32px !important;
+  min-height: 32px !important;
+}
+
+.step-actions-menu {
+  min-width: 148px;
+}
+
+.step-actions-menu button:disabled {
+  color: #9aa8bc;
+  cursor: not-allowed;
+}
+
+.step-actions-menu button:disabled:hover {
+  background: transparent;
+}
+
+.step-actions-menu .step-delete-action:not(:disabled) {
+  color: #b42318;
+}
+
 .helper {
   margin: 8px 0 14px;
   font-weight: var(--weight-medium);
@@ -6792,11 +6834,6 @@ select {
   min-width: 240px;
 }
 
-.billing-filter-placeholder {
-  visibility: hidden;
-  pointer-events: none;
-}
-
 .billing-controls label span {
   color: #4f6078;
   font-size: 13px;
@@ -6891,6 +6928,7 @@ select {
 
 .billing-status {
   justify-self: start;
+  white-space: nowrap;
   padding: 5px 9px;
   border-radius: 999px;
   background: #eaf4ff;
@@ -12422,9 +12460,52 @@ body:has(.brand-onboarding-page) {
   background: #fbfcfe;
 }
 
+.settings-payment-page-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 92px;
+  padding: 22px 24px;
+  border: 1px solid #d7e0ea;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.settings-payment-page-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-payment-page-copy strong {
+  color: #0b1020;
+  font-size: 17px;
+  line-height: 22px;
+}
+
+.settings-payment-page-copy p {
+  margin: 0;
+  color: #5a6b87;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 19px;
+}
+
+.settings-payment-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
 .settings-payment-list > div {
   display: grid;
   gap: 4px;
+}
+
+.settings-payment-list > .settings-payment-page-actions {
+  display: flex;
+  gap: 12px;
 }
 
 .settings-payment-list strong,
@@ -12452,6 +12533,49 @@ body:has(.brand-onboarding-page) {
   border-radius: 50%;
   background: #fff url("/assets/prototype-icons/menu.svg") center / 14px 4px no-repeat;
 }
+
+.settings-payment-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.settings-menu-btn:hover,
+.settings-menu-btn[aria-expanded="true"] {
+  border-color: #bdcbe0;
+  background-color: #f7f9fc;
+}
+
+.settings-payment-popover {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 5;
+  display: grid;
+  min-width: 156px;
+  padding: 6px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.settings-payment-popover button {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #0b1020;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-payment-popover button:hover { background: #f3f7fb; }
+.settings-payment-popover button.danger { color: #b93824; }
 
 .settings-add-btn {
   justify-self: start;
@@ -12718,9 +12842,16 @@ body:has(.brand-onboarding-page) {
   background: #f4f7fb;
   color: #4f6078;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 750;
   line-height: 16px;
   text-transform: uppercase;
+}
+
+.settings-invited-row.header span {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 16px;
 }
 
 .settings-invited-row strong {
@@ -12993,10 +13124,20 @@ body:has(.brand-onboarding-page) {
   .settings-heading,
   .settings-section-header.split,
   .settings-payment-list,
+  .settings-payment-page-card,
   .settings-inline-row,
   .settings-invite-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .settings-payment-page-actions {
+    width: 100%;
+  }
+
+  .settings-payment-page-actions .compact-btn,
+  .settings-payment-page-card > .compact-btn {
+    flex: 1;
   }
 
   .settings-heading .primary-btn,
@@ -18085,4 +18226,203 @@ textarea.note-field {
   .settings-payment-modal-form .settings-payment-instructions-field {
     grid-column: auto;
   }
+}
+
+@media (min-width: 1401px) and (max-width: 1600px) {
+  #root > .app-shell > main.flow-page.wide-flow:has(.quote-review-stack) {
+    grid-template-columns: 246px minmax(0, 1fr);
+  }
+
+  .flow-page.wide-flow:has(.quote-review-stack) > .flow-content {
+    grid-column: 2;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .flow-page.wide-flow .quote-review-stack,
+  .flow-page.wide-flow .quote-list,
+  .flow-page.wide-flow .quote-card,
+  .flow-page.wide-flow .quote-factory-content {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .flow-page.wide-flow .quote-card .quote-factory-top {
+    grid-template-columns: minmax(0, 1fr) max-content;
+  }
+
+  .flow-page.wide-flow .quote-card .quote-actions {
+    display: grid;
+    grid-template-columns: repeat(3, max-content);
+    align-items: center;
+    justify-self: end;
+    gap: 8px;
+    width: auto;
+  }
+}
+
+/* Quote comparison cards collapse their action rail before it competes with
+   the vendor identity. Keep the metrics and notes fluid inside the card. */
+@media (max-width: 760px) {
+  .flow-page.wide-flow .quote-review-stack .quote-card .quote-factory-top {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 12px;
+  }
+
+  .flow-page.wide-flow .quote-review-stack .quote-card .quote-actions {
+    grid-column: 1;
+    grid-row: 2;
+    justify-content: flex-start;
+    justify-items: start;
+    justify-self: stretch;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .flow-page.wide-flow .quote-review-stack .quote-card .quote-actions > .button-like-action {
+    justify-self: start !important;
+  }
+
+  .flow-page.wide-flow .quote-review-stack .quote-stat-grid,
+  .flow-page.wide-flow .quote-review-stack .factory-note-box {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+}
+
+/* Contract work details use the same field treatment as factory quote entry.
+   This is intentionally scoped so onboarding inputs retain their own design. */
+.work-details-card .field {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-height: 76px;
+  padding: 12px 16px;
+  border-color: #d7e0eb;
+  border-radius: 6px;
+  background: #fff;
+  cursor: text;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.work-details-card .field > span,
+.work-details-card .contract-section > h3 {
+  color: #576f96;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.work-details-card .field .field-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  background: transparent;
+  color: #0b101e;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.work-details-card .field:focus-within,
+.work-details-card .contract-textarea:focus {
+  border-color: #2458ff;
+  outline: 0;
+  background: #fff;
+  box-shadow: 0 0 0 1px #2458ff;
+}
+
+.work-details-card .contract-textarea {
+  min-height: 76px;
+  padding: 12px 16px;
+  border-color: #d7e0eb;
+  border-radius: 6px;
+  color: #0b101e;
+  font-size: 14px;
+  line-height: 20px;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+/* Production-step editors share the factory quote-entry field treatment.
+   Keep this scoped to the schedule so onboarding fields retain their design. */
+.milestone-form .production-step-grid .field {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-height: 76px;
+  padding: 12px 16px;
+  border-color: #d7e0eb;
+  border-radius: 6px;
+  background: #fff;
+  cursor: text;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+.milestone-form .production-step-grid .field > span {
+  color: #576f96;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.milestone-form .production-step-grid .field .field-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 24px;
+  height: auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+  background: transparent;
+  color: #0b101e;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.milestone-form .production-step-grid .field:focus-within {
+  border-color: #2458ff;
+  outline: 0;
+  background: #fff;
+  box-shadow: 0 0 0 1px #2458ff;
+}
+
+.milestone-form .production-step-grid .field .field-input:focus {
+  outline: 0;
+  box-shadow: none;
+}
+
+.milestone-form .production-step-grid .tsc-date-picker {
+  margin-top: 0;
+}
+
+.milestone-form .production-step-grid .field .tsc-date-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.milestone-form .production-step-grid .tsc-date-trigger > span {
+  color: #0b101e;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.milestone-form .production-step-grid .tsc-date-trigger.placeholder > span {
+  color: #8291aa;
 }

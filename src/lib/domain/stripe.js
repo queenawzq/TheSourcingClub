@@ -50,6 +50,9 @@ export const syncPayment = (paymentId) => call("stripe-sync", { paymentId });
 /** Pay a held, approved payment out to the factory. */
 export const requestRelease = (paymentId) => call("stripe-release", { paymentId });
 
+/** A SetupIntent for a company owner to save a future billing method. */
+export const startBillingSetup = (orgId) => call("stripe-billing-setup", { orgId });
+
 /** onboard | refresh | dashboard, for a factory owner's own company. */
 export const connectAction = (orgId, action, extra = {}) => call("stripe-connect", { orgId, action, ...extra });
 

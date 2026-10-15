@@ -144,8 +144,8 @@ export default function LiveFactoryRfqs({ org }) {
       // the design's "View RFQ", with Edit and Withdraw; it used to open the
       // post-send confirmation, where neither was offered. A withdrawn card
       // used to open the form, which quietly started a new quote.
-      onViewRequest={(rfq) => navigate(rfq?.id ? `/browse/${rfq.id}` : "/browse")}
-      onEditQuote={(rfq) => navigate(rfq?.id ? (rfq.quoteStatus === "draft" ? `/browse/${rfq.id}/quote` : `/browse/${rfq.id}`) : "/browse")}
+      onViewRequest={(rfq) => navigate(rfq?.id ? `/browse/${rfq.id}?from=rfqs` : "/rfqs")}
+      onEditQuote={(rfq) => navigate(rfq?.id ? (rfq.quoteStatus === "draft" ? `/browse/${rfq.id}/quote?from=rfqs` : `/browse/${rfq.id}?from=rfqs`) : "/rfqs")}
     />
   );
 }

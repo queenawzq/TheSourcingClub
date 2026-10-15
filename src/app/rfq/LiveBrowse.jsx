@@ -13,7 +13,7 @@
  */
 import React, { useEffect, useState } from "react";
 import { FactoryBrowsePage } from "../../factory-prototype/main.jsx";
-import { listOpenRfqs } from "../../lib/domain/rfq.js";
+import { listOpenRfqs, matchScoresForRfq } from "../../lib/domain/rfq.js";
 import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 
@@ -35,7 +35,13 @@ function posted(value) {
   return `Posted ${Math.round(hours / 24)} days ago`;
 }
 
-export default function LiveBrowse({ profile }) {
+function fitBand(score) {
+  if (score !== null && score >= 90) return { label: "Great fit", tone: "strong" };
+  if (score !== null && score >= 75) return { label: "Strong fit", tone: "good" };
+  return { label: "Potential fit", tone: "warn" };
+}
+
+export default function LiveBrowse({ org, profile }) {
   // Visibility and the right to quote are separate, and the designs express
   // only the first. A factory that can see the marketplace but cannot yet bid
   // has to be told which it is — finding out at the quote button is finding
@@ -43,36 +49,53 @@ export default function LiveBrowse({ profile }) {
 
   const { navigate } = useRouter();
   const [rfqs, setRfqs] = useState(null);
+  const [matchScores, setMatchScores] = useState(new Map());
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    listOpenRfqs().then(setRfqs).catch(setError);
-  }, []);
+    let cancelled = false;
+    (async () => {
+      const rows = await listOpenRfqs();
+      const scores = await Promise.all(rows.map(async (rfq) => {
+        const result = await matchScoresForRfq(rfq.id, [org.id]);
+        return [rfq.id, result.get(org.id) ?? null];
+      }));
+      if (!cancelled) {
+        setRfqs(rows);
+        setMatchScores(new Map(scores));
+      }
+    })().catch((failure) => {
+      if (!cancelled) setError(failure);
+    });
+    return () => { cancelled = true; };
+  }, [org.id]);
 
   if (!rfqs) return null;
 
-  const projects = rfqs.map((rfq) => ({
-    id: rfq.id,
-    initials: initialsOf(rfq.orgs?.name),
-    title: rfq.title || "Untitled request",
-    brand: rfq.orgs?.name ?? "A brand",
-    location: "",
-    posted: posted(rfq.published_at ?? rfq.created_at),
-    // Match is a per-pair score this list never asks for, so it is left out
-    // rather than filled with a number that came from nowhere.
-    match: "",
-    quoteDue: rfq.quote_deadline ? new Date(rfq.quote_deadline).toLocaleDateString("en", { month: "short", day: "numeric" }) : "",
-    budget: formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents, rfq.currency),
-    quantity: rfq.quantity_total ? `${rfq.quantity_total} units` : "",
-    samples: rfq.requires_sample ? "Sample required" : "No sample",
-    specialty: rfq.brief ?? rfq.material_notes ?? "",
-    tags: [],
-    capacity: [],
-    images: [],
-    fitTone: "",
-    trust: "",
-    insight: [],
-  }));
+  const projects = rfqs.map((rfq) => {
+    const fit = fitBand(matchScores.get(rfq.id) ?? null);
+    return {
+      id: rfq.id,
+      initials: initialsOf(rfq.orgs?.name),
+      title: rfq.title || "Untitled request",
+      brand: rfq.orgs?.name ?? "A brand",
+      location: "",
+      posted: posted(rfq.published_at ?? rfq.created_at),
+      match: matchScores.get(rfq.id) ?? null,
+      fitLabel: fit.label,
+      quoteDue: rfq.quote_deadline ? new Date(rfq.quote_deadline).toLocaleDateString("en", { month: "short", day: "numeric" }) : "",
+      budget: formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents, rfq.currency),
+      quantity: rfq.quantity_total ? `${rfq.quantity_total} units` : "",
+      samples: rfq.requires_sample ? "Sample required" : "No sample",
+      specialty: rfq.brief ?? rfq.material_notes ?? "",
+      tags: [],
+      capacity: [],
+      images: [],
+      fitTone: fit.tone,
+      trust: "",
+      insight: [],
+    };
+  });
 
   return (
     <>
@@ -90,7 +113,7 @@ export default function LiveBrowse({ profile }) {
         companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
         language="en"
         projects={projects}
-        onViewDetails={(project) => navigate(`/browse/${project.id}`)}
+        onViewDetails={(project) => navigate(`/browse/${project.id}?from=browse`)}
       />
     </>
   );

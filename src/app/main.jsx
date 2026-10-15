@@ -61,6 +61,7 @@ import LiveBrandFactoryProfile from "./profile/LiveBrandFactoryProfile.jsx";
 import LiveBrandBrowse from "./browse/LiveBrandBrowse.jsx";
 import LiveSavedVendors from "./browse/LiveSavedVendors.jsx";
 import LiveBrandPayments from "./payments/LiveBrandPayments.jsx";
+import LiveBrandPaymentDetail from "./payments/LiveBrandPaymentDetail.jsx";
 import LiveBrandProfile from "./profile/LiveBrandProfile.jsx";
 import LiveFactoryBrandProfile from "./profile/LiveFactoryBrandProfile.jsx";
 import NotificationList from "./NotificationList.jsx";
@@ -885,7 +886,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/browse",
       render: () =>
-        isFactory ? <LiveBrowse profile={profile} /> : <LiveBrandBrowse org={activeOrg} user={user} />,
+        isFactory ? <LiveBrowse org={activeOrg} profile={profile} /> : <LiveBrandBrowse org={activeOrg} user={user} />,
     },
     {
       // Browse vendors as the design's directory list. Before /browse/:id,
@@ -932,6 +933,12 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/saved",
       render: () =>
         isFactory ? <LiveSaved org={activeOrg} /> : <LiveSavedVendors org={activeOrg} />,
+    },
+    {
+      path: "/payments/:orderId/:paymentId",
+      render: (params) => isFactory
+        ? <NotForThisSide isFactory />
+        : <LiveBrandPaymentDetail orderId={params.orderId} paymentId={params.paymentId} />,
     },
     {
       // The brand's payments and discount codes. A factory's money page is
