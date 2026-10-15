@@ -112,12 +112,58 @@
   background: transparent;
 }
 
-/* Live only: Zoom's own meeting view, inside the designed video panel. */
+/* Live only: the page's entrance animation keeps its last frame
+   (translateY(0)), and any transform makes the page the box the phone's
+   "fixed" call drawer is placed in: the closed drawer then sits beside the
+   page and the page scrolls sideways. Keep only the first frame. */
+.app-shell > .messages-page {
+  animation-fill-mode: backwards;
+}
+
+/* Live only: the phone drawer centres its content, which is right for the
+   design's one call; a conversation with several is taller than the drawer,
+   and centred content that overflows loses its top (no scroll reaches it). */
+@media (max-width: 760px) {
+  .message-side-panel {
+    align-content: start;
+  }
+}
+
+/* Live only: Zoom's own meeting view, inside the designed video panel, on a
+   row of its own under the title and buttons (it is wider than the space
+   the design's row leaves). */
+.video-call-panel:has(> .video-call-zoom) {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
 .video-call-panel .video-call-zoom {
+  order: 3;
+  flex: 1 0 100%;
+  width: 100%;
+  min-width: 0;
   min-height: 360px;
   border-radius: 8px;
   overflow: hidden;
   background: #0b1020;
+}
+
+/* The design stacks the panel in a column at 900px and under: Zoom's view is
+   simply the last item there (wrapping a column would start a second one). */
+@media (max-width: 900px) {
+  .video-call-panel:has(> .video-call-zoom) {
+    flex-wrap: nowrap;
+  }
+
+  .video-call-panel .video-call-zoom {
+    flex: none;
+    align-self: stretch;
+  }
+}
+
+/* The avatar keeps its circle when the title wraps on a narrow screen. */
+.video-call-stage .message-avatar {
+  flex-shrink: 0;
 }
 
 .video-call-panel .video-call-zoom:empty {

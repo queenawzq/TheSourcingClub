@@ -89,6 +89,14 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
 
   useEffect(() => { reloadCalls(); }, [reloadCalls]);
 
+  // The clock the cards read: "Join call" opens and "Starting soon" turns
+  // into "On now" while the page stays open.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const tick = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(tick);
+  }, []);
+
   useEffect(() => {
     if (!activeId || activeId in theirZones) return;
     counterpartyTimeZone(activeId).then((zone) => setTheirZones((current) => ({ ...current, [activeId]: zone })));
@@ -213,6 +221,17 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   useEffect(() => {
     // Once per join: a failure updates `video` too, which must not retry.
     if (!video?.join || video.attempted || !zoomRoot.current) return undefined;
+    // Zoom's meeting view is never narrower than about 360px: on a phone it
+    // would be cut off, so the call opens in Zoom's app straight away.
+    if (zoomRoot.current.clientWidth < 360) {
+      setVideo((current) => current && {
+        ...current,
+        attempted: true,
+        failed: true,
+        text: "On a screen this narrow, the call opens in the Zoom app.",
+      });
+      return undefined;
+    }
     setVideo((current) => current && { ...current, attempted: true });
     document.body.classList.remove("tsc-zoom-failed");
     (async () => {
@@ -220,11 +239,17 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         const ZoomMtgEmbedded = await loadZoomEmbedded();
         const client = ZoomMtgEmbedded.createClient();
         zoomClient.current = client;
+        // Zoom draws its view at a fixed size: the panel's width, 16:9, in
+        // speaker view (its default, "ribbon", is a small floating window).
+        const width = Math.floor(zoomRoot.current.clientWidth);
         await client.init({
           zoomAppRoot: zoomRoot.current,
           language: "en-US",
           patchJsMedia: true,
           leaveOnPageUnload: true,
+          customize: {
+            video: { defaultViewType: "speaker", isResizable: false, viewSizes: { default: { width, height: Math.round((width * 9) / 16) } } },
+          },
         });
         await client.join({
           sdkKey: video.join.sdkKey,
@@ -263,6 +288,24 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     if (video && video.call.thread_id !== activeId) leaveVideo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
+
+  // Leaving the page (another screen of the app) leaves the call too:
+  // otherwise Zoom stays joined, with sound, behind a panel that is gone.
+  useEffect(() => () => {
+    const client = zoomClient.current;
+    zoomClient.current = null;
+    Promise.resolve()
+      .then(() => client?.leaveMeeting())
+      .catch(() => null)
+      .finally(() => {
+        try {
+          window.ZoomMtgEmbedded?.destroyClient();
+        } catch {
+          // Nothing to tidy.
+        }
+      });
+    document.body.classList.remove("tsc-zoom-failed");
+  }, []);
 
   async function leaveVideo() {
     try {
@@ -370,7 +413,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const callCards = {};
   for (const thread of threads) {
     const theirs = calls.filter((call) => call.thread_id === thread.id);
-    callCards[thread.id] = callsForPanel(theirs, org.id).map((call) => panelCard(call, {
+    callCards[thread.id] = callsForPanel(theirs, org.id, now).map((call) => panelCard(call, {
+      now,
       orgId: org.id,
       ownZone,
       otherZone: theirZones[thread.id] ?? null,
