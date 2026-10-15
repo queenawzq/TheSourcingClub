@@ -32,6 +32,9 @@ import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { initialsOf } from "../profile/factory-profile-view.js";
 import { loadRecommendedVendors } from "../profile/load-profile.js";
+import { browserTimeZone } from "../../lib/domain/calls.js";
+import { dashboardCalls, inviteAttention } from "../message/live-calls.js";
+import { useDashboardCalls } from "../message/use-calls.js";
 
 /**
  * A recommended vendor as the designed dashboard card. Like the invite
@@ -162,6 +165,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
   const [activity, setActivity] = useState(null);
   const [error, setError] = useState(null);
   const [recommended, setRecommended] = useState([]);
+  const { calls, zones } = useDashboardCalls(org.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -237,7 +241,14 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
   }
 
   const { snapshot, rfqs, projects, savings } = state;
-  const attention = attentionFrom(snapshot, isFactory, goTo) ?? [];
+  const ownZone = browserTimeZone() ?? "UTC";
+  const openCall = (call) => navigate(`/messages/${call.thread_id}`);
+  // A call invite waiting on the brand comes first: it has a time on it.
+  const attention = [
+    ...inviteAttention(calls, { orgId: org.id, ownZone, open: openCall }),
+    ...(attentionFrom(snapshot, isFactory, goTo) ?? []),
+  ];
+  const callCards = dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall });
   const isNewcomer = state.loaded && !rfqs.length && !projects.length;
 
   // The newcomer layout's "Recommended factories": real vendors, never the
@@ -270,7 +281,9 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         // No credit and no codes means no Savings panel, rather than the
         // design's $50 shown to a brand that has none.
         showSavings={Boolean(savings)}
-        showCalls={false}
+        // The designed "Scheduled calls" card, only when there is a call.
+        showCalls={callCards.length > 0}
+        calls={callCards}
         showSearch={false}
         onViewRfq={onViewRfq}
         onViewProject={onViewProject}

@@ -97,6 +97,39 @@ async function screenAs(client, messageId) {
   return { status, ...body };
 }
 
+/**
+ * Run the real api/call-join.js handler as a client. `zoom` sets fake Zoom
+ * variables (enough to pass "is Zoom set up?", never enough to reach Zoom);
+ * without it they are cleared, as on a site without video.
+ */
+async function joinAs(client, callId, { zoom = false } = {}) {
+  const { default: join } = await import("../api/call-join.js");
+  const { data } = client ? await client.auth.getSession() : { data: null };
+  const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY",
+    "ZOOM_ACCOUNT_ID", "ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET", "ZOOM_SDK_CLIENT_ID", "ZOOM_SDK_CLIENT_SECRET"];
+  const saved = { ...process.env };
+  const fake = zoom ? "smoke-not-a-key" : "";
+  Object.assign(process.env, {
+    SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE,
+    ZOOM_ACCOUNT_ID: fake, ZOOM_CLIENT_ID: fake, ZOOM_CLIENT_SECRET: fake, ZOOM_SDK_CLIENT_ID: fake, ZOOM_SDK_CLIENT_SECRET: fake,
+  });
+  let status = 0;
+  let body = null;
+  const response = {
+    status(code) { status = code; return response; },
+    json(payload) { body = payload; return response; },
+  };
+  try {
+    const token = data?.session?.access_token;
+    await join({ method: "POST", headers: { authorization: token ? `Bearer ${token}` : "" }, body: { callId } }, response);
+  } finally {
+    for (const key of keys) {
+      if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
+    }
+  }
+  return { status, ...body };
+}
+
 // Where Stripe can pay out: the server (api/_stripe.js) and the factory's
 // Payments page keep their own copies, because Vercel builds api/ on its own.
 {
@@ -1362,6 +1395,83 @@ console.log("\nphase 3 — the order runs");
       afterHold.length === 1
         ? ok("and is not notified of it")
         : fail(`expected still one notification, got ${afterHold.length}`);
+
+      // Calls on the same conversation: the exact signatures and the select
+      // string src/lib/domain/calls.js uses, so a renamed argument or an
+      // ambiguous embed fails here rather than on a screen.
+      const startsAt = new Date(Date.now() + 2 * 86400000).toISOString();
+      const { data: proposed, error: proposeError } = await brand.client.rpc("propose_call", {
+        target_thread: threadId, starts_at: startsAt, duration_minutes: 30,
+        title: "Smoke call", agenda: null, time_zone: "America/New_York",
+      });
+      proposeError ? fail("the brand proposes a call", proposeError) : ok("the brand proposes a call");
+
+      const { data: seenCalls, error: callsError } = await factoryClient.from("calls").select(`
+        id, thread_id, counter_of, title, agenda, starts_at, duration_minutes,
+        proposer_org_id, proposer_time_zone, status, responded_at, response_note,
+        cancelled_by_org_id, created_at,
+        thread:message_threads (
+          id, order_id, rfq_id, brand_org_id, factory_org_id,
+          brand:orgs!message_threads_brand_org_id_fkey (name),
+          factory:orgs!message_threads_factory_org_id_fkey (name)
+        )
+      `).eq("id", proposed?.id);
+      !callsError && seenCalls?.length === 1 && seenCalls[0].thread?.brand?.name
+        ? ok("the factory reads it, with both companies' names embedded")
+        : fail("the factory reads the call with its conversation", callsError);
+
+      const { error: zoneError } = await factoryClient.rpc("set_my_time_zone", { zone: "Europe/Lisbon" });
+      const { data: theirZone } = await brand.client.rpc("thread_counterparty_time_zone", { target_thread: threadId });
+      !zoneError && theirZone === "Europe/Lisbon"
+        ? ok("the brand reads the factory's time zone")
+        : fail(`the brand read the factory's zone as ${theirZone}`, zoneError);
+
+      const { error: ownAccept } = await brand.client.rpc("accept_call", { target_call: proposed?.id, time_zone: null });
+      ownAccept ? ok("the brand CANNOT accept its own invite")
+                : fail("LEAK: the proposer accepted its own call");
+
+      const { data: strangerCalls } = await losingFactory.from("calls").select("id").eq("thread_id", threadId);
+      (strangerCalls ?? []).length === 0
+        ? ok("an outsider CANNOT see the conversation's calls")
+        : fail("LEAK: an outsider read another conversation's calls");
+
+      const { error: accepted } = await factoryClient.rpc("accept_call", { target_call: proposed?.id, time_zone: "Europe/Lisbon" });
+      accepted ? fail("the factory accepts", accepted) : ok("the factory accepts");
+
+      const { data: meetings, error: meetingsError } = await factoryClient.from("call_meetings").select("*");
+      meetingsError || (meetings ?? []).length === 0
+        ? ok("the video meetings table is unreadable from the browser")
+        : fail("LEAK: a party read call_meetings");
+
+      const { error: claimError } = await factoryClient.rpc("claim_call_meeting", { target_call: proposed?.id });
+      claimError ? ok("a party CANNOT claim the meeting (the server's job)")
+                 : fail("LEAK: a party called claim_call_meeting");
+
+      // Joining: who may, and when. The call is two days out, so a party is
+      // told it is not open yet, before anything asks Zoom.
+      const signedOut = await joinAs(null, proposed?.id, { zoom: true });
+      signedOut.status === 401 ? ok("joining needs a sign-in") : fail(`a signed-out join answered ${signedOut.status}`);
+      const stranger = await joinAs(losingFactory, proposed?.id, { zoom: true });
+      stranger.status === 404 ? ok("an outsider CANNOT join (and cannot tell the call exists)") : fail(`LEAK: an outsider's join answered ${stranger.status}`);
+      const early = await joinAs(factoryClient, proposed?.id, { zoom: true });
+      early.status === 409 && !early.signature
+        ? ok("a party is told the call opens 10 minutes before it starts")
+        : fail(`an early join answered ${early.status}`);
+
+      // Moved to now by the secret key, as only a test may: without Zoom set
+      // up, the answer says so and the call stands.
+      await admin.from("calls").update({ starts_at: new Date(Date.now() + 5 * 60000).toISOString() }).eq("id", proposed?.id);
+      const unset = await joinAs(factoryClient, proposed?.id);
+      unset.status === 503 && /set up/.test(unset.error ?? "")
+        ? ok("without Zoom, Join says video isn't set up yet")
+        : fail(`a join without Zoom answered ${unset.status} ${unset.error}`);
+      const { data: noMeeting } = await admin.from("call_meetings").select("call_id").eq("call_id", proposed?.id);
+      (noMeeting ?? []).length === 0
+        ? ok("and no meeting was claimed")
+        : fail("a join without Zoom claimed a meeting");
+
+      const { error: cancelError } = await brand.client.rpc("cancel_call", { target_call: proposed?.id, note: null });
+      cancelError ? fail("either side cancels an accepted call", cancelError) : ok("either side cancels an accepted call");
     }
   }
 }

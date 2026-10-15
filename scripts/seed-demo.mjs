@@ -37,6 +37,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { DEMO_LOGINS as LOGINS, DEMO_PASSWORD as PASSWORD } from "../src/shared/demo-logins.mjs";
+import { dateIn, zonedTime } from "../src/shared/call-time.mjs";
 
 const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
 
@@ -703,6 +704,41 @@ await deliverMessage(must(await brand.client.from("messages").insert({
   body: "Thanks, we'll review the fit sample today.",
 }).select("id").single(), "order message"), "deliver the order message");
 
+// Calls, through each company's own login, so every notification is the real
+// one. The brand works in New York and the factory in Porto, so each side
+// reads the other's time. The factory invites the brand to a fit-sample call
+// on the order (waiting on the brand: Accept / Propose another time /
+// Decline); a call on the shirting request is confirmed for tomorrow; and an
+// earlier invite on the order was declined with a reason.
+console.log("calls");
+const BRAND_ZONE = "America/New_York";
+const FACTORY_ZONE = "Europe/Lisbon";
+must(await brand.client.rpc("set_my_time_zone", { zone: BRAND_ZONE }), "brand's time zone");
+must(await factory.client.rpc("set_my_time_zone", { zone: FACTORY_ZONE }), "factory's time zone");
+const daysAhead = (days, minutes, zone) => {
+  const { year, month, day } = dateIn(new Date(Date.now() + days * 86400000), zone);
+  return zonedTime(year, month, day, minutes, zone).toISOString();
+};
+const orderThreadId = orderThread?.id ?? orderThread;
+must(await factory.client.rpc("propose_call", {
+  target_thread: orderThreadId, starts_at: daysAhead(2, 15 * 60, FACTORY_ZONE), duration_minutes: 30,
+  title: "Fit sample review", agenda: "Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length.",
+  time_zone: FACTORY_ZONE,
+}), "factory invites the brand to a call");
+const kickoff = must(await brand.client.rpc("propose_call", {
+  target_thread: threadId, starts_at: daysAhead(1, 10 * 60, BRAND_ZONE), duration_minutes: 30,
+  title: "Shirting questions", agenda: "Lab dip timing and the three-month price hold.",
+  time_zone: BRAND_ZONE,
+}), "brand proposes a call on the request");
+must(await factory.client.rpc("accept_call", { target_call: kickoff.id, time_zone: FACTORY_ZONE }), "factory accepts");
+const washTest = must(await brand.client.rpc("propose_call", {
+  target_thread: orderThreadId, starts_at: daysAhead(3, 9 * 60, BRAND_ZONE), duration_minutes: 30,
+  title: "Wash test results", agenda: null, time_zone: BRAND_ZONE,
+}), "brand proposes an early call");
+must(await factory.client.rpc("decline_call", {
+  target_call: washTest.id, note: "Too early for Porto, and the wash test is not back yet.",
+}), "factory declines it");
+
 // 3. Cancelled by both sides, so the Closed tab and archiving have an order.
 const tote = await publishRequest({
   title: "Cotton canvas tote",
@@ -948,7 +984,10 @@ done. Every login uses the password "${PASSWORD}".
   The brand has:
     - "${shirting.title}": open, with two quotes to compare
     - "${merino.title}": an order waiting for its production steps
-    - "${linen.title}": a running order, its first step sent for approval
+    - "${linen.title}": a running order, its first step sent for approval;
+      in its conversation, a call invite from ${LOGINS.factory.name} (Accept / Propose another time / Decline)
+      and an earlier invite the factory declined
+    - "${shirting.title}" conversation: a call confirmed for tomorrow (on both dashboards)
     - "${tote.title}": an order cancelled by both sides
     - "Linen trousers, SS27": the factory proposed cancelling (Accept / Keep order)
     - "Recycled nylon windbreaker": the brand proposed cancelling (Withdraw)
