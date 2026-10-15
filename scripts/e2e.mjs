@@ -1338,6 +1338,10 @@ async function main() {
     await setQuoteField("unitPrice", "$17.10 / unit");
     await setQuoteField("quantity", "300 units");
     await setQuoteField("leadTime", "26 days");
+    // Required since the quote form asks for the vendor's open window.
+    const windowStart = new Date(Date.now() + 20 * 864e5).toISOString().slice(0, 10);
+    const windowEnd = new Date(Date.now() + 45 * 864e5).toISOString().slice(0, 10);
+    await setQuoteField("capacityWindow", `${windowStart} to ${windowEnd} · 400 units`);
     await setQuoteField("paymentTerms", "30% deposit / 70% before shipment");
     await setQuoteField("incoterms", "FOB quoted");
     // "Quote valid until" is the design's date picker: open it, go to next
