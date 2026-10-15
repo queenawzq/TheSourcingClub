@@ -2321,6 +2321,9 @@ export function SettingsScreen({
   onAddBillingMethod,
   onEditPaymentMethod,
   onDeletePaymentMethod,
+  // The company's email switches: { rfq, payments, messages } and a setter.
+  notificationEmails,
+  onNotificationEmailChange,
   onInvite,
   onRemove,
   busy = false,
@@ -2807,14 +2810,23 @@ export function SettingsScreen({
               <h3>Notifications</h3>
               <p>Choose which updates should reach your team by email.</p>
             </div>
-            {[isFactory ? "New RFQ matches" : "New quote activity", "Payment and approval requests", "Messages and call invites"].map((label) => (
+            {[[isFactory ? "New RFQ matches" : "New quote activity", "rfq"], ["Payment and approval requests", "payments"], ["Messages and call invites", "messages"]].map(([label, key]) => (
               <div className="settings-inline-row" key={label}>
                 <div>
                   <strong>{label}</strong>
                   <span>Send email notifications to members with matching authority.</span>
                 </div>
                 <label className="settings-switch">
-                  <input type="checkbox" defaultChecked />
+                  {notificationEmails ? (
+                    <input
+                      type="checkbox"
+                      aria-label={label}
+                      data-notification-email={key}
+                      checked={notificationEmails[key] !== false}
+                      disabled={busy}
+                      onChange={(event) => onNotificationEmailChange?.(key, event.target.checked)}
+                    />
+                  ) : <input type="checkbox" defaultChecked />}
                   <span />
                 </label>
               </div>

@@ -6,7 +6,7 @@
  * time, and nothing showed it.
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { listNotifications, markAllRead, markRead, notificationLink, timeAgo as ago } from "../lib/domain/notifications.js";
+import { listNotifications, markAllRead, markRead, notificationBody, notificationLink, timeAgo as ago } from "../lib/domain/notifications.js";
 import { useRouter } from "../lib/router.jsx";
 import "./notifications.css";
 
@@ -61,7 +61,7 @@ export default function NotificationList({ org, isFactory }) {
           <li key={item.id} className={item.read_at ? undefined : "is-unread"}>
             <button type="button" onClick={() => open(item)}>
               <span className="notif-title">{item.title}</span>
-              {item.body ? <span className="notif-body">{item.body}</span> : null}
+              {item.body ? <span className="notif-body">{notificationBody(item)}</span> : null}
               <span className="notif-time">{ago(item.created_at)}</span>
             </button>
           </li>
