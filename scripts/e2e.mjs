@@ -1340,8 +1340,15 @@ async function main() {
     await setQuoteField("leadTime", "26 days");
     await setQuoteField("paymentTerms", "30% deposit / 70% before shipment");
     await setQuoteField("incoterms", "FOB quoted");
-    const validUntil = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
-    await setQuoteField("validUntil", validUntil);
+    // "Quote valid until" is the design's date picker: open it, go to next
+    // month and pick the 15th, then read back the date it holds.
+    await page.locator('[data-quote-field="validUntil"]').first().click();
+    await page.locator('.tsc-date-popover button[aria-label="Next month"]').first().click();
+    await page.locator('.tsc-date-popover button[aria-label$=" 15"]').first().click();
+    const validUntil = await page.evaluate(() =>
+      document.querySelector('[data-quote-field="validUntil"]')?.dataset.quoteValue ?? "");
+    check(/^\d{4}-\d{2}-15$/.test(validUntil ?? "") && validUntil > new Date().toISOString().slice(0, 10),
+      `"validUntil" holds the picked date (${validUntil || "empty"})`);
     await setQuoteField("sample.0.stage", "Fit sample");
     await setQuoteField("sample.0.cost", "$95");
     await setQuoteField("sample.0.timing", "10 days");
