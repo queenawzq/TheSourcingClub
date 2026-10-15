@@ -3,13 +3,22 @@
  *
  * Earnings and credits come from the real ledgers. Platform charges do not
  * have a table yet, so that tab has an honest empty state instead of the
- * prototype's invented history. The payout account remains editable from the
- * Earnings tab because brands cannot pay an order until it exists.
+ * prototype's invented history.
+ *
+ * TSC holds what a brand funds and pays the factory when the brand approves
+ * the step: through Stripe where Stripe can pay out (StripePayoutCard), or by
+ * bank transfer from staff to the bank details on this page where it cannot
+ * (mainland China, Hong Kong…). Brands never see these bank details.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { loadStripe } from "@stripe/stripe-js";
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
+import { STRIPE_PUBLISHABLE_KEY, startBillingSetup } from "../../lib/domain/stripe.js";
+import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
 import "./order.css";
+import "./payout.css";
 
 const FIELDS = [
   ["bank_name", "Bank", "Banco de Porto"],
@@ -18,15 +27,6 @@ const FIELDS = [
   ["swift", "SWIFT / BIC", "BCOMPTPL"],
   ["iban", "IBAN", "PT50 0002 0123 1234 5678 9015 4"],
 ];
-
-const PAYMENT_STATUS = {
-  not_due: "Scheduled",
-  due: "Due",
-  sent: "Transfer sent",
-  confirmed: "Confirmed",
-  released: "Received",
-  cancelled: "Cancelled",
-};
 
 const CREDIT_REASON = {
   onboarding_grant: "Verified onboarding bonus",
@@ -41,6 +41,23 @@ const dateLabel = (value) => value
   ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
   : "Date pending";
 
+const stripeDateLabel = (value) => dateLabel(value ? value * 1000 : null);
+
+const PAYOUT_STATUS = {
+  paid: "Completed",
+  pending: "Pending",
+  in_transit: "Processing",
+  canceled: "Canceled",
+  failed: "Failed",
+};
+
+/**
+ * What the factory gets for a payment. A Stripe charge records what the brand
+ * paid, fee included, as received; the factory is paid the step's amount.
+ * A bank wire from the old site records what actually arrived.
+ */
+const factoryAmount = (row) => (row.charged_cents ? row.amount_cents : row.amount_received_cents ?? row.amount_cents);
+
 const blankPayout = (row) => ({
   bank_name: row?.bank_name ?? "",
   account_name: row?.account_name ?? "",
@@ -50,17 +67,96 @@ const blankPayout = (row) => ({
   instructions: row?.instructions ?? "",
 });
 
-export default function PayoutDetails({ org, isFactory }) {
-  const [tab, setTab] = useState("earnings");
+let billingStripePromise = null;
+const billingStripe = () => {
+  if (!STRIPE_PUBLISHABLE_KEY) return null;
+  billingStripePromise ??= loadStripe(STRIPE_PUBLISHABLE_KEY);
+  return billingStripePromise;
+};
+
+const BILLING_ELEMENT_APPEARANCE = {
+  theme: "flat",
+  variables: {
+    colorPrimary: "#1a4df2",
+    colorBackground: "#ffffff",
+    colorText: "#0b1020",
+    colorTextSecondary: "#5a6b87",
+    colorTextPlaceholder: "#8391a8",
+    colorDanger: "#c62828",
+    fontFamily: '"Satoshi", Arial, sans-serif',
+    fontSizeBase: "15px",
+    fontWeightNormal: "400",
+    fontWeightMedium: "500",
+    spacingUnit: "4px",
+    borderRadius: "8px",
+  },
+  rules: {
+    ".Label": {
+      color: "#4f6078",
+      fontSize: "13px",
+      fontWeight: "600",
+      marginBottom: "8px",
+    },
+    ".Input": {
+      backgroundColor: "#ffffff",
+      border: "1px solid #cad5e2",
+      boxShadow: "none",
+      padding: "14px 15px",
+    },
+    ".Input:hover": {
+      borderColor: "#aebed0",
+    },
+    ".Input:focus": {
+      borderColor: "#1a4df2",
+      boxShadow: "0 0 0 1px #1a4df2",
+    },
+    ".Input--invalid": {
+      borderColor: "#c62828",
+      boxShadow: "none",
+    },
+    ".Tab": {
+      backgroundColor: "#ffffff",
+      border: "1px solid #cad5e2",
+      boxShadow: "none",
+      padding: "14px 15px",
+    },
+    ".Tab:hover": {
+      borderColor: "#aebed0",
+      color: "#0b1020",
+    },
+    ".Tab--selected": {
+      backgroundColor: "#f2f7fd",
+      borderColor: "#1a4df2",
+      boxShadow: "0 0 0 1px #1a4df2",
+      color: "#1a4df2",
+    },
+    ".TabLabel": {
+      fontWeight: "500",
+    },
+    ".TabIcon": {
+      fill: "#5a6b87",
+    },
+    ".TabIcon--selected": {
+      fill: "#1a4df2",
+    },
+  },
+};
+
+export default function PayoutDetails({ org, isFactory, isOwner = false }) {
+  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") === "billing" ? "billing" : "earnings");
   const [client, setClient] = useState("All clients");
+  const [transactionType, setTransactionType] = useState("all");
   const [account, setAccount] = useState(null);
   const [form, setForm] = useState(null);
   const [earnings, setEarnings] = useState(null);
   const [credits, setCredits] = useState(null);
-  const [editingAccount, setEditingAccount] = useState(false);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
+  const [stripeBalance, setStripeBalance] = useState(null);
+  const [billingSecret, setBillingSecret] = useState(null);
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingSaved, setBillingSaved] = useState(new URLSearchParams(window.location.search).get("billing") === "saved");
 
   const load = useCallback(async () => {
     setError(null);
@@ -93,7 +189,7 @@ export default function PayoutDetails({ org, isFactory }) {
       paymentRows = unwrap(
         await supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, release_requested_at, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title)")
           .in("order_id", orders.map((order) => order.id))
           .order("created_at", { ascending: false }),
         "load your earnings",
@@ -114,20 +210,55 @@ export default function PayoutDetails({ org, isFactory }) {
     return () => { cancelled = true; };
   }, [load]);
 
+  // A promise to pay is not an earning. The factory's ledger begins only
+  // once the brand's money has cleared and TSC is holding or releasing it.
+  const fundedEarnings = (earnings ?? []).filter((row) => ["confirmed", "released"].includes(row.state));
   const clients = useMemo(
-    () => ["All clients", ...new Set((earnings ?? []).map((row) => row.order?.orgs?.name).filter(Boolean))],
-    [earnings],
+    () => ["All clients", ...new Set(fundedEarnings.map((row) => row.order?.orgs?.name).filter(Boolean))],
+    [fundedEarnings],
   );
   const visibleEarnings = client === "All clients"
-    ? (earnings ?? [])
-    : (earnings ?? []).filter((row) => row.order?.orgs?.name === client);
-  const totalEarned = (earnings ?? [])
-    .filter((row) => row.state === "released")
-    .reduce((sum, row) => sum + (row.amount_received_cents ?? row.amount_cents), 0);
-  const pendingRelease = (earnings ?? [])
-    .filter((row) => ["sent", "confirmed"].includes(row.state))
-    .reduce((sum, row) => sum + row.amount_cents, 0);
-  const nextPayment = (earnings ?? []).find((row) => ["due", "not_due"].includes(row.state));
+    ? fundedEarnings
+    : fundedEarnings.filter((row) => row.order?.orgs?.name === client);
+  const summaryCurrency = visibleEarnings[0]?.currency || "USD";
+  const sumEarnings = (rows) => rows.reduce((sum, row) => sum + Number(factoryAmount(row) || 0), 0);
+  const earningsSummary = [
+    ["total earnings", sumEarnings(visibleEarnings)],
+    ["completed", sumEarnings(visibleEarnings.filter((row) => row.state === "released"))],
+    ["pending approval", sumEarnings(visibleEarnings.filter((row) => row.state === "confirmed" && !row.release_requested_at))],
+    ["payout processing", sumEarnings(visibleEarnings.filter((row) => row.state === "confirmed" && row.release_requested_at))],
+  ];
+  const payoutTransactions = client === "All clients" ? (stripeBalance?.payouts ?? []) : [];
+  const transactions = [
+    ...visibleEarnings.map((row) => ({
+      id: `earning-${row.id}`,
+      type: "earning",
+      date: row.released_at || row.confirmed_at || row.sent_at || row.due_at || row.created_at,
+      title: row.order_milestones?.title || row.order?.order_number || "Order payment",
+      meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
+      status: row.state === "released"
+        ? "Completed"
+        : row.release_requested_at
+          ? "Payout processing"
+          : "Pending approval",
+      amount: factoryAmount(row),
+      currency: row.currency,
+      available: row.state === "released",
+    })),
+    ...payoutTransactions.map((row) => ({
+      id: `payout-${row.id}`,
+      type: "withdrawal",
+      date: row.created ? new Date(row.created * 1000).toISOString() : null,
+      title: "Bank withdrawal",
+      meta: row.arrival_date ? `Expected ${stripeDateLabel(row.arrival_date)}` : "Connected payout account",
+      status: PAYOUT_STATUS[row.status] || row.status,
+      amount: -Math.abs(row.amount),
+      currency: row.currency,
+      available: true,
+    })),
+  ]
+    .filter((row) => transactionType === "all" || row.type === transactionType)
+    .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
   const creditBalance = (credits ?? []).reduce((sum, row) => sum + row.delta, 0);
 
   if (!isFactory) {
@@ -172,12 +303,41 @@ export default function PayoutDetails({ org, isFactory }) {
       const updated = unwrap(result, "save your payout account");
       setAccount(updated);
       setForm(blankPayout(updated));
-      setEditingAccount(false);
       setSaved(true);
     } catch (failure) {
       setError(failure);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function deleteAccount() {
+    if (!account?.id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      unwrap(await supabase.from("factory_payout_accounts").delete().eq("id", account.id), "remove your payout account");
+      setAccount(null);
+      setForm(blankPayout());
+      setSaved(false);
+    } catch (failure) {
+      setError(failure);
+      throw failure;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addBillingMethod() {
+    setBillingBusy(true);
+    setError(null);
+    try {
+      const result = await startBillingSetup(org.id);
+      setBillingSecret(result.clientSecret);
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setBillingBusy(false);
     }
   }
 
@@ -187,7 +347,7 @@ export default function PayoutDetails({ org, isFactory }) {
 
       <div className="billing-controls">
         <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Payment activity type">
-          {[["earnings", "Earnings"], ["payments", "Payments"], ["credits", "Credits"]].map(([key, label]) => (
+          {[["earnings", "Earnings"], ["billing", "Billing"], ["credits", "Credits"]].map(([key, label]) => (
             <button className={tab === key ? "active" : ""} type="button" role="tab" aria-selected={tab === key}
                     onClick={() => { setTab(key); setClient("All clients"); }} key={key}>{label}</button>
           ))}
@@ -204,59 +364,71 @@ export default function PayoutDetails({ org, isFactory }) {
 
       {tab === "earnings" && (
         <>
-          <div className="factory-project-summary-card factory-billing-summary-strip" aria-label="Earnings summary">
-            <div className="metric"><strong>{formatMoney(totalEarned)}</strong><span>Total earned</span></div>
-            <div className="metric"><strong>{formatMoney(pendingRelease)}</strong><span>Pending release</span></div>
-            <div className="metric highlight"><strong>{nextPayment ? formatMoney(nextPayment.amount_cents, nextPayment.currency) : "—"}</strong><span>Next payment</span></div>
+          <div className="project-summary-strip billing-payment-strip factory-earnings-summary" aria-label="Earnings summary">
+            {earningsSummary.map(([label, amount], index) => (
+              <div className={`metric${index === 0 ? " highlight" : ""}`} key={label}>
+                <strong>{formatMoney(amount, summaryCurrency)}</strong>
+                <span>{label}</span>
+              </div>
+            ))}
           </div>
-
-          <section className="live-payout-method-card">
-            <div>
-              <span>Payout account</span>
-              <strong>{account ? `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}` : "No payout account added"}</strong>
-              <p>Brands only see these instructions when a payment is due.</p>
-            </div>
-            <button className="secondary-btn compact-btn" type="button" onClick={() => setEditingAccount((open) => !open)}>
-              {editingAccount ? "Cancel" : account ? "Edit details" : "Add details"}
-            </button>
-          </section>
-
-          {editingAccount && (
-            <section className="live-payout-form">
-              <div className="live-payout-form-grid">
-                {FIELDS.map(([key, label, placeholder]) => (
-                  <label key={key}><span>{label}</span><input id={`payout-${key}`} data-field={`payout_${key}`} value={form[key]} placeholder={placeholder} onChange={set(key)} /></label>
+          <StripePayoutCard
+            org={org}
+            isOwner={isOwner}
+            onBalanceChange={setStripeBalance}
+            manualAccount={account}
+            manualForm={form}
+            manualFields={FIELDS}
+            onManualFieldChange={set}
+            onSaveManual={saveAccount}
+            onDeleteManual={deleteAccount}
+            manualBusy={busy}
+            manualSaved={saved}
+          />
+          <section className="payout-transactions-section" aria-labelledby="transactions-heading">
+            <div className="payout-transactions-header">
+              <div>
+                <h2 id="transactions-heading">Transactions</h2>
+                <p>Earnings added to your balance and withdrawals sent to your bank.</p>
+              </div>
+              <div className="payout-transaction-filters" role="group" aria-label="Filter transactions">
+                {[["all", "All"], ["earning", "Earnings"], ["withdrawal", "Withdrawals"]].map(([key, label]) => (
+                  <button key={key} type="button" className={transactionType === key ? "active" : ""} aria-pressed={transactionType === key} onClick={() => setTransactionType(key)}>{label}</button>
                 ))}
               </div>
-              <label>
-                <span>Anything else a brand needs</span>
-                <textarea id="payout-instructions" data-field="payout_instructions" rows={3} value={form.instructions}
-                          onChange={set("instructions")} placeholder="Intermediary bank or transfer instructions." />
-              </label>
-              <p>For security, use the last four digits above. Only provide additional account information when your bank requires it.</p>
-              <button className="primary-btn" type="button" data-testid="save-payout" disabled={busy} onClick={saveAccount}>{busy ? "Saving…" : "Save payout details"}</button>
-            </section>
-          )}
-
-          {saved && <p className="live-payment-notice">Payout details saved.</p>}
-          {visibleEarnings.length ? (
-            <div className="billing-history-list">
-              {visibleEarnings.map((row) => (
-                <article className="billing-history-row" key={row.id}>
-                  <div>
-                    <strong>{row.order_milestones?.title || row.order?.order_number || "Order payment"}</strong>
-                    <span>{row.order?.orgs?.name || "Brand"} · {row.order?.order_number || "Production order"} · {dateLabel(row.released_at || row.confirmed_at || row.sent_at || row.due_at || row.created_at)}</span>
-                  </div>
-                  <span className="billing-status">{PAYMENT_STATUS[row.state] || row.state}</span>
-                  <strong>{formatMoney(row.amount_received_cents ?? row.amount_cents, row.currency)}</strong>
-                </article>
-              ))}
             </div>
-          ) : <p className="projects-empty">No earnings yet. Payment activity appears here once a production order reaches a payment milestone.</p>}
+            {transactions.length ? (
+              <div className="payout-transaction-table">
+                <div className="payout-transaction-labels" aria-hidden="true"><span>Date</span><span>Type / details</span><span>Status</span><span>Amount</span></div>
+                {transactions.map((row) => (
+                  <article className="payout-transaction-row" key={row.id}>
+                    <time dateTime={row.date || undefined}>{dateLabel(row.date)}</time>
+                    <div className="payout-transaction-details">
+                      <span className={`payout-transaction-type ${row.type}`}>{row.type === "earning" ? "Earning" : "Withdrawal"}</span>
+                      <div><strong>{row.title}</strong><span>{row.meta}</span></div>
+                    </div>
+                    <span className={`billing-status payout-status-${row.status.toLowerCase().replaceAll(" ", "-")}`}>{row.status}</span>
+                    <strong className={row.amount < 0 ? "payout-amount-negative" : row.available ? "payout-amount-positive" : "payout-amount-pending"}>
+                      {row.amount < 0 ? "−" : row.available ? "+" : ""}{formatMoney(Math.abs(row.amount), row.currency)}
+                    </strong>
+                  </article>
+                ))}
+              </div>
+            ) : <p className="projects-empty">{transactionType === "withdrawal" ? "No withdrawals yet." : "No funded earnings yet. Payments appear here after a brand funds a production step."}</p>}
+          </section>
         </>
       )}
 
-      {tab === "payments" && <p className="projects-empty">No platform payments yet. Fees and service charges will appear here when they are recorded.</p>}
+      {tab === "billing" && (
+        <section className="billing-method-empty">
+          <div>
+            <strong>Billing methods</strong>
+            <p>Save a card to use when you purchase credits.</p>
+            {billingSaved ? <span className="live-payment-notice">Payment method added.</span> : null}
+          </div>
+          {isOwner ? <button className="primary-btn compact-btn" type="button" disabled={billingBusy || !STRIPE_PUBLISHABLE_KEY} onClick={addBillingMethod}>{billingBusy ? "Opening…" : "+ Add payment method"}</button> : null}
+        </section>
+      )}
 
       {tab === "credits" && (
         <>
@@ -278,6 +450,53 @@ export default function PayoutDetails({ org, isFactory }) {
       )}
 
       {error && <p className="projects-empty projects-error" role="alert">{error.message}</p>}
+
+      {billingSecret ? (
+        <BillingMethodFlow clientSecret={billingSecret} onClose={() => setBillingSecret(null)} onSaved={() => { setBillingSecret(null); setBillingSaved(true); }} />
+      ) : null}
     </section>
+  );
+}
+
+export function BillingMethodFlow({ clientSecret, onClose, onSaved, intro = "Save a card to use when you choose to purchase credits." }) {
+  return (
+    <Elements stripe={billingStripe()} options={{ clientSecret, appearance: BILLING_ELEMENT_APPEARANCE }}>
+      <BillingMethodModal intro={intro} onClose={onClose} onSaved={onSaved} />
+    </Elements>
+  );
+}
+
+function BillingMethodModal({ intro, onClose, onSaved }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [complete, setComplete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState(null);
+
+  async function save() {
+    if (!stripe || !elements || !complete || busy) return;
+    setBusy(true);
+    setProblem(null);
+    const result = await stripe.confirmSetup({
+      elements,
+      redirect: "if_required",
+      confirmParams: { return_url: `${window.location.origin}${window.location.pathname}?tab=billing&billing=saved` },
+    });
+    if (result.error) setProblem(result.error.message || "The payment method could not be saved.");
+    else onSaved();
+    setBusy(false);
+  }
+
+  return (
+    <PayoutModal
+      title="Add payment method"
+      eyebrow="Billing"
+      onClose={onClose}
+      actions={<><button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Cancel</button><button className="primary-btn" type="button" disabled={!stripe || !complete || busy} onClick={save}>{busy ? "Saving…" : "Save payment method"}</button></>}
+    >
+      <p className="payout-modal-intro">{intro}</p>
+      <PaymentElement options={{ layout: "tabs", terms: { card: "never" } }} onChange={(event) => setComplete(event.complete)} />
+      {problem ? <p className="live-stripe-error" role="alert">{problem}</p> : null}
+    </PayoutModal>
   );
 }

@@ -330,7 +330,14 @@ select throws_ok(
   'a brand member still cannot approve a paying step: that takes an owner'
 );
 
+-- Since payments are held by TSC (20261012000200), the step's money must be
+-- held before approving pays it out. Funded here the way the Stripe webhook
+-- does it.
 reset role;
+select public.record_payment_funded(
+  (select id from public.order_payments where milestone_id = (select first_step from p10)),
+  'ch_pgtap10', 'card', 'Visa ···4242', null);
+
 set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 
@@ -345,8 +352,8 @@ select is(
   (select m.state::text || '/' || p.state::text
      from public.order_milestones m join public.order_payments p on p.milestone_id = m.id
     where m.id = (select first_step from p10)),
-  'approved/due',
-  'the step is approved and its payment falls due, exactly as after "send for approval"'
+  'complete/confirmed',
+  'the step is approved from the update, exactly as after "send for approval", and its held money is owed to the factory'
 );
 
 select * from finish();

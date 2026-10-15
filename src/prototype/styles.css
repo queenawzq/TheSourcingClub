@@ -6834,11 +6834,6 @@ select {
   min-width: 240px;
 }
 
-.billing-filter-placeholder {
-  visibility: hidden;
-  pointer-events: none;
-}
-
 .billing-controls label span {
   color: #4f6078;
   font-size: 13px;
@@ -6933,6 +6928,7 @@ select {
 
 .billing-status {
   justify-self: start;
+  white-space: nowrap;
   padding: 5px 9px;
   border-radius: 999px;
   background: #eaf4ff;
@@ -12464,9 +12460,52 @@ body:has(.brand-onboarding-page) {
   background: #fbfcfe;
 }
 
+.settings-payment-page-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 92px;
+  padding: 22px 24px;
+  border: 1px solid #d7e0ea;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.settings-payment-page-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-payment-page-copy strong {
+  color: #0b1020;
+  font-size: 17px;
+  line-height: 22px;
+}
+
+.settings-payment-page-copy p {
+  margin: 0;
+  color: #5a6b87;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 19px;
+}
+
+.settings-payment-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
 .settings-payment-list > div {
   display: grid;
   gap: 4px;
+}
+
+.settings-payment-list > .settings-payment-page-actions {
+  display: flex;
+  gap: 12px;
 }
 
 .settings-payment-list strong,
@@ -12494,6 +12533,49 @@ body:has(.brand-onboarding-page) {
   border-radius: 50%;
   background: #fff url("/assets/prototype-icons/menu.svg") center / 14px 4px no-repeat;
 }
+
+.settings-payment-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.settings-menu-btn:hover,
+.settings-menu-btn[aria-expanded="true"] {
+  border-color: #bdcbe0;
+  background-color: #f7f9fc;
+}
+
+.settings-payment-popover {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 5;
+  display: grid;
+  min-width: 156px;
+  padding: 6px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.settings-payment-popover button {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #0b1020;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-payment-popover button:hover { background: #f3f7fb; }
+.settings-payment-popover button.danger { color: #b93824; }
 
 .settings-add-btn {
   justify-self: start;
@@ -12760,9 +12842,16 @@ body:has(.brand-onboarding-page) {
   background: #f4f7fb;
   color: #4f6078;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 750;
   line-height: 16px;
   text-transform: uppercase;
+}
+
+.settings-invited-row.header span {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 16px;
 }
 
 .settings-invited-row strong {
@@ -13035,10 +13124,20 @@ body:has(.brand-onboarding-page) {
   .settings-heading,
   .settings-section-header.split,
   .settings-payment-list,
+  .settings-payment-page-card,
   .settings-inline-row,
   .settings-invite-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .settings-payment-page-actions {
+    width: 100%;
+  }
+
+  .settings-payment-page-actions .compact-btn,
+  .settings-payment-page-card > .compact-btn {
+    flex: 1;
   }
 
   .settings-heading .primary-btn,

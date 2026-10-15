@@ -6458,9 +6458,9 @@ body:has(.factory-onboarding-page) {
   display: block;
   margin-top: 4px;
   color: #0b1223;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 700;
-  line-height: 34px;
+  line-height: 28px;
 }
 
 .factory-credit-billing-card p {
@@ -10133,8 +10133,8 @@ button.sort-button {
   }
 
   .factory-credit-billing-card strong {
-    font-size: 24px;
-    line-height: 30px;
+    font-size: 20px;
+    line-height: 26px;
   }
 
   .factory-credit-billing-action {

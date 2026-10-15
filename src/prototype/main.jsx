@@ -1097,8 +1097,21 @@ export function FlowShell({
   // cannot be agreed while it has unsaved edits or does not add up).
   centerAction = null,
   primaryDisabled = false,
+  // Live only: a heading for what actually happened (a bank payment still
+  // clearing is not yet "funded").
+  heading = null,
 }) {
-  const meta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
+  const designMeta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
+  const baseMeta = heading ? { ...designMeta, ...heading } : designMeta;
+  // Funding a later step reads as App reads it: "Fund <step>", "Fund $X".
+  const meta = screen === "fund" && fundingMilestone
+    ? {
+        ...baseMeta,
+        title: `Fund ${fundingMilestone.title.toLowerCase()}`,
+        description: `Add ${fundingMilestone.amount} to project funds for ${fundingMilestone.title.toLowerCase()}. Funds stay protected until the related step is approved.`,
+        cta: `Fund ${fundingMilestone.amount}`
+      }
+    : baseMeta;
   // The prototype's App gives the contract and schedule screens this class too.
   const actionFlow = ["contract", "milestones"].includes(screen) ? " quote-action-flow" : "";
   // And Review brief its own, which lines the "What vendors need" card up with
@@ -1489,19 +1502,29 @@ function CloseIconButton({ label }) {
 
 /**
  * `live` (the brand's Payments page in the app): { metrics: [[label, value,
- * tone]], rows: [{ id, title, client, meta, status, amount, href, onOpen }],
+ * tone]], rows: [{ id, title, client, meta, date, status, amount, href, onOpen }],
  * empty, discount: { amount, note } | null, codes, onCopy(code), copied }.
  * Without it the prototype draws its examples, unchanged.
  */
 export function BillingScreen({ accountType = "brand", live = null }) {
   const isFactory = accountType === "factory";
   const [tab, setTab] = useState(isFactory ? "earnings" : "payments");
+  const [paymentType, setPaymentType] = useState("All payment types");
+  const [paymentStatus, setPaymentStatus] = useState("All statuses");
   const defaultFilter = isFactory ? "All clients" : "All vendors";
   const [client, setClient] = useState(defaultFilter);
   const allRows = live ? (tab === "discounts" ? [] : live.rows) : isFactory ? factoryBillingHistory[tab] : tab === "discounts" ? [] : brandBillingHistory;
   const clients = [defaultFilter, ...Array.from(new Set(allRows.map((row) => row.client)))];
   const selectedClient = clients.includes(client) ? client : defaultFilter;
   const rows = selectedClient === defaultFilter ? allRows : allRows.filter((row) => row.client === selectedClient);
+  const paymentTypes = ["All payment types", ...Array.from(new Set(allRows.map((row) => row.title)))];
+  const paymentStatuses = ["All statuses", ...Array.from(new Set(allRows.map((row) => row.status)))];
+  const selectedPaymentType = paymentTypes.includes(paymentType) ? paymentType : "All payment types";
+  const selectedPaymentStatus = paymentStatuses.includes(paymentStatus) ? paymentStatus : "All statuses";
+  const visibleRows = rows.filter((row) => (
+    (selectedPaymentType === "All payment types" || row.title === selectedPaymentType)
+    && (selectedPaymentStatus === "All statuses" || row.status === selectedPaymentStatus)
+  ));
   const total = rows.reduce((sum, row) => sum + Number(row.amount.replace(/[$,]/g, "")), 0);
   const formattedTotal = `$${total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   const brandSummaryMetrics = live ? live.metrics : [
@@ -1538,14 +1561,6 @@ export function BillingScreen({ accountType = "brand", live = null }) {
               {clients.map((item) => (
                 <option key={item}>{item}</option>
               ))}
-            </select>
-          </label>
-        )}
-        {!isFactory && tab === "discounts" && (
-          <label className="billing-filter-placeholder" aria-hidden="true">
-            <span>Filter by vendor</span>
-            <select tabIndex={-1} value="All vendors" readOnly>
-              <option>All vendors</option>
             </select>
           </label>
         )}
@@ -1619,7 +1634,72 @@ export function BillingScreen({ accountType = "brand", live = null }) {
           </div>
         </div>
       )}
-      {(isFactory || tab === "payments") && (
+      {!isFactory && live && tab === "payments" && (
+          <section className="payout-transactions-section brand-payment-transactions" aria-labelledby="brand-transactions-heading">
+            <div className="payout-transactions-header">
+              <div>
+                <h2 id="brand-transactions-heading">Transactions</h2>
+                <p>Payment attempts and completed payments across your production orders.</p>
+              </div>
+            </div>
+            <div className="brand-transaction-filters" aria-label="Transaction filters">
+              <label>
+                <span>Payment type</span>
+                <select value={selectedPaymentType} onChange={(event) => setPaymentType(event.target.value)}>
+                  {paymentTypes.map((type) => <option key={type}>{type}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>Status</span>
+                <select value={selectedPaymentStatus} onChange={(event) => setPaymentStatus(event.target.value)}>
+                  {paymentStatuses.map((status) => <option key={status}>{status}</option>)}
+                </select>
+              </label>
+            </div>
+            {visibleRows.length ? (
+              <div className="payout-transaction-table">
+                <div className="payout-transaction-labels" aria-hidden="true"><span>Date</span><span>Details</span><span>Status</span><span>Amount</span></div>
+                {visibleRows.map((row) => (
+                  <article className="payout-transaction-row" key={row.id}>
+                    <time>{row.date}</time>
+                    <div className="payout-transaction-details">
+                      <div>
+                        <strong>
+                          <a
+                            className="billing-row-link"
+                            href={row.href}
+                            onClick={(event) => {
+                              if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                              event.preventDefault();
+                              row.onOpen();
+                            }}
+                          >
+                            {row.title}
+                          </a>
+                        </strong>
+                        <span>{row.client} · {row.meta}</span>
+                      </div>
+                    </div>
+                    <span className={`billing-status payout-status-${row.status.toLowerCase().replaceAll(" ", "-")}`}>{row.status}</span>
+                    <a
+                      className="brand-transaction-view"
+                      href={row.href}
+                      aria-label={`View ${row.title} transaction details`}
+                      onClick={(event) => {
+                        if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
+                        event.preventDefault();
+                        row.onOpen();
+                      }}
+                    >
+                      <strong>{row.amount}</strong><span aria-hidden="true">›</span>
+                    </a>
+                  </article>
+                ))}
+              </div>
+            ) : <p className="projects-empty">{rows.length ? "No transactions match these filters." : live.empty}</p>}
+          </section>
+      )}
+      {(isFactory || (!live && tab === "payments")) && (
         <div className="billing-history-list">
           {live && !rows.length && <p className="billing-empty-note">{live.empty}</p>}
           {rows.map((row) => (
@@ -2094,6 +2174,9 @@ export function SettingsScreen({
   paymentMethods: livePaymentMethods,
   invites: liveInvites,
   onAddPaymentMethod,
+  onAddBillingMethod,
+  onEditPaymentMethod,
+  onDeletePaymentMethod,
   onInvite,
   onRemove,
   busy = false,
@@ -2105,6 +2188,7 @@ export function SettingsScreen({
   const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
   const [stakeholderTab, setStakeholderTab] = useState("members");
   const [paymentTab, setPaymentTab] = useState("earnings");
+  const [paymentMenu, setPaymentMenu] = useState(null);
   const [mockTeam, setTeam] = useState(
     isFactory
       ? [
@@ -2163,6 +2247,15 @@ export function SettingsScreen({
   const activePermissionLabels = isFactory ? factoryAccountPermissionLabels : settingsPermissionLabels;
   const team = liveTeam ?? mockTeam;
   const isLive = Boolean(liveTeam);
+
+  useEffect(() => {
+    if (!paymentMenu) return undefined;
+    const closeOnOutsideClick = (event) => {
+      if (!event.target.closest(".settings-payment-menu")) setPaymentMenu(null);
+    };
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [paymentMenu]);
 
   const togglePermission = (memberEmail, permission) => {
     const permissionMeta = activePermissionLabels.find((item) => item.key === permission);
@@ -2287,7 +2380,7 @@ export function SettingsScreen({
             </div>
             {isFactory ? (
               <>
-                <div className="settings-access-tabs settings-payment-tabs" role="tablist" aria-label="Payment method type">
+                <div className="settings-access-tabs billing-tabs settings-payment-tabs" role="tablist" aria-label="Payment method type">
                   <button
                     className={paymentTab === "earnings" ? "active" : ""}
                     type="button"
@@ -2307,37 +2400,65 @@ export function SettingsScreen({
                     Billing
                   </button>
                 </div>
-                {factoryMethods[paymentTab].length === 0 && (
-                  <div className="settings-payment-list">
-                    <div>
-                      <span className="settings-card-brand">None saved</span>
-                      <strong>{paymentTab === "earnings" ? "No payout account saved" : "No billing method saved"}</strong>
-                      <small>
+                {factoryMethods[paymentTab].length === 0 ? (
+                  <div className="settings-payment-page-card">
+                    <div className="settings-payment-page-copy">
+                      <strong>{paymentTab === "earnings" ? "Payout methods" : "Billing methods"}</strong>
+                      <p>
                         {paymentTab === "earnings"
-                          ? "Add the account brands send your milestone payments to."
-                          : "No card or account is stored for platform charges."}
-                      </small>
+                          ? "Add a bank account to receive released earnings."
+                          : "Save a card to use when you purchase credits."}
+                      </p>
                     </div>
+                    {paymentTab === "billing" && onAddBillingMethod ? (
+                      <button className="primary-btn compact-btn" type="button" onClick={onAddBillingMethod}>+ Add payment method</button>
+                    ) : null}
                   </div>
-                )}
+                ) : null}
                 {factoryMethods[paymentTab].map((method) => (
-                  <div className="settings-payment-list" key={`${paymentTab}-${method.label}`}>
+                  <div className="settings-payment-list settings-payment-page-card" key={`${paymentTab}-${method.label}`}>
                     <div>
                       <span className="settings-card-brand">{method.label}</span>
                       <strong>{method.name}</strong>
                       <small>{method.note}</small>
                     </div>
-                    <button className="settings-menu-btn" type="button" aria-label={`More options for ${method.name}`} />
+                    <div className="settings-payment-page-actions">
+                      {method === factoryMethods[paymentTab][0] && paymentTab === "billing" && onAddBillingMethod ? (
+                        <button className="primary-btn compact-btn" type="button" onClick={onAddBillingMethod}>+ Add payment method</button>
+                      ) : null}
+                      <div className="settings-payment-menu">
+                        <button
+                          className="settings-menu-btn"
+                          type="button"
+                          aria-label={`More options for ${method.name}`}
+                          aria-expanded={paymentMenu === method.name}
+                          onClick={() => setPaymentMenu((open) => open === method.name ? null : method.name)}
+                        />
+                        {paymentMenu === method.name ? (
+                          <div className="settings-payment-popover" role="menu">
+                            <button type="button" role="menuitem" onClick={() => { setPaymentMenu(null); onEditPaymentMethod?.(method); }}>Edit method</button>
+                            <button className="danger" type="button" role="menuitem" onClick={() => { setPaymentMenu(null); onDeletePaymentMethod?.(method); }}>Remove method</button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
                 ))}
+                {paymentTab === "earnings" && onAddPaymentMethod ? (
+                  <button className="settings-add-btn" type="button" onClick={onAddPaymentMethod}>Manage payout methods</button>
+                ) : null}
               </>
             ) : livePaymentMethods?.length === 0 ? (
-              <div className="settings-payment-list">
-                <div>
-                  <span className="settings-card-brand">None saved</span>
-                  <strong>No payment method saved</strong>
-                  <small>Payments are made by bank transfer from each order's payment page.</small>
+              <div className="settings-payment-page-card">
+                <div className="settings-payment-page-copy">
+                  <strong>Payment method</strong>
+                  <p>Save a card to use when funding production milestones.</p>
                 </div>
+                {onAddBillingMethod ? (
+                  <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={onAddBillingMethod}>
+                    {busy ? "Opening…" : "+ Add payment method"}
+                  </button>
+                ) : null}
               </div>
             ) : (
               <>
@@ -2359,9 +2480,9 @@ export function SettingsScreen({
                 </div>
               </>
             )}
-            {(!livePaymentMethods || (isFactory && paymentTab === "earnings" && onAddPaymentMethod)) && (
-              <button className="settings-add-btn" type="button" onClick={livePaymentMethods ? onAddPaymentMethod : undefined}>+ Add payment method</button>
-            )}
+            {!livePaymentMethods && !isFactory ? (
+              <button className="settings-add-btn" type="button">+ Add payment method</button>
+            ) : null}
           </section>
 
         <section className="settings-section" id="settings-team">
@@ -3456,30 +3577,41 @@ function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
     );
   }
 
-  if (screen === "fund") {
-    const fundingSummary = calculateFundingSummary(fundingMilestone);
+  if (screen === "fund" || (screen === "success" && rail?.fund)) {
+    // Live: the real factory, step, fee and total from LiveFund; the
+    // design's estimated taxes are not charged, so that row is not drawn.
+    const live = rail?.fund ?? null;
+    const fundingSummary = live ?? calculateFundingSummary(fundingMilestone);
     return (
       <aside className="right-rail">
         <section className="project-funds-panel">
           <div className="accepted-factory">
-            <div className="factory-avatar">AM</div>
+            <div className="factory-avatar">{live ? live.initials : "AM"}</div>
             <div>
-              <strong>{selectedQuote}</strong>
-              <span>Porto, Portugal</span>
+              <strong>{live ? live.factory : selectedQuote}</strong>
+              <span>{live ? live.location : "Porto, Portugal"}</span>
             </div>
           </div>
           <h2>Project funds</h2>
           <div className="fund-summary-rows">
-            <Metric label={fundingMilestone ? "Payment" : "Payment 1"} value={fundingSummary.paymentLabel} />
+            <Metric label={live ? "Payment" : fundingMilestone ? "Payment" : "Payment 1"} value={fundingSummary.paymentLabel} />
             <Metric label="Subtotal" value={fundingSummary.subtotal} />
-            <Metric label="TSC service fee" value={fundingSummary.fee} />
-            <Metric label="Estimated taxes" value={fundingSummary.taxes} />
+            <Metric label={live ? live.feeLabel : "TSC service fee"} value={fundingSummary.fee} />
+            {live ? null : <Metric label="Estimated taxes" value={fundingSummary.taxes} />}
           </div>
           <div className="fund-total-row">
-            <span>Estimated total</span>
+            <span>{live ? live.totalLabel : "Estimated total"}</span>
             <strong>{fundingSummary.total}</strong>
           </div>
-          <button className="primary-btn fund-side-btn" type="button">{fundingMilestone ? "Fund milestone" : "Fund payment & start"}</button>
+          {live ? (
+            live.onSubmit ? (
+              <button className="primary-btn fund-side-btn" type="button" onClick={live.onSubmit} disabled={live.disabled}>
+                {live.cta}
+              </button>
+            ) : null
+          ) : (
+            <button className="primary-btn fund-side-btn" type="button">{fundingMilestone ? "Fund milestone" : "Fund payment & start"}</button>
+          )}
           <p className="payment-protection">
             <img src="/assets/prototype-icons/payment-protection.svg" alt="" />
             TSC Payment Protection
@@ -8308,16 +8440,15 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
           <img src="/assets/prototype-icons/close.svg" alt="" />
         </button>
         <header>
-          <p>{live ? "Approve and pay" : "Approve fund"}</p>
+          <p>Approve fund</p>
           <h2 id="approve-fund-title">
-            {live ? `Approve ${milestone.title.toLowerCase()}` : `Release ${milestone.amount} for ${milestone.title.toLowerCase()}`}
+            {`Release ${milestone.amount} for ${milestone.title.toLowerCase()}`}
           </h2>
-          {/* Live, payments are tracked bank transfers: approving makes this
-              step's payment due, and the brand sends it next. Nothing moves
-              on its own, so the design's "funds will move" would be untrue. */}
+          {/* Live, the brand funded this step through Stripe and TSC holds
+              the money: approving pays it to the factory. */}
           <span>
             {live
-              ? `Approving signs this step off and makes ${milestone.amount} due to ${other}. You'll send it by bank transfer from the step's payment page.`
+              ? `Approving releases ${milestone.amount} held by TSC to ${other}.`
               : "Funds will move from project funds to Atelier Minho after approval."}
           </span>
         </header>
@@ -8347,7 +8478,7 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
           <button className="primary-btn" type="button" disabled={live?.busy || undefined} onClick={live ? () => onApprove(note) : onApprove}>
-            {live ? (live.busy ? "Approving…" : "Approve fund") : "Approve and release fund"}
+            {live?.busy ? "Approving…" : "Approve and release fund"}
           </button>
         </footer>
       </section>
@@ -10020,34 +10151,48 @@ export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = nul
   );
 }
 
-function FundScreen({ fundingMilestone, goTo, setFundingMilestone }) {
+export function FundScreen({ fundingMilestone, goTo, setFundingMilestone, live = null }) {
+  // Live (src/app/order/LiveFund.jsx): Stripe's Payment Element takes the
+  // place of the example saved card, the discount code is not drawn (credits
+  // come later), and both "Before funding" boxes are the brand's to tick.
+  const agreed = live?.agreed ?? [];
+  const agreeBox = (index, defaultChecked) =>
+    live
+      ? { checked: Boolean(agreed[index]), onChange: (event) => live.onAgree(index, event.target.checked), name: `before_funding_${index + 1}` }
+      : { defaultChecked };
   return (
     <div className="stack">
       <Card title="Select billing method">
-        <div className="billing-method selected">
-          <span className="radio-mark" aria-hidden="true" />
-          <div>
-            <strong>Visa ending in 4242</strong>
-            <span>Default billing method</span>
-          </div>
-        </div>
-        <button className="billing-add-btn" type="button">+ Add a new billing method</button>
-        <label className="discount-code-field">
-          <span>Discount code</span>
-          <div>
-            <input type="text" placeholder="Enter code" />
-            <button className="secondary-btn compact-btn" type="button">Apply</button>
-          </div>
-          <small>$50 discounts can be applied to eligible orders.</small>
-        </label>
+        {live ? (
+          live.paymentElement
+        ) : (
+          <>
+            <div className="billing-method selected">
+              <span className="radio-mark" aria-hidden="true" />
+              <div>
+                <strong>Visa ending in 4242</strong>
+                <span>Default billing method</span>
+              </div>
+            </div>
+            <button className="billing-add-btn" type="button">+ Add a new billing method</button>
+            <label className="discount-code-field">
+              <span>Discount code</span>
+              <div>
+                <input type="text" placeholder="Enter code" />
+                <button className="secondary-btn compact-btn" type="button">Apply</button>
+              </div>
+              <small>$50 discounts can be applied to eligible orders.</small>
+            </label>
+          </>
+        )}
         <section className="before-funding">
           <h3>Before funding</h3>
           <label>
-            <input type="checkbox" defaultChecked />
+            <input type="checkbox" {...agreeBox(0, true)} />
             <span>I understand funds are only released after I approve the payment.</span>
           </label>
           <label>
-            <input type="checkbox" />
+            <input type="checkbox" {...agreeBox(1, false)} />
             <span>TSC may hold funds until the payment is approved or disputed.</span>
           </label>
         </section>
@@ -10056,35 +10201,45 @@ function FundScreen({ fundingMilestone, goTo, setFundingMilestone }) {
   );
 }
 
-function SuccessScreen({ goTo }) {
+export function SuccessScreen({ goTo, live = null }) {
   const goToDashboard = () => {
     window.history.replaceState(null, "", `${window.location.pathname}?screen=home`);
     goTo("home");
   };
 
+  // Live: what Stripe actually did (a card charged, or a bank payment still
+  // clearing) and the real factory, step and buttons.
   return (
     <div className="stack">
       <section className="success-card">
         <span className="success-mark">✓</span>
         <div className="success-copy">
-          <h2>Payment received</h2>
+          <h2>{live ? live.title : "Payment received"}</h2>
           <p>
-            $124.14 was charged to Visa ending in 4242. Atelier Minho has been notified that the
-            fit sample is ready to begin.
+            {live ? live.message : (
+              <>
+                $124.14 was charged to Visa ending in 4242. Atelier Minho has been notified that the
+                fit sample is ready to begin.
+              </>
+            )}
           </p>
         </div>
         <section className="success-next-panel">
           <h3>What happens next</h3>
           <p>
-            Atelier Minho prepares the fit sample and uploads photos when it is ready. You can
-            message the factory or review files from the project workspace.
+            {live ? live.next : (
+              <>
+                Atelier Minho prepares the fit sample and uploads photos when it is ready. You can
+                message the factory or review files from the project workspace.
+              </>
+            )}
           </p>
         </section>
         <div className="success-actions">
-          <button className="primary-btn" type="button" onClick={goToDashboard}>
-            Go to dashboard
+          <button className="primary-btn" type="button" onClick={live ? live.onDashboard : goToDashboard}>
+            {live?.dashboardLabel ?? "Go to dashboard"}
           </button>
-          <button className="secondary-btn" type="button">
+          <button className="secondary-btn" type="button" onClick={live?.onMessage}>
             Message factory
           </button>
         </div>

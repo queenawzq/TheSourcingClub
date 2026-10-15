@@ -26,6 +26,7 @@ import {
   remindMilestone,
 } from "../../lib/domain/milestone.js";
 import { brandSummary } from "../../lib/domain/rfq.js";
+import { requestRelease } from "../../lib/domain/stripe.js";
 import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
 import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney } from "../../lib/money.js";
@@ -69,9 +70,13 @@ function actionFor(milestone, { isFactory, isOwner, posted }) {
   const none = { action: "", tone: "", kind: "" };
 
   if (isFactory) return none;
-  if (payment?.state === "due") {
-    return { action: "Fund milestone", tone: "primary", kind: "fund" };
+  // A paid step is funded before the work; a payment that came back is paid
+  // again the same way. Only an owner may pay (begin_payment_checkout).
+  if (payment?.state === "due" || payment?.state === "failed") {
+    return isOwner ? { action: "Fund milestone", tone: "primary", kind: "fund" } : none;
   }
+  // approve_milestone refuses a paid step until its money is held.
+  if (payment && milestone.kind === "approval_and_payment" && payment.state !== "confirmed") return none;
   if (approvable(milestone, posted)) {
     // approve_milestone refuses a member on a paying step; say so on the row
     // instead of offering a dialog that can only fail.
@@ -99,25 +104,55 @@ function actionFor(milestone, { isFactory, isOwner, posted }) {
   return none;
 }
 
+/**
+ * Where the step's money is, in words. TSC holds a funded payment until the
+ * brand approves the step, then pays the factory.
+ */
+function paymentLine(payment, isFactory) {
+  switch (payment?.state) {
+    case "due":
+      return isFactory ? "Awaiting funding from the brand" : "Awaiting funding";
+    case "processing":
+      return "Bank payment clearing";
+    case "failed":
+      return `Payment failed: ${payment.failure_reason || "the payment did not go through"}`;
+    case "sent":
+      // A bank-wire claim from before payments moved to Stripe.
+      return isFactory
+        ? "Payment claimed, awaiting our confirmation"
+        : "You have marked this sent — awaiting our confirmation";
+    case "confirmed":
+      return payment.release_requested_at ? "Approved: payout on its way" : "Funded: held by TSC";
+    case "released":
+      return "Paid out";
+    default:
+      return "";
+  }
+}
+
 /** The sentence under a step's title, from its own state and its payment's. */
 function statusLine(milestone, { isFactory, isOwner, posted }) {
   const payment = milestone.payment;
+  const money = paymentLine(payment, isFactory);
 
-  if (milestone.state === "complete") return "Done";
+  if (milestone.state === "complete") {
+    return payment?.state === "confirmed" || payment?.state === "released" ? `Done · ${money}` : "Done";
+  }
+  // Funding comes before the work, so an unfunded step says so first.
+  if (["due", "processing", "failed", "sent"].includes(payment?.state) && milestone.state !== "pending") {
+    return money;
+  }
   if (approvable(milestone, posted)) {
-    if (isFactory) return "Posted, awaiting the brand's approval";
-    if (milestone.kind === "approval_and_payment" && !isOwner) return "Ready for an owner's approval";
-    return "Ready for your approval";
+    const held = payment?.state === "confirmed" ? ` · ${money}` : "";
+    if (isFactory) return `Posted, awaiting the brand's approval${held}`;
+    if (milestone.kind === "approval_and_payment" && !isOwner) return `Ready for an owner's approval${held}`;
+    return `Ready for your approval${held}`;
   }
-  if (milestone.state === "active") return isFactory ? "You can start this step" : "In progress";
-
-  if (payment?.state === "sent") {
-    return isFactory
-      ? "Payment claimed, awaiting our confirmation"
-      : "You have marked this sent — awaiting our confirmation";
+  if (milestone.state === "active") {
+    const work = isFactory ? "You can start this step" : "In progress";
+    return payment?.state === "confirmed" ? `${work} · ${money}` : work;
   }
-  if (payment?.state === "due") return isFactory ? "Awaiting payment from the brand" : "Payment due";
-  return "";
+  return money;
 }
 
 /**
@@ -141,11 +176,11 @@ function dueBadge(milestone, today = new Date()) {
 /**
  * Whether a step is waiting on the OTHER side, which is the only time a
  * reminder means anything. An open step waits on the factory's work until it
- * posts; then on the brand's approval, as does a due payment on the brand's
- * transfer. Reminding the other side about your own move is noise.
+ * posts; then on the brand's approval, as does a due or failed payment on the
+ * brand's funding. Reminding the other side about your own move is noise.
  */
 const waitingOnOther = (milestone, isFactory, posted) => (isFactory
-  ? approvable(milestone, posted) || milestone.payment?.state === "due"
+  ? approvable(milestone, posted) || ["due", "failed"].includes(milestone.payment?.state)
   : milestone.state === "active" && !posted);
 
 /** Brands nudge factories only when the current work is genuinely close. */
@@ -346,13 +381,13 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       // The factory's design marks the step being worked on as "active".
       active: milestone.id === order.current_milestone_id,
       title: milestone.title,
-      // What this row is waiting for, said plainly. A factory must never be
-      // left guessing whether it may start: the chain advances on a payment
-      // being CONFIRMED, not on the brand saying it sent one, and the gap
-      // between those two is exactly where someone starts work unpaid.
+      // What this row is waiting for, said plainly, money included. A
+      // factory must never be left guessing whether it may start: the chain
+      // advances on the money being HELD, not on a bank payment that is
+      // still clearing, and the gap between those two is exactly where
+      // someone starts work unpaid.
       meta: [
         statusLine(milestone, { ...viewer, posted }),
-        milestone.payment?.state === "confirmed" ? "Funded" : null,
         milestone.due_on ? `due ${day(milestone.due_on)}` : null,
       ].filter(Boolean).join(" · "),
       ...(hasDispute ? { dueStatus: "Dispute opened", dueTone: "danger" } : dueBadge(milestone)),
@@ -481,6 +516,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         reload={load}
         onBack={() => navigate("/orders")}
         vendor={{ ...counterparty, onMessage: () => navigate(`/orders/${orderId}/messages`), onCancel: proposeCancel }}
+        // Only an owner may pay (begin_payment_checkout); a member stays on the order.
+        onFund={isOwner ? (paymentId) => navigate(`/orders/${orderId}/payments/${paymentId}`) : undefined}
         banner={cancelBanner}
         dialog={cancel.dialog}
       />
@@ -511,7 +548,14 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         files={orderFiles(requestFiles, updates, milestones)}
         onOpenFile={openFile}
         contract={contract}
-        onApprove={(milestone, note) => fromDialog(() => approveMilestone(milestone.id, note))}
+        // Approving a funded step asks for its payout straight away. A payout
+        // that cannot go now (the factory has no Stripe account yet, or
+        // Stripe is down) stays owed and shows on the staff payments page;
+        // it never undoes the approval.
+        onApprove={(milestone, note) => fromDialog(async () => {
+          await approveMilestone(milestone.id, note);
+          if (milestone.paymentId) await requestRelease(milestone.paymentId).catch(() => null);
+        })}
         onPostComment={(milestone, { body, files }) => fromDialog(() => postUpdate({
           orderId, milestoneId: milestone.id, orgId: org.id, body, files,
         }))}

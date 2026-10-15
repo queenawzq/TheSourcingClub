@@ -24,6 +24,7 @@ import { createAdminAdapter } from "./live-admin-adapter.js";
 import ErrorBoundary from "../../lib/ErrorBoundary.jsx";
 import App from "../../admin-prototype/main.jsx";
 import "../shell.css";
+import "./console-live.css";
 
 function Gate({ title, children }) {
   return (

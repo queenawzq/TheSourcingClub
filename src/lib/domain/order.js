@@ -150,21 +150,20 @@ export function milestoneStatusLabel(state, { isFactory }) {
 }
 
 /**
- * The two rows that carry this whole phase are `sent` and `confirmed`.
- *
- * If "sent" reads as arrival on the factory's screen, the admin confirmation
- * step is theatre and the factory is once again taking the brand's word for
- * it — which is the exact thing it has no reason to do.
+ * Where a step's money is. TSC holds a funded payment (`confirmed`) until the
+ * brand approves the step, then pays the factory (`released`). `sent` is only
+ * a bank-wire claim made on the old site, which staff still confirm by hand.
  */
 const PAYMENT_LABELS = {
-  not_due:   { brand: "Not yet due",   factory: "Not yet due" },
-  due:       { brand: "Due from you",  factory: "Awaiting the brand's payment" },
-  sent:      { brand: "You marked this sent — we're confirming receipt",
-               factory: "The brand says it is sent — awaiting our confirmation" },
-  confirmed: { brand: "Payment confirmed",
-               factory: "Payment confirmed — you can start this step" },
-  released:  { brand: "Released to the factory", factory: "Paid out to you" },
-  cancelled: { brand: "Cancelled",     factory: "Cancelled" },
+  not_due:    { brand: "Not yet due",             factory: "Not yet due" },
+  due:        { brand: "Awaiting funding",        factory: "Awaiting funding from the brand" },
+  processing: { brand: "Bank payment clearing",   factory: "Bank payment clearing — don't start yet" },
+  failed:     { brand: "Payment failed",          factory: "The brand's payment failed" },
+  sent:       { brand: "You marked this sent — we're confirming receipt",
+                factory: "The brand says it is sent — awaiting our confirmation" },
+  confirmed:  { brand: "Funded: held by TSC",     factory: "Funded: held by TSC — you can start this step" },
+  released:   { brand: "Paid out to the factory", factory: "Paid out to you" },
+  cancelled:  { brand: "Cancelled",               factory: "Cancelled" },
 };
 
 export function paymentStatusLabel(state, { isFactory }) {

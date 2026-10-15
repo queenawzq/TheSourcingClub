@@ -1,0 +1,17 @@
+/* Live only: Stripe's Payment Element inside the design's "Select billing
+   method" card, where the prototype draws its example saved card. */
+.live-payment-element {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.live-payment-element .composer-error {
+  margin: 0;
+}
+
+.live-payment-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}

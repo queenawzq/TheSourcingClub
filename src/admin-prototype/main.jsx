@@ -180,12 +180,14 @@ function SearchIcon() {
   );
 }
 
-function MetricCard({ label, value, note, tone }) {
+function MetricCard({ label, value, note, tone, href = null, linkLabel = "" }) {
   return (
     <section className={`factory-metric-card admin-metric-card ${tone || ""}`}>
       <span>{label}</span>
       <strong>{value}</strong>
       <p>{note}</p>
+      {/* Live only: where to act on the figure. */}
+      {href && <a className="admin-metric-link" href={href}>{linkLabel}</a>}
     </section>
   );
 }
@@ -292,7 +294,7 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate,
               confidence score, and platform staff have no org and so cannot be
               notified of anything — a payment sits at 'sent' until a human
               opens the queue, and this count is the only prompt that exists. */}
-          <MetricCard label="Payments awaiting confirmation" value={metrics.paymentsAwaitingConfirmation ?? 0} note="Nothing else will chase these" tone="red" />
+          <MetricCard label="Payments awaiting confirmation" value={metrics.paymentsAwaitingConfirmation ?? 0} note="Nothing else will chase these" tone="red" href={metrics.paymentsHref} linkLabel="Open payments" />
         </div>
 
         <section className="admin-overview-grid">

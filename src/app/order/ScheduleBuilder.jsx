@@ -19,8 +19,8 @@ function totalLine(draft, order) {
   return draft.balances ? text : `${text}: these have to match before you can save or continue`;
 }
 
-export function BrandSchedule({ order, milestones, reload, vendor, onBack, banner = null, dialog = null }) {
-  const draft = useScheduleDraft({ order, milestones, reload });
+export function BrandSchedule({ order, milestones, reload, vendor, onBack, onFund, banner = null, dialog = null }) {
+  const draft = useScheduleDraft({ order, milestones, reload, onFund });
 
   return (
     <FlowShell

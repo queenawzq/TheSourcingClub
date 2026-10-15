@@ -1,15 +1,16 @@
 /**
  * The brand's Payments page, on the designed `BillingScreen`.
  *
- * Payments: the brand's own order payments and where each stands (Due, Sent,
- * Funded, Paid) with the design's four figures (brand-payments-view.js). A row
- * opens that payment's page on its order, where a due payment is marked sent.
+ * Payments: the brand's own order payments and where each stands (Due,
+ * Processing, Failed, Funded, Paid; Sent only for an old bank-wire claim)
+ * with the design's four figures (brand-payments-view.js). A row opens that
+ * payment's page on its order: the Fund screen while it is due or failed.
  * Discounts: the brand's real credit and discount codes (credits.js), the
  * same ones the dashboard's Savings card shows.
  *
- * Nothing here takes a card or a bank number: payments are track-only, and
- * the design's saved cards, invoices and platform fee rows have nothing
- * behind them, so they are left out.
+ * Cards and bank accounts are entered only in Stripe's own form on the Fund
+ * screen, and nothing is saved here, so the design's saved cards and invoices
+ * are left out.
  */
 import React, { useEffect, useState } from "react";
 import { BillingScreen } from "../../prototype/main.jsx";
@@ -19,6 +20,7 @@ import { listDiscountCodes, savingsFor } from "../../lib/domain/credits.js";
 import { useRouter } from "../../lib/router.jsx";
 import { brandPaymentsView } from "./brand-payments-view.js";
 import "../browse/browse.css";
+import "../order/payout.css";
 
 export default function LiveBrandPayments({ org }) {
   const { navigate } = useRouter();
@@ -69,10 +71,10 @@ export default function LiveBrandPayments({ org }) {
           metrics: state.view.metrics,
           rows: state.view.rows.map((row) => ({
             ...row,
-            href: `/app.html/orders/${row.orderId}/payments/${row.id}`,
-            onOpen: () => navigate(`/orders/${row.orderId}/payments/${row.id}`),
+            href: `/app.html/payments/${row.orderId}/${row.id}`,
+            onOpen: () => navigate(`/payments/${row.orderId}/${row.id}`),
           })),
-          empty: "No payments yet. A payment shows here once a step on one of your orders falls due.",
+          empty: "No payment transactions yet.",
           discount: state.savings ? { amount: state.savings.amount, note: state.savings.note } : null,
           codes: state.codes,
           onCopy: copy,

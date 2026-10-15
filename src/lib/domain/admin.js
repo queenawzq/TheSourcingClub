@@ -262,8 +262,10 @@ export async function quoteQueue(limit = 200) {
  *
  * `paymentsAwaitingConfirmation` stands where the design puts "low-confidence
  * checks". It is a real figure and a more urgent one: platform staff have no
- * org and so cannot be notified of anything, which means a payment sits at
- * 'sent' until a human opens the queue. This count is the only prompt there is.
+ * org and so cannot be notified of anything. It counts the payments only a
+ * person can move: bank-wire claims from the old site, payouts Stripe did not
+ * make (a factory it cannot pay, paid by bank), and money held on a cancelled
+ * order. This count is the only prompt there is.
  */
 export async function overviewMetrics() {
   const rows = await unwrap(
@@ -278,6 +280,8 @@ export async function overviewMetrics() {
     rfqsSubmittedToday: row.rfqs_submitted_today ?? 0,
     quotesSubmittedToday: row.quotes_submitted_today ?? 0,
     paymentsAwaitingConfirmation: row.payments_awaiting_confirmation ?? 0,
+    // The payments board is the app's, not the console's.
+    paymentsHref: "/app.html/admin/payments",
   };
 }
 

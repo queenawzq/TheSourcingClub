@@ -12,12 +12,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { agreeSchedule, getOrder } from "../../lib/domain/order.js";
 import { saveSchedule } from "../../lib/domain/milestone.js";
+import { listPayments } from "../../lib/domain/payment.js";
 import { toCents } from "../../lib/money.js";
 import { editRow, moveScheduleRow, newRow, scheduleLines, scheduleRows, scheduleTotal, stepAmount } from "./order-view.js";
 
 const sameRows = (a, b) => JSON.stringify(scheduleLines(a)) === JSON.stringify(scheduleLines(b));
 
-export function useScheduleDraft({ order, milestones, reload }) {
+export function useScheduleDraft({ order, milestones, reload, onFund }) {
   const saved = useMemo(() => scheduleRows(milestones), [milestones]);
   const [rows, setRows] = useState(saved);
   const [busy, setBusy] = useState(false);
@@ -74,13 +75,22 @@ export function useScheduleDraft({ order, milestones, reload }) {
     // agree_schedule takes the revision the brand is looking at, read fresh
     // after any save: a stale one is refused rather than confirming steps
     // that changed underneath.
-    confirm: () => run(async () => {
-      let revision = order.schedule_revision;
-      if (dirty) {
-        await saveSchedule(order.id, scheduleLines(rows));
-        revision = (await getOrder(order.id)).schedule_revision;
-      }
-      await agreeSchedule(order.id, revision);
-    }),
+    // Confirming starts the order, and its first paid step falls due at
+    // once: "Continue to funding" then lands on that step's Fund screen.
+    confirm: async () => {
+      let due = null;
+      await run(async () => {
+        let revision = order.schedule_revision;
+        if (dirty) {
+          await saveSchedule(order.id, scheduleLines(rows));
+          revision = (await getOrder(order.id)).schedule_revision;
+        }
+        await agreeSchedule(order.id, revision);
+        due = (await listPayments(order.id))
+          .filter((payment) => payment.state === "due")
+          .sort((a, b) => (a.order_milestones?.sort ?? 0) - (b.order_milestones?.sort ?? 0))[0] ?? null;
+      });
+      if (due) onFund?.(due.id);
+    },
   };
 }
