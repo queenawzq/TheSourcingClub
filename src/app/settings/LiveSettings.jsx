@@ -12,10 +12,9 @@
  * that field is left empty.
  *
  * A factory gets the same: org name, the owner's email (factory_profiles has
- * no email column), its location, and its real pending invitations. Its
- * Earnings tab lists the payout accounts brands are told to pay into; Billing
- * is always empty, since no card or account is stored for platform charges.
- * "+ Add payment method" on Earnings opens the existing Payout details page.
+ * no email column), its location, and its real pending invitations. Payout
+ * management and card setup reuse the Payments dialogs directly on this page,
+ * so Settings never detours through the Payments route.
  * The factory's copy (RFQ wording, "Trading company account") follows
  * factory-prototype.html's own Settings screen.
  *
@@ -26,8 +25,30 @@ import React, { useCallback, useEffect, useState } from "react";
 import { SettingsScreen, factoryAccountPermissionLabels, settingsPermissionLabels } from "../../prototype/main.jsx";
 import { inviteMember, listMembers, listPendingInvitations } from "../../lib/domain/org.js";
 import { listPayoutAccounts } from "../../lib/domain/payment.js";
-import { useRouter } from "../../lib/router.jsx";
+import { connectAccountFor, connectAction, startBillingSetup } from "../../lib/domain/stripe.js";
 import { getBrandProfile, getFactoryProfile } from "../../lib/domain/profile.js";
+import { supabase, unwrap } from "../../lib/supabase.js";
+import StripePayoutCard from "../order/StripePayoutCard.jsx";
+import { BillingMethodFlow } from "../order/PayoutDetails.jsx";
+
+const PAYOUT_FIELDS = [
+  ["bank_name", "Bank", "Banco de Porto"],
+  ["account_name", "Account name", "As it appears on the account"],
+  ["account_number_last4", "Last 4 digits", "4417"],
+  ["swift", "SWIFT / BIC", "BCOMPTPL"],
+  ["iban", "IBAN", "PT50 0002 0123 1234 5678 9015 4"],
+];
+
+const blankPayout = (row) => ({
+  bank_name: row?.bank_name ?? "",
+  account_name: row?.account_name ?? "",
+  account_number_last4: row?.account_number_last4 ?? "",
+  swift: row?.swift ?? "",
+  iban: row?.iban ?? "",
+  instructions: row?.instructions ?? "",
+});
+
+const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 
 /** "Sent today", "Sent yesterday", "Sent Oct 3", like the drawn rows. */
 function sentLabel(createdAt) {
@@ -38,33 +59,55 @@ function sentLabel(createdAt) {
   return `Sent ${sent.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
 }
 
-/** "Demo Bank ending in 0000", like the drawn "Bank account ending in 1184". */
-function payoutName(account) {
-  const bank = account.bank_name || account.label || account.account_name || "Bank account";
-  return account.account_number_last4 ? `${bank} ending in ${account.account_number_last4}` : bank;
-}
-
 export default function LiveSettings({ org, isFactory, onSignOut }) {
-  const { navigate } = useRouter();
   const [members, setMembers] = useState(null);
   const [profile, setProfile] = useState(null);
   const [invites, setInvites] = useState([]);
-  const [payoutAccounts, setPayoutAccounts] = useState([]);
+  const [payoutMethods, setPayoutMethods] = useState([]);
+  const [manualAccount, setManualAccount] = useState(null);
+  const [manualForm, setManualForm] = useState(blankPayout());
+  const [manualSaved, setManualSaved] = useState(false);
+  const [payoutFlow, setPayoutFlow] = useState(null);
+  const [billingSecret, setBillingSecret] = useState(null);
+  const [billingBusy, setBillingBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   const reload = useCallback(async () => {
     try {
-      const [loadedMembers, loadedProfile, loadedInvites, loadedPayouts] = await Promise.all([
+      const [loadedMembers, loadedProfile, loadedInvites] = await Promise.all([
         listMembers(org.id),
         isFactory ? getFactoryProfile(org.id) : getBrandProfile(org.id),
         listPendingInvitations(org.id),
-        isFactory ? listPayoutAccounts(org.id) : [],
       ]);
       setProfile(loadedProfile);
       setInvites(loadedInvites);
-      setPayoutAccounts(loadedPayouts);
       setMembers(loadedMembers);
+
+      if (isFactory) {
+        const [connectAccount, manualAccounts] = await Promise.all([
+          connectAccountFor(org.id).catch(() => null),
+          listPayoutAccounts(org.id).catch(() => []),
+        ]);
+        const primaryManualAccount = manualAccounts[0] ?? null;
+        setManualAccount(primaryManualAccount);
+        setManualForm(blankPayout(primaryManualAccount));
+        if (connectAccount?.transfers_active) {
+          const balance = await connectAction(org.id, "balance").catch(() => null);
+          const connected = balance?.methods ?? [];
+          setPayoutMethods(connected.length ? connected.map((method) => ({
+            label: method.default ? "Default" : method.type === "card" ? "Payout card" : "Bank account",
+            name: `${method.type === "card" ? "Payout card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`,
+            note: [method.name, method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
+          })) : [{ label: "Connected", name: "Payout account", note: "Managed securely through your connected payout account." }]);
+        } else {
+          setPayoutMethods(manualAccounts.map((account) => ({
+            label: account.is_primary ? "Primary" : "Secondary",
+            name: `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}`,
+            note: "Manual bank transfer",
+          })));
+        }
+      }
     } catch (failure) {
       setError(failure);
     }
@@ -82,6 +125,66 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
       setError(failure);
     } finally {
       setBusy(false);
+    }
+  }
+
+  const setManualField = (key) => (event) => {
+    setManualSaved(false);
+    setManualForm((current) => ({ ...current, [key]: event.target.value }));
+  };
+
+  async function saveManualAccount() {
+    setBusy(true);
+    setError(null);
+    try {
+      const payload = {
+        org_id: org.id,
+        is_primary: true,
+        ...Object.fromEntries(Object.entries(manualForm).map(([key, value]) => [key, value.trim() || null])),
+      };
+      const result = manualAccount?.id
+        ? await supabase.from("factory_payout_accounts").update(payload).eq("id", manualAccount.id).select().single()
+        : await supabase.from("factory_payout_accounts").insert(payload).select().single();
+      const updated = unwrap(result, "save your payout account");
+      setManualAccount(updated);
+      setManualForm(blankPayout(updated));
+      setManualSaved(true);
+      await reload();
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteManualAccount() {
+    if (!manualAccount?.id) return;
+    setBusy(true);
+    setError(null);
+    try {
+      unwrap(await supabase.from("factory_payout_accounts").delete().eq("id", manualAccount.id), "remove your payout account");
+      setManualAccount(null);
+      setManualForm(blankPayout());
+      setManualSaved(false);
+      await reload();
+    } catch (failure) {
+      setError(failure);
+      throw failure;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addBillingMethod() {
+    setBillingBusy(true);
+    setError(null);
+    try {
+      const result = await startBillingSetup(org.id);
+      setBillingSecret(result.clientSecret);
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setBillingBusy(false);
     }
   }
 
@@ -119,11 +222,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         },
     paymentMethods: isFactory
       ? {
-          earnings: payoutAccounts.map((account) => ({
-            label: account.is_primary ? "Primary" : "Secondary",
-            name: payoutName(account),
-            note: account.is_primary ? "Receives released milestone funds from brand orders." : "Backup account for receiving earnings.",
-          })),
+          earnings: payoutMethods,
           billing: [],
         }
       : [],
@@ -136,17 +235,50 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
 
   if (!members) return null;
 
+  const openPayoutFlow = (action) => setPayoutFlow({ action, id: Date.now() });
+
   return (
-    <SettingsScreen
-      accountType={isFactory ? "factory" : "brand"}
-      companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
-      onAddPaymentMethod={isFactory ? () => navigate("/payout") : undefined}
-      team={team}
-      {...live}
-      onInvite={invite}
-      busy={busy}
-      error={error}
-      onSignOut={onSignOut}
-    />
+    <>
+      <SettingsScreen
+        accountType={isFactory ? "factory" : "brand"}
+        companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
+        onAddPaymentMethod={isFactory ? () => openPayoutFlow("manage") : undefined}
+        onAddBillingMethod={addBillingMethod}
+        onEditPaymentMethod={isFactory ? () => openPayoutFlow("edit") : undefined}
+        onDeletePaymentMethod={isFactory ? () => openPayoutFlow("remove") : undefined}
+        team={team}
+        {...live}
+        onInvite={invite}
+        busy={busy || billingBusy}
+        error={error}
+        onSignOut={onSignOut}
+      />
+      {isFactory && payoutFlow ? (
+        <StripePayoutCard
+          key={payoutFlow.id}
+          org={org}
+          isOwner
+          renderCard={false}
+          initialAction={payoutFlow.action}
+          onFlowClose={() => { setPayoutFlow(null); setManualSaved(false); }}
+          manualAccount={manualAccount}
+          manualForm={manualForm}
+          manualFields={PAYOUT_FIELDS}
+          onManualFieldChange={setManualField}
+          onSaveManual={saveManualAccount}
+          onDeleteManual={deleteManualAccount}
+          manualBusy={busy}
+          manualSaved={manualSaved}
+        />
+      ) : null}
+      {billingSecret ? (
+        <BillingMethodFlow
+          clientSecret={billingSecret}
+          intro={isFactory ? undefined : "Save a card to use when funding production milestones."}
+          onClose={() => setBillingSecret(null)}
+          onSaved={() => setBillingSecret(null)}
+        />
+      ) : null}
+    </>
   );
 }

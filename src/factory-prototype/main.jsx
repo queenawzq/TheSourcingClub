@@ -8885,6 +8885,7 @@ function BrandProjectCard({ project, companyType = "factory", language, onViewDe
   const requestImages = project.images || [];
   const [primaryImage, ...supportImages] = requestImages;
   const hasGallery = requestImages.length >= 3;
+  const fitLabel = project.fitLabel || (companyType === "trading" ? "Network fit" : project.capacity[0]);
   const requestFacts = [
     ["Unit target", project.budget],
     ["Quantity", project.quantity],
@@ -8905,7 +8906,7 @@ function BrandProjectCard({ project, companyType = "factory", language, onViewDe
           </div>
         </div>
         <div className="factory-request-card-actions shared-card-actions">
-          <span className={`factory-project-fit shared-card-status ${project.fitTone}`}>{companyType === "trading" ? "Network fit" : project.capacity[0]}</span>
+          {fitLabel && <span className={`factory-project-fit shared-card-status ${project.fitTone}`}>{fitLabel}</span>}
           <button className="secondary-btn" type="button">Save</button>
           <button className="primary-btn" type="button" onClick={() => onViewDetails?.(project)}>View RFQ</button>
         </div>
