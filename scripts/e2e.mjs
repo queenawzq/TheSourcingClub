@@ -2364,15 +2364,15 @@ async function main() {
     // The brand's own order payments, where each stands, and its discounts.
     console.log("\nPAYMENTS");
     await page.evaluate(() => [...document.querySelectorAll(".side-nav button")].find((button) => button.textContent.trim() === "Payments")?.click());
-    await waitFor(page, ".billing-history-row", 20000);
+    await waitFor(page, ".billing-row-link", 20000);
     await record(page, "Payments", "the brand's order payments, on the designed Payments page");
     const paymentsText = await page.locator(".billing-history-page").innerText();
     const { data: brandPayments } = await db.from("order_payments")
-      .select("id, state, amount_cents, fee_bps, charged_cents, order_id").eq("order_id", bornOrder.id).neq("state", "not_due");
+      .select("id, state, amount_cents, fee_bps, charged_cents, order_id").eq("order_id", bornOrder.id).not("state", "in", "(not_due,due)");
     // Each row is what the brand is charged: the step plus the service fee.
     const chargedOf = (payment) => Number(payment.charged_cents ?? Number(payment.amount_cents) + Math.floor(Number(payment.amount_cents) * Number(payment.fee_bps) / 10000));
     check(brandPayments.length > 0 && brandPayments.every((payment) => paymentsText.includes(`$${(chargedOf(payment) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`)),
-      `every payment on the brand's order that is due or further along is listed, fee included (${brandPayments.length})`);
+      `every payment on the brand's order that money has moved for is listed, fee included (${brandPayments.length})`);
     check(/Funded|Paid/.test(paymentsText) && paymentsText.includes(factoryName), "with its state in the design's words and the factory's name");
     const { data: header } = await db.from("production_order_summary").select("paid_cents").eq("id", bornOrder.id).single();
     check(paymentsText.includes(`$${(Number(header.paid_cents) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`),
@@ -2386,7 +2386,7 @@ async function main() {
     await page.waitForTimeout(400);
     await page.evaluate(() => document.querySelector(".billing-row-link")?.click());
     await page.waitForTimeout(2500);
-    check(/\/orders\/[^/]+\/payments\/[^/]+$/.test(await page.evaluate(() => location.pathname)), "a payment opens its page on the order");
+    check(/\/payments\/[^/]+\/[^/]+$/.test(await page.evaluate(() => location.pathname)), "a payment opens its own page");
 
     // ================= THE HOME SCREEN =================
     // It used to be a heading, a notification list and a row of buttons, with
