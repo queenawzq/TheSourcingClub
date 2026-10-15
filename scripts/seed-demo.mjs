@@ -969,6 +969,28 @@ must(await admin.from("discount_codes").insert({
   code: "DEMO-BRAND", owner_org_id: brandOrg.id, amount_cents: 5000,
 }), "discount code");
 
+// Something for the daily job to say (Admin → Settings → "Run daily jobs
+// now"): one of Demo Factory's steps in progress is due in three days, and
+// its capacity was last changed 31 days ago. Rows are written again rather
+// than updated, because an update stamps updated_at with now.
+console.log("daily reminders");
+const factoryOrders = must(await admin.from("production_orders").select("id")
+  .eq("factory_org_id", factoryOrg.id).eq("status", "active"), "the factory's running orders");
+const [dueSoonStep] = must(await admin.from("order_milestones").select("id, title")
+  .in("order_id", factoryOrders.map((order) => order.id)).eq("state", "active").order("sort").limit(1), "a step in progress");
+if (dueSoonStep) {
+  must(await admin.from("order_milestones")
+    .update({ due_on: new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10) })
+    .eq("id", dueSoonStep.id), "a step due in three days");
+}
+const monthAgo = new Date(Date.now() - 31 * 864e5).toISOString();
+const [capacityRow] = must(await admin.from("factory_capacity").select("*").eq("org_id", factoryOrg.id), "the factory's capacity");
+const capacityMonths = must(await admin.from("factory_capacity_months").select("*").eq("org_id", factoryOrg.id), "its booking calendar");
+must(await admin.from("factory_capacity").delete().eq("org_id", factoryOrg.id), "capacity, to write again");
+must(await admin.from("factory_capacity").insert({ ...capacityRow, created_at: monthAgo, updated_at: monthAgo }), "capacity, a month old");
+must(await admin.from("factory_capacity_months").delete().eq("org_id", factoryOrg.id), "calendar, to write again");
+must(await admin.from("factory_capacity_months").insert(capacityMonths.map((row) => ({ ...row, updated_at: monthAgo }))), "calendar, a month old");
+
 // Email switches: the brand has "Payment and approval requests" off, so a
 // tester sees a switch in both states. The seed's own notifications are not
 // news to anyone, so none of their queued emails go out.
@@ -1016,6 +1038,8 @@ done. Every login uses the password "${PASSWORD}".
   Browse vendors lists ${LOGINS.factory.name} and ${LOGINS.secondFactory.name} (Factories) and ${LOGINS.tradingCompany.name} (Trading companies).
   Saved has ${LOGINS.factory.name} and ${LOGINS.tradingCompany.name}.
   The admin's verification queue has ${LOGINS.newFactory.name}.
+  Admin → Settings → "Run daily jobs now" reminds ${LOGINS.factory.name} that its capacity is a
+  month old${dueSoonStep ? ` and that "${dueSoonStep.title}" is due in three days` : ""} (bell and email, once).
 
   Run this again at any time to put the demo companies back to this state.
   It deletes them, and any order another company has with them.

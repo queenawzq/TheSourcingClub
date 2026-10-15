@@ -9,8 +9,9 @@
  *
  * Self-contained on purpose: Vercel builds api/ on its own and a static
  * import from src/ stops the function starting, so the link rules are a copy
- * of `notificationLink` in src/shared/notification-link.mjs. The smoke test
- * fails if the two ever disagree.
+ * of `notificationLink` in src/shared/notification-link.mjs, and the dates a
+ * copy of `notificationBody` in src/shared/notification-text.mjs. The smoke
+ * test fails if either pair ever disagrees.
  */
 
 const escapeHtml = (value) => String(value ?? "")
@@ -32,7 +33,38 @@ export function notificationPath(notification, { isFactory }) {
   if (type === "milestone" && notification.order_id) return `/orders/${notification.order_id}/milestones/${id}`;
   if (type === "payment" && notification.order_id) return `/orders/${notification.order_id}/payments/${id}`;
   if (type === "thread") return `/messages/${id}`;
+  // Capacity is updated from the factory's dashboard.
+  if (type === "capacity" && isFactory) return "/";
   return null;
+}
+
+/** Same answers as notificationBody() in src/shared/notification-text.mjs. */
+export function notificationBody(notification, { timeZone, withZone = false } = {}) {
+  const body = String(notification?.body ?? "");
+  const data = notification?.data ?? {};
+  const moment = (iso) => formatMoment(iso, timeZone, withZone);
+
+  if (data.quote_deadline && /Quotes close [^.]*\./.test(body)) {
+    const when = moment(data.quote_deadline);
+    if (when) return body.replace(/Quotes close [^.]*\./, `Quotes close ${when}.`);
+  }
+  if (data.starts_at && String(notification?.kind ?? "").startsWith("call_")) {
+    const when = moment(data.starts_at);
+    if (when) return body ? `${body} · ${when}` : when;
+  }
+  return body;
+}
+
+function formatMoment(iso, timeZone, withZone) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  const options = { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" };
+  if (withZone) options.timeZoneName = "short";
+  try {
+    return new Intl.DateTimeFormat("en-US", { ...options, ...(timeZone ? { timeZone } : {}) }).format(date);
+  } catch {
+    return new Intl.DateTimeFormat("en-US", { ...options, timeZone: "UTC" }).format(date);
+  }
 }
 
 // Each switch's name is the designed Settings label; the Chinese is the
@@ -83,7 +115,8 @@ export function notificationEmail(row, env) {
   const url = `${env.appUrl}/app.html${path ?? ""}${!path && isFactory ? "?portal=factory" : ""}`;
   const cta = path ? t.cta : t.ctaFallback;
   const title = String(row.title ?? "").trim() || t.lead(company);
-  const body = String(row.body ?? "").trim();
+  // Dates in the recipient's saved zone, named; UTC, named, when unknown.
+  const body = notificationBody(row, { timeZone: row.time_zone || "UTC", withZone: true }).trim();
   const why = t.why(company, setting);
 
   const text = [

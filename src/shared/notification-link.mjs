@@ -27,5 +27,8 @@ export function notificationLink(notification, { isFactory }) {
   }
   if (type === "thread") return `/messages/${id}`;
 
+  // Capacity is updated from the factory's dashboard.
+  if (type === "capacity" && isFactory) return "/";
+
   return null;
 }

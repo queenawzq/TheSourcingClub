@@ -1,7 +1,7 @@
 # Production environment variables
 
 What Vercel **Production** needs before payments (#49), message screening
-(#51) and video calls (#52) go live. Preview and Development keep the test
+(#51), video calls (#52) and notification emails go live. Preview and Development keep the test
 values they have now; only Production changes. Values are secrets: set them in
 Vercel → the-sourcing-club → Settings → Environment Variables, environment
 **Production** only, never in the repository.
@@ -49,6 +49,17 @@ that will own every meeting:
 The in-page video only joins meetings created by the same account, which is
 why both apps must be on TSC's account. Without all five, calls still
 schedule and "Join call" says video isn't set up yet.
+
+## Notification emails and the daily job
+
+| Variable | What it is |
+|---|---|
+| `CRON_SECRET` | any long random string (for example `openssl rand -hex 32`). Vercel sends it with the daily job (`vercel.json` → `/api/cron-daily`, 07:00 UTC), and the job refuses calls without it. |
+| `PUBLIC_APP_URL` | only if the site's address is not `the-sourcing-club.vercel.app`: the links in every email point here. |
+
+The emails go through the same Resend settings as the review emails
+(`RESEND_API_KEY`, `RESEND_FROM_EMAIL`). Resend's free plan allows 100 emails
+a day, sent and received together, so a busy day needs a paid plan.
 
 ## Already set, nothing to do
 

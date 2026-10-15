@@ -2303,6 +2303,134 @@ async function main() {
     check((await page.locator(".factory-upcoming-call-card").innerText()).includes(callTitle), "the factory's dashboard lists it too");
     await record(page, "Factory dashboard: Scheduled calls");
 
+    // ================= EMAILS =================
+    // The company's switches decide what is emailed. Read back from Mailpit,
+    // where the local sender delivers.
+    console.log("\nEMAILS");
+    const factoryEmail = `e2e-factory-${stamp}@example.com`;
+    const mailsTo = async (address) => {
+      const found = await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:${address}`)}&limit=200`).then((r) => r.json()).catch(() => ({}));
+      return found.messages ?? [];
+    };
+    const mailFor = async (address, subject, timeout = 30000) => {
+      const deadline = Date.now() + timeout;
+      while (Date.now() < deadline) {
+        const message = (await mailsTo(address)).find((entry) => entry.Subject === subject);
+        if (message) return fetch(`${MAIL}/api/v1/message/${message.ID}`).then((r) => r.json());
+        await page.waitForTimeout(1000);
+      }
+      return null;
+    };
+    const threadNotices = async (kind) => (await db.from("notifications").select("id, title, created_at")
+      .eq("org_id", factoryOrg.id).eq("kind", kind).eq("subject_id", runThread.id).order("created_at")).data ?? [];
+    const emailsSwitch = async (on) => {
+      await page.goto(`${APP}/team`);
+      await waitFor(page, ".settings-page, .settings-shell, .settings-nav", 25000);
+      // The designed switch draws over its input, which is see-through, so
+      // it is found by being there and clicked through the page.
+      const boxDeadline = Date.now() + 20000;
+      while (Date.now() < boxDeadline && (await page.locator('input[data-notification-email="messages"]').count()) === 0) {
+        await page.waitForTimeout(300);
+      }
+      await page.evaluate((on) => {
+        const box = document.querySelector('input[data-notification-email="messages"]');
+        box?.scrollIntoView({ block: "center" });
+        if (box && box.checked !== on) box.click();
+      }, on);
+      const deadline = Date.now() + 10000;
+      let saved = null;
+      while (Date.now() < deadline && saved?.message_emails !== on) {
+        ({ data: saved } = await db.from("notification_preferences").select("message_emails").eq("org_id", factoryOrg.id).maybeSingle());
+        if (saved?.message_emails !== on) await page.waitForTimeout(400);
+      }
+      return saved?.message_emails === on;
+    };
+
+    const [firstInvite] = await threadNotices("call_proposed");
+    const inviteMail = firstInvite ? await mailFor(factoryEmail, firstInvite.title) : null;
+    check(Boolean(inviteMail), "the brand's call invite reached the factory by email");
+    check(Boolean(inviteMail?.HTML?.includes(`/app.html/messages/${runThread.id}`)), "and its button opens the conversation");
+    check(Boolean(inviteMail?.Text?.includes(callTitle) && /\d{1,2}:\d{2}\s?[AP]M/.test(inviteMail?.Text ?? "")),
+      "with the call's time, in the factory's own time zone");
+
+    check(await emailsSwitch(false), "the factory turns \"Messages and call invites\" emails off in Settings");
+    await record(page, "Settings → Notifications", "the factory turns call and message emails off");
+
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand inviting again");
+    await page.goto(`${APP}/messages/${runThread.id}`);
+    await waitFor(page, ".message-room-actions", 25000);
+    await page.evaluate(() => [...document.querySelectorAll(".message-room-actions button")].find((node) => node.textContent.trim() === "Schedule call")?.click());
+    const secondTitle = `${callTitle} follow-up`;
+    check(await pickTime(17), "the brand picks another day for a follow-up call");
+    await page.locator('.message-schedule-modal .schedule-field input').fill(secondTitle);
+    check(await inDialog("Send invite"), "and sends the invite");
+    let secondCall = null;
+    const secondDeadline = Date.now() + 15000;
+    while (Date.now() < secondDeadline && !secondCall) {
+      secondCall = (await callsOnThread()).find((call) => call.title === secondTitle && call.status === "proposed") ?? null;
+      if (!secondCall) await page.waitForTimeout(400);
+    }
+    const quietInvite = (await threadNotices("call_proposed")).at(-1);
+    check(Boolean(secondCall) && quietInvite?.id !== firstInvite?.id, "the factory is still told in the bell");
+    const quietBefore = (await mailsTo(factoryEmail)).length;
+    await page.waitForTimeout(6000);
+    const { data: quietQueue } = await db.from("notification_email_outbox").select("id").eq("notification_id", quietInvite?.id ?? firstInvite?.id);
+    check((quietQueue ?? []).length === 0, "but with its switch off, no email is queued for it");
+    check((await mailsTo(factoryEmail)).length === quietBefore, "and none arrives");
+
+    await signOutFully(page);
+    await signIn(page, factoryEmail, "Factory turning emails back on", "factory");
+    check(await emailsSwitch(true), "the factory turns them back on");
+
+    await signOutFully(page);
+    await signIn(page, brandEmail, "Brand withdrawing the follow-up");
+    await page.goto(`${APP}/messages/${runThread.id}`);
+    await waitFor(page, ".message-side-panel .call-card-status", 25000);
+    check(await inPanel("Withdraw invite"), "the brand withdraws the follow-up invite");
+    let withdrawn = null;
+    const withdrawDeadline = Date.now() + 15000;
+    while (Date.now() < withdrawDeadline && !withdrawn) {
+      withdrawn = (await threadNotices("call_cancelled")).at(-1) ?? null;
+      if (!withdrawn) await page.waitForTimeout(400);
+    }
+    const withdrawnMail = withdrawn ? await mailFor(factoryEmail, withdrawn.title) : null;
+    check(Boolean(withdrawnMail), "with the switch on again, the factory is emailed");
+    await page.goto(`${MAIL}/view/${withdrawnMail?.ID ?? ""}.html`).catch(() => {});
+    await page.waitForTimeout(800);
+    await record(page, "The email", "in Mailpit: the designed frame, the notification, one button");
+
+    // ================= THE DAILY JOB =================
+    // Test sites have no crons; staff run it from Admin → Settings.
+    console.log("\nTHE DAILY JOB");
+    const { data: openStep } = await db.from("order_milestones").select("id, title")
+      .eq("order_id", bornOrder.id).eq("state", "active").order("sort").limit(1).maybeSingle();
+    if (openStep) {
+      await db.from("order_milestones").update({ due_on: new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10) }).eq("id", openStep.id);
+    }
+    check(Boolean(openStep), "the factory has a step in progress, due in three days");
+    await signOutFully(page);
+    await signIn(page, adminEmail, "Admin running the daily job");
+    await page.goto(`${ADMIN}?screen=settings`);
+    const runDeadline = Date.now() + 30000;
+    while (Date.now() < runDeadline && !(await page.evaluate(() => [...document.querySelectorAll("button")].some((node) => node.textContent.trim() === "Run daily jobs now")))) {
+      await page.waitForTimeout(300);
+    }
+    await clickButton(page, "run daily jobs now");
+    await waitFor(page, ".admin-test-email-status, .admin-error", 60000);
+    const jobStatus = await page.locator(".admin-test-email-status, .admin-error").first().innerText();
+    check(/steps? due soon/.test(jobStatus), `the job reports what it sent ("${jobStatus}")`);
+    await record(page, "Daily jobs", "run by hand on a test site");
+    const { data: dueNotices } = await db.from("notifications").select("id, title, org_id")
+      .eq("kind", "milestone_due_soon").eq("subject_id", openStep?.id ?? bornOrder.id);
+    check((dueNotices ?? []).length === 1 && dueNotices[0].org_id === factoryOrg.id, "the factory, which acts on the step, is reminded once");
+    check(Boolean(dueNotices?.[0] && await mailFor(factoryEmail, dueNotices[0].title)), "and the reminder arrives by email");
+    await clickButton(page, "run daily jobs now");
+    await page.waitForTimeout(4000);
+    const { count: dueAgain } = await db.from("notifications").select("*", { count: "exact", head: true })
+      .eq("kind", "milestone_due_soon").eq("subject_id", openStep?.id ?? bornOrder.id);
+    check(dueAgain === 1, "running it again sends nothing twice");
+
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
     console.log("\nINVITE ONLY");

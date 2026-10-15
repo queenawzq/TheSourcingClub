@@ -92,6 +92,7 @@ const mockAdapter = {
     signOut: () => {},
     // No mail server behind the prototype; the panel shows where it would go.
     sendTestEmail: () => ({ sent: true, to: "operations@thesourcingclub.com" }),
+    runDailyJobs: () => ({ reminders: { capacity_reminders: 2, due_soon: 1 }, emails: { sent: 3, skipped: 0, failed: 0, configured: true } }),
     decideReview: (id, status) => {
       const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
       profiles = profiles.map((profile) => (profile.id === id ? { ...profile, status, tone } : profile));

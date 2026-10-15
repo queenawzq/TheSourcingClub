@@ -1483,7 +1483,8 @@ console.log("\nnotification emails");
   const { notificationPath } = await import("./generate-notification-email.mjs");
   const samples = [
     ["rfq", "quote_received"], ["rfq", "rfq_invited"], ["order", "order_created"],
-    ["milestone", "milestone_submitted"], ["payment", "payment_due"], ["thread", "message"], ["unknown", "x"],
+    ["milestone", "milestone_submitted"], ["payment", "payment_due"], ["thread", "message"],
+    ["capacity", "capacity_reminder"], ["milestone", "milestone_due_soon"], ["rfq", "rfq_matched"], ["unknown", "x"],
   ].flatMap(([subject_type, kind]) => [true, false].map((isFactory) => [{
     subject_type, kind, subject_id: "00000000-0000-0000-0000-000000000001", order_id: "00000000-0000-0000-0000-000000000002",
   }, isFactory]));
@@ -1559,6 +1560,65 @@ console.log("\nnotification emails");
     arrived ? ok("and it arrives, with the notification's title as its subject") : fail("no email arrived in Mailpit");
   }
   void messageNote;
+}
+
+console.log("\ndaily notifications and dates in the reader's zone");
+{
+  // The server's copy of the date wording must say what the bell says.
+  const { notificationBody } = await import("../src/shared/notification-text.mjs");
+  const { notificationBody: emailBody } = await import("./generate-notification-email.mjs");
+  const deadline = "2026-11-20T20:00:00+00:00";
+  const samples = [
+    { kind: "rfq_invited", body: "Quotes close Nov 20.", data: { quote_deadline: deadline } },
+    { kind: "rfq_matched", body: "Demo Brand is looking for a factory. Quotes close Nov 20.", data: { quote_deadline: deadline } },
+    { kind: "call_proposed", body: "Fit review", data: { starts_at: deadline, duration_minutes: 30 } },
+    { kind: "message", body: "A message", data: {} },
+    { kind: "rfq_invited", body: "Quotes close Nov 20.", data: null },
+  ];
+  const zones = [undefined, "UTC", "Asia/Shanghai", "America/New_York", "Not/AZone"];
+  samples.every((n) => zones.every((timeZone) => [true, false].every((withZone) =>
+    notificationBody(n, { timeZone, withZone }) === emailBody(n, { timeZone, withZone }))))
+    ? ok("an email words its dates as the bell does")
+    : fail("the email's date wording differs from the bell's");
+  const shanghai = notificationBody(samples[0], { timeZone: "Asia/Shanghai", withZone: true });
+  const utc = notificationBody(samples[0], { timeZone: "UTC", withZone: true });
+  /Nov 21/.test(shanghai) && /Nov 20/.test(utc) && /GMT\+8/.test(shanghai)
+    ? ok(`a deadline is said in the reader's zone: "${utc}" / "${shanghai}"`)
+    : fail(`deadline wording: "${utc}" / "${shanghai}"`);
+
+  const stranger = await signedInUser(`daily-stranger-${stamp}@example.com`);
+  const { error: runError } = await stranger.client.rpc("run_daily_notifications");
+  runError ? ok("a user CANNOT run the daily job") : fail("LEAK: a user ran the daily job");
+  const { error: matchError } = await stranger.client.rpc("notify_rfq_matches", { target_rfq: "00000000-0000-0000-0000-000000000001" });
+  matchError ? ok("nor tell factories about a request") : fail("LEAK: a user sent request matches");
+  const { data: remindersRead, error: remindersError } = await stranger.client.from("notification_reminders").select("kind").limit(1);
+  remindersError || (remindersRead ?? []).length === 0 ? ok("nor read which reminders went out") : fail("LEAK: a user read the reminders");
+  const { data: noticeData, error: noticeDataError } = await admin.from("notifications").select("data").limit(1);
+  !noticeDataError && Array.isArray(noticeData) ? ok("notifications carry data") : fail("notifications.data", noticeDataError);
+
+  // The route refuses everyone but the cron and staff. Running it for real is
+  // the e2e's job (it sends reminders to whoever is due).
+  const { default: daily } = await import("../api/cron-daily.js");
+  const callDaily = async (method, authorization) => {
+    const saved = { ...process.env };
+    Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, CRON_SECRET: "smoke-secret" });
+    let status = 0;
+    const response = { status(code) { status = code; return response; }, json() { return response; } };
+    try {
+      await daily({ method, headers: { host: "127.0.0.1:5173", ...(authorization ? { authorization } : {}) } }, response);
+    } finally {
+      for (const key of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "CRON_SECRET"]) {
+        if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
+      }
+    }
+    return status;
+  };
+  const { data: strangerSession } = await stranger.client.auth.getSession();
+  (await callDaily("GET", null)) === 401 ? ok("the daily job refuses a call with no secret") : fail("the daily job ran without its secret");
+  (await callDaily("GET", "Bearer wrong")) === 401 ? ok("and a wrong secret") : fail("the daily job ran with a wrong secret");
+  (await callDaily("POST", `Bearer ${strangerSession?.session?.access_token}`)) === 401
+    ? ok("and a signed-in user who is not staff") : fail("LEAK: a user ran the daily job through the route");
+  (await callDaily("PUT", null)) === 405 ? ok("and any other method") : fail("the daily job took a PUT");
 }
 
 console.log("\nphase 5 — the home screen, and joining a team");

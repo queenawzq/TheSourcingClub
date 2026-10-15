@@ -24,7 +24,7 @@ import { listOrders } from "../../lib/domain/order.js";
 import { listArchivedOrderIds } from "../../lib/domain/order-tabs.js";
 import { listThreads } from "../../lib/domain/message.js";
 import {
-  activityType, countUnreadNotifications, listNotifications, markAllRead, notificationLink, timeAgo,
+  activityType, countUnreadNotifications, listNotifications, markAllRead, notificationBody, notificationLink, timeAgo,
 } from "../../lib/domain/notifications.js";
 import { inviteBrand, savingsFor } from "../../lib/domain/credits.js";
 import { toProjectCard, toRfqCard } from "../live-adapter.js";
@@ -149,7 +149,7 @@ function toActivityItem(notification) {
     notification,
     type: activityType(notification.kind),
     title: notification.title,
-    meta: notification.body ?? "",
+    meta: notificationBody(notification),
     time: timeAgo(notification.created_at),
     unread: !notification.read_at,
   };

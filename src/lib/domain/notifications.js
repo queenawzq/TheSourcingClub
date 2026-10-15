@@ -13,7 +13,7 @@ export async function listNotifications(orgId, { limit = 20 } = {}) {
   return unwrap(
     await supabase
       .from("notifications")
-      .select("id, kind, subject_type, subject_id, order_id, title, body, read_at, created_at")
+      .select("id, kind, subject_type, subject_id, order_id, title, body, data, read_at, created_at")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false })
       .limit(limit),
@@ -60,6 +60,7 @@ export async function markAllRead(orgId) {
 }
 
 export { notificationLink } from "../../shared/notification-link.mjs";
+export { notificationBody } from "../../shared/notification-text.mjs";
 
 /**
  * The label the Activity drawer puts on a notification. The design types its
