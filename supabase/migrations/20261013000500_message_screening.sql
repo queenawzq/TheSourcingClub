@@ -1,7 +1,7 @@
 -- ============================================================================
 -- 072  Every message a brand or a factory sends is checked first
 -- ----------------------------------------------------------------------------
--- 20261013000100 let a sender choose `checking` or `delivered`. Now the choice
+-- 20261013000400 let a sender choose `checking` or `delivered`. Now the choice
 -- is gone: a message written by a signed-in user (the browser's publishable
 -- key, role `authenticated`) is always saved as `checking`, whatever the
 -- insert asked for, and api/screen-message.js delivers it or holds it for
