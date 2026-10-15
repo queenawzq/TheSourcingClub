@@ -14,6 +14,7 @@ import React, { useState } from "react";
 import { FlowShell, QuotesScreen } from "../../prototype/main.jsx";
 import { openRfqThread } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
+import { matchFit } from "../rfq/match-fit.js";
 import { useQuoteReview } from "./useQuoteReview.js";
 
 export default function LiveQuotes({ rfqId }) {
@@ -56,56 +57,57 @@ export default function LiveQuotes({ rfqId }) {
   /**
    * A live quote as the designed card expects one.
    *
-   * The design shows a fit percentage and a response time on every card. Fit
-   * is a per-pair score this list has not asked for, and response time is not
-   * recorded at all — both are left empty rather than filled with a number
-   * that came from nowhere.
+   * Fit comes from the same RFQ-to-factory profile score used while inviting
+   * vendors, so brands see a consistent suitability label on the quote card.
    */
-  const shaped = state.quotes.map(({ raw, view }) => ({
-    id: view.id,
-    factoryOrgId: raw.factory_org_id,
-    profileHref: `/app.html/factories/${raw.factory_org_id}?from=quotes`,
-    onOpenProfile: () => navigate(`/factories/${raw.factory_org_id}?from=quotes`),
-    initials: view.initials,
-    name: view.name,
-    // As the vendor typed it on their profile ("Porto, Portugal").
-    location: raw.orgs?.factory_profiles?.location ?? "",
-    // The badge says TSC has checked this vendor, so only a verified one gets it.
-    trust: raw.orgs?.factory_profiles?.verification_status === "verified" ? "trusted" : "",
-    fit: "",
-    response: "",
-    fitType: `Version ${view.version}`,
-    fitSummary: view.notes,
-    factoryNote: raw.shipping_notes ?? "",
-    price: view.price || "—",
-    quoteQuantity: view.quantity || "—",
-    lead: view.lead || "—",
-    total: view.total || "—",
-    stats: [
-      ["Unit price", view.price || "—"],
-      ["Quantity", view.quantity || "—"],
-      ["Bulk lead time", view.lead || "—"],
-      ["Total", view.total || "—"],
-    ],
-    // What the compare table prints, from this quote rather than the
-    // prototype's per-vendor constants. Blank where the vendor gave nothing.
-    comparison: {
-      productionSubtotal: view.productionSubtotal || "—",
-      sampleSubtotal: view.sampleSubtotal || "—",
-      additionalMaterialSubtotal: "—",
-      paymentTerms: view.paymentTerms || "—",
-      samplePlan: view.samplePlan || "—",
-      shipping: view.shipping || "—",
-      capacityWindow: view.capacityWindow || "—",
+  const shaped = state.quotes.map(({ raw, view, matchScore }) => {
+    const fit = matchFit(matchScore);
+    return {
+      id: view.id,
+      factoryOrgId: raw.factory_org_id,
+      profileHref: `/app.html/factories/${raw.factory_org_id}?from=quotes`,
+      onOpenProfile: () => navigate(`/factories/${raw.factory_org_id}?from=quotes`),
+      initials: view.initials,
+      name: view.name,
+      // As the vendor typed it on their profile ("Porto, Portugal").
+      location: raw.orgs?.factory_profiles?.location ?? "",
+      // The badge says TSC has checked this vendor, so only a verified one gets it.
+      trust: raw.orgs?.factory_profiles?.verification_status === "verified" ? "trusted" : "",
+      fit: "",
+      response: "",
+      fitType: fit?.label ?? "Potential fit",
+      fitSummary: fit ? `${fit.score}% match to this request` : "Profile suitability for this request",
+      factoryNote: view.notes,
+      price: view.price || "—",
+      quoteQuantity: view.quantity || "—",
+      lead: view.lead || "—",
       total: view.total || "—",
-    },
-    products: [],
-    categories: [],
-    capabilities: [],
-    notes: view.notes ? [view.notes] : [],
-    materialCosts: [],
-    samples: [],
-  }));
+      stats: [
+        ["Unit price", view.price || "—"],
+        ["Quantity", view.quantity || "—"],
+        ["Bulk lead time", view.lead || "—"],
+        ["Total", view.total || "—"],
+      ],
+      // What the compare table prints, from this quote rather than the
+      // prototype's per-vendor constants. Blank where the vendor gave nothing.
+      comparison: {
+        productionSubtotal: view.productionSubtotal || "—",
+        sampleSubtotal: view.sampleSubtotal || "—",
+        additionalMaterialSubtotal: "—",
+        paymentTerms: view.paymentTerms || "—",
+        samplePlan: view.samplePlan || "—",
+        shipping: view.shipping || "—",
+        capacityWindow: view.capacityWindow || "—",
+        total: view.total || "—",
+      },
+      products: [],
+      categories: [],
+      capabilities: [],
+      notes: view.notes ? [view.notes] : [],
+      materialCosts: [],
+      samples: [],
+    };
+  });
 
   return (
     <FlowShell screen="quotes" canBack onBack={() => navigate("/rfqs")} primaryLabel="">

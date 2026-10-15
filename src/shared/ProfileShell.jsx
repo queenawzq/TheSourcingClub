@@ -46,7 +46,7 @@ export function PrototypeSideNav({
           <>
             <span className="nav-divider" />
             <button type="button" onClick={onSignOut} aria-label={signOutLabel} title={collapsed ? signOutLabel : undefined}>
-              <img className="nav-icon" src="/assets/prototype-icons/expand.svg" alt="" />
+              <img className="nav-icon" src="/assets/prototype-icons/logout.svg" alt="" />
               <span className="nav-label">{signOutLabel}</span>
             </button>
           </>

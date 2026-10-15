@@ -14,7 +14,7 @@ import { agreeSchedule, getOrder } from "../../lib/domain/order.js";
 import { saveSchedule } from "../../lib/domain/milestone.js";
 import { listPayments } from "../../lib/domain/payment.js";
 import { toCents } from "../../lib/money.js";
-import { editRow, newRow, scheduleLines, scheduleRows, scheduleTotal, stepAmount } from "./order-view.js";
+import { editRow, moveScheduleRow, newRow, scheduleLines, scheduleRows, scheduleTotal, stepAmount } from "./order-view.js";
 
 const sameRows = (a, b) => JSON.stringify(scheduleLines(a)) === JSON.stringify(scheduleLines(b));
 
@@ -68,6 +68,7 @@ export function useScheduleDraft({ order, milestones, reload, onFund }) {
     // Confirming signs what is SAVED, so edits on screen are saved first.
     canConfirm: balances && !busy,
     onChange: (index, patch) => setRows((current) => current.map((row, i) => (i === index ? editRow(row, patch) : row))),
+    onMove: (index, offset) => setRows((current) => moveScheduleRow(current, index, offset)),
     onAdd: () => setRows((current) => [...current, newRow(current)]),
     onRemove: (index) => setRows((current) => current.filter((_, i) => i !== index)),
     save: () => run(() => saveSchedule(order.id, scheduleLines(rows))),

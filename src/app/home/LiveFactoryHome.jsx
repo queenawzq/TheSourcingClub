@@ -266,7 +266,7 @@ export default function LiveFactoryHome({ org, profile }) {
       onPurchaseCredits={() => navigate("/payout")}
       onViewRfqs={() => navigate("/browse")}
       onBrowseRfqs={() => navigate("/browse")}
-      onViewRfqDetail={(rfq) => navigate(rfq?.id ? `/browse/${rfq.id}` : "/browse")}
+      onViewRfqDetail={(rfq) => navigate(rfq?.id ? `/browse/${rfq.id}?from=dashboard` : "/")}
       onViewProjects={(project) => navigate(project?.id ? `/orders/${project.id}` : "/orders")}
       onViewProfile={() => navigate(profilePath)}
       onOpenActivity={() => navigate("/notifications")}

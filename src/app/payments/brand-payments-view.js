@@ -9,9 +9,10 @@
  *   remaining    what is still to pay on open orders (outstanding_cents)
  *   next payment the open orders' next payment, soonest due first
  * Every sum comes from production_order_summary except "funded", which is the
- * held payments' own amounts. The list shows what has happened or is owed
- * now; a step not reached yet counts only in "remaining". A row's amount is
- * what the brand is charged: the step plus the service fee.
+ * held payments' own amounts. The transaction list contains only attempted or
+ * completed payments. Due payments have not moved money, so they are returned
+ * separately as upcoming obligations. A row's amount is what the brand is
+ * charged: the step plus the service fee.
  */
 import { feeCents } from "../../lib/domain/payment.js";
 import { formatMoney } from "../../lib/money.js";
@@ -20,7 +21,7 @@ import { formatMoney } from "../../lib/money.js";
 export const PAYMENT_STATUS = {
   due: "Due",
   failed: "Failed",
-  processing: "Processing",
+  processing: "Payment processing",
   // A bank-wire claim made before payments moved to Stripe.
   sent: "Sent",
   confirmed: "Funded",
@@ -49,7 +50,7 @@ export function brandPaymentsView({ orders, payments }) {
     .filter((order) => order.next_payment_cents)
     .sort((a, b) => String(a.next_payment_due_on ?? "9999").localeCompare(String(b.next_payment_due_on ?? "9999")))[0];
 
-  const rows = payments
+  const paymentRows = payments
     .filter((payment) => PAYMENT_STATUS[payment.state] && byOrder.has(payment.order_id))
     .sort((a, b) => String(movedAt(b)).localeCompare(String(movedAt(a))))
     .map((payment) => {
@@ -60,14 +61,20 @@ export function brandPaymentsView({ orders, payments }) {
         orderId: payment.order_id,
         title: payment.order_milestones?.title || "Payment",
         client: order.factory?.name ?? "Factory",
-        meta: `${orderTitle} - ${payment.state === "failed" && payment.failure_reason
-          ? payment.failure_reason
-          : payment.state === "due" && payment.order_milestones?.due_on ? `due ${day(payment.order_milestones.due_on)}` : day(movedAt(payment))}`,
-        status: PAYMENT_STATUS[payment.state],
+        date: day(payment.state === "due" ? (payment.order_milestones?.due_on ?? payment.due_at ?? movedAt(payment)) : movedAt(payment)),
+        meta: `${orderTitle}${payment.state === "failed" && payment.failure_reason ? ` · ${payment.failure_reason}` : ""}`,
+        status: payment.state === "due" ? "Not paid" : PAYMENT_STATUS[payment.state],
         state: payment.state,
         amount: formatMoney(charged(payment), payment.currency),
       };
     });
+  const rows = paymentRows.filter((payment) => payment.state !== "due");
+  const upcoming = paymentRows
+    .filter((payment) => payment.state === "due")
+    .map((payment) => ({
+      ...payment,
+      meta: `${payment.client} · ${payment.meta}`,
+    }));
 
   return {
     metrics: [
@@ -77,6 +84,7 @@ export function brandPaymentsView({ orders, payments }) {
       ["next payment", next ? formatMoney(next.next_payment_cents, next.currency) : "—", "highlight"],
     ],
     rows,
+    upcoming,
     vendors: [...new Set(rows.map((row) => row.client))],
   };
 }

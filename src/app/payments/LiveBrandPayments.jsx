@@ -20,6 +20,7 @@ import { listDiscountCodes, savingsFor } from "../../lib/domain/credits.js";
 import { useRouter } from "../../lib/router.jsx";
 import { brandPaymentsView } from "./brand-payments-view.js";
 import "../browse/browse.css";
+import "../order/payout.css";
 
 export default function LiveBrandPayments({ org }) {
   const { navigate } = useRouter();
@@ -70,10 +71,10 @@ export default function LiveBrandPayments({ org }) {
           metrics: state.view.metrics,
           rows: state.view.rows.map((row) => ({
             ...row,
-            href: `/app.html/orders/${row.orderId}/payments/${row.id}`,
-            onOpen: () => navigate(`/orders/${row.orderId}/payments/${row.id}`),
+            href: `/app.html/payments/${row.orderId}/${row.id}`,
+            onOpen: () => navigate(`/payments/${row.orderId}/${row.id}`),
           })),
-          empty: "No payments yet. A payment shows here once a step on one of your orders falls due.",
+          empty: "No payment transactions yet.",
           discount: state.savings ? { amount: state.savings.amount, note: state.savings.note } : null,
           codes: state.codes,
           onCopy: copy,

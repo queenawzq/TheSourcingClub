@@ -1,11 +1,9 @@
 /**
  * The contract step: the terms about to be agreed, read back, then award.
  *
- * `ContractScreen` is Queena's "Confirm final terms" card. Live it has nothing
- * to write — award_quote takes no terms, and create_order_from_award snapshots
- * the quote's own in the same transaction — so every field here is read-only.
- * What it adds is the moment the design asks for: seeing exactly what is being
- * committed to before committing, instead of one click on a card doing it.
+ * `ContractScreen` is Queena's "Confirm final terms" card. The accepted quote
+ * remains a read-only snapshot, while the brand can refine the work-detail
+ * copy before confirming the order.
  *
  * Awarding is owner-only in the database; a member is told so here rather
  * than refused after clicking.
@@ -80,7 +78,7 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
       onBack={back}
       onNext={award}
       busy={busy}
-      primaryLabel={blocked ? "" : busy ? "Creating the order…" : "Confirm and create order"}
+      primaryLabel={blocked ? "" : busy ? "Creating production steps…" : "Create production steps"}
       rail={found ? {
         vendor: {
           initials: found.view.initials,

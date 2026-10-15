@@ -10,14 +10,18 @@ import { FactoryQuoteSent } from "../../factory-prototype/main.jsx";
 import { getRfq } from "../../lib/domain/rfq.js";
 import { getMyQuote, getSampleLines, reviseQuote } from "../../lib/domain/quote.js";
 import { quoteCreditCost } from "../../lib/domain/credits.js";
-import { formatMoney } from "../../lib/money.js";
+import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 import QuoteActionDialog, { reviseCopy } from "./QuoteActionDialog.jsx";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
 export default function LiveQuoteSent({ org, rfqId, profile }) {
   const { navigate } = useRouter();
+  const requestOrigin = getRequestOrigin();
+  const requestPath = withRequestOrigin(`/browse/${rfqId}`, requestOrigin);
+  const quotePath = withRequestOrigin(`/browse/${rfqId}/quote`, requestOrigin);
   const [rfq, setRfq] = useState(null);
   const [sent, setSent] = useState(null);
   const [quote, setQuote] = useState(null);
@@ -39,14 +43,17 @@ export default function LiveQuoteSent({ org, rfqId, profile }) {
       if (!quote || cancelled) return;
       const lines = (await getSampleLines(quote.id).catch(() => [])) ?? [];
       const production = (quote.unit_price_cents ?? 0) * (quote.production_quantity ?? 0);
+      const productionMax = (quote.unit_price_max_cents ?? quote.unit_price_cents ?? 0) * (quote.production_quantity ?? 0);
       const samples = lines.reduce((sum, line) => sum + (line.cost_cents ?? 0), 0);
       if (cancelled) return;
       setQuote(quote);
       setSent({
-        unitPrice: quote.unit_price_cents ? formatMoney(quote.unit_price_cents) : "—",
+        unitPrice: quote.unit_price_cents
+          ? formatRange(quote.unit_price_cents, quote.unit_price_max_cents ?? quote.unit_price_cents, quote.currency)
+          : "—",
         quantity: quote.production_quantity ? `${quote.production_quantity} units` : "—",
         leadTime: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "—",
-        total: production ? formatMoney(production + samples) : "—",
+        total: production ? formatRange(production + samples, productionMax + samples, quote.currency) : "—",
         quoteDue: null,
       });
     })();
@@ -59,7 +66,7 @@ export default function LiveQuoteSent({ org, rfqId, profile }) {
   // save. A quote that is still a draft (the send failed) just goes back.
   function backToEdit() {
     if (quote?.status === "submitted" && rfq?.status === "open") setAsking(true);
-    else navigate(quote?.status === "draft" ? `/browse/${rfqId}/quote` : `/browse/${rfqId}`);
+    else navigate(quote?.status === "draft" ? quotePath : requestPath);
   }
 
   return (
@@ -70,7 +77,7 @@ export default function LiveQuoteSent({ org, rfqId, profile }) {
           {...reviseCopy(rfq?.orgs?.name, creditCost)}
           onConfirm={async () => {
             await reviseQuote(quote.id);
-            navigate(`/browse/${rfqId}/quote`);
+            navigate(quotePath);
           }}
           onClose={() => setAsking(false)}
         />

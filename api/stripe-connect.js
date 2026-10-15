@@ -9,6 +9,7 @@ import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, releaseOwedTo, rep
  *   refresh    read the account back after onboarding and save its status;
  *              pays out anything already owed once transfers are on
  *   dashboard  a one-time link to the factory's Express dashboard
+ *   balance    the factory's live balances and recent bank payouts
  *
  * Owners only: where a company's money goes is the highest-value thing in
  * this system (the same rule as factory_payout_accounts).
@@ -85,6 +86,35 @@ export default async function handler(request, response) {
       const saved = await saveConnectAccount(db, orgId, account);
       const released = saved.transfers_active ? await releaseOwedTo({ stripe, db, factoryOrgId: orgId }) : [];
       return reply(response, 200, { account: saved, released });
+    }
+
+    if (action === "balance") {
+      const [balance, payouts, externalAccounts] = await Promise.all([
+        stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
+        stripe.payouts.list({ limit: 25 }, { stripeAccount: existing.stripe_account_id }),
+        stripe.accounts.listExternalAccounts(existing.stripe_account_id, { limit: 10 }),
+      ]);
+      return reply(response, 200, {
+        available: balance.available.map(({ amount, currency }) => ({ amount, currency })),
+        pending: balance.pending.map(({ amount, currency }) => ({ amount, currency })),
+        payouts: payouts.data.map(({ id, amount, currency, status, created, arrival_date: arrivalDate }) => ({
+          id,
+          amount,
+          currency,
+          status,
+          created,
+          arrival_date: arrivalDate,
+        })),
+        methods: externalAccounts.data.map((method) => ({
+          id: method.id,
+          type: method.object === "card" ? "card" : "bank_account",
+          name: method.object === "card" ? method.brand : method.bank_name,
+          last4: method.last4,
+          currency: method.currency,
+          country: method.country,
+          default: Boolean(method.default_for_currency),
+        })),
+      });
     }
 
     if (action === "dashboard") {

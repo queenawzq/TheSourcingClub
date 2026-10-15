@@ -13,14 +13,19 @@
  */
 import React, { useEffect, useState } from "react";
 import { FactoryReviewTotal } from "../../factory-prototype/main.jsx";
-import { getRfq } from "../../lib/domain/rfq.js";
+import { getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
 import { formatCapacityWindow, getMyQuote, getSampleLines, submitQuote } from "../../lib/domain/quote.js";
 import { creditBalance, quoteCreditCost } from "../../lib/domain/credits.js";
-import { formatMoney } from "../../lib/money.js";
+import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import { matchFit } from "../rfq/match-fit.js";
+import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 
 export default function LiveQuoteReview({ org, rfqId, profile }) {
   const { navigate } = useRouter();
+  const requestOrigin = getRequestOrigin();
+  const quotePath = withRequestOrigin(`/browse/${rfqId}/quote`, requestOrigin);
+  const sentPath = withRequestOrigin(`/browse/${rfqId}/quote/sent`, requestOrigin);
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -29,14 +34,15 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
     let cancelled = false;
     (async () => {
       try {
-        const [rfq, quote, cost, balance] = await Promise.all([
+        const [rfq, quote, cost, balance, scores] = await Promise.all([
           getRfq(rfqId),
           getMyQuote(rfqId, org.id),
           quoteCreditCost(),
           creditBalance(org.id),
+          matchScoresForRfq(rfqId, [org.id]).catch(() => new Map()),
         ]);
         const lines = quote?.id ? await getSampleLines(quote.id) : [];
-        if (!cancelled) setState({ rfq, quote, cost, balance, lines: lines ?? [] });
+        if (!cancelled) setState({ rfq, quote, cost, balance, lines: lines ?? [], matchScore: scores.get(org.id) ?? null });
       } catch (failure) {
         if (!cancelled) setError(failure);
       }
@@ -47,18 +53,20 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
   if (error && !state) return <p className="composer-error" role="alert">{error.message}</p>;
   if (!state) return null;
 
-  const { rfq, quote, cost, balance, lines } = state;
+  const { rfq, quote, cost, balance, lines, matchScore } = state;
+  const fit = matchFit(matchScore);
 
   // A vendor who has already sent this quote belongs on the confirmation, not
   // on a page offering to charge them again.
   if (!quote) return <p className="composer-error" role="alert">Start a quote before reviewing it.</p>;
   if (quote.status !== "draft") {
-    navigate(`/browse/${rfqId}/quote/sent`);
+    navigate(sentPath);
     return null;
   }
 
   const sampleTotal = lines.reduce((sum, line) => sum + (line.cost_cents ?? 0), 0);
-  const production = (quote.unit_price_cents ?? 0) * (quote.production_quantity ?? 0);
+  const productionMin = (quote.unit_price_cents ?? 0) * (quote.production_quantity ?? 0);
+  const productionMax = (quote.unit_price_max_cents ?? quote.unit_price_cents ?? 0) * (quote.production_quantity ?? 0);
 
   async function send() {
     if (busy) return;
@@ -66,7 +74,7 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
     setError(null);
     try {
       await submitQuote(quote.id);
-      navigate(`/browse/${rfqId}/quote/sent`);
+      navigate(sentPath);
     } catch (failure) {
       setError(failure);
       setBusy(false);
@@ -83,7 +91,9 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
       error={error?.message ?? null}
       quoteValues={{
         brandQuestions: [],
-        unitPrice: quote.unit_price_cents ? formatMoney(quote.unit_price_cents) : "",
+        unitPrice: quote.unit_price_cents
+          ? formatRange(quote.unit_price_cents, quote.unit_price_max_cents ?? quote.unit_price_cents, quote.currency)
+          : "",
         quantity: quote.production_quantity ? `${quote.production_quantity} units` : "",
         leadTime: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "",
         capacityWindow: formatCapacityWindow(quote),
@@ -110,14 +120,18 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
         initials: (rfq.orgs?.name ?? "??").slice(0, 2).toUpperCase(),
         quantity: quote.production_quantity ? `${quote.production_quantity} units` : "",
         specialty: rfq.brief ?? "",
-        budget: "",
+        budget: formatRange(
+          rfq.target_unit_price_min_cents,
+          rfq.target_unit_price_max_cents,
+          rfq.currency,
+        ),
         samples: rfq.requires_sample ? "Sample required" : "No sample",
         quoteDue: "",
         location: "",
         images: [],
         tags: [],
-        capacity: [],
-        fitTone: "",
+        capacity: fit ? [fit.label] : [],
+        fitTone: fit?.tone ?? "",
         files: [],
         paymentVerified: false,
         trust: "",
@@ -126,18 +140,22 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
       priceTotal={{
         brand: rfq.orgs?.name ?? "",
         location: "",
-        unitPrice: quote.unit_price_cents ? formatMoney(quote.unit_price_cents) : "—",
+        unitPrice: quote.unit_price_cents
+          ? formatRange(quote.unit_price_cents, quote.unit_price_max_cents ?? quote.unit_price_cents, quote.currency)
+          : "—",
         quantity: quote.production_quantity ? `${quote.production_quantity} units` : "—",
-        productionSubtotal: production ? formatMoney(production) : "—",
+        productionSubtotal: productionMin ? formatRange(productionMin, productionMax, quote.currency) : "—",
         samplePlan: lines.length ? lines.map((line) => line.stage).filter(Boolean).join(" + ") : "—",
         sampleTotal: lines.length ? formatMoney(sampleTotal) : "—",
         paymentTerms: quote.deposit_pct
           ? `${quote.deposit_pct}% / ${quote.balance_pct ?? 100 - quote.deposit_pct}%`
           : "—",
-        brandSees: production ? formatMoney(production + sampleTotal) : "—",
+        brandSees: productionMin
+          ? formatRange(productionMin + sampleTotal, productionMax + sampleTotal, quote.currency)
+          : "—",
       }}
-      onBack={() => navigate(`/browse/${rfqId}/quote`)}
-      onEdit={() => navigate(`/browse/${rfqId}/quote`)}
+      onBack={() => navigate(quotePath)}
+      onEdit={() => navigate(quotePath)}
       onPurchaseCredits={() => navigate("/payout")}
       // The draft was saved on the way here, so "Save draft" is leaving it for
       // later: it waits under Drafts on the RFQs page.

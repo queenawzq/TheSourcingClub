@@ -27,10 +27,12 @@ import {
   setSampleLines,
   submitQuote,
 } from "../../lib/domain/quote.js";
-import { getQuestions, getRfq } from "../../lib/domain/rfq.js";
+import { getQuestions, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
 import { listTermsByKind } from "../../lib/domain/taxonomy.js";
-import { toCents } from "../../lib/money.js";
+import { formatRange, toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import { matchFit } from "../rfq/match-fit.js";
+import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 
 const KINDS = ["payment_term", "incoterm"];
 
@@ -39,9 +41,23 @@ const firstNumber = (text) => {
   return match ? Number(match[0].replace(/,/g, "")) : null;
 };
 
+function priceRange(text) {
+  const numbers = String(text ?? "").match(/\d[\d,]*(?:\.\d+)?/g)?.map((value) => Number(value.replace(/,/g, ""))) ?? [];
+  if (!numbers.length) return { min: null, max: null };
+  const first = numbers[0];
+  const second = numbers[1] ?? first;
+  return { min: Math.min(first, second), max: Math.max(first, second) };
+}
+
 /** "30% deposit / 70% before shipment" → the deposit-30-70 term. */
 function paymentTermFrom(terms, typed) {
   const text = String(typed ?? "").toLowerCase();
+  const split = text.match(/\b(\d{1,3})\s*%?\s*(?:\/|-|and)\s*(\d{1,3})\s*%?\b/);
+  if (split && Number(split[1]) + Number(split[2]) === 100) {
+    const slug = `deposit-${Number(split[1])}-${Number(split[2])}`;
+    const hit = terms.find((term) => term.slug === slug);
+    if (hit) return hit;
+  }
   const deposit = text.match(/(\d{2})\s*%/);
   if (deposit) {
     const slug = `deposit-${deposit[1]}-${100 - Number(deposit[1])}`;
@@ -68,13 +84,37 @@ function depositPctFrom(slug) {
   return null;
 }
 
+function missingQuoteFields(values, terms) {
+  const missing = [];
+  if (!(firstNumber(values.unitPrice) > 0)) missing.push("unit price");
+  if (!(firstNumber(values.quantity) > 0)) missing.push("production quantity");
+  if (!(firstNumber(values.leadTime) > 0)) missing.push("bulk lead time");
+  if (!String(values.capacityWindow ?? "").trim()) missing.push("open capacity window");
+  const paymentTerms = String(values.paymentTerms ?? "").trim();
+  if (!paymentTerms) {
+    missing.push("payment terms");
+  } else if (!paymentTermFrom(terms.payment_term ?? [], paymentTerms)) {
+    missing.push("payment terms (try “30/70”, “paid in full”, or “Net 30”)");
+  }
+  if (!incotermFrom(terms.incoterm ?? [], values.incoterms)) missing.push("shipping terms");
+  const validUntil = String(values.validUntil ?? "").trim();
+  const today = new Date();
+  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(validUntil) || validUntil < todayIso) missing.push("quote valid until");
+  return missing;
+}
+
 export default function LiveQuoteForm({ org, rfqId, profile }) {
   const { navigate } = useRouter();
+  const requestOrigin = getRequestOrigin();
+  const requestPath = withRequestOrigin(`/browse/${rfqId}`, requestOrigin);
+  const reviewPath = withRequestOrigin(`/browse/${rfqId}/quote/review`, requestOrigin);
   const [rfq, setRfq] = useState(null);
   const [quote, setQuote] = useState(null);
   const [lines, setLines] = useState([]);
   const [terms, setTerms] = useState({});
   const [questions, setQuestions] = useState([]);
+  const [matchScore, setMatchScore] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [draftState, setDraftState] = useState(null);
@@ -83,14 +123,16 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
 
   const load = useCallback(async () => {
     try {
-      const [request, vocab, asked] = await Promise.all([
+      const [request, vocab, asked, scores] = await Promise.all([
         getRfq(rfqId),
         listTermsByKind(kinds),
         getQuestions(rfqId),
+        matchScoresForRfq(rfqId, [org.id]).catch(() => new Map()),
       ]);
       setRfq(request);
       setTerms(vocab);
       setQuestions(asked ?? []);
+      setMatchScore(scores.get(org.id) ?? null);
 
       // A draft is started only when this vendor has no quote here at all.
       // Anything else — sent, decided, withdrawn — is not editable, and the
@@ -99,7 +141,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       // read-back, where editing a sent quote asks first.
       const latest = await getLatestQuote(rfqId, org.id);
       if (latest && latest.status !== "draft") {
-        navigate(`/browse/${rfqId}`);
+        navigate(requestPath);
         return;
       }
       const mine = latest ?? (await createDraftQuote(rfqId, org.id));
@@ -108,19 +150,20 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     } catch (failure) {
       setError(failure);
     }
-  }, [rfqId, org.id, kinds, navigate]);
+  }, [rfqId, org.id, kinds, navigate, requestPath]);
 
   useEffect(() => { load(); }, [load]);
 
   /** Write what is on the card to the draft. */
   async function persist(values) {
-    const unit = firstNumber(values.unitPrice);
+    const unit = priceRange(values.unitPrice);
     const payment = paymentTermFrom(terms.payment_term ?? [], values.paymentTerms);
     const incoterm = incotermFrom(terms.incoterm ?? [], values.incoterms);
     const depositPct = depositPctFrom(payment?.slug);
 
     await saveQuote(quote.id, {
-      unit_price_cents: unit == null ? null : toCents(unit),
+      unit_price_cents: unit.min == null ? null : toCents(unit.min),
+      unit_price_max_cents: unit.max == null ? null : toCents(unit.max),
       production_quantity: firstNumber(values.quantity),
       bulk_lead_time_days: firstNumber(values.leadTime),
       payment_term_id: payment?.id ?? null,
@@ -136,8 +179,8 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       deposit_pct: depositPct,
       balance_pct: depositPct == null ? null : 100 - depositPct,
       valid_until: (() => {
-        const parsed = Date.parse(values.validUntil ?? "");
-        return Number.isNaN(parsed) ? null : new Date(parsed).toISOString().slice(0, 10);
+        const entered = String(values.validUntil ?? "").trim();
+        return /^\d{4}-\d{2}-\d{2}$/.test(entered) ? entered : null;
       })(),
     });
 
@@ -167,12 +210,17 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
    */
   async function saveAndReview(values) {
     if (busy || !quote) return;
+    const missing = missingQuoteFields(values, terms);
+    if (missing.length) {
+      setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.`));
+      return;
+    }
     setBusy(true);
     setError(null);
 
     try {
       await persist(values);
-      navigate(`/browse/${rfqId}/quote/review`);
+      navigate(reviewPath);
     } catch (failure) {
       setError(failure);
     } finally {
@@ -198,6 +246,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
 
   const money = (cents) => (cents == null ? "" : `$${(cents / 100).toFixed(2)}`);
   const line = (index) => lines[index];
+  const fit = matchFit(matchScore);
 
   return (
     <FactorySubmitQuote
@@ -210,15 +259,16 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         specialty: rfq.brief ?? "",
         images: [],
         tags: [],
-        // The card lists the fit reasons it was matched on. There is no
-        // per-pair score behind this list, so it is empty rather than invented
-        // — and empty, not absent, because the card reads it.
-        capacity: [],
+        capacity: fit ? [fit.label] : [],
         initials: (rfq.orgs?.name ?? "??").slice(0, 2).toUpperCase(),
-        budget: "",
+        budget: formatRange(
+          rfq.target_unit_price_min_cents,
+          rfq.target_unit_price_max_cents,
+          rfq.currency,
+        ),
         samples: rfq.requires_sample ? "Sample required" : "No sample",
         quoteDue: "",
-        fitTone: "",
+        fitTone: fit?.tone ?? "",
         // Absent, the card prints "undefined" beside the brand name and the
         // design's three example attachments.
         location: "",
@@ -229,7 +279,9 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       }}
       values={{
         brandQuestions: questions.map((question) => question.prompt),
-        unitPrice: quote.unit_price_cents ? `${money(quote.unit_price_cents)} / unit` : "",
+        unitPrice: quote.unit_price_cents
+          ? `${formatRange(quote.unit_price_cents, quote.unit_price_max_cents ?? quote.unit_price_cents, quote.currency)} / unit`
+          : "",
         quantity: quote.production_quantity
           ? `${quote.production_quantity} units`
           : rfq.quantity_total
@@ -254,7 +306,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         "sample.1.timing": line(1)?.timing_days ? `${line(1).timing_days} days` : "",
         "sample.1.includes": line(1)?.includes ?? "",
       }}
-      onBack={() => navigate(`/browse/${rfqId}`)}
+      onBack={() => navigate(requestPath)}
       onReviewTotal={saveAndReview}
       onSaveDraft={saveDraft}
       draftState={draftState}
