@@ -79,7 +79,7 @@ export default function LiveSaved({ org }) {
       brands={brands}
       // Saved brands first, as the design; a vendor with none opens on its requests.
       initialTab={brands.length || !saved.length ? "brands" : "rfqs"}
-      onViewRfq={(project) => navigate(project?.id ? `/browse/${project.id}` : "/browse")}
+      onViewRfq={(project) => navigate(project?.id ? `/browse/${project.id}?from=saved` : "/saved")}
       onViewBrand={(brand) => navigate(`/brands/${brand.orgId}?from=saved`)}
     />
   );

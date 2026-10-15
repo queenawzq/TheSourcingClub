@@ -6,7 +6,7 @@
  * request and the same figures, so they load them the same way.
  */
 import { useCallback, useEffect, useState } from "react";
-import { getColourSplits, getQuestions, getRfq } from "../../lib/domain/rfq.js";
+import { getColourSplits, getQuestions, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
 import { listQuotesForRfq } from "../../lib/domain/quote.js";
 import { listRfqDocuments } from "../../lib/domain/documents.js";
 import { listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
@@ -55,9 +55,15 @@ export function useQuoteReview(rfqId) {
       ]);
       if (!rfq) throw new Error("this request is not available to you");
 
+      const matchScores = await matchScoresForRfq(
+        rfqId,
+        quotes.map((quote) => quote.factory_org_id).filter(Boolean),
+      ).catch(() => new Map());
+
       const prompts = Object.fromEntries((questions ?? []).map((question) => [question.id, question.prompt]));
       const described = quotes.map((quote) => ({
         raw: quote,
+        matchScore: matchScores.get(quote.factory_org_id) ?? null,
         view: {
           ...describeQuote(quote, { incoterms: terms.incoterm ?? [] }),
           answers: (quote.answers ?? [])

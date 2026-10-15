@@ -11,7 +11,7 @@
  * Anything with nothing behind it is "" — the designed components render a
  * row conditionally on that, rather than printing a placeholder figure.
  */
-import { formatMoney } from "../../lib/money.js";
+import { formatMoney, formatRange } from "../../lib/money.js";
 import { formatCapacityWindow, quoteTotalCents } from "../../lib/domain/quote.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 
@@ -67,6 +67,8 @@ export function describeQuote(quote, { incoterms = [] } = {}) {
   const currency = quote.currency;
   const name = quote.orgs?.name ?? quote.factory_name ?? "Vendor";
   const total = quoteTotalCents(quote);
+  const maxProduction = quote.productionSubtotalMaxCents ?? quote.productionSubtotalCents;
+  const maxTotal = maxProduction == null ? null : maxProduction + (quote.sampleSubtotalCents ?? 0);
   const quantity = quote.production_quantity ? `${quote.production_quantity} units` : "";
 
   return {
@@ -75,12 +77,16 @@ export function describeQuote(quote, { incoterms = [] } = {}) {
     initials: initialsOf(name),
     version: quote.version,
     status: quote.status,
-    price: money(quote.unit_price_cents, currency),
+    price: quote.unit_price_cents == null
+      ? ""
+      : formatRange(quote.unit_price_cents, quote.unit_price_max_cents ?? quote.unit_price_cents, currency),
     quantity,
     lead: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "",
-    productionSubtotal: money(quote.productionSubtotalCents, currency),
+    productionSubtotal: quote.productionSubtotalCents == null
+      ? ""
+      : formatRange(quote.productionSubtotalCents, maxProduction, currency),
     sampleSubtotal: quote.sampleLines?.length ? money(quote.sampleSubtotalCents ?? 0, currency) : "",
-    total: money(total, currency),
+    total: total == null ? "" : formatRange(total, maxTotal, currency),
     paymentTerms: paymentTermsOf(quote),
     shipping: shippingOf(quote, incoterms),
     capacityWindow: formatCapacityWindow(quote),

@@ -10,7 +10,7 @@ import { supabase, unwrap } from "../supabase.js";
 
 const QUOTE_COLUMNS = `
   id, rfq_id, factory_org_id, version, supersedes_quote_id, status,
-  unit_price_cents, currency, production_quantity, bulk_lead_time_days,
+  unit_price_cents, unit_price_max_cents, currency, production_quantity, bulk_lead_time_days,
   capacity_window_start, capacity_window_end, capacity_window_units,
   payment_term_id, deposit_pct, balance_pct,
   incoterm_id, shipping_notes, valid_until, factory_notes,
@@ -227,6 +227,10 @@ export async function listQuotesForRfq(rfqId) {
     productionSubtotalCents:
       quote.unit_price_cents != null && quote.production_quantity != null
         ? quote.unit_price_cents * quote.production_quantity
+        : null,
+    productionSubtotalMaxCents:
+      quote.unit_price_cents != null && quote.production_quantity != null
+        ? (quote.unit_price_max_cents ?? quote.unit_price_cents) * quote.production_quantity
         : null,
   }));
 }

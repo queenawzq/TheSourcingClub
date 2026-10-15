@@ -15,7 +15,7 @@ import { listMilestones, saveSchedule, updateScheduleDetails } from "../../lib/d
 import { formatMoney, fromCents, toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { MilestonesScreen } from "../../prototype/main.jsx";
-import { kindFor, typeOf } from "./order-view.js";
+import { kindFor, moveScheduleRow, typeOf } from "./order-view.js";
 import "./order.css";
 
 const PAYS = new Set(["approval_and_payment", "payment_only"]);
@@ -167,7 +167,7 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
       <MilestonesScreen live={{
         rows: rows.map((row, index) => ({
           ...row,
-          key: row.id ?? `step-${index}`,
+          key: row.id ?? row.key ?? `step-${index}`,
           type: typeOf(row.kind),
           removeLocked: activeEdit && row.state !== "pending",
         })),
@@ -180,8 +180,10 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
         allowAdd: !locked,
         allowRemove: !locked,
         onChange: updateDesignedRow,
+        onMove: (index, offset) => setRows((current) => moveScheduleRow(current, index, offset)),
         onRemove: (index) => setRows((current) => current.filter((_, i) => i !== index)),
         onAdd: () => setRows((current) => [...current, {
+          key: `new-${Date.now()}-${current.length}`,
           kind: "progress_only",
           title: "",
           description: "",

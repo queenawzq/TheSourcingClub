@@ -113,7 +113,7 @@ export default function LiveBrowse({ org, profile }) {
         companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
         language="en"
         projects={projects}
-        onViewDetails={(project) => navigate(`/browse/${project.id}`)}
+        onViewDetails={(project) => navigate(`/browse/${project.id}?from=browse`)}
       />
     </>
   );
