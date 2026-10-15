@@ -55,7 +55,10 @@ try {
   await reorderItem.click();
   await reorderPage.waitForTimeout(1500);
   const reorderBody = await reorderPage.locator("body").innerText();
-  check(/confirm final terms/i.test(reorderBody) && /reorder with Atelier Minho/i.test(reorderBody),
+  // The contract title is an editable field, so its words are its value, not text.
+  const reorderFields = await reorderPage.evaluate(() =>
+    [...document.querySelectorAll("input, textarea")].map((field) => field.value).join("\n"));
+  check(/confirm final terms/i.test(reorderBody) && /reorder with Atelier Minho/i.test(`${reorderBody}\n${reorderFields}`),
     "and it opens the design's contract screen as a reorder, with no database");
 
   // Against a synchronous adapter these states must never be reached, or the
