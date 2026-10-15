@@ -1760,19 +1760,48 @@ async function main() {
       "posting is all the factory does: the step stays open, for the brand to approve from the update");
     await record(page, "Update posted", "the brand decides; the factory does not mark its own work done");
 
-    // Where staff pay the factory by bank when Stripe cannot pay it out (this
-    // factory has no Stripe account). The factory's Payments page: "Add
-    // details" on its Earnings tab opens the form.
+    // Where staff pay the factory by bank when Stripe cannot pay it out. The
+    // Payments page's payout dialog asks where the company is registered:
+    // Portugal is offered Stripe, a country Stripe cannot pay out to gets the
+    // bank form. The test picks China to reach that form.
     await page.goto(`${APP}/payout`);
     await waitForHeading(page, "payments", 25000);
-    await clickButton(page, "add details");
-    await page.locator('[data-field="payout_bank_name"]').fill("Banco de Porto");
-    await page.locator('[data-field="payout_account_name"]').fill(factoryName);
-    await page.locator('[data-field="payout_account_number_last4"]').fill("4417");
-    await page.locator('[data-field="payout_swift"]').fill("BCOMPTPL");
+    await clickButton(page, "payout method");
+    await page.waitForTimeout(600);
+    if (await page.evaluate(() => [...document.querySelectorAll('[role="dialog"] button')]
+      .some((button) => /add payout method/i.test(button.innerText)))) {
+      await clickButton(page, "add payout method");
+      await page.waitForTimeout(600);
+    }
+    const setDialogValue = (selector, value) => page.evaluate(([sel, val]) => {
+      const field = document.querySelector(sel);
+      const proto = field instanceof HTMLSelectElement ? HTMLSelectElement.prototype
+        : field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+      Object.getOwnPropertyDescriptor(proto, "value").set.call(field, val);
+      field.dispatchEvent(new Event(field instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }));
+    }, [selector, value]);
+    const dialogButtons = () => page.evaluate(() =>
+      [...document.querySelectorAll('[role="dialog"] button')].map((button) => button.innerText.trim()).join(" | "));
+    await setDialogValue('[role="dialog"] select', "PT");
+    await page.waitForTimeout(400);
+    check(/continue to stripe/i.test(await dialogButtons()), "a factory registered in Portugal is offered Stripe payouts");
+    await setDialogValue('[role="dialog"] select', "CN");
+    await page.waitForTimeout(400);
+    check(/save payout method/i.test(await dialogButtons()), "and one where Stripe cannot pay out gets the bank form");
+    const fieldByLabel = (label) =>
+      `[role="dialog"] label:has(> span) input[data-e2e-label="${label}"]`;
+    await page.evaluate(() => {
+      for (const input of document.querySelectorAll('[role="dialog"] .payout-form-grid label input')) {
+        input.dataset.e2eLabel = input.closest("label").querySelector("span").innerText.trim();
+      }
+    });
+    await setDialogValue(fieldByLabel("Bank"), "Bank of China");
+    await setDialogValue(fieldByLabel("Account name"), factoryName);
+    await setDialogValue(fieldByLabel("Last 4 digits"), "4417");
+    await setDialogValue(fieldByLabel("SWIFT / BIC"), "BKCHCNBJ");
     await record(page, "Bank details for manual payouts", "no full account number is asked for, or stored");
 
-    await page.locator('[data-testid="save-payout"]').click();
+    await clickButton(page, "save payout method");
     await page.waitForTimeout(2500);
 
     const { data: payout } = await db.from("factory_payout_accounts")
