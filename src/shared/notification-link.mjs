@@ -30,5 +30,8 @@ export function notificationLink(notification, { isFactory }) {
   // Capacity is updated from the factory's dashboard.
   if (type === "capacity" && isFactory) return "/";
 
+  // Credits are on the factory's Payments page.
+  if (type === "credits" && isFactory) return "/payout?tab=credits";
+
   return null;
 }

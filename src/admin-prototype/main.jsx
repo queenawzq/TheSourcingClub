@@ -908,6 +908,91 @@ function AiSuggestionsPanel({ orgId }) {
   );
 }
 
+const CREDIT_LINE = {
+  onboarding_grant: "Verified onboarding bonus",
+  referral_grant: "Referral bonus",
+  purchase: "Credit purchase",
+  admin_adjustment: "Adjusted by TSC",
+  quote_submission: "Quote sent",
+  refund: "Credit refund",
+};
+
+// Not in the admin design: a factory's credits and the staff adjustment,
+// drawn with the review page's own side card and modal classes. Live only.
+function CreditsCard({ orgId, refreshKey }) {
+  const actions = useActions();
+  const [credits, setCredits] = useState(null);
+  const [error, setError] = useState("");
+  const [open, setOpen] = useState(false);
+  const [direction, setDirection] = useState("add");
+  const [amount, setAmount] = useState("");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  const load = () => actions.companyCredits(orgId).then(setCredits).catch((failure) => setError(failure.message));
+  useEffect(() => { setCredits(null); setError(""); load(); }, [orgId, refreshKey]);
+
+  const close = () => { setOpen(false); setAmount(""); setReason(""); setFormError(""); setDirection("add"); };
+  const units = Number.parseInt(amount, 10);
+  const valid = Number.isInteger(units) && units > 0 && reason.trim().length >= 5;
+  const save = async () => {
+    setBusy(true);
+    setFormError("");
+    try {
+      await actions.adjustCredits(orgId, direction === "add" ? units : -units, reason.trim());
+      close();
+      await load();
+    } catch (failure) {
+      const reason = failure.message.replace(/^adjust the credits: /, "");
+      setFormError(`${reason.charAt(0).toUpperCase()}${reason.slice(1)}.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="factory-profile-card admin-review-meta admin-credits-card">
+      <h2>Credits</h2>
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {credits && (
+        <>
+          <ProfileDetailPair label="Balance" value={`${credits.balance.toLocaleString()} credits`} />
+          {credits.lines.length ? (
+            <ul className="admin-credits-lines">
+              {credits.lines.map((line) => (
+                <li key={line.id}>
+                  <span>{CREDIT_LINE[line.reason] || line.reason}{line.note ? ` · ${line.note}` : ""}</span>
+                  <strong>{line.delta > 0 ? "+" : "−"}{Math.abs(line.delta).toLocaleString()}</strong>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="admin-assist-meta">No credit activity yet.</p>}
+          <button className="secondary-btn" type="button" onClick={() => setOpen(true)}>Adjust credits</button>
+        </>
+      )}
+      {open && (
+        <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && close()}>
+          <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="adjust-credits-title">
+            <button className="settings-drawer-close" type="button" aria-label="Close" onClick={close}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
+            <header><div><span>Credits</span><h2 id="adjust-credits-title">Adjust credits</h2><p>{credits?.balance.toLocaleString()} credits now</p></div></header>
+            <p className="admin-assist-meta">The company sees the reason in its credit history and in its notifications.</p>
+            <div className="admin-request-options admin-credits-direction" role="radiogroup" aria-label="Add or remove">
+              {[["add", "Add credits"], ["remove", "Remove credits"]].map(([key, label]) => (
+                <label key={key}><input type="radio" name="credit-direction" aria-label={label} checked={direction === key} onChange={() => setDirection(key)} /> <span>{label}</span></label>
+              ))}
+            </div>
+            <label className="factory-onboarding-field"><span>Credits</span><input type="number" min="1" max="10000" step="1" inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="50" /></label>
+            <label className="factory-onboarding-field"><span>Reason</span><textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="For example: Goodwill for a slow review" /></label>
+            {formError && <p className="admin-error" role="alert">{formError}</p>}
+            <footer><button className="secondary-btn" type="button" onClick={close}>Cancel</button><button className="primary-btn" type="button" disabled={!valid || busy} onClick={save}>{busy ? "Saving…" : direction === "add" ? "Add credits" : "Remove credits"}</button></footer>
+          </section>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision }) {
   const [requestOpen, setRequestOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
@@ -996,6 +1081,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
             </section>
+            {actions.companyCredits && profile.entityType !== "Brand" && <CreditsCard orgId={profile.id} refreshKey={profile.status} />}
             <section className="factory-profile-card admin-decision-card">
               <span>Final decision</span>
               <h2>Complete this review</h2>

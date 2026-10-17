@@ -16,6 +16,8 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { STRIPE_PUBLISHABLE_KEY, startBillingSetup } from "../../lib/domain/stripe.js";
+import { creditHistory, sendInvite } from "../../lib/domain/credits.js";
+import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
 import "./order.css";
 import "./payout.css";
@@ -27,15 +29,6 @@ const FIELDS = [
   ["swift", "SWIFT / BIC", "BCOMPTPL"],
   ["iban", "IBAN", "PT50 0002 0123 1234 5678 9015 4"],
 ];
-
-const CREDIT_REASON = {
-  onboarding_grant: "Verified onboarding bonus",
-  referral_grant: "Referral bonus",
-  purchase: "Credit purchase",
-  admin_adjustment: "Account adjustment",
-  quote_submission: "Quote submitted",
-  refund: "Credit refund",
-};
 
 const dateLabel = (value) => value
   ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -143,7 +136,12 @@ const BILLING_ELEMENT_APPEARANCE = {
 };
 
 export default function PayoutDetails({ org, isFactory, isOwner = false }) {
-  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") === "billing" ? "billing" : "earnings");
+  const [tab, setTab] = useState(() => {
+    const asked = new URLSearchParams(window.location.search).get("tab");
+    return ["billing", "credits"].includes(asked) ? asked : "earnings";
+  });
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [invited, setInvited] = useState(null);
   const [client, setClient] = useState("All clients");
   const [transactionType, setTransactionType] = useState("all");
   const [account, setAccount] = useState(null);
@@ -172,16 +170,12 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         .select("id, order_number, brand_org_id, orgs!production_orders_brand_org_id_fkey (name)")
         .eq("factory_org_id", org.id)
         .order("created_at", { ascending: false }),
-      supabase
-        .from("credit_ledger")
-        .select("id, delta, reason, note, created_at")
-        .eq("org_id", org.id)
-        .order("created_at", { ascending: false }),
+      creditHistory(org.id),
     ]);
 
     const payout = unwrap(accountResult, "load your payout account");
     const orders = unwrap(ordersResult, "load your payment orders");
-    const creditRows = unwrap(creditsResult, "load your credits");
+    const creditRows = creditsResult;
     const orderById = new Map(orders.map((order) => [order.id, order]));
 
     let paymentRows = [];
@@ -259,7 +253,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   ]
     .filter((row) => transactionType === "all" || row.type === transactionType)
     .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-  const creditBalance = (credits ?? []).reduce((sum, row) => sum + row.delta, 0);
+  const creditBalance = credits?.balance ?? 0;
 
   if (!isFactory) {
     return <section className="billing-history-page"><h1>Payments</h1><p className="projects-empty">Factory payment tools are not available on a brand account.</p></section>;
@@ -433,15 +427,23 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       {tab === "credits" && (
         <>
           <section className="factory-credit-billing-card">
-            <div><span>Credit balance</span><strong>{creditBalance.toLocaleString()} credits</strong><p>Credits earned and used by this factory account.</p></div>
+            <div>
+              <span>Credit balance</span>
+              <strong>{creditBalance.toLocaleString()} credits</strong>
+              <p>500 credits = $50 value. Credits are used when a quote is sent.</p>
+            </div>
+            <div className="factory-credit-billing-action">
+              <button className="secondary-btn compact-btn" type="button" onClick={() => { setInvited(null); setInviteOpen(true); }}>Invite a factory</button>
+            </div>
           </section>
-          {credits.length ? (
+          {invited ? <p className="live-payment-notice" role="status">{invited}</p> : null}
+          {credits.rows.length ? (
             <div className="billing-history-list">
-              {credits.map((row) => (
+              {credits.rows.map((row) => (
                 <article className="billing-history-row" key={row.id}>
-                  <div><strong>{CREDIT_REASON[row.reason] || row.reason}</strong><span>{row.note || dateLabel(row.created_at)}</span></div>
-                  <span className="billing-status">{row.delta > 0 ? "Earned" : "Used"}</span>
-                  <strong>{row.delta > 0 ? "+" : ""}{row.delta.toLocaleString()} credits</strong>
+                  <div><strong>{row.title}</strong><span>{row.meta}</span></div>
+                  <span className="billing-status">{row.status}</span>
+                  <strong>{row.amount}</strong>
                 </article>
               ))}
             </div>
@@ -450,6 +452,19 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       )}
 
       {error && <p className="projects-empty projects-error" role="alert">{error.message}</p>}
+
+      {inviteOpen ? (
+        <InviteFactoryModal
+          onInvite={async (email, message) => {
+            const result = await sendInvite(org.id, email, message);
+            setInvited(result.emailed
+              ? `Invite sent to ${email}. You earn 500 credits when TSC verifies them.`
+              : `Invite saved for ${email}, but the email could not be sent here. If they sign up with that address, it still counts.`);
+            await load();
+          }}
+          onClose={() => setInviteOpen(false)}
+        />
+      ) : null}
 
       {billingSecret ? (
         <BillingMethodFlow clientSecret={billingSecret} onClose={() => setBillingSecret(null)} onSaved={() => { setBillingSecret(null); setBillingSaved(true); }} />

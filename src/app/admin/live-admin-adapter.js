@@ -18,7 +18,9 @@
  * for it.
  */
 import {
+  adjustCredits,
   claimReview,
+  companyCredits,
   decideReview,
   latestReviewAssists,
   orgDocuments,
@@ -258,6 +260,13 @@ export function createAdminAdapter({ user, signOut }) {
       reviewAssist,
       latestReviewAssists,
       reviewAssistInput,
+
+      /**
+       * A factory's credits on the review page, and the staff adjustment.
+       * Live only: the admin design draws no credits.
+       */
+      companyCredits,
+      adjustCredits,
 
       /**
        * Clearing test data, on test builds only. A production build has no

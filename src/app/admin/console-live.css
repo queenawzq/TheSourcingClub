@@ -86,3 +86,25 @@
    top of the page. */
 .admin-testdata { display: grid; gap: 12px; min-width: 0; }
 .admin-testdata .admin-assist-meta { margin: 0; }
+
+/* Live only (not in the design): a factory's credits in the review page's
+   side column, and the adjust dialog's add/remove choice. */
+.admin-credits-card .secondary-btn { width: 100%; margin-top: 12px; }
+.admin-credits-lines {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.admin-credits-lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #4c6487;
+  font-size: 12px;
+  line-height: 17px;
+}
+.admin-credits-lines li span { min-width: 0; overflow-wrap: anywhere; }
+.admin-credits-lines li strong { flex: none; color: #0e1118; font-weight: 600; }
+.admin-credits-direction { grid-template-columns: repeat(2, minmax(0, 1fr)); }

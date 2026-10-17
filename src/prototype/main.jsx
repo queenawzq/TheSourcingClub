@@ -4350,15 +4350,17 @@ function InviteBrandModal({ onInvite, onClose }) {
   // The prototype's modal closes and nothing happens. A live mount passes
   // onInvite, and then the address typed here becomes a real referral.
   const [email, setEmail] = useState("");
+  const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const defaultMessage = "I thought The Sourcing Club could be useful for your next production order. If you join and place an eligible order, we both get a $50 discount.";
 
   const send = async () => {
     if (!onInvite) return onClose();
     setBusy(true);
     setError(null);
     try {
-      await onInvite(email.trim());
+      await onInvite(email.trim(), message ?? defaultMessage);
       onClose();
     } catch (failure) {
       setError(failure.message);
@@ -4384,7 +4386,7 @@ function InviteBrandModal({ onInvite, onClose }) {
         </label>
         <label className="brand-profile-edit-field full-width">
           <span>Message</span>
-          <textarea defaultValue="I thought The Sourcing Club could be useful for your next production order. If you join and place an eligible order, we both get a $50 discount." />
+          <textarea defaultValue={defaultMessage} onChange={onInvite ? (event) => setMessage(event.target.value) : undefined} />
         </label>
         {error && <p className="auth-error" role="alert">{error}</p>}
         <div className="brand-profile-modal-actions">

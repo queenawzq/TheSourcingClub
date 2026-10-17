@@ -2429,7 +2429,7 @@ function App() {
 }
 
 export function FactoryDashboardPage({
-  companyType = "factory", dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity,
+  companyType = "factory", dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onInviteFactory, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity,
   // Live mounts pass these; the prototype passes none and is unchanged.
   orgName, rfqs, projects, metrics, capacity, attention, unreadCount,
   // Live: the company's upcoming calls. The design draws its card only on
@@ -2619,7 +2619,7 @@ export function FactoryDashboardPage({
         </section>
       </div>
       {inviteFactoryOpen && (
-        <InviteFactoryModal language={language} onClose={() => setInviteFactoryOpen(false)} />
+        <InviteFactoryModal language={language} onInvite={onInviteFactory} onClose={() => setInviteFactoryOpen(false)} />
       )}
     </main>
   );
@@ -2678,7 +2678,13 @@ function getFactoryActivityCopy(value) {
   return copy[value] || getTranslatedProjectTitle(value);
 }
 
-function InviteFactoryModal({ language = "en", onClose }) {
+export function InviteFactoryModal({ language = "en", onInvite, onClose }) {
+  // The prototype's modal closes and nothing happens. A live mount passes
+  // onInvite(email, message), and then the invite is real.
+  const [email, setEmail] = useState("");
+  const [message, setMessage] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
   const copy = language === "zh"
     ? {
         close: "关闭邀请工厂弹窗",
@@ -2700,6 +2706,18 @@ function InviteFactoryModal({ language = "en", onClose }) {
         cancel: "Cancel",
         send: "Send invite"
       };
+  const send = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onInvite(email.trim(), message ?? copy.defaultMessage);
+      onClose();
+    } catch (failure) {
+      setError(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  };
   return createPortal((
     <div className="factory-update-modal-layer factory-invite-modal-layer" role="presentation">
       <div className="factory-update-modal factory-invite-modal" role="dialog" aria-modal="true" aria-labelledby="factory-invite-title">
@@ -2711,17 +2729,19 @@ function InviteFactoryModal({ language = "en", onClose }) {
 
         <label className="factory-invite-field">
           <span>{copy.email}</span>
-          <input type="email" placeholder="name@factory.com" />
+          <input type="email" placeholder="name@factory.com" value={onInvite ? email : undefined} onChange={onInvite ? (event) => setEmail(event.target.value) : undefined} />
         </label>
 
         <label className="factory-invite-field">
           <span>{copy.message}</span>
-          <textarea defaultValue={copy.defaultMessage} />
+          <textarea defaultValue={copy.defaultMessage} onChange={onInvite ? (event) => setMessage(event.target.value) : undefined} />
         </label>
+
+        {error && <p className="auth-error" role="alert">{error}</p>}
 
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>{copy.cancel}</button>
-          <button className="primary-btn" type="button" onClick={onClose}>{copy.send}</button>
+          <button className="primary-btn" type="button" disabled={busy} onClick={onInvite ? send : onClose}>{busy ? (language === "zh" ? "发送中…" : "Sending…") : copy.send}</button>
         </footer>
       </div>
     </div>

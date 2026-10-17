@@ -459,6 +459,40 @@ the form behind it only saves.
   embed names its foreign key (`orgs!rfqs_brand_org_id_fkey`). PostgREST
   refuses an ambiguous embed rather than guessing.
 
+### Credits: granted by the database
+
+`20261017000100`. Factories spend 25 credits per quote (`submit_quote()`); the
+database grants them, never a client and never the seed's pattern of a
+hand-written line.
+
+- **500 when a factory becomes verified**, by a trigger on
+  `factory_profiles.verification_status`, in the same transaction as the
+  verification, whatever path verified it (`admin_review_decision`,
+  `review_document`). Once per company: any earlier `onboarding_grant` line
+  counts, and the once-index on `(org_id, reason, ref_id)` settles a race.
+  It fires on UPDATE only, so fixtures that insert a verified profile keep
+  their own lines. Factories verified before the migration got the 500 by
+  backfill.
+- **Only staff change `verification_status`** (`guard_verification_status`).
+  Members could update it on their own row before; with credits attached
+  that would have minted them.
+- **Invites are `referrals`**, sent through `/api/send-invite` (the caller's
+  token inserts the row, so RLS and the guard decide; then one email through
+  the notification transport). Clients may insert only `referrer_org_id`,
+  `email` and `message`. The guard refuses the company's own email domain
+  (public mail providers excepted), an address that already has an account,
+  a repeat, and more than 20 a day. When the invited address creates its
+  company (first owner in `org_members`), the earliest invite from a company
+  of the same kind is linked. A factory whose invited factory is verified
+  earns 500 (`referral_grant`). **Brand invites earn nothing yet**: the $50
+  brand discount is not decided.
+- **Staff adjust credits** with `admin_adjust_credits` (factories only, a
+  reason the company sees, never below zero), from a live-only card on the
+  admin review page.
+- The factory's Payments → Credits tab (`/payout?tab=credits`) reads the
+  ledger through `creditHistory()`, with invites still waiting shown as
+  Pending.
+
 ### Mock data leaking into the live app
 
 A designed component that falls back to its own constants when a prop is

@@ -35,6 +35,8 @@ export function notificationPath(notification, { isFactory }) {
   if (type === "thread") return `/messages/${id}`;
   // Capacity is updated from the factory's dashboard.
   if (type === "capacity" && isFactory) return "/";
+  // Credits are on the factory's Payments page.
+  if (type === "credits" && isFactory) return "/payout?tab=credits";
   return null;
 }
 
@@ -101,37 +103,11 @@ const copy = {
 };
 
 /**
- * @param row  one claimed outbox row (claim_notification_emails), or sample data
- * @param env  { appUrl, logoUrl, supportEmail, companyAddress }
- * @returns {{ subject: string, html: string, text: string }}
+ * The designed frame: logo, white card with the blue bar, eyebrow, greeting,
+ * title, body, one button, footer. Shared by every email built here.
  */
-export function notificationEmail(row, env) {
-  const locale = row.locale === "zh" ? "zh" : "en";
-  const t = copy[locale];
-  const isFactory = row.org_type === "factory";
-  const company = row.org_name || (locale === "zh" ? "你的公司" : "your company");
-  const setting = t.eyebrow[row.category]?.(isFactory) ?? "";
-  const path = notificationPath(row, { isFactory });
-  const url = `${env.appUrl}/app.html${path ?? ""}${!path && isFactory ? "?portal=factory" : ""}`;
-  const cta = path ? t.cta : t.ctaFallback;
-  const title = String(row.title ?? "").trim() || t.lead(company);
-  // Dates in the recipient's saved zone, named; UTC, named, when unknown.
-  const body = notificationBody(row, { timeZone: row.time_zone || "UTC", withZone: true }).trim();
-  const why = t.why(company, setting);
-
-  const text = [
-    t.greeting(row.recipient_name),
-    "",
-    title,
-    body,
-    "",
-    `${cta}: ${url}`,
-    "",
-    why,
-    `${t.questions} ${env.supportEmail}.`,
-  ].filter((line, index, lines) => line !== "" || lines[index - 1] !== "").join("\n");
-
-  const html = `<!doctype html>
+function emailHtml({ locale, title, eyebrow, greeting, body, url, cta, why, questions }, env) {
+  return `<!doctype html>
 <html lang="${locale}">
   <head>
     <meta charset="utf-8">
@@ -164,8 +140,8 @@ export function notificationEmail(row, env) {
                   <tr><td style="height:4px;line-height:4px;background:#1A4DF2;font-size:0;">&nbsp;</td></tr>
                   <tr>
                     <td class="email-pad" style="padding:34px 40px 36px;">
-                      <p style="margin:0 0 10px;font-size:12px;line-height:16px;font-weight:700;color:#5A6B87;text-transform:uppercase;">${escapeHtml(setting)}</p>
-                      <p style="margin:0 0 14px;font-size:15px;line-height:23px;color:#5A6B87;">${escapeHtml(t.greeting(row.recipient_name))}</p>
+                      <p style="margin:0 0 10px;font-size:12px;line-height:16px;font-weight:700;color:#5A6B87;text-transform:uppercase;">${escapeHtml(eyebrow)}</p>
+                      <p style="margin:0 0 14px;font-size:15px;line-height:23px;color:#5A6B87;">${escapeHtml(greeting)}</p>
                       <h1 class="email-title" style="margin:0 0 12px;font-size:28px;line-height:34px;font-weight:800;color:#0B1020;">${escapeHtml(title)}</h1>
                       ${body ? `<p style="margin:0 0 24px;font-size:15px;line-height:23px;color:#5A6B87;white-space:pre-wrap;">${escapeHtml(body)}</p>` : ""}
                       <table role="presentation" cellspacing="0" cellpadding="0" border="0">
@@ -182,7 +158,7 @@ export function notificationEmail(row, env) {
             </tr>
             <tr>
               <td class="email-footer" style="padding:20px 4px 0;color:#5A6B87;">
-                <p style="margin:0 0 6px;font-size:12px;line-height:18px;">${escapeHtml(t.questions)} <a href="mailto:${escapeHtml(env.supportEmail)}" style="color:#1A4DF2;text-decoration:none;">${escapeHtml(env.supportEmail)}</a>.</p>
+                <p style="margin:0 0 6px;font-size:12px;line-height:18px;">${escapeHtml(questions)} <a href="mailto:${escapeHtml(env.supportEmail)}" style="color:#1A4DF2;text-decoration:none;">${escapeHtml(env.supportEmail)}</a>.</p>
                 <p style="margin:0;font-size:11px;line-height:17px;">${escapeHtml(why)}<br>The Sourcing Club · ${escapeHtml(env.companyAddress)}</p>
               </td>
             </tr>
@@ -193,5 +169,84 @@ export function notificationEmail(row, env) {
   </body>
 </html>`;
 
+}
+
+/**
+ * @param row  one claimed outbox row (claim_notification_emails), or sample data
+ * @param env  { appUrl, logoUrl, supportEmail, companyAddress }
+ * @returns {{ subject: string, html: string, text: string }}
+ */
+export function notificationEmail(row, env) {
+  const locale = row.locale === "zh" ? "zh" : "en";
+  const t = copy[locale];
+  const isFactory = row.org_type === "factory";
+  const company = row.org_name || (locale === "zh" ? "你的公司" : "your company");
+  const setting = t.eyebrow[row.category]?.(isFactory) ?? "";
+  const path = notificationPath(row, { isFactory });
+  const url = `${env.appUrl}/app.html${path ?? ""}${!path && isFactory ? "?portal=factory" : ""}`;
+  const cta = path ? t.cta : t.ctaFallback;
+  const title = String(row.title ?? "").trim() || t.lead(company);
+  // Dates in the recipient's saved zone, named; UTC, named, when unknown.
+  const body = notificationBody(row, { timeZone: row.time_zone || "UTC", withZone: true }).trim();
+  const why = t.why(company, setting);
+
+  const text = [
+    t.greeting(row.recipient_name),
+    "",
+    title,
+    body,
+    "",
+    `${cta}: ${url}`,
+    "",
+    why,
+    `${t.questions} ${env.supportEmail}.`,
+  ].filter((line, index, lines) => line !== "" || lines[index - 1] !== "").join("\n");
+
+  const html = emailHtml({
+    locale, title, eyebrow: setting, greeting: t.greeting(row.recipient_name), body, url, cta, why, questions: t.questions,
+  }, env);
+
+  return { subject: title, html, text };
+}
+
+const inviteCopy = {
+  factory: {
+    eyebrow: "Invitation",
+    title: (inviter) => `${inviter} invited you to The Sourcing Club`,
+    body: "The Sourcing Club connects factories with brands looking for production. Create your factory's account, complete your profile, and once TSC verifies it you get 500 credits to send quotes.",
+    zh: (inviter) => `${inviter} 邀请你加入 The Sourcing Club。创建工厂账户并完成资料，通过 TSC 验证后即可获得 500 报价额度。`,
+    cta: "Create your factory account",
+  },
+  brand: {
+    eyebrow: "Invitation",
+    title: (inviter) => `${inviter} invited you to The Sourcing Club`,
+    body: "The Sourcing Club helps brands find verified factories, compare quotes and run production orders in one place. Create your brand's account to get started.",
+    zh: null,
+    cta: "Create your brand account",
+  },
+};
+
+/**
+ * The invite one company sends another (api/send-invite). The sender's own
+ * message is quoted as plain text. It promises the invited company only
+ * what the product gives it: a factory's 500 credits on verification, and
+ * for a brand nothing in money, since the brand discount is not decided.
+ *
+ * @param invite  { inviterName, kind: "factory" | "brand", message }
+ * @param env     { appUrl, logoUrl, supportEmail, companyAddress }
+ */
+export function inviteEmail(invite, env) {
+  const kind = invite.kind === "factory" ? "factory" : "brand";
+  const t = inviteCopy[kind];
+  const inviter = String(invite.inviterName ?? "").trim() || "A company";
+  const title = t.title(inviter);
+  const note = String(invite.message ?? "").trim().slice(0, 1000);
+  const url = `${env.appUrl}/app.html${kind === "factory" ? "?portal=factory" : ""}`;
+  const body = [note ? `“${note}”` : null, t.body, t.zh?.(inviter)].filter(Boolean).join("\n\n");
+  const why = `You received this because someone at ${inviter} entered this address. If you weren't expecting it, you can ignore it: nothing was set up for you.`;
+  const questions = "Questions? Reply to this email, or contact";
+
+  const text = [title, "", body, "", `${t.cta}: ${url}`, "", why, `${questions} ${env.supportEmail}.`].join("\n");
+  const html = emailHtml({ locale: "en", title, eyebrow: t.eyebrow, greeting: "Hello,", body, url, cta: t.cta, why, questions }, env);
   return { subject: title, html, text };
 }

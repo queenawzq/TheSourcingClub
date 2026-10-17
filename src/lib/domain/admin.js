@@ -451,3 +451,28 @@ export async function purgeTestData(orgIds, userIds) {
     failure: "the test data could not be deleted",
   });
 }
+
+/** A factory's credit balance and its latest ledger lines, for the review page. */
+export async function companyCredits(orgId, limit = 5) {
+  const [balance, lines] = await Promise.all([
+    unwrap(await supabase.rpc("credit_balance", { org: orgId }), "load the credit balance"),
+    unwrap(
+      await supabase
+        .from("credit_ledger")
+        .select("id, delta, reason, note, created_at")
+        .eq("org_id", orgId)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+      "load the credit history",
+    ),
+  ]);
+  return { balance: Number(balance) || 0, lines: lines ?? [] };
+}
+
+/** Add (positive) or remove (negative) credits, with a reason the company sees. */
+export async function adjustCredits(orgId, amount, reason) {
+  return unwrap(
+    await supabase.rpc("admin_adjust_credits", { target_org: orgId, amount, reason }),
+    "adjust the credits",
+  );
+}
