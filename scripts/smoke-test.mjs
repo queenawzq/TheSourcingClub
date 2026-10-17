@@ -98,6 +98,45 @@ async function screenAs(client, messageId) {
 }
 
 /**
+ * Run one of the staff routes (api/admin-review-assist.js,
+ * api/admin-test-data.js) as a client, the way screenAs runs the screen.
+ * `env` overrides variables for the one call (an OpenRouter key, or a
+ * production address to prove it is refused); `model` stands in for
+ * OpenRouter, so no request ever leaves the machine.
+ */
+async function staffRouteAs(route, client, { method = "POST", body, env = {}, model = null } = {}) {
+  const { default: handle } = await import(`../api/${route}.js`);
+  const { data } = client ? await client.auth.getSession() : { data: null };
+  const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "OPENROUTER_API_KEY"];
+  const saved = Object.fromEntries(keys.filter((key) => key in process.env).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, OPENROUTER_API_KEY: "" }, env);
+  const realFetch = globalThis.fetch;
+  if (model) {
+    globalThis.fetch = (url, init) => String(url).startsWith("https://openrouter.ai/")
+      ? Promise.resolve(new Response(JSON.stringify({
+        model: "smoke/fake-model",
+        choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify(model) } }] } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      : realFetch(url, init);
+  }
+  let status = 0;
+  let payload = null;
+  const response = {
+    status(code) { status = code; return response; },
+    json(value) { payload = value; return response; },
+  };
+  try {
+    await handle({ method, headers: { authorization: data?.session ? `Bearer ${data.session.access_token}` : "" }, body }, response);
+  } finally {
+    globalThis.fetch = realFetch;
+    for (const key of keys) {
+      if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
+    }
+  }
+  return { status, ...payload };
+}
+
+/**
  * Run the real api/call-join.js handler as a client. `zoom` sets fake Zoom
  * variables (enough to pass "is Zoom set up?", never enough to reach Zoom);
  * without it they are cleared, as on a site without video.
@@ -1871,6 +1910,100 @@ console.log("\nphase 6 — admin operations");
     : fail("admin_overview_metrics did not return the payment backstop count");
 }
 
+
+console.log("\nadmin — AI help for reviewers, and clearing test data");
+{
+  const staff = await signedInUser(`assist-admin-${stamp}@example.com`);
+  await admin.from("platform_admins").insert({ user_id: staff.id });
+  const { data: mill } = await admin.from("orgs")
+    .insert({ type: "factory", name: `Assist Mill ${stamp}`, slug: `assist-mill-${stamp}` })
+    .select("id").single();
+  await admin.from("factory_profiles").insert({
+    org_id: mill.id, legal_name: "Assist Mill Textiles Ltd", website_url: "https://assist-mill.example.com",
+    country_code: "PT", moq: 200, intro: "Jersey and fleece.",
+  });
+
+  const { data: input, error: inputError } = await staff.client.rpc("admin_review_assist_input", { target_org: mill.id });
+  inputError ? fail("staff read what the AI would be given", inputError)
+    : input?.profile?.legal_name === "Assist Mill Textiles Ltd" && !JSON.stringify(input).includes(`assist-admin-${stamp}`)
+      ? ok("the AI reads the company's details and no one's address")
+      : fail("admin_review_assist_input did not read as expected");
+
+  const stranger = await staffRouteAs("admin-review-assist", brand.client, { body: { action: "check", orgId: mill.id } });
+  stranger.status === 403 ? ok("a company CANNOT ask for review suggestions") : fail(`a brand got ${stranger.status} from review help`);
+
+  const noKey = await staffRouteAs("admin-review-assist", staff.client, { body: { action: "check", orgId: mill.id } });
+  noKey.status === 200 && noKey.available === false && !noKey.findings
+    ? ok("without a model key there are no suggestions, and nothing stands in for them")
+    : fail("review suggestions without a key", noKey);
+
+  const draft = await staffRouteAs("admin-review-assist", staff.client, {
+    body: { action: "draft", orgId: mill.id, topics: ["Company ownership details", "not a topic"] },
+  });
+  draft.source === "template" && draft.message.includes("Company ownership details")
+    && draft.message.includes("Business registration") && !draft.message.includes("not a topic")
+    ? ok("without a model the draft is built from the ticked topics and the incomplete checks")
+    : fail("the fallback draft", draft);
+
+  const grounded = await staffRouteAs("admin-review-assist", staff.client, {
+    body: { action: "check", orgId: mill.id },
+    env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+    model: {
+      checked: ["Legal name", "Business registration"],
+      findings: [
+        { topic: "Legal name", observation: "The legal name differs from the company name.", evidence: "Assist Mill Textiles Ltd", ask: "Which entity signs contracts?" },
+        { topic: "Registration", observation: "Registered in Delaware.", evidence: "Registered in Delaware in 1999", ask: "Send the certificate." },
+      ],
+      score: 92,
+    },
+  });
+  grounded.available && grounded.findings?.length === 1 && grounded.dropped === 1 && !("score" in grounded)
+    ? ok("a suggestion whose evidence is not in the submission is dropped, and no score gets through")
+    : fail("the evidence check on suggestions", grounded);
+
+  const { data: saved } = await staff.client.rpc("admin_review_assists", { target_org: mill.id });
+  saved?.check?.output?.findings?.length === 1 && saved.check.model === "smoke/fake-model"
+    ? ok("staff see the last suggestions again without asking the model")
+    : fail("the saved suggestions", saved);
+
+  const { error: forged } = await staff.client.rpc("record_review_assist", {
+    target_org: mill.id, assist_kind: "check", model_name: "x", assist: {}, acting_user: staff.id,
+  });
+  forged ? ok("even staff CANNOT write suggestions from the browser") : fail("LEAK: record_review_assist is callable by a signed-in user");
+
+  // Two leftovers made the way the smoke run makes companies: one two hours
+  // old (test data), one just made (a run in progress: left alone).
+  const { data: leftovers } = await admin.from("orgs").insert([
+    { type: "factory", name: `Smoke Leftover ${stamp}`, slug: `smoke-leftover-${stamp}`, created_at: new Date(Date.now() - 2 * 3600e3).toISOString() },
+    { type: "factory", name: `Smoke Fresh ${stamp}`, slug: `smoke-fresh-${stamp}`, created_at: new Date().toISOString() },
+  ]).select("id, slug");
+  const old = leftovers.find((row) => row.slug.startsWith("smoke-leftover-"));
+  const fresh = leftovers.find((row) => row.slug.startsWith("smoke-fresh-"));
+
+  const preview = await staffRouteAs("admin-test-data", staff.client, { method: "GET" });
+  const listed = new Set((preview.companies ?? []).map((company) => company.id));
+  preview.status === 200 && listed.has(old.id) && !listed.has(fresh.id) && !listed.has(org.id) && !listed.has(mill.id)
+    && !(preview.companies ?? []).some((company) => company.name.startsWith("Demo "))
+    ? ok("the test-data list has an old leftover, not a fresh one, a demo company or one without a run number")
+    : fail("the test-data preview", { status: preview.status, count: preview.companies?.length });
+
+  const brandPreview = await staffRouteAs("admin-test-data", brand.client, { method: "GET" });
+  brandPreview.status === 403 ? ok("a company CANNOT list test data") : fail(`a brand got ${brandPreview.status} from the test-data list`);
+
+  const production = await staffRouteAs("admin-test-data", staff.client, {
+    method: "GET", env: { SUPABASE_URL: "https://wxzliajdtwekqdvwzqfb.supabase.co" },
+  });
+  production.status === 403 ? ok("clearing test data is refused on the production project") : fail(`the production project answered ${production.status}`);
+
+  const purged = await staffRouteAs("admin-test-data", staff.client, { body: { orgIds: [old.id, fresh.id, org.id], userIds: [] } });
+  const { data: still } = await admin.from("orgs").select("id").in("id", [old.id, fresh.id, org.id]);
+  const left = new Set((still ?? []).map((row) => row.id));
+  purged.status === 200 && purged.companies === 1 && purged.skipped === 2 && !left.has(old.id) && left.has(fresh.id) && left.has(org.id)
+    ? ok("the cleanup deletes only what still matches the rule, whatever ids it is sent")
+    : fail("the cleanup", purged);
+
+  await admin.from("orgs").delete().in("id", [fresh.id, mill.id]);
+}
 
 console.log("\nemail and password sign-in");
 {
