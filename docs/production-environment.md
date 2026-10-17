@@ -67,4 +67,8 @@ a day, sent and received together, so a busy day needs a paid plan.
   Preview and Development.
 - `OPENROUTER_SCREEN_MODEL`: optional; screening falls back to
   `OPENROUTER_MODEL`, then `anthropic/claude-opus-5`.
+- `OPENROUTER_REVIEW_MODEL`: optional; the admin's review help defaults to
+  `anthropic/claude-haiku-5.5` (it must answer within 8 s). Without
+  `OPENROUTER_API_KEY` the review page says suggestions are not set up, and
+  the "needs more information" draft is built from the checks instead.
 - `SUPABASE_DB_URL` (Production only): runs the new migrations on deploy.

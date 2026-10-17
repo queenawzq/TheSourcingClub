@@ -394,3 +394,60 @@ export async function runDailyJobs() {
   if (!response.ok || result.error) throw new Error(result.error || "the daily jobs could not run");
   return result;
 }
+
+/** POST/GET to one of our own staff routes with the session, and say why it failed. */
+async function staffRoute(path, { method = "POST", body, failure }) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const response = await fetch(path, {
+    method,
+    headers: {
+      ...(body ? { "Content-Type": "application/json" } : {}),
+      Authorization: `Bearer ${session?.access_token ?? ""}`,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.error) throw new Error(result.error || failure);
+  return result;
+}
+
+/**
+ * Ask the AI for review suggestions ("check") or a draft "needs more
+ * information" note ("draft"). Suggestions are text a person reads, never a
+ * score; a draft only fills the text box, and staff send it.
+ */
+export async function reviewAssist(action, orgId, { topics = [], hint = "" } = {}) {
+  return staffRoute("/api/admin-review-assist", {
+    body: { action, orgId, topics, hint },
+    failure: action === "draft" ? "the note could not be drafted" : "the suggestions could not be loaded",
+  });
+}
+
+/** The last suggestions staff were shown for this company, if any. */
+export async function latestReviewAssists(orgId) {
+  return unwrap(
+    await supabase.rpc("admin_review_assists", { target_org: orgId }),
+    "load the last suggestions",
+  );
+}
+
+/** Exactly what the AI reads about a company: shown under the suggestions. */
+export async function reviewAssistInput(orgId) {
+  return unwrap(
+    await supabase.rpc("admin_review_assist_input", { target_org: orgId }),
+    "load what the AI reads",
+  );
+}
+
+/** What a test-data cleanup would delete. Test sites only; never production. */
+export async function testDataPreview() {
+  return staffRoute("/api/admin-test-data", { method: "GET", failure: "the test data could not be listed" });
+}
+
+/** Delete the confirmed test companies and users; the database re-checks each. */
+export async function purgeTestData(orgIds, userIds) {
+  return staffRoute("/api/admin-test-data", {
+    body: { orgIds, userIds },
+    failure: "the test data could not be deleted",
+  });
+}
