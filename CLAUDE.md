@@ -334,6 +334,30 @@ a company-level verdict and a file-level one cannot contradict each other.
   before any `select` — checking afterwards leaks existence through `P0002`
   versus `42501`. `supabase/tests/admin_access_test.sql` is accordingly almost
   entirely negative.
+- **AI help is text a person reads, never a score or a decision**
+  (`20261016000100`, `api/admin-review-assist.js`). On the review page,
+  "Ask AI for suggestions" lists what to look at, each with the evidence it
+  rests on and a question to ask; "Draft with AI" in "Request more
+  information" fills the note, which staff edit and send through the usual
+  decision. Both are live only and run only when asked. What the model reads
+  is `admin_review_assist_input()`: the company's details, certification
+  records, the file LIST (never the files) and the evidence checks without
+  their percentages; no person's name or address. A suggestion whose
+  evidence has a word or number not in that input is dropped
+  (`keepGroundedFindings`), and the screen says how many. Without a key
+  there are no suggestions (nothing stands in), and the draft is built from
+  the ticked topics and the incomplete checks. What staff were shown is kept
+  in staff-only `org_review_assists`. The model is
+  `OPENROUTER_REVIEW_MODEL` ?? Haiku 5.5: 8 s budget, Opus took 12.
+- **Test data is recognised in exactly one place**, `test_data_candidates()`:
+  a slug ending in a 10+ digit run stamp, over an hour old, `is_demo` false,
+  every member a test user (`is_test_email`: a reserved test domain, a run
+  stamp, not `demo-…`), and no order with a company that is not test data.
+  Admin → Settings → Test data (test builds only) lists them, and
+  `/api/admin-test-data` refuses the production project, removes the files,
+  then calls `purge_test_data()` (service role), which deletes only the ids
+  sent that still match. A test script that names its companies or users
+  differently will not be cleaned up; keep the stamp.
 - **RLS says what may be read; it does not say what a query means.**
   `org_members_read` ends in `or is_platform_admin()`, so an unfiltered read of
   that table returns every membership in the marketplace to staff.
@@ -393,7 +417,9 @@ links point.
   funds"), copied verbatim from the designed cards. Since payments moved to
   Stripe that is what happens, so the terms stay at v1.
 - **The privacy policy names every processor** (Supabase, Vercel, Resend,
-  OpenRouter, Google Sheets, Netlify Forms, and from v2 Stripe). Adding a service that touches
+  OpenRouter, Google Sheets, Netlify Forms, from v2 Stripe, from v3 Zoom),
+  and from v4 what OpenRouter does: translation, drafting, message
+  screening and help with profile reviews. Adding a service that touches
   personal data means publishing a new version of it.
 
 ### The factory's request screens, and what a quote costs

@@ -20,14 +20,19 @@
 import {
   claimReview,
   decideReview,
+  latestReviewAssists,
   orgDocuments,
   orgSubmission,
   overviewMetrics,
+  purgeTestData,
   quoteQueue,
+  reviewAssist,
+  reviewAssistInput,
   rfqQueue,
   runDailyJobs,
   sendTestEmail,
   setUserDisabled,
+  testDataPreview,
   userDirectory,
   verificationQueue,
 } from "../../lib/domain/admin.js";
@@ -244,6 +249,22 @@ export function createAdminAdapter({ user, signOut }) {
       orgDocuments: (orgId) => orgDocuments(orgId),
       orgSubmission: (orgId) => orgSubmission(orgId),
       documentUrl: (document) => urlFor(document),
+
+      /**
+       * AI help on the review page. Live only: the prototype's adapter has
+       * none of these, so its screens draw none of it. Suggestions are text a
+       * person reads, never a score; a draft only fills the note.
+       */
+      reviewAssist,
+      latestReviewAssists,
+      reviewAssistInput,
+
+      /**
+       * Clearing test data, on test builds only. A production build has no
+       * such action, so the panel is not drawn; the route refuses the
+       * production project as well.
+       */
+      ...(import.meta.env.DEV || __DEMO_SIGN_IN__ ? { testData: { preview: testDataPreview, purge: purgeTestData } } : {}),
     },
   };
 }

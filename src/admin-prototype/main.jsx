@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { PrototypeSideNav, ProfileChipSection, ProfileDetailPair } from "../shared/ProfileShell.jsx";
 import { useActions, useAdminMetrics, useAdminQuotes, useAdminRfqs, useAdminUsers, useVerificationQueue, useViewer } from "../lib/data/DataProvider.jsx";
 import "../prototype/styles.css";
@@ -812,6 +813,101 @@ function EvidenceDetailModal({ profile, check, documents, onDocumentUrl, onClose
   );
 }
 
+/**
+ * What an AI model suggests a reviewer look at. Live only: the prototype's
+ * adapter has no `reviewAssist`, so nothing here is drawn there. Not in the
+ * design; built from the design's panel and check rows.
+ *
+ * Text, never a score (CLAUDE.md, Admin operations). Each suggestion shows
+ * the evidence it rests on, quoted from the submission, and the server drops
+ * any whose evidence is not there. It runs when staff ask, never by itself,
+ * and the caption says what the model did and did not read.
+ */
+function AiSuggestionsPanel({ orgId }) {
+  const actions = useActions();
+  const [state, setState] = useState({ status: "idle", result: null, message: "" });
+  const [input, setInput] = useState(null);
+  const [inputOpen, setInputOpen] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setState({ status: "idle", result: null, message: "" });
+    setInput(null);
+    setInputOpen(false);
+    actions.latestReviewAssists?.(orgId)
+      .then((saved) => {
+        if (live && saved?.check) {
+          setState({ status: "done", result: { ...saved.check.output, model: saved.check.model, createdAt: saved.check.createdAt }, message: "" });
+        }
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [orgId]);
+
+  const ask = async () => {
+    setState((current) => ({ ...current, status: "asking", message: "" }));
+    try {
+      const result = await actions.reviewAssist("check", orgId);
+      if (!result.available) {
+        setState((current) => ({ ...current, status: current.result ? "done" : "idle", message: result.reason }));
+        return;
+      }
+      if (result.input) setInput(result.input);
+      setState({ status: "done", result, message: "" });
+    } catch (error) {
+      setState((current) => ({ ...current, status: current.result ? "done" : "idle", message: error.message }));
+    }
+  };
+
+  const toggleInput = async () => {
+    if (!inputOpen && !input) {
+      try { setInput(await actions.reviewAssistInput(orgId)); } catch (error) { setState((current) => ({ ...current, message: error.message })); return; }
+    }
+    setInputOpen(!inputOpen);
+  };
+
+  const { result } = state;
+  const asked = result?.createdAt ? new Date(result.createdAt).toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+
+  return (
+    <Panel
+      title="AI suggestions"
+      subtitle="Suggestions from an AI model. It read the profile text, the certificate records and the list of files; it did not open the files or contact any registry. No score and no decision: the decision is yours."
+      className="admin-assist-panel"
+    >
+      {state.message && <p className="admin-error" role="alert">{state.message}</p>}
+      {result && (
+        <>
+          <p className="admin-assist-meta">Asked {asked}{result.model ? ` · ${result.model}` : ""}{result.dropped ? ` · ${result.dropped} suggestion${result.dropped === 1 ? "" : "s"} left out: their evidence was not in the submission` : ""}</p>
+          {result.findings?.length ? (
+            <div className="admin-check-list">
+              {result.findings.map((finding, index) => (
+                <article className="admin-check-row admin-assist-row" key={`${finding.topic}-${index}`}>
+                  <div className="admin-check-copy">
+                    <strong>{finding.topic}</strong>
+                    <p>{finding.observation}</p>
+                    <span>Seen: “{finding.evidence}”</span>
+                    {finding.ask && <p className="admin-assist-ask">Could ask: {finding.ask}</p>}
+                  </div>
+                  <StatusPill tone="info">Suggestion</StatusPill>
+                </article>
+              ))}
+            </div>
+          ) : <p className="admin-assist-meta">Nothing stood out to the AI. That is not a check passed: review the evidence as usual.</p>}
+          {result.checked?.length ? <p className="admin-assist-meta">Looked at: {result.checked.join(", ")}</p> : null}
+        </>
+      )}
+      <div className="admin-assist-actions">
+        <button className="secondary-btn" type="button" onClick={ask} disabled={state.status === "asking"}>
+          {state.status === "asking" ? "Asking…" : result ? "Ask again" : "Ask AI for suggestions"}
+        </button>
+        <button className="admin-assist-link" type="button" onClick={toggleInput} aria-expanded={inputOpen}>{inputOpen ? "Hide what the AI reads" : "What the AI reads"}</button>
+      </div>
+      {inputOpen && input && <pre className="admin-assist-input">{JSON.stringify(input, null, 2)}</pre>}
+    </Panel>
+  );
+}
+
 function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision }) {
   const [requestOpen, setRequestOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
@@ -823,7 +919,21 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const [declineNote, setDeclineNote] = useState("");
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState(null);
+  // The designed checkboxes held nothing; live, they say what the draft asks for.
+  const [requestTopics, setRequestTopics] = useState([]);
+  const [draft, setDraft] = useState({ state: "idle", label: "" });
+  const actions = useActions();
   if (!profile) return null;
+  const draftNote = async () => {
+    setDraft({ state: "drafting", label: "" });
+    try {
+      const result = await actions.reviewAssist("draft", profile.id, { topics: requestTopics, hint: requestNote });
+      setRequestNote(result.message);
+      setDraft({ state: "done", label: result.source === "ai" ? "AI draft: read and edit it before sending." : "Drafted from the checks (AI not available): read and edit it before sending." });
+    } catch (error) {
+      setDraft({ state: "error", label: error.message });
+    }
+  };
   const members = submission?.members ?? [];
   const submitter = members.find((member) => member.role === "owner") ?? members[0] ?? null;
   const submitterName = submitter?.name || "Not provided";
@@ -874,6 +984,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               </div>
             </Panel>
             ) : null}
+            {actions.reviewAssist && <AiSuggestionsPanel orgId={profile.id} />}
           </div>
           <aside className="admin-review-side">
             {profile.confidence != null && <ConfidenceCard score={profile.confidence} />}
@@ -902,9 +1013,15 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             <button className="settings-drawer-close" type="button" aria-label="Close" onClick={() => setRequestOpen(false)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
             <header><div><span>Profile review</span><h2 id="request-info-title">Request more information</h2></div></header>
             <div className="admin-request-options">
-              {["Business registration document", "Certification scope or validity", "Facility or product evidence", "Company ownership details"].map((label) => <label key={label}><input type="checkbox" /> <span>{label}</span></label>)}
+              {["Business registration document", "Certification scope or validity", "Facility or product evidence", "Company ownership details"].map((label) => <label key={label}><input type="checkbox" checked={requestTopics.includes(label)} onChange={(event) => setRequestTopics((current) => event.target.checked ? [...current, label] : current.filter((topic) => topic !== label))} /> <span>{label}</span></label>)}
             </div>
             <label className="factory-onboarding-field"><span>Message</span><textarea value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Add context or instructions for the applicant..." /></label>
+            {actions.reviewAssist && (
+              <div className="admin-assist-draft">
+                <button className="secondary-btn compact-btn" type="button" onClick={draftNote} disabled={draft.state === "drafting"}>{draft.state === "drafting" ? "Drafting…" : "Draft with AI"}</button>
+                {draft.label && <p className={draft.state === "error" ? "admin-error" : "admin-assist-meta"} role={draft.state === "error" ? "alert" : "status"}>{draft.label}</p>}
+              </div>
+            )}
             <footer><button className="secondary-btn" type="button" onClick={() => setRequestOpen(false)}>Cancel</button><button className="primary-btn" type="button" disabled={!requestNote.trim()} onClick={() => { setRequestOpen(false); onDecision(profile.id, "Needs information", requestNote.trim()); setRequestNote(""); }}>Send request</button></footer>
           </section>
         </div>
@@ -1201,6 +1318,108 @@ function TestEmailPanel({ email }) {
   );
 }
 
+/**
+ * Clearing what test runs leave behind. Live, on test builds only: the
+ * prototype's adapter and a production build have no `testData`, so nothing
+ * is drawn; the route also refuses the production project. Not in the
+ * design; built from the settings card and the design's table.
+ *
+ * Staff always see the list first, and the database deletes only what it
+ * still recognises as test data (purge_test_data).
+ */
+function TestDataPanelIfLive() {
+  const actions = useActions();
+  return actions.testData ? <TestDataPanel /> : null;
+}
+
+function TestDataPanel() {
+  const actions = useActions();
+  const [state, setState] = useState({ status: "idle", preview: null, message: "" });
+  const [confirming, setConfirming] = useState(false);
+
+  const find = async () => {
+    setState({ status: "finding", preview: null, message: "" });
+    try {
+      setState({ status: "found", preview: await actions.testData.preview(), message: "" });
+    } catch (error) {
+      setState({ status: "error", preview: null, message: error.message });
+    }
+  };
+
+  const companies = state.preview?.companies ?? [];
+  const users = state.preview?.users ?? [];
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  const purge = async () => {
+    setConfirming(false);
+    setState((current) => ({ ...current, status: "deleting", message: "" }));
+    try {
+      const result = await actions.testData.purge(companies.map((company) => company.id), users.map((user) => user.id));
+      const kept = result.keptUsers?.length ? `; kept ${plural(result.keptUsers.length, "user", "users")} other records still point to` : "";
+      const skipped = result.skipped ? `; skipped ${plural(result.skipped, "company", "companies")} that no longer match` : "";
+      setState({
+        status: "done",
+        preview: null,
+        message: `Deleted ${plural(result.companies, "company", "companies")}, ${plural(result.orders, "order", "orders")}, ${plural(result.users, "user", "users")} and ${plural(result.files ?? 0, "file", "files")}${kept}${skipped}.`,
+      });
+    } catch (error) {
+      setState((current) => ({ ...current, status: "found", message: error.message }));
+    }
+  };
+
+  return (
+    <Panel
+      title="Test data"
+      subtitle="Companies and users left behind by test runs. Nothing is deleted until you have seen the list and confirmed. Not available on the live marketplace."
+      className="admin-settings-card"
+    >
+      <div className="admin-testdata">
+        {state.message && <p className={state.status === "error" || state.status === "found" ? "admin-error" : "admin-test-email-status"} role={state.status === "done" ? "status" : "alert"}>{state.message}</p>}
+        {state.preview && (
+          <>
+            <p className="admin-assist-meta">{state.preview.rule}</p>
+            {companies.length ? (
+              <div className="admin-table-wrap admin-testdata-table">
+                <table className="admin-table">
+                  <thead><tr><th>Company</th><th>Members</th><th>Requests</th><th>Quotes</th><th>Orders</th><th>Files</th></tr></thead>
+                  <tbody>
+                    {companies.map((company) => (
+                      <tr key={company.id}>
+                        <td><strong>{company.name}</strong><br /><small>{company.type} · {new Date(company.createdAt).toLocaleDateString("en", { month: "short", day: "numeric" })}</small></td>
+                        <td>{company.members.length ? company.members.join(", ") : "None"}</td>
+                        <td>{company.requests}</td><td>{company.quotes}</td><td>{company.orders}</td><td>{company.files}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <p className="admin-assist-meta">No test companies.</p>}
+            <p className="admin-assist-meta">{users.length ? `${plural(users.length, "test user", "test users")}: ${users.slice(0, 12).map((user) => user.email).join(", ")}${users.length > 12 ? `, and ${users.length - 12} more` : ""}.` : "No test users."}</p>
+          </>
+        )}
+        <div className="admin-settings-actions">
+          {state.preview && (companies.length || users.length) ? (
+            <button className="primary-btn danger-action" type="button" onClick={() => setConfirming(true)} disabled={state.status === "deleting"}>
+              {state.status === "deleting" ? "Deleting…" : `Delete ${plural(companies.length, "company", "companies")} and ${plural(users.length, "user", "users")}`}
+            </button>
+          ) : null}
+          <button className="secondary-btn" type="button" onClick={find} disabled={state.status === "finding" || state.status === "deleting"}>{state.status === "finding" ? "Looking…" : state.preview ? "Look again" : "Find test data"}</button>
+        </div>
+      </div>
+      {confirming && createPortal(
+        <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setConfirming(false)}>
+          <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="test-data-title">
+            <button className="settings-drawer-close" type="button" aria-label="Close" onClick={() => setConfirming(false)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
+            <header><div><span>Test data</span><h2 id="test-data-title">Delete {plural(companies.length, "company", "companies")} and {plural(users.length, "user", "users")}?</h2><p>This cannot be undone</p></div></header>
+            <footer><button className="secondary-btn" type="button" onClick={() => setConfirming(false)}>Cancel</button><button className="primary-btn danger-action" type="button" onClick={purge}>Delete test data</button></footer>
+          </section>
+        </div>,
+        document.body,
+      )}
+    </Panel>
+  );
+}
+
 // Test sites have no scheduled jobs, so staff run the daily one by hand.
 function DailyJobsPanel() {
   const actions = useActions();
@@ -1324,6 +1543,7 @@ function SettingsPage({ user, account, onSignOut }) {
       </Panel>
       <TestEmailPanel email={email} />
       <DailyJobsPanel />
+      <TestDataPanelIfLive />
     </main>
   );
 }

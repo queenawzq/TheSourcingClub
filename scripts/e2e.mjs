@@ -2431,6 +2431,145 @@ async function main() {
       .eq("kind", "milestone_due_soon").eq("subject_id", openStep?.id ?? bornOrder.id);
     check(dueAgain === 1, "running it again sends nothing twice");
 
+    // ================= ADMIN: AI HELP AND TEST DATA =================
+    // E2E_AI=on demands the model's answers, off demands the stand-ins (no
+    // OPENROUTER_API_KEY on the dev server); unset takes either and says which.
+    console.log("\nADMIN: AI HELP AND TEST DATA");
+    const aiMode = process.env.E2E_AI ?? "auto";
+    // Atlas Knit Studio is the seeded factory waiting for review. Sending it a
+    // request changes its review, so what it was is put back afterwards.
+    const { data: atlas } = await db.from("orgs").select("id").eq("name", "Atlas Knit Studio").maybeSingle();
+    check(Boolean(atlas), "the seeded factory waiting for review is there (run seed:demo if not)");
+    const { data: atlasReviewBefore } = atlas ? await db.from("org_reviews").select("*").eq("org_id", atlas.id).maybeSingle() : { data: null };
+    const { data: atlasProfileBefore } = atlas ? await db.from("factory_profiles").select("verification_status").eq("org_id", atlas.id).maybeSingle() : { data: null };
+    const { count: assistsBefore } = await db.from("org_review_assists").select("*", { count: "exact", head: true }).eq("org_id", atlas?.id ?? stamp);
+    const sectionStart = new Date().toISOString();
+    // A leftover from an earlier run, two hours old and with no members, like
+    // the ones smoke leaves: the cleanup must find this one and only data like it.
+    const { data: leftover } = await db.from("orgs").insert({
+      type: "factory", name: `Atelier E2E cleanup ${stamp}`, slug: `atelier-e2e-cleanup-${stamp}`,
+      created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    }).select("id, name").single();
+    check(Boolean(leftover), "a two-hour-old leftover test company is in place");
+
+    if (atlas) {
+      await page.goto(`${ADMIN}?screen=verification`);
+      await page.waitForTimeout(3000);
+      const atlasRows = await page.locator(".admin-verification-row").count();
+      let atlasOpened = false;
+      for (let index = 0; index < atlasRows; index += 1) {
+        const text = await page.locator(".admin-verification-row").nth(index).innerText().catch(() => "");
+        if (!text.includes("Atlas Knit Studio")) continue;
+        await page.locator(reviewButtons).nth(index).click();
+        atlasOpened = true;
+        break;
+      }
+      check(atlasOpened, "staff open Atlas Knit Studio's review");
+      await waitForHeading(page, "Atlas Knit Studio", 25000).catch(() => {});
+
+      // Suggestions, asked for by hand.
+      await waitFor(page, ".admin-assist-panel", 25000);
+      // The last saved answer loads with the page, so the button may read "Ask again".
+      const askLabel = await page.evaluate(() => [...document.querySelectorAll(".admin-assist-panel button")].map((node) => node.textContent.trim()).find((text) => /^Ask (AI for suggestions|again)$/.test(text)) ?? "");
+      check(Boolean(askLabel), `the review page offers AI suggestions, on request only ("${askLabel}")`);
+      await clickButton(page, askLabel || "ask ai for suggestions");
+      await page.waitForTimeout(500);
+      const askDeadline = Date.now() + 45000;
+      while (Date.now() < askDeadline && await page.evaluate(() => [...document.querySelectorAll(".admin-assist-panel button")].some((node) => node.textContent.includes("Asking")))) {
+        await page.waitForTimeout(400);
+      }
+      const panelText = await page.locator(".admin-assist-panel").innerText();
+      const findings = await page.locator(".admin-assist-row").count();
+      const { count: assistsAfter } = await db.from("org_review_assists").select("*", { count: "exact", head: true }).eq("org_id", atlas.id);
+      const freshAnswer = assistsAfter === (assistsBefore ?? 0) + 1;
+      const aiAnswered = freshAnswer && findings > 0 && /Seen: /.test(panelText);
+      const notSetUp = /not set up on this site/i.test(panelText);
+      console.log(`  AI suggestions: ${aiAnswered ? `${findings} from the model` : notSetUp ? "not set up (no key)" : "neither"}`);
+      if (aiMode === "on") check(aiAnswered, `with a key, the AI lists what to look at, each with what it saw (${findings}), kept for the record`);
+      else if (aiMode === "off") check(notSetUp && !freshAnswer, "without a key, the page says suggestions are not set up, and nothing new is recorded");
+      else check(aiAnswered || notSetUp, "the AI lists suggestions, or the page says it is not set up");
+      // Each row is labelled "Suggestion" and nothing else: no score, no pass or fail.
+      const rowLabels = await page.evaluate(() => [...document.querySelectorAll(".admin-assist-row")].map((row) => row.lastElementChild?.textContent.trim()));
+      check(rowLabels.every((label) => label === "Suggestion"), `each suggestion is labelled "Suggestion", with no score or verdict (${[...new Set(rowLabels)].join(", ") || "none shown"})`);
+      await record(page, "AI suggestions", aiAnswered ? "what to look at, with the evidence seen and a question to ask" : "no key on this site: nothing stands in");
+
+      // A drafted note, edited, then sent the usual way.
+      await clickButton(page, "request more information");
+      await waitFor(page, ".admin-review-modal", 10000);
+      await page.locator(".admin-review-modal .admin-request-options input[type=checkbox]").nth(1).click();
+      await clickButton(page, "draft with ai");
+      const draftDeadline = Date.now() + 45000;
+      while (Date.now() < draftDeadline && !(await page.locator(".admin-assist-draft p").count())) {
+        await page.waitForTimeout(400);
+      }
+      const draftLabel = await page.locator(".admin-assist-draft p").first().innerText().catch(() => "");
+      const drafted = await page.evaluate(() => document.querySelector(".admin-review-modal textarea")?.value ?? "");
+      const aiDraft = /^AI draft/.test(draftLabel);
+      const standIn = /^Drafted from the checks/.test(draftLabel);
+      console.log(`  Draft: ${draftLabel}`);
+      if (aiMode === "on") check(aiDraft, `with a key, the note is drafted by the AI ("${draftLabel}")`);
+      else if (aiMode === "off") check(standIn, `without a key, the note is drafted from the checks ("${draftLabel}")`);
+      else check(aiDraft || standIn, `the note is drafted ("${draftLabel}")`);
+      check(drafted.trim().length > 40, `the draft fills the message (${drafted.trim().length} characters)`);
+      check(/certific/i.test(drafted), "and asks about the ticked topic (certification)");
+      await record(page, "A drafted request", "staff read and edit it; nothing is sent yet");
+      const edited = `${drafted.trim()}\n\nEdited by staff ${stamp}.`;
+      await page.locator(".admin-review-modal textarea").fill(edited);
+      await clickButton(page, "send request");
+      let sentReview = null;
+      const sendDeadline = Date.now() + 20000;
+      while (Date.now() < sendDeadline) {
+        ({ data: sentReview } = await db.from("org_reviews").select("state, note").eq("org_id", atlas.id).maybeSingle());
+        if (sentReview?.state === "needs_information") break;
+        await page.waitForTimeout(500);
+      }
+      check(sentReview?.state === "needs_information", "sending records the request for more information");
+      check(sentReview?.note === edited.trim(), "with the note exactly as staff edited it");
+      const { data: askedNotice } = await db.from("notifications").select("id, body")
+        .eq("org_id", atlas.id).eq("kind", "verification_needs_information").gte("created_at", sectionStart);
+      check((askedNotice ?? []).some((notice) => notice.body === edited.trim()), "and the factory is told, in those words");
+      await record(page, "Request sent", "the factory's review now waits on it");
+
+      // Put Atlas back the way the seed left it.
+      if (atlasReviewBefore) await db.from("org_reviews").upsert(atlasReviewBefore);
+      else await db.from("org_reviews").delete().eq("org_id", atlas.id);
+      if (atlasProfileBefore) await db.from("factory_profiles").update({ verification_status: atlasProfileBefore.verification_status }).eq("org_id", atlas.id);
+      await db.from("notifications").delete().eq("org_id", atlas.id).eq("kind", "verification_needs_information").gte("created_at", sectionStart);
+    }
+
+    // Test data: found, confirmed, deleted.
+    const demoNamesListed = (text) => /Demo Brand|Demo Factory|Ningbo Loomworks|Atlas Knit Studio|Fresh Thread Studio|Kowloon Sourcing Partners/.test(text);
+    await page.goto(`${ADMIN}?screen=settings`);
+    const findDeadline = Date.now() + 30000;
+    while (Date.now() < findDeadline && !(await page.evaluate(() => [...document.querySelectorAll("button")].some((node) => node.textContent.trim() === "Find test data")))) {
+      await page.waitForTimeout(300);
+    }
+    await clickButton(page, "find test data");
+    await waitFor(page, ".admin-testdata-table, .admin-testdata .admin-error", 30000);
+    const listed = await page.locator(".admin-testdata").innerText();
+    check(Boolean(leftover) && listed.includes(leftover.name), "Settings → Test data lists the leftover company");
+    check(!listed.includes(brandName) && !listed.includes(factoryName), "but not this run's own companies (under an hour old)");
+    check(!demoNamesListed(listed), "and not the demo companies");
+    await page.evaluate(() => document.querySelector(".admin-testdata")?.scrollIntoView({ block: "center" }));
+    await record(page, "Test data found", "the list, and the rule in words, before anything is deleted");
+    await clickButton(page, "delete ");
+    await waitFor(page, "#test-data-title", 10000);
+    const confirmTitle = await page.locator("#test-data-title").innerText();
+    check(/^Delete \d+ compan/.test(confirmTitle), `deleting asks first ("${confirmTitle}")`);
+    await record(page, "Confirm", "nothing is deleted until staff confirm");
+    await clickButton(page, "delete test data");
+    await waitFor(page, ".admin-testdata [role=status]", 60000);
+    const purgeResult = await page.locator(".admin-testdata [role=status]").innerText();
+    check(/^Deleted \d+ compan/.test(purgeResult), `and says what it deleted ("${purgeResult}")`);
+    await record(page, "Test data deleted", purgeResult);
+    const { data: leftoverAfter } = await db.from("orgs").select("id").eq("id", leftover?.id ?? stamp).maybeSingle();
+    check(!leftoverAfter, "the leftover company is gone");
+    const { count: ownLeft } = await db.from("orgs").select("*", { count: "exact", head: true }).in("id", [brandOrg.id, factoryOrg.id]);
+    check(ownLeft === 2, "this run's companies are untouched");
+    const demoNames = ["Demo Brand", "Demo Factory", "Ningbo Loomworks", "Atlas Knit Studio", "Fresh Thread Studio", "Kowloon Sourcing Partners"];
+    const { count: demoLeft } = await db.from("orgs").select("*", { count: "exact", head: true }).in("name", demoNames);
+    check(demoLeft === demoNames.length, `the demo companies are untouched (${demoLeft} of ${demoNames.length})`);
+
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
     console.log("\nINVITE ONLY");
