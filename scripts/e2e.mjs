@@ -2023,10 +2023,18 @@ async function main() {
     const { data: runThread } = await db.from("message_threads")
       .select("id").eq("order_id", bornOrder.id).single();
 
-    const { data: sentRows } = await db.from("messages")
-      .select("body, body_lang, body_translated, body_translated_lang, sender_org_id")
-      .eq("thread_id", runThread.id)
-      .order("created_at");
+    // The translation is written by the screen, with the delivery, so read
+    // the message once it is delivered rather than the moment it is saved.
+    let sentRows = [];
+    const deliveredDeadline = Date.now() + 20000;
+    while (Date.now() < deliveredDeadline) {
+      ({ data: sentRows } = await db.from("messages")
+        .select("body, body_lang, body_translated, body_translated_lang, sender_org_id, delivery")
+        .eq("thread_id", runThread.id)
+        .order("created_at"));
+      if (sentRows?.[sentRows.length - 1]?.delivery === "delivered") break;
+      await page.waitForTimeout(300);
+    }
     const sent = sentRows[sentRows.length - 1];
 
     check(sent.body === factoryLine,
@@ -2147,7 +2155,10 @@ async function main() {
 
     // Send is instant: the box empties and exactly one bubble carries the
     // words, before any server has answered.
-    const instantLine = `Thanks, looking at it now (${stamp}).`;
+    // A run's stamp is a bare 13-digit number, which reads like an account
+    // id: the check (rightly) holds it. Ordinary lines carry a word instead.
+    const runWord = `run-${stamp.toString(36)}`;
+    const instantLine = `Thanks, looking at it now (${runWord}).`;
     await page.locator('.message-composer textarea').fill(instantLine);
     const sendSeen = await page.evaluate(async (line) => {
       const started = performance.now();
@@ -2172,7 +2183,7 @@ async function main() {
     const { data: factorySession } = await factoryClient.auth.signInWithPassword({
       email: `e2e-factory-${stamp}@example.com`, password: PASSWORD,
     });
-    const liveLine = `Packing list for ${bornOrder.order_number} is ready (${stamp}).`;
+    const liveLine = `Packing list for ${bornOrder.order_number} is ready (${runWord}).`;
     const { data: liveRow, error: liveError } = await factoryClient.from("messages").insert({
       thread_id: runThread.id,
       sender_org_id: factoryOrg.id,
@@ -2188,7 +2199,7 @@ async function main() {
     }).catch(() => null);
     let arrivedLive = false;
     while (Date.now() - liveStarted < 15000) {
-      if ((await eachText(page, ".message-bubble")).some((text) => text.includes(stamp) && text.includes("Packing list"))) {
+      if ((await eachText(page, ".message-bubble")).some((text) => text.includes(runWord) && text.includes("Packing list"))) {
         arrivedLive = true;
         break;
       }
@@ -2198,7 +2209,7 @@ async function main() {
     await record(page, "It arrives live", "the other side's message appears while the page is open");
 
     // Attach file: a real picker, and the file goes with the message.
-    const fileName = `measurements-${stamp}.pdf`;
+    const fileName = `measurements-${runWord}.pdf`;
     await page.evaluate(async (name) => {
       document.querySelector(".message-upload-btn").click();
       const input = document.querySelector('input[data-field="message_files"]');
@@ -2284,9 +2295,13 @@ async function main() {
     let released = false;
     for (let index = 0; index < heldRows; index += 1) {
       const row = page.locator('[data-testid="held-message"]').nth(index);
-      if (!(await row.innerText().catch(() => "")).includes(stamp)) continue;
+      // The whole line: earlier runs leave held messages that start the same.
+      if (!(await row.innerText().catch(() => "")).includes(phoneLine)) continue;
       await record(page, "Messages held for review", "staff see the brand, the factory, the order and why");
-      await page.locator('[data-testid="held-message"] [data-testid="release-message"]').nth(index).click();
+      await page.evaluate((words) => {
+        const target = [...document.querySelectorAll('[data-testid="held-message"]')].find((tr) => tr.innerText.includes(words));
+        target?.querySelector('[data-testid="release-message"]')?.click();
+      }, phoneLine);
       released = true;
       break;
     }
