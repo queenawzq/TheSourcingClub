@@ -38,3 +38,43 @@
   font-weight: 500;
   line-height: 16px;
 }
+
+/*
+ * Live only: files chosen with "Attach file", waiting to go with the next
+ * message. Drawn as the design's attachment chips, with a way to take one off.
+ */
+.message-pending-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.message-pending-files span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7f8fa;
+  color: #33415c;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+.message-pending-files button {
+  border: 0;
+  background: none;
+  color: #60769b;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.message-attachment-row button[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
