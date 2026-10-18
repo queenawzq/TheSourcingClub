@@ -19,7 +19,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(58);
+select plan(59);
 
 insert into auth.users (id, email) values
   ('b1000000-0000-0000-0000-000000000001', 'p15-brand@example.com'),
@@ -623,6 +623,15 @@ select is(
 );
 
 reset role;
+
+-- Conversations are live (20261013000600). Realtime sends a browser only the
+-- rows its read policy lets it see, so a held message still reaches nobody
+-- but its sender; that is the read rule tested above.
+select ok(
+  exists (select 1 from pg_publication_tables
+           where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages'),
+  'messages are published to Realtime, so a conversation updates without a refresh'
+);
 
 select * from finish();
 rollback;
