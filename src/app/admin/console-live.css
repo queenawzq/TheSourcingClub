@@ -89,7 +89,7 @@
 
 /* Live only (not in the design): a factory's credits in the review page's
    side column, and the adjust dialog's add/remove choice. */
-.admin-credits-card .secondary-btn { width: 100%; margin-top: 12px; }
+.admin-credits-card > .secondary-btn { width: 100%; margin-top: 12px; }
 .admin-credits-lines {
   display: grid;
   gap: 8px;
