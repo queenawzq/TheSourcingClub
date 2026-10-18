@@ -55,7 +55,7 @@ function deliveryStatus(message) {
  * tab opened after an await is a pop-up browsers block), then goes to the
  * signed link.
  */
-async function openAttachment(doc) {
+async function openAttachment(doc, onError) {
   const tab = window.open("", "_blank");
   try {
     const url = await urlFor(doc, 300);
@@ -63,7 +63,7 @@ async function openAttachment(doc) {
     else window.location.assign(url);
   } catch (failure) {
     tab?.close();
-    window.alert(failure.message);
+    onError(failure);
   }
 }
 
@@ -302,7 +302,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           : readable(message);
         const linked = (message.documents ?? []).filter((doc) => doc.file_name);
         const files = linked.length
-          ? linked.map((doc) => ({ name: doc.file_name, uploading: !doc.storage_path, onOpen: doc.storage_path ? () => openAttachment(doc) : undefined }))
+          ? linked.map((doc) => ({ name: doc.file_name, uploading: !doc.storage_path, onOpen: doc.storage_path ? () => openAttachment(doc, setError) : undefined }))
           : (uploading[message.id] ?? []).map((name) => ({ name, uploading: true }));
         return {
           id: message.id,
