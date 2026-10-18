@@ -105,6 +105,13 @@ export async function listMessages(threadId) {
   return [...(rows ?? [])].sort((a, b) => Date.parse(sentAt(a)) - Date.parse(sentAt(b)));
 }
 
+/** The words of a message that is only files. */
+export function fileOnlyBody(files) {
+  const names = (files ?? []).map((file) => file.name).filter(Boolean);
+  if (!names.length) return "";
+  return names.length === 1 ? `Sent a file: ${names[0]}` : `Sent ${names.length} files: ${names.join(", ")}`;
+}
+
 /** When a message reached the thread: its delivery, or its writing if it has not. */
 export const sentAt = (message) => message.delivered_at ?? message.created_at;
 
@@ -116,25 +123,6 @@ export async function markRead(threadId) {
 }
 
 /**
- * Ask the server to translate. Never throws, and a failure is indistinguishable
- * from "there was nothing to translate" — both mean the message goes as typed.
- */
-async function translate(text) {
-  try {
-    const response = await fetch("/api/translate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    const result = await response.json();
-    if (!result?.translation) return null;
-    return result;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Send.
  *
  * Order matters. The message row is written first, because an attachment needs
@@ -143,15 +131,17 @@ async function translate(text) {
  * who has typed a paragraph should not lose it because a photo was too large.
  *
  * The row is saved as `checking` (the database insists), and only the screen
- * delivers it, after the files are linked so their names are checked too.
- * `onSaved` runs as soon as the row exists, so the sender sees their message
- * at once rather than after the screen.
+ * delivers it, after the files are linked so their names are checked too. The
+ * screen also translates, at the same time as it checks: nothing waits on a
+ * model before the row exists. `onSaved` runs as soon as it does.
+ *
+ * A file can go on its own: the database needs words, so the message says
+ * which file was sent.
  */
 export async function sendMessage({ threadId, orgId, userId, body, files = [], onSaved }) {
-  const text = body.trim();
+  const typed = (body ?? "").trim();
+  const text = typed || fileOnlyBody(files);
   if (!text) throw new Error("there is nothing to send");
-
-  const translation = await translate(text);
 
   const message = unwrap(
     await supabase
@@ -161,10 +151,6 @@ export async function sendMessage({ threadId, orgId, userId, body, files = [], o
         sender_org_id: orgId,
         sender_user_id: userId,
         body: text,
-        body_lang: translation?.source_language ?? null,
-        body_translated: translation?.translation ?? null,
-        body_translated_lang: translation?.target_language ?? null,
-        translated_by: translation?.model ?? null,
       })
       .select()
       .single(),
