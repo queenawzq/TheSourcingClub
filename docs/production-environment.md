@@ -65,6 +65,7 @@ a day, sent and received together, so a busy day needs a paid plan.
 
 - `OPENROUTER_API_KEY` (message screening, #51): set for Production,
   Preview and Development.
-- `OPENROUTER_SCREEN_MODEL`: optional; screening falls back to
-  `OPENROUTER_MODEL`, then `anthropic/claude-opus-5`.
+- `OPENROUTER_SCREEN_MODEL`, `OPENROUTER_TRANSLATE_MODEL`: optional; message
+  checking and translation default to `anthropic/claude-haiku-5.5` (never
+  `OPENROUTER_MODEL`: they sit on every send and must answer in a second or two).
 - `SUPABASE_DB_URL` (Production only): runs the new migrations on deploy.
