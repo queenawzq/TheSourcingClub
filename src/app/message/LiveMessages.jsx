@@ -290,7 +290,11 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       project: projectNames.get(thread.id) ?? thread.subject_title ?? "",
       kind: thread.subject_kind === "order" ? "Production order" : "Request for quote",
       lastDate: dayLabel(thread.last_message_at),
-      lastPreview: thread.last_body ?? "No messages yet.",
+      // The other side's last words in the reader's language, as in the
+      // conversation itself; the reader's own as typed.
+      lastPreview: (thread.last_sender_org_id !== org.id && thread.last_body_translated_lang === "en"
+        ? thread.last_body_translated
+        : thread.last_body) ?? "No messages yet.",
       unread: Number(thread.unread_count) || 0,
       files: [],
       messages: rows.map((message) => {
