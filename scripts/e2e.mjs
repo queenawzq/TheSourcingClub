@@ -2107,10 +2107,9 @@ async function main() {
     await page.locator('.message-composer textarea').fill("Confirmed, that matches the chart. Go ahead.");
     await page.locator('[data-testid="send-message"]').click();
 
-    // Wait for the message to actually arrive, not for a guessed duration.
-    // sendMessage awaits /api/translate BEFORE inserting, and a model round
-    // trip routinely outlasts a fixed 4s sleep — which is how this passed
-    // locally and failed as soon as the model was slower.
+    // Wait for the message to actually arrive, not for a guessed duration:
+    // it is delivered once the screen (and the translation beside it) have
+    // answered, which a fixed sleep would race.
     let exchanged = 0;
     const sendDeadline = Date.now() + 45000;
     while (Date.now() < sendDeadline) {
@@ -2129,6 +2128,108 @@ async function main() {
     // which is the failure this file has already been bitten by once.
     check(exchanged === 2, `both sides have now said something (${exchanged} delivered messages on this thread)`);
     await record(page, "A reply", "the first conversation either prototype could not actually have");
+
+    // ================= A LIVE CONVERSATION =================
+    // Until 2026-10-18 this walkthrough signed in as one side at a time and
+    // never had both in the conversation at once, which is how a screen that
+    // needed a refresh to show anything, an "Attach file" that did nothing and
+    // a Send that took seconds all passed. Here the brand's page stays open and
+    // the factory writes from a second, real signed-in client.
+    console.log("\nA LIVE CONVERSATION");
+
+    // Send is instant: the box empties and exactly one bubble carries the
+    // words, before any server has answered.
+    const instantLine = `Thanks, looking at it now (${stamp}).`;
+    await page.locator('.message-composer textarea').fill(instantLine);
+    const sendSeen = await page.evaluate(async (line) => {
+      const started = performance.now();
+      document.querySelector('[data-testid="send-message"]').click();
+      while (performance.now() - started < 1500) {
+        const box = document.querySelector(".message-composer textarea").value;
+        const bubbles = [...document.querySelectorAll(".message-bubble")].filter((bubble) => bubble.textContent.includes(line)).length;
+        if (!box && bubbles >= 1) return { ms: Math.round(performance.now() - started), bubbles, box };
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return { ms: null };
+    }, instantLine);
+    check(sendSeen.ms !== null && sendSeen.bubbles === 1 && sendSeen.box === "",
+      `pressing Send empties the box and draws the message once, at once (${sendSeen.ms} ms, ${sendSeen.bubbles} bubble)`);
+
+    // The factory writes from somewhere else; the brand's page is not reloaded.
+    const factoryClient = createClient(
+      process.env.SUPABASE_URL ?? stack.API_URL,
+      process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY,
+      { auth: { persistSession: false } },
+    );
+    const { data: factorySession } = await factoryClient.auth.signInWithPassword({
+      email: `e2e-factory-${stamp}@example.com`, password: PASSWORD,
+    });
+    const liveLine = `Packing list for ${bornOrder.order_number} is ready (${stamp}).`;
+    const { data: liveRow, error: liveError } = await factoryClient.from("messages").insert({
+      thread_id: runThread.id,
+      sender_org_id: factoryOrg.id,
+      sender_user_id: factorySession?.user?.id,
+      body: liveLine,
+    }).select("id").single();
+    check(!liveError, `the factory's message was saved from its own session${liveError ? `: ${liveError.message}` : ""}`);
+    const liveStarted = Date.now();
+    await fetch(`${APP.replace(/\/app\.html$/, "")}/api/screen-message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${factorySession?.session?.access_token}` },
+      body: JSON.stringify({ messageId: liveRow?.id }),
+    }).catch(() => null);
+    let arrivedLive = false;
+    while (Date.now() - liveStarted < 15000) {
+      if ((await eachText(page, ".message-bubble")).some((text) => text.includes(stamp) && text.includes("Packing list"))) {
+        arrivedLive = true;
+        break;
+      }
+      await page.waitForTimeout(250);
+    }
+    check(arrivedLive, `the factory's message appears on the brand's open page without a refresh (${Date.now() - liveStarted} ms)`);
+    await record(page, "It arrives live", "the other side's message appears while the page is open");
+
+    // Attach file: a real picker, and the file goes with the message.
+    const fileName = `measurements-${stamp}.pdf`;
+    await page.evaluate(async (name) => {
+      document.querySelector(".message-upload-btn").click();
+      const input = document.querySelector('input[data-field="message_files"]');
+      const file = new File(["%PDF-1.4\n%%EOF\n"], name, { type: "application/pdf" });
+      const list = new DataTransfer();
+      list.items.add(file);
+      input.files = list.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }, fileName);
+    await waitFor(page, '[data-testid="pending-files"]', 5000);
+    await page.locator('[data-testid="send-message"]').click();
+    let attached = null;
+    const attachDeadline = Date.now() + 20000;
+    while (Date.now() < attachDeadline) {
+      ({ data: attached } = await db.from("documents")
+        .select("id, bucket, storage_path, message_id, messages!inner (thread_id, delivery)")
+        .eq("file_name", fileName).maybeSingle());
+      if (attached?.messages?.delivery === "delivered") break;
+      await page.waitForTimeout(400);
+    }
+    check(attached?.messages?.thread_id === runThread.id && attached?.messages?.delivery === "delivered",
+      `a file sent on its own is linked to its message and delivered (${attached?.messages?.delivery})`);
+    const { data: factoryLink } = attached
+      ? await factoryClient.storage.from(attached.bucket).createSignedUrl(attached.storage_path, 60)
+      : { data: null };
+    const fileStatus = factoryLink?.signedUrl ? await fetch(factoryLink.signedUrl).then((response) => response.status).catch(() => 0) : 0;
+    check(fileStatus === 200, `the factory can open the brand's file (${fileStatus})`);
+    check((await eachText(page, '[data-testid="message-attachment"]')).some((text) => text.includes(fileName)),
+      "the file is shown on the message, as a button that opens it");
+    await record(page, "A file", "Attach file works, and the other side can open it");
+
+    // Search and the Unread filter do what they say.
+    await page.locator(".message-search-field input").fill(bornOrder.order_number);
+    await page.waitForTimeout(300);
+    const foundThreads = await eachText(page, ".message-thread-card");
+    check(foundThreads.length >= 1 && foundThreads.every((text) => text.includes(bornOrder.order_number)),
+      `searching for ${bornOrder.order_number} lists only its conversation (${foundThreads.length})`);
+    await page.locator(".message-search-field input").fill("");
+    await factoryClient.auth.signOut();
 
     // ================= HELD FOR REVIEW =================
     // A phone number is a way off the platform. The screen holds it on the
