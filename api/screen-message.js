@@ -15,6 +15,12 @@
  *      message is delivered: the patterns found nothing, and nobody is made to
  *      wait on a model to say something ordinary. Recorded as `pattern_only`.
  *
+ * The translation is made here too, at the same time as the check, and saved
+ * before the verdict, so the reader gets the message in its own language the
+ * moment it is delivered. The browser used to translate BEFORE saving the
+ * message, then ask for the check: two model calls in a row on every send.
+ * A translation that fails changes nothing: the message goes as typed.
+ *
  * Only the server records the verdict (record_message_screening is granted to
  * service_role alone), and only on a message still `checking`, so a repeated
  * request — the sender's page re-screening a message that seemed stuck —
@@ -28,8 +34,11 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { findContactDetails } from "./_message-patterns.js";
+import { translateText } from "./_translate.js";
 
-const MODEL = process.env.OPENROUTER_SCREEN_MODEL ?? process.env.OPENROUTER_MODEL ?? "anthropic/claude-opus-5";
+// Haiku by default, NOT OPENROUTER_MODEL: the check sits between a person
+// pressing Send and the other side reading it, and Opus took seconds.
+const MODEL = process.env.OPENROUTER_SCREEN_MODEL || "anthropic/claude-haiku-5.5";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 // The model gets 8 seconds; with the database calls on either side that keeps
 // the whole request under Vercel's Hobby ceiling (10s), past which a designed
@@ -164,6 +173,10 @@ export default async function handler(request, response) {
 
   const fileNames = (message.documents ?? []).map((doc) => doc.file_name).filter(Boolean);
 
+  // The check and the translation run side by side: the slower of the two is
+  // the wait, not their sum. A held message is translated too, for the day
+  // staff release it.
+  const translating = translateText(message.body, { timeoutMs: MODEL_TIMEOUT_MS });
   let verdict;
   const pattern = findContactDetails(message.body, fileNames);
   if (pattern.hit) {
@@ -173,6 +186,22 @@ export default async function handler(request, response) {
     verdict = ai
       ? { outcome: ai.hold ? "held" : "delivered", method: "ai", reason: ai.reason || null, model: ai.model }
       : { outcome: "delivered", method: "pattern_only", reason: null, model: null };
+  }
+
+  const translation = await translating;
+  if (translation?.translation) {
+    const { error: translateError } = await db
+      .from("messages")
+      .update({
+        body_lang: translation.source_language,
+        body_translated: translation.translation,
+        body_translated_lang: translation.target_language,
+        translated_by: translation.model ?? null,
+      })
+      .eq("id", message.id)
+      .eq("delivery", "checking");
+    // Never a reason to stop: the message is delivered as typed.
+    if (translateError) console.error("screen-message translation", translateError.message);
   }
 
   const { data: recorded, error } = await db.rpc("record_message_screening", {

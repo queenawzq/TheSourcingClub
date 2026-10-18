@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(53);
+select plan(54);
 
 insert into auth.users (id, email) values
   ('ca110000-0000-0000-0000-000000000001', 'p19-brand@example.com'),
@@ -387,6 +387,14 @@ select is(
           lateral public.call_join_context((select id from public.calls where title = 'P19 counter'), v.u)),
   'true,false',
   'the join check knows a party from an outsider'
+);
+
+reset role;
+
+select ok(
+  exists (select 1 from pg_publication_tables
+           where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'calls'),
+  'calls are published to Realtime, so the other side sees a proposal without a refresh'
 );
 
 select * from finish();
