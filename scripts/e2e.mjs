@@ -817,7 +817,8 @@ async function main() {
 
     // Open the queue and approve this run's factory.
     await page.goto(`${ADMIN}?screen=verification`);
-    await page.waitForTimeout(3000);
+    await waitFor(page, ".admin-verification-row", 20000);
+    await page.waitForTimeout(1000);
     // Each queue row ends in a Review button. Addressed by position within the
     // row rather than by text, so relabelling it does not break the run.
     const reviewButtons = ".admin-verification-row button:last-child";
@@ -841,11 +842,17 @@ async function main() {
       .from("factory_profiles").select("verification_status").eq("org_id", factoryOrg.id).single();
     check(verified.verification_status === "verified", "the factory is now verified in the database");
 
-    // Sending a quote costs credits, so an approved vendor gets the grant a
-    // real one would. Without it the quote below fails on the balance.
-    await db.from("credit_ledger").insert({
-      org_id: factoryOrg.id, delta: 500, reason: "onboarding_grant", note: "e2e fixture",
-    });
+    // Approving is what pays for quoting: the database grants 500 credits in
+    // the same transaction, and the quote below spends them.
+    const { data: grantLines } = await db.from("credit_ledger")
+      .select("delta").eq("org_id", factoryOrg.id).eq("reason", "onboarding_grant");
+    check(grantLines?.length === 1 && grantLines[0].delta === 500,
+      `the database granted 500 credits on approval, once (${JSON.stringify(grantLines)})`);
+    const { data: grantedBalance } = await db.rpc("credit_balance", { org: factoryOrg.id });
+    check(Number(grantedBalance) === 500, `the factory's balance is 500 (${grantedBalance})`);
+    const { count: grantBells } = await db.from("notifications")
+      .select("*", { count: "exact", head: true }).eq("org_id", factoryOrg.id).eq("kind", "credits_granted");
+    check(grantBells === 1, "and its bell says so");
 
     // The brand needs the same decision: the shell parks any unverified
     // company on the "in review" card, so nothing below this point — posting
@@ -1286,6 +1293,7 @@ async function main() {
 
     // The brand's name opens the brand's profile as a vendor may read it:
     // what it told vendors, never its revenue.
+    await waitFor(page, ".factory-client-profile-link", 20000);
     await page.locator(".factory-client-profile-link").first().click();
     await waitFor(page, ".factory-brand-public-page .factory-profile-hero h1", 20000);
     await record(page, "Factory's view of a brand", "what the brand told vendors, nothing private");
@@ -2569,6 +2577,162 @@ async function main() {
     const demoNames = ["Demo Brand", "Demo Factory", "Ningbo Loomworks", "Atlas Knit Studio", "Fresh Thread Studio", "Kowloon Sourcing Partners"];
     const { count: demoLeft } = await db.from("orgs").select("*", { count: "exact", head: true }).in("name", demoNames);
     check(demoLeft === demoNames.length, `the demo companies are untouched (${demoLeft} of ${demoNames.length})`);
+
+    // ================= CREDITS =================
+    // The factory's credits come from the database: 500 when verified, minus
+    // 25 per quote, plus 500 for each factory it brings in once TSC verifies
+    // that one, plus whatever staff add or remove with a reason.
+    console.log("\nCREDITS");
+    {
+      const openCredits = async () => {
+        await page.goto(`${APP}/payout?tab=credits`);
+        await waitFor(page, ".factory-credit-billing-card", 25000);
+        await page.waitForTimeout(1200);
+        return page.locator(".billing-history-page").innerText();
+      };
+      await signOutFully(page);
+      await signIn(page, factoryEmail, "Factory, credits", "factory");
+      let creditsText = await openCredits();
+      const { data: balanceNow } = await db.rpc("credit_balance", { org: factoryOrg.id });
+      check(creditsText.includes(`${Number(balanceNow).toLocaleString("en")} credits`),
+        `Payments → Credits shows the ledger's balance (${balanceNow})`);
+      check(creditsText.includes("Verified onboarding bonus"), "with the verification grant as a row");
+      check(creditsText.includes("Quote submitted") && creditsText.includes("-25 credits"), "and the quote it sent, 25 credits");
+      check(creditsText.indexOf("Quote submitted") < creditsText.indexOf("Verified onboarding bonus"),
+        "newest first: the quote above the grant");
+      await record(page, "Credits", "the designed Credits tab on the real ledger");
+
+      // An invite to the company's own email domain is refused by the database,
+      // in words, inside the designed modal.
+      const openInvite = async (address) => {
+        await clickButton(page, "invite a factory");
+        await waitFor(page, ".factory-invite-modal", 10000);
+        await page.locator('.factory-invite-modal input[type="email"]').first().fill(address);
+        await page.locator(".factory-invite-modal .primary-btn").first().click();
+        await page.waitForTimeout(2500);
+      };
+      await openInvite(`colleague-${stamp}@example.com`);
+      const ownDomainError = await page.locator(".factory-invite-modal .auth-error").innerText().catch(() => "");
+      check(/domain/i.test(ownDomainError), `an address on the company's own domain is refused ("${ownDomainError}")`);
+      await record(page, "Invite refused", "the company's own email domain does not count");
+      await page.locator(".factory-invite-modal .secondary-btn").first().click();
+      await page.waitForTimeout(500);
+
+      const invitedEmail = `e2e-invited-${stamp}@invited-mill.test`;
+      const invitedName = `Invited Mill E2E ${stamp}`;
+      await openInvite(invitedEmail);
+      check((await page.locator(".factory-invite-modal").count()) === 0, "a good address closes the modal");
+      const inviteNotice = await page.locator(".live-payment-notice[role=status]").innerText().catch(() => "");
+      check(inviteNotice.includes(`Invite sent to ${invitedEmail}`), `and says it was sent ("${inviteNotice}")`);
+      creditsText = await page.locator(".billing-history-page").innerText();
+      check(creditsText.includes(invitedEmail) && /Invited, not joined yet/.test(creditsText) && creditsText.includes("Pending"),
+        "the invite is a Pending row");
+      await record(page, "Invite sent", "a Pending row until TSC verifies the invited factory");
+      const { data: inviteRow } = await db.from("referrals")
+        .select("id, emailed_at, referred_org_id, rewarded_at").eq("referrer_org_id", factoryOrg.id).eq("email", invitedEmail).maybeSingle();
+      check(Boolean(inviteRow?.emailed_at), "the database recorded the invite as emailed");
+      let factoryInviteMail = null;
+      for (let attempt = 0; attempt < 20 && !factoryInviteMail; attempt += 1) {
+        const found = await (await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:${invitedEmail}`)}`)).json();
+        factoryInviteMail = (found.messages ?? [])[0] ?? null;
+        if (!factoryInviteMail) await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+      check(Boolean(factoryInviteMail) && (factoryInviteMail.Subject ?? "").includes(factoryName),
+        `the invite email arrived, from this factory ("${factoryInviteMail?.Subject}")`);
+
+      // The invited address signs up through the real vendor form.
+      await signOutFully(page);
+      await signUp(page, { email: invitedEmail, fullName: "Ines Invited", companyName: invitedName, accountType: "factory", who: "Invited factory" });
+      const { data: invitedOrg } = await db.from("orgs").select("id").eq("name", invitedName).maybeSingle();
+      check(Boolean(invitedOrg), "the invited factory's company exists");
+      const { data: linked } = await db.from("referrals").select("referred_org_id, accepted_at").eq("id", inviteRow?.id ?? stamp).maybeSingle();
+      check(linked?.referred_org_id === invitedOrg?.id && Boolean(linked?.accepted_at), "signing up with the invited address linked the invite");
+      // The review queue lists only companies that finished onboarding; the
+      // eleven cards are walked through above, so this one is marked done here
+      // (its profile row is first written by onboarding's first card).
+      const { error: finishedError } = await db.from("factory_profiles")
+        .upsert({ org_id: invitedOrg?.id, onboarding_completed_at: new Date().toISOString() }, { onConflict: "org_id" });
+      check(!finishedError, `the invited factory is marked as having finished onboarding${finishedError ? ` (${finishedError.message})` : ""}`);
+
+      await signOutFully(page);
+      await signIn(page, factoryEmail, "Factory, invite joined", "factory");
+      creditsText = await openCredits();
+      check(creditsText.includes(invitedEmail) && /Joined, earns when TSC verifies them/.test(creditsText),
+        "the inviter's row now says the factory joined");
+      await record(page, "Invite joined", "still pending: it pays when TSC verifies them");
+
+      // Staff approve the invited factory: it gets its 500, and so does the inviter.
+      await signOutFully(page);
+      await signIn(page, adminEmail, "Admin, credits");
+      await page.goto(`${ADMIN}?screen=verification`);
+      await waitFor(page, ".admin-verification-row", 20000);
+      await page.waitForTimeout(1000);
+      const invitedRows = await page.locator(".admin-verification-row").count();
+      let invitedOpened = false;
+      for (let index = 0; index < invitedRows; index += 1) {
+        const text = await page.locator(".admin-verification-row").nth(index).innerText().catch(() => "");
+        if (!text.includes(invitedName)) continue;
+        await page.locator(reviewButtons).nth(index).click();
+        invitedOpened = true;
+        break;
+      }
+      check(invitedOpened, "staff open the invited factory's review");
+      await page.waitForTimeout(2500);
+      await clickButton(page, "approve profile");
+      await page.waitForTimeout(4000);
+      const { data: invitedBalance } = await db.rpc("credit_balance", { org: invitedOrg?.id });
+      check(Number(invitedBalance) === 500, `the invited factory got its 500 on verification (${invitedBalance})`);
+      const { count: invitedBell } = await db.from("notifications")
+        .select("*", { count: "exact", head: true }).eq("org_id", invitedOrg?.id ?? stamp).eq("kind", "credits_granted");
+      check(invitedBell === 1, "and a bell item saying so");
+      const { data: rewardLines } = await db.from("credit_ledger")
+        .select("delta").eq("org_id", factoryOrg.id).eq("reason", "referral_grant");
+      check(rewardLines?.length === 1 && rewardLines[0].delta === 500, "the inviter earned 500 for bringing it in");
+      const { data: rewarded } = await db.from("referrals").select("rewarded_at").eq("id", inviteRow?.id ?? stamp).maybeSingle();
+      check(Boolean(rewarded?.rewarded_at), "and the invite is marked as paid out");
+
+      // Staff adjust credits from the same review page, with a reason.
+      const creditsCard = ".admin-credits-card";
+      await waitFor(page, creditsCard, 15000);
+      const cardText = await page.locator(creditsCard).innerText();
+      check(/500 credits/.test(cardText), `the review page's Credits card shows 500 (${cardText.replace(/\s+/g, " ").slice(0, 80)})`);
+      const adjust = async (direction, amount, reason) => {
+        await page.locator(`${creditsCard} .secondary-btn`).first().click();
+        await waitFor(page, "#adjust-credits-title", 10000);
+        await page.locator(`input[name="credit-direction"][aria-label="${direction}"]`).first().click();
+        await page.locator('.admin-review-modal input[type="number"]').first().fill(String(amount));
+        await page.locator(".admin-review-modal textarea").first().fill(reason);
+        await page.locator(".admin-review-modal footer .primary-btn").first().click();
+        await page.waitForTimeout(2500);
+      };
+      await adjust("Remove credits", 600, "Removing more than there is");
+      const tooMuch = await page.locator(".admin-review-modal .admin-error").innerText().catch(() => "");
+      check(/you cannot remove 600/i.test(tooMuch), `removing more than the balance is refused ("${tooMuch}")`);
+      await record(page, "Adjust refused", "a balance never goes below zero");
+      await page.locator(".admin-review-modal footer .secondary-btn").first().click();
+      await page.waitForTimeout(500);
+      const adjustReason = `Welcome credit for joining by invite ${stamp}`;
+      await adjust("Add credits", 50, adjustReason);
+      check((await page.locator("#adjust-credits-title").count()) === 0, "adding 50 with a reason closes the dialog");
+      const { data: adjustedBalance } = await db.rpc("credit_balance", { org: invitedOrg?.id });
+      check(Number(adjustedBalance) === 550, `the balance is 550 (${adjustedBalance})`);
+      check(/550 credits/.test(await page.locator(creditsCard).innerText()), "and the card shows it");
+      await record(page, "Credits adjusted", "staff add 50 with a reason the company sees");
+
+      await signOutFully(page);
+      await signIn(page, invitedEmail, "Invited factory, credits", "factory");
+      creditsText = await openCredits();
+      check(creditsText.includes("550 credits") && creditsText.includes(adjustReason),
+        "the invited factory sees 550 and the reason staff gave");
+      await record(page, "Invited factory credits", "its grant and the adjustment, with the reason");
+
+      await signOutFully(page);
+      await signIn(page, factoryEmail, "Factory, referral paid", "factory");
+      creditsText = await openCredits();
+      check(creditsText.includes(`${invitedName} was verified`) && !creditsText.includes("Referral bonus pending"),
+        "the inviter's pending row became a Referral bonus");
+      await record(page, "Referral bonus", "+500 once the invited factory was verified");
+    }
 
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
