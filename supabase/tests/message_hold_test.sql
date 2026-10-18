@@ -19,7 +19,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(59);
+select plan(60);
 
 insert into auth.users (id, email) values
   ('b1000000-0000-0000-0000-000000000001', 'p15-brand@example.com'),
@@ -632,6 +632,9 @@ select ok(
            where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'messages'),
   'messages are published to Realtime, so a conversation updates without a refresh'
 );
+
+select has_column('public', 'message_thread_summary', 'last_body_translated',
+  'the conversation list carries the last message''s translation, so it previews in the reader''s language');
 
 select * from finish();
 rollback;

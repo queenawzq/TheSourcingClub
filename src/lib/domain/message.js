@@ -17,7 +17,8 @@ import { uploadDocument } from "./documents.js";
 const THREAD_COLUMNS = `
   id, rfq_id, order_id, brand_org_id, factory_org_id, last_message_at, created_at,
   brand_name, factory_name, subject_title, subject_kind,
-  last_body, last_sender_org_id, unread_count, message_count
+  last_body, last_sender_org_id, unread_count, message_count,
+  last_body_translated, last_body_translated_lang
 `;
 
 export async function listThreads(orgId) {
