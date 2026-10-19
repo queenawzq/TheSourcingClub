@@ -89,16 +89,25 @@ function deliveryMonthFrom(text) {
   return `${year}-${String(found + 1).padStart(2, "0")}-01`;
 }
 
+/** A stored end-of-day timestamp back into the calendar's local date. */
+function datePickerValue(value) {
+  if (!value) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const day = new Date(value);
+  if (Number.isNaN(day.getTime())) return "";
+  return [
+    day.getFullYear(),
+    String(day.getMonth() + 1).padStart(2, "0"),
+    String(day.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
 /**
  * The quote deadline, from what the brand typed.
  *
- * The field is prose in the design ("Jul 24, 2026 · 5 business days after
- * publish"), and nothing was ever saved from it: every live request went out
- * with no deadline, whatever the brand wrote. Read a date ("Oct 20, 2026",
- * "2026-10-20", "Oct 20" meaning the next one) or a span ("5 business days",
- * "10 days") as the END of that day, local time. Unlike the other fields an
- * unreadable deadline is not dropped quietly — it decides when vendors are
- * refused — so it comes back as an error the screen shows.
+ * The calendar supplies an ISO date. The legacy prose formats remain readable
+ * so existing drafts and older tests can still be saved without losing their
+ * deadline. Whatever the input form, store the END of that local day.
  */
 export function quoteDeadlineFrom(text, now = new Date()) {
   const said = String(text ?? "").trim();
@@ -215,10 +224,8 @@ export default function LiveComposer({ org, rfqId }) {
           sourcing: sourcingChoice(row.sourcing_responsibility_term_id, byKind.sourcing_responsibility, SOURCING_SLUG),
           additionalDetails: row.additional_details ?? "",
           // Read back as the date it is, so saving again parses the same way.
-          deadline: row.quote_deadline
-            ? new Date(row.quote_deadline).toLocaleDateString("en", { month: "short", day: "numeric", year: "numeric" })
-            : "",
-          ...Object.fromEntries(questions.slice(0, 3).map((question, index) => [`question-${index}`, question.prompt])),
+          deadline: datePickerValue(row.quote_deadline),
+          vendorQuestions: questions.map((question) => question.prompt).join("\n"),
         });
         // A reorder leaves the delivery month blank on purpose: the last run's
         // is most likely past, so the brief must not fill it back in.
@@ -421,11 +428,12 @@ export default function LiveComposer({ org, rfqId }) {
       if (splits.length) await setColourSplits(draftId, splits);
 
       // The brand's own questions, as rows a vendor answers against.
-      const questions = [0, 1, 2]
-        .map((index) => values[`question-${index}`]?.trim())
+      const questions = String(values.vendorQuestions ?? "")
+        .split(/\r?\n/)
+        .map((prompt) => prompt.trim())
         .filter(Boolean)
         .map((prompt, index) => ({ prompt, sort: index }));
-      if (questions.length) await setQuestions(draftId, questions);
+      await setQuestions(draftId, questions);
 
       const rows = unwrap(
         await supabase

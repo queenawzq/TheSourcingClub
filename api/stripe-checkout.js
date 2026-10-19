@@ -2,7 +2,7 @@ import { applyPaymentIntent, callerClient, jsonBody, reply, serviceClient, strip
 
 /**
  * The brand starts paying for a step: returns the client secret the Stripe
- * Payment Element needs. Card and US bank account, in one form.
+ * Payment Element needs. Project funding is card-only.
  *
  * Who may pay, and for what, is decided by the database as the CALLER
  * (begin_payment_checkout: a brand owner, an active order, a payment that is
@@ -35,6 +35,16 @@ export default async function handler(request, response) {
 
   try {
     const customer = await customerFor({ stripe, db, orgId: checkout.brand_org_id });
+    const savedMethods = await stripe.paymentMethods.list({ customer, type: "card", limit: 20 });
+    const savedCards = savedMethods.data.map((method) => ({
+      id: method.id,
+      brand: (method.card?.display_brand ?? method.card?.brand ?? "Card")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase()),
+      last4: method.card?.last4 ?? "",
+      expMonth: method.card?.exp_month ?? null,
+      expYear: method.card?.exp_year ?? null,
+    }));
     const details = {
       title: checkout.milestone_title,
       orderNumber: checkout.order_number,
@@ -43,6 +53,7 @@ export default async function handler(request, response) {
       feeBps: checkout.fee_bps,
       chargedCents: checkout.charged_cents,
       currency: checkout.currency,
+      savedCards,
     };
 
     let intent = checkout.stripe_payment_intent_id
@@ -55,8 +66,14 @@ export default async function handler(request, response) {
       return reply(response, 409, { error: "this payment is already under way", state: payment?.state ?? null });
     }
 
-    if (intent && intent.amount !== Number(checkout.charged_cents)) {
-      intent = await stripe.paymentIntents.update(intent.id, { amount: Number(checkout.charged_cents) });
+    if (intent) {
+      // Older open intents may still advertise ACH. Updating the allowed
+      // methods makes already-open funding pages card-only too.
+      intent = await stripe.paymentIntents.update(intent.id, {
+        amount: Number(checkout.charged_cents),
+        payment_method_types: ["card"],
+        setup_future_usage: "on_session",
+      });
     }
 
     if (!intent) {
@@ -65,13 +82,8 @@ export default async function handler(request, response) {
           amount: Number(checkout.charged_cents),
           currency: checkout.currency.toLowerCase(),
           customer,
-          payment_method_types: ["card", "us_bank_account"],
-          payment_method_options: {
-            us_bank_account: {
-              verification_method: "automatic",
-              financial_connections: { permissions: ["payment_method"] },
-            },
-          },
+          payment_method_types: ["card"],
+          setup_future_usage: "on_session",
           // Separate charges and transfers: the money stays in TSC's balance
           // until the step is approved, then goes to the factory.
           transfer_group: checkout.order_id,

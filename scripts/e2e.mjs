@@ -1019,10 +1019,12 @@ async function main() {
     await setField("certifications", "GOTS");
     await setField("sourcingDetails", "Vendor sources the poplin; brand provides labels.");
     await setField("additionalDetails", "Polybag per unit, carton by colour.");
-    await setField("question-0", "Can you quote fit and PP samples separately?");
+    await setField("vendorQuestions", "Can you quote fit and PP samples separately?");
     // Typed on the design's review card and never saved until now: every
     // live request went out with no deadline, whatever the brand wrote.
-    await setField("deadline", "10 business days");
+    await page.locator('.field:has-text("Quote deadline") .tsc-date-trigger').click();
+    await page.locator('.tsc-date-popover button[aria-label="Next month"]').click();
+    await page.locator('.tsc-date-popover .schedule-calendar-days button').filter({ hasText: /^20$/ }).click();
     await record(page, "The brief, corrected", "every field is the brand's, not the model's");
 
     // Review leads to the invite step, which is where the design puts the only
@@ -2542,7 +2544,7 @@ async function main() {
       `the category, region and certification come back as typed (${readBack.category} / ${readBack.regions} / ${readBack.certifications})`);
     check(readBack.quantity === "300 units total · 3 colors, 100 each",
       `and the colour breakdown in the words that saved it (${readBack.quantity})`);
-    check(/fit and PP samples separately/.test(readBack["question-0"] ?? "") && /Polybag/.test(readBack.additionalDetails ?? ""),
+    check(/fit and PP samples separately/.test(readBack.vendorQuestions ?? "") && /Polybag/.test(readBack.additionalDetails ?? ""),
       "with the brand's question and its extra details");
     check(!readBack.timeline, "last run's delivery month is left for the brand to set again");
     await setField("timeline", "Bulk by late March 2027");

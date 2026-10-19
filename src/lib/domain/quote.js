@@ -10,7 +10,8 @@ import { supabase, unwrap } from "../supabase.js";
 
 const QUOTE_COLUMNS = `
   id, rfq_id, factory_org_id, version, supersedes_quote_id, status,
-  unit_price_cents, unit_price_max_cents, currency, production_quantity, bulk_lead_time_days,
+  unit_price_cents, unit_price_max_cents, currency, production_quantity,
+  bulk_lead_time_days, bulk_lead_time_max_days,
   capacity_window_start, capacity_window_end, capacity_window_units,
   payment_term_id, deposit_pct, balance_pct,
   incoterm_id, shipping_notes, valid_until, factory_notes,
@@ -93,9 +94,19 @@ export async function withdrawQuote(quoteId) {
   return unwrap(await supabase.rpc("withdraw_quote", { quote_id: quoteId }), "withdraw your quote");
 }
 
-/** One transaction: accept the winner, decline the rest, notify everyone. */
-export async function awardQuote(quoteId) {
-  return unwrap(await supabase.rpc("award_quote", { quote_id: quoteId }), "award this quote");
+/**
+ * One transaction: accept the winner, decline the rest, notify everyone.
+ * The delivery term is the brand/factory agreement reached after the quote,
+ * so it may intentionally differ from the factory's original quote.
+ */
+export async function awardQuote(quoteId, agreedIncotermId) {
+  return unwrap(
+    await supabase.rpc("award_quote_with_incoterm", {
+      target_quote: quoteId,
+      agreed_incoterm: agreedIncotermId,
+    }),
+    "award this quote",
+  );
 }
 
 // ---- Sample plan ----------------------------------------------------------
@@ -104,7 +115,7 @@ export async function getSampleLines(quoteId) {
   return unwrap(
     await supabase
       .from("quote_sample_lines")
-      .select("id, stage, cost_cents, timing_days, includes, sort")
+      .select("id, stage, cost_cents, timing_days, timing_max_days, includes, sort")
       .eq("quote_id", quoteId)
       .order("sort"),
     "load the sample plan",
@@ -124,6 +135,7 @@ export async function setSampleLines(quoteId, lines) {
       stage: line.stage.trim(),
       cost_cents: Number(line.cost_cents) || 0,
       timing_days: line.timing_days ? Number(line.timing_days) : null,
+      timing_max_days: line.timing_max_days ? Number(line.timing_max_days) : null,
       includes: line.includes || null,
       sort: index,
     }));
@@ -132,6 +144,42 @@ export async function setSampleLines(quoteId, lines) {
   return unwrap(
     await supabase.from("quote_sample_lines").insert(rows).select(),
     "save the sample plan",
+  );
+}
+
+// ---- Material cost breakdown ---------------------------------------------
+
+export async function getMaterialLines(quoteId) {
+  return unwrap(
+    await supabase
+      .from("quote_material_lines")
+      .select("id, material, cost_cents, included, sort")
+      .eq("quote_id", quoteId)
+      .order("sort"),
+    "load the material cost breakdown",
+  );
+}
+
+export async function setMaterialLines(quoteId, lines) {
+  unwrap(
+    await supabase.from("quote_material_lines").delete().eq("quote_id", quoteId),
+    "clear the material cost breakdown",
+  );
+
+  const rows = lines
+    .filter((line) => line.material?.trim())
+    .map((line, index) => ({
+      quote_id: quoteId,
+      material: line.material.trim(),
+      cost_cents: line.cost_cents == null ? null : Number(line.cost_cents),
+      included: Boolean(line.included),
+      sort: index,
+    }));
+
+  if (!rows.length) return [];
+  return unwrap(
+    await supabase.from("quote_material_lines").insert(rows).select(),
+    "save the material cost breakdown",
   );
 }
 
@@ -191,14 +239,22 @@ export async function listQuotesForRfq(rfqId) {
 
   const ids = quotes.map((quote) => quote.id);
 
-  const [lines, answers, subtotals] = await Promise.all([
+  const [lines, materials, answers, subtotals] = await Promise.all([
     unwrap(
       await supabase
         .from("quote_sample_lines")
-        .select("quote_id, stage, cost_cents, timing_days, includes, sort")
+        .select("quote_id, stage, cost_cents, timing_days, timing_max_days, includes, sort")
         .in("quote_id", ids)
         .order("sort"),
       "load sample plans",
+    ),
+    unwrap(
+      await supabase
+        .from("quote_material_lines")
+        .select("quote_id, material, cost_cents, included, sort")
+        .in("quote_id", ids)
+        .order("sort"),
+      "load material cost breakdowns",
     ),
     unwrap(
       await supabase
@@ -220,6 +276,7 @@ export async function listQuotesForRfq(rfqId) {
   return quotes.map((quote) => ({
     ...quote,
     sampleLines: lines.filter((line) => line.quote_id === quote.id),
+    materialLines: materials.filter((line) => line.quote_id === quote.id),
     answers: answers.filter((answer) => answer.quote_id === quote.id),
     // Derived, never stored: the prototype hardcodes a sample subtotal per
     // factory name while displaying the very lines that should produce it.
@@ -239,6 +296,14 @@ export async function listQuotesForRfq(rfqId) {
 export function quoteTotalCents(quote) {
   if (quote.productionSubtotalCents == null) return null;
   return quote.productionSubtotalCents + (quote.sampleSubtotalCents ?? 0);
+}
+
+/** A stored lower/upper duration rendered as "7–10 days" or "7 days". */
+export function formatDayRange(minimum, maximum = minimum) {
+  if (minimum == null) return "";
+  const min = Number(minimum);
+  const max = maximum == null ? min : Number(maximum);
+  return min === max ? `${min} days` : `${Math.min(min, max)}–${Math.max(min, max)} days`;
 }
 
 /**

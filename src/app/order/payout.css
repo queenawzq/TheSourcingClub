@@ -155,3 +155,49 @@
   .payout-method-option { grid-template-columns: 42px minmax(0, 1fr); }
   .payout-method-option > button { grid-column: 2; justify-self: start; }
 }
+.billing-card-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.billing-card-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.billing-card-field > span {
+  color: #0b1020;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.billing-card-number,
+.billing-card-postal {
+  grid-column: 1 / -1;
+}
+
+.billing-stripe-input,
+.billing-card-field > input {
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid #cad5e2;
+  border-radius: 8px;
+  background: #fff;
+  color: #0b1020;
+  font: 500 14px/18px Satoshi, Arial, sans-serif;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.billing-stripe-input:focus-within,
+.billing-card-field > input:focus {
+  outline: 0;
+  border-color: #1a4df2;
+  box-shadow: 0 0 0 1px #1a4df2;
+}
+
+.billing-card-field > input::placeholder {
+  color: #8391a8;
+}

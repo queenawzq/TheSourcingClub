@@ -2,20 +2,26 @@
  * Funding a step: the designed `FundScreen` and `SuccessScreen`, inside the
  * design's `FlowShell` ("Fund first payment", step 6 of quote to contract).
  *
- * The brand pays by card or US bank account in Stripe's Payment Element,
- * drawn inside the design's "Select billing method" card. TSC holds the money
+ * The brand pays by card in Stripe's Payment Element, drawn inside the
+ * design's card-details section. TSC holds the money
  * until the brand approves the step; the service fee (5% on orders of $5,000
  * and over, 7% under) is added on top, and the right rail shows step, fee and
  * total as the database computed them (begin_payment_checkout).
  *
  * Nothing here decides whether a payment went through. After Stripe answers,
  * /api/stripe-sync reads the PaymentIntent back and records it, the same way
- * the webhook does, and this screen shows what was recorded: a card is held
- * at once, a bank payment clears in about 4 business days and can still fail.
+ * the webhook does, and this screen shows what was recorded.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
-import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import {
+  CardCvcElement,
+  CardExpiryElement,
+  CardNumberElement,
+  Elements,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
 import { FlowShell, FundScreen, SuccessScreen } from "../../prototype/main.jsx";
 import { getOrder } from "../../lib/domain/order.js";
 import { getPayment, listPayments } from "../../lib/domain/payment.js";
@@ -34,6 +40,19 @@ const stripeClient = () => {
 
 /** "Visa ···4242" → "Visa ending in 4242", the design's words. */
 const ending = (label) => (label ? label.replace(/\s*···/, " ending in ") : "your payment method");
+
+const CARD_ELEMENT_OPTIONS = {
+  style: {
+    base: {
+      color: "#0b1020",
+      fontFamily: "Satoshi, Arial, sans-serif",
+      fontSize: "14px",
+      fontWeight: "500",
+      "::placeholder": { color: "#8a98ad" },
+    },
+    invalid: { color: "#b42318" },
+  },
+};
 
 /** The payable states: a step that is due, or a payment that came back. */
 export const FUNDABLE = new Set(["due", "failed"]);
@@ -131,16 +150,7 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
   if (!checkout) return <Funded {...context} />;
 
   return (
-    <Elements
-      stripe={stripeClient()}
-      options={{
-        clientSecret: checkout.clientSecret,
-        appearance: {
-          theme: "stripe",
-          variables: { colorPrimary: "#1a4df2", colorText: "#0b1020", borderRadius: "10px" },
-        },
-      }}
-    >
+    <Elements stripe={stripeClient()}>
       <Fund {...context} checkout={checkout} reload={load} />
     </Elements>
   );
@@ -159,13 +169,20 @@ function Fund({ payment, isFirst, rail, checkout, onBack, onMessage, order, fact
   const stripe = useStripe();
   const elements = useElements();
   const [agreed, setAgreed] = useState([false, false]);
-  const [complete, setComplete] = useState(false);
+  const savedCards = checkout.savedCards ?? [];
+  const [addingCard, setAddingCard] = useState(savedCards.length === 0);
+  const [selectedCardId, setSelectedCardId] = useState(savedCards[0]?.id ?? "");
+  const [newCardComplete, setNewCardComplete] = useState({ number: false, expiry: false, cvc: false });
+  const [postalCode, setPostalCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(payment.state === "failed" ? payment.failure_reason || "The last payment did not go through." : null);
   const [done, setDone] = useState(null);
 
   const figures = amounts(checkout, checkout.currency ?? payment.currency);
-  const ready = Boolean(stripe && elements && complete && agreed.every(Boolean) && !busy);
+  const paymentMethodReady = addingCard
+    ? Boolean(elements && Object.values(newCardComplete).every(Boolean))
+    : Boolean(selectedCardId);
+  const ready = Boolean(stripe && paymentMethodReady && agreed.every(Boolean) && !busy);
   const fundingMilestone = isFirst ? null : { title: checkout.title, amount: figures.total };
 
   async function fund() {
@@ -173,11 +190,14 @@ function Fund({ payment, isFirst, rail, checkout, onBack, onMessage, order, fact
     setBusy(true);
     setProblem(null);
     try {
-      const result = await stripe.confirmPayment({
-        elements,
-        redirect: "if_required",
-        confirmParams: { return_url: window.location.href },
-      });
+      const result = addingCard
+        ? await stripe.confirmCardPayment(checkout.clientSecret, {
+            payment_method: {
+              card: elements.getElement(CardNumberElement),
+              billing_details: postalCode.trim() ? { address: { postal_code: postalCode.trim() } } : undefined,
+            },
+          })
+        : await stripe.confirmCardPayment(checkout.clientSecret, { payment_method: selectedCardId });
       // Recorded either way: a decline is a failed payment with its reason.
       const synced = await syncPayment(payment.id).catch(() => null);
       if (result.error) {
@@ -242,14 +262,87 @@ function Fund({ payment, isFirst, rail, checkout, onBack, onMessage, order, fact
           onAgree: (index, value) => setAgreed((current) => current.map((item, i) => (i === index ? value : item))),
           paymentElement: (
             <div className="live-payment-element" data-testid="payment-element">
-              {problem ? <p className="composer-error" role="alert">{problem} Try again, or use another card or bank account.</p> : null}
-              <PaymentElement
-                options={{ layout: "tabs", wallets: { applePay: "never", googlePay: "never" } }}
-                onChange={(event) => setComplete(event.complete)}
-              />
+              {problem ? <p className="composer-error" role="alert">{problem} Try again, or use another card.</p> : null}
+              {savedCards.length > 0 && (
+                <div className="saved-card-list" role="radiogroup" aria-label="Saved cards">
+                  {savedCards.map((card) => (
+                    <label className={`saved-card-row${!addingCard && selectedCardId === card.id ? " selected" : ""}`} key={card.id}>
+                      <input
+                        type="radio"
+                        name="saved-card"
+                        value={card.id}
+                        checked={!addingCard && selectedCardId === card.id}
+                        onChange={() => { setSelectedCardId(card.id); setAddingCard(false); }}
+                      />
+                      <span className="saved-card-icon" aria-hidden="true">▰</span>
+                      <span className="saved-card-copy">
+                        <strong>{card.brand} ending in {card.last4}</strong>
+                        <small>Expires {String(card.expMonth).padStart(2, "0")}/{String(card.expYear).slice(-2)}</small>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {addingCard ? (
+                <div className="new-card-fields">
+                  {savedCards.length > 0 && <h3>Add a new card</h3>}
+                  <div className="tsc-card-form">
+                    <label className="tsc-card-field tsc-card-number">
+                      <span>Card number</span>
+                      <div className="tsc-stripe-input">
+                        <CardNumberElement
+                          options={{ ...CARD_ELEMENT_OPTIONS, showIcon: true }}
+                          onChange={(event) => setNewCardComplete((current) => ({ ...current, number: event.complete }))}
+                        />
+                      </div>
+                    </label>
+                    <label className="tsc-card-field">
+                      <span>Expiration date</span>
+                      <div className="tsc-stripe-input">
+                        <CardExpiryElement
+                          options={CARD_ELEMENT_OPTIONS}
+                          onChange={(event) => setNewCardComplete((current) => ({ ...current, expiry: event.complete }))}
+                        />
+                      </div>
+                    </label>
+                    <label className="tsc-card-field">
+                      <span>Security code</span>
+                      <div className="tsc-stripe-input">
+                        <CardCvcElement
+                          options={CARD_ELEMENT_OPTIONS}
+                          onChange={(event) => setNewCardComplete((current) => ({ ...current, cvc: event.complete }))}
+                        />
+                      </div>
+                    </label>
+                    <label className="tsc-card-field tsc-card-postal">
+                      <span>ZIP / postal code</span>
+                      <input
+                        type="text"
+                        autoComplete="postal-code"
+                        inputMode="text"
+                        value={postalCode}
+                        placeholder="ZIP / postal code"
+                        onChange={(event) => setPostalCode(event.target.value)}
+                      />
+                    </label>
+                  </div>
+                  <p className="muted save-card-note">This card will be saved securely to your company for future payments.</p>
+                </div>
+              ) : null}
+              {savedCards.length > 0 && (
+                <button
+                  className="billing-add-btn live-add-card-btn"
+                  type="button"
+                  onClick={() => {
+                    setAddingCard((current) => !current);
+                    setNewCardComplete({ number: false, expiry: false, cvc: false });
+                  }}
+                >
+                  {addingCard ? "Use a saved card" : "+ Add a new card"}
+                </button>
+              )}
               <p className="muted live-payment-note">
-                Card or US bank account. TSC holds this payment and pays {factory} only when you approve the step.
-                A bank payment takes about 4 business days to clear.
+                TSC holds this card payment and pays {factory} only when you approve the step.
               </p>
             </div>
           ),
