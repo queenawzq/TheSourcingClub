@@ -53,7 +53,7 @@ export async function getPayment(orderId, paymentId) {
   return unwrap(
     await supabase
       .from("order_payments")
-      .select(`${PAYMENT_COLUMNS}, order_milestones (title)`)
+      .select(`${PAYMENT_COLUMNS}, order_milestones (title, kind, state)`)
       // Scoped to the order for the same reason getMilestone is.
       .eq("order_id", orderId)
       .eq("id", paymentId)
@@ -165,4 +165,30 @@ export async function releasePayment(paymentId, note) {
 export function feeCents(payment) {
   if (!payment) return 0;
   return Math.floor((payment.amount_cents * (payment.fee_bps ?? 0)) / 10000);
+}
+
+/** States in which nothing has been charged yet: checkout works the price out afresh. */
+const NOT_CHARGED = new Set(["not_due", "due", "failed"]);
+
+/**
+ * What the brand pays for a payment: the step plus the service fee. Once
+ * Stripe has taken the money it is what checkout recorded (charged_cents);
+ * before that it is what begin_payment_checkout would charge now,
+ * amount_cents + payment_fee_cents (an amount changed since an earlier
+ * attempt is charged at the new figure). The factory gets amount_cents.
+ */
+export function chargedCents(payment) {
+  if (!payment) return 0;
+  if (payment.charged_cents != null && !NOT_CHARGED.has(payment.state)) return Number(payment.charged_cents);
+  return Number(payment.amount_cents) + feeCents(payment);
+}
+
+/**
+ * The service fee on an order with no payment rows yet (its steps are not
+ * agreed): order_payment_fee_bps() gives a new order's first payment 500 bps
+ * at $5,000 and over, 700 under, from the order's total. Once payments exist,
+ * their own fee_bps is the answer, never this.
+ */
+export function orderFeeBps(order) {
+  return Number(order?.order_total_cents ?? 0) >= 500000 ? 500 : 700;
 }

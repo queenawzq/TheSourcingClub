@@ -29,3 +29,4 @@
   .brand-payment-facts { grid-template-columns: 1fr; }
   .brand-payment-card-heading { align-items: flex-start; flex-direction: column; }
 }
+.brand-payment-pay-again { margin-top: 16px; }

@@ -11,20 +11,25 @@
  * Cards are entered only in Stripe's own form on the Fund screen, and nothing
  * is saved here, so the design's saved cards and invoices are left out.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { BillingScreen } from "../../prototype/main.jsx";
 import { listOrders } from "../../lib/domain/order.js";
 import { listPaymentsForOrders } from "../../lib/domain/payment.js";
 import { listDiscountCodes, savingsFor } from "../../lib/domain/credits.js";
 import { useRouter } from "../../lib/router.jsx";
-import { brandPaymentsView } from "./brand-payments-view.js";
+import { ALL_VENDORS, brandPaymentsView } from "./brand-payments-view.js";
 import "../browse/browse.css";
 import "../order/payout.css";
 
 export default function LiveBrandPayments({ org }) {
   const { navigate } = useRouter();
-  const [state, setState] = useState({ view: null, codes: [], savings: null, error: null });
+  const [state, setState] = useState({ loaded: null, codes: [], savings: null, error: null });
   const [copied, setCopied] = useState(null);
+  // BillingScreen keeps its vendor filter to itself and applies it to the
+  // rows only; the live mount hears the same change and recomputes the four
+  // figures from that vendor's payments, as the factory's page does.
+  const [vendor, setVendor] = useState(ALL_VENDORS);
+  const view = useMemo(() => (state.loaded ? brandPaymentsView({ ...state.loaded, vendor }) : null), [state.loaded, vendor]);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,10 +42,10 @@ export default function LiveBrandPayments({ org }) {
         listDiscountCodes(org.id),
         savingsFor(org.id),
       ]);
-      return { view: brandPaymentsView({ orders, payments }), codes, savings };
+      return { loaded: { orders, payments }, codes, savings };
     })().then(
       (loaded) => !cancelled && setState({ ...loaded, error: null }),
-      (error) => !cancelled && setState({ view: null, codes: [], savings: null, error }),
+      (error) => !cancelled && setState({ loaded: null, codes: [], savings: null, error }),
     );
     return () => { cancelled = true; };
   }, [org.id]);
@@ -48,7 +53,7 @@ export default function LiveBrandPayments({ org }) {
   if (state.error) {
     return <main className="billing-page-shell"><p className="live-profile-error" role="alert">Couldn't load your payments: {state.error.message}</p></main>;
   }
-  if (!state.view) {
+  if (!view) {
     return <main className="billing-page-shell"><p className="live-profile-loading">Loading your payments…</p></main>;
   }
 
@@ -63,12 +68,17 @@ export default function LiveBrandPayments({ org }) {
   };
 
   return (
-    <main className="billing-page-shell">
+    <main
+      className="billing-page-shell"
+      onChange={(event) => {
+        if (event.target.matches?.(".billing-controls select")) setVendor(event.target.value);
+      }}
+    >
       <BillingScreen
         accountType="brand"
         live={{
-          metrics: state.view.metrics,
-          rows: state.view.rows.map((row) => {
+          metrics: view.metrics,
+          rows: view.rows.map((row) => {
             // A due payment has no transaction to show yet: it opens the Fund screen.
             const path = row.state === "due"
               ? `/orders/${row.orderId}/payments/${row.id}`
