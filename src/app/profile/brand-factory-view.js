@@ -52,10 +52,8 @@ export function brandFactoryView(parts, now = new Date()) {
     name: data.name,
     initials: own.initials,
     logoUrl: own.logoUrl,
-    // The badge the brand's other screens (invite step, quotes) give a
-    // verified vendor; none when it isn't.
-    verifiedIcon: verified ? "trusted" : null,
-    verifiedLabel: verified ? "Business registration verified" : "",
+    verifiedIcon: verified ? (profile?.trust_tier ?? "basic") : null,
+    verifiedLabel: verified ? `${profile?.trust_tier ?? "basic"} factory` : "",
     heroLine: `${location} · ${specialty}`,
     tags: data.categories.slice(0, 4),
     performance: {
@@ -108,4 +106,3 @@ export const BACK_LABELS = {
   order: "order",
   saved: "saved vendors",
 };
-

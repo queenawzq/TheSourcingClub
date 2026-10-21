@@ -45,7 +45,7 @@ function toRecommendedCard(vendor, navigate) {
     initials: initialsOf(name),
     name,
     location: vendor.location ?? "Location not given",
-    trust: vendor.verification_status === "verified" ? "trusted" : "",
+    trust: vendor.verification_status === "verified" ? (vendor.trust_tier ?? "basic") : "",
     match: "",
     rating: "",
     orders: "",

@@ -438,7 +438,7 @@ export default function LiveComposer({ org, rfqId }) {
       const rows = unwrap(
         await supabase
           .from("factory_profiles")
-          .select("org_id, location, moq, typical_lead_days, verification_status, intro, vendor_kind, orgs (id, name)")
+          .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, orgs (id, name)")
           .not("published_at", "is", null),
         "load vendors",
       );
@@ -565,7 +565,7 @@ export default function LiveComposer({ org, rfqId }) {
       name: vendor.orgs?.name ?? "Vendor",
       location: vendor.location ?? "Location not given",
       // There is no "unverified" badge: an unverified vendor has none.
-      trust: vendor.verification_status === "verified" ? "trusted" : "",
+      trust: vendor.verification_status === "verified" ? (vendor.trust_tier ?? "basic") : "",
       // Scored against this request by match_score_rfq(); blank when the
       // vendor's profile has too little in it to score.
       fit: vendor.matchPercent === null ? "" : `${vendor.matchPercent}%`,

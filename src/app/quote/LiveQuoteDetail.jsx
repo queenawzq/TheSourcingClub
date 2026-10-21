@@ -53,7 +53,8 @@ export default function LiveQuoteDetail({ rfqId, quoteId }) {
           ...found.view,
           // Keep the same trust badge and place line as the vendor's card on
           // Review quotes. Internal quote versions do not need a UI badge.
-          trust: found.raw.orgs?.factory_profiles?.verification_status === "verified" ? "trusted" : "",
+          trust: found.raw.orgs?.factory_profiles?.verification_status === "verified"
+            ? (found.raw.orgs?.factory_profiles?.trust_tier ?? "basic") : "",
           location: found.raw.orgs?.factory_profiles?.location ?? "",
         }}
         request={state.request}
