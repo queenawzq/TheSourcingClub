@@ -8,7 +8,16 @@
 import React, { useEffect, useState } from "react";
 import { FactoryQuoteSent } from "../../factory-prototype/main.jsx";
 import { getRfq } from "../../lib/domain/rfq.js";
-import { formatDayRange, getMyQuote, getSampleLines, reviseQuote } from "../../lib/domain/quote.js";
+import {
+  formatDayRange,
+  getMaterialLines,
+  getMyQuote,
+  getSampleLines,
+  quoteSubtotals,
+  quoteTotalCents,
+  quoteTotalMaxCents,
+  reviseQuote,
+} from "../../lib/domain/quote.js";
 import { quoteCreditCost } from "../../lib/domain/credits.js";
 import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -41,10 +50,13 @@ export default function LiveQuoteSent({ org, rfqId, profile }) {
     (async () => {
       const quote = await getMyQuote(rfqId, org.id).catch(() => null);
       if (!quote || cancelled) return;
-      const lines = (await getSampleLines(quote.id).catch(() => [])) ?? [];
-      const production = (quote.unit_price_cents ?? 0) * (quote.production_quantity ?? 0);
-      const productionMax = (quote.unit_price_max_cents ?? quote.unit_price_cents ?? 0) * (quote.production_quantity ?? 0);
-      const samples = lines.reduce((sum, line) => sum + (line.cost_cents ?? 0), 0);
+      const [lines, materialLines] = await Promise.all([
+        getSampleLines(quote.id).catch(() => []),
+        getMaterialLines(quote.id).catch(() => []),
+      ]);
+      // The total the brand sees, materials charged separately included.
+      const figures = { ...quote, ...quoteSubtotals(quote, { sampleLines: lines ?? [], materialLines: materialLines ?? [] }) };
+      const production = figures.productionSubtotalCents ?? 0;
       if (cancelled) return;
       setQuote(quote);
       setSent({
@@ -53,7 +65,7 @@ export default function LiveQuoteSent({ org, rfqId, profile }) {
           : "—",
         quantity: quote.production_quantity ? `${quote.production_quantity} units` : "—",
         leadTime: formatDayRange(quote.bulk_lead_time_days, quote.bulk_lead_time_max_days) || "—",
-        total: production ? formatRange(production + samples, productionMax + samples, quote.currency) : "—",
+        total: production ? formatRange(quoteTotalCents(figures), quoteTotalMaxCents(figures), quote.currency) : "—",
         quoteDue: null,
       });
     })();

@@ -1,4 +1,4 @@
-import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
  * A factory's payouts through Stripe: an Express account, onboarded on
@@ -30,11 +30,14 @@ export default async function handler(request, response) {
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
   const { orgId, action, country } = jsonBody(request);
-  const [{ data: isOwner }, { data: org }, { data: auth }] = await Promise.all([
+  const [owner, orgRead, { data: auth }] = await Promise.all([
     caller.rpc("is_org_owner", { target_org: orgId }),
     caller.from("orgs").select("id, name, type").eq("id", orgId).maybeSingle(),
     caller.auth.getUser(),
   ]);
+  if (tokenRefused(owner) || tokenRefused(orgRead)) return reply(response, 401, { error: "sign in is required" });
+  const { data: isOwner } = owner;
+  const { data: org } = orgRead;
   if (!isOwner || !org || org.type === "brand") {
     return reply(response, 403, { error: "only an owner of a factory or trading company can set up its payouts" });
   }

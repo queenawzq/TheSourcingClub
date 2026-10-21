@@ -1,4 +1,4 @@
-import { applyPaymentIntent, callerClient, jsonBody, reply, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyPaymentIntent, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
  * The brand starts paying for a step: returns the client secret the Stripe
@@ -28,7 +28,9 @@ export default async function handler(request, response) {
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
   const { paymentId } = jsonBody(request);
-  const { data: checkout, error } = await caller.rpc("begin_payment_checkout", { target_payment: paymentId });
+  const started = await caller.rpc("begin_payment_checkout", { target_payment: paymentId });
+  if (tokenRefused(started)) return reply(response, 401, { error: "sign in is required" });
+  const { data: checkout, error } = started;
   if (error) {
     return reply(response, error.code === "42501" ? 403 : error.code === "P0002" ? 404 : 409, { error: error.message });
   }
@@ -63,7 +65,14 @@ export default async function handler(request, response) {
     if (intent && !OPEN.has(intent.status)) {
       // Already paid, or on its way: bring the database up to date instead.
       const payment = await applyPaymentIntent({ stripe, db, intent });
-      return reply(response, 409, { error: "this payment is already under way", state: payment?.state ?? null });
+      // Paid when the payment no longer wanted it (the amount changed since
+      // this intent was made) and refunded: the payment let go of it, so
+      // start again with a new intent at the amount owed now.
+      if (payment?.state === "failed" && !payment.stripe_payment_intent_id) {
+        intent = null;
+      } else {
+        return reply(response, 409, { error: "this payment is already under way", state: payment?.state ?? null });
+      }
     }
 
     // Whether the open intent's amount already matches what is owed, read

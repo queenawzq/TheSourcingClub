@@ -1,4 +1,4 @@
-import { callerClient, jsonBody, releasePayment, reply, serviceClient, stripeFrom } from "./_stripe.js";
+import { callerClient, jsonBody, releasePayment, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
  * Pay a held payment out to its factory now. Called by the brand's page right
@@ -25,7 +25,9 @@ export default async function handler(request, response) {
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
   const { paymentId } = jsonBody(request);
-  const { data: visible } = await caller.from("order_payments").select("id").eq("id", paymentId).maybeSingle();
+  const read = await caller.from("order_payments").select("id").eq("id", paymentId).maybeSingle();
+  if (tokenRefused(read)) return reply(response, 401, { error: "sign in is required" });
+  const { data: visible } = read;
   if (!visible) return reply(response, 404, { error: "that payment is not available to you" });
 
   try {

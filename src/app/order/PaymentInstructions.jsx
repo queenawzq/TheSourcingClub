@@ -33,7 +33,11 @@ function explain(payment, factory) {
     case "processing":
       return `Stripe is confirming your payment. ${factory} starts when it goes through.`;
     case "confirmed":
-      return `TSC holds this payment. ${factory} is paid when you approve the step.`;
+      // Approved (or a payment-only step, asked for as soon as it is funded):
+      // the payout is already on its way.
+      return payment.release_requested_at
+        ? `TSC holds this payment and is paying it out to ${factory}.`
+        : `TSC holds this payment. ${factory} is paid when you approve the step.`;
     case "released":
       return `Paid on to ${factory}.`;
     case "cancelled":

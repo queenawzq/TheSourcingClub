@@ -33,11 +33,11 @@ import StripePayoutCard from "../order/StripePayoutCard.jsx";
 import { BillingMethodFlow } from "../order/PayoutDetails.jsx";
 
 const PAYOUT_FIELDS = [
-  ["bank_name", "Bank", "Banco de Porto"],
+  ["bank_name", "Bank", "Your bank's name"],
   ["account_name", "Account name", "As it appears on the account"],
-  ["account_number_last4", "Last 4 digits", "4417"],
-  ["swift", "SWIFT / BIC", "BCOMPTPL"],
-  ["iban", "IBAN", "PT50 0002 0123 1234 5678 9015 4"],
+  ["account_number_last4", "Last 4 digits", "1234"],
+  ["swift", "SWIFT / BIC", "8 or 11 characters"],
+  ["iban", "IBAN", "Only if your bank uses one"],
 ];
 
 const blankPayout = (row) => ({
