@@ -94,7 +94,9 @@ export default function LiveQuotes({ rfqId }) {
       comparison: {
         productionSubtotal: view.productionSubtotal || "—",
         sampleSubtotal: view.sampleSubtotal || "—",
-        additionalMaterialSubtotal: "—",
+        // Materials marked not included ("charged separately"), per unit
+        // times the quantity; already in the quote total.
+        additionalMaterialSubtotal: view.additionalMaterialSubtotal || "—",
         paymentTerms: view.paymentTerms || "—",
         samplePlan: view.samplePlan || "—",
         shipping: view.shipping || "—",
@@ -105,7 +107,7 @@ export default function LiveQuotes({ rfqId }) {
       categories: [],
       capabilities: [],
       notes: view.notes ? [view.notes] : [],
-      materialCosts: [],
+      materialCosts: view.materialCosts,
       samples: [],
     };
   });

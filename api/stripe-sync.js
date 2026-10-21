@@ -1,4 +1,4 @@
-import { applyPaymentIntent, callerClient, jsonBody, releasePayment, reply, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyPaymentIntent, callerClient, jsonBody, releasePayment, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
  * Read a payment's PaymentIntent back from Stripe and record what it says.
@@ -25,7 +25,9 @@ export default async function handler(request, response) {
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
   const { paymentId } = jsonBody(request);
-  const { data: visible } = await caller.from("order_payments").select("id, stripe_payment_intent_id").eq("id", paymentId).maybeSingle();
+  const read = await caller.from("order_payments").select("id, stripe_payment_intent_id").eq("id", paymentId).maybeSingle();
+  if (tokenRefused(read)) return reply(response, 401, { error: "sign in is required" });
+  const { data: visible } = read;
   if (!visible) return reply(response, 404, { error: "that payment is not available to you" });
 
   try {

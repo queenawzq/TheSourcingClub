@@ -106,9 +106,10 @@ function actionFor(milestone, { isFactory, isOwner, posted }) {
 
 /**
  * Where the step's money is, in words. TSC holds a funded payment until the
- * brand approves the step, then pays the factory.
+ * brand approves the step, then pays the factory; a payment-only step (a
+ * deposit or balance) has nothing to approve and is paid out once funded.
  */
-function paymentLine(payment, isFactory) {
+function paymentLine(payment, isFactory, kind) {
   switch (payment?.state) {
     case "due":
       return isFactory ? "Awaiting funding from the brand" : "Awaiting funding";
@@ -122,7 +123,8 @@ function paymentLine(payment, isFactory) {
         ? "Payment claimed, awaiting our confirmation"
         : "You have marked this sent — awaiting our confirmation";
     case "confirmed":
-      return payment.release_requested_at ? "Approved: payout on its way" : "Funded: held by TSC";
+      if (!payment.release_requested_at) return "Funded: held by TSC";
+      return kind === "payment_only" ? "Funded: payout on its way" : "Approved: payout on its way";
     case "released":
       return "Paid out";
     default:
@@ -133,7 +135,7 @@ function paymentLine(payment, isFactory) {
 /** The sentence under a step's title, from its own state and its payment's. */
 function statusLine(milestone, { isFactory, isOwner, posted }) {
   const payment = milestone.payment;
-  const money = paymentLine(payment, isFactory);
+  const money = paymentLine(payment, isFactory, milestone.kind);
 
   if (milestone.state === "complete") {
     return payment?.state === "confirmed" || payment?.state === "released" ? `Done · ${money}` : "Done";
@@ -398,7 +400,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         : "Nothing posted on this step yet",
       ...reminder,
       // post_milestone_update takes a post only while work is happening.
-      canComment: running && (milestone.state === "active" || milestone.state === "submitted"),
+      // A payment-only step (deposit, balance) has no work to report on.
+      canComment: running && milestone.kind !== "payment_only" && (milestone.state === "active" || milestone.state === "submitted"),
       // Keep the factory's next action visible on every work/approval step,
       // just as the brand sees its future milestone CTAs. Pending buttons are
       // disabled until sequencing opens the step; payment-only rows need no
@@ -428,7 +431,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       .join(" · "),
     total: money(order.total_cents),
     paid: money(order.paid_cents),
-    remaining: money(order.outstanding_cents),
+    // A cancelled order owes nothing more: its unheld payments were cancelled
+    // (close_order), though the summary still counts its steps as outstanding.
+    remaining: money(order.status === "cancelled" ? null : order.outstanding_cents),
     nextPayment: money(order.next_payment_cents),
   };
   const onTabChange = (next) => navigate(next === "overview" ? `/orders/${orderId}` : `/orders/${orderId}/${next}`);

@@ -21,6 +21,7 @@ import { ActivityDrawer, HomeScreen } from "../../prototype/main.jsx";
 import { dashboardSnapshot } from "../../lib/domain/dashboard.js";
 import { listRfqs } from "../../lib/domain/rfq.js";
 import { listOrders } from "../../lib/domain/order.js";
+import { chargedCents, listPaymentsForOrders } from "../../lib/domain/payment.js";
 import { listArchivedOrderIds } from "../../lib/domain/order-tabs.js";
 import { listThreads } from "../../lib/domain/message.js";
 import {
@@ -71,7 +72,7 @@ function toRecommendedCard(vendor, navigate) {
  * then someone waiting on a reply. Nothing is invented — a count of zero
  * produces no card at all.
  */
-function attentionFrom(snapshot, isFactory, goTo) {
+function attentionFrom(snapshot, isFactory, goTo, dueCents = null) {
   if (!snapshot) return null;
   const items = [];
   const n = (value) => Number(value) || 0;
@@ -80,7 +81,7 @@ function attentionFrom(snapshot, isFactory, goTo) {
     items.push({
       type: "Payment",
       tone: "danger",
-      title: `${formatMoney(snapshot.payments_due_cents)} due`,
+      title: `${formatMoney(dueCents ?? snapshot.payments_due_cents)} due`,
       meta: "A production step is waiting on this payment before it can start.",
       facts: [],
       action: "View orders",
@@ -154,7 +155,7 @@ function toActivityItem(notification) {
 
 export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProject }) {
   const { navigate } = useRouter();
-  const [state, setState] = useState({ snapshot: null, rfqs: [], projects: [], savings: null, loaded: false });
+  const [state, setState] = useState({ snapshot: null, dueCents: null, rfqs: [], projects: [], savings: null, loaded: false });
   // The bell is the Activity drawer's, so it counts unread activity, not
   // unread messages (those have their own card in "Needs your attention").
   const [unreadActivity, setUnreadActivity] = useState(0);
@@ -173,7 +174,15 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
       savingsFor(org.id),
       listArchivedOrderIds(org.id),
     ])
-      .then(([snapshot, rfqs, orders, threads, savings, archivedIds]) => {
+      .then(async ([snapshot, rfqs, orders, threads, savings, archivedIds]) => {
+        // The snapshot owes step amounts; the brand pays each with the
+        // service fee on top, as its Payments page and the Fund screen say.
+        // Same payments as payments_due_cents: due or failed.
+        const dueCents = !isFactory && Number(snapshot?.payments_due_cents) > 0
+          ? (await listPaymentsForOrders((orders ?? []).filter((order) => order.brand_org_id === org.id).map((order) => order.id)))
+            .filter((payment) => payment.state === "due" || payment.state === "failed")
+            .reduce((total, payment) => total + chargedCents(payment), 0)
+          : null;
         if (cancelled) return;
         const messagesByRfq = new Map();
         for (const thread of threads ?? []) {
@@ -185,6 +194,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         }
         setState({
           snapshot,
+          dueCents,
           // Open requests first: the design's "Active quotes" panel is about
           // what is still being quoted, not the archive.
           rfqs: (rfqs ?? [])
@@ -200,7 +210,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
       })
       .catch((failure) => !cancelled && setError(failure));
     return () => { cancelled = true; };
-  }, [org.id]);
+  }, [org.id, isFactory]);
 
   useEffect(() => {
     let cancelled = false;
@@ -245,8 +255,8 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
     }
   }
 
-  const { snapshot, rfqs, projects, savings } = state;
-  const attention = attentionFrom(snapshot, isFactory, goTo) ?? [];
+  const { snapshot, dueCents, rfqs, projects, savings } = state;
+  const attention = attentionFrom(snapshot, isFactory, goTo, dueCents) ?? [];
   const isNewcomer = state.loaded && !rfqs.length && !projects.length;
 
   // Recommendations use real vendors rather than the prototype's examples.
