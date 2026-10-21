@@ -1,6 +1,8 @@
 -- ============================================================================
--- Privacy policy, version 3: Zoom
+-- Privacy policy, next version: Zoom
 -- ----------------------------------------------------------------------------
+-- Numbered after whatever is current (version 3, or 4 once the payments
+-- change has published its card-only version first): merge order decides.
 -- Video calls are hosted by Zoom, which receives each person's name and
 -- company as shown in the call and carries its audio and video. The privacy
 -- policy names every service that processes personal data, so this is a new
@@ -13,7 +15,7 @@
 -- ============================================================================
 
 insert into public.legal_documents (kind, version, onboarding_en, onboarding_zh, full_en, full_zh)
-values ('privacy', 3, null, null, $legal$The Sourcing Club Privacy Policy
+select 'privacy', coalesce(max(d.version), 0) + 1, null, null, $legal$The Sourcing Club Privacy Policy
 Effective October 2026
 
 1. Who we are
@@ -59,4 +61,6 @@ Access to data is enforced by the database itself, private files are served only
 We may update this policy as the platform changes. The effective date above will change when a new version is published, and we will tell you about material changes.
 
 15. Contact
-Questions or requests about this policy may be directed to The Sourcing Club operations team through the support channels provided in your account.$legal$, null);
+Questions or requests about this policy may be directed to The Sourcing Club operations team through the support channels provided in your account.$legal$, null
+  from public.legal_documents d
+ where d.kind = 'privacy';
