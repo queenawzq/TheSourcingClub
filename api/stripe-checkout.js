@@ -73,14 +73,15 @@ export default async function handler(request, response) {
 
     // Older open intents may still advertise ACH, or carry an amount the
     // brand has since changed: bring them into line, but only when something
-    // differs, so opening the page is not a write to Stripe every time. Never
-    // mid-authentication (requires_action): an update there would throw away
-    // the brand's 3-D Secure step, so the intent goes back as it is.
-    if (intent && intent.status !== "requires_action" && (
-      amountChanged
-      || intent.payment_method_types?.length !== 1 || intent.payment_method_types[0] !== "card"
+    // differs, so opening the page is not a write to Stripe every time. Mid-
+    // authentication (requires_action) an update throws away the brand's
+    // 3-D Secure step, so only a changed amount justifies it: the brand must
+    // never be charged a figure other than the one on the screen.
+    const settingsDiffer = intent && (
+      intent.payment_method_types?.length !== 1 || intent.payment_method_types[0] !== "card"
       || intent.setup_future_usage !== "on_session"
-    )) {
+    );
+    if (intent && (amountChanged || (settingsDiffer && intent.status !== "requires_action"))) {
       intent = await stripe.paymentIntents.update(intent.id, {
         amount: charged,
         payment_method_types: ["card"],
