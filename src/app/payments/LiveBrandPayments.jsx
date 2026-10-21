@@ -1,16 +1,15 @@
 /**
  * The brand's Payments page, on the designed `BillingScreen`.
  *
- * Payments: the brand's own order payments and where each stands (Due,
- * Processing, Failed, Funded, Paid; Sent only for an old bank-wire claim)
- * with the design's four figures (brand-payments-view.js). A row opens that
- * payment's page on its order: the Fund screen while it is due or failed.
+ * Payments: the brand's own order payments and where each stands (Not paid,
+ * Payment processing, Failed, Funded, Paid; Sent only for an old bank-wire
+ * claim) with the design's four figures (brand-payments-view.js). A row opens
+ * its transaction page; a due one opens the Fund screen on its order.
  * Discounts: the brand's real credit and discount codes (credits.js), the
  * same ones the dashboard's Savings card shows.
  *
- * Cards and bank accounts are entered only in Stripe's own form on the Fund
- * screen, and nothing is saved here, so the design's saved cards and invoices
- * are left out.
+ * Cards are entered only in Stripe's own form on the Fund screen, and nothing
+ * is saved here, so the design's saved cards and invoices are left out.
  */
 import React, { useEffect, useState } from "react";
 import { BillingScreen } from "../../prototype/main.jsx";
@@ -69,11 +68,13 @@ export default function LiveBrandPayments({ org }) {
         accountType="brand"
         live={{
           metrics: state.view.metrics,
-          rows: state.view.rows.map((row) => ({
-            ...row,
-            href: `/app.html/payments/${row.orderId}/${row.id}`,
-            onOpen: () => navigate(`/payments/${row.orderId}/${row.id}`),
-          })),
+          rows: state.view.rows.map((row) => {
+            // A due payment has no transaction to show yet: it opens the Fund screen.
+            const path = row.state === "due"
+              ? `/orders/${row.orderId}/payments/${row.id}`
+              : `/payments/${row.orderId}/${row.id}`;
+            return { ...row, href: `/app.html${path}`, onOpen: () => navigate(path) };
+          }),
           empty: "No payment transactions yet.",
           discount: state.savings ? { amount: state.savings.amount, note: state.savings.note } : null,
           codes: state.codes,

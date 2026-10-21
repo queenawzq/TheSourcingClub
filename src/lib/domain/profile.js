@@ -27,7 +27,7 @@ const FACTORY_COLUMNS = `
   moq, typical_lead_days, sample_lead_days, equipment_notes, vendor_kind,
   languages_supported, typical_order_value_band, partner_factory_count,
   supported_incoterms, typical_payment_terms,
-  verification_status, published_at,
+  verification_status, trust_tier, published_at,
   onboarding_completed_at, created_at, updated_at
 `;
 

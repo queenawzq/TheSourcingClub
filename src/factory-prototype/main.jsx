@@ -9962,8 +9962,22 @@ export function FactorySubmitQuote({
   const readQuote = () => {
     const out = {};
     for (const node of cardRef.current?.querySelectorAll("[data-quote-field]") ?? []) {
-      out[node.dataset.quoteField] = node.dataset.quoteValue ?? node.textContent?.trim() ?? "";
+      out[node.dataset.quoteField] = node.dataset.quoteValue
+        ?? ("value" in node ? node.value : node.textContent?.trim())
+        ?? "";
     }
+    out.materialCosts = Array.from(cardRef.current?.querySelectorAll("[data-material-cost-row]") ?? [])
+      .map((row) => {
+        const material = row.querySelector('[data-material-field="name"]')?.value?.trim() ?? "";
+        const cost = row.querySelector('[data-material-field="cost"]')?.value ?? "";
+        const treatment = row.querySelector('[data-material-field="treatment"]')?.value ?? "additional";
+        return {
+          material,
+          costPerUnit: cost === "" ? null : Number(cost),
+          included: treatment === "included",
+        };
+      })
+      .filter((row) => row.material || row.costPerUnit != null);
     return out;
   };
 
@@ -10256,7 +10270,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
   // `values` is how a live mount identifies itself. The three rows below are
   // the design's worked example; a real vendor has not costed anything yet, and
   // showing it poplin at $8.64 states a price it never quoted.
-  const [materialCosts, setMaterialCosts] = useState(values ? [] : [
+  const [materialCosts, setMaterialCosts] = useState(() => values ? (values.materialCosts ?? []) : [
     {
       id: "poplin",
       material: "Organic cotton poplin",
@@ -10276,16 +10290,16 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
       included: false
     }
   ]);
-  const includedMaterialCost = materialCosts.reduce((total, item) => total + (item.included ? item.costPerUnit : 0), 0);
-  const additionalMaterialCost = materialCosts.reduce((total, item) => total + (item.included ? 0 : item.costPerUnit), 0);
+  const includedMaterialCost = materialCosts.reduce((total, item) => total + (item.included ? Number(item.costPerUnit) || 0 : 0), 0);
+  const additionalMaterialCost = materialCosts.reduce((total, item) => total + (item.included ? 0 : Number(item.costPerUnit) || 0), 0);
 
   const addMaterialCost = () => {
     setMaterialCosts((current) => [
       ...current,
       {
         id: `material-${Date.now()}`,
-        material: "New material or component",
-        costPerUnit: 0,
+        material: "",
+        costPerUnit: null,
         included: false
       }
     ]);
@@ -10305,9 +10319,9 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
     <>
       <SubmitSection title="Quote terms" description="Enter exact commercial terms for this request.">
         <div className="factory-submit-field-grid">
-          <QuoteField name="unitPrice" label="Unit price" value={values?.unitPrice ?? "$18.40 / unit"} {...reviewFieldProps} />
+          <QuoteField name="unitPrice" label="Unit price" value={values?.unitPrice ?? "$18.40 / unit"} placeholder="e.g. $12–$15 / unit" {...reviewFieldProps} />
           <QuoteField name="quantity" label="Exact production quantity *" value={values?.quantity ?? "300 units"} {...reviewFieldProps} />
-          <QuoteField name="leadTime" label="Bulk lead time *" value={values?.leadTime ?? "28 days after PP approval"} {...reviewFieldProps} />
+          <QuoteField name="leadTime" label="Bulk lead time *" value={values?.leadTime ?? "28 days after PP approval"} placeholder="e.g. 30–35 days" {...reviewFieldProps} />
           {/* The capacity window is the vendor's own, and a live mount passes
               it. Absent, the design's example stands in the prototype but the
               field is left blank rather than quoting a window nobody opened. */}
@@ -10359,6 +10373,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
               readOnly={readOnly}
               reviewEnglish={reviewEnglish}
               onRemove={() => removeMaterialCost(item.id)}
+              onMaterialChange={(material) => updateMaterialCost(item.id, { material })}
               onCostChange={(costPerUnit) => updateMaterialCost(item.id, { costPerUnit })}
               onTreatmentChange={(included) => updateMaterialCost(item.id, { included })}
               key={item.id}
@@ -10389,29 +10404,31 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
         {!readOnly && <button className="factory-add-stage" type="button">+ Add sample stage</button>}
       </SubmitSection>
 
-      {/* The brand's own questions, which are the point of this section for a
-          factory: they are what it has to answer to quote. Drawn as three
-          examples; live they are the rows the brand actually wrote. */}
-      <SubmitSection
-        title={companyType === "trading" ? "Brand questions and company notes" : "Brand questions and factory notes"}
-        description={
-          values?.brandQuestions?.length
-            ? `Brand asks: ${values.brandQuestions.join(" ")}`
-            : "Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM, trim, MOQ, or certification details do you need before final cost?"
-        }
-        descriptionNoTranslate
-      >
-        {/* The design writes the answer out as an example. Live it is blank —
-            an answer to the brand's question has to be the vendor's own. */}
-        <QuoteTextarea
-          name="factoryResponse"
-          value={values?.factoryResponse ?? (values ? "" : (isZh && !readOnly
-            ? "可以。我们可以分别报价试身样和 PP 样，并支持 3 个颜色、每色 100 件。最终成本取决于确认后的 GSM、纽扣辅料、认证路径和最终尺码规格。"
-            : "Yes. We can quote fit and PP samples separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec."))}
-          label={companyType === "trading" ? "Trading company response" : "Factory response"}
-          editable={reviewEnglish || canType}
-        />
-      </SubmitSection>
+      {/* Prototype-only examples remain available for the design preview. A
+          live RFQ shows this section only when the brand actually asked at
+          least one question, so example copy can never be mistaken for data. */}
+      {(!values || values.brandQuestions?.length > 0) && (
+        <SubmitSection
+          title={companyType === "trading" ? "Brand questions and company notes" : "Brand questions and factory notes"}
+          description={
+            values?.brandQuestions?.length
+              ? `Brand asks: ${values.brandQuestions.join(" ")}`
+              : "Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM, trim, MOQ, or certification details do you need before final cost?"
+          }
+          descriptionNoTranslate
+        >
+          {/* The design writes the answer out as an example. Live it is blank —
+              an answer to the brand's question has to be the vendor's own. */}
+          <QuoteTextarea
+            name="factoryResponse"
+            value={values?.factoryResponse ?? (values ? "" : (isZh && !readOnly
+              ? "可以。我们可以分别报价试身样和 PP 样，并支持 3 个颜色、每色 100 件。最终成本取决于确认后的 GSM、纽扣辅料、认证路径和最终尺码规格。"
+              : "Yes. We can quote fit and PP samples separately and support 3 colors at 100 units each. Final cost depends on confirmed GSM, button trim, certification path, and final size spec."))}
+            label={companyType === "trading" ? "Trading company response" : "Factory response"}
+            editable={reviewEnglish || canType}
+          />
+        </SubmitSection>
+      )}
 
       <SubmitSection title="Additional details and questions" description="Add supporting files or questions regarding the quote.">
         <QuoteTextarea name="factoryNotes" editable={reviewEnglish || canType} value={values?.factoryNotes ?? (values ? "" : (isZh && !readOnly
@@ -10692,24 +10709,38 @@ function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, review
     <div className={readOnly ? "factory-submit-sample-row read-only" : "factory-submit-sample-row"}>
       <QuoteField name={at("stage")} label="Stage" value={stage} {...reviewFieldProps} />
       <QuoteField name={at("cost")} label="Cost" value={cost} {...reviewFieldProps} />
-      <QuoteField name={at("timing")} label="Timing" value={timing} {...reviewFieldProps} />
+      <QuoteField name={at("timing")} label="Timing" value={timing} placeholder="e.g. 7–10 days" {...reviewFieldProps} />
       <QuoteField name={at("includes")} label="Includes" value={includes} {...reviewFieldProps} />
       {!readOnly && <CloseIconButton label={`Remove ${stage}`} />}
     </div>
   );
 }
 
-function MaterialCostRow({ item, readOnly = false, reviewEnglish = false, onRemove, onCostChange, onTreatmentChange }) {
+function MaterialCostRow({ item, readOnly = false, reviewEnglish = false, onRemove, onMaterialChange, onCostChange, onTreatmentChange }) {
   const reviewFieldProps = reviewEnglish ? { valueNoTranslate: true, editable: true } : {};
   return (
-    <div className={readOnly ? "factory-material-cost-row read-only" : "factory-material-cost-row"}>
-      <QuoteField label="Material / component" value={item.material} {...reviewFieldProps} />
+    <div className={readOnly ? "factory-material-cost-row read-only" : "factory-material-cost-row"} data-material-cost-row>
       {readOnly ? (
-        <QuoteField label="Cost per finished unit" value={`$${item.costPerUnit.toFixed(2)}`} {...reviewFieldProps} />
+        <QuoteField label="Material / component" value={item.material} {...reviewFieldProps} />
+      ) : (
+        <label className="factory-material-name-input">
+          <span>Material / component</span>
+          <input
+            type="text"
+            value={item.material}
+            placeholder="Enter material or component"
+            data-quote-field={`material.${item.id}.name`}
+            data-material-field="name"
+            onChange={(event) => onMaterialChange(event.target.value)}
+          />
+        </label>
+      )}
+      {readOnly ? (
+        <QuoteField label="Cost per finished unit" value={item.costPerUnit == null ? "—" : `$${Number(item.costPerUnit).toFixed(2)}`} {...reviewFieldProps} />
       ) : (
         <label className="factory-material-cost-input">
           <span>Cost per finished unit</span>
-          <div><b aria-hidden="true">$</b><input type="number" min="0" step="0.01" value={item.costPerUnit} onChange={(event) => onCostChange(Number(event.target.value) || 0)} /></div>
+          <div><b aria-hidden="true">$</b><input type="number" min="0" step="0.01" value={item.costPerUnit ?? ""} placeholder="Enter cost" data-quote-field={`material.${item.id}.costPerUnit`} data-material-field="cost" onChange={(event) => onCostChange(event.target.value === "" ? null : Number(event.target.value))} /></div>
         </label>
       )}
       {readOnly ? (
@@ -10724,6 +10755,8 @@ function MaterialCostRow({ item, readOnly = false, reviewEnglish = false, onRemo
           <select
             className={item.included ? "included" : "additional"}
             value={item.included ? "included" : "additional"}
+            data-quote-field={`material.${item.id}.treatment`}
+            data-material-field="treatment"
             onChange={(event) => onTreatmentChange(event.target.value === "included")}
           >
             <option value="included">Included in unit price</option>
