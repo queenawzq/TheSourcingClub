@@ -113,7 +113,7 @@ function paymentLine(payment, isFactory) {
     case "due":
       return isFactory ? "Awaiting funding from the brand" : "Awaiting funding";
     case "processing":
-      return "Bank payment clearing";
+      return "Payment processing";
     case "failed":
       return `Payment failed: ${payment.failure_reason || "the payment did not go through"}`;
     case "sent":

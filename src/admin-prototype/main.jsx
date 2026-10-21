@@ -812,7 +812,7 @@ function EvidenceDetailModal({ profile, check, documents, onDocumentUrl, onClose
   );
 }
 
-function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision }) {
+function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest }) {
   const [requestOpen, setRequestOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   // Both modals had a textarea whose value was dropped on the floor: the
@@ -820,10 +820,43 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   // database refuses "Needs information" with no note, because a factory told
   // only "Needs information" has nothing to act on.
   const [requestNote, setRequestNote] = useState("");
+  const [requestSuggestionLoading, setRequestSuggestionLoading] = useState(false);
+  const [requestSuggestionError, setRequestSuggestionError] = useState("");
   const [declineNote, setDeclineNote] = useState("");
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState(null);
+  const eligibility = submission?.trustEligibility ?? null;
+  const isVendor = profile?.entityType === "Factory" || profile?.entityType === "Trading company";
+  const hasWalkthrough = eligibility?.hasWalkthrough ?? (documents ?? []).some(
+    (document) => document.kind === "walkthrough" && document.status !== "rejected" && Number(document.size_bytes) > 0,
+  );
+  const eligibleTrusted = Boolean(eligibility?.eligibleTrusted);
+  const suggestedTier = eligibleTrusted ? "trusted" : hasWalkthrough ? "verified" : "basic";
+  const [approvalTier, setApprovalTier] = useState("basic");
+  useEffect(() => {
+    setApprovalTier(suggestedTier);
+  }, [profile?.id, suggestedTier]);
   if (!profile) return null;
+  const requestGaps = (profile.checks ?? [])
+    .filter(([, result]) => !["Verified", "Clear"].includes(result))
+    .map(([label, result, , detail]) => ({ label, result, detail }));
+  const suggestRequest = async () => {
+    setRequestSuggestionLoading(true);
+    setRequestSuggestionError("");
+    try {
+      const result = await onSuggestRequest?.({
+        companyName: profile.name,
+        entityType: profile.entityType,
+        gaps: requestGaps,
+      });
+      if (result?.message) setRequestNote(result.message);
+      else setRequestSuggestionError(result?.error || "The suggestion could not be generated. You can still write the message manually.");
+    } catch (error) {
+      setRequestSuggestionError(error.message || "The suggestion could not be generated. You can still write the message manually.");
+    } finally {
+      setRequestSuggestionLoading(false);
+    }
+  };
   const members = submission?.members ?? [];
   const submitter = members.find((member) => member.role === "owner") ?? members[0] ?? null;
   const submitterName = submitter?.name || "Not provided";
@@ -889,7 +922,51 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <span>Final decision</span>
               <h2>Complete this review</h2>
               <p>Review the evidence and confidence signals before making a marketplace decision.</p>
-              <button className="primary-btn" type="button" onClick={() => onDecision(profile.id, "Approved")}>Approve profile</button>
+              {isVendor && (
+                <fieldset className="admin-tier-picker">
+                  <legend>Assign marketplace badge</legend>
+                  {[
+                    {
+                      key: "basic",
+                      label: "Basic",
+                      enabled: true,
+                      detail: "Approved profile. No walkthrough required.",
+                    },
+                    {
+                      key: "verified",
+                      label: "Verified",
+                      enabled: hasWalkthrough,
+                      detail: hasWalkthrough
+                        ? "Production walkthrough received."
+                        : "Requires a production walkthrough.",
+                    },
+                    {
+                      key: "trusted",
+                      label: "Trusted",
+                      enabled: eligibleTrusted,
+                      detail: eligibility
+                        ? `${eligibility.completedOrders} completed · ${eligibility.onTimeOrders} on time · ${eligibility.qualityHistoryOrders} with visible quality history`
+                        : "Requires completed on-time Club orders and visible quality history.",
+                    },
+                  ].map((tier) => (
+                    <label className={`admin-tier-option${approvalTier === tier.key ? " selected" : ""}${tier.enabled ? "" : " disabled"}`} key={tier.key}>
+                      <input
+                        type="radio"
+                        name="approval-tier"
+                        value={tier.key}
+                        checked={approvalTier === tier.key}
+                        disabled={!tier.enabled}
+                        onChange={() => setApprovalTier(tier.key)}
+                      />
+                      <img src={`/assets/prototype-icons/${tier.key}.svg`} alt="" />
+                      <span><strong>{tier.label}</strong><small>{tier.detail}</small></span>
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+              <button className="primary-btn" type="button" onClick={() => onDecision(profile.id, "Approved", null, isVendor ? approvalTier : null)}>
+                {isVendor ? `Approve as ${approvalTier[0].toUpperCase()}${approvalTier.slice(1)}` : "Approve profile"}
+              </button>
               <button className="secondary-btn" type="button" onClick={() => setRequestOpen(true)}>Request more information</button>
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
             </section>
@@ -901,10 +978,14 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
           <section className="approve-fund-modal admin-review-modal" role="dialog" aria-modal="true" aria-labelledby="request-info-title">
             <button className="settings-drawer-close" type="button" aria-label="Close" onClick={() => setRequestOpen(false)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
             <header><div><span>Profile review</span><h2 id="request-info-title">Request more information</h2></div></header>
-            <div className="admin-request-options">
-              {["Business registration document", "Certification scope or validity", "Facility or product evidence", "Company ownership details"].map((label) => <label key={label}><input type="checkbox" /> <span>{label}</span></label>)}
+            <div className="admin-request-message-heading">
+              <div><strong>Message to applicant</strong><span>This exact message will be included in the email and in-app notification.</span></div>
+              <button className="secondary-btn admin-ai-suggest-button" type="button" disabled={requestSuggestionLoading || !onSuggestRequest} onClick={suggestRequest}>
+                {requestSuggestionLoading ? "Drafting…" : "Suggest with AI"}
+              </button>
             </div>
-            <label className="factory-onboarding-field"><span>Message</span><textarea value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Add context or instructions for the applicant..." /></label>
+            <label className="factory-onboarding-field admin-request-message"><span className="sr-only">Message to applicant</span><textarea value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Explain which document or information is missing and what the applicant should upload..." /></label>
+            {requestSuggestionError && <p className="admin-request-ai-error" role="alert">{requestSuggestionError}</p>}
             <footer><button className="secondary-btn" type="button" onClick={() => setRequestOpen(false)}>Cancel</button><button className="primary-btn" type="button" disabled={!requestNote.trim()} onClick={() => { setRequestOpen(false); onDecision(profile.id, "Needs information", requestNote.trim()); setRequestNote(""); }}>Send request</button></footer>
           </section>
         </div>
@@ -1406,11 +1487,11 @@ function App() {
     setScreen("Quote detail");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const decide = async (id, status, note = null) => {
+  const decide = async (id, status, note = null, tier = null) => {
     const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
     let result;
     try {
-      result = await actions.decideReview?.(id, status, note);
+      result = await actions.decideReview?.(id, status, note, tier);
     } catch (error) {
       setToast(error.message || "That decision could not be recorded");
       window.setTimeout(() => setToast(""), 4000);
@@ -1426,7 +1507,7 @@ function App() {
     // separate facts: the decision is recorded either way, so the toast says
     // so plainly rather than letting a mail failure read as a lost decision.
     const decisionEmail = result?.decisionEmail;
-    const outcome = status === "Approved" ? "Profile approved"
+    const outcome = status === "Approved" ? `Profile approved${tier ? ` as ${tier[0].toUpperCase()}${tier.slice(1)}` : ""}`
       : status === "Declined" ? "Profile declined"
       : "Information request sent";
     setToast(
@@ -1474,7 +1555,7 @@ function App() {
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
-      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} />}
+      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate("RFQ detail")} />}
       {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} />}

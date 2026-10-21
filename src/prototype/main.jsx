@@ -4049,16 +4049,27 @@ export function HomeScreen({
             <section className="home-active-rfqs">
               <header className="home-panel-header">
                 <div>
-                  <h2>Active quotes</h2>
-                  <p>Compare quote activity and open questions before choosing a vendor.</p>
+                  <h2>Recommended vendors</h2>
+                  <p>Partners matched to {who}’s product focus and order size.</p>
                 </div>
-                <button className="secondary-btn" type="button" onClick={() => goTo("rfqs")}>View all</button>
+                <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse vendors</button>
               </header>
-              <div className="home-rfq-list">
-                {rfqCards.slice(0, 4).map((rfq) => (
-                  <HomeRfqMiniCard rfq={rfq} goTo={goTo} onOpen={onViewRfq} key={rfq.id ?? rfq.title} />
-                ))}
-              </div>
+              {recommended.length ? (
+                <div className="home-dashboard-vendor-grid">
+                  {recommended.slice(0, 2).map((factory) => (
+                    <HomeRecommendedFactoryCard factory={factory} goTo={goTo} key={factory.name} />
+                  ))}
+                </div>
+              ) : (
+                <div className="home-dashboard-empty-state">
+                  <h3>Find your next production partner</h3>
+                  <p>Browse verified vendors or create a request to receive comparable quotes.</p>
+                  <div>
+                    <button className="primary-btn compact-btn" type="button" onClick={() => goTo("describe")}>Create quote request</button>
+                    <button className="secondary-btn compact-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse vendors</button>
+                  </div>
+                </div>
+              )}
             </section>
             <section className="home-attention">
               {showSavings && (
@@ -4086,6 +4097,22 @@ export function HomeScreen({
               </div>
             </section>
           </div>
+          {rfqCards.length > 0 && (
+            <section className="home-active-rfqs">
+              <header className="home-panel-header">
+                <div>
+                  <h2>Active quotes</h2>
+                  <p>Compare quote activity and open questions before choosing a vendor.</p>
+                </div>
+                <button className="secondary-btn" type="button" onClick={() => goTo("rfqs")}>View all</button>
+              </header>
+              <div className="home-rfq-list">
+                {rfqCards.slice(0, 2).map((rfq) => (
+                  <HomeRfqMiniCard rfq={rfq} goTo={goTo} onOpen={onViewRfq} key={rfq.id ?? rfq.title} />
+                ))}
+              </div>
+            </section>
+          )}
           <section className="home-active-orders">
             <header className="home-panel-header">
               <div>
@@ -4331,7 +4358,7 @@ function InviteBrandModal({ onInvite, onClose }) {
  * `passiveActivityItems`, plus an optional `id`) and `onOpenItem`, which
  * makes each row open what it is about. The prototype passes neither.
  */
-export function ActivityDrawer({ onClose, items, onOpenItem }) {
+export function ActivityDrawer({ onClose, items, onOpenItem, description = "Passive updates from quotes, files, vendors, and production." }) {
   return createPortal((
     <div className="activity-drawer-layer" role="presentation">
       <button className="activity-drawer-scrim" type="button" aria-label="Close activity" onClick={onClose} />
@@ -4339,7 +4366,7 @@ export function ActivityDrawer({ onClose, items, onOpenItem }) {
         <header className="activity-drawer-header">
           <div>
             <h2 id="activity-drawer-title">Activity</h2>
-            <p>Passive updates from quotes, files, vendors, and production.</p>
+            <p>{description}</p>
           </div>
           <button className="activity-close-btn" type="button" aria-label="Close activity" onClick={onClose}>
             <img src="/assets/prototype-icons/close.svg" alt="" />
@@ -8782,7 +8809,7 @@ export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments
           <Field label="Target unit price" name="price" value={at("price", "Ideal $18-$24 per unit")} onChange={change} />
           <Field label="Vendor region preference" name="regions" value={at("regions", "China, Portugal, Korea")} onChange={change} />
           <Field label="Certifications" name="certifications" value={at("certifications", "GOTS preferred")} onChange={change} />
-          <Field label="Quote deadline" name="deadline" value={at("deadline", "Jul 24, 2026 · 5 business days after publish")} onChange={change} className="brief-grid-full" />
+          <Field label="Quote deadline" name="deadline" type="date" value={at("deadline", "Jul 24, 2026 · 5 business days after publish")} onChange={change} className="brief-grid-full" />
         </div>
         <section className="brief-sourcing-block">
           <h3>Vendor sourcing responsibility</h3>
@@ -8891,30 +8918,19 @@ export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments
         )}
       </Card>
       <Card title="Questions vendors should answer">
-        {/* Each question becomes a row a vendor answers against, so they are
-            typed — but into the design's one numbered list, a line each.
-            Drawn as three examples; they are the three placeholders. */}
+        {/* One writing surface keeps this optional section from looking
+            prefilled. Each non-empty line is stored as a separate question
+            when the request is saved, so vendors still answer them one by
+            one. */}
         {isLive ? (
-          <div className="question-box">
-            <ol className="question-list">
-              {[0, 1, 2].map((index) => (
-                <li key={index}>
-                  <GrowingLine
-                    className="question-line"
-                    name={`question-${index}`}
-                    aria-label={`Question ${index + 1}`}
-                    value={values[`question-${index}`] ?? ""}
-                    placeholder={[
-                      "Can you quote fit sample and PP sample separately?",
-                      "Can you support 3 colors at 100 units each?",
-                      "Which materials can you source, and what should the brand provide?",
-                    ][index]}
-                    onValue={(value) => onChange(`question-${index}`, value)}
-                  />
-                </li>
-              ))}
-            </ol>
-          </div>
+          <textarea
+            className="question-box question-field"
+            name="vendorQuestions"
+            aria-label="Questions vendors should answer"
+            value={values.vendorQuestions ?? ""}
+            placeholder="Add any questions vendors should answer. Put each question on a new line."
+            onChange={(event) => onChange("vendorQuestions", event.target.value)}
+          />
         ) : (
           <div className="question-box">
             <ol>
@@ -9561,7 +9577,7 @@ export function QuoteDetailScreen({
   const factory = live
     ? { name: live.name, initials: live.initials, trust: live.trust ?? "", location: live.location ?? "",
         price: live.price || "—", quoteQuantity: live.quantity || "—", lead: live.lead || "—",
-        fitType: live.fitType ?? "", fitSummary: live.fitSummary ?? "", materialCosts: [] }
+        fitType: live.fitType ?? "", fitSummary: live.fitSummary ?? "", materialCosts: live.materialCosts ?? [] }
     : factories.find((item) => item.name === selectedQuote) || factories[0];
   const quoteDetails = live ? live : getQuoteComparisonDetails(factory);
   const overviewRows = live
@@ -9582,8 +9598,18 @@ export function QuoteDetailScreen({
         ["Payment terms", "30% deposit · 70% before shipment"],
         ["Shipping / incoterms", "EXW quoted · freight not included"]
       ];
+  const includedMaterials = (factory.materialCosts || []).filter((item) => item.included).map((item) => item.material).filter(Boolean);
+  const additionalMaterials = (factory.materialCosts || []).filter((item) => !item.included).map((item) => item.material).filter(Boolean);
   const sourcingRows = live
-    ? [["Sourcing responsibility", request?.sourcing], ["Materials", request?.materials]].filter(([, value]) => value)
+    ? (factory.materialCosts || []).length
+      ? [
+          includedMaterials.length && ["Included in unit price", includedMaterials.join(", ")],
+          additionalMaterials.length && ["Charged separately", additionalMaterials.join(", ")],
+        ].filter(Boolean)
+      : [
+          ["How sourcing is split", request?.sourcingDetails || request?.sourcing],
+          ["Requested materials", request?.materials],
+        ].filter(([, value]) => value)
     : [
         ["Brand provides separately", "Labels, packaging, final color standards, and special branded trims."],
         ["Factory includes", "Main production materials and standard components from approved direction, included in unit price."]
@@ -9702,7 +9728,7 @@ export function QuoteDetailScreen({
               <DetailRows
                 rows={(factory.materialCosts || []).map((item) => [
                   item.material,
-                  `$${item.costPerUnit.toFixed(2)} / unit`,
+                  item.costPerUnit == null ? "—" : `$${item.costPerUnit.toFixed(2)} / unit`,
                   item.included ? "Included in unit price" : "Added separately"
                 ])}
               />
@@ -9715,7 +9741,7 @@ export function QuoteDetailScreen({
             <h3>Price breakdown</h3>
             <DetailRows rows={priceRows} />
             <div className="quote-total">
-              <strong>Quote total shown to brand</strong>
+              <strong>Quote total</strong>
               <span>{quoteDetails.total || "—"}</span>
             </div>
           </section>
@@ -9788,7 +9814,16 @@ function DetailRows({ rows }) {
  * live this step reads back the accepted quote while keeping the brand-owned
  * work details editable before the order is created.
  */
-export function ContractScreen({ selectedQuote, reorderProject = null, terms: live = null, attachments = null, onOpenAttachment }) {
+export function ContractScreen({
+  selectedQuote,
+  reorderProject = null,
+  terms: live = null,
+  deliveryTerms: liveDeliveryTerms = [],
+  deliveryTermId = "",
+  onDeliveryTermChange,
+  attachments = null,
+  onOpenAttachment,
+}) {
   const isReorder = Boolean(reorderProject);
   const deliveryTerms = [
     ["DDP", "Factory delivers to final destination, including duties"],
@@ -9850,14 +9885,21 @@ export function ContractScreen({ selectedQuote, reorderProject = null, terms: li
         </div>
         )}
         {live ? (
-        live.shipping && (
+        liveDeliveryTerms.length > 0 && (
         <section className="confirmed-trade-term">
           <div>
-            <label htmlFor="contract-delivery-term">Delivery term from quote</label>
-            {/* The design's dropdown, holding the one term the vendor quoted:
-                the term is the quote's, so there is nothing else to pick. */}
-            <select id="contract-delivery-term" defaultValue={live.shipping}>
-              <option value={live.shipping}>{live.shipping}</option>
+            <label htmlFor="contract-delivery-term">Agreed delivery term</label>
+            <p className="field-help">You can change the factory’s quoted term after confirming the change together.</p>
+            <select
+              id="contract-delivery-term"
+              value={deliveryTermId}
+              onChange={(event) => onDeliveryTermChange?.(event.target.value)}
+            >
+              {liveDeliveryTerms.map((term) => (
+                <option value={term.id} key={term.id}>
+                  {term.label}{term.description ? ` — ${term.description}` : ""}
+                </option>
+              ))}
             </select>
           </div>
         </section>
@@ -9865,7 +9907,7 @@ export function ContractScreen({ selectedQuote, reorderProject = null, terms: li
         ) : (
         <section className="confirmed-trade-term">
           <div>
-            <label htmlFor="contract-delivery-term">Delivery term from quote</label>
+            <label htmlFor="contract-delivery-term">Agreed delivery term</label>
             <select id="contract-delivery-term" value={deliveryTerm} onChange={(event) => setDeliveryTerm(event.target.value)}>
               {deliveryTerms.map(([term, description]) => (
                 <option value={term} key={term}>{term} ({description})</option>
@@ -10250,7 +10292,7 @@ export function FundScreen({ fundingMilestone, goTo, setFundingMilestone, live =
       : { defaultChecked };
   return (
     <div className="stack">
-      <Card title="Select billing method">
+      <Card title={live ? "Card details" : "Select billing method"}>
         {live ? (
           live.paymentElement
         ) : (
@@ -10345,7 +10387,7 @@ function Card({ title, children, className = "", tone = "" }) {
   );
 }
 
-function TscDatePicker({ name, value, onChange, readOnly = false }) {
+function TscDatePicker({ name, value, onChange, readOnly = false, dialogLabel = "due date" }) {
   const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value ?? "")
     ? new Date(`${value}T12:00:00`)
     : null;
@@ -10404,6 +10446,8 @@ function TscDatePicker({ name, value, onChange, readOnly = false }) {
     <div className="tsc-date-picker" ref={rootRef}>
       <button
         className={parsed ? "field-input tsc-date-trigger" : "field-input tsc-date-trigger placeholder"}
+        name={name}
+        value={value ?? ""}
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
@@ -10414,7 +10458,7 @@ function TscDatePicker({ name, value, onChange, readOnly = false }) {
         <i aria-hidden="true" />
       </button>
       {open ? (
-        <section className={`schedule-calendar tsc-date-popover ${placement}`} role="dialog" aria-label="Choose a due date">
+        <section className={`schedule-calendar tsc-date-popover ${placement}`} role="dialog" aria-label={`Choose ${dialogLabel.toLowerCase()}`}>
           <div className="schedule-calendar-heading">
             <button type="button" aria-label="Previous month" onClick={() => shiftMonth(-1)}>‹</button>
             <strong>{monthLabel}</strong>
@@ -10451,7 +10495,7 @@ function Field({ label, value, muted = false, className = "", name, onChange, ty
           shows a brief the AI drafted; with "Skip AI" there is nothing drafted,
           and a review you cannot correct is not a review. */}
       {onChange && type === "date" ? (
-        <TscDatePicker name={name} value={value} onChange={onChange} />
+        <TscDatePicker name={name} value={value} onChange={onChange} dialogLabel={label} />
       ) : onChange ? (
         <input
           className="field-input"

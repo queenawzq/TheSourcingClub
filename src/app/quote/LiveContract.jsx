@@ -15,17 +15,20 @@ import { urlFor } from "../../lib/domain/documents.js";
 import { openRfqThread } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
 import { useQuoteReview } from "./useQuoteReview.js";
+import { termLabel } from "../../lib/domain/taxonomy.js";
 
 export default function LiveContract({ rfqId, quoteId, isOwner }) {
   const { navigate } = useRouter();
   const { state, error: loadError } = useQuoteReview(rfqId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [agreedIncotermId, setAgreedIncotermId] = useState("");
 
   if (loadError) return <FlowShell screen="contract" canBack={false} primaryLabel=""><p className="composer-error" role="alert">{loadError.message}</p></FlowShell>;
   if (!state) return null;
 
   const found = state.quotes.find(({ raw }) => raw.id === quoteId);
+  const selectedIncotermId = agreedIncotermId || found?.raw.incoterm_id || "";
   const back = () => navigate(`/rfqs/${rfqId}/quotes/${quoteId}`);
 
   // Why this quote cannot be awarded now, if it cannot. Said up front; the
@@ -42,10 +45,16 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
 
   async function award() {
     if (busy || blocked) return;
+    // A quote matched to no incoterm leaves nothing selected; "" is not a
+    // uuid, and Postgres would refuse it with a raw cast error.
+    if (!selectedIncotermId) {
+      setError(new Error("Choose a valid agreed delivery term."));
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await awardQuote(quoteId);
+      await awardQuote(quoteId, selectedIncotermId);
       const order = await orderForQuote(quoteId);
       navigate(order?.id ? `/orders/${order.id}` : "/orders");
     } catch (failure) {
@@ -92,6 +101,13 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
       {found && (
         <ContractScreen
           terms={{ ...found.view, title: state.request.title, brief: state.request.brief }}
+          deliveryTerms={state.incoterms.map((term) => ({
+            id: term.id,
+            label: termLabel(term),
+            description: term.extra?.note ?? "",
+          }))}
+          deliveryTermId={selectedIncotermId}
+          onDeliveryTermChange={setAgreedIncotermId}
           attachments={state.files}
           onOpenAttachment={open}
         />

@@ -12,7 +12,14 @@
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
-import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import {
+  CardCvcElement,
+  CardExpiryElement,
+  CardNumberElement,
+  Elements,
+  useElements,
+  useStripe,
+} from "@stripe/react-stripe-js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { STRIPE_PUBLISHABLE_KEY, startBillingSetup } from "../../lib/domain/stripe.js";
@@ -74,71 +81,16 @@ const billingStripe = () => {
   return billingStripePromise;
 };
 
-const BILLING_ELEMENT_APPEARANCE = {
-  theme: "flat",
-  variables: {
-    colorPrimary: "#1a4df2",
-    colorBackground: "#ffffff",
-    colorText: "#0b1020",
-    colorTextSecondary: "#5a6b87",
-    colorTextPlaceholder: "#8391a8",
-    colorDanger: "#c62828",
-    fontFamily: '"Satoshi", Arial, sans-serif',
-    fontSizeBase: "15px",
-    fontWeightNormal: "400",
-    fontWeightMedium: "500",
-    spacingUnit: "4px",
-    borderRadius: "8px",
-  },
-  rules: {
-    ".Label": {
-      color: "#4f6078",
-      fontSize: "13px",
-      fontWeight: "600",
-      marginBottom: "8px",
-    },
-    ".Input": {
-      backgroundColor: "#ffffff",
-      border: "1px solid #cad5e2",
-      boxShadow: "none",
-      padding: "14px 15px",
-    },
-    ".Input:hover": {
-      borderColor: "#aebed0",
-    },
-    ".Input:focus": {
-      borderColor: "#1a4df2",
-      boxShadow: "0 0 0 1px #1a4df2",
-    },
-    ".Input--invalid": {
-      borderColor: "#c62828",
-      boxShadow: "none",
-    },
-    ".Tab": {
-      backgroundColor: "#ffffff",
-      border: "1px solid #cad5e2",
-      boxShadow: "none",
-      padding: "14px 15px",
-    },
-    ".Tab:hover": {
-      borderColor: "#aebed0",
+const BILLING_CARD_OPTIONS = {
+  style: {
+    base: {
       color: "#0b1020",
-    },
-    ".Tab--selected": {
-      backgroundColor: "#f2f7fd",
-      borderColor: "#1a4df2",
-      boxShadow: "0 0 0 1px #1a4df2",
-      color: "#1a4df2",
-    },
-    ".TabLabel": {
+      fontFamily: "Satoshi, Arial, sans-serif",
+      fontSize: "14px",
       fontWeight: "500",
+      "::placeholder": { color: "#8391a8" },
     },
-    ".TabIcon": {
-      fill: "#5a6b87",
-    },
-    ".TabIcon--selected": {
-      fill: "#1a4df2",
-    },
+    invalid: { color: "#c62828" },
   },
 };
 
@@ -460,27 +412,30 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
 
 export function BillingMethodFlow({ clientSecret, onClose, onSaved, intro = "Save a card to use when you choose to purchase credits." }) {
   return (
-    <Elements stripe={billingStripe()} options={{ clientSecret, appearance: BILLING_ELEMENT_APPEARANCE }}>
-      <BillingMethodModal intro={intro} onClose={onClose} onSaved={onSaved} />
+    <Elements stripe={billingStripe()}>
+      <BillingMethodModal clientSecret={clientSecret} intro={intro} onClose={onClose} onSaved={onSaved} />
     </Elements>
   );
 }
 
-function BillingMethodModal({ intro, onClose, onSaved }) {
+function BillingMethodModal({ clientSecret, intro, onClose, onSaved }) {
   const stripe = useStripe();
   const elements = useElements();
-  const [complete, setComplete] = useState(false);
+  const [complete, setComplete] = useState({ number: false, expiry: false, cvc: false });
+  const [postalCode, setPostalCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(null);
+  const cardComplete = Object.values(complete).every(Boolean);
 
   async function save() {
-    if (!stripe || !elements || !complete || busy) return;
+    if (!stripe || !elements || !cardComplete || busy) return;
     setBusy(true);
     setProblem(null);
-    const result = await stripe.confirmSetup({
-      elements,
-      redirect: "if_required",
-      confirmParams: { return_url: `${window.location.origin}${window.location.pathname}?tab=billing&billing=saved` },
+    const result = await stripe.confirmCardSetup(clientSecret, {
+      payment_method: {
+        card: elements.getElement(CardNumberElement),
+        billing_details: postalCode.trim() ? { address: { postal_code: postalCode.trim() } } : undefined,
+      },
     });
     if (result.error) setProblem(result.error.message || "The payment method could not be saved.");
     else onSaved();
@@ -492,10 +447,48 @@ function BillingMethodModal({ intro, onClose, onSaved }) {
       title="Add payment method"
       eyebrow="Billing"
       onClose={onClose}
-      actions={<><button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Cancel</button><button className="primary-btn" type="button" disabled={!stripe || !complete || busy} onClick={save}>{busy ? "Saving…" : "Save payment method"}</button></>}
+      actions={<><button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Cancel</button><button className="primary-btn" type="button" disabled={!stripe || !cardComplete || busy} onClick={save}>{busy ? "Saving…" : "Save payment method"}</button></>}
     >
       <p className="payout-modal-intro">{intro}</p>
-      <PaymentElement options={{ layout: "tabs", terms: { card: "never" } }} onChange={(event) => setComplete(event.complete)} />
+      <div className="billing-card-form">
+        <label className="billing-card-field billing-card-number">
+          <span>Card number</span>
+          <div className="billing-stripe-input">
+            <CardNumberElement
+              options={{ ...BILLING_CARD_OPTIONS, showIcon: true }}
+              onChange={(event) => setComplete((current) => ({ ...current, number: event.complete }))}
+            />
+          </div>
+        </label>
+        <label className="billing-card-field">
+          <span>Expiration date</span>
+          <div className="billing-stripe-input">
+            <CardExpiryElement
+              options={BILLING_CARD_OPTIONS}
+              onChange={(event) => setComplete((current) => ({ ...current, expiry: event.complete }))}
+            />
+          </div>
+        </label>
+        <label className="billing-card-field">
+          <span>Security code</span>
+          <div className="billing-stripe-input">
+            <CardCvcElement
+              options={BILLING_CARD_OPTIONS}
+              onChange={(event) => setComplete((current) => ({ ...current, cvc: event.complete }))}
+            />
+          </div>
+        </label>
+        <label className="billing-card-field billing-card-postal">
+          <span>ZIP / postal code</span>
+          <input
+            type="text"
+            autoComplete="postal-code"
+            value={postalCode}
+            placeholder="ZIP / postal code"
+            onChange={(event) => setPostalCode(event.target.value)}
+          />
+        </label>
+      </div>
       {problem ? <p className="live-stripe-error" role="alert">{problem}</p> : null}
     </PayoutModal>
   );
