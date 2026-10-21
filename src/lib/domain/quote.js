@@ -273,37 +273,83 @@ export async function listQuotesForRfq(rfqId) {
 
   const subtotalByQuote = Object.fromEntries(subtotals);
 
-  return quotes.map((quote) => ({
-    ...quote,
-    sampleLines: lines.filter((line) => line.quote_id === quote.id),
-    materialLines: materials.filter((line) => line.quote_id === quote.id),
-    answers: answers.filter((answer) => answer.quote_id === quote.id),
-    // Derived, never stored: the prototype hardcodes a sample subtotal per
-    // factory name while displaying the very lines that should produce it.
-    sampleSubtotalCents: subtotalByQuote[quote.id] ?? 0,
-    productionSubtotalCents:
-      quote.unit_price_cents != null && quote.production_quantity != null
-        ? quote.unit_price_cents * quote.production_quantity
-        : null,
-    productionSubtotalMaxCents:
-      quote.unit_price_cents != null && quote.production_quantity != null
-        ? (quote.unit_price_max_cents ?? quote.unit_price_cents) * quote.production_quantity
-        : null,
-  }));
+  return quotes.map((quote) => {
+    const sampleLines = lines.filter((line) => line.quote_id === quote.id);
+    const materialLines = materials.filter((line) => line.quote_id === quote.id);
+    return {
+      ...quote,
+      sampleLines,
+      materialLines,
+      answers: answers.filter((answer) => answer.quote_id === quote.id),
+      // Derived, never stored: the prototype hardcodes a sample subtotal per
+      // factory name while displaying the very lines that should produce it.
+      ...quoteSubtotals(quote, { materialLines, sampleSubtotalCents: subtotalByQuote[quote.id] ?? 0 }),
+    };
+  });
 }
 
-/** Quote total = production + samples. Computed, so it cannot contradict its parts. */
+/**
+ * Per unit, what the material lines marked not included add on top of the
+ * unit price. The form tells the vendor "Costs marked not included are added
+ * on top of the quoted unit price", so they are part of what the brand pays.
+ * USD only, like the lines themselves (their check constraint).
+ *
+ * Must stay identical to quote_additional_material_per_unit() in
+ * supabase/migrations/20261022000400_quote_fixes.sql, which the order created
+ * at award uses: a brand must not be shown one total and charged another.
+ */
+export function additionalMaterialPerUnitCents(materialLines = []) {
+  return (materialLines ?? []).reduce(
+    (total, line) => total + (line.included ? 0 : Number(line.cost_cents) || 0),
+    0,
+  );
+}
+
+/**
+ * The figures every quote screen prints, derived from the quote and its
+ * lines. `sampleSubtotalCents` may be passed (the database's own sum);
+ * otherwise the sample lines are added up.
+ */
+export function quoteSubtotals(quote, { sampleLines = [], materialLines = [], sampleSubtotalCents } = {}) {
+  const quantity = quote?.production_quantity;
+  const priced = quote?.unit_price_cents != null && quantity != null;
+  const additionalPerUnit = additionalMaterialPerUnitCents(materialLines);
+  return {
+    sampleSubtotalCents: sampleSubtotalCents
+      ?? (sampleLines ?? []).reduce((total, line) => total + (Number(line.cost_cents) || 0), 0),
+    productionSubtotalCents: priced ? quote.unit_price_cents * quantity : null,
+    productionSubtotalMaxCents: priced ? (quote.unit_price_max_cents ?? quote.unit_price_cents) * quantity : null,
+    additionalMaterialPerUnitCents: additionalPerUnit,
+    additionalMaterialSubtotalCents: quantity == null ? null : additionalPerUnit * quantity,
+  };
+}
+
+/**
+ * Quote total = production + samples + materials charged separately.
+ * Computed, so it cannot contradict its parts. The order made at award totals
+ * the same (create_order_from_award), at the low end of a price range.
+ */
 export function quoteTotalCents(quote) {
   if (quote.productionSubtotalCents == null) return null;
-  return quote.productionSubtotalCents + (quote.sampleSubtotalCents ?? 0);
+  return quote.productionSubtotalCents
+    + (quote.sampleSubtotalCents ?? 0)
+    + (quote.additionalMaterialSubtotalCents ?? 0);
 }
 
-/** A stored lower/upper duration rendered as "7–10 days" or "7 days". */
+/** The same total at the top of a quoted price range. */
+export function quoteTotalMaxCents(quote) {
+  const production = quote.productionSubtotalMaxCents ?? quote.productionSubtotalCents;
+  if (production == null) return null;
+  return production + (quote.sampleSubtotalCents ?? 0) + (quote.additionalMaterialSubtotalCents ?? 0);
+}
+
+/** A stored lower/upper duration rendered as "7–10 days", "7 days" or "1 day". */
 export function formatDayRange(minimum, maximum = minimum) {
   if (minimum == null) return "";
   const min = Number(minimum);
   const max = maximum == null ? min : Number(maximum);
-  return min === max ? `${min} days` : `${Math.min(min, max)}–${Math.max(min, max)} days`;
+  if (min === max) return `${min} ${min === 1 ? "day" : "days"}`;
+  return `${Math.min(min, max)}–${Math.max(min, max)} days`;
 }
 
 /**
@@ -330,37 +376,94 @@ export async function orderForQuote(quoteId) {
  * the payment split and the incoterm: what parses is stored, and what does not
  * stores nothing rather than a guess.
  */
+const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+const MONTH = "(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\\.?";
+// A year is only a year when it looks like one and is not a quantity.
+const YEAR = "(?:,?\\s*((?:19|20)\\d{2})(?!\\d|\\s*(?:units?|pcs|pieces)))?";
+const WINDOW_DATES = new RegExp(
+  [
+    "(\\d{4})-(\\d{2})-(\\d{2})",
+    // "Aug 12", "Aug 12-30" (one month), "Nov 1, 2026"
+    `\\b${MONTH}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s*[-–—]\\s*(\\d{1,2})(?![\\d:]))?${YEAR}`,
+    // "1 Nov", "30 Nov 2026"
+    `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${MONTH}${YEAR}`,
+  ].join("|"),
+  "gi",
+);
+
+/**
+ * A calendar day as the stored YYYY-MM-DD, from its own numbers. Never through
+ * toISOString(): that is the UTC day, so local midnight east of Greenwich
+ * stored the day before, and every save of the form moved it back another day.
+ */
+const calendarDay = ({ year, month, day }) =>
+  `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+const realDay = ({ year, month, day }) => {
+  const at = new Date(year, month, day);
+  return at.getFullYear() === year && at.getMonth() === month && at.getDate() === day;
+};
+
 export function parseCapacityWindow(text, now = new Date()) {
   const said = String(text ?? "").trim();
   if (!said) return { capacity_window_start: null, capacity_window_end: null, capacity_window_units: null };
 
-  // Two dates, in whatever order the vendor wrote them, with the year assumed
-  // to be the coming one when it is left off.
-  const dates = (said.match(/(?:\d{4}-\d{2}-\d{2})|(?:[A-Za-z]{3,9}\.?\s+\d{1,2}(?:,\s*\d{4})?)|(?:\d{1,2}\s+[A-Za-z]{3,9}(?:,?\s*\d{4})?)/g) ?? [])
-    .map((piece) => {
-      const withYear = /\d{4}/.test(piece) ? piece : `${piece}, ${now.getFullYear()}`;
-      const at = Date.parse(withYear);
-      return Number.isNaN(at) ? null : new Date(at);
-    })
-    .filter(Boolean)
-    .sort((a, b) => a - b);
+  // The dates in the order the vendor wrote them; `year` is null where it was
+  // left off.
+  const written = [];
+  for (const match of said.matchAll(WINDOW_DATES)) {
+    const [, isoYear, isoMonth, isoDay, monthA, dayA, dayA2, yearA, dayB, monthB, yearB] = match;
+    if (isoYear) {
+      written.push({ year: Number(isoYear), month: Number(isoMonth) - 1, day: Number(isoDay) });
+    } else if (monthA) {
+      const year = yearA ? Number(yearA) : null;
+      const month = MONTHS.indexOf(monthA.toLowerCase());
+      written.push({ year, month, day: Number(dayA) });
+      // "Aug 12-30": the second day is in the same month.
+      if (dayA2) written.push({ year, month, day: Number(dayA2) });
+    } else {
+      written.push({ year: yearB ? Number(yearB) : null, month: MONTHS.indexOf(monthB.toLowerCase()), day: Number(dayB) });
+    }
+  }
+
+  // A missing year is the year of the other date, or this year. An end that
+  // would fall before its start is in the next year ("Dec 20 - Jan 15"); two
+  // dates both given a year are put in order.
+  let [start, end] = written;
+  if (start && start.year == null) start = { ...start, year: end?.year ?? now.getFullYear() };
+  if (end && end.year == null) end = { ...end, year: start.year };
+  if (start && end) {
+    const before = calendarDay(end) < calendarDay(start);
+    if (before && written[1].year == null) end = { ...end, year: end.year + 1 };
+    else if (before && written[0].year == null) start = { ...start, year: start.year - 1 };
+    else if (before) [start, end] = [end, start];
+  }
 
   // A units figure, but never one of the numbers already claimed by a date.
   const units = said.match(/(\d[\d,]*)\s*(?:units?|pcs|pieces)/i);
 
   return {
-    capacity_window_start: dates[0] ? dates[0].toISOString().slice(0, 10) : null,
-    capacity_window_end: dates[1] ? dates[1].toISOString().slice(0, 10) : null,
+    capacity_window_start: start && realDay(start) ? calendarDay(start) : null,
+    capacity_window_end: end && realDay(end) ? calendarDay(end) : null,
     capacity_window_units: units ? Number(units[1].replace(/,/g, "")) : null,
   };
 }
 
-/** The same window read back as the sentence the vendor typed. */
-export function formatCapacityWindow(quote) {
+/**
+ * The same window read back as the sentence the vendor typed. A date outside
+ * this year carries its year, so saving the form again reads it back to the
+ * same day rather than to this year's.
+ */
+export function formatCapacityWindow(quote, now = new Date()) {
   if (!quote) return "";
-  const day = (value) => (value
-    ? new Date(`${value}T00:00:00`).toLocaleDateString("en", { month: "short", day: "numeric" })
-    : "");
+  const day = (value) => {
+    if (!value) return "";
+    const at = new Date(`${value}T00:00:00`);
+    return at.toLocaleDateString("en", {
+      month: "short",
+      day: "numeric",
+      ...(at.getFullYear() === now.getFullYear() ? {} : { year: "numeric" }),
+    });
+  };
   const span = [day(quote.capacity_window_start), day(quote.capacity_window_end)].filter(Boolean).join(" - ");
   const units = quote.capacity_window_units ? `${quote.capacity_window_units} units` : "";
   return [span, units].filter(Boolean).join(" · ");
