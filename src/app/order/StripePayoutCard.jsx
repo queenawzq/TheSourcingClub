@@ -271,7 +271,10 @@ export default function StripePayoutCard({
               ? "Payout verification in progress"
               : account
                 ? "Finish setup to receive earnings"
-                : "Add a payout method to receive earnings"}</p>
+                // Where Stripe cannot pay out, staff pay the saved bank account.
+                : manualAccount
+                  ? `Bank details on file${manualAccount.account_number_last4 ? ` (account ending in ${manualAccount.account_number_last4})` : ""}. TSC pays your released earnings to this account by bank transfer.`
+                  : "Add a payout method to receive earnings"}</p>
           {manualSaved ? <p className="live-payment-notice">Payout method saved.</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </div>

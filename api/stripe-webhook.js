@@ -1,11 +1,12 @@
-import { applyPaymentIntent, rawBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyChargeRefund, applyPaymentIntent, rawBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
 
 /**
  * Stripe tells us what happened to a payment, or to a factory's account.
  *
  * Two endpoints point here in Stripe's dashboard, each with its own signing
  * secret: one for TSC's own account (payment_intent.processing / succeeded /
- * payment_failed) and one for connected accounts (account.updated). Locally,
+ * payment_failed, charge.refunded) and one for connected accounts
+ * (account.updated). Locally,
  * `stripe listen` forwards both with one secret.
  *
  * Signature: anyone can POST to this URL, so nothing is read before the
@@ -72,6 +73,13 @@ export default async function handler(request, response) {
           if (!ORPHANED.has(failure.code)) throw failure;
           console.error("stripe-webhook: no payment for this PaymentIntent", event.id, intent.id, failure.code);
         }
+        break;
+      }
+      case "charge.refunded": {
+        // A refund made in Stripe (staff by hand, a dispute, or our own of a
+        // stray intent). Another app's charge matches no payment and is left.
+        const payment = await applyChargeRefund({ stripe, db, charge: event.data.object });
+        if (!payment) console.error("stripe-webhook: no payment for this refunded charge", event.id, event.data.object.id);
         break;
       }
       case "account.updated": {

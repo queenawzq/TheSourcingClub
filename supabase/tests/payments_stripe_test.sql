@@ -1,5 +1,5 @@
 -- ============================================================================
--- Payments held by TSC through Stripe (20261012000100/200)
+-- Payments held by TSC through Stripe (20261012000100/200, 20261022000300)
 -- ----------------------------------------------------------------------------
 -- Run with:  supabase test db
 --
@@ -11,18 +11,21 @@
 -- and only what is owed; a paid step cannot be approved before its money is
 -- held, and approving it is what requests the payout; the fee follows the
 -- order's size; cancelling leaves money that is real (clearing or held) for
--- staff; and editing the steps never moves money that has moved.
+-- staff; and editing the steps never moves money that has moved. And
+-- (20261022000300) money a payment no longer wants is never recorded as
+-- held, a refund puts the payment back where the brand can pay again, and
+-- staff cannot pay out Stripe money before the brand approved.
 -- ============================================================================
 
 begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(79);
+select plan(109);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a brand (owner + member), a factory, a stranger brand, an admin,
--- and three awarded orders: A $2,000, B $6,000, C $2,000.
+-- and four awarded orders: A $2,000, B $6,000, C $2,000, D $2,000.
 -- ---------------------------------------------------------------------------
 
 insert into auth.users (id, email, raw_user_meta_data) values
@@ -56,7 +59,8 @@ insert into public.factory_profiles (org_id, country_code, moq, published_at, ve
 insert into public.rfqs (id, brand_org_id, title, brief, status, visibility, quantity_total) values
   ('18c00000-0000-0000-0000-00000000000a', '18b00000-0000-0000-0000-00000000000b', 'P18 A', 'A hundred shirts.', 'open', 'open_to_all', 100),
   ('18c00000-0000-0000-0000-00000000000b', '18b00000-0000-0000-0000-00000000000b', 'P18 B', 'A hundred coats.',  'open', 'open_to_all', 100),
-  ('18c00000-0000-0000-0000-00000000000c', '18b00000-0000-0000-0000-00000000000b', 'P18 C', 'A hundred hats.',   'open', 'open_to_all', 100);
+  ('18c00000-0000-0000-0000-00000000000c', '18b00000-0000-0000-0000-00000000000b', 'P18 C', 'A hundred hats.',   'open', 'open_to_all', 100),
+  ('18c00000-0000-0000-0000-00000000000d', '18b00000-0000-0000-0000-00000000000b', 'P18 D', 'A hundred scarves.', 'open', 'open_to_all', 100);
 
 -- No sample lines, so each order's total is unit price x quantity.
 insert into public.quotes
@@ -68,6 +72,8 @@ values
   ('18d00000-0000-0000-0000-00000000000b', '18c00000-0000-0000-0000-00000000000b',
    '18b00000-0000-0000-0000-0000000000f1', 'submitted', 6000, 100, 28, 30, 70, current_date + 30, now()),
   ('18d00000-0000-0000-0000-00000000000c', '18c00000-0000-0000-0000-00000000000c',
+   '18b00000-0000-0000-0000-0000000000f1', 'submitted', 2000, 100, 28, 30, 70, current_date + 30, now()),
+  ('18d00000-0000-0000-0000-00000000000d', '18c00000-0000-0000-0000-00000000000d',
    '18b00000-0000-0000-0000-0000000000f1', 'submitted', 2000, 100, 28, 30, 70, current_date + 30, now());
 
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","role":"authenticated"}';
@@ -75,6 +81,7 @@ set local role authenticated;
 select public.award_quote('18d00000-0000-0000-0000-00000000000a');
 select public.award_quote('18d00000-0000-0000-0000-00000000000b');
 select public.award_quote('18d00000-0000-0000-0000-00000000000c');
+select public.award_quote('18d00000-0000-0000-0000-00000000000d');
 reset role;
 
 create temporary table p18 (name text primary key, id uuid);
@@ -83,7 +90,8 @@ select 'order_' || lower(right(quote_id::text, 1)), id
 from public.production_orders
 where quote_id in ('18d00000-0000-0000-0000-00000000000a',
                    '18d00000-0000-0000-0000-00000000000b',
-                   '18d00000-0000-0000-0000-00000000000c');
+                   '18d00000-0000-0000-0000-00000000000c',
+                   '18d00000-0000-0000-0000-00000000000d');
 grant select on p18 to public;
 
 -- Each order: a Paid release "Fit sample" (25%), then a payment-only "Balance".
@@ -96,6 +104,9 @@ select public.set_order_schedule((select id from p18 where name = 'order_b'),
   '[{"kind":"approval_and_payment","title":"Fit sample","amount_cents":150000,"sort":10},
     {"kind":"payment_only","title":"Balance","amount_cents":450000,"sort":20}]'::jsonb);
 select public.set_order_schedule((select id from p18 where name = 'order_c'),
+  '[{"kind":"approval_and_payment","title":"Fit sample","amount_cents":50000,"sort":10},
+    {"kind":"payment_only","title":"Balance","amount_cents":150000,"sort":20}]'::jsonb);
+select public.set_order_schedule((select id from p18 where name = 'order_d'),
   '[{"kind":"approval_and_payment","title":"Fit sample","amount_cents":50000,"sort":10},
     {"kind":"payment_only","title":"Balance","amount_cents":150000,"sort":20}]'::jsonb);
 select public.agree_schedule(id, (select schedule_revision from public.production_orders where id = p18.id))
@@ -125,7 +136,7 @@ $$;
 
 select is(
   (select count(*) from public.production_orders where id in (select id from p18) and status = 'active'),
-  3::bigint, 'fixture: all three orders are under way');
+  4::bigint, 'fixture: all four orders are under way');
 
 -- ---------------------------------------------------------------------------
 -- The fee follows the order's size, and is fixed per order
@@ -511,6 +522,167 @@ select public.admin_review_decision_with_tier('18b00000-0000-0000-0000-000000000
 reset role;
 select is((select trust_tier::text from public.factory_profiles where org_id = '18b00000-0000-0000-0000-0000000000f1'),
   'verified', 'staff set the tier when approving the factory');
+
+-- ---------------------------------------------------------------------------
+-- Money a payment no longer wants is refunded, never recorded (20261022000300)
+-- ---------------------------------------------------------------------------
+
+select ok(not has_function_privilege('authenticated', 'public.record_payment_succeeded(uuid, text, text, text, text, bigint)', 'execute'),
+  'a signed-in user cannot record a PaymentIntent as paid');
+select ok(not has_function_privilege('anon', 'public.record_payment_refunded(uuid, text, text)', 'execute'),
+  'a signed-out visitor cannot record a refund');
+select ok(not has_function_privilege('authenticated', 'public.record_payment_refunded(uuid, text, text)', 'execute'),
+  'nor can a signed-in user');
+select ok(has_function_privilege('service_role', 'public.record_payment_succeeded(uuid, text, text, text, text, bigint)', 'execute')
+      and has_function_privilege('service_role', 'public.record_payment_refunded(uuid, text, text)', 'execute'),
+  'server code with the service key can do both');
+
+-- Order D: the brand opens the Fund page at $535, then raises the step to
+-- $600 while that intent is still payable, and pays the old intent.
+select public.attach_payment_intent(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d1', 53500);
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select public.update_order_milestone_details((select id from p18 where name = 'order_d'),
+  jsonb_build_array(
+    jsonb_build_object('id', pg_temp.p18_step('order_d', 'Fit sample'), 'kind', 'approval_and_payment',
+                       'title', 'Fit sample', 'amount_cents', 60000, 'sort', 10),
+    jsonb_build_object('id', pg_temp.p18_step('order_d', 'Balance'), 'kind', 'payment_only',
+                       'title', 'Balance', 'amount_cents', 140000, 'sort', 20)));
+reset role;
+
+select is(
+  public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d1', 'ch_p18_d1', 'card', 'Visa ···4242', 53500) ->> 'problem',
+  'amount_changed', 'the old figure arriving after the amount changed is not recorded');
+select is(pg_temp.p18_state('order_d', 'Fit sample'), 'due', 'the payment is still due');
+select is(
+  public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_dx', 'ch_p18_dx', 'card', 'Visa ···4242', 64200) ->> 'problem',
+  'other_intent', 'nor money from an intent that is not the payment''s own');
+
+select public.record_payment_refunded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d1',
+  'The amount changed while you were paying. You were refunded; please pay again.');
+select is(
+  (select row(state::text, stripe_payment_intent_id is null, charged_cents is null, refunded_at is not null)::text
+     from public.order_payments where id = pg_temp.p18_pay('order_d', 'Fit sample')),
+  row('failed', true, true, true)::text,
+  'refunded on an active order: failed, its intent let go so a new one can be made');
+select is((select failure_reason from public.order_payments where id = pg_temp.p18_pay('order_d', 'Fit sample')),
+  'The amount changed while you were paying. You were refunded; please pay again.', 'with the reason the brand reads');
+select is(
+  (select count(*) from public.payment_events
+    where payment_id = pg_temp.p18_pay('order_d', 'Fit sample') and to_state = 'failed' and note like '%pi_p18_d1%'),
+  1::bigint, 'the refund is in the payment''s history, naming the intent');
+select is(pg_temp.p18_notes('18b00000-0000-0000-0000-00000000000b', 'payment_refunded', 'order_d'), 1::bigint,
+  'the brand is told it was refunded');
+select public.record_payment_refunded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d1', 'The payment was refunded.');
+select is(
+  (select count(*) from public.payment_events where payment_id = pg_temp.p18_pay('order_d', 'Fit sample') and note like '%pi_p18_d1%'),
+  1::bigint, 'the same refund reported again writes nothing');
+
+select lives_ok(
+  $$select public.attach_payment_intent(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d2', 64200)$$,
+  'the next checkout attaches a new intent');
+select is(
+  (public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d2', 'ch_p18_d2', 'card', 'Visa ···4242', 64200) ->> 'funded')::boolean,
+  true, 'and the new amount plus its fee ($642) is recorded as held');
+
+-- Staff cannot pay out Stripe money the brand has not approved.
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
+set local role authenticated;
+select throws_ok(
+  $$select public.release_payment_to_factory(pg_temp.p18_pay('order_d', 'Fit sample'), 'paid by bank')$$,
+  '22023', 'the brand has not approved this step yet: money paid through Stripe is paid out once the brand approves it',
+  'staff cannot mark a Stripe-funded payment paid out before the brand approves');
+reset role;
+
+-- Held money refunded in Stripe: the brand pays again, and the step cannot
+-- be approved meanwhile.
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000003","role":"authenticated"}';
+set local role authenticated;
+select public.post_milestone_update(pg_temp.p18_step('order_d', 'Fit sample'), 'Scarf sample made.', '{}');
+reset role;
+
+select public.record_payment_refunded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d2', 'The payment was refunded.');
+select is(pg_temp.p18_state('order_d', 'Fit sample'), 'failed', 'held money refunded in Stripe goes back to failed');
+select is(pg_temp.p18_notes('18b00000-0000-0000-0000-0000000000f1', 'payment_refunded', 'order_d'), 1::bigint,
+  'and the factory, which was told it was held, is told it is not');
+
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select throws_ok(
+  $$select public.approve_milestone(pg_temp.p18_step('order_d', 'Fit sample'), null)$$,
+  '22023', NULL, 'a step whose money was refunded cannot be approved');
+reset role;
+
+-- A second decline on the same Fund page updates the reason.
+select public.record_payment_failed(pg_temp.p18_pay('order_d', 'Fit sample'), 'Your card has insufficient funds.');
+select is((select failure_reason from public.order_payments where id = pg_temp.p18_pay('order_d', 'Fit sample')),
+  'Your card has insufficient funds.', 'a repeated decline shows its own reason');
+select is(
+  (select count(*) from public.payment_events
+    where payment_id = pg_temp.p18_pay('order_d', 'Fit sample') and from_state = 'failed' and to_state = 'failed'),
+  1::bigint, 'with one line in the history');
+select public.record_payment_failed(pg_temp.p18_pay('order_d', 'Fit sample'), 'Your card has insufficient funds.');
+select is(
+  (select count(*) from public.payment_events
+    where payment_id = pg_temp.p18_pay('order_d', 'Fit sample') and from_state = 'failed' and to_state = 'failed'),
+  1::bigint, 'and the same answer again adds none');
+
+-- Paid again, approved, paid out; then refunded after the payout.
+select public.attach_payment_intent(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d3', 64200);
+select is(
+  (public.record_payment_succeeded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d3', 'ch_p18_d3', 'card', 'Visa ···4242', 64200) ->> 'funded')::boolean,
+  true, 'the brand pays again');
+
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select lives_ok($$select public.approve_milestone(pg_temp.p18_step('order_d', 'Fit sample'), null)$$,
+  'and approves the step');
+reset role;
+
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
+set local role authenticated;
+select lives_ok(
+  $$select public.release_payment_to_factory(pg_temp.p18_pay('order_d', 'Fit sample'), 'paid by bank')$$,
+  'staff mark an approved Stripe-funded payment paid out by bank');
+reset role;
+select is(pg_temp.p18_state('order_d', 'Fit sample'), 'released', 'it is paid out');
+
+select public.record_payment_refunded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d3', 'The payment was refunded.');
+select ok(
+  (select state = 'released' and refunded_at is not null from public.order_payments where id = pg_temp.p18_pay('order_d', 'Fit sample')),
+  'a refund after the payout leaves it paid out, marked refunded');
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
+set local role authenticated;
+select is(
+  (select state::text from public.admin_payment_board() where payment_id = pg_temp.p18_pay('order_d', 'Fit sample')),
+  'released', 'and staff see it on the board, to recover by hand');
+reset role;
+
+-- The old bank-wire path is unchanged: claimed, confirmed, paid out.
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select public.mark_payment_sent(pg_temp.p18_pay('order_d', 'Balance'), 'WIRE-P18-D', null);
+reset role;
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
+set local role authenticated;
+select public.confirm_payment_received(pg_temp.p18_pay('order_d', 'Balance'), null, null);
+select lives_ok(
+  $$select public.release_payment_to_factory(pg_temp.p18_pay('order_d', 'Balance'), 'wired')$$,
+  'a bank-wire payment is still paid out by staff');
+reset role;
+
+-- Cancelled orders: money that arrives late is refunded, and stays cancelled.
+select public.attach_payment_intent(pg_temp.p18_pay('order_c', 'Balance'), 'pi_p18_c', 160500);
+select is(
+  public.record_payment_succeeded(pg_temp.p18_pay('order_c', 'Balance'), 'pi_p18_c', 'ch_p18_c', 'card', 'Visa ···4242', 160500) ->> 'problem',
+  'order_cancelled', 'an intent paid after the order was cancelled is not recorded');
+select public.attach_payment_intent(pg_temp.p18_pay('order_b', 'Fit sample, round 1'), 'pi_p18_b', 157500);
+select public.record_payment_refunded(pg_temp.p18_pay('order_b', 'Fit sample, round 1'), 'pi_p18_b', 'The payment was refunded.');
+select is(
+  (select row(state::text, stripe_payment_intent_id is null)::text
+     from public.order_payments where id = pg_temp.p18_pay('order_b', 'Fit sample, round 1')),
+  row('cancelled', true)::text,
+  'money held on a cancelled order and refunded in Stripe is cancelled');
 
 select * from finish();
 rollback;

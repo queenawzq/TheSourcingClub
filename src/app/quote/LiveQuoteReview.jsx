@@ -14,7 +14,17 @@
 import React, { useEffect, useState } from "react";
 import { FactoryReviewTotal } from "../../factory-prototype/main.jsx";
 import { getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
-import { formatCapacityWindow, formatDayRange, getMaterialLines, getMyQuote, getSampleLines, submitQuote } from "../../lib/domain/quote.js";
+import {
+  formatCapacityWindow,
+  formatDayRange,
+  getMaterialLines,
+  getMyQuote,
+  getSampleLines,
+  quoteSubtotals,
+  quoteTotalCents,
+  quoteTotalMaxCents,
+  submitQuote,
+} from "../../lib/domain/quote.js";
 import { creditBalance, quoteCreditCost } from "../../lib/domain/credits.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -66,9 +76,11 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
     return null;
   }
 
-  const sampleTotal = lines.reduce((sum, line) => sum + (line.cost_cents ?? 0), 0);
-  const productionMin = (quote.unit_price_cents ?? 0) * (quote.production_quantity ?? 0);
-  const productionMax = (quote.unit_price_max_cents ?? quote.unit_price_cents ?? 0) * (quote.production_quantity ?? 0);
+  // The figures the brand will see, materials charged separately included.
+  const figures = { ...quote, ...quoteSubtotals(quote, { sampleLines: lines, materialLines }) };
+  const sampleTotal = figures.sampleSubtotalCents;
+  const productionMin = figures.productionSubtotalCents ?? 0;
+  const productionMax = figures.productionSubtotalMaxCents ?? 0;
 
   async function send() {
     if (busy) return;
@@ -159,7 +171,7 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
           ? `${quote.deposit_pct}% / ${quote.balance_pct ?? 100 - quote.deposit_pct}%`
           : "—",
         brandSees: productionMin
-          ? formatRange(productionMin + sampleTotal, productionMax + sampleTotal, quote.currency)
+          ? formatRange(quoteTotalCents(figures), quoteTotalMaxCents(figures), quote.currency)
           : "—",
       }}
       onBack={() => navigate(quotePath)}
