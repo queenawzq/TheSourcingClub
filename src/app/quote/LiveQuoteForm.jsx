@@ -20,10 +20,13 @@ import { FactorySubmitQuote } from "../../factory-prototype/main.jsx";
 import {
   createDraftQuote,
   formatCapacityWindow,
+  formatDayRange,
   getLatestQuote,
+  getMaterialLines,
   getSampleLines,
   parseCapacityWindow,
   saveQuote,
+  setMaterialLines,
   setSampleLines,
   submitQuote,
 } from "../../lib/domain/quote.js";
@@ -41,12 +44,25 @@ const firstNumber = (text) => {
   return match ? Number(match[0].replace(/,/g, "")) : null;
 };
 
-function priceRange(text) {
-  const numbers = String(text ?? "").match(/\d[\d,]*(?:\.\d+)?/g)?.map((value) => Number(value.replace(/,/g, ""))) ?? [];
-  if (!numbers.length) return { min: null, max: null };
-  const first = numbers[0];
-  const second = numbers[1] ?? first;
-  return { min: Math.min(first, second), max: Math.max(first, second) };
+/**
+ * "$18.40–$21.00 / unit" → 18.40 to 21.00; "28 days" → 28 to 28.
+ *
+ * Only the first number, or the first two written as a range ("a–b", "a-b",
+ * "a to b"), counts: any other number is something else ("$18.40 for 300
+ * units", "10 days incl. 1 revision round"). With `days`, a figure given in
+ * weeks ("4-6 weeks") is converted, since the field stores days.
+ */
+function priceRange(text, { days = false } = {}) {
+  const said = String(text ?? "");
+  const number = "(\\d[\\d,]*(?:\\.\\d+)?)";
+  const match = said.match(new RegExp(`${number}(?:(?:\\s*[-–—]\\s*|\\s+to\\s+)(?:US)?\\$?\\s*${number})?`, "i"));
+  if (!match) return { min: null, max: null };
+  const first = Number(match[1].replace(/,/g, ""));
+  const second = match[2] == null ? first : Number(match[2].replace(/,/g, ""));
+  const scale = days && /^\s*(?:weeks?|wks?)\b/i.test(said.slice(match.index + match[0].length)) ? 7 : 1;
+  // Days are stored whole.
+  const value = (amount) => (days ? Math.round(amount * scale) : amount);
+  return { min: value(Math.min(first, second)), max: value(Math.max(first, second)) };
 }
 
 /** "30% deposit / 70% before shipment" → the deposit-30-70 term. */
@@ -98,9 +114,14 @@ function missingQuoteFields(values, terms) {
   }
   if (!incotermFrom(terms.incoterm ?? [], values.incoterms)) missing.push("shipping terms");
   const validUntil = String(values.validUntil ?? "").trim();
-  const today = new Date();
-  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(validUntil) || validUntil < todayIso) missing.push("quote valid until");
+  // The same test the database makes, on the same day: submit_quote() and
+  // award_quote() refuse a valid_until before current_date, which is the UTC
+  // date (the database runs in UTC). Compared with the vendor's local date,
+  // a date this check passed could be refused on sending (west of UTC in the
+  // evening), or one the database accepts refused here (east of UTC in the
+  // morning).
+  const todayInDatabase = new Date().toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(validUntil) || validUntil < todayInDatabase) missing.push("quote valid until");
   return missing;
 }
 
@@ -112,6 +133,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   const [rfq, setRfq] = useState(null);
   const [quote, setQuote] = useState(null);
   const [lines, setLines] = useState([]);
+  const [materialLines, setMaterialLinesState] = useState([]);
   const [terms, setTerms] = useState({});
   const [questions, setQuestions] = useState([]);
   const [matchScore, setMatchScore] = useState(null);
@@ -145,8 +167,16 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         return;
       }
       const mine = latest ?? (await createDraftQuote(rfqId, org.id));
+      const [savedSampleLines, savedMaterialLines] = await Promise.all([
+        getSampleLines(mine.id),
+        getMaterialLines(mine.id),
+      ]);
+      setLines(savedSampleLines ?? []);
+      setMaterialLinesState(savedMaterialLines ?? []);
+      // Publish the quote only after all child rows are ready. Material rows
+      // are stateful editable controls, so mounting the form before this data
+      // arrives would initialize them as empty and discard the loaded rows.
       setQuote(mine);
-      setLines((await getSampleLines(mine.id)) ?? []);
     } catch (failure) {
       setError(failure);
     }
@@ -157,6 +187,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   /** Write what is on the card to the draft. */
   async function persist(values) {
     const unit = priceRange(values.unitPrice);
+    const lead = priceRange(values.leadTime, { days: true });
     const payment = paymentTermFrom(terms.payment_term ?? [], values.paymentTerms);
     const incoterm = incotermFrom(terms.incoterm ?? [], values.incoterms);
     const depositPct = depositPctFrom(payment?.slug);
@@ -165,7 +196,8 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       unit_price_cents: unit.min == null ? null : toCents(unit.min),
       unit_price_max_cents: unit.max == null ? null : toCents(unit.max),
       production_quantity: firstNumber(values.quantity),
-      bulk_lead_time_days: firstNumber(values.leadTime),
+      bulk_lead_time_days: lead.min,
+      bulk_lead_time_max_days: lead.max,
       payment_term_id: payment?.id ?? null,
       incoterm_id: incoterm?.id ?? null,
       shipping_notes: values.incoterms?.trim() || null,
@@ -193,12 +225,19 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
           const amount = firstNumber(values[`sample.${index}.cost`]);
           return amount == null ? null : toCents(amount);
         })(),
-        timing_days: firstNumber(values[`sample.${index}.timing`]),
+        timing_days: priceRange(values[`sample.${index}.timing`], { days: true }).min,
+        timing_max_days: priceRange(values[`sample.${index}.timing`], { days: true }).max,
         includes: values[`sample.${index}.includes`]?.trim() || null,
         sort: index,
       }))
       .filter((row) => row.stage && row.cost_cents != null);
     if (stages.length) await setSampleLines(quote.id, stages);
+
+    await setMaterialLines(quote.id, (values.materialCosts ?? []).map((line) => ({
+      material: line.material,
+      cost_cents: line.costPerUnit == null ? null : toCents(line.costPerUnit),
+      included: line.included,
+    })));
   }
 
   /**
@@ -279,6 +318,12 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       }}
       values={{
         brandQuestions: questions.map((question) => question.prompt),
+        materialCosts: materialLines.map((line) => ({
+          id: line.id,
+          material: line.material,
+          costPerUnit: line.cost_cents == null ? null : line.cost_cents / 100,
+          included: line.included,
+        })),
         unitPrice: quote.unit_price_cents
           ? `${formatRange(quote.unit_price_cents, quote.unit_price_max_cents ?? quote.unit_price_cents, quote.currency)} / unit`
           : "",
@@ -287,7 +332,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
           : rfq.quantity_total
             ? `${rfq.quantity_total} units`
             : "",
-        leadTime: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "",
+        leadTime: formatDayRange(quote.bulk_lead_time_days, quote.bulk_lead_time_max_days),
         // Every field the vendor has not filled is blank, never the design's
         // example: readQuote() submits whatever these hold. What it HAS filled
         // comes back, or reopening a draft silently drops it.
@@ -299,11 +344,11 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         validUntil: quote.valid_until ?? "",
         "sample.0.stage": line(0)?.stage ?? "",
         "sample.0.cost": line(0) ? money(line(0).cost_cents) : "",
-        "sample.0.timing": line(0)?.timing_days ? `${line(0).timing_days} days` : "",
+        "sample.0.timing": formatDayRange(line(0)?.timing_days, line(0)?.timing_max_days),
         "sample.0.includes": line(0)?.includes ?? "",
         "sample.1.stage": line(1)?.stage ?? "",
         "sample.1.cost": line(1) ? money(line(1).cost_cents) : "",
-        "sample.1.timing": line(1)?.timing_days ? `${line(1).timing_days} days` : "",
+        "sample.1.timing": formatDayRange(line(1)?.timing_days, line(1)?.timing_max_days),
         "sample.1.includes": line(1)?.includes ?? "",
       }}
       onBack={() => navigate(requestPath)}

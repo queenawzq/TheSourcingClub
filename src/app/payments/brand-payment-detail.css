@@ -1,0 +1,32 @@
+.brand-payment-detail-page { display: grid; align-content: start; gap: 24px; }
+.brand-payment-back { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--blue); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer; }
+.brand-payment-detail-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 28px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+.brand-payment-detail-header > div:first-child > span, .brand-payment-detail-total span { color: var(--text-muted); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+.brand-payment-detail-header h1 { margin: 7px 0 3px; color: var(--text); font-size: 36px; line-height: 44px; }
+.brand-payment-detail-header p { margin: 0; color: var(--text-muted); font-size: 14px; }
+.brand-payment-detail-total { display: grid; gap: 4px; text-align: right; }
+.brand-payment-detail-total strong { color: var(--text); font-size: 28px; line-height: 36px; }
+.brand-payment-detail-card { padding: 24px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+.brand-payment-detail-card h2 { margin: 0; color: var(--text); font-size: 20px; line-height: 28px; }
+.brand-payment-detail-card p { margin: 4px 0 0; color: var(--text-muted); font-size: 13px; line-height: 19px; }
+.brand-payment-status-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, .8fr); gap: 36px; }
+.brand-payment-status-card .billing-status { display: inline-flex; margin-bottom: 12px; }
+.brand-payment-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; margin: 0; }
+.brand-payment-facts div { min-width: 0; }
+.brand-payment-facts dt, .brand-payment-breakdown dt { color: var(--text-muted); font-size: 12px; font-weight: 600; }
+.brand-payment-facts dd { overflow: hidden; margin: 4px 0 0; color: var(--text); font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.brand-payment-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.brand-payment-breakdown { margin: 20px 0 0; border-top: 1px solid var(--border); }
+.brand-payment-breakdown > div { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 15px 0; border-bottom: 1px solid var(--border); }
+.brand-payment-breakdown > div:last-child { border-bottom: 0; padding-bottom: 0; }
+.brand-payment-breakdown dd { margin: 0; color: var(--text); font-size: 14px; font-weight: 700; }
+.brand-payment-breakdown .total dt, .brand-payment-breakdown .total dd { color: var(--text); font-size: 15px; font-weight: 800; }
+
+@media (max-width: 760px) {
+  .brand-payment-detail-header { align-items: flex-start; flex-direction: column; }
+  .brand-payment-detail-total { text-align: left; }
+  .brand-payment-status-card { grid-template-columns: 1fr; gap: 24px; }
+  .brand-payment-facts { grid-template-columns: 1fr; }
+  .brand-payment-card-heading { align-items: flex-start; flex-direction: column; }
+}
+.brand-payment-pay-again { margin-top: 16px; }

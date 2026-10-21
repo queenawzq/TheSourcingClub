@@ -353,8 +353,7 @@ export function factoryProfileView(parts, now = new Date()) {
     ].filter(Boolean).join(" · ") || "Location not given",
     initials: initialsOf(name),
     logoUrl: parts.logoUrl ?? null,
-    // The design pairs "Business registration verified" with this badge.
-    verifiedIcon: verified ? "basic" : null,
+    verifiedIcon: verified ? (profile?.trust_tier ?? "basic") : null,
     performance: { primary: "New", primaryLabel: "No brand reviews yet" },
     status: profileStatus(checks),
     walkthrough: parts.walkthrough

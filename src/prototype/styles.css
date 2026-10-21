@@ -958,7 +958,7 @@ button {
 }
 
 .home-recommended-invite-card .invite-factory-top {
-  grid-template-columns: minmax(150px, 1fr) max-content max-content;
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
   grid-template-areas: "identity metrics actions";
   gap: 8px;
 }
@@ -986,6 +986,57 @@ button {
 
 .home-dashboard-secondary {
   padding-top: 4px;
+}
+
+.home-dashboard-vendor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+}
+
+.home-dashboard-vendor-grid .home-recommended-invite-card .invite-note-list p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.home-dashboard-empty-state {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  min-height: 240px;
+  padding: 28px;
+  border: 1px dashed #c9d5e6;
+  border-radius: 8px;
+  background: #f9fbff;
+  text-align: center;
+}
+
+.home-dashboard-empty-state h3 {
+  margin: 0;
+  color: #0b1020;
+  font-size: 17px;
+  line-height: 23px;
+}
+
+.home-dashboard-empty-state p {
+  max-width: 390px;
+  margin: 0;
+  color: #5c6f91;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+.home-dashboard-empty-state > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .home-search-card {
@@ -4121,6 +4172,18 @@ textarea {
   padding-left: 18px;
 }
 
+textarea.question-field {
+  width: 100%;
+  min-height: 118px;
+  resize: vertical;
+  background: #fff;
+  color: var(--text);
+}
+
+textarea.question-field::placeholder {
+  color: var(--text-muted);
+}
+
 .contract-stack .card {
   display: grid;
   gap: 22px;
@@ -4194,6 +4257,13 @@ textarea {
   font-weight: 600;
   line-height: 16px;
   text-transform: none;
+}
+
+.confirmed-trade-term .field-help {
+  margin: 0 0 7px;
+  color: #5a6b87;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .confirmed-trade-term select {
@@ -6834,11 +6904,6 @@ select {
   min-width: 240px;
 }
 
-.billing-filter-placeholder {
-  visibility: hidden;
-  pointer-events: none;
-}
-
 .billing-controls label span {
   color: #4f6078;
   font-size: 13px;
@@ -6933,6 +6998,7 @@ select {
 
 .billing-status {
   justify-self: start;
+  white-space: nowrap;
   padding: 5px 9px;
   border-radius: 999px;
   background: #eaf4ff;
@@ -12464,9 +12530,52 @@ body:has(.brand-onboarding-page) {
   background: #fbfcfe;
 }
 
+.settings-payment-page-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 92px;
+  padding: 22px 24px;
+  border: 1px solid #d7e0ea;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.settings-payment-page-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-payment-page-copy strong {
+  color: #0b1020;
+  font-size: 17px;
+  line-height: 22px;
+}
+
+.settings-payment-page-copy p {
+  margin: 0;
+  color: #5a6b87;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 19px;
+}
+
+.settings-payment-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
 .settings-payment-list > div {
   display: grid;
   gap: 4px;
+}
+
+.settings-payment-list > .settings-payment-page-actions {
+  display: flex;
+  gap: 12px;
 }
 
 .settings-payment-list strong,
@@ -12494,6 +12603,49 @@ body:has(.brand-onboarding-page) {
   border-radius: 50%;
   background: #fff url("/assets/prototype-icons/menu.svg") center / 14px 4px no-repeat;
 }
+
+.settings-payment-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.settings-menu-btn:hover,
+.settings-menu-btn[aria-expanded="true"] {
+  border-color: #bdcbe0;
+  background-color: #f7f9fc;
+}
+
+.settings-payment-popover {
+  position: absolute;
+  top: calc(100% + 7px);
+  right: 0;
+  z-index: 5;
+  display: grid;
+  min-width: 156px;
+  padding: 6px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.12);
+}
+
+.settings-payment-popover button {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #0b1020;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-payment-popover button:hover { background: #f3f7fb; }
+.settings-payment-popover button.danger { color: #b93824; }
 
 .settings-add-btn {
   justify-self: start;
@@ -12760,9 +12912,16 @@ body:has(.brand-onboarding-page) {
   background: #f4f7fb;
   color: #4f6078;
   font-size: 12px;
-  font-weight: 650;
+  font-weight: 750;
   line-height: 16px;
   text-transform: uppercase;
+}
+
+.settings-invited-row.header span {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 16px;
 }
 
 .settings-invited-row strong {
@@ -13035,10 +13194,20 @@ body:has(.brand-onboarding-page) {
   .settings-heading,
   .settings-section-header.split,
   .settings-payment-list,
+  .settings-payment-page-card,
   .settings-inline-row,
   .settings-invite-row {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .settings-payment-page-actions {
+    width: 100%;
+  }
+
+  .settings-payment-page-actions .compact-btn,
+  .settings-payment-page-card > .compact-btn {
+    flex: 1;
   }
 
   .settings-heading .primary-btn,
@@ -17267,6 +17436,9 @@ button.sort-button {
 }
 
 .home-recommended-invite-card .invite-factory-top .marketplace-factory-title > div:last-child {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
   transform: translateY(2px);
 }
 
@@ -17330,9 +17502,14 @@ button.sort-button {
 
 .home-recommended-invite-card .invite-factory-top .factory-name-row h3 {
   display: block;
+  flex: 0 1 auto;
+  max-width: 100%;
   min-width: 0;
+  overflow: hidden;
   font-size: var(--card-title-size) !important;
   line-height: var(--card-title-line) !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transform: translateY(2px);
 }
 
@@ -17385,8 +17562,8 @@ button.sort-button {
 
 @media (min-width: 901px) and (max-width: 1400px) {
   .home-recommended-invite-card .invite-factory-top {
-    grid-template-columns: 220px max-content minmax(0, 1fr) max-content;
-    grid-template-areas: "identity metrics . actions";
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+    grid-template-areas: "identity metrics actions";
     align-items: start;
   }
 
@@ -17711,6 +17888,28 @@ button.sort-button {
   }
 }
 
+@container (min-width: 450px) {
+  .home-recommended-invite-card:has(.factory-card-metrics:empty) .invite-factory-top {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+    grid-template-areas: "identity actions" !important;
+  }
+
+  .home-recommended-invite-card:has(.factory-card-metrics:empty) .invite-factory-top .factory-card-metrics {
+    display: none !important;
+  }
+}
+
+@container (min-width: 560px) {
+  .home-recommended-invite-card:has(.factory-card-metrics:empty) .invite-factory-top .factory-name-row h3 {
+    flex: 0 0 auto;
+    width: auto;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+}
+
 .marketplace-factory-card,
 .saved-factory-card {
   container-type: inline-size;
@@ -17940,7 +18139,11 @@ textarea.note-field {
   width: 100%;
   min-height: 84px;
   resize: vertical;
-  font: inherit;
+  color: var(--text);
+}
+
+textarea.note-field::placeholder {
+  color: var(--text-muted);
 }
 
 /* The request's name, typed into the card heading it already occupies. */

@@ -84,9 +84,12 @@ published vendor, filters from the taxonomy, ranked like the dashboard's
 recommended factories), the brand's **Saved** vendors (`/saved`;
 `saved_factories` is the brand's own list, filled by "Save" on Browse and
 "Save factory" on a vendor's profile), the brand's **Payments** (`/payments`,
-the designed `BillingScreen`: its order payments as Due / Sent / Funded / Paid
-with the order summary's figures, and its discount codes; nothing on it takes
-a card or bank number), and the whole **admin console**
+the designed `BillingScreen`: its order payments as Due / Processing / Failed
+/ Funded / Paid, each at the total charged with the fee, with the order
+summary's figures, and its discount codes), the brand's **Fund** step
+(`/orders/:id/payments/:pid`, the designed `FundScreen` and `SuccessScreen`
+in `FlowShell`, with Stripe's Payment Element in the billing card; see
+**Payments** below), and the whole **admin console**
 (`admin.html`).
 
 **Only the brand sets the production steps** (design review, Oct 2; migration
@@ -104,17 +107,14 @@ type is changed (`order-view.js`).
 **Everything a brand or a vendor touches is on the design**, except the
 screens below — each held back for a stated reason, not a backlog entry:
 
-- **`PaymentInstructions` and `PayoutDetails`.** The designed payment flow says
-  the brand "pays by card through TSC checkout so funds can be held before
-  release". Payments are **track-only** — bank wire off-platform, the product
-  records the trail — which is a locked decision taken to avoid
-  money-transmitter, KYC and PCI exposure. Wiring that screen would tell a
-  brand its money is on a card and held by TSC, and both are false. This is not
-  a styling gap; it needs the design and the product to agree on where money
-  goes.
-- **`AdminPayments`.** No designed payments queue, and confirming a payment is a
-  required step: staff have no org and cannot be notified, so a payment sits at
-  `sent` until a human opens it.
+- **`PaymentInstructions`.** What a payment's address shows when there is
+  nothing to pay (not due yet, held, paid out, cancelled, or a bank-wire claim
+  made on the old site): a read-only status card. Due and failed payments go
+  to the designed Fund screen.
+- **The factory's "Get paid with Stripe" card** (`StripePayoutCard`, on
+  Queena's `PayoutDetails`). No design draws payout setup.
+- **`AdminPayments`.** No designed payments board, and some payments only a
+  person can move: staff have no org and cannot be notified (see **Payments**).
 - The brand's own **`RfqDetail`** — no designed counterpart yet.
 
 A step's full history opens in **`StepUpdatesModal`** (`src/shared/`), over
@@ -139,9 +139,9 @@ because those screens are drawn to sit inside that frame, and rebuilding it
 would mean inventing one that already exists.
 
 `src/app/admin/AdminPayments.jsx` is the one hand-built screen kept on
-purpose: the designs have no payments queue, and confirming a payment is a
-required step — staff have no org and cannot be notified, so a payment sits at
-`sent` until someone opens it.
+purpose: the designs have no payments board, and paying a factory Stripe
+cannot reach is a required step — staff have no org and cannot be notified,
+so that payout waits until someone opens the board.
 
 Things that will bite here:
 
@@ -247,7 +247,7 @@ Things that will bite here specifically:
 - **`quotes.deposit_pct` is nullable** and `submit_quote()` does not require it. Uncoalesced, the schedule generator emits milestones totalling only the sample lines, `agree_schedule` refuses that forever, and the order is dead with nothing on screen explaining why.
 - **Compute one side of a percentage split and subtract for the other.** Rounding both independently loses or invents a cent, permanently, on a figure a brand types into a bank transfer.
 - **`agree_schedule` takes a revision.** Without it a brand that confirmed steps it read on one screen, while a teammate changed them on another, would start the order on steps it never saw.
-- **The chain advances on `confirmed`, never on `released`.** Keying it to release would freeze a production order permanently on one forgotten admin click, with no error and no party able to unstick it.
+- **The chain advances on approval (or on funding a payment-only step), never on the payout.** Keying it to the transfer would freeze a production order permanently on one failed Stripe call or forgotten admin click, with no error and no party able to unstick it. A payout that did not go leaves `release_requested_at` set and shows on the staff board.
 - **`documents_own` is `for all`** and says nothing about `milestone_update_id`. Without `documents_link_guard`, one UPDATE re-parents a photo onto another order and the counterparty read policy then serves it to strangers.
 - **Milestone photos need three things to work**: the kind in `PRIVATE_KINDS`, a `documents` read policy for the counterparty, *and* a matching `storage.objects` policy. With only the first two, `urlFor()` mints a signed URL that 400s — a broken image tile, not an error message.
 - **Money is `bigint` throughout.** `unit_price_cents * production_quantity` passes `int4` at 100,000 units of a $250 jacket.
@@ -258,10 +258,22 @@ Things that will bite here specifically:
 - **`grant select` alone does not stop writes on a new table.** The stack's default privileges give `authenticated` every privilege on new tables, so 066 revokes insert/update/delete/truncate on `order_tabs` explicitly; its writes go through the two functions.
 - **The archive is the company's too** (068). `order_archives` holds the closed orders a company has put away; the other side keeps its own. Only a completed or cancelled order can be archived, and the archiving company must be a party to it. An archived order keeps its tab filing: `rowsForTab` (`src/shared/production-order-parts.jsx`) leaves it out of every tab but "Archived", so unarchiving puts it back where it was. The "Archived" tab is not an `order_tabs` row; it is drawn only while the archive is non-empty, and the brand's dashboard leaves archived orders out.
 - **"Reorder style" starts from a request, not a contract** (069). An order is always the award of a quote, so `duplicate_rfq_from_order()` copies the order's request (breakdown, questions and taxonomy links included; delivery month, deadline, files and invitations not) into a new invite-only draft, and the composer ticks the same factory. The function runs as the caller, so RLS decides everything; only the order's brand may. `rfqs.reorder_of_order_id` has **no foreign key on purpose**: a second path between `rfqs` and `production_orders` would make the order list's `rfqs (title, brief)` embed ambiguous, and PostgREST refuses those.
-- **Cancelling takes both sides** (035, 070). Either side proposes with a reason (`propose_cancellation`); only the *other* side accepts (`accept_cancellation`) or keeps the order (`decline_cancellation`); only the proposing side withdraws (`withdraw_cancellation`). Any member may do each, and every step notifies the other company. Accepting runs `close_order`: steps not done and payments TSC has not confirmed (`sent` included) are cancelled, confirmed and released ones stay. There is no design: the card menu item, the reason dialog (`CancelOrderDialog`), the banner above each order page's money strip (`CancelNotice`) and the side panel's "Cancel order" are live only, passed in as optional props so the prototypes draw none of them.
+- **Cancelling takes both sides** (035, 070). Either side proposes with a reason (`propose_cancellation`); only the *other* side accepts (`accept_cancellation`) or keeps the order (`decline_cancellation`); only the proposing side withdraws (`withdraw_cancellation`). Any member may do each, and every step notifies the other company. Accepting runs `close_order`: steps not done and payments TSC does not hold (`due`, `failed`, `sent`, `not_due`) are cancelled; held, clearing and paid-out ones stay, and money held on a cancelled order is refunded by staff in Stripe (no automatic refund). There is no design: the card menu item, the reason dialog (`CancelOrderDialog`), the banner above each order page's money strip (`CancelNotice`) and the side panel's "Cancel order" are live only, passed in as optional props so the prototypes draw none of them.
 - **A resumed draft must read back every review-card field in the words its parser reads** (`src/app/rfq/resume-fields.js`). A field left blank on resume is saved blank, and `setLinks` deletes its links. Taxonomy labels are matched as whole words (`mentionsLabel`): "Womenswear" contains "menswear".
 
-Platform staff have no org, and `notifications.org_id` is `not null references orgs`, so **an admin cannot be notified of anything**. `admin_payment_queue()` is therefore a required step in the workflow, not a convenience: without someone watching it, every payment stalls at `sent`. Do not solve this with a synthetic platform org — it would leak into `current_org_ids()` and every `or is_platform_admin()` branch.
+Platform staff have no org, and `notifications.org_id` is `not null references orgs`, so **an admin cannot be notified of anything**. `admin_payment_board()` is therefore a required step in the workflow, not a convenience: without someone watching it, a payout Stripe cannot make (or money held on a cancelled order) waits forever. The overview's payments card counts exactly those. Do not solve this with a synthetic platform org — it would leak into `current_org_ids()` and every `or is_platform_admin()` branch. (`admin_payment_queue()` is the old site's and is left as it was.)
+
+### Payments (Stripe, held until approved)
+
+The brand pays TSC by card through Stripe (card only since 2026-10-19; payments made by US bank account before then still show as such); **TSC holds the money until the brand approves the step**, then pays the factory. The service fee (5% on orders of $5,000 and over, 7% under) is **added to the brand's payment**, fixed per order by a trigger on `fee_bps`; the factory gets the step amount. This replaced the track-only bank wire (John, 2026-10-11). Legal v1 already promised escrow; privacy v2 names Stripe, and the next version (`20261022000200`) drops the bank-account sentence.
+
+- **Separate charges and transfers.** The brand's PaymentIntent is on TSC's platform account (`transfer_group` = order, metadata `payment_id`); approving transfers the step amount to the factory's **Express** connected account (`source_transaction` = the charge). One Stripe customer per brand org.
+- **States:** `not_due` → `due` (the step opened: a paid step is funded before its work) → `processing` (Stripe is still confirming the payment) → `confirmed` ("Funded: held by TSC") or `failed` (the brand pays again on the same PaymentIntent) → `released` ("Paid out"). `sent` is only a bank-wire claim from the old site. Approving a paid step is refused until `confirmed`; a payment-only step completes and asks for its payout once funded.
+- **Only the server records what Stripe says.** `record_payment_*`, `attach_payment_intent` and `save_connect_account` are service-role only. `api/stripe-webhook.js` checks the signature (`STRIPE_WEBHOOK_SECRET`, then `STRIPE_CONNECT_WEBHOOK_SECRET`) and claims each event id in `stripe_events` (`claim_stripe_event`), marking it processed once handled, so a repeat does nothing and an attempt that timed out is run again after 5 minutes; `api/stripe-sync.js` reads the PaymentIntent back for a page that just paid and for a preview the webhook cannot reach. `begin_payment_checkout` runs as the caller: a brand owner, an active order, a due or failed payment.
+- **Keys:** `VITE_STRIPE_PUBLISHABLE_KEY` is the only `VITE_` one; `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET` stay server-only. `.env.local` locally (with `stripe listen --forward-to …/api/stripe-webhook --forward-connect-to …`), Vercel Preview/Development with test keys, Production with TSC's own. `api/_stripe.js` refuses an `sk_live_` key anywhere but a production deploy.
+- **Where Stripe can pay out:** a US platform's Connect transfers reach the US, Canada, the UK, Switzerland and the EEA only (`src/shared/stripe-payout-countries.mjs`). A factory elsewhere (mainland China, Hong Kong…) is still charged through Stripe, and staff pay it by bank to its `factory_payout_accounts` details, then "Mark paid out by bank" (`release_payment_to_factory`).
+- **Express outside the US needs `card_payments` + `transfers`.** `transfers` alone is refused under the full agreement, and the recipient agreement cannot take cross-border transfers.
+- **Never let Stripe replay an old failure.** Stripe answers a reused idempotency key with its first answer for 24 hours, errors included. Do not key a create that can fail for a reason that will change (Connect not enabled, a capability not active yet): guard with our own row instead, or put a changing value in the key (a payout is claimed first, `claim_payment_release`, and its key carries the claim's time), and list existing transfers before paying.
 
 ### Conversations (Phase 4)
 
@@ -292,10 +304,11 @@ a company-level verdict and a file-level one cannot contradict each other.
   evidence received of expected instead. `risk` is a field an admin sets by
   hand. The screens render conditionally around all three, so the prototype
   keeps showing its mock versions.
-- **The overview's fourth card is payments awaiting confirmation**, where the
-  design puts "low-confidence checks". Platform staff have no org and cannot be
-  notified of anything, so a payment sits at `sent` until a human opens the
-  queue; that count is the only prompt there is.
+- **The overview's fourth card is payments waiting on staff**, where the
+  design puts "low-confidence checks": bank-wire claims from the old site,
+  payouts Stripe did not make, and money held on a cancelled order. Platform
+  staff have no org and cannot be notified of anything, so that count is the
+  only prompt there is.
 - **Every function on this surface is `security definer` and has no policy
   behind it.** The `is_platform_admin()` test is the first statement in each,
   before any `select` — checking afterwards leaks existence through `P0002`
@@ -356,11 +369,11 @@ links point.
   everyone but staff.
 - Chinese is a separate hand-written field per document, falling back to
   English when blank — never machine-translated, same rule as the taxonomy.
-- **Version 1's onboarding summaries still promise escrow** ("we hold the
-  funds"), copied verbatim from the designed cards. That contradicts
-  track-only payments; a v2 is how it gets fixed.
+- **Version 1's onboarding summaries promise escrow** ("we hold the
+  funds"), copied verbatim from the designed cards. Since payments moved to
+  Stripe that is what happens, so the terms stay at v1.
 - **The privacy policy names every processor** (Supabase, Vercel, Resend,
-  OpenRouter, Google Sheets, Netlify Forms). Adding a service that touches
+  OpenRouter, Google Sheets, Netlify Forms, and from v2 Stripe). Adding a service that touches
   personal data means publishing a new version of it.
 
 ### The factory's request screens, and what a quote costs

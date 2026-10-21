@@ -33,7 +33,18 @@ import {
   saveRequest,
   unsaveRequest,
 } from "../../lib/domain/rfq.js";
-import { formatCapacityWindow, getLatestQuote, getSampleLines, reviseQuote, withdrawQuote } from "../../lib/domain/quote.js";
+import {
+  formatCapacityWindow,
+  formatDayRange,
+  getLatestQuote,
+  getMaterialLines,
+  getSampleLines,
+  quoteSubtotals,
+  quoteTotalCents,
+  quoteTotalMaxCents,
+  reviseQuote,
+  withdrawQuote,
+} from "../../lib/domain/quote.js";
 import { quoteCreditCost } from "../../lib/domain/credits.js";
 import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
@@ -89,6 +100,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const [questions, setQuestions] = useState([]);
   const [myQuote, setMyQuote] = useState(null);
   const [sampleLines, setSampleLines] = useState([]);
+  const [materialLines, setMaterialLines] = useState([]);
   const [extras, setExtras] = useState({ match: null, brand: null, lastView: null, files: [], saved: false });
   const [error, setError] = useState(null);
   const [loaded, setLoaded] = useState(false);
@@ -152,6 +164,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     if (!myQuote?.id) return undefined;
     let cancelled = false;
     getSampleLines(myQuote.id).then((lines) => !cancelled && setSampleLines(lines ?? []), () => {});
+    // Materials charged separately are part of what the brand sees.
+    getMaterialLines(myQuote.id).then((lines) => !cancelled && setMaterialLines(lines ?? []), () => {});
     return () => { cancelled = true; };
   }, [myQuote?.id]);
 
@@ -197,7 +211,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const quoteProductionMax = quoteUnitMax && myQuote?.production_quantity
     ? quoteUnitMax * myQuote.production_quantity
     : null;
-  const quoteSampleTotal = sampleLines.reduce((sum, line) => sum + (line.cost_cents ?? 0), 0);
+  const quoteFigures = myQuote ? { ...myQuote, ...quoteSubtotals(myQuote, { sampleLines, materialLines }) } : null;
 
   // The request itself, in the shape both designed screens read.
   const project = {
@@ -350,6 +364,9 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         </div>
       )}
       <FactoryReadOnlyRfqPage
+        // The material rows are held in the designed card's own state from its
+        // first render, and they load after the quote: remount when they arrive.
+        key={`materials-${materialLines.length}`}
         companyType={isTrading ? "trading" : "factory"}
         language="en"
         project={{ ...project, files: [] }}
@@ -357,11 +374,17 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         // sample plan it priced, not the design's example.
         quote={{
           brandQuestions: project.questions,
+          materialCosts: materialLines.map((line) => ({
+            id: line.id,
+            material: line.material,
+            costPerUnit: line.cost_cents == null ? null : line.cost_cents / 100,
+            included: line.included,
+          })),
           unitPrice: myQuote.unit_price_cents
             ? formatRange(myQuote.unit_price_cents, quoteUnitMax, myQuote.currency)
             : "",
           quantity: myQuote.production_quantity ? `${myQuote.production_quantity} units` : "",
-          leadTime: myQuote.bulk_lead_time_days ? `${myQuote.bulk_lead_time_days} days` : "",
+          leadTime: formatDayRange(myQuote.bulk_lead_time_days, myQuote.bulk_lead_time_max_days),
           // What the vendor sent, as Review showed it before sending. Both read
           // blank here, on the one page meant to read the quote back.
           capacityWindow: formatCapacityWindow(myQuote),
@@ -375,7 +398,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           ...Object.fromEntries(sampleLines.flatMap((line, index) => [
             [`sample.${index}.stage`, line.stage ?? ""],
             [`sample.${index}.cost`, line.cost_cents ? formatMoney(line.cost_cents) : ""],
-            [`sample.${index}.timing`, line.timing_days ? `${line.timing_days} days` : ""],
+            [`sample.${index}.timing`, formatDayRange(line.timing_days, line.timing_max_days)],
             [`sample.${index}.includes`, line.includes ?? ""],
           ])),
         }}
@@ -400,11 +423,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
             ? `${myQuote.deposit_pct}% / ${myQuote.balance_pct ?? 100 - myQuote.deposit_pct}%`
             : "—",
           brandSees: quoteProductionMin
-            ? formatRange(
-              quoteProductionMin + quoteSampleTotal,
-              quoteProductionMax + quoteSampleTotal,
-              myQuote.currency,
-            )
+            ? formatRange(quoteTotalCents(quoteFigures), quoteTotalMaxCents(quoteFigures), myQuote.currency)
             : "—",
         }}
         status={{

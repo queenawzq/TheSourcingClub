@@ -30,7 +30,7 @@ export async function listMilestones(orderId) {
   const rows = unwrap(
     await supabase
       .from("order_milestones")
-      .select(`${MILESTONE_COLUMNS}, order_payments (id, state, amount_cents, currency, fee_bps, due_at, sent_at, confirmed_at, released_at)`)
+      .select(`${MILESTONE_COLUMNS}, order_payments (id, state, amount_cents, currency, fee_bps, due_at, sent_at, confirmed_at, released_at, charged_cents, payment_method_label, failure_reason, processing_at, release_requested_at)`)
       .eq("order_id", orderId)
       .order("sort"),
     "load the schedule",

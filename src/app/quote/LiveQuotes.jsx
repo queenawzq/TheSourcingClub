@@ -72,7 +72,8 @@ export default function LiveQuotes({ rfqId }) {
       // As the vendor typed it on their profile ("Porto, Portugal").
       location: raw.orgs?.factory_profiles?.location ?? "",
       // The badge says TSC has checked this vendor, so only a verified one gets it.
-      trust: raw.orgs?.factory_profiles?.verification_status === "verified" ? "trusted" : "",
+      trust: raw.orgs?.factory_profiles?.verification_status === "verified"
+        ? (raw.orgs?.factory_profiles?.trust_tier ?? "basic") : "",
       fit: "",
       response: "",
       fitType: fit?.label ?? "Potential fit",
@@ -93,7 +94,9 @@ export default function LiveQuotes({ rfqId }) {
       comparison: {
         productionSubtotal: view.productionSubtotal || "—",
         sampleSubtotal: view.sampleSubtotal || "—",
-        additionalMaterialSubtotal: "—",
+        // Materials marked not included ("charged separately"), per unit
+        // times the quantity; already in the quote total.
+        additionalMaterialSubtotal: view.additionalMaterialSubtotal || "—",
         paymentTerms: view.paymentTerms || "—",
         samplePlan: view.samplePlan || "—",
         shipping: view.shipping || "—",
@@ -104,7 +107,7 @@ export default function LiveQuotes({ rfqId }) {
       categories: [],
       capabilities: [],
       notes: view.notes ? [view.notes] : [],
-      materialCosts: [],
+      materialCosts: view.materialCosts,
       samples: [],
     };
   });

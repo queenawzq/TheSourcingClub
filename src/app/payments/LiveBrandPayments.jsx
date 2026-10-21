@@ -1,29 +1,35 @@
 /**
  * The brand's Payments page, on the designed `BillingScreen`.
  *
- * Payments: the brand's own order payments and where each stands (Due, Sent,
- * Funded, Paid) with the design's four figures (brand-payments-view.js). A row
- * opens that payment's page on its order, where a due payment is marked sent.
+ * Payments: the brand's own order payments and where each stands (Not paid,
+ * Payment processing, Failed, Funded, Paid; Sent only for an old bank-wire
+ * claim) with the design's four figures (brand-payments-view.js). A row opens
+ * its transaction page; a due one opens the Fund screen on its order.
  * Discounts: the brand's real credit and discount codes (credits.js), the
  * same ones the dashboard's Savings card shows.
  *
- * Nothing here takes a card or a bank number: payments are track-only, and
- * the design's saved cards, invoices and platform fee rows have nothing
- * behind them, so they are left out.
+ * Cards are entered only in Stripe's own form on the Fund screen, and nothing
+ * is saved here, so the design's saved cards and invoices are left out.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { BillingScreen } from "../../prototype/main.jsx";
 import { listOrders } from "../../lib/domain/order.js";
 import { listPaymentsForOrders } from "../../lib/domain/payment.js";
 import { listDiscountCodes, savingsFor } from "../../lib/domain/credits.js";
 import { useRouter } from "../../lib/router.jsx";
-import { brandPaymentsView } from "./brand-payments-view.js";
+import { ALL_VENDORS, brandPaymentsView } from "./brand-payments-view.js";
 import "../browse/browse.css";
+import "../order/payout.css";
 
 export default function LiveBrandPayments({ org }) {
   const { navigate } = useRouter();
-  const [state, setState] = useState({ view: null, codes: [], savings: null, error: null });
+  const [state, setState] = useState({ loaded: null, codes: [], savings: null, error: null });
   const [copied, setCopied] = useState(null);
+  // BillingScreen keeps its vendor filter to itself and applies it to the
+  // rows only; the live mount hears the same change and recomputes the four
+  // figures from that vendor's payments, as the factory's page does.
+  const [vendor, setVendor] = useState(ALL_VENDORS);
+  const view = useMemo(() => (state.loaded ? brandPaymentsView({ ...state.loaded, vendor }) : null), [state.loaded, vendor]);
 
   useEffect(() => {
     let cancelled = false;
@@ -36,10 +42,10 @@ export default function LiveBrandPayments({ org }) {
         listDiscountCodes(org.id),
         savingsFor(org.id),
       ]);
-      return { view: brandPaymentsView({ orders, payments }), codes, savings };
+      return { loaded: { orders, payments }, codes, savings };
     })().then(
       (loaded) => !cancelled && setState({ ...loaded, error: null }),
-      (error) => !cancelled && setState({ view: null, codes: [], savings: null, error }),
+      (error) => !cancelled && setState({ loaded: null, codes: [], savings: null, error }),
     );
     return () => { cancelled = true; };
   }, [org.id]);
@@ -47,7 +53,7 @@ export default function LiveBrandPayments({ org }) {
   if (state.error) {
     return <main className="billing-page-shell"><p className="live-profile-error" role="alert">Couldn't load your payments: {state.error.message}</p></main>;
   }
-  if (!state.view) {
+  if (!view) {
     return <main className="billing-page-shell"><p className="live-profile-loading">Loading your payments…</p></main>;
   }
 
@@ -62,17 +68,24 @@ export default function LiveBrandPayments({ org }) {
   };
 
   return (
-    <main className="billing-page-shell">
+    <main
+      className="billing-page-shell"
+      onChange={(event) => {
+        if (event.target.matches?.(".billing-controls select")) setVendor(event.target.value);
+      }}
+    >
       <BillingScreen
         accountType="brand"
         live={{
-          metrics: state.view.metrics,
-          rows: state.view.rows.map((row) => ({
-            ...row,
-            href: `/app.html/orders/${row.orderId}/payments/${row.id}`,
-            onOpen: () => navigate(`/orders/${row.orderId}/payments/${row.id}`),
-          })),
-          empty: "No payments yet. A payment shows here once a step on one of your orders falls due.",
+          metrics: view.metrics,
+          rows: view.rows.map((row) => {
+            // A due payment has no transaction to show yet: it opens the Fund screen.
+            const path = row.state === "due"
+              ? `/orders/${row.orderId}/payments/${row.id}`
+              : `/payments/${row.orderId}/${row.id}`;
+            return { ...row, href: `/app.html${path}`, onOpen: () => navigate(path) };
+          }),
+          empty: "No payment transactions yet.",
           discount: state.savings ? { amount: state.savings.amount, note: state.savings.note } : null,
           codes: state.codes,
           onCopy: copy,

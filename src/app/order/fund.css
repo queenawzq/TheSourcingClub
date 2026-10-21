@@ -1,0 +1,149 @@
+/* Live only: TSC owns saved-card selection; Stripe owns only the sensitive
+   add-card fields inside its frame. */
+.live-payment-element {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.live-payment-element .composer-error {
+  margin: 0;
+}
+
+.saved-card-list {
+  display: grid;
+  gap: 10px;
+}
+
+.saved-card-row {
+  display: grid;
+  grid-template-columns: 18px 34px 1fr;
+  gap: 12px;
+  align-items: center;
+  min-height: 70px;
+  padding: 12px 16px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.saved-card-row.selected {
+  border-color: #1a4df2;
+  background: #f2f7fd;
+  box-shadow: inset 0 0 0 1px #1a4df2;
+}
+
+.saved-card-row input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: #1a4df2;
+}
+
+.saved-card-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 24px;
+  border-radius: 4px;
+  background: #1a4df2;
+  color: #fff;
+  font-size: 12px;
+}
+
+.saved-card-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.saved-card-copy strong {
+  color: #0b1020;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.saved-card-copy small {
+  color: #5a6b87;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.new-card-fields {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.new-card-fields h3 {
+  margin: 0;
+  color: #0b1020;
+  font-size: 15px;
+  line-height: 20px;
+}
+
+.tsc-card-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.tsc-card-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.tsc-card-field > span {
+  color: #0b1020;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.tsc-card-number,
+.tsc-card-postal {
+  grid-column: 1 / -1;
+}
+
+.tsc-stripe-input,
+.tsc-card-field > input {
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+  color: #0b1020;
+  font: 500 14px/18px Satoshi, Arial, sans-serif;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.tsc-stripe-input:focus-within,
+.tsc-card-field > input:focus {
+  outline: 0;
+  border-color: #1a4df2;
+  box-shadow: 0 0 0 1px #1a4df2;
+}
+
+.tsc-card-field > input::placeholder {
+  color: #8a98ad;
+}
+
+.save-card-note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.live-add-card-btn {
+  margin-top: 0;
+}
+
+.live-payment-note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}

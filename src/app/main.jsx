@@ -45,6 +45,7 @@ import { createLiveAdapter } from "./live-adapter.js";
 import LiveBrandOrders from "./order/LiveBrandOrders.jsx";
 import LiveFactoryOrders from "./order/LiveFactoryOrders.jsx";
 import PaymentInstructions from "./order/PaymentInstructions.jsx";
+import LiveFund from "./order/LiveFund.jsx";
 import PayoutDetails from "./order/PayoutDetails.jsx";
 import AdminPayments from "./admin/AdminPayments.jsx";
 import LiveMessages from "./message/LiveMessages.jsx";
@@ -58,6 +59,7 @@ import LiveBrandFactoryProfile from "./profile/LiveBrandFactoryProfile.jsx";
 import LiveBrandBrowse from "./browse/LiveBrandBrowse.jsx";
 import LiveSavedVendors from "./browse/LiveSavedVendors.jsx";
 import LiveBrandPayments from "./payments/LiveBrandPayments.jsx";
+import LiveBrandPaymentDetail from "./payments/LiveBrandPaymentDetail.jsx";
 import LiveBrandProfile from "./profile/LiveBrandProfile.jsx";
 import LiveFactoryBrandProfile from "./profile/LiveFactoryBrandProfile.jsx";
 import NotificationList from "./NotificationList.jsx";
@@ -878,7 +880,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/browse",
       render: () =>
-        isFactory ? <LiveBrowse profile={profile} /> : <LiveBrandBrowse org={activeOrg} user={user} />,
+        isFactory ? <LiveBrowse org={activeOrg} profile={profile} /> : <LiveBrandBrowse org={activeOrg} user={user} />,
     },
     {
       // Browse vendors as the design's directory list. Before /browse/:id,
@@ -925,6 +927,12 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/saved",
       render: () =>
         isFactory ? <LiveSaved org={activeOrg} /> : <LiveSavedVendors org={activeOrg} />,
+    },
+    {
+      path: "/payments/:orderId/:paymentId",
+      render: (params) => isFactory
+        ? <NotForThisSide isFactory />
+        : <LiveBrandPaymentDetail orderId={params.orderId} paymentId={params.paymentId} />,
     },
     {
       // The brand's payments and discount codes. A factory's money page is
@@ -1094,14 +1102,22 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // pay it. Registered before the :id routes so "payout" is never read as
       // an order id.
       path: "/payout",
-      render: () => <main className="home-page"><PayoutDetails org={activeOrg} isFactory={isFactory} /></main>,
+      render: () => <main className="home-page"><PayoutDetails org={activeOrg} isFactory={isFactory} isOwner={isOwner} /></main>,
     },
     {
       path: "/orders/:id/payments/:pid",
       render: (params) =>
         isFactory
           ? <NotForThisSide isFactory />
-          : <main className="home-page"><PaymentInstructions orderId={params.id} paymentId={params.pid} /></main>,
+          // Due or failed: the designed Fund screen (Stripe). Anything else
+          // has nothing to pay and shows where the payment stands.
+          : (
+            <LiveFund
+              orderId={params.id}
+              paymentId={params.pid}
+              fallback={<main className="home-page"><PaymentInstructions orderId={params.id} paymentId={params.pid} /></main>}
+            />
+          ),
     },
     {
       path: "/browse/:id",
