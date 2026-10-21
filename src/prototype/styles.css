@@ -958,7 +958,7 @@ button {
 }
 
 .home-recommended-invite-card .invite-factory-top {
-  grid-template-columns: minmax(150px, 1fr) max-content max-content;
+  grid-template-columns: minmax(0, 1fr) max-content max-content;
   grid-template-areas: "identity metrics actions";
   gap: 8px;
 }
@@ -986,6 +986,57 @@ button {
 
 .home-dashboard-secondary {
   padding-top: 4px;
+}
+
+.home-dashboard-vendor-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
+  min-width: 0;
+}
+
+.home-dashboard-vendor-grid .home-recommended-invite-card .invite-note-list p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.home-dashboard-empty-state {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  min-height: 240px;
+  padding: 28px;
+  border: 1px dashed #c9d5e6;
+  border-radius: 8px;
+  background: #f9fbff;
+  text-align: center;
+}
+
+.home-dashboard-empty-state h3 {
+  margin: 0;
+  color: #0b1020;
+  font-size: 17px;
+  line-height: 23px;
+}
+
+.home-dashboard-empty-state p {
+  max-width: 390px;
+  margin: 0;
+  color: #5c6f91;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 17px;
+}
+
+.home-dashboard-empty-state > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .home-search-card {
@@ -4121,6 +4172,18 @@ textarea {
   padding-left: 18px;
 }
 
+textarea.question-field {
+  width: 100%;
+  min-height: 118px;
+  resize: vertical;
+  background: #fff;
+  color: var(--text);
+}
+
+textarea.question-field::placeholder {
+  color: var(--text-muted);
+}
+
 .contract-stack .card {
   display: grid;
   gap: 22px;
@@ -4194,6 +4257,13 @@ textarea {
   font-weight: 600;
   line-height: 16px;
   text-transform: none;
+}
+
+.confirmed-trade-term .field-help {
+  margin: 0 0 7px;
+  color: #5a6b87;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .confirmed-trade-term select {
@@ -17366,6 +17436,9 @@ button.sort-button {
 }
 
 .home-recommended-invite-card .invite-factory-top .marketplace-factory-title > div:last-child {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
   transform: translateY(2px);
 }
 
@@ -17429,9 +17502,14 @@ button.sort-button {
 
 .home-recommended-invite-card .invite-factory-top .factory-name-row h3 {
   display: block;
+  flex: 0 1 auto;
+  max-width: 100%;
   min-width: 0;
+  overflow: hidden;
   font-size: var(--card-title-size) !important;
   line-height: var(--card-title-line) !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   transform: translateY(2px);
 }
 
@@ -17484,8 +17562,8 @@ button.sort-button {
 
 @media (min-width: 901px) and (max-width: 1400px) {
   .home-recommended-invite-card .invite-factory-top {
-    grid-template-columns: 220px max-content minmax(0, 1fr) max-content;
-    grid-template-areas: "identity metrics . actions";
+    grid-template-columns: minmax(0, 1fr) max-content max-content;
+    grid-template-areas: "identity metrics actions";
     align-items: start;
   }
 
@@ -17810,6 +17888,28 @@ button.sort-button {
   }
 }
 
+@container (min-width: 450px) {
+  .home-recommended-invite-card:has(.factory-card-metrics:empty) .invite-factory-top {
+    grid-template-columns: minmax(0, 1fr) max-content !important;
+    grid-template-areas: "identity actions" !important;
+  }
+
+  .home-recommended-invite-card:has(.factory-card-metrics:empty) .invite-factory-top .factory-card-metrics {
+    display: none !important;
+  }
+}
+
+@container (min-width: 560px) {
+  .home-recommended-invite-card:has(.factory-card-metrics:empty) .invite-factory-top .factory-name-row h3 {
+    flex: 0 0 auto;
+    width: auto;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+}
+
 .marketplace-factory-card,
 .saved-factory-card {
   container-type: inline-size;
@@ -18039,7 +18139,11 @@ textarea.note-field {
   width: 100%;
   min-height: 84px;
   resize: vertical;
-  font: inherit;
+  color: var(--text);
+}
+
+textarea.note-field::placeholder {
+  color: var(--text-muted);
 }
 
 /* The request's name, typed into the card heading it already occupies. */

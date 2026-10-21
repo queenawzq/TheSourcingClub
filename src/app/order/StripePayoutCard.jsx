@@ -12,7 +12,22 @@ const COUNTRIES = [...new Set([...PAYOUT_COUNTRIES, ...OTHER_COUNTRIES])]
   .sort((a, b) => a.name.localeCompare(b.name));
 
 const countryName = (code) => (code ? names.of(code) ?? code : "");
-const usdAmount = (rows) => rows?.find((row) => row.currency?.toUpperCase() === "USD")?.amount ?? 0;
+
+/**
+ * The currency the balance is shown in. A connected account is credited in its
+ * own currency (a UK factory in GBP, a German one in EUR), so reading USD alone
+ * shows $0 and disables Withdraw. Prefer money in the default payout account's
+ * currency, then any currency holding money, then the default's, then USD.
+ */
+function balanceCurrency(balance) {
+  const available = balance?.available ?? [];
+  const preferred = balance?.methods?.find((method) => method.default)?.currency?.toUpperCase();
+  const funded = available.filter((row) => row.amount > 0);
+  const row = funded.find((entry) => entry.currency?.toUpperCase() === preferred) ?? funded[0]
+    ?? available.find((entry) => entry.currency?.toUpperCase() === preferred);
+  return row?.currency?.toUpperCase() ?? preferred ?? "USD";
+}
+const amountIn = (rows, currency) => rows?.find((row) => row.currency?.toUpperCase() === currency)?.amount ?? 0;
 
 export function PayoutModal({ children, title, eyebrow, onClose, actions }) {
   useEffect(() => {
@@ -141,8 +156,9 @@ export default function StripePayoutCard({
   }, [org.id, isOwner, load, manualAccount]);
 
   const supported = PAYOUT_COUNTRIES.has(country);
-  const available = usdAmount(balance?.available);
-  const pending = usdAmount(balance?.pending);
+  const currency = balanceCurrency(balance);
+  const available = amountIn(balance?.available, currency);
+  const pending = amountIn(balance?.pending, currency);
   const connectedMethods = balance?.methods ?? [];
   async function go(action, extra) {
     setBusy(true);
@@ -198,7 +214,7 @@ export default function StripePayoutCard({
           {busy ? "Opening Stripe…" : "Continue to Stripe"}
         </button>
       ) : (
-        <button className="primary-btn" type="button" disabled={manualBusy || !country} onClick={onSaveManual}>
+        <button className="primary-btn" type="button" data-testid="save-payout" disabled={manualBusy || !country} onClick={onSaveManual}>
           {manualBusy ? "Saving…" : "Save payout method"}
         </button>
       )}
@@ -211,13 +227,13 @@ export default function StripePayoutCard({
         {manualFields.map(([key, label, placeholder]) => (
           <label key={key}>
             <span>{label}</span>
-            <input value={manualForm[key]} placeholder={placeholder} onChange={onManualFieldChange(key)} />
+            <input data-field={`payout_${key}`} value={manualForm[key]} placeholder={placeholder} onChange={onManualFieldChange(key)} />
           </label>
         ))}
       </div>
       <label className="payout-textarea-field">
         <span>Additional transfer instructions</span>
-        <textarea rows={3} value={manualForm.instructions} onChange={onManualFieldChange("instructions")} placeholder="Intermediary bank or transfer instructions" />
+        <textarea data-field="payout_instructions" rows={3} value={manualForm.instructions} onChange={onManualFieldChange("instructions")} placeholder="Intermediary bank or transfer instructions" />
       </label>
       <p className="payout-security-copy">For security, only add the last four account digits here. TSC staff will confirm full transfer details with you securely.</p>
     </div>
@@ -228,7 +244,7 @@ export default function StripePayoutCard({
     type: "bank_account",
     name: "Connected bank account",
     last4: "",
-    currency: "usd",
+    currency: currency.toLowerCase(),
     default: true,
   }] : [];
 
@@ -248,9 +264,9 @@ export default function StripePayoutCard({
       {renderCard ? <section className="live-payout-method-card live-stripe-payout-card" data-testid="stripe-payout-card">
         <div className="live-payout-balance">
           <span>Available balance</span>
-          <strong>{balance ? formatMoney(available, "USD") : "—"}</strong>
+          <strong>{balance ? formatMoney(available, currency) : "—"}</strong>
           <p>{balance
-            ? `${formatMoney(pending, "USD")} pending`
+            ? `${formatMoney(pending, currency)} pending`
             : account?.details_submitted
               ? "Payout verification in progress"
               : account
@@ -270,7 +286,7 @@ export default function StripePayoutCard({
               {busy ? "Opening Stripe…" : "Finish setup"}
             </button>
           ) : (
-            <button className="primary-btn compact-btn" type="button" onClick={() => setModal(manualAccount ? "manage" : "setup")}>{manualAccount ? "Manage payout method" : "Add payout method"}</button>
+            <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => setModal(manualAccount ? "manage" : "setup")}>{manualAccount ? "Manage payout method" : "Add payout method"}</button>
           )
           : null}
         </div>
@@ -381,7 +397,7 @@ export default function StripePayoutCard({
           <p className="payout-modal-intro">Choose where your company is registered. We’ll show the payout method available for that country.</p>
           <label className="payout-country-field">
             <span>Company country</span>
-            <select value={country} onChange={(event) => setCountry(event.target.value)}>
+            <select data-field="payout_country" value={country} onChange={(event) => setCountry(event.target.value)}>
               <option value="">Choose a country</option>
               {COUNTRIES.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}
             </select>
@@ -407,10 +423,10 @@ export default function StripePayoutCard({
           onClose={closeModal}
           actions={<><button className="secondary-btn" type="button" onClick={closeModal}>Cancel</button><button className="primary-btn" type="button" disabled={busy || available <= 0} onClick={() => go("dashboard")}>{busy ? "Opening Stripe…" : "Continue to Stripe"}</button></>}
         >
-          <div className="payout-balance-block"><span>Available balance</span><strong>{formatMoney(available, "USD")}</strong>{pending > 0 ? <p>{formatMoney(pending, "USD")} pending release from Stripe</p> : null}</div>
+          <div className="payout-balance-block"><span>Available balance</span><strong>{formatMoney(available, currency)}</strong>{pending > 0 ? <p>{formatMoney(pending, currency)} pending release from Stripe</p> : null}</div>
           <div className="payout-method-preview"><div className="payout-method-icon" aria-hidden="true">S</div><div><span>Payout method</span><strong>Stripe payout account · {countryName(account.country)}</strong></div></div>
           <div className="payout-info-callout"><span aria-hidden="true">i</span><p>Stripe will show the destination bank, arrival estimate, and any applicable fees before you confirm.</p></div>
-          <fieldset className="payout-amount-choice"><legend>Amount</legend><label><input type="radio" checked readOnly /><span><strong>Full available balance</strong><small>{formatMoney(available, "USD")}</small></span></label></fieldset>
+          <fieldset className="payout-amount-choice"><legend>Amount</legend><label><input type="radio" checked readOnly /><span><strong>Full available balance</strong><small>{formatMoney(available, currency)}</small></span></label></fieldset>
         </PayoutModal>
       ) : null}
     </>

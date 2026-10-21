@@ -250,7 +250,9 @@ export default function LiveCompanyProfile({ org, profile, user, isFactory, onOp
               <div className="factory-profile-title-row">
                 <h1>{companyName}</h1>
                 {liveProfile?.verification_status === "verified" && (
-                  <span className="live-profile-verified">Verified</span>
+                  <span className="live-profile-verified">
+                    {(liveProfile?.trust_tier ?? "basic").replace(/^./, (letter) => letter.toUpperCase())}
+                  </span>
                 )}
               </div>
               <p>{present(location)} · {sentenceCase(liveProfile?.vendor_kind || liveProfile?.brand_category || accountLabel)}</p>

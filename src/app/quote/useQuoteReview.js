@@ -35,6 +35,7 @@ export function describeRequest(rfq, { colours = [], sourcingTerms = [] } = {}) 
     samples: rfq.sample_notes?.trim() || (rfq.requires_sample ? "Sample required" : ""),
     targetDate: rfq.target_delivery_month ? `Delivery by ${MONTH.format(new Date(rfq.target_delivery_month))}` : "",
     sourcing: sourcing ? termLabel(sourcing) : "",
+    sourcingDetails: rfq.additional_details?.trim() || sourcing?.extra?.note || "",
     materials: rfq.material_notes ?? "",
   };
 }
@@ -77,6 +78,7 @@ export function useQuoteReview(rfqId) {
         request: describeRequest(rfq, { colours, sourcingTerms: terms.sourcing_responsibility ?? [] }),
         quotes: described,
         files: files ?? [],
+        incoterms: terms.incoterm ?? [],
       });
     } catch (failure) {
       setError(failure);

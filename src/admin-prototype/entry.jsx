@@ -64,6 +64,11 @@ const mockSubmission = {
   members: [{ name: "Ana Martins", email: "ana@ateliermlinho.pt", role: "owner" }],
   invitations: [],
   terms: { signature: "Ana Martins", version: "2026-09-18-v4", acceptedAt: "2026-09-12T10:00:00Z" },
+  trustEligibility: {
+    currentTier: "basic", hasWalkthrough: true, completedOrders: 2,
+    onTimeOrders: 2, qualityHistoryOrders: 1,
+    eligibleBasic: true, eligibleVerified: true, eligibleTrusted: true,
+  },
 };
 
 const mockAdapter = {
@@ -92,9 +97,13 @@ const mockAdapter = {
     signOut: () => {},
     // No mail server behind the prototype; the panel shows where it would go.
     sendTestEmail: () => ({ sent: true, to: "operations@thesourcingclub.com" }),
-    decideReview: (id, status) => {
+    suggestReviewRequest: ({ companyName }) => ({
+      message: `Hi ${companyName} team,\n\nThank you for submitting your profile. Before we can complete the review, please upload the missing supporting document and confirm its current scope and validity. You can add it from your company profile.\n\nThank you,\nThe Sourcing Club`,
+      error: null,
+    }),
+    decideReview: (id, status, _note, tier) => {
       const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
-      profiles = profiles.map((profile) => (profile.id === id ? { ...profile, status, tone } : profile));
+      profiles = profiles.map((profile) => (profile.id === id ? { ...profile, status, tone, trustTier: tier ?? profile.trustTier } : profile));
     },
     toggleUserAccess: (userId, disabled) => {
       users = users.map((user) => user.id === userId

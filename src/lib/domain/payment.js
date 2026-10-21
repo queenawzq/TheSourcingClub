@@ -1,7 +1,7 @@
 /**
  * Payments — held by TSC through Stripe until the brand approves the step.
  *
- * The brand pays by card or US bank account (src/lib/domain/stripe.js and
+ * The brand pays by card (src/lib/domain/stripe.js and
  * api/stripe-*); only the server records what Stripe says. The functions
  * here read payments and carry the staff actions that stay by hand: legacy
  * wire claims (confirm / not received) and paying a factory by bank where

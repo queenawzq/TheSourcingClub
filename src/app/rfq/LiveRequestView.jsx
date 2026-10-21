@@ -33,7 +33,7 @@ import {
   saveRequest,
   unsaveRequest,
 } from "../../lib/domain/rfq.js";
-import { formatCapacityWindow, getLatestQuote, getSampleLines, reviseQuote, withdrawQuote } from "../../lib/domain/quote.js";
+import { formatCapacityWindow, formatDayRange, getLatestQuote, getSampleLines, reviseQuote, withdrawQuote } from "../../lib/domain/quote.js";
 import { quoteCreditCost } from "../../lib/domain/credits.js";
 import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
@@ -361,7 +361,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
             ? formatRange(myQuote.unit_price_cents, quoteUnitMax, myQuote.currency)
             : "",
           quantity: myQuote.production_quantity ? `${myQuote.production_quantity} units` : "",
-          leadTime: myQuote.bulk_lead_time_days ? `${myQuote.bulk_lead_time_days} days` : "",
+          leadTime: formatDayRange(myQuote.bulk_lead_time_days, myQuote.bulk_lead_time_max_days),
           // What the vendor sent, as Review showed it before sending. Both read
           // blank here, on the one page meant to read the quote back.
           capacityWindow: formatCapacityWindow(myQuote),
@@ -375,7 +375,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           ...Object.fromEntries(sampleLines.flatMap((line, index) => [
             [`sample.${index}.stage`, line.stage ?? ""],
             [`sample.${index}.cost`, line.cost_cents ? formatMoney(line.cost_cents) : ""],
-            [`sample.${index}.timing`, line.timing_days ? `${line.timing_days} days` : ""],
+            [`sample.${index}.timing`, formatDayRange(line.timing_days, line.timing_max_days)],
             [`sample.${index}.includes`, line.includes ?? ""],
           ])),
         }}

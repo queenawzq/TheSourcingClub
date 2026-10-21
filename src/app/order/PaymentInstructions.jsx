@@ -2,7 +2,7 @@
  * Where a payment stands, when there is nothing to pay.
  *
  * A due or failed payment is paid on the Fund screen (LiveFund.jsx), by card
- * or US bank account through Stripe. This page is what the same address
+ * through Stripe. This page is what the same address
  * shows otherwise: a step not reached yet, a payment held or paid out, one
  * cancelled with the order, and a bank-wire claim made on the old site
  * before payments moved to Stripe, which staff still confirm by hand.
@@ -18,7 +18,7 @@ import "./order.css";
 const HEADING = {
   not_due: "Not due yet",
   sent: "Waiting on us",
-  processing: "Bank payment clearing",
+  processing: "Payment processing",
   confirmed: "Funded: held by TSC",
   released: "Paid out",
   cancelled: "Cancelled",
@@ -31,7 +31,7 @@ function explain(payment, factory) {
     case "sent":
       return `You marked this sent by bank transfer on ${new Date(payment.sent_at).toLocaleDateString()}. We are checking for it, and will tell ${factory} the moment it arrives.`;
     case "processing":
-      return `Your bank payment is clearing, which takes about 4 business days. ${factory} starts when it clears.`;
+      return `Stripe is confirming your payment. ${factory} starts when it goes through.`;
     case "confirmed":
       return `TSC holds this payment. ${factory} is paid when you approve the step.`;
     case "released":

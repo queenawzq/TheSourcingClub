@@ -54,11 +54,13 @@ try {
   check(/reorder style/i.test(await reorderItem.innerText()), "the brand card's menu has Reorder style");
   await reorderItem.click();
   await reorderPage.waitForTimeout(1500);
-  const reorderBody = await reorderPage.locator("body").innerText();
-  // The contract title is an editable field, so its words are its value, not text.
-  const reorderFields = await reorderPage.evaluate(() =>
-    [...document.querySelectorAll("input, textarea")].map((field) => field.value).join("\n"));
-  check(/confirm final terms/i.test(reorderBody) && /reorder with Atelier Minho/i.test(`${reorderBody}\n${reorderFields}`),
+  // The contract title is an editable field now, so its words are a value,
+  // not page text.
+  const reorderBody = [
+    await reorderPage.locator("body").innerText(),
+    ...(await reorderPage.evaluate(() => [...document.querySelectorAll("input, textarea")].map((field) => field.value))),
+  ].join("\n");
+  check(/confirm final terms/i.test(reorderBody) && /reorder with Atelier Minho/i.test(reorderBody),
     "and it opens the design's contract screen as a reorder, with no database");
 
   // Against a synchronous adapter these states must never be reached, or the
