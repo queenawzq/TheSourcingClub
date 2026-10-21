@@ -1022,9 +1022,22 @@ async function main() {
     await setField("vendorQuestions", "Can you quote fit and PP samples separately?");
     // Typed on the design's review card and never saved until now: every
     // live request went out with no deadline, whatever the brand wrote.
-    await page.locator('.field:has-text("Quote deadline") .tsc-date-trigger').click();
+    // The calendar opens on the date already in the field, else this month;
+    // the test picks the 20th of the month after, so expect exactly that day.
+    // (Stagehand's locator has no :has-text, .filter or getAttribute, so the
+    // trigger is found by its name and its value read in the page.)
+    const deadlineTrigger = '.review-brief-stack .tsc-date-trigger[name="deadline"]';
+    const deadlineValue = () => page.evaluate((selector) => document.querySelector(selector)?.value ?? "", deadlineTrigger);
+    const deadlineBefore = await deadlineValue();
+    const deadlineFrom = /^\d{4}-\d{2}-\d{2}$/.test(deadlineBefore) ? new Date(`${deadlineBefore}T12:00:00`) : new Date();
+    const pickedDeadline = new Date(deadlineFrom.getFullYear(), deadlineFrom.getMonth() + 1, 20);
+    const pickedDeadlineIso = [pickedDeadline.getFullYear(), String(pickedDeadline.getMonth() + 1).padStart(2, "0"), "20"].join("-");
+    const pickedMonthLabel = pickedDeadline.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+    await page.locator(deadlineTrigger).click();
     await page.locator('.tsc-date-popover button[aria-label="Next month"]').click();
-    await page.locator('.tsc-date-popover .schedule-calendar-days button').filter({ hasText: /^20$/ }).click();
+    await page.locator(`.tsc-date-popover .schedule-calendar-days button[aria-label="${pickedMonthLabel} 20"]`).click();
+    check(await deadlineValue() === pickedDeadlineIso,
+      `the calendar sets the quote deadline to the day picked (${pickedDeadlineIso})`);
     await record(page, "The brief, corrected", "every field is the brand's, not the model's");
 
     // Review leads to the invite step, which is where the design puts the only
@@ -1056,9 +1069,10 @@ async function main() {
     check(publishedRfq.target_unit_price_min_cents === 1800, `"$18" stored as 1800 minor units (got ${publishedRfq.target_unit_price_min_cents})`);
     check(publishedRfq.sourcing_responsibility_term_id !== null, "who buys the materials is recorded, so quotes are comparable");
     const { data: dueRow } = await db.from("rfqs").select("quote_deadline").eq("id", publishedRfq.id).single();
-    const dueInDays = dueRow?.quote_deadline ? (new Date(dueRow.quote_deadline) - Date.now()) / 864e5 : null;
-    check(dueInDays !== null && dueInDays > 11 && dueInDays < 17,
-      `"10 business days" is stored as a real deadline (${dueRow?.quote_deadline ?? "none"})`);
+    // Stored as the END of the picked local day (quoteDeadlineFrom).
+    const expectedDeadline = new Date(pickedDeadline.getFullYear(), pickedDeadline.getMonth(), 20, 23, 59, 59);
+    check(dueRow?.quote_deadline && Math.abs(new Date(dueRow.quote_deadline) - expectedDeadline) < 1000,
+      `the picked date is stored as a real deadline, the end of ${pickedDeadlineIso} (${dueRow?.quote_deadline ?? "none"})`);
 
     const { count: rfqLinks } = await db
       .from("taxonomy_links").select("*", { count: "exact", head: true })
@@ -1337,13 +1351,37 @@ async function main() {
       check(got === value, `"${name}" holds what was typed (${got || "empty"})`);
     };
 
+    // "Quote valid until" is the design's calendar, not a typed field: open
+    // it, step to the month and press the day, as a person would.
+    const pickQuoteDate = async (name, iso) => {
+      const trigger = `[data-quote-field="${name}"]`;
+      const shown = () => page.evaluate((sel) => document.querySelector(sel)?.dataset.quoteValue ?? "", trigger);
+      const target = new Date(`${iso}T12:00:00`);
+      const before = await shown();
+      const from = before ? new Date(`${before}T12:00:00`) : new Date();
+      await page.locator(trigger).click();
+      const steps = (target.getFullYear() - from.getFullYear()) * 12 + target.getMonth() - from.getMonth();
+      for (let step = 0; step < Math.abs(steps); step += 1) {
+        await page.locator(`.tsc-date-popover button[aria-label="${steps > 0 ? "Next" : "Previous"} month"]`).click();
+      }
+      const monthLabel = target.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      await page.locator(`.tsc-date-popover button[aria-label="${monthLabel} ${target.getDate()}"]`).click();
+      const got = await shown();
+      check(got === iso, `"${name}" holds the date picked (${got || "empty"})`);
+    };
+    const localIso = (day) => [day.getFullYear(), String(day.getMonth() + 1).padStart(2, "0"), String(day.getDate()).padStart(2, "0")].join("-");
+
     await setQuoteField("unitPrice", "$17.10 / unit");
     await setQuoteField("quantity", "300 units");
     await setQuoteField("leadTime", "26 days");
+    // Required since the design marked it so; dates with their year, so a
+    // window that crosses New Year is read as written.
+    await setQuoteField("capacityWindow",
+      `${localIso(new Date(Date.now() + 40 * 864e5))} to ${localIso(new Date(Date.now() + 60 * 864e5))} · 300 units`);
     await setQuoteField("paymentTerms", "30% deposit / 70% before shipment");
     await setQuoteField("incoterms", "FOB quoted");
-    const validUntil = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
-    await setQuoteField("validUntil", validUntil);
+    const validUntil = localIso(new Date(Date.now() + 30 * 864e5));
+    await pickQuoteDate("validUntil", validUntil);
     await setQuoteField("sample.0.stage", "Fit sample");
     await setQuoteField("sample.0.cost", "$95");
     await setQuoteField("sample.0.timing", "10 days");
@@ -1633,7 +1671,7 @@ async function main() {
     if (STRIPE.publishable) {
       await waitFor(page, '[data-testid="payment-element"] iframe', 30000);
       check(true, "the Fund screen draws Stripe's Payment Element inside the design's billing card");
-      await record(page, "Fund first payment", "Stripe's card and bank form in the designed screen, fee and total beside it");
+      await record(page, "Fund first payment", "Stripe's card form in the designed screen, fee and total beside it");
     } else {
       console.log("  (no pk_test_ key here: the Fund screen says payments are not set up, and the Payment Element is not checked)");
     }
@@ -1753,10 +1791,16 @@ async function main() {
 
     // Where staff pay the factory by bank when Stripe cannot pay it out (this
     // factory has no Stripe account). The factory's Payments page: "Add
-    // details" on its Earnings tab opens the form.
+    // payout method" on its Earnings tab opens the set-up dialog, which asks
+    // for bank details only where Stripe cannot pay out, so the company is
+    // said to be registered in Hong Kong there (the dialog stores no country).
     await page.goto(`${APP}/payout`);
     await waitForHeading(page, "payments", 25000);
-    await clickButton(page, "add details");
+    await waitFor(page, '[data-testid="add-payout-method"]', 25000);
+    await page.locator('[data-testid="add-payout-method"]').click();
+    await waitFor(page, '[data-field="payout_country"]', 10000);
+    await page.locator('[data-field="payout_country"]').selectOption("HK");
+    await waitFor(page, '[data-field="payout_bank_name"]', 10000);
     await page.locator('[data-field="payout_bank_name"]').fill("Banco de Porto");
     await page.locator('[data-field="payout_account_name"]').fill(factoryName);
     await page.locator('[data-field="payout_account_number_last4"]').fill("4417");
@@ -2260,7 +2304,7 @@ async function main() {
     // The brand's own order payments, where each stands, and its discounts.
     console.log("\nPAYMENTS");
     await page.evaluate(() => [...document.querySelectorAll(".side-nav button")].find((button) => button.textContent.trim() === "Payments")?.click());
-    await waitFor(page, ".billing-history-row", 20000);
+    await waitFor(page, ".brand-payment-transactions .payout-transaction-row", 20000);
     await record(page, "Payments", "the brand's order payments, on the designed Payments page");
     const paymentsText = await page.locator(".billing-history-page").innerText();
     const { data: brandPayments } = await db.from("order_payments")
@@ -2270,6 +2314,8 @@ async function main() {
     check(brandPayments.length > 0 && brandPayments.every((payment) => paymentsText.includes(`$${(chargedOf(payment) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`)),
       `every payment on the brand's order that is due or further along is listed, fee included (${brandPayments.length})`);
     check(/Funded|Paid/.test(paymentsText) && paymentsText.includes(factoryName), "with its state in the design's words and the factory's name");
+    check(!brandPayments.some((payment) => payment.state === "due") || /Not paid/.test(paymentsText),
+      "a payment still due is in the list too, as Not paid");
     const { data: header } = await db.from("production_order_summary").select("paid_cents").eq("id", bornOrder.id).single();
     check(paymentsText.includes(`$${(Number(header.paid_cents) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`),
       "total paid is the order's own figure");
@@ -2282,7 +2328,9 @@ async function main() {
     await page.waitForTimeout(400);
     await page.evaluate(() => document.querySelector(".billing-row-link")?.click());
     await page.waitForTimeout(2500);
-    check(/\/orders\/[^/]+\/payments\/[^/]+$/.test(await page.evaluate(() => location.pathname)), "a payment opens its page on the order");
+    // A transaction opens its own page; a due payment opens the Fund screen on its order.
+    check(/\/(payments\/[^/]+|orders\/[^/]+\/payments)\/[^/]+$/.test(await page.evaluate(() => location.pathname)),
+      "a payment opens its transaction page, or the Fund screen while it is due");
 
     // ================= THE HOME SCREEN =================
     // It used to be a heading, a notification list and a row of buttons, with

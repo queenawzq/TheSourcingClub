@@ -72,7 +72,17 @@ export default async function handler(request, response) {
     return;
   }
 
-  const body = jsonBody(request);
+  // A body that is not JSON is the caller's mistake, not the server's.
+  let body;
+  try {
+    body = jsonBody(request);
+  } catch {
+    body = null;
+  }
+  if (!body || typeof body !== "object") {
+    response.status(400).json(soft("the request body must be a JSON object"));
+    return;
+  }
   const gaps = Array.isArray(body.gaps)
     ? body.gaps.slice(0, 10).map((gap) => ({
         label: String(gap?.label ?? "").slice(0, 160),

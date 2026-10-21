@@ -128,8 +128,8 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
   const { order, payment, checkout, isFirst } = state;
 
   // Held, paid out, cancelled, not due or a legacy bank-wire claim: nothing
-  // to pay here, so the page says where the payment stands. A bank payment
-  // still clearing keeps the success screen's "processing" form.
+  // to pay here, so the page says where the payment stands. A payment Stripe
+  // is still confirming keeps the success screen's "processing" form.
   if (!checkout && payment.state !== "processing") return fallback;
 
   const factory = order.factory?.name ?? "the factory";
@@ -360,11 +360,11 @@ function Funded({ payment, checkout = null, isFirst, rail, factory, order, onBac
   const copy = useMemo(() => {
     if (payment.state === "processing" || payment.state === "verify") {
       return {
-        title: payment.state === "verify" ? "Confirm your bank account" : "Bank payment processing",
+        title: payment.state === "verify" ? "Confirm your bank account" : "Payment processing",
         message: payment.state === "verify"
           ? `Stripe will send two small deposits to your bank account in 1–2 business days. Confirm their amounts from Stripe's email to finish paying ${total}.`
-          : `${total} from ${ending(payment.payment_method_label)} is on its way. Bank payments take about 4 business days to clear.`,
-        next: `${factory} is told now and starts ${step.toLowerCase()} when the payment clears. If the bank sends it back, you can pay again from the order.`,
+          : `${total} from ${ending(payment.payment_method_label)} is on its way. Stripe is still confirming it.`,
+        next: `${factory} is told now and starts ${step.toLowerCase()} when the payment goes through. If it fails, you can pay again from the order.`,
       };
     }
     return {
@@ -378,8 +378,8 @@ function Funded({ payment, checkout = null, isFirst, rail, factory, order, onBac
     <FlowShell
       screen="success"
       heading={payment.state !== "confirmed" ? {
-        title: "Bank payment on its way",
-        description: "Your bank payment is clearing. The factory starts when it clears, and funds are only released after you approve the step.",
+        title: "Payment on its way",
+        description: "Stripe is confirming your payment. The factory starts when it goes through, and funds are only released after you approve the step.",
       } : isFirst ? null : {
         title: `${step} funded`,
         description: `TSC holds this payment. ${factory} can start, and it is only released after you approve the step.`,

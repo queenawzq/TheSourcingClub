@@ -45,6 +45,12 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
 
   async function award() {
     if (busy || blocked) return;
+    // A quote matched to no incoterm leaves nothing selected; "" is not a
+    // uuid, and Postgres would refuse it with a raw cast error.
+    if (!selectedIncotermId) {
+      setError(new Error("Choose a valid agreed delivery term."));
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
