@@ -833,13 +833,16 @@ async function main() {
     check(approved, "the queue row for this factory was found and opened");
     await page.waitForTimeout(2500);
 
-    await clickButton(page, "approve profile");
+    // A factory is approved at a trust tier; with no walkthrough or orders
+    // yet, the picker suggests Basic.
+    await clickButton(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
 
     const { data: verified } = await db
-      .from("factory_profiles").select("verification_status").eq("org_id", factoryOrg.id).single();
+      .from("factory_profiles").select("verification_status, trust_tier").eq("org_id", factoryOrg.id).single();
     check(verified.verification_status === "verified", "the factory is now verified in the database");
+    check(verified.trust_tier === "basic", `and approved at the Basic trust tier (got ${verified.trust_tier})`);
 
     // Sending a quote costs credits, so an approved vendor gets the grant a
     // real one would. Without it the quote below fails on the balance.
