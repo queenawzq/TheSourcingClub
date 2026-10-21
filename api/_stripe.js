@@ -188,11 +188,19 @@ async function refundIntent({ stripe, db, intent, charge, result }) {
   const problem = result.problem;
   const reason = REFUND_REASONS[problem] ?? "This payment was not needed any more. You were refunded.";
   if (!charge?.refunded) {
-    // One refund per intent, however many times this runs.
-    await stripe.refunds.create(
-      { payment_intent: intent.id, metadata: { payment_id: paymentId, order_id: orderId, tsc_problem: problem } },
-      { idempotencyKey: `refund-${intent.id}` },
-    );
+    // One refund per intent, however many times this runs. The webhook and
+    // the brand's page can get here at the same moment: Stripe then answers
+    // the second with an idempotency error (or "already refunded"), which
+    // means the refund is done, so record it rather than fail.
+    try {
+      await stripe.refunds.create(
+        { payment_intent: intent.id, metadata: { payment_id: paymentId, order_id: orderId, tsc_problem: problem } },
+        { idempotencyKey: `refund-${intent.id}` },
+      );
+    } catch (failure) {
+      const done = failure?.type === "StripeIdempotencyError" || failure?.code === "charge_already_refunded";
+      if (!done) throw failure;
+    }
   }
   console.warn("stripe: refunded a PaymentIntent its payment did not want", intent.id, paymentId, problem);
   return rpc(db, "record_payment_refunded", { target_payment: paymentId, payment_intent: intent.id, reason });

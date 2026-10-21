@@ -384,7 +384,8 @@ const WINDOW_DATES = new RegExp(
   [
     "(\\d{4})-(\\d{2})-(\\d{2})",
     // "Aug 12", "Aug 12-30" (one month), "Nov 1, 2026"
-    `\\b${MONTH}\\s+(\\d{1,2})(?:st|nd|rd|th)?(?:\\s*[-–—]\\s*(\\d{1,2})(?![\\d:]))?${YEAR}`,
+    // (A day is one or two digits on their own: "Aug 2027" names no day.)
+    `\\b${MONTH}\\s+(\\d{1,2})(?!\\d)(?:st|nd|rd|th)?(?:\\s*[-–—]\\s*(\\d{1,2})(?![\\d:]))?${YEAR}`,
     // "1 Nov", "30 Nov 2026"
     `\\b(\\d{1,2})(?:st|nd|rd|th)?\\s+${MONTH}${YEAR}`,
   ].join("|"),
