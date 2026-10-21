@@ -13,7 +13,10 @@ import { supabaseServerEnv } from "./_supabase-env.js";
  *   Stripe says so          -> processing / failed / confirmed (TSC holds it),
  *                              by webhook or by /api/stripe-sync reading the
  *                              PaymentIntent back; both go through
- *                              applyPaymentIntent below
+ *                              applyPaymentIntent below. Money the payment no
+ *                              longer wants (a changed amount, a cancelled
+ *                              order) is refunded, and a refund made in
+ *                              Stripe is recorded (applyChargeRefund)
  *   the brand approves      -> the database asks for the payout
  *                              (release_requested_at); releasePayment() sends
  *                              a Transfer to the factory's Express account
@@ -76,6 +79,13 @@ export function callerClient(request, env = process.env) {
   });
 }
 
+/**
+ * True when the database refused the caller's token itself (malformed,
+ * expired, empty): the answer is "sign in", not a refusal of what was asked.
+ * Takes the { status } of any query made with callerClient.
+ */
+export const tokenRefused = (result) => result?.status === 401;
+
 /** The parsed JSON body, whether the runtime parsed it already or not. */
 export function jsonBody(request) {
   if (request.body && typeof request.body === "object" && !Buffer.isBuffer(request.body)) return request.body;
@@ -137,10 +147,119 @@ async function rpc(db, name, args) {
 }
 
 /**
- * Record what a PaymentIntent says about its payment. Shared by the webhook
- * and /api/stripe-sync, so both reach the same answer; every database step is
- * a no-op when the payment is already past it, so running this twice, or
- * late, changes nothing.
+ * What the brand reads when money it paid is sent back, by the problem
+ * record_payment_succeeded found (migration 20261022000300).
+ */
+const REFUND_REASONS = {
+  amount_changed: "The amount changed while you were paying. You were refunded; please pay again.",
+  order_cancelled: "The order was cancelled before your payment went through. You were refunded.",
+  not_payable: "This step was not open for payment. You were refunded.",
+  step_unpaid: "This step no longer takes a payment. You were refunded.",
+  payment_gone: "This step no longer takes a payment. You were refunded.",
+  other_intent: "This step was already being paid another way. You were refunded.",
+};
+const REFUNDED = "The payment was refunded.";
+
+/**
+ * Send back a PaymentIntent that was paid when its payment no longer wanted
+ * it: the step's amount changed while the brand's Fund page was open, the
+ * order was cancelled, or the step became Approval only. Then record it, so
+ * the next checkout makes a new intent at the right amount.
+ *
+ * Only an intent this site made is ever refunded: other apps share TSC's
+ * Stripe account, so the intent must name our payment AND the same order
+ * (or, when the payment is gone, an order that exists here).
+ *
+ * Refund first, record after: if the refund fails, the intent is still the
+ * payment's own and the webhook's retry finds the same problem and tries
+ * again. Returns the payment row as it now stands, or null.
+ */
+async function refundIntent({ stripe, db, intent, charge, result }) {
+  const paymentId = intent.metadata?.payment_id;
+  const orderId = intent.metadata?.order_id;
+  if (!paymentId || !orderId) return result.payment ?? null;
+  if (result.payment) {
+    if (result.payment.order_id !== orderId) return result.payment;
+  } else {
+    const { data: order } = await db.from("production_orders").select("id").eq("id", orderId).maybeSingle();
+    if (!order) return null;
+  }
+
+  const problem = result.problem;
+  const reason = REFUND_REASONS[problem] ?? "This payment was not needed any more. You were refunded.";
+  if (!charge?.refunded) {
+    // One refund per intent, however many times this runs. The webhook and
+    // the brand's page can get here at the same moment: Stripe then answers
+    // the second with an idempotency error (or "already refunded"), which
+    // means the refund is done, so record it rather than fail.
+    try {
+      await stripe.refunds.create(
+        { payment_intent: intent.id, metadata: { payment_id: paymentId, order_id: orderId, tsc_problem: problem } },
+        { idempotencyKey: `refund-${intent.id}` },
+      );
+    } catch (failure) {
+      const done = failure?.type === "StripeIdempotencyError" || failure?.code === "charge_already_refunded";
+      if (!done) throw failure;
+    }
+  }
+  console.warn("stripe: refunded a PaymentIntent its payment did not want", intent.id, paymentId, problem);
+  return rpc(db, "record_payment_refunded", { target_payment: paymentId, payment_intent: intent.id, reason });
+}
+
+/**
+ * Record that Stripe refunded a charge (charge.refunded, or a payout that
+ * found its charge refunded). Only a charge that is a payment's own counts
+ * (its recorded charge, or its attached intent); anything else is another
+ * app's, or a stray intent of ours already recorded by refundIntent.
+ *
+ *   held (or clearing)  back to failed so the brand pays again, or
+ *                       cancelled on a cancelled order
+ *   paid out            stays paid out, with a line in its history and a
+ *                       row on the staff board: TSC already paid the factory
+ *
+ * Any refund of held money counts, a partial one too. TSC must not pay the
+ * factory more than it holds, and the payout is drawn on this charge
+ * (source_transaction), which Stripe refuses once it is short. So the brand
+ * pays the step again in full, and the rest of this charge is refunded too
+ * so it is never charged twice for one step.
+ *
+ * Returns the payment row as it now stands, or null when it is not ours.
+ */
+export async function applyChargeRefund({ stripe, db, charge }) {
+  if (!(Number(charge.amount_refunded) > 0)) return null;
+  const intentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id ?? null;
+  const columns = "id, state, order_id, stripe_payment_intent_id, stripe_charge_id";
+  let { data: payment } = await db.from("order_payments").select(columns).eq("stripe_charge_id", charge.id).maybeSingle();
+  if (!payment && intentId) {
+    ({ data: payment } = await db.from("order_payments").select(columns).eq("stripe_payment_intent_id", intentId).maybeSingle());
+  }
+  if (!payment || !intentId) return payment ?? null;
+
+  // Our own refund of a stray intent (refundIntent) can get here before it
+  // was recorded, or after recording it failed: record it with the reason
+  // it was made for. Recording twice writes nothing the second time.
+  const refunds = await stripe.refunds.list({ charge: charge.id, limit: 100 });
+  const ours = refunds.data.length > 0 && refunds.data.every((refund) => refund.metadata?.tsc_problem);
+  const reason = ours ? REFUND_REASONS[refunds.data[0].metadata.tsc_problem] ?? REFUNDED : REFUNDED;
+
+  if (!ours && payment.state !== "released" && !charge.refunded) {
+    await stripe.refunds.create(
+      { payment_intent: intentId, metadata: { payment_id: payment.id, order_id: payment.order_id } },
+      { idempotencyKey: `refund-${intentId}` },
+    );
+  }
+  return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason });
+}
+
+/**
+ * Record what a PaymentIntent says about its payment. Shared by the webhook,
+ * /api/stripe-sync and the checkout, so all reach the same answer; every
+ * database step is a no-op when the payment is already past it, so running
+ * this twice, or late, changes nothing.
+ *
+ * Money that arrives is recorded only if the payment still wants exactly
+ * that: record_payment_succeeded checks it under the order's lock, and
+ * anything else is refunded (refundIntent).
  *
  * Returns the payment row as it now stands.
  */
@@ -162,13 +281,24 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
     });
   }
   if (full.status === "succeeded") {
-    const funded = await rpc(db, "record_payment_funded", {
+    // Already refunded in Stripe (that event can arrive before this one):
+    // record the refund, never the money.
+    if (charge && Number(charge.amount_refunded) > 0) {
+      const refunded = await applyChargeRefund({ stripe, db, charge });
+      if (refunded) return refunded;
+      const { data } = await db.from("order_payments").select("*").eq("id", paymentId).maybeSingle();
+      return data;
+    }
+    const result = await rpc(db, "record_payment_succeeded", {
       target_payment: paymentId,
+      payment_intent: full.id,
       charge: charge?.id ?? null,
       method_type: method?.type ?? null,
       method_label: label,
       received: full.amount_received ?? full.amount,
     });
+    if (!result.funded) return refundIntent({ stripe, db, intent: full, charge, result });
+    const funded = result.payment;
     // A payment-only step (or one approved under the old rules) is owed to
     // the factory the moment it is funded.
     if (funded?.release_requested_at && funded.state === "confirmed") {
@@ -195,20 +325,32 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
 export async function releasePayment({ stripe, db, paymentId }) {
   const { data: payment, error } = await db
     .from("order_payments")
-    .select("id, state, amount_cents, currency, order_id, stripe_charge_id, stripe_transfer_id, release_requested_at, production_orders (factory_org_id, order_number, status)")
+    .select("id, state, amount_cents, currency, order_id, stripe_charge_id, stripe_transfer_id, release_requested_at, production_orders (factory_org_id, order_number)")
     .eq("id", paymentId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!payment) return { released: false, reason: "no such payment" };
   if (payment.state === "released") return { released: true, reason: "already paid out" };
+  // Owed means the brand asked for it: it approved the step (or funded a
+  // payment-only one) while the order was active. That stays owed if the
+  // order is cancelled afterwards, since the work it paid for was done;
+  // money merely held on a cancelled order has no release_requested_at and
+  // is refunded by staff instead.
   if (payment.state !== "confirmed" || !payment.release_requested_at) {
     return { released: false, reason: "not owed to the factory yet" };
   }
-  if (payment.production_orders?.status === "cancelled") {
-    return { released: false, reason: "the order was cancelled: staff refund or pay this by hand" };
-  }
   if (!payment.stripe_charge_id) {
     return { released: false, reason: "not paid through Stripe: staff pay this out by bank" };
+  }
+
+  // Refunded in Stripe since it was held (staff by hand, or a dispute):
+  // there is nothing to pay the factory from, and Stripe would refuse the
+  // transfer on every retry. Record it instead, which asks the brand to pay
+  // again (or closes it on a cancelled order).
+  const charge = await stripe.charges.retrieve(payment.stripe_charge_id);
+  if (Number(charge.amount_refunded) > 0) {
+    await applyChargeRefund({ stripe, db, charge });
+    return { released: false, reason: "the brand's payment was refunded in Stripe, so there is nothing to pay out" };
   }
 
   const { data: account } = await db

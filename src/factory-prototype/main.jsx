@@ -10408,7 +10408,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
           />
           <QuoteField
             label="Additional material charges"
-            value={`$${additionalMaterialCost.toFixed(2)} / unit · $${(additionalMaterialCost * 300).toFixed(2)} order total`}
+            value={`$${additionalMaterialCost.toFixed(2)} / unit · $${(additionalMaterialCost * (values ? Number(String(values.quantity ?? "").match(/\d[\d,]*/)?.[0].replace(/,/g, "") ?? 0) : 300)).toFixed(2)} order total`}
             helper="Charged separately from the quoted unit price"
             calculated
           />

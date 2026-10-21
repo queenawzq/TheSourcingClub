@@ -138,6 +138,8 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
     payment,
     isFirst,
     factory,
+    // A deposit or balance needs no approval: TSC pays it out once funded.
+    paymentOnly: payment.order_milestones?.kind === "payment_only",
     rail: {
       initials: initials(factory),
       factory,
@@ -165,7 +167,7 @@ function amounts(checkout, currency) {
   };
 }
 
-function Fund({ payment, isFirst, rail, checkout, onBack, onMessage, order, factory }) {
+function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage, order, factory }) {
   const stripe = useStripe();
   const elements = useElements();
   const [agreed, setAgreed] = useState([false, false]);
@@ -183,7 +185,16 @@ function Fund({ payment, isFirst, rail, checkout, onBack, onMessage, order, fact
     ? Boolean(elements && Object.values(newCardComplete).every(Boolean))
     : Boolean(selectedCardId);
   const ready = Boolean(stripe && paymentMethodReady && agreed.every(Boolean) && !busy);
-  const fundingMilestone = isFirst ? null : { title: checkout.title, amount: figures.total };
+  // FlowShell words a later step as "Funds stay protected until the related
+  // step is approved", which a payment-only step never is: it gets its own
+  // note (fundNote), and the first payment its own heading.
+  const paymentOnlyNote = `Add ${figures.total} for ${checkout.title.toLowerCase()}. This step needs no approval: TSC pays it to ${factory} once it is funded.`;
+  const fundingMilestone = isFirst ? null : {
+    title: checkout.title,
+    amount: figures.total,
+    ...(paymentOnly ? { fundNote: paymentOnlyNote } : {}),
+  };
+  const heading = paymentOnly && isFirst ? { description: paymentOnlyNote } : null;
 
   async function fund() {
     if (!ready) return;
@@ -223,6 +234,7 @@ function Fund({ payment, isFirst, rail, checkout, onBack, onMessage, order, fact
         payment={{ ...payment, state: done.state, payment_method_label: done.label, charged_cents: checkout.chargedCents }}
         checkout={checkout}
         isFirst={isFirst}
+        paymentOnly={paymentOnly}
         rail={rail}
         factory={factory}
         order={order}
@@ -240,6 +252,7 @@ function Fund({ payment, isFirst, rail, checkout, onBack, onMessage, order, fact
       primaryLabel={busy ? "Paying…" : undefined}
       primaryDisabled={!ready}
       fundingMilestone={fundingMilestone}
+      heading={heading}
       centerText={`${figures.total} incl. ${figures.feeLabel.replace("TSC service fee", "service fee")}`}
       rail={{
         fund: {
@@ -250,7 +263,7 @@ function Fund({ payment, isFirst, rail, checkout, onBack, onMessage, order, fact
           feeLabel: figures.feeLabel,
           total: figures.total,
           totalLabel: "Total charged",
-          cta: busy ? "Paying…" : fundingMilestone ? "Fund milestone" : "Fund payment & start",
+          cta: busy ? "Paying…" : isFirst ? "Fund payment & start" : "Fund milestone",
           onSubmit: fund,
           disabled: !ready,
         },
@@ -258,6 +271,11 @@ function Fund({ payment, isFirst, rail, checkout, onBack, onMessage, order, fact
     >
       <FundScreen
         live={{
+          // The design's two promises are about approval; a payment-only
+          // step is paid on as soon as it is funded.
+          agreements: paymentOnly
+            ? [`I understand TSC pays this step to ${factory} once it is funded.`, "TSC may hold funds if the payment is disputed."]
+            : null,
           agreed,
           onAgree: (index, value) => setAgreed((current) => current.map((item, i) => (i === index ? value : item))),
           paymentElement: (
@@ -342,7 +360,9 @@ function Fund({ payment, isFirst, rail, checkout, onBack, onMessage, order, fact
                 </button>
               )}
               <p className="muted live-payment-note">
-                TSC holds this card payment and pays {factory} only when you approve the step.
+                {paymentOnly
+                  ? `This step needs no approval: once your payment goes through, TSC pays it to ${factory}.`
+                  : `TSC holds this card payment and pays ${factory} only when you approve the step.`}
               </p>
             </div>
           ),
@@ -353,7 +373,7 @@ function Fund({ payment, isFirst, rail, checkout, onBack, onMessage, order, fact
 }
 
 /** The design's success screen, in the words of what actually happened. */
-function Funded({ payment, checkout = null, isFirst, rail, factory, order, onBack, onMessage }) {
+function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, factory, order, onBack, onMessage }) {
   const currency = checkout?.currency ?? payment.currency;
   const total = formatMoney(checkout?.chargedCents ?? payment.charged_cents ?? payment.amount_cents, currency);
   const step = checkout?.title ?? payment.order_milestones?.title ?? "this step";
@@ -370,19 +390,25 @@ function Funded({ payment, checkout = null, isFirst, rail, factory, order, onBac
     return {
       title: isFirst ? "Payment received" : `${step} funded`,
       message: `${total} was charged to ${ending(payment.payment_method_label)}. ${factory} has been told that ${step.toLowerCase()} is ready to begin.`,
-      next: `TSC holds this payment until you approve the step, then pays ${factory}. You can message the factory or follow its updates from the order.`,
+      next: paymentOnly
+        ? `This step needs no approval, so TSC pays it to ${factory} now that it is funded. You can message the factory or follow its updates from the order.`
+        : `TSC holds this payment until you approve the step, then pays ${factory}. You can message the factory or follow its updates from the order.`,
     };
-  }, [payment.state, payment.payment_method_label, total, factory, step, isFirst]);
+  }, [payment.state, payment.payment_method_label, total, factory, step, isFirst, paymentOnly]);
 
   return (
     <FlowShell
       screen="success"
       heading={payment.state !== "confirmed" ? {
         title: "Payment on its way",
-        description: "Stripe is confirming your payment. The factory starts when it goes through, and funds are only released after you approve the step.",
+        description: paymentOnly
+          ? `Stripe is confirming your payment. This step needs no approval: TSC pays it to ${factory} once it goes through.`
+          : "Stripe is confirming your payment. The factory starts when it goes through, and funds are only released after you approve the step.",
       } : isFirst ? null : {
         title: `${step} funded`,
-        description: `TSC holds this payment. ${factory} can start, and it is only released after you approve the step.`,
+        description: paymentOnly
+          ? `This step needs no approval, so TSC pays it to ${factory} now that it is funded.`
+          : `TSC holds this payment. ${factory} can start, and it is only released after you approve the step.`,
       }}
       onBack={onBack}
       onNext={onBack}
