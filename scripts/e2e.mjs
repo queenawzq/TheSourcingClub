@@ -2808,7 +2808,7 @@ async function main() {
       }
       check(invitedOpened, "staff open the invited factory's review");
       await page.waitForTimeout(2500);
-      await clickButton(page, "approve profile");
+      await clickButton(page, "approve as");
       await page.waitForTimeout(4000);
       const { data: invitedBalance } = await db.rpc("credit_balance", { org: invitedOrg?.id });
       check(Number(invitedBalance) === 500, `the invited factory got its 500 on verification (${invitedBalance})`);
