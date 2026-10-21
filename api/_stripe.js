@@ -126,7 +126,13 @@ function failureReason(intent) {
 
 async function rpc(db, name, args) {
   const { data, error } = await db.rpc(name, args);
-  if (error) throw new Error(`${name}: ${error.message}`);
+  if (error) {
+    // The database's code travels with the message: the webhook tells a
+    // payment that does not exist (P0002) from a failure worth retrying.
+    const failure = new Error(`${name}: ${error.message}`);
+    failure.code = error.code;
+    throw failure;
+  }
   return data;
 }
 
@@ -180,8 +186,9 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
 /**
  * Pay a held payment out to its factory, if the database has asked for it
  * and the factory can be paid through Stripe. Safe to call any number of
- * times: the transfer's idempotency key is the payment, and a released
- * payment is left alone.
+ * times, from any number of places at once: the payment is claimed in the
+ * database before anything is sent, so only one caller pays it, and a
+ * released payment is left alone.
  *
  * Returns { released, reason }.
  */
@@ -206,44 +213,63 @@ export async function releasePayment({ stripe, db, paymentId }) {
 
   const { data: account } = await db
     .from("stripe_connect_accounts")
-    .select("stripe_account_id, transfers_active, updated_at")
+    .select("stripe_account_id, transfers_active")
     .eq("org_id", payment.production_orders.factory_org_id)
     .maybeSingle();
   if (!account?.transfers_active) {
     return { released: false, reason: "the factory cannot be paid through Stripe yet" };
   }
 
-  // Never pay twice. A transfer for this payment that reached Stripe but not
-  // our database (a crash in between) is found here and recorded instead.
-  const sent = await stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 });
-  const already = sent.data.find((transfer) => transfer.metadata?.payment_id === payment.id && !transfer.reversed);
-  if (already) {
-    await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
-    return { released: true, reason: already.id };
+  // Never pay twice. The webhook, the brand's page, the factory's refresh and
+  // staff's Retry can all get here at the same moment; the database lets one
+  // of them claim the payment and tells the rest it is taken. A claim left by
+  // a call that died mid-way lapses after 10 minutes.
+  const claimedAt = await rpc(db, "claim_payment_release", { target_payment: payment.id });
+  if (!claimedAt) return { released: false, reason: "already being paid" };
+
+  try {
+    // A transfer for this payment that reached Stripe but not our database
+    // (a crash in between, or a claim that lapsed) is found here and
+    // recorded instead.
+    const sent = await stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 });
+    const already = sent.data.find((transfer) => transfer.metadata?.payment_id === payment.id && !transfer.reversed);
+    if (already) {
+      await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
+      return { released: true, reason: already.id };
+    }
+
+    // One key per claim: Stripe's own retries inside this call reuse it, and
+    // the next claim gets a new one, because Stripe replays a key's first
+    // answer for 24 hours and a refusal from before the factory's account
+    // could take transfers must not outlive it.
+    const transfer = await stripe.transfers.create(
+      {
+        amount: Number(payment.amount_cents),
+        currency: payment.currency.toLowerCase(),
+        destination: account.stripe_account_id,
+        // Tied to the brand's charge: the transfer waits for that money to be
+        // available rather than drawing on anything else in TSC's balance.
+        source_transaction: payment.stripe_charge_id,
+        transfer_group: payment.order_id,
+        description: `${payment.production_orders.order_number}: payout`,
+        metadata: { payment_id: payment.id, order_id: payment.order_id },
+      },
+      { idempotencyKey: `release-${payment.id}-${Date.parse(claimedAt)}` },
+    );
+
+    await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: transfer.id });
+    return { released: true, reason: transfer.id };
+  } catch (failure) {
+    // Hand the claim back so the next try (a webhook retry, staff's Retry)
+    // need not wait for it to lapse. The exact time string goes back, so a
+    // newer claim is never cleared by mistake.
+    try {
+      await db.rpc("release_payment_claim", { target_payment: payment.id, claimed: claimedAt });
+    } catch {
+      // the claim lapses on its own after 10 minutes
+    }
+    throw failure;
   }
-
-  // The key stops two calls at the same moment (the webhook and the brand's
-  // page) from both paying. It also carries when the factory's account last
-  // changed, because Stripe replays a key's first answer for 24 hours: a
-  // refusal from before the account could take transfers must not outlive it.
-  const attempt = Date.parse(account.updated_at) || 0;
-  const transfer = await stripe.transfers.create(
-    {
-      amount: Number(payment.amount_cents),
-      currency: payment.currency.toLowerCase(),
-      destination: account.stripe_account_id,
-      // Tied to the brand's charge: the transfer waits for that money to be
-      // available rather than drawing on anything else in TSC's balance.
-      source_transaction: payment.stripe_charge_id,
-      transfer_group: payment.order_id,
-      description: `${payment.production_orders.order_number}: payout`,
-      metadata: { payment_id: payment.id, order_id: payment.order_id },
-    },
-    { idempotencyKey: `release-${payment.id}-${attempt}` },
-  );
-
-  await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: transfer.id });
-  return { released: true, reason: transfer.id };
 }
 
 /** Save what Stripe says about a factory's account. */

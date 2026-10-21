@@ -2,7 +2,7 @@ import { applyPaymentIntent, callerClient, jsonBody, reply, serviceClient, strip
 
 /**
  * The brand starts paying for a step: returns the client secret the Stripe
- * Payment Element needs. Card and US bank account, in one form.
+ * Payment Element needs. Project funding is card-only.
  *
  * Who may pay, and for what, is decided by the database as the CALLER
  * (begin_payment_checkout: a brand owner, an active order, a payment that is
@@ -35,6 +35,16 @@ export default async function handler(request, response) {
 
   try {
     const customer = await customerFor({ stripe, db, orgId: checkout.brand_org_id });
+    const savedMethods = await stripe.paymentMethods.list({ customer, type: "card", limit: 20 });
+    const savedCards = savedMethods.data.map((method) => ({
+      id: method.id,
+      brand: (method.card?.display_brand ?? method.card?.brand ?? "Card")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase()),
+      last4: method.card?.last4 ?? "",
+      expMonth: method.card?.exp_month ?? null,
+      expYear: method.card?.exp_year ?? null,
+    }));
     const details = {
       title: checkout.milestone_title,
       orderNumber: checkout.order_number,
@@ -43,6 +53,7 @@ export default async function handler(request, response) {
       feeBps: checkout.fee_bps,
       chargedCents: checkout.charged_cents,
       currency: checkout.currency,
+      savedCards,
     };
 
     let intent = checkout.stripe_payment_intent_id
@@ -55,23 +66,37 @@ export default async function handler(request, response) {
       return reply(response, 409, { error: "this payment is already under way", state: payment?.state ?? null });
     }
 
-    if (intent && intent.amount !== Number(checkout.charged_cents)) {
-      intent = await stripe.paymentIntents.update(intent.id, { amount: Number(checkout.charged_cents) });
+    // Whether the open intent's amount already matches what is owed, read
+    // before any update so a changed amount is still recorded below.
+    const charged = Number(checkout.charged_cents);
+    const amountChanged = Boolean(intent) && intent.amount !== charged;
+
+    // Older open intents may still advertise ACH, or carry an amount the
+    // brand has since changed: bring them into line, but only when something
+    // differs, so opening the page is not a write to Stripe every time. Mid-
+    // authentication (requires_action) an update throws away the brand's
+    // 3-D Secure step, so only a changed amount justifies it: the brand must
+    // never be charged a figure other than the one on the screen.
+    const settingsDiffer = intent && (
+      intent.payment_method_types?.length !== 1 || intent.payment_method_types[0] !== "card"
+      || intent.setup_future_usage !== "on_session"
+    );
+    if (intent && (amountChanged || (settingsDiffer && intent.status !== "requires_action"))) {
+      intent = await stripe.paymentIntents.update(intent.id, {
+        amount: charged,
+        payment_method_types: ["card"],
+        setup_future_usage: "on_session",
+      });
     }
 
     if (!intent) {
       intent = await stripe.paymentIntents.create(
         {
-          amount: Number(checkout.charged_cents),
+          amount: charged,
           currency: checkout.currency.toLowerCase(),
           customer,
-          payment_method_types: ["card", "us_bank_account"],
-          payment_method_options: {
-            us_bank_account: {
-              verification_method: "automatic",
-              financial_connections: { permissions: ["payment_method"] },
-            },
-          },
+          payment_method_types: ["card"],
+          setup_future_usage: "on_session",
           // Separate charges and transfers: the money stays in TSC's balance
           // until the step is approved, then goes to the factory.
           transfer_group: checkout.order_id,
@@ -84,7 +109,7 @@ export default async function handler(request, response) {
         // second intent from a double click is refused there and never paid.
       );
       const { error: attachError } = await db.rpc("attach_payment_intent", {
-        target_payment: checkout.payment_id, payment_intent: intent.id, charged: Number(checkout.charged_cents),
+        target_payment: checkout.payment_id, payment_intent: intent.id, charged,
       });
       if (attachError?.code === "22023") {
         // Another request (a double click) attached its intent first: cancel
@@ -96,9 +121,10 @@ export default async function handler(request, response) {
       } else if (attachError) {
         throw new Error(attachError.message);
       }
-    } else if (!checkout.stripe_payment_intent_id || intent.amount !== Number(checkout.charged_cents)) {
+    } else if (amountChanged && intent.amount === charged) {
+      // The intent now asks for the new amount: record it as what is charged.
       await db.rpc("attach_payment_intent", {
-        target_payment: checkout.payment_id, payment_intent: intent.id, charged: Number(checkout.charged_cents),
+        target_payment: checkout.payment_id, payment_intent: intent.id, charged,
       });
     }
 

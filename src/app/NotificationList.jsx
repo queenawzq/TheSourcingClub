@@ -6,25 +6,30 @@
  * time, and nothing showed it.
  */
 import React, { useCallback, useEffect, useState } from "react";
-import { listNotifications, markAllRead, markRead, notificationBody, notificationLink, timeAgo as ago } from "../lib/domain/notifications.js";
+import { countUnreadNotifications, listNotifications, markAllRead, markRead, notificationBody, notificationLink, timeAgo as ago } from "../lib/domain/notifications.js";
 import { useRouter } from "../lib/router.jsx";
 import "./notifications.css";
 
 export default function NotificationList({ org, isFactory }) {
   const { navigate } = useRouter();
   const [items, setItems] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [error, setError] = useState(null);
 
   const load = useCallback(() => {
-    listNotifications(org.id).then(setItems).catch(setError);
+    Promise.all([
+      listNotifications(org.id, { limit: 100 }),
+      countUnreadNotifications(org.id),
+    ]).then(([rows, count]) => {
+      setItems(rows);
+      setUnreadCount(count);
+    }).catch(setError);
   }, [org.id]);
 
   useEffect(load, [load]);
 
   if (error) return <p className="shell-note">{error.message}</p>;
   if (!items || items.length === 0) return null;
-
-  const unread = items.filter((item) => !item.read_at);
 
   async function open(item) {
     if (!item.read_at) {
@@ -40,9 +45,9 @@ export default function NotificationList({ org, isFactory }) {
       <header className="notif-head">
         <h2>
           Needs your attention
-          {unread.length ? <span className="notif-count">{unread.length}</span> : null}
+          {unreadCount ? <span className="notif-count">{unreadCount}</span> : null}
         </h2>
-        {unread.length ? (
+        {unreadCount ? (
           <button
             type="button"
             className="quiet-btn"
@@ -57,7 +62,7 @@ export default function NotificationList({ org, isFactory }) {
       </header>
 
       <ul className="notif-list">
-        {items.slice(0, 6).map((item) => (
+        {items.map((item) => (
           <li key={item.id} className={item.read_at ? undefined : "is-unread"}>
             <button type="button" onClick={() => open(item)}>
               <span className="notif-title">{item.title}</span>

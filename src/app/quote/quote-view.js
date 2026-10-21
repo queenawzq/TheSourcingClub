@@ -12,7 +12,7 @@
  * row conditionally on that, rather than printing a placeholder figure.
  */
 import { formatMoney, formatRange } from "../../lib/money.js";
-import { formatCapacityWindow, quoteTotalCents } from "../../lib/domain/quote.js";
+import { formatCapacityWindow, formatDayRange, quoteTotalCents } from "../../lib/domain/quote.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 
 export const initialsOf = (name) =>
@@ -48,8 +48,10 @@ export function samplePlanOf(quote) {
   const lines = quote?.sampleLines ?? [];
   if (!lines.length) return "";
   const stages = lines.map((line) => line.stage).filter(Boolean).join(" + ");
-  const days = lines.reduce((total, line) => total + (Number(line.timing_days) || 0), 0);
-  return days ? `${stages} · ${days} days` : stages;
+  const minimumDays = lines.reduce((total, line) => total + (Number(line.timing_days) || 0), 0);
+  const maximumDays = lines.reduce((total, line) => total + (Number(line.timing_max_days ?? line.timing_days) || 0), 0);
+  const timing = formatDayRange(minimumDays || null, maximumDays || null);
+  return timing ? `${stages} · ${timing}` : stages;
 }
 
 export function validUntilOf(quote) {
@@ -81,7 +83,7 @@ export function describeQuote(quote, { incoterms = [] } = {}) {
       ? ""
       : formatRange(quote.unit_price_cents, quote.unit_price_max_cents ?? quote.unit_price_cents, currency),
     quantity,
-    lead: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "",
+    lead: formatDayRange(quote.bulk_lead_time_days, quote.bulk_lead_time_max_days),
     productionSubtotal: quote.productionSubtotalCents == null
       ? ""
       : formatRange(quote.productionSubtotalCents, maxProduction, currency),
@@ -93,10 +95,15 @@ export function describeQuote(quote, { incoterms = [] } = {}) {
     samplePlan: samplePlanOf(quote),
     validUntil: validUntilOf(quote),
     notes: quote.factory_notes ?? "",
+    materialCosts: (quote.materialLines ?? []).map((line) => ({
+      material: line.material ?? "",
+      costPerUnit: line.cost_cents == null ? null : Number(line.cost_cents) / 100,
+      included: Boolean(line.included),
+    })),
     sampleRows: (quote.sampleLines ?? []).map((line) => ({
       stage: line.stage ?? "",
       cost: money(line.cost_cents, currency),
-      timing: line.timing_days ? `${line.timing_days} days` : "",
+      timing: formatDayRange(line.timing_days, line.timing_max_days),
       includes: line.includes ?? "",
     })),
   };

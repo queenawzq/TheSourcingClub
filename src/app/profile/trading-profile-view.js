@@ -169,7 +169,7 @@ export function tradingProfileView(parts, now = new Date()) {
     name,
     initials: initialsOf(name),
     logoUrl: parts.logoUrl ?? null,
-    verifiedIcon: verified ? "basic" : null,
+    verifiedIcon: verified ? (profile?.trust_tier ?? "basic") : null,
     verifiedLabel: verified ? "Business verified" : "",
     heroLine: [
       profile?.location,

@@ -6095,6 +6095,7 @@ body:has(.factory-onboarding-page) {
 }
 
 .factory-material-cost-row .factory-quote-field,
+.factory-material-name-input,
 .factory-material-cost-input,
 .factory-material-treatment-field {
   box-sizing: border-box;
@@ -6107,6 +6108,7 @@ body:has(.factory-onboarding-page) {
   background: #fff;
 }
 
+.factory-material-name-input,
 .factory-material-cost-input,
 .factory-material-treatment-field {
   display: grid;
@@ -6114,6 +6116,7 @@ body:has(.factory-onboarding-page) {
   gap: 5px;
 }
 
+.factory-material-name-input > span,
 .factory-material-cost-input > span,
 .factory-material-treatment-field > span {
   color: #576f96;
@@ -6133,6 +6136,7 @@ body:has(.factory-onboarding-page) {
   font-size: 13px;
 }
 
+.factory-material-name-input input,
 .factory-material-cost-input input,
 .factory-material-treatment-field select {
   min-width: 0;
@@ -11062,7 +11066,8 @@ button.sort-button {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .factory-material-cost-row .factory-quote-field:first-child {
+  .factory-material-cost-row .factory-quote-field:first-child,
+  .factory-material-cost-row .factory-material-name-input:first-child {
     grid-column: 1 / 3;
   }
 
@@ -11124,11 +11129,12 @@ button.sort-button {
     grid-template-columns: 1fr;
   }
 
-  .factory-material-cost-row .factory-quote-field:first-child {
+  .factory-material-cost-row .factory-quote-field:first-child,
+  .factory-material-cost-row .factory-material-name-input:first-child {
     grid-column: 1;
   }
 
-  .factory-material-cost-row:not(.read-only) .factory-quote-field:first-child {
+  .factory-material-cost-row:not(.read-only) .factory-material-name-input:first-child {
     padding-right: 44px;
   }
 

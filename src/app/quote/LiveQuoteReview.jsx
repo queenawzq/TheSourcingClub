@@ -14,7 +14,7 @@
 import React, { useEffect, useState } from "react";
 import { FactoryReviewTotal } from "../../factory-prototype/main.jsx";
 import { getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
-import { formatCapacityWindow, getMyQuote, getSampleLines, submitQuote } from "../../lib/domain/quote.js";
+import { formatCapacityWindow, formatDayRange, getMaterialLines, getMyQuote, getSampleLines, submitQuote } from "../../lib/domain/quote.js";
 import { creditBalance, quoteCreditCost } from "../../lib/domain/credits.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -41,8 +41,10 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
           creditBalance(org.id),
           matchScoresForRfq(rfqId, [org.id]).catch(() => new Map()),
         ]);
-        const lines = quote?.id ? await getSampleLines(quote.id) : [];
-        if (!cancelled) setState({ rfq, quote, cost, balance, lines: lines ?? [], matchScore: scores.get(org.id) ?? null });
+        const [lines, materialLines] = quote?.id
+          ? await Promise.all([getSampleLines(quote.id), getMaterialLines(quote.id)])
+          : [[], []];
+        if (!cancelled) setState({ rfq, quote, cost, balance, lines: lines ?? [], materialLines: materialLines ?? [], matchScore: scores.get(org.id) ?? null });
       } catch (failure) {
         if (!cancelled) setError(failure);
       }
@@ -53,7 +55,7 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
   if (error && !state) return <p className="composer-error" role="alert">{error.message}</p>;
   if (!state) return null;
 
-  const { rfq, quote, cost, balance, lines, matchScore } = state;
+  const { rfq, quote, cost, balance, lines, materialLines, matchScore } = state;
   const fit = matchFit(matchScore);
 
   // A vendor who has already sent this quote belongs on the confirmation, not
@@ -91,11 +93,17 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
       error={error?.message ?? null}
       quoteValues={{
         brandQuestions: [],
+        materialCosts: materialLines.map((line) => ({
+          id: line.id,
+          material: line.material,
+          costPerUnit: line.cost_cents == null ? null : line.cost_cents / 100,
+          included: line.included,
+        })),
         unitPrice: quote.unit_price_cents
           ? formatRange(quote.unit_price_cents, quote.unit_price_max_cents ?? quote.unit_price_cents, quote.currency)
           : "",
         quantity: quote.production_quantity ? `${quote.production_quantity} units` : "",
-        leadTime: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "",
+        leadTime: formatDayRange(quote.bulk_lead_time_days, quote.bulk_lead_time_max_days),
         capacityWindow: formatCapacityWindow(quote),
         paymentTerms: quote.deposit_pct
           ? `${quote.deposit_pct}% deposit / ${quote.balance_pct ?? 100 - quote.deposit_pct}% balance`
@@ -110,7 +118,7 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
         ...Object.fromEntries(lines.flatMap((line, index) => [
           [`sample.${index}.stage`, line.stage ?? ""],
           [`sample.${index}.cost`, line.cost_cents ? formatMoney(line.cost_cents) : ""],
-          [`sample.${index}.timing`, line.timing_days ? `${line.timing_days} days` : ""],
+          [`sample.${index}.timing`, formatDayRange(line.timing_days, line.timing_max_days)],
           [`sample.${index}.includes`, line.includes ?? ""],
         ])),
       }}

@@ -8,7 +8,7 @@
 import React, { useEffect, useState } from "react";
 import { FactoryQuoteSent } from "../../factory-prototype/main.jsx";
 import { getRfq } from "../../lib/domain/rfq.js";
-import { getMyQuote, getSampleLines, reviseQuote } from "../../lib/domain/quote.js";
+import { formatDayRange, getMyQuote, getSampleLines, reviseQuote } from "../../lib/domain/quote.js";
 import { quoteCreditCost } from "../../lib/domain/credits.js";
 import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -52,7 +52,7 @@ export default function LiveQuoteSent({ org, rfqId, profile }) {
           ? formatRange(quote.unit_price_cents, quote.unit_price_max_cents ?? quote.unit_price_cents, quote.currency)
           : "—",
         quantity: quote.production_quantity ? `${quote.production_quantity} units` : "—",
-        leadTime: quote.bulk_lead_time_days ? `${quote.bulk_lead_time_days} days` : "—",
+        leadTime: formatDayRange(quote.bulk_lead_time_days, quote.bulk_lead_time_max_days) || "—",
         total: production ? formatRange(production + samples, productionMax + samples, quote.currency) : "—",
         quoteDue: null,
       });

@@ -34,6 +34,7 @@ import {
   runDailyJobs,
   sendTestEmail,
   setUserDisabled,
+  suggestReviewRequest,
   testDataPreview,
   userDirectory,
   verificationQueue,
@@ -233,11 +234,12 @@ export function createAdminAdapter({ user, signOut }) {
        * five states. Translating here rather than in the screen keeps the
        * decision buttons unchanged through the next merge.
        */
-      decideReview: (orgId, status, note) => {
+      decideReview: (orgId, status, note, tier) => {
         const decision = DECISION_STATE[status];
         if (!decision) throw new Error(`unknown review decision "${status}"`);
-        return decideReview(orgId, decision, note ?? null);
+        return decideReview(orgId, decision, note ?? null, null, tier ?? null);
       },
+      suggestReviewRequest,
       toggleUserAccess: (userId, disabled) => setUserDisabled(userId, disabled),
 
       /**

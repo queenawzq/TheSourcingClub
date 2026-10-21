@@ -18,7 +18,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(61);
+select plan(79);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a brand (owner + member), a factory, a stranger brand, an admin,
@@ -436,6 +436,81 @@ select is((select count(*) from public.stripe_connect_accounts where org_id = '1
 select throws_ok($$select count(*) from public.stripe_customers$$, '42501', NULL,
   'nor anyone''s Stripe customer');
 reset role;
+
+-- ---------------------------------------------------------------------------
+-- A payout is claimed before it is sent, so two callers never both pay
+-- ---------------------------------------------------------------------------
+-- Order A's balance is held and owed to the factory (funding it asked for
+-- its payout), which is exactly what the server claims before a transfer.
+
+select ok(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Balance')) is not null,
+  'the first caller claims the payout');
+select ok(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Balance')) is null,
+  'a second caller at the same moment is told it is taken');
+
+select public.release_payment_claim(pg_temp.p18_pay('order_a', 'Balance'), now() - interval '1 second');
+select ok(
+  (select release_claimed_at is not null from public.order_payments where id = pg_temp.p18_pay('order_a', 'Balance')),
+  'handing back a claim that is not yours leaves it alone');
+select public.release_payment_claim(pg_temp.p18_pay('order_a', 'Balance'),
+  (select release_claimed_at from public.order_payments where id = pg_temp.p18_pay('order_a', 'Balance')));
+select ok(
+  (select release_claimed_at is null from public.order_payments where id = pg_temp.p18_pay('order_a', 'Balance')),
+  'a failed payout hands its claim back');
+select ok(public.claim_payment_release(pg_temp.p18_pay('order_a', 'Fit sample')) is null,
+  'a payment already paid out cannot be claimed');
+
+select ok(not has_function_privilege('anon', 'public.claim_payment_release(uuid)', 'execute'),
+  'a signed-out visitor cannot claim a payout');
+select ok(not has_function_privilege('authenticated', 'public.claim_payment_release(uuid)', 'execute'),
+  'nor can a signed-in user');
+select ok(not has_function_privilege('authenticated', 'public.release_payment_claim(uuid, timestamptz)', 'execute'),
+  'nor hand one back');
+select ok(not has_function_privilege('authenticated', 'public.claim_stripe_event(text, text)', 'execute'),
+  'nor claim a Stripe event');
+select ok(has_function_privilege('service_role', 'public.claim_payment_release(uuid)', 'execute'),
+  'server code with the service key can');
+
+-- ---------------------------------------------------------------------------
+-- A webhook event that timed out is run again; a handled one is not
+-- ---------------------------------------------------------------------------
+
+select has_column('public', 'stripe_events', 'processed_at', 'an event records when it was handled');
+select is(public.claim_stripe_event('evt_pgtap18_a', 'payment_intent.succeeded'), true,
+  'a new event is claimed');
+select is(public.claim_stripe_event('evt_pgtap18_a', 'payment_intent.succeeded'), false,
+  'a repeat while it is being handled does nothing');
+update public.stripe_events set claimed_at = now() - interval '6 minutes' where id = 'evt_pgtap18_a';
+select is(public.claim_stripe_event('evt_pgtap18_a', 'payment_intent.succeeded'), true,
+  'an attempt that never finished is run again after 5 minutes');
+update public.stripe_events set processed_at = now(), claimed_at = now() - interval '6 minutes' where id = 'evt_pgtap18_a';
+select is(public.claim_stripe_event('evt_pgtap18_a', 'payment_intent.succeeded'), false,
+  'a handled event is never run again');
+
+-- ---------------------------------------------------------------------------
+-- Only staff set a factory's trust tier
+-- ---------------------------------------------------------------------------
+
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000003","role":"authenticated"}';
+set local role authenticated;
+select throws_ok(
+  $$update public.factory_profiles set trust_tier = 'trusted' where org_id = '18b00000-0000-0000-0000-0000000000f1'$$,
+  '42501', NULL, 'a factory cannot give itself a trust tier');
+select lives_ok(
+  $$update public.factory_profiles set moq = 150 where org_id = '18b00000-0000-0000-0000-0000000000f1'$$,
+  'but still edits the rest of its profile');
+reset role;
+
+-- Verified needs a walkthrough on file; staff then set it through the review.
+insert into public.documents (org_id, kind, bucket, storage_path, file_name, size_bytes) values
+  ('18b00000-0000-0000-0000-0000000000f1', 'walkthrough', 'org-private', 'pgtap18/walkthrough.mp4', 'walkthrough.mp4', 1000);
+
+set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
+set local role authenticated;
+select public.admin_review_decision_with_tier('18b00000-0000-0000-0000-0000000000f1', 'approved', null, null, 'verified');
+reset role;
+select is((select trust_tier::text from public.factory_profiles where org_id = '18b00000-0000-0000-0000-0000000000f1'),
+  'verified', 'staff set the tier when approving the factory');
 
 select * from finish();
 rollback;

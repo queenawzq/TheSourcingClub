@@ -13,12 +13,16 @@
  */
 import React, { useEffect, useState } from "react";
 import { FactoryCapacityDrawer, FactoryDashboardPage } from "../../factory-prototype/main.jsx";
+import { ActivityDrawer } from "../../prototype/main.jsx";
 import { dashboardSnapshot } from "../../lib/domain/dashboard.js";
 import { listOpenRfqs } from "../../lib/domain/rfq.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { getCapacity, saveCapacity } from "../../lib/domain/capacity-store.js";
 import { creditBalance, sendInvite } from "../../lib/domain/credits.js";
 import { listTermsByKind } from "../../lib/domain/taxonomy.js";
+import {
+  activityType, countUnreadNotifications, listNotifications, markRead, notificationLink, timeAgo,
+} from "../../lib/domain/notifications.js";
 import { CAPACITY_LEVELS, availableRange, capacityWindow, minutesPerPieceFor, monthKey } from "../../lib/domain/capacity.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { supabase } from "../../lib/supabase.js";
@@ -96,6 +100,16 @@ async function capacityCard(orgId) {
 
 const SHORT_MONTH = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
+const toActivityItem = (notification) => ({
+  id: notification.id,
+  notification,
+  type: activityType(notification.kind),
+  title: notification.title,
+  meta: notification.body ?? "",
+  time: timeAgo(notification.created_at),
+  unread: !notification.read_at,
+});
+
 export default function LiveFactoryHome({ org, profile }) {
   const { navigate } = useRouter();
   const [state, setState] = useState(null);
@@ -104,6 +118,47 @@ export default function LiveFactoryHome({ org, profile }) {
   // The designed capacity drawer, opened from "Update capacity".
   const [drawer, setDrawer] = useState(null);
   const { calls, zones } = useDashboardCalls(org.id);
+  const [activity, setActivity] = useState(null);
+
+  async function openActivity() {
+    setActivity([]);
+    try {
+      const rows = await listNotifications(org.id, { limit: 100 });
+      setActivity((rows ?? []).map(toActivityItem));
+    } catch (failure) {
+      setError(failure);
+    }
+  }
+
+  async function openActivityItem(item) {
+    const link = notificationLink(item.notification, { isFactory: true });
+    if (item.unread) {
+      setActivity((current) => current?.map((row) => (
+        row.id === item.id ? { ...row, unread: false } : row
+      )) ?? current);
+      setState((current) => current ? {
+        ...current,
+        unreadNotifications: Math.max(0, Number(current.unreadNotifications || 0) - 1),
+      } : current);
+      try {
+        await markRead(item.id);
+      } catch (failure) {
+        setActivity((current) => current?.map((row) => (
+          row.id === item.id ? { ...row, unread: true } : row
+        )) ?? current);
+        setState((current) => current ? {
+          ...current,
+          unreadNotifications: Number(current.unreadNotifications || 0) + 1,
+        } : current);
+        setError(failure);
+        return;
+      }
+    }
+    if (link) {
+      setActivity(null);
+      navigate(link);
+    }
+  }
 
   async function openCapacityDrawer() {
     try {
@@ -162,9 +217,10 @@ export default function LiveFactoryHome({ org, profile }) {
       quotesSentThisMonth(org.id),
       creditBalance(org.id),
       capacityCard(org.id),
+      countUnreadNotifications(org.id),
     ])
-      .then(([snapshot, rfqs, orders, quotesSent, credits, capacity]) => {
-        if (!cancelled) setState({ snapshot, rfqs, orders, quotesSent, credits, capacity });
+      .then(([snapshot, rfqs, orders, quotesSent, credits, capacity, unreadNotifications]) => {
+        if (!cancelled) setState({ snapshot, rfqs, orders, quotesSent, credits, capacity, unreadNotifications });
       })
       .catch((failure) => !cancelled && setError(failure));
     return () => { cancelled = true; };
@@ -173,7 +229,7 @@ export default function LiveFactoryHome({ org, profile }) {
   if (error) return <main className="factory-dashboard-page"><p className="home-load-error" role="alert">{error.message}</p></main>;
   if (!state) return null;
 
-  const { snapshot, rfqs, orders, quotesSent, credits, capacity } = state;
+  const { snapshot, rfqs, orders, quotesSent, credits, capacity, unreadNotifications } = state;
   const n = (value) => Number(value) || 0;
   const isTrading = profile?.vendor_kind === "trading_company";
   // The design opens the profile from here, for either kind of vendor.
@@ -256,7 +312,7 @@ export default function LiveFactoryHome({ org, profile }) {
       language="en"
       orgName={org.name}
       creditBalance={credits ?? 0}
-      unreadCount={n(snapshot?.unread_messages)}
+      unreadCount={n(unreadNotifications)}
       rfqs={rfqs.map(toDashboardRfq)}
       projects={activeOrders.map((order) => {
         const card = toProjectCard(order, true);
@@ -281,8 +337,16 @@ export default function LiveFactoryHome({ org, profile }) {
       onViewRfqDetail={(rfq) => navigate(rfq?.id ? `/browse/${rfq.id}?from=dashboard` : "/")}
       onViewProjects={(project) => navigate(project?.id ? `/orders/${project.id}` : "/orders")}
       onViewProfile={() => navigate(profilePath)}
-      onOpenActivity={() => navigate("/notifications")}
+      onOpenActivity={openActivity}
     />
+    {activity && (
+      <ActivityDrawer
+        items={activity}
+        description="Passive updates from RFQs, files, brands, and production."
+        onOpenItem={openActivityItem}
+        onClose={() => setActivity(null)}
+      />
+    )}
     </>
   );
 }
