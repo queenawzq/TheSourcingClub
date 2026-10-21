@@ -2739,9 +2739,12 @@ async function main() {
     check(/Funded|Paid/.test(paymentsText) && paymentsText.includes(factoryName), "with its state in the design's words and the factory's name");
     check(!brandPayments.some((payment) => payment.state === "due") || /Not paid/.test(paymentsText),
       "a payment still due is in the list too, as Not paid");
-    const { data: header } = await db.from("production_order_summary").select("paid_cents").eq("id", bornOrder.id).single();
-    check(paymentsText.includes(`$${(Number(header.paid_cents) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`),
-      "total paid is the order's own figure");
+    // "total paid" is what the brand paid: held or paid out, fee included,
+    // like the rows (the order page's own strip counts step amounts).
+    const paidCents = brandPayments.filter((payment) => ["confirmed", "released"].includes(payment.state))
+      .reduce((total, payment) => total + chargedOf(payment), 0);
+    check(paymentsText.includes(`$${(paidCents / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`),
+      `total paid is what the brand paid, fee included ($${(paidCents / 100).toFixed(2)})`);
     check(!/Atelier Minho|Platform service fee|Amex|Visa ending/i.test(paymentsText), "none of the design's example payments, fees or cards");
     await clickButton(page, "discounts");
     await page.waitForTimeout(500);

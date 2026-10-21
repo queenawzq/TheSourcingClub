@@ -12,7 +12,7 @@
  * row conditionally on that, rather than printing a placeholder figure.
  */
 import { formatMoney, formatRange } from "../../lib/money.js";
-import { formatCapacityWindow, formatDayRange, quoteTotalCents } from "../../lib/domain/quote.js";
+import { formatCapacityWindow, formatDayRange, quoteTotalCents, quoteTotalMaxCents } from "../../lib/domain/quote.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 
 export const initialsOf = (name) =>
@@ -70,7 +70,10 @@ export function describeQuote(quote, { incoterms = [] } = {}) {
   const name = quote.orgs?.name ?? quote.factory_name ?? "Vendor";
   const total = quoteTotalCents(quote);
   const maxProduction = quote.productionSubtotalMaxCents ?? quote.productionSubtotalCents;
-  const maxTotal = maxProduction == null ? null : maxProduction + (quote.sampleSubtotalCents ?? 0);
+  const maxTotal = quoteTotalMaxCents(quote);
+  // Materials the vendor marked not included are added on top of the unit
+  // price, and are in the total above.
+  const additionalPerUnit = quote.additionalMaterialPerUnitCents ?? 0;
   const quantity = quote.production_quantity ? `${quote.production_quantity} units` : "";
 
   return {
@@ -88,6 +91,10 @@ export function describeQuote(quote, { incoterms = [] } = {}) {
       ? ""
       : formatRange(quote.productionSubtotalCents, maxProduction, currency),
     sampleSubtotal: quote.sampleLines?.length ? money(quote.sampleSubtotalCents ?? 0, currency) : "",
+    additionalMaterialPerUnit: additionalPerUnit ? `${money(additionalPerUnit, currency)} / unit` : "",
+    additionalMaterialSubtotal: additionalPerUnit && quote.additionalMaterialSubtotalCents != null
+      ? money(quote.additionalMaterialSubtotalCents, currency)
+      : "",
     total: total == null ? "" : formatRange(total, maxTotal, currency),
     paymentTerms: paymentTermsOf(quote),
     shipping: shippingOf(quote, incoterms),

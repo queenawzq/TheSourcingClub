@@ -1,4 +1,4 @@
-import { callerClient, jsonBody, reply, serviceClient, stripeFrom } from "./_stripe.js";
+import { callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /** Save a card for future company billing. */
 export default async function handler(request, response) {
@@ -11,11 +11,14 @@ export default async function handler(request, response) {
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
   const { orgId } = jsonBody(request);
-  const [{ data: isOwner }, { data: org }, { data: auth }] = await Promise.all([
+  const [owner, orgRead, { data: auth }] = await Promise.all([
     caller.rpc("is_org_owner", { target_org: orgId }),
     caller.from("orgs").select("id, name").eq("id", orgId).maybeSingle(),
     caller.auth.getUser(),
   ]);
+  if (tokenRefused(owner) || tokenRefused(orgRead)) return reply(response, 401, { error: "sign in is required" });
+  const { data: isOwner } = owner;
+  const { data: org } = orgRead;
   if (!isOwner || !org) return reply(response, 403, { error: "only a company owner can manage billing methods" });
 
   try {

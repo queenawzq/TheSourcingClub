@@ -1109,7 +1109,7 @@ export function FlowShell({
     ? {
         ...baseMeta,
         title: `Fund ${fundingMilestone.title.toLowerCase()}`,
-        description: `Add ${fundingMilestone.amount} to project funds for ${fundingMilestone.title.toLowerCase()}. Funds stay protected until the related step is approved.`,
+        description: fundingMilestone.fundNote ?? `Add ${fundingMilestone.amount} to project funds for ${fundingMilestone.title.toLowerCase()}. Funds stay protected until the related step is approved.`,
         cta: `Fund ${fundingMilestone.amount}`
       }
     : baseMeta;
@@ -1213,7 +1213,7 @@ function App() {
     ? {
         ...meta,
         title: `Fund ${fundingMilestone.title.toLowerCase()}`,
-        description: `Add ${fundingMilestone.amount} to project funds for ${fundingMilestone.title.toLowerCase()}. Funds stay protected until the related step is approved.`,
+        description: fundingMilestone.fundNote ?? `Add ${fundingMilestone.amount} to project funds for ${fundingMilestone.title.toLowerCase()}. Funds stay protected until the related step is approved.`,
         cta: `Fund ${fundingMilestone.amount}`
       }
     : meta;
@@ -9766,6 +9766,7 @@ export function QuoteDetailScreen({
   const priceRows = live
     ? [
         ["Production subtotal", `${live.quantity} × ${live.price}`, live.productionSubtotal],
+        live.additionalMaterialSubtotal && ["Additional material cost", `${live.additionalMaterialPerUnit} × ${live.quantity}`, live.additionalMaterialSubtotal],
         live.sampleSubtotal && ["Sample subtotal", live.samplePlan, live.sampleSubtotal],
         ["Shipping", "TBD by brand", "Not included"]
       ].filter(Boolean)
@@ -10468,11 +10469,11 @@ export function FundScreen({ fundingMilestone, goTo, setFundingMilestone, live =
           <h3>Before funding</h3>
           <label>
             <input type="checkbox" {...agreeBox(0, true)} />
-            <span>I understand funds are only released after I approve the payment.</span>
+            <span>{live?.agreements?.[0] ?? "I understand funds are only released after I approve the payment."}</span>
           </label>
           <label>
             <input type="checkbox" {...agreeBox(1, false)} />
-            <span>TSC may hold funds until the payment is approved or disputed.</span>
+            <span>{live?.agreements?.[1] ?? "TSC may hold funds until the payment is approved or disputed."}</span>
           </label>
         </section>
       </Card>

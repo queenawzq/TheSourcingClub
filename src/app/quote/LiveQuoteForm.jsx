@@ -44,12 +44,25 @@ const firstNumber = (text) => {
   return match ? Number(match[0].replace(/,/g, "")) : null;
 };
 
-function priceRange(text) {
-  const numbers = String(text ?? "").match(/\d[\d,]*(?:\.\d+)?/g)?.map((value) => Number(value.replace(/,/g, ""))) ?? [];
-  if (!numbers.length) return { min: null, max: null };
-  const first = numbers[0];
-  const second = numbers[1] ?? first;
-  return { min: Math.min(first, second), max: Math.max(first, second) };
+/**
+ * "$18.40–$21.00 / unit" → 18.40 to 21.00; "28 days" → 28 to 28.
+ *
+ * Only the first number, or the first two written as a range ("a–b", "a-b",
+ * "a to b"), counts: any other number is something else ("$18.40 for 300
+ * units", "10 days incl. 1 revision round"). With `days`, a figure given in
+ * weeks ("4-6 weeks") is converted, since the field stores days.
+ */
+function priceRange(text, { days = false } = {}) {
+  const said = String(text ?? "");
+  const number = "(\\d[\\d,]*(?:\\.\\d+)?)";
+  const match = said.match(new RegExp(`${number}(?:(?:\\s*[-–—]\\s*|\\s+to\\s+)(?:US)?\\$?\\s*${number})?`, "i"));
+  if (!match) return { min: null, max: null };
+  const first = Number(match[1].replace(/,/g, ""));
+  const second = match[2] == null ? first : Number(match[2].replace(/,/g, ""));
+  const scale = days && /^\s*(?:weeks?|wks?)\b/i.test(said.slice(match.index + match[0].length)) ? 7 : 1;
+  // Days are stored whole.
+  const value = (amount) => (days ? Math.round(amount * scale) : amount);
+  return { min: value(Math.min(first, second)), max: value(Math.max(first, second)) };
 }
 
 /** "30% deposit / 70% before shipment" → the deposit-30-70 term. */
@@ -101,9 +114,14 @@ function missingQuoteFields(values, terms) {
   }
   if (!incotermFrom(terms.incoterm ?? [], values.incoterms)) missing.push("shipping terms");
   const validUntil = String(values.validUntil ?? "").trim();
-  const today = new Date();
-  const todayIso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(validUntil) || validUntil < todayIso) missing.push("quote valid until");
+  // The same test the database makes, on the same day: submit_quote() and
+  // award_quote() refuse a valid_until before current_date, which is the UTC
+  // date (the database runs in UTC). Compared with the vendor's local date,
+  // a date this check passed could be refused on sending (west of UTC in the
+  // evening), or one the database accepts refused here (east of UTC in the
+  // morning).
+  const todayInDatabase = new Date().toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(validUntil) || validUntil < todayInDatabase) missing.push("quote valid until");
   return missing;
 }
 
@@ -169,7 +187,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   /** Write what is on the card to the draft. */
   async function persist(values) {
     const unit = priceRange(values.unitPrice);
-    const lead = priceRange(values.leadTime);
+    const lead = priceRange(values.leadTime, { days: true });
     const payment = paymentTermFrom(terms.payment_term ?? [], values.paymentTerms);
     const incoterm = incotermFrom(terms.incoterm ?? [], values.incoterms);
     const depositPct = depositPctFrom(payment?.slug);
@@ -207,8 +225,8 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
           const amount = firstNumber(values[`sample.${index}.cost`]);
           return amount == null ? null : toCents(amount);
         })(),
-        timing_days: priceRange(values[`sample.${index}.timing`]).min,
-        timing_max_days: priceRange(values[`sample.${index}.timing`]).max,
+        timing_days: priceRange(values[`sample.${index}.timing`], { days: true }).min,
+        timing_max_days: priceRange(values[`sample.${index}.timing`], { days: true }).max,
         includes: values[`sample.${index}.includes`]?.trim() || null,
         sort: index,
       }))
