@@ -72,7 +72,8 @@ export default function LiveQuotes({ rfqId }) {
       // As the vendor typed it on their profile ("Porto, Portugal").
       location: raw.orgs?.factory_profiles?.location ?? "",
       // The badge says TSC has checked this vendor, so only a verified one gets it.
-      trust: raw.orgs?.factory_profiles?.verification_status === "verified" ? "trusted" : "",
+      trust: raw.orgs?.factory_profiles?.verification_status === "verified"
+        ? (raw.orgs?.factory_profiles?.trust_tier ?? "basic") : "",
       fit: "",
       response: "",
       fitType: fit?.label ?? "Potential fit",

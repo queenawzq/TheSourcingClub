@@ -1,7 +1,7 @@
 /**
  * The payments board.
  *
- * Brands pay TSC through Stripe (card or US bank account); TSC holds the
+ * Brands pay TSC through Stripe, by card; TSC holds the
  * money until the brand approves the step, then pays the factory. Most of it
  * runs on its own: the webhook records what Stripe says, and approving a step
  * transfers the money to a factory's Stripe account. This page is for what
@@ -15,8 +15,8 @@
  *                    bank (mainland China, Hong Kong… where Stripe cannot pay
  *                    out) and mark it paid out.
  *   Wire claims      a bank transfer a brand said it sent on the old site.
- *   Failed           a bank payment that came back: the brand pays again.
- *   Clearing         a bank payment on its way (about 4 business days).
+ *   Failed           a payment that did not go through: the brand pays again.
+ *   Clearing         a payment Stripe is still confirming.
  *   Held             funded, the step not approved yet.
  *   Cancelled        money still held on a cancelled order: refund in Stripe.
  *
@@ -246,7 +246,7 @@ export default function AdminPayments() {
 
       <h1>Payments</h1>
       <p className="admin-intro">
-        Brands pay TSC through Stripe, by card or US bank account, and TSC holds the money until
+        Brands pay TSC through Stripe, by card, and TSC holds the money until
         the brand approves the step. Approving pays a factory with a Stripe account on its own.
         Stripe can't pay out to some countries (mainland China, Hong Kong…): those factories are
         paid by bank transfer from here.
@@ -263,10 +263,10 @@ export default function AdminPayments() {
                caption="Made on the old site before payments moved to Stripe. Check the account, then confirm." />
       <Section id="failed" title="Failed" rows={sections.failed} {...shared}
                empty="No failed payments."
-               caption="The bank sent these back. The brand pays again from the order; nothing to do here." />
-      <Section id="clearing" title="Bank payments clearing" rows={sections.clearing} {...shared}
-               empty="No bank payments on their way."
-               caption="About 4 business days. The factory starts when they clear." />
+               caption="These did not go through. The brand pays again from the order; nothing to do here." />
+      <Section id="clearing" title="Payments processing" rows={sections.clearing} {...shared}
+               empty="No payments processing."
+               caption="Stripe is still confirming these. The factory starts when they go through." />
       <Section id="held" title="Held" rows={sections.held} {...shared}
                empty="Nothing held."
                caption="Funded, waiting for the brand to approve the step." />

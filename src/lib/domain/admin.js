@@ -124,10 +124,12 @@ export async function verificationQueue() {
  * dash. A field added to onboarding tomorrow arrives here on its own.
  */
 export async function orgSubmission(orgId) {
-  return unwrap(
-    await supabase.rpc("admin_verification_detail", { target_org: orgId }),
-    "load the submitted profile",
-  );
+  const [submissionResult, tierResult] = await Promise.all([
+    supabase.rpc("admin_verification_detail", { target_org: orgId }),
+    supabase.rpc("admin_factory_tier_eligibility", { target_org: orgId }),
+  ]);
+  const submission = unwrap(submissionResult, "load the submitted profile");
+  return { ...submission, trustEligibility: tierResult.error ? null : tierResult.data };
 }
 
 /**
@@ -169,13 +171,14 @@ const NOTIFIES_COMPANY = new Set(["approved", "needs_information", "declined"]);
  * email: a company that never opens the app would otherwise never learn its
  * review moved, which defeats the one decision that asks them to act.
  */
-export async function decideReview(orgId, decision, note = null, risk = null) {
+export async function decideReview(orgId, decision, note = null, risk = null, tier = null) {
   const review = unwrap(
-    await supabase.rpc("admin_review_decision", {
+    await supabase.rpc("admin_review_decision_with_tier", {
       target_org: orgId,
       decision,
       note,
       risk,
+      tier,
     }),
     `record the ${decision.replace(/_/g, " ")} decision`,
   );
@@ -196,6 +199,32 @@ export async function decideReview(orgId, decision, note = null, risk = null) {
     return { ...review, decisionEmail: result };
   } catch (error) {
     return { ...review, decisionEmail: { sent: 0, error: error.message } };
+  }
+}
+
+/**
+ * Draft the note for a needs-information decision. The model only suggests
+ * copy: the reviewer can edit it, and decideReview is still the only action
+ * that records or sends anything.
+ */
+export async function suggestReviewRequest({ companyName, entityType, gaps }) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch("/api/suggest-review-request", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token ?? ""}`,
+      },
+      body: JSON.stringify({ companyName, entityType, gaps }),
+    });
+    const result = await response.json();
+    return {
+      message: typeof result.message === "string" ? result.message.trim() : "",
+      error: result.error ?? (response.ok ? null : "The suggestion could not be generated."),
+    };
+  } catch (error) {
+    return { message: "", error: error.message };
   }
 }
 

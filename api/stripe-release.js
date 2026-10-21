@@ -5,8 +5,9 @@ import { callerClient, jsonBody, releasePayment, reply, serviceClient, stripeFro
  * after it approves a step, and by staff's "Retry payout".
  *
  * Whether the money is owed is the database's call (the approval set
- * release_requested_at); this only carries it out, once: the transfer's
- * idempotency key is the payment. Anyone who can read the payment may ask.
+ * release_requested_at); this only carries it out, once: releasePayment
+ * claims the payment first, and a second caller is told it is already being
+ * paid. Anyone who can read the payment may ask.
  */
 export default async function handler(request, response) {
   if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
