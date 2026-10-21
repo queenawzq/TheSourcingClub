@@ -419,7 +419,8 @@ revoke all on function public.purge_test_data(uuid[], uuid[], uuid) from public,
 grant execute on function public.purge_test_data(uuid[], uuid[], uuid) to service_role;
 
 -- ----------------------------------------------------------------------------
--- Privacy policy, version 4: what OpenRouter does
+-- Privacy policy, next version (4, or 5 after the payments change's card-only
+-- version): what OpenRouter does
 -- ----------------------------------------------------------------------------
 -- v3 said OpenRouter is used for "translation and drafting". It also screens
 -- messages for contact details (since message screening) and, from this
@@ -429,6 +430,7 @@ grant execute on function public.purge_test_data(uuid[], uuid[], uuid) to servic
 
 do $$
 declare
+  v3_version integer;
   v3 text;
   v4 text;
   old_6 constant text := $t$6. Translation and drafting features
@@ -438,16 +440,22 @@ We use an AI model provider, through OpenRouter, for four things. Messages may b
   old_9 constant text := 'OpenRouter for translation and drafting;';
   new_9 constant text := 'OpenRouter for translation, drafting, message screening and help with profile reviews;';
 begin
-  select d.full_en into v3 from public.legal_documents d where d.kind = 'privacy' and d.version = 3;
+  -- The current version, whichever number it has: the payments change
+  -- publishes a privacy version too, and merge order decides the numbers.
+  select d.version, d.full_en into v3_version, v3
+    from public.legal_documents d
+   where d.kind = 'privacy'
+   order by d.version desc
+   limit 1;
   if v3 is null then
-    raise exception 'privacy policy v3 is missing';
+    raise exception 'privacy policy is missing';
   end if;
   if position(old_6 in v3) = 0 or position(old_9 in v3) = 0 then
-    raise exception 'privacy policy v3 does not read as expected; write v4 by hand';
+    raise exception 'privacy policy v% does not read as expected; write the next version by hand', v3_version;
   end if;
   v4 := replace(replace(v3, old_6, new_6), old_9, new_9);
 
   insert into public.legal_documents (kind, version, onboarding_en, onboarding_zh, full_en, full_zh)
-  values ('privacy', 4, null, null, v4, null);
+  values ('privacy', v3_version + 1, null, null, v4, null);
 end;
 $$;
