@@ -15,9 +15,13 @@
 -- those strings changed: same signature, return type, security and body, and
 -- create or replace keeps the grants and revokes made there.
 --
--- The privacy policy is not changed here: version 3 (video calls) is the
--- next one published, so the card-only sentence goes there, and versions
--- are numbered in the order they ship.
+-- Privacy policy: the current version, without the sentence saying a brand
+-- may pay by US bank account, published as the next version (a new row, as
+-- every legal change is; rows are never edited). Built from whatever version
+-- is current rather than a fixed one, because other branches publish
+-- privacy versions too and merge order decides the numbers. If the sentence
+-- is already gone (a database that got a card-only version another way),
+-- nothing is published.
 -- Notifications already sent keep their wording.
 -- ============================================================================
 
@@ -215,5 +219,26 @@ begin
   where m.order_id = target_order and m.sort = next_sort
     and m.kind in ('payment_only', 'approval_and_payment') and p.state = 'due'
     and p.due_at >= now();
+end;
+$$;
+
+do $$
+declare
+  current_version integer;
+  current_text    text;
+  bank constant text := $t$When a brand pays by card or US bank account, the card or bank details are entered into Stripe's form and sent directly to Stripe; bank accounts may be verified through Stripe Financial Connections.$t$;
+  card constant text := $t$When a brand pays by card, the card details are entered into Stripe's form and sent directly to Stripe.$t$;
+begin
+  select d.version, d.full_en into current_version, current_text
+    from public.legal_documents d
+   where d.kind = 'privacy'
+   order by d.version desc
+   limit 1;
+  if current_text is null or position(bank in current_text) = 0 then
+    return;
+  end if;
+
+  insert into public.legal_documents (kind, version, onboarding_en, onboarding_zh, full_en, full_zh)
+  values ('privacy', current_version + 1, null, null, replace(current_text, bank, card), null);
 end;
 $$;
