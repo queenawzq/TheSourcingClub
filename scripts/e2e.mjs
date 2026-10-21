@@ -2626,26 +2626,31 @@ async function main() {
       check(rowLabels.every((label) => label === "Suggestion"), `each suggestion is labelled "Suggestion", with no score or verdict (${[...new Set(rowLabels)].join(", ") || "none shown"})`);
       await record(page, "AI suggestions", aiAnswered ? "what to look at, with the evidence seen and a question to ask" : "no key on this site: nothing stands in");
 
-      // A drafted note, edited, then sent the usual way.
+      // A suggested note, edited, then sent the usual way. The dialog is the
+      // design's: "Suggest with AI" fills the message from the incomplete
+      // checks; without a key it says so and staff write the note themselves.
       await clickButton(page, "request more information");
       await waitFor(page, ".admin-review-modal", 10000);
-      await page.locator(".admin-review-modal .admin-request-options input[type=checkbox]").nth(1).click();
-      await clickButton(page, "draft with ai");
+      await clickButton(page, "suggest with ai");
       const draftDeadline = Date.now() + 45000;
-      while (Date.now() < draftDeadline && !(await page.locator(".admin-assist-draft p").count())) {
+      const suggestion = () => page.evaluate(() => ({
+        text: document.querySelector(".admin-review-modal textarea")?.value ?? "",
+        error: document.querySelector(".admin-request-ai-error")?.innerText ?? "",
+      }));
+      let suggested = await suggestion();
+      while (Date.now() < draftDeadline && !suggested.text.trim() && !suggested.error) {
         await page.waitForTimeout(400);
+        suggested = await suggestion();
       }
-      const draftLabel = await page.locator(".admin-assist-draft p").first().innerText().catch(() => "");
-      const drafted = await page.evaluate(() => document.querySelector(".admin-review-modal textarea")?.value ?? "");
-      const aiDraft = /^AI draft/.test(draftLabel);
-      const standIn = /^Drafted from the checks/.test(draftLabel);
-      console.log(`  Draft: ${draftLabel}`);
-      if (aiMode === "on") check(aiDraft, `with a key, the note is drafted by the AI ("${draftLabel}")`);
-      else if (aiMode === "off") check(standIn, `without a key, the note is drafted from the checks ("${draftLabel}")`);
-      else check(aiDraft || standIn, `the note is drafted ("${draftLabel}")`);
-      check(drafted.trim().length > 40, `the draft fills the message (${drafted.trim().length} characters)`);
-      check(/certific/i.test(drafted), "and asks about the ticked topic (certification)");
-      await record(page, "A drafted request", "staff read and edit it; nothing is sent yet");
+      console.log(`  Suggestion: ${suggested.error || `${suggested.text.trim().length} characters`}`);
+      const aiDraft = suggested.text.trim().length > 40;
+      const notConfigured = /not configured/i.test(suggested.error);
+      if (aiMode === "on") check(aiDraft, `with a key, the AI suggests the message (${suggested.text.trim().length} characters)`);
+      else if (aiMode === "off") check(notConfigured && !suggested.text.trim(), `without a key, the dialog says suggestions are not set up ("${suggested.error}")`);
+      else check(aiDraft || notConfigured, `the message is suggested, or the dialog says it is not set up ("${suggested.error || "suggested"}")`);
+      await record(page, "A suggested request", "staff read and edit it; nothing is sent yet");
+      const drafted = suggested.text.trim()
+        || "Please upload a current certificate for your certification scope, with its validity dates, so we can complete the review.";
       const edited = `${drafted.trim()}\n\nEdited by staff ${stamp}.`;
       await page.locator(".admin-review-modal textarea").fill(edited);
       await clickButton(page, "send request");
