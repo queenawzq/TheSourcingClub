@@ -1,0 +1,42 @@
+/* Live only: buying credits (CreditPurchase.jsx). Every rule is scoped to a
+   tsc-credit-buy class, so nothing here can relay a prototype screen. */
+
+/* The design lifts the dialog 96px for three packs; the card form makes it
+   taller, so live centres it in the layer instead (factory-invite-modal-layer). */
+.factory-update-modal.factory-credit-purchase-modal.tsc-credit-buy-modal {
+  box-sizing: border-box;
+  max-width: 100%;
+  transform: none;
+}
+
+.tsc-credit-buy-modal .composer-error {
+  margin: 0;
+}
+
+.tsc-credit-buy-modal .factory-credit-purchase-options button.selected {
+  border-color: #1a4df2;
+  background: #f2f7fd;
+  box-shadow: inset 0 0 0 1px #1a4df2;
+}
+
+.tsc-credit-buy-modal .factory-credit-purchase-options button:disabled {
+  cursor: default;
+}
+
+.tsc-credit-buy-payment {
+  margin-bottom: 0;
+}
+
+.tsc-credit-buy-action {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.tsc-credit-buy-note {
+  margin: 0;
+  color: #5a6b87;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}

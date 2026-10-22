@@ -3,7 +3,7 @@
  *
  * Earnings and credits come from the real ledgers. Platform charges do not
  * have a table yet, so that tab has an honest empty state instead of the
- * prototype's invented history.
+ * prototype's invented history. Saved billing cards are read from Stripe.
  *
  * TSC holds what a brand funds and pays the factory when the brand approves
  * the step: through Stripe where Stripe can pay out (StripePayoutCard), or by
@@ -22,8 +22,9 @@ import {
 } from "@stripe/react-stripe-js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
-import { STRIPE_PUBLISHABLE_KEY, startBillingSetup } from "../../lib/domain/stripe.js";
+import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
+import { CreditPurchaseButton } from "./CreditPurchase.jsx";
 import "./order.css";
 import "./payout.css";
 
@@ -51,6 +52,9 @@ const dateLabel = (value) => value
   : "Date pending";
 
 const stripeDateLabel = (value) => dateLabel(value ? value * 1000 : null);
+
+const cardBrand = (brand) => (brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : "Card");
+const cardExpiry = (card) => (card.expMonth && card.expYear ? `Expires ${String(card.expMonth).padStart(2, "0")}/${card.expYear}` : "");
 
 const PAYOUT_STATUS = {
   paid: "Completed",
@@ -97,7 +101,10 @@ const BILLING_CARD_OPTIONS = {
 };
 
 export default function PayoutDetails({ org, isFactory, isOwner = false }) {
-  const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get("tab") === "billing" ? "billing" : "earnings");
+  const [tab, setTab] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get("tab");
+    return ["billing", "credits"].includes(requested) ? requested : "earnings";
+  });
   const [client, setClient] = useState("All clients");
   const [transactionType, setTransactionType] = useState("all");
   const [account, setAccount] = useState(null);
@@ -111,10 +118,38 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const [billingSecret, setBillingSecret] = useState(null);
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingSaved, setBillingSaved] = useState(new URLSearchParams(window.location.search).get("billing") === "saved");
+  const [cards, setCards] = useState(null);
+  const [cardsError, setCardsError] = useState(null);
+  const [removingCard, setRemovingCard] = useState(null);
+  const [cardBusy, setCardBusy] = useState(false);
+
+  const loadCredits = useCallback(async () => {
+    const rows = unwrap(
+      await supabase
+        .from("credit_ledger")
+        .select("id, delta, reason, note, created_at")
+        .eq("org_id", org.id)
+        .order("created_at", { ascending: false }),
+      "load your credits",
+    );
+    setCredits(rows);
+  }, [org.id]);
+
+  // Saved cards live on Stripe, not in the database, so the server lists
+  // them. Any member sees them; only an owner adds or removes one.
+  const loadCards = useCallback(async () => {
+    if (!STRIPE_PUBLISHABLE_KEY) return;
+    setCardsError(null);
+    try {
+      setCards(await listSavedCards(org.id));
+    } catch (failure) {
+      setCardsError(failure);
+    }
+  }, [org.id]);
 
   const load = useCallback(async () => {
     setError(null);
-    const [accountResult, ordersResult, creditsResult] = await Promise.all([
+    const [accountResult, ordersResult] = await Promise.all([
       supabase
         .from("factory_payout_accounts")
         .select("id, bank_name, account_name, account_number_last4, swift, iban, bank_country, instructions")
@@ -126,16 +161,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         .select("id, order_number, brand_org_id, orgs!production_orders_brand_org_id_fkey (name)")
         .eq("factory_org_id", org.id)
         .order("created_at", { ascending: false }),
-      supabase
-        .from("credit_ledger")
-        .select("id, delta, reason, note, created_at")
-        .eq("org_id", org.id)
-        .order("created_at", { ascending: false }),
+      loadCredits(),
     ]);
 
     const payout = unwrap(accountResult, "load your payout account");
     const orders = unwrap(ordersResult, "load your payment orders");
-    const creditRows = unwrap(creditsResult, "load your credits");
     const orderById = new Map(orders.map((order) => [order.id, order]));
 
     let paymentRows = [];
@@ -152,9 +182,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
 
     setAccount(payout);
     setForm(blankPayout(payout));
-    setCredits(creditRows);
     setEarnings(paymentRows.map((payment) => ({ ...payment, order: orderById.get(payment.order_id) })));
-  }, [org.id]);
+  }, [org.id, loadCredits]);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,6 +192,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     });
     return () => { cancelled = true; };
   }, [load]);
+
+  useEffect(() => {
+    loadCards();
+  }, [loadCards]);
+
+  // After a credit purchase: the balance and ledger, read again.
+  const reloadCredits = useCallback(() => loadCredits().catch(setError), [loadCredits]);
 
   // A promise to pay is not an earning. The factory's ledger begins only
   // once the brand's money has cleared and TSC is holding or releasing it.
@@ -242,7 +278,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     setForm((current) => ({ ...current, [key]: event.target.value }));
   };
 
-  async function saveAccount() {
+  // The set-up dialog sends the country it asked for; null for a country it
+  // does not list, which the factory names in the instructions instead.
+  async function saveAccount(details = {}) {
+    if (!form.bank_name.trim() || !form.account_name.trim()) {
+      setError(new Error("Add the bank and the account name so TSC can pay you."));
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -250,6 +292,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         org_id: org.id,
         is_primary: true,
         ...Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim() || null])),
+        bank_country: "bank_country" in details ? details.bank_country : account?.bank_country ?? null,
       };
       const result = account?.id
         ? await supabase.from("factory_payout_accounts").update(payload).eq("id", account.id).select().single()
@@ -292,6 +335,23 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       setError(failure);
     } finally {
       setBillingBusy(false);
+    }
+  }
+
+  async function removeCard() {
+    if (!removingCard) return;
+    setCardBusy(true);
+    setCardsError(null);
+    try {
+      await removeSavedCard(org.id, removingCard.id);
+      setRemovingCard(null);
+      setBillingSaved(false);
+      await loadCards();
+    } catch (failure) {
+      setCardsError(failure);
+      setRemovingCard(null);
+    } finally {
+      setCardBusy(false);
     }
   }
 
@@ -374,20 +434,39 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       )}
 
       {tab === "billing" && (
-        <section className="billing-method-empty">
-          <div>
-            <strong>Billing methods</strong>
-            <p>Save a card to use when you purchase credits.</p>
-            {billingSaved ? <span className="live-payment-notice">Payment method added.</span> : null}
-          </div>
-          {isOwner ? <button className="primary-btn compact-btn" type="button" disabled={billingBusy || !STRIPE_PUBLISHABLE_KEY} onClick={addBillingMethod}>{billingBusy ? "Opening…" : "+ Add payment method"}</button> : null}
-        </section>
+        <>
+          <section className="billing-method-empty">
+            <div>
+              <strong>Billing methods</strong>
+              <p>{isOwner ? "Save a card to use when you buy credits." : "Only an owner of your company can add or remove billing methods."}</p>
+              {billingSaved ? <span className="live-payment-notice">Payment method added.</span> : null}
+            </div>
+            {isOwner ? <button className="primary-btn compact-btn" type="button" disabled={billingBusy || !STRIPE_PUBLISHABLE_KEY} onClick={addBillingMethod}>{billingBusy ? "Opening…" : "+ Add payment method"}</button> : null}
+          </section>
+          {cardsError ? <p className="projects-empty projects-error" role="alert">{cardsError.message}</p>
+            : !STRIPE_PUBLISHABLE_KEY ? <p className="projects-empty">Card payments are not set up on this site yet.</p>
+            : cards === null ? <p className="projects-empty">Loading saved cards…</p>
+            : cards.length ? (
+              <div className="billing-history-list billing-saved-card-list">
+                {cards.map((card) => (
+                  <article className="billing-history-row" key={card.id}>
+                    <div><strong>{cardBrand(card.brand)} ending in {card.last4}</strong><span>{cardExpiry(card)}</span></div>
+                    <span className="billing-status">Saved</span>
+                    {isOwner ? <button className="secondary-btn compact-btn" type="button" disabled={cardBusy} onClick={() => setRemovingCard(card)}>Remove</button> : <span />}
+                  </article>
+                ))}
+              </div>
+            ) : <p className="projects-empty">No saved cards yet.</p>}
+        </>
       )}
 
       {tab === "credits" && (
         <>
           <section className="factory-credit-billing-card">
             <div><span>Credit balance</span><strong>{creditBalance.toLocaleString()} credits</strong><p>Credits earned and used by this factory account.</p></div>
+            <div className="factory-credit-billing-action">
+              <CreditPurchaseButton orgId={org.id} orgName={org.name} isOwner={isOwner} onPurchased={reloadCredits} />
+            </div>
           </section>
           {credits.length ? (
             <div className="billing-history-list">
@@ -406,13 +485,24 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       {error && <p className="projects-empty projects-error" role="alert">{error.message}</p>}
 
       {billingSecret ? (
-        <BillingMethodFlow clientSecret={billingSecret} onClose={() => setBillingSecret(null)} onSaved={() => { setBillingSecret(null); setBillingSaved(true); }} />
+        <BillingMethodFlow clientSecret={billingSecret} onClose={() => setBillingSecret(null)} onSaved={() => { setBillingSecret(null); setBillingSaved(true); loadCards(); }} />
+      ) : null}
+
+      {removingCard ? (
+        <PayoutModal
+          title="Remove this card?"
+          eyebrow="Billing"
+          onClose={() => { if (!cardBusy) setRemovingCard(null); }}
+          actions={<><button className="secondary-btn" type="button" disabled={cardBusy} onClick={() => setRemovingCard(null)}>Cancel</button><button className="primary-btn payout-remove-confirm" type="button" disabled={cardBusy} onClick={removeCard}>{cardBusy ? "Removing…" : "Remove card"}</button></>}
+        >
+          <p className="payout-modal-intro">{cardBrand(removingCard.brand)} ending in {removingCard.last4} will no longer be saved for buying credits.</p>
+        </PayoutModal>
       ) : null}
     </section>
   );
 }
 
-export function BillingMethodFlow({ clientSecret, onClose, onSaved, intro = "Save a card to use when you choose to purchase credits." }) {
+export function BillingMethodFlow({ clientSecret, onClose, onSaved, intro = "Save a card to use when you buy credits." }) {
   return (
     <Elements stripe={billingStripe()}>
       <BillingMethodModal clientSecret={clientSecret} intro={intro} onClose={onClose} onSaved={onSaved} />

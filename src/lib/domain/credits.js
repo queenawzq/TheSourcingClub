@@ -9,6 +9,10 @@
  * is the sum of lines written by definer functions. Referrals are the one
  * thing a brand writes itself, which is why "Invite a brand" can be real while
  * the grant it earns cannot be claimed here.
+ *
+ * A factory buys credits by card (buyCredits): api/stripe-credits.js prices
+ * the pack in the database and Stripe charges it; the credits are written
+ * only once Stripe says the card was charged.
  */
 import { supabase, unwrap } from "../supabase.js";
 import { formatMoney } from "../money.js";
@@ -93,8 +97,10 @@ export async function savingsFor(orgId) {
   return {
     // 500 credits = $50, the rate the credit card on the factory dashboard uses.
     amount: unused.length ? unused[0].value : formatMoney(credits * 10),
+    // Nothing redeems a code at payment yet, so the card says what the brand
+    // holds, not where it can spend it.
     note: unused.length
-      ? `${unused.length} code${unused.length === 1 ? "" : "s"} ready to use at payment. Invite a brand to earn another.`
+      ? `${unused.length} unused discount code${unused.length === 1 ? "" : "s"}. Invite a brand to earn another.`
       : `${credits} credits available. Invite a brand to earn more.`,
     codes,
   };
@@ -104,3 +110,52 @@ export async function savingsFor(orgId) {
 export async function quoteCreditCost() {
   return Number(unwrap(await supabase.rpc("quote_credit_cost"), "load the quote price")) || 0;
 }
+
+/**
+ * The packs on sale, priced by the database (credit_packs()). The server
+ * charges what these say whatever the page sends, so this is for display.
+ */
+export async function creditPacks() {
+  const rows = unwrap(await supabase.rpc("credit_packs"), "load the credit packs") ?? [];
+  return rows.map((row) => ({
+    credits: Number(row.credits),
+    amountCents: Number(row.amount_cents),
+    currency: row.currency,
+  }));
+}
+
+async function creditsRoute(body) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const response = await fetch("/api/stripe-credits", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session?.access_token ?? ""}`,
+    },
+    body: JSON.stringify(body),
+  });
+  let result = {};
+  try {
+    result = await response.json();
+  } catch {
+    // An empty or HTML answer (the route is missing) reads as its status.
+  }
+  if (!response.ok) {
+    const failure = new Error(result.error || `Payments are not available right now (${response.status}).`);
+    failure.status = response.status;
+    throw failure;
+  }
+  return result;
+}
+
+/**
+ * Start buying a pack: an owner only. Returns { purchaseId, clientSecret,
+ * credits, amountCents, currency, savedCards } for confirming the card.
+ */
+export const buyCredits = (orgId, packCredits) => creditsRoute({ action: "start", orgId, credits: packCredits });
+
+/**
+ * Read the purchase back from Stripe now and record it. Returns
+ * { id, state: "pending" | "failed" | "succeeded", credits, failure_reason, … }.
+ */
+export const syncCreditPurchase = (purchaseId) => creditsRoute({ action: "sync", purchaseId });

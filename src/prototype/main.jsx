@@ -1503,7 +1503,8 @@ function CloseIconButton({ label }) {
 /**
  * `live` (the brand's Payments page in the app): { metrics: [[label, value,
  * tone]], rows: [{ id, title, client, meta, date, status, amount, href, onOpen }],
- * empty, discount: { amount, note } | null, codes, onCopy(code), copied }.
+ * empty, discount: { amount, note } | null, codes, onCopy(code), copied,
+ * codesNote? }.
  * Without it the prototype draws its examples, unchanged.
  */
 export function BillingScreen({ accountType = "brand", live = null }) {
@@ -1593,7 +1594,7 @@ export function BillingScreen({ accountType = "brand", live = null }) {
           )}
           <header>
             <h2>Discount codes</h2>
-            <p>Use an unused code at payment. Used codes stay here so finance can track order discounts.</p>
+            <p>{live ? live.codesNote ?? LIVE_DISCOUNT_CODES_NOTE : "Use an unused code at payment. Used codes stay here so finance can track order discounts."}</p>
           </header>
           <div className="brand-discount-code-list">
             {live && !live.codes.length && <p className="billing-empty-note">No discount codes yet.</p>}
@@ -2177,6 +2178,10 @@ export function SettingsScreen({
   onAddBillingMethod,
   onEditPaymentMethod,
   onDeletePaymentMethod,
+  // Live only: removes a saved card (the brand's list, the factory's Billing
+  // tab), and the line a member reads where an owner gets the buttons.
+  onRemoveBillingMethod,
+  billingMethodNote = "",
   onInvite,
   onRemove,
   busy = false,
@@ -2409,6 +2414,7 @@ export function SettingsScreen({
                           ? "Add a bank account to receive released earnings."
                           : "Save a card to use when you purchase credits."}
                       </p>
+                      {paymentTab === "billing" && billingMethodNote ? <p>{billingMethodNote}</p> : null}
                     </div>
                     {paymentTab === "billing" && onAddBillingMethod ? (
                       <button className="primary-btn compact-btn" type="button" onClick={onAddBillingMethod}>+ Add payment method</button>
@@ -2416,7 +2422,7 @@ export function SettingsScreen({
                   </div>
                 ) : null}
                 {factoryMethods[paymentTab].map((method) => (
-                  <div className="settings-payment-list settings-payment-page-card" key={`${paymentTab}-${method.label}`}>
+                  <div className="settings-payment-list settings-payment-page-card" key={`${paymentTab}-${method.id ?? method.label}`}>
                     <div>
                       <span className="settings-card-brand">{method.label}</span>
                       <strong>{method.name}</strong>
@@ -2426,6 +2432,23 @@ export function SettingsScreen({
                       {method === factoryMethods[paymentTab][0] && paymentTab === "billing" && onAddBillingMethod ? (
                         <button className="primary-btn compact-btn" type="button" onClick={onAddBillingMethod}>+ Add payment method</button>
                       ) : null}
+                      {/* A live saved card can only be removed, and only by an owner. */}
+                      {livePaymentMethods && paymentTab === "billing" ? onRemoveBillingMethod && (
+                        <div className="settings-payment-menu">
+                          <button
+                            className="settings-menu-btn"
+                            type="button"
+                            aria-label={`More options for ${method.name}`}
+                            aria-expanded={paymentMenu === method.id}
+                            onClick={() => setPaymentMenu((open) => open === method.id ? null : method.id)}
+                          />
+                          {paymentMenu === method.id ? (
+                            <div className="settings-payment-popover" role="menu">
+                              <button className="danger" type="button" role="menuitem" disabled={busy} onClick={() => { setPaymentMenu(null); onRemoveBillingMethod(method); }}>Remove method</button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
                       <div className="settings-payment-menu">
                         <button
                           className="settings-menu-btn"
@@ -2441,9 +2464,15 @@ export function SettingsScreen({
                           </div>
                         ) : null}
                       </div>
+                      )}
                     </div>
                   </div>
                 ))}
+                {paymentTab === "billing" && billingMethodNote && factoryMethods.billing.length > 0 ? (
+                  <div className="settings-payment-page-card">
+                    <div className="settings-payment-page-copy"><p>{billingMethodNote}</p></div>
+                  </div>
+                ) : null}
                 {paymentTab === "earnings" && onAddPaymentMethod ? (
                   <button className="settings-add-btn" type="button" onClick={onAddPaymentMethod}>Manage payout methods</button>
                 ) : null}
@@ -2453,6 +2482,7 @@ export function SettingsScreen({
                 <div className="settings-payment-page-copy">
                   <strong>Payment method</strong>
                   <p>Save a card to use when funding production milestones.</p>
+                  {billingMethodNote ? <p>{billingMethodNote}</p> : null}
                 </div>
                 {onAddBillingMethod ? (
                   <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={onAddBillingMethod}>
@@ -2460,6 +2490,47 @@ export function SettingsScreen({
                   </button>
                 ) : null}
               </div>
+            ) : livePaymentMethods ? (
+              // Live: the company's saved cards, each removable by an owner.
+              <>
+                {livePaymentMethods.map((method) => (
+                  <div className="settings-payment-list settings-payment-page-card" key={method.id ?? method.name}>
+                    <div>
+                      <span className="settings-card-brand">{method.label}</span>
+                      <strong>{method.name}</strong>
+                      <small>{method.note}</small>
+                    </div>
+                    <div className="settings-payment-page-actions">
+                      {method === livePaymentMethods[0] && onAddBillingMethod ? (
+                        <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={onAddBillingMethod}>
+                          {busy ? "Opening…" : "+ Add payment method"}
+                        </button>
+                      ) : null}
+                      {onRemoveBillingMethod ? (
+                        <div className="settings-payment-menu">
+                          <button
+                            className="settings-menu-btn"
+                            type="button"
+                            aria-label={`More options for ${method.name}`}
+                            aria-expanded={paymentMenu === (method.id ?? method.name)}
+                            onClick={() => setPaymentMenu((open) => open === (method.id ?? method.name) ? null : method.id ?? method.name)}
+                          />
+                          {paymentMenu === (method.id ?? method.name) ? (
+                            <div className="settings-payment-popover" role="menu">
+                              <button className="danger" type="button" role="menuitem" disabled={busy} onClick={() => { setPaymentMenu(null); onRemoveBillingMethod(method); }}>Remove method</button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+                {billingMethodNote ? (
+                  <div className="settings-payment-page-card">
+                    <div className="settings-payment-page-copy"><p>{billingMethodNote}</p></div>
+                  </div>
+                ) : null}
+              </>
             ) : (
               <>
                 <div className="settings-payment-list">
@@ -4181,6 +4252,10 @@ const brandDiscountCodes = [
   { code: "WELCOME-50", status: "Used", source: "First eligible order", value: "$50", usedOn: "Organic cotton woven shirt - Jul 18" }
 ];
 
+// Nothing redeems a code at payment yet, so live screens (any that pass real
+// codes) say so instead of the design's promise.
+const LIVE_DISCOUNT_CODES_NOTE = "Codes can't be applied to a payment yet. Used codes stay here so finance can track order discounts.";
+
 function DiscountCodesModal({ codes, onClose }) {
   const rows = codes ?? brandDiscountCodes;
   return createPortal((
@@ -4192,7 +4267,7 @@ function DiscountCodesModal({ codes, onClose }) {
         </button>
         <header className="brand-profile-modal-header">
           <h1 id="brand-discount-codes-title">Discount codes</h1>
-          <p>Use an unused code at payment. Used codes stay here so finance can track order discounts.</p>
+          <p>{codes ? LIVE_DISCOUNT_CODES_NOTE : "Use an unused code at payment. Used codes stay here so finance can track order discounts."}</p>
         </header>
         <div className="brand-discount-code-list">
           {rows.map((item) => (
@@ -8458,6 +8533,9 @@ function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
 function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
   const [note, setNote] = useState("");
   const other = live?.counterparty ?? "Atelier Minho";
+  // Live rows may carry the step amount the factory is paid apart from the
+  // amount shown on the row (what the brand paid, the service fee included).
+  const releaseAmount = milestone.releaseAmount ?? milestone.amount;
 
   return (
     <div className="approve-fund-modal-layer" role="presentation">
@@ -8469,13 +8547,13 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
         <header>
           <p>Approve fund</p>
           <h2 id="approve-fund-title">
-            {`Release ${milestone.amount} for ${milestone.title.toLowerCase()}`}
+            {`Release ${releaseAmount} for ${milestone.title.toLowerCase()}`}
           </h2>
           {/* Live, the brand funded this step through Stripe and TSC holds
               the money: approving pays it to the factory. */}
           <span>
             {live
-              ? `Approving releases ${milestone.amount} held by TSC to ${other}.`
+              ? `Approving releases ${releaseAmount} held by TSC to ${other}.`
               : "Funds will move from project funds to Atelier Minho after approval."}
           </span>
         </header>
@@ -8486,7 +8564,7 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
           </div>
           <div>
             <span>Amount</span>
-            <strong>{milestone.amount}</strong>
+            <strong>{releaseAmount}</strong>
           </div>
           <div>
             <span>Review item</span>

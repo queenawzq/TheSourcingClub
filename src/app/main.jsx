@@ -1107,8 +1107,11 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/orders/:id/payments/:pid",
       render: (params) =>
+        // A factory is told about the brand's payments (funded, failed,
+        // refunded, paid out) and the link is the payment's; its own view of
+        // that payment is the order page.
         isFactory
-          ? <NotForThisSide isFactory />
+          ? <OrderRedirect navigate={navigate} orderId={params.id} />
           // Due or failed: the designed Fund screen (Stripe). Anything else
           // has nothing to pay and shows where the payment stands.
           : (
@@ -1165,6 +1168,13 @@ function PayoutRedirect({ navigate }) {
   useEffect(() => {
     navigate("/payout", { replace: true });
   }, [navigate]);
+  return null;
+}
+
+function OrderRedirect({ navigate, orderId }) {
+  useEffect(() => {
+    navigate(`/orders/${orderId}`, { replace: true });
+  }, [navigate, orderId]);
   return null;
 }
 

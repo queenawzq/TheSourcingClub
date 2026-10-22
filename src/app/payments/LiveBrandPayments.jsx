@@ -4,9 +4,12 @@
  * Payments: the brand's own order payments and where each stands (Not paid,
  * Payment processing, Failed, Funded, Paid; Sent only for an old bank-wire
  * claim) with the design's four figures (brand-payments-view.js). A row opens
- * its transaction page; a due one opens the Fund screen on its order.
+ * its transaction page; a due one opens the Fund screen on its order for an
+ * owner, who alone may pay (begin_payment_checkout). A member's due row opens
+ * the transaction page, which says so up front.
  * Discounts: the brand's real credit and discount codes (credits.js), the
- * same ones the dashboard's Savings card shows.
+ * same ones the dashboard's Savings card shows. Nothing redeems a code at
+ * payment yet, so the design's "Use an unused code at payment" is not said.
  *
  * Cards are entered only in Stripe's own form on the Fund screen, and nothing
  * is saved here, so the design's saved cards and invoices are left out.
@@ -79,8 +82,10 @@ export default function LiveBrandPayments({ org }) {
         live={{
           metrics: view.metrics,
           rows: view.rows.map((row) => {
-            // A due payment has no transaction to show yet: it opens the Fund screen.
-            const path = row.state === "due"
+            // A due payment has no transaction to show yet: it opens the Fund
+            // screen, for an owner. A member cannot pay, so its row opens the
+            // transaction page, which says who can.
+            const path = row.state === "due" && org.role === "owner"
               ? `/orders/${row.orderId}/payments/${row.id}`
               : `/payments/${row.orderId}/${row.id}`;
             return { ...row, href: `/app.html${path}`, onOpen: () => navigate(path) };
@@ -88,6 +93,7 @@ export default function LiveBrandPayments({ org }) {
           empty: "No payment transactions yet.",
           discount: state.savings ? { amount: state.savings.amount, note: state.savings.note } : null,
           codes: state.codes,
+          codesNote: "Codes can't be applied to a payment yet. Used codes stay here so finance can track order discounts.",
           onCopy: copy,
           copied,
         }}

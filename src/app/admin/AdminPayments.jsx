@@ -59,6 +59,9 @@ const ROW_TIME = {
 };
 
 function Actions({ row, section, note, onDecide, busy }) {
+  // Marking a payout paid by bank cannot be undone from here and tells the
+  // factory it was paid, so it asks once, saying the amount and where to.
+  const [confirming, setConfirming] = useState(false);
   if (section === "wire") {
     return (
       <>
@@ -82,11 +85,27 @@ function Actions({ row, section, note, onDecide, busy }) {
               onClick={() => onDecide(row, "retry", note)}>
         Retry payout
       </button>
+    ) : confirming ? (
+      <>
+        <span className="admin-sub" role="alert">
+          {`Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank?`}
+          {row.payout_summary === "no bank details on file" ? " No bank details are on file." : null}
+        </span>
+        <button type="button" className="admin-approve" disabled={busy}
+                data-testid="release-payment-confirm"
+                onClick={() => { setConfirming(false); onDecide(row, "release", note); }}>
+          Yes, mark paid out
+        </button>
+        <button type="button" className="admin-reject" disabled={busy}
+                onClick={() => setConfirming(false)}>
+          Cancel
+        </button>
+      </>
     ) : (
       <button type="button" className="admin-approve" disabled={busy}
               data-testid="release-payment"
               title="Pay the factory by bank transfer first, then mark it here"
-              onClick={() => onDecide(row, "release", note)}>
+              onClick={() => setConfirming(true)}>
         Mark paid out by bank
       </button>
     );
