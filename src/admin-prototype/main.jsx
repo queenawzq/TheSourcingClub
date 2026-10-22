@@ -936,6 +936,12 @@ function CreditsCard({ orgId, refreshKey }) {
   const close = () => { setOpen(false); setAmount(""); setReason(""); setFormError(""); setDirection("add"); };
   const units = Number.parseInt(amount, 10);
   const valid = Number.isInteger(units) && units > 0 && reason.trim().length >= 5;
+  // Said under the form while Save is off, so staff are not left guessing why.
+  const missing = !(Number.isInteger(units) && units > 0)
+    ? "Enter a whole number of credits."
+    : reason.trim().length < 5
+      ? "Write a reason of at least 5 characters; the company sees it."
+      : "";
   const save = async () => {
     setBusy(true);
     setFormError("");
@@ -955,6 +961,7 @@ function CreditsCard({ orgId, refreshKey }) {
     <section className="factory-profile-card admin-review-meta admin-credits-card">
       <h2>Credits</h2>
       {error && <p className="admin-error" role="alert">{error}</p>}
+      {!credits && !error && <p className="admin-assist-meta">Loading credits…</p>}
       {credits && (
         <>
           <ProfileDetailPair label="Balance" value={`${credits.balance.toLocaleString()} credits`} />
@@ -984,6 +991,7 @@ function CreditsCard({ orgId, refreshKey }) {
             </div>
             <label className="factory-onboarding-field"><span>Credits</span><input type="number" min="1" max="10000" step="1" inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value)} placeholder="50" /></label>
             <label className="factory-onboarding-field"><span>Reason</span><textarea value={reason} onChange={(event) => setReason(event.target.value)} placeholder="For example: Goodwill for a slow review" /></label>
+            {!formError && missing && (amount || reason) ? <p className="admin-assist-meta">{missing}</p> : null}
             {formError && <p className="admin-error" role="alert">{formError}</p>}
             <footer><button className="secondary-btn" type="button" onClick={close}>Cancel</button><button className="primary-btn" type="button" disabled={!valid || busy} onClick={save}>{busy ? "Saving…" : direction === "add" ? "Add credits" : "Remove credits"}</button></footer>
           </section>
