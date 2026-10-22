@@ -128,10 +128,20 @@ export function methodLabel(method) {
   return method.type;
 }
 
+// Stripe's message for these is written for developers ("You can provide
+// payment_method_data…"); a card's own decline message is written for the
+// cardholder and is kept as it is.
+const PLAIN_REASONS = {
+  payment_intent_authentication_failure: "Your bank did not confirm this payment, so nothing was charged.",
+  payment_method_unexpected_state: "This card could not be used, so nothing was charged.",
+};
+
 /** The reason a person can act on, from Stripe's error on the PaymentIntent. */
-function failureReason(intent) {
+export function failureReason(intent) {
   const error = intent.last_payment_error;
-  return error?.message ?? (error?.code ? error.code.replace(/_/g, " ") : "The payment did not go through.");
+  if (error?.code && PLAIN_REASONS[error.code]) return PLAIN_REASONS[error.code];
+  if (error?.type === "card_error" && error.message) return error.message;
+  return "The payment did not go through, so nothing was charged.";
 }
 
 async function rpc(db, name, args) {

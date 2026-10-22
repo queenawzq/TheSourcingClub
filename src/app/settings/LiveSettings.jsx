@@ -7,14 +7,21 @@
  *
  * For a brand it also supplies the real account details (org name, business
  * email, HQ location from brand_profiles), the real pending invitations, and
- * the payment method's empty state: payments are track-only, so no card or
- * bank account is ever stored. No phone number is stored anywhere either, so
- * that field is left empty.
+ * the cards saved to the company: every payment saves its card, and "+ Add
+ * payment method" saves one (Stripe, listed and removed through
+ * api/stripe-cards). No phone number is stored anywhere, so that field is
+ * left empty.
  *
  * A factory gets the same: org name, the owner's email (factory_profiles has
  * no email column), its location, and its real pending invitations. Payout
  * management and card setup reuse the Payments dialogs directly on this page,
- * so Settings never detours through the Payments route.
+ * so Settings never detours through the Payments route. Its Billing tab lists
+ * the same saved cards.
+ *
+ * Only an owner may add or remove a card (stripe-billing-setup and
+ * stripe-cards refuse anyone else), so a member is told that up front
+ * instead of being offered buttons that can only fail.
+ *
  * The factory's copy (RFQ wording, "Trading company account") follows
  * factory-prototype.html's own Settings screen.
  *
@@ -25,7 +32,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { SettingsScreen, factoryAccountPermissionLabels, settingsPermissionLabels } from "../../prototype/main.jsx";
 import { inviteMember, listMembers, listPendingInvitations } from "../../lib/domain/org.js";
 import { listPayoutAccounts } from "../../lib/domain/payment.js";
-import { connectAccountFor, connectAction, startBillingSetup } from "../../lib/domain/stripe.js";
+import { connectAccountFor, connectAction, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { getBrandProfile, getFactoryProfile } from "../../lib/domain/profile.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import StripePayoutCard from "../order/StripePayoutCard.jsx";
@@ -50,6 +57,16 @@ const blankPayout = (row) => ({
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 
+/** A saved card as the designed payment-method row draws it. */
+const cardRow = (card) => ({
+  id: card.id,
+  label: "Saved card",
+  name: `${card.brand} ending in ${card.last4}`,
+  note: card.expMonth && card.expYear
+    ? `Expires ${String(card.expMonth).padStart(2, "0")}/${String(card.expYear).slice(-2)}`
+    : "",
+});
+
 /** "Sent today", "Sent yesterday", "Sent Oct 3", like the drawn rows. */
 function sentLabel(createdAt) {
   const sent = new Date(createdAt);
@@ -70,8 +87,16 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   const [payoutFlow, setPayoutFlow] = useState(null);
   const [billingSecret, setBillingSecret] = useState(null);
   const [billingBusy, setBillingBusy] = useState(false);
+  const [cards, setCards] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  // A site with no Stripe keys has no saved cards to show; any other failure
+  // is said, since an empty list would claim nothing is saved.
+  const loadCards = useCallback(() => listSavedCards(org.id).then(setCards, (failure) => {
+    setCards([]);
+    if (failure.status !== 503) setError(failure);
+  }), [org.id]);
 
   const reload = useCallback(async () => {
     try {
@@ -83,6 +108,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
       setProfile(loadedProfile);
       setInvites(loadedInvites);
       setMembers(loadedMembers);
+      loadCards();
 
       if (isFactory) {
         const [connectAccount, manualAccounts] = await Promise.all([
@@ -111,7 +137,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     } catch (failure) {
       setError(failure);
     }
-  }, [org.id, isFactory]);
+  }, [org.id, isFactory, loadCards]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -133,7 +159,9 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     setManualForm((current) => ({ ...current, [key]: event.target.value }));
   };
 
-  async function saveManualAccount() {
+  // The card passes the payout country it was set up for, which the form
+  // itself has no field for.
+  async function saveManualAccount(details = {}) {
     setBusy(true);
     setError(null);
     try {
@@ -141,6 +169,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         org_id: org.id,
         is_primary: true,
         ...Object.fromEntries(Object.entries(manualForm).map(([key, value]) => [key, value.trim() || null])),
+        bank_country: "bank_country" in details ? details.bank_country : manualAccount?.bank_country ?? null,
       };
       const result = manualAccount?.id
         ? await supabase.from("factory_payout_accounts").update(payload).eq("id", manualAccount.id).select().single()
@@ -172,6 +201,19 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
       throw failure;
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function removeCard(method) {
+    setBillingBusy(true);
+    setError(null);
+    try {
+      await removeSavedCard(org.id, method.id);
+      await loadCards();
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setBillingBusy(false);
     }
   }
 
@@ -223,9 +265,9 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     paymentMethods: isFactory
       ? {
           earnings: payoutMethods,
-          billing: [],
+          billing: cards.map(cardRow),
         }
-      : [],
+      : cards.map(cardRow),
     invites: invites.map((invite) => ({
       email: invite.email,
       role: invite.role === "owner" ? "Owner" : "Member",
@@ -236,14 +278,21 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   if (!members) return null;
 
   const openPayoutFlow = (action) => setPayoutFlow({ action, id: Date.now() });
+  const isOwner = org.role === "owner";
 
   return (
     <>
       <SettingsScreen
         accountType={isFactory ? "factory" : "brand"}
+        // What each role may do is decided in the database, not per person.
+        permissionsNote={isFactory
+          ? "Set by role for now: any member can send quotes and post updates; only an owner sets up payouts and buys credits. Per-person permissions aren't available yet."
+          : "Set by role for now: only an owner chooses a quote, pays for a step and approves a step that releases money; members can do the rest. Per-person permissions aren't available yet."}
         companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
         onAddPaymentMethod={isFactory ? () => openPayoutFlow("manage") : undefined}
-        onAddBillingMethod={addBillingMethod}
+        onAddBillingMethod={isOwner ? addBillingMethod : undefined}
+        onRemoveBillingMethod={isOwner ? removeCard : undefined}
+        billingMethodNote={isOwner ? "" : `Only an owner of ${org.name || "your company"} can add or remove payment methods.`}
         onEditPaymentMethod={isFactory ? () => openPayoutFlow("edit") : undefined}
         onDeletePaymentMethod={isFactory ? () => openPayoutFlow("remove") : undefined}
         team={team}
@@ -276,7 +325,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           clientSecret={billingSecret}
           intro={isFactory ? undefined : "Save a card to use when funding production milestones."}
           onClose={() => setBillingSecret(null)}
-          onSaved={() => setBillingSecret(null)}
+          onSaved={() => { setBillingSecret(null); loadCards(); }}
         />
       ) : null}
     </>

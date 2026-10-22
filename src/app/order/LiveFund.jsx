@@ -8,6 +8,13 @@
  * and over, 7% under) is added on top, and the right rail shows step, fee and
  * total as the database computed them (begin_payment_checkout).
  *
+ * Only an owner may pay (begin_payment_checkout). A member who opens a due
+ * payment is told who can, before anything is started at Stripe.
+ *
+ * The heading above each screen is always this payment's own: the design's
+ * copy is about a sample that needs approval, and a first payment can be a
+ * deposit that needs none.
+ *
  * Nothing here decides whether a payment went through. After Stripe answers,
  * /api/stripe-sync reads the PaymentIntent back and records it, the same way
  * the webhook does, and this screen shows what was recorded.
@@ -27,6 +34,7 @@ import { getOrder } from "../../lib/domain/order.js";
 import { getPayment, listPayments } from "../../lib/domain/payment.js";
 import { STRIPE_PUBLISHABLE_KEY, startCheckout, syncPayment } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
+import { useAuth } from "../../lib/auth.jsx";
 import { useRouter } from "../../lib/router.jsx";
 import { initials, locationLine } from "./order-view.js";
 import "./fund.css";
@@ -59,6 +67,8 @@ export const FUNDABLE = new Set(["due", "failed"]);
 
 export default function LiveFund({ orderId, paymentId, fallback }) {
   const { navigate } = useRouter();
+  const { activeOrg } = useAuth();
+  const isOwner = activeOrg?.role === "owner";
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
 
@@ -75,6 +85,11 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
     const first = [...payments].sort((a, b) => (a.order_milestones?.sort ?? 0) - (b.order_milestones?.sort ?? 0))[0];
     let checkout = null;
     let current = payment;
+    if (FUNDABLE.has(payment.state) && !isOwner) {
+      // Nothing to start at Stripe: the screen below says who can pay.
+      setState({ order, payment, checkout: null, isFirst: false, ownerOnly: true });
+      return;
+    }
     if (FUNDABLE.has(payment.state)) {
       // No publishable key: no form can be drawn, so start nothing at Stripe.
       if (!STRIPE_PUBLISHABLE_KEY) {
@@ -93,7 +108,7 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
       current = { ...payment, ...(await syncPayment(paymentId).catch(() => ({}))) };
     }
     setState({ order, payment: current, checkout, isFirst: first?.id === payment.id });
-  }, [orderId, paymentId]);
+  }, [orderId, paymentId, isOwner]);
 
   useEffect(() => { load().catch(setError); }, [load]);
 
@@ -125,7 +140,21 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
   }
   if (!state) return <main className="home-page"><div className="rfq-page"><div className="spinner" aria-hidden="true" /></div></main>;
 
-  const { order, payment, checkout, isFirst } = state;
+  const { order, payment, checkout, isFirst, ownerOnly } = state;
+
+  if (ownerOnly) {
+    return (
+      <main className="home-page">
+        <div className="rfq-page">
+          <button type="button" className="quiet-btn" onClick={back}>← Back to the order</button>
+          <h1>{payment.order_milestones?.title ?? "Payment"}</h1>
+          <p className="muted" data-testid="fund-owner-only">
+            Only an owner of {activeOrg?.name || "your company"} can pay for a step. Ask an owner to fund it from this order.
+          </p>
+        </div>
+      </main>
+    );
+  }
 
   // Held, paid out, cancelled, not due or a legacy bank-wire claim: nothing
   // to pay here, so the page says where the payment stands. A payment Stripe
@@ -187,14 +216,18 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
   const ready = Boolean(stripe && paymentMethodReady && agreed.every(Boolean) && !busy);
   // FlowShell words a later step as "Funds stay protected until the related
   // step is approved", which a payment-only step never is: it gets its own
-  // note (fundNote), and the first payment its own heading.
-  const paymentOnlyNote = `Add ${figures.total} for ${checkout.title.toLowerCase()}. This step needs no approval: TSC pays it to ${factory} once it is funded.`;
+  // note (fundNote). The first payment always gets its own heading, since
+  // the design's ("The brand funds the sample payment now…") assumes a
+  // sample that needs approval.
+  const step = checkout.title.toLowerCase();
+  const paymentOnlyNote = `Add ${figures.total} for ${step}. This step needs no approval: TSC pays it to ${factory} once it is funded.`;
+  const approvalNote = `Add ${figures.total} for ${step}. TSC holds it while ${factory} works on the step, and pays ${factory} only when you approve it.`;
   const fundingMilestone = isFirst ? null : {
     title: checkout.title,
     amount: figures.total,
     ...(paymentOnly ? { fundNote: paymentOnlyNote } : {}),
   };
-  const heading = paymentOnly && isFirst ? { description: paymentOnlyNote } : null;
+  const heading = isFirst ? { description: paymentOnly ? paymentOnlyNote : approvalNote } : null;
 
   async function fund() {
     if (!ready) return;
@@ -216,6 +249,12 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
         return;
       }
       const intent = result.paymentIntent;
+      // A failed 3-D Secure check comes back as an intent, not an error: it
+      // wants a payment method again. Nothing was charged, so say so here.
+      if (synced?.state === "failed" || intent?.status === "requires_payment_method" || intent?.status === "canceled") {
+        setProblem(synced?.failure_reason || intent?.last_payment_error?.message || "The payment did not go through.");
+        return;
+      }
       if (intent?.status === "requires_action" && intent.next_action?.type === "verify_with_microdeposits") {
         setDone({ state: "verify", label: synced?.payment_method_label });
         return;
@@ -374,6 +413,9 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
 
 /** The design's success screen, in the words of what actually happened. */
 function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, factory, order, onBack, onMessage }) {
+  // The card form is long, so paying leaves the page scrolled; the result
+  // opens at its heading.
+  useEffect(() => { window.scrollTo(0, 0); }, []);
   const currency = checkout?.currency ?? payment.currency;
   const total = formatMoney(checkout?.chargedCents ?? payment.charged_cents ?? payment.amount_cents, currency);
   const step = checkout?.title ?? payment.order_milestones?.title ?? "this step";
@@ -404,8 +446,10 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
         description: paymentOnly
           ? `Stripe is confirming your payment. This step needs no approval: TSC pays it to ${factory} once it goes through.`
           : "Stripe is confirming your payment. The factory starts when it goes through, and funds are only released after you approve the step.",
-      } : isFirst ? null : {
-        title: `${step} funded`,
+      } : {
+        // Always this step's own words: the design's first-payment heading
+        // promises release "after you approve the sample".
+        title: isFirst ? "First payment funded" : `${step} funded`,
         description: paymentOnly
           ? `This step needs no approval, so TSC pays it to ${factory} now that it is funded.`
           : `TSC holds this payment. ${factory} can start, and it is only released after you approve the step.`,
@@ -417,8 +461,10 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
         fund: {
           ...rail,
           paymentLabel: step,
-          subtotal: formatMoney(payment.amount_cents, currency),
-          fee: formatMoney((checkout?.chargedCents ?? payment.charged_cents ?? payment.amount_cents) - payment.amount_cents, currency),
+          subtotal: formatMoney(checkout?.amountCents ?? payment.amount_cents, currency),
+          // The fee as checkout computed it; a payment read back without a
+          // checkout (still clearing) has only what was charged to go on.
+          fee: formatMoney(checkout?.feeCents ?? (payment.charged_cents ?? payment.amount_cents) - payment.amount_cents, currency),
           feeLabel: "TSC service fee",
           total,
           totalLabel: payment.state === "confirmed" ? "Paid today" : "Clearing",
