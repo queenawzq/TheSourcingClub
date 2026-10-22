@@ -1,4 +1,4 @@
-import { callerClient, jsonBody, methodLabel, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { callerClient, failureReason, jsonBody, methodLabel, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
  * A factory buys a pack of credits by card (migration 20261023000100).
@@ -155,14 +155,28 @@ export async function applyCreditPurchaseIntent({ stripe, db, intent }) {
     });
   }
   if ((full.status === "requires_payment_method" && full.last_payment_error) || full.status === "canceled") {
-    const error = full.last_payment_error;
-    const reason = full.status === "canceled"
-      ? "The payment was cancelled."
-      : error?.message ?? (error?.code ? error.code.replace(/_/g, " ") : "The payment did not go through.");
+    const reason = full.status === "canceled" ? "The payment was cancelled." : failureReason(full);
     return rpc(db, "record_credit_purchase_failed", { target_purchase: purchaseId, payment_intent: full.id, reason });
   }
   const { data } = await db.from("credit_purchases").select("*").eq("id", purchaseId).maybeSingle();
   return data;
+}
+
+/**
+ * A refund of a credit purchase, made in Stripe: take back the refunded share
+ * of its credits. `amount_refunded` is the charge's running total, and the
+ * database writes only what is not yet taken back, so a repeat is a no-op.
+ * Returns the purchase, or null when the charge is not a credit purchase.
+ */
+export async function applyCreditPurchaseRefund({ db, charge }) {
+  const intentId = typeof charge.payment_intent === "string" ? charge.payment_intent : charge.payment_intent?.id ?? null;
+  if (!intentId || !(Number(charge.amount_refunded) > 0)) return null;
+  const { data: purchase } = await db.from("credit_purchases").select("id").eq("stripe_payment_intent_id", intentId).maybeSingle();
+  if (!purchase) return null;
+  return rpc(db, "record_credit_purchase_refunded", {
+    payment_intent: intentId,
+    refunded_cents: Number(charge.amount_refunded),
+  });
 }
 
 async function rpc(db, name, args) {

@@ -16,6 +16,7 @@
  * who can.
  */
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { loadStripe } from "@stripe/stripe-js";
 import {
   CardCvcElement,
@@ -100,6 +101,22 @@ export function CreditPurchaseButton({ orgId, orgName, isOwner = false, onPurcha
   );
 }
 
+/**
+ * The same purchase, opened from somewhere else (quote review): the page
+ * decides when it shows, and stays where it is once the credits are in.
+ */
+export function CreditPurchaseDialog({ orgId, onClose, onPurchased }) {
+  return (
+    <Elements stripe={stripeClient()}>
+      <CreditPurchaseFlow
+        orgId={orgId}
+        onClose={onClose}
+        onDone={(result) => { onClose(); onPurchased?.(result); }}
+      />
+    </Elements>
+  );
+}
+
 function CreditPurchaseFlow({ orgId, onClose, onDone }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -175,6 +192,12 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
       const synced = await syncCreditPurchase(checkout.purchaseId).catch(() => null);
       if (result.error) {
         setProblem(`${result.error.message || "The payment did not go through."} Try again, or use another card.`);
+        return;
+      }
+      // A failed 3-D Secure check comes back as an intent, not an error.
+      const intent = result.paymentIntent;
+      if (synced?.state === "failed" || intent?.status === "requires_payment_method" || intent?.status === "canceled") {
+        setProblem(`${synced?.failure_reason || intent?.last_payment_error?.message || "The payment did not go through."} Try again, or use another card.`);
         return;
       }
       onDone({ credits: checkout.credits, state: synced?.state ?? "pending", purchase: synced });
@@ -268,7 +291,9 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
     </div>
   ) : null;
 
-  return (
+  // Mounted on <body>: inside the page, an ancestor makes the fixed layer as
+  // tall as the page, and the dialog was centred below the fold.
+  return createPortal((
     <CreditPurchaseModal
       language="en"
       className="tsc-credit-buy-modal"
@@ -286,7 +311,7 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
       // to land (the webhook still records it).
       onClose={() => { if (!busy) onClose(); }}
     />
-  );
+  ), document.body);
 }
 
 export default CreditPurchaseButton;

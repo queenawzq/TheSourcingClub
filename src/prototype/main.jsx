@@ -2182,6 +2182,9 @@ export function SettingsScreen({
   // tab), and the line a member reads where an owner gets the buttons.
   onRemoveBillingMethod,
   billingMethodNote = "",
+  // Live only: what each role may do is fixed (owners everything), so the
+  // ticks are shown, not edited, and this line says why.
+  permissionsNote = "",
   onInvite,
   onRemove,
   busy = false,
@@ -2561,6 +2564,7 @@ export function SettingsScreen({
               <div>
                 <h3>{isFactory ? "Manage team & stakeholders" : "Stakeholder authority"}</h3>
                 <p>{isFactory ? "Control who can quote RFQs, post updates, and act as the primary contact." : "Assign quote flow, sample approvals, fund release, and the primary vendor contact."}</p>
+                {permissionsNote ? <p>{permissionsNote}</p> : null}
               </div>
               <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
             </div>
@@ -2609,6 +2613,7 @@ export function SettingsScreen({
                         <input
                           type="checkbox"
                           checked={member.permissions.includes(permission.key)}
+                          disabled={Boolean(permissionsNote)}
                           onChange={() => togglePermission(member.email, permission.key)}
                         />
                         <span>{permission.label}</span>

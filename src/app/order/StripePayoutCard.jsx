@@ -300,8 +300,10 @@ export default function StripePayoutCard({
     <>
       {renderCard ? <section className="live-payout-method-card live-stripe-payout-card" data-testid="stripe-payout-card">
         <div className="live-payout-balance">
-          <span>Available balance</span>
-          <strong>{balance ? formatMoney(available, currency) : "—"}</strong>
+          {/* Paid by bank, the factory has no balance anywhere: TSC sends each
+              released payment, so the card says how it is paid instead. */}
+          <span>{!account && manualAccount ? "Payouts" : "Available balance"}</span>
+          <strong>{balance ? formatMoney(available, currency) : !account && manualAccount ? "By bank transfer" : "—"}</strong>
           <p>{balance
             ? `${formatMoney(pending, currency)} pending`
             // Only an owner reads the balance; for anyone else it is not "in progress".

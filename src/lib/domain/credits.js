@@ -97,11 +97,11 @@ export async function savingsFor(orgId) {
   return {
     // 500 credits = $50, the rate the credit card on the factory dashboard uses.
     amount: unused.length ? unused[0].value : formatMoney(credits * 10),
-    // Nothing redeems a code at payment yet, so the card says what the brand
-    // holds, not where it can spend it.
+    // Nothing redeems a code at payment yet, and inviting a brand earns
+    // nothing yet, so the card says what the brand holds and promises neither.
     note: unused.length
-      ? `${unused.length} unused discount code${unused.length === 1 ? "" : "s"}. Invite a brand to earn another.`
-      : `${credits} credits available. Invite a brand to earn more.`,
+      ? `${unused.length} unused discount code${unused.length === 1 ? "" : "s"}. Codes can't be applied to a payment yet.`
+      : `${credits} credits. They can't be applied to a payment yet.`,
     codes,
   };
 }

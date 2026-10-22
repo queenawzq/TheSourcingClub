@@ -1664,6 +1664,24 @@ console.log("\ncredit purchases");
     balance === 1000 ? ok("and the factory sees the 1,000 credits it bought")
                      : fail(`expected a balance of 1000, got ${balance}`);
 
+    // Refunded in Stripe: the refunded share comes back off the balance, and
+    // the charge's running total means a repeat takes nothing more.
+    for (const refunded of [5000, 5000, 10000]) {
+      await admin.rpc("record_credit_purchase_refunded", {
+        payment_intent: `pi_smoke_${stamp}`, refunded_cents: refunded,
+      });
+    }
+    const { data: afterRefund } = await buyer.client.rpc("credit_balance", { org: buyerOrg.id });
+    afterRefund === 0
+      ? ok("a refund takes the credits back, half then the rest, never twice")
+      : fail(`expected a balance of 0 after a full refund, got ${afterRefund}`);
+
+    const { error: clientRefund } = await buyer.client.rpc("record_credit_purchase_refunded", {
+      payment_intent: `pi_smoke_${stamp}`, refunded_cents: 0,
+    });
+    clientRefund ? ok("and only the server records a refund")
+                 : fail("LEAK: record_credit_purchase_refunded ran from the browser");
+
     const { data: seen } = await stranger.client.from("credit_purchases").select("id").eq("id", purchase.id);
     seen?.length === 0 ? ok("another company cannot see the purchase")
                        : fail("LEAK: another company read a credit purchase");

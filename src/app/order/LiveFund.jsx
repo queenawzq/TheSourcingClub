@@ -249,6 +249,12 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
         return;
       }
       const intent = result.paymentIntent;
+      // A failed 3-D Secure check comes back as an intent, not an error: it
+      // wants a payment method again. Nothing was charged, so say so here.
+      if (synced?.state === "failed" || intent?.status === "requires_payment_method" || intent?.status === "canceled") {
+        setProblem(synced?.failure_reason || intent?.last_payment_error?.message || "The payment did not go through.");
+        return;
+      }
       if (intent?.status === "requires_action" && intent.next_action?.type === "verify_with_microdeposits") {
         setDone({ state: "verify", label: synced?.payment_method_label });
         return;
@@ -407,6 +413,9 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
 
 /** The design's success screen, in the words of what actually happened. */
 function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, factory, order, onBack, onMessage }) {
+  // The card form is long, so paying leaves the page scrolled; the result
+  // opens at its heading.
+  useEffect(() => { window.scrollTo(0, 0); }, []);
   const currency = checkout?.currency ?? payment.currency;
   const total = formatMoney(checkout?.chargedCents ?? payment.charged_cents ?? payment.amount_cents, currency);
   const step = checkout?.title ?? payment.order_milestones?.title ?? "this step";

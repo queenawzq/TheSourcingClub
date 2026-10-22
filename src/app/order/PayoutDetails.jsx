@@ -198,7 +198,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   }, [loadCards]);
 
   // After a credit purchase: the balance and ledger, read again.
-  const reloadCredits = useCallback(() => loadCredits().catch(setError), [loadCredits]);
+  // A purchase with a new card also saves that card, so Billing reloads too.
+  const reloadCredits = useCallback(() => {
+    loadCards();
+    return loadCredits().catch(setError);
+  }, [loadCards, loadCredits]);
 
   // A promise to pay is not an earning. The factory's ledger begins only
   // once the brand's money has cleared and TSC is holding or releasing it.

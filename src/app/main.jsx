@@ -947,7 +947,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/browse/:id/quote/review",
       render: (params) =>
         isFactory
-          ? <LiveQuoteReview org={activeOrg} rfqId={params.id} profile={profile} />
+          ? <LiveQuoteReview org={activeOrg} rfqId={params.id} profile={profile} isOwner={isOwner} />
           : <NotForThisSide isFactory={false} />,
     },
     {

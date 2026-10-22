@@ -1,5 +1,5 @@
 import { applyChargeRefund, applyPaymentIntent, rawBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
-import { applyCreditPurchaseIntent } from "./stripe-credits.js";
+import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-credits.js";
 
 /**
  * Stripe tells us what happened to a payment, or to a factory's account.
@@ -97,7 +97,10 @@ export default async function handler(request, response) {
         // A refund made in Stripe (staff by hand, a dispute, or our own of a
         // stray intent). Another app's charge matches no payment and is left.
         const payment = await applyChargeRefund({ stripe, db, charge: event.data.object });
-        if (!payment) console.error("stripe-webhook: no payment for this refunded charge", event.id, event.data.object.id);
+        if (payment) break;
+        // Not an order payment: a refunded credit pack takes its credits back.
+        const purchase = await applyCreditPurchaseRefund({ db, charge: event.data.object });
+        if (!purchase) console.error("stripe-webhook: no payment for this refunded charge", event.id, event.data.object.id);
         break;
       }
       case "account.updated": {

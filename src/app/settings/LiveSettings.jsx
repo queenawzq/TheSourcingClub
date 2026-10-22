@@ -284,6 +284,10 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     <>
       <SettingsScreen
         accountType={isFactory ? "factory" : "brand"}
+        // What each role may do is decided in the database, not per person.
+        permissionsNote={isFactory
+          ? "Set by role for now: any member can send quotes and post updates; only an owner sets up payouts and buys credits. Per-person permissions aren't available yet."
+          : "Set by role for now: only an owner chooses a quote, pays for a step and approves a step that releases money; members can do the rest. Per-person permissions aren't available yet."}
         companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
         onAddPaymentMethod={isFactory ? () => openPayoutFlow("manage") : undefined}
         onAddBillingMethod={isOwner ? addBillingMethod : undefined}

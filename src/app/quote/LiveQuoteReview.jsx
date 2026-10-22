@@ -28,16 +28,20 @@ import {
   submitQuote,
 } from "../../lib/domain/quote.js";
 import { creditBalance, quoteCreditCost } from "../../lib/domain/credits.js";
+import { CreditPurchaseDialog } from "../order/CreditPurchase.jsx";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { matchFit } from "../rfq/match-fit.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 
+// The same day format as the quote-sent screen, so "Quote due" reads alike.
+const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
+
 // submit_quote()'s refusal when the balance is short (migration
 // 20261022000400): "sending this quote costs 25 credits and you have 10".
 const SHORT_OF_CREDITS = /costs (\d+) credits and you have (-?\d+)/;
 
-export default function LiveQuoteReview({ org, rfqId, profile }) {
+export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }) {
   const { navigate } = useRouter();
   const requestOrigin = getRequestOrigin();
   const quotePath = withRequestOrigin(`/browse/${rfqId}/quote`, requestOrigin);
@@ -45,6 +49,8 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
   const [state, setState] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  // An owner short of credits buys them here and sends, without leaving the quote.
+  const [buying, setBuying] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,6 +116,7 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
   }
 
   return (
+    <>
     <FactoryReviewTotal
       companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
       language="en"
@@ -161,7 +168,7 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
           rfq.currency,
         ),
         samples: rfq.requires_sample ? "Sample required" : "No sample",
-        quoteDue: "",
+        quoteDue: rfq.quote_deadline ? DAY.format(new Date(rfq.quote_deadline)) : "",
         location: "",
         images: [],
         tags: [],
@@ -191,11 +198,23 @@ export default function LiveQuoteReview({ org, rfqId, profile }) {
       }}
       onBack={() => navigate(quotePath)}
       onEdit={() => navigate(quotePath)}
-      onPurchaseCredits={() => navigate("/payout?tab=credits")}
+      onPurchaseCredits={() => (isOwner ? setBuying(true) : navigate("/payout?tab=credits"))}
       // The draft was saved on the way here, so "Save draft" is leaving it for
       // later: it waits under Drafts on the RFQs page.
       onSaveDraft={() => navigate("/rfqs")}
       onSendQuote={send}
     />
+    {buying ? (
+      <CreditPurchaseDialog
+        orgId={org.id}
+        onClose={() => setBuying(false)}
+        onPurchased={async () => {
+          setError(null);
+          const fresh = await creditBalance(org.id).catch(() => null);
+          if (fresh !== null) setState((current) => ({ ...current, balance: fresh }));
+        }}
+      />
+    ) : null}
+    </>
   );
 }
