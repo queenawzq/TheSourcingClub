@@ -1484,13 +1484,28 @@ console.log("\nnotification emails");
   const samples = [
     ["rfq", "quote_received"], ["rfq", "rfq_invited"], ["order", "order_created"],
     ["milestone", "milestone_submitted"], ["payment", "payment_due"], ["thread", "message"],
-    ["capacity", "capacity_reminder"], ["milestone", "milestone_due_soon"], ["rfq", "rfq_matched"], ["unknown", "x"],
+    ["capacity", "capacity_reminder"], ["milestone", "milestone_due_soon"], ["rfq", "rfq_matched"],
+    ["org", "verification_needs_information"], ["referral", "referral_joined"], ["unknown", "x"],
   ].flatMap(([subject_type, kind]) => [true, false].map((isFactory) => [{
     subject_type, kind, subject_id: "00000000-0000-0000-0000-000000000001", order_id: "00000000-0000-0000-0000-000000000002",
   }, isFactory]));
   samples.every(([n, isFactory]) => notificationLink(n, { isFactory }) === notificationPath(n, { isFactory }))
     ? ok("an email's button opens where the bell's link does")
     : fail("the email's link rules differ from the bell's");
+
+  // A vendor signed out lands on the vendor sign-in, still on its deep link.
+  const { notificationEmail } = await import("./generate-notification-email.mjs");
+  const emailEnv = { appUrl: "https://tsc.test", logoUrl: "", supportEmail: "ops@tsc.test", companyAddress: "" };
+  const linkOf = (row) => notificationEmail({ category: "payments", title: "t", ...row }, emailEnv).text.match(/https:\/\/tsc\.test\S*/)?.[0];
+  const ids = { subject_id: "00000000-0000-0000-0000-000000000001", order_id: "00000000-0000-0000-0000-000000000002" };
+  const vendorStep = linkOf({ org_type: "factory", subject_type: "milestone", kind: "milestone_due_soon", ...ids });
+  const vendorCredits = linkOf({ org_type: "factory", subject_type: "referral", kind: "referral_joined", ...ids });
+  const brandStep = linkOf({ org_type: "brand", subject_type: "milestone", kind: "milestone_due_soon", ...ids });
+  vendorStep === `https://tsc.test/app.html/orders/${ids.order_id}/milestones/${ids.subject_id}?portal=factory`
+    && vendorCredits === "https://tsc.test/app.html/payout?tab=credits&portal=factory"
+    && brandStep === `https://tsc.test/app.html/orders/${ids.order_id}/milestones/${ids.subject_id}`
+    ? ok("a vendor's email links open the vendor sign-in; a brand's open the brand's")
+    : fail(`email links: ${vendorStep} / ${vendorCredits} / ${brandStep}`);
 
   const sender = await signedInUser(`notify-sender-${stamp}@example.com`);
   const receiver = await signedInUser(`notify-receiver-${stamp}@example.com`);
