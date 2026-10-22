@@ -217,7 +217,7 @@ function VerificationRow({ profile, onReview }) {
         </div>
       </div>
       {profile.confidence != null
-        ? <div className="admin-row-stat"><span>Confidence</span><strong>{profile.confidence}%</strong></div>
+        ? <div className="admin-row-stat"><span>{profile.confidenceLabel ?? "Confidence"}</span><strong>{profile.confidence}%</strong></div>
         : <div className="admin-row-stat"><span>Assigned</span><strong>{profile.owner || "Unassigned"}</strong></div>}
       <div className="admin-row-stat"><span>Evidence</span><strong>{profile.evidence}</strong></div>
       <StatusPill tone={profile.tone}>{profile.status}</StatusPill>
@@ -1660,9 +1660,11 @@ function App() {
 
   // Against the mock every list is populated on the first render, so these
   // seeds are no-ops. Against the network the first render has nothing, and a
-  // deep link would otherwise land on a blank detail screen.
+  // deep link would otherwise land on a blank detail screen. They seed from
+  // the link, not the first row: the URL still names the company (or request,
+  // or quote) the link was for until something is selected.
   useEffect(() => {
-    if (!selectedProfile && profiles.length) setSelectedProfile(profiles[0]);
+    if (!selectedProfile && profiles.length) setSelectedProfile(requestedProfile);
   }, [profiles, selectedProfile]);
 
   useEffect(() => {
@@ -1688,10 +1690,10 @@ function App() {
     return () => { cancelled = true; };
   }, [selectedProfile?.id, actions]);
   useEffect(() => {
-    if (!selectedRfq && rfqList.length) setSelectedRfq(rfqList[0]);
+    if (!selectedRfq && rfqList.length) setSelectedRfq(requestedRfq);
   }, [rfqList, selectedRfq]);
   useEffect(() => {
-    if (!selectedQuote && quoteList.length) setSelectedQuote(quoteList[0]);
+    if (!selectedQuote && quoteList.length) setSelectedQuote(requestedQuote);
   }, [quoteList, selectedQuote]);
 
   useEffect(() => {

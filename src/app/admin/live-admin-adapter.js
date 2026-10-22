@@ -150,6 +150,8 @@ export function toReviewProfile(row) {
     ],
     capabilities: row.capabilities ?? [],
     confidence: row.verificationScore ?? null,
+    // The queue row's name for that figure; the design's is "Confidence".
+    confidenceLabel: "Complete",
     completion: row.profileCompletion ?? null,
     // The designed panel renders [label, result, value, detail] tuples.
     checks: (row.verificationChecks ?? []).map(
