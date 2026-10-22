@@ -1359,7 +1359,7 @@ function TestEmailPanel({ email }) {
   return (
     <Panel
       title="Test emails"
-      subtitle={`Send yourself any email the marketplace sends, filled with sample data. It goes only to ${email}.`}
+      subtitle={`Send yourself a sample of the marketplace's emails (onboarding, review decisions and a notification), filled with sample data. It goes only to ${email}.`}
       className="admin-settings-card"
     >
       <form className="admin-threshold-form" onSubmit={send}>

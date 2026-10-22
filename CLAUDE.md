@@ -377,8 +377,8 @@ a company-level verdict and a file-level one cannot contradict each other.
 
 ### Test emails
 
-Admin Settings → Test emails sends any email the marketplace sends, with
-sample data, to the signed-in admin's **own** address and nobody else's
+Admin Settings → Test emails sends a sample of the marketplace's emails
+(onboarding, review decisions and one notification), with sample data, to the signed-in admin's **own** address and nobody else's
 (`api/send-test-email.js`). It builds the message with the same code as the
 real send — Queena's designed onboarding emails from
 `scripts/generate-onboarding-emails.mjs`, and `messageFor()` from
