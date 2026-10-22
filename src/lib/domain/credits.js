@@ -120,7 +120,10 @@ export function creditRow(line) {
     id: line.id,
     title: CREDIT_REASON[line.reason] || "Credits",
     meta,
-    status: line.delta > 0 ? "Earned" : line.reason === "admin_adjustment" ? "Removed" : "Used",
+    // Bought and refunded credits were paid for, not earned or spent.
+    status: line.reason === "purchase" ? "Bought"
+      : line.reason === "refund" ? "Refunded"
+        : line.delta > 0 ? "Earned" : line.reason === "admin_adjustment" ? "Removed" : "Used",
     amount: credits,
     delta: line.delta,
   };
