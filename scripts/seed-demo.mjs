@@ -119,7 +119,8 @@ const newFactory = await demoUser(LOGINS.newFactory);
 const newBrand = await demoUser(LOGINS.newBrand);
 const tradingCompany = await demoUser(LOGINS.tradingCompany);
 const adminUser = await demoUser(LOGINS.admin);
-const demoUsers = { brand, factory, secondFactory, newFactory, newBrand, tradingCompany, admin: adminUser };
+const brandMember = await demoUser(LOGINS.brandMember);
+const demoUsers = { brand, brandMember, factory, secondFactory, newFactory, newBrand, tradingCompany, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -160,6 +161,9 @@ must(await admin.from("platform_admins").upsert({ user_id: adminUser.id, note: "
 
 const brandOrg = must(await brand.client.rpc("create_org", { org_name: LOGINS.brand.name, org_kind: "brand" }), "create brand org");
 const factoryOrg = must(await factory.client.rpc("create_org", { org_name: LOGINS.factory.name, org_kind: "factory" }), "create factory org");
+// Demo Brand's member: every order of Demo Brand's, and none of an owner's
+// buttons that move money.
+must(await admin.from("org_members").insert({ org_id: brandOrg.id, user_id: brandMember.id, role: "member" }), "add the brand's member");
 
 // Onboarded and verified, so both land on the dashboard rather than the
 // onboarding flow or the "in review" card.
@@ -906,19 +910,20 @@ await funded(await dueNow(poplin, poplinTitle), CARD);
 const twillTitle = "Cotton twill overshirt, AW27";
 const twill = await runningOrder({ title: twillTitle, brief: "140 cotton twill overshirts, garment-dyed.", quantity: 140, unitPrice: 2900 });
 await funded(await dueNow(twill, twillTitle), CARD);
-// 3. Fit sample paid by bank, clearing ("Processing").
+// 3. Fit sample paid by bank before payments became card only, still
+//    clearing ("Processing"): how such a payment reads.
 const ribTitle = "Merino rib tank, AW27";
 const rib = await runningOrder({ title: ribTitle, brief: "120 fine merino rib tanks.", quantity: 120, unitPrice: 3100 });
 const ribFit = await dueNow(rib, ribTitle);
 await charged(ribFit);
 await clearing(ribFit, BANK);
-// 4. A bank payment that came back ("Failed"): the brand pays again.
+// 4. A card that was declined ("Failed"): the brand pays again. Payments are
+//    card only, so the reason is one a card gives.
 const chinoTitle = "Stretch chino, AW27";
 const chino = await runningOrder({ title: chinoTitle, brief: "200 stretch cotton chinos.", quantity: 200, unitPrice: 2400 });
 const chinoFit = await dueNow(chino, chinoTitle);
 await charged(chinoFit);
-await clearing(chinoFit, BANK);
-await failed(chinoFit, "The bank account has been closed.");
+await failed(chinoFit, "Your card was declined.");
 // 5. Fit sample owed ("Due").
 const denimTitle = "Washed denim jacket, AW27";
 await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme washed.", quantity: 90, unitPrice: 4800 });
@@ -1007,6 +1012,7 @@ console.log(`
 done. Every login uses the password "${PASSWORD}".
 
   brand           ${LOGINS.brand.email}   ${app}
+  brand member    ${LOGINS.brandMember.email}   (Demo Brand, not an owner)
   factory         ${LOGINS.factory.email}   ${app}?portal=factory
   second factory  ${LOGINS.secondFactory.email}   (a competing quote)
   new factory     ${LOGINS.newFactory.email}   (waiting for verification)
@@ -1027,7 +1033,7 @@ done. Every login uses the password "${PASSWORD}".
     - "Organic poplin shirt, AW27": fit sample paid out, bulk deposit held and owed to the factory
     - "Cotton twill overshirt, AW27": fit sample funded by card, held while the factory works
     - "Merino rib tank, AW27": fit sample paid by bank, clearing
-    - "Stretch chino, AW27": fit sample bank payment failed, to pay again
+    - "Stretch chino, AW27": fit sample card declined, to pay again
     - "Washed denim jacket, AW27": fit sample payment due
     - "Seersucker camp shirt, AW27" (${LOGINS.secondFactory.name}): fit sample approved, owed to a factory
       Stripe cannot pay (China): staff pay it by bank from the admin's Payments page
