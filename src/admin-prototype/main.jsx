@@ -918,6 +918,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const [requestNote, setRequestNote] = useState("");
   const [requestSuggestionLoading, setRequestSuggestionLoading] = useState(false);
   const [requestSuggestionError, setRequestSuggestionError] = useState("");
+  // Live only: why the note came from the checks rather than the model.
+  const [requestSuggestionNotice, setRequestSuggestionNotice] = useState("");
   const [declineNote, setDeclineNote] = useState("");
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState(null);
@@ -941,14 +943,17 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const suggestRequest = async () => {
     setRequestSuggestionLoading(true);
     setRequestSuggestionError("");
+    setRequestSuggestionNotice("");
     try {
       const result = await onSuggestRequest?.({
         companyName: profile.name,
         entityType: profile.entityType,
         gaps: requestGaps,
       });
-      if (result?.message) setRequestNote(result.message);
-      else setRequestSuggestionError(result?.error || "The suggestion could not be generated. You can still write the message manually.");
+      if (result?.message) {
+        setRequestNote(result.message);
+        setRequestSuggestionNotice(result.notice || "");
+      } else setRequestSuggestionError(result?.error || "The suggestion could not be generated. You can still write the message manually.");
     } catch (error) {
       setRequestSuggestionError(error.message || "The suggestion could not be generated. You can still write the message manually.");
     } finally {
@@ -1085,6 +1090,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             </div>
             <label className="factory-onboarding-field admin-request-message"><span className="sr-only">Message to applicant</span><textarea value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Explain which document or information is missing and what the applicant should upload..." /></label>
             {requestSuggestionError && <p className="admin-request-ai-error" role="alert">{requestSuggestionError}</p>}
+            {requestSuggestionNotice && <p className="admin-assist-meta" role="status">{requestSuggestionNotice}</p>}
             <footer><button className="secondary-btn" type="button" onClick={() => setRequestOpen(false)}>Cancel</button><button className="primary-btn" type="button" disabled={!requestNote.trim()} onClick={() => { setRequestOpen(false); onDecision(profile.id, "Needs information", requestNote.trim()); setRequestNote(""); }}>Send request</button></footer>
           </section>
         </div>

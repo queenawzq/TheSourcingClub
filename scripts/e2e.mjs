@@ -2629,7 +2629,7 @@ async function main() {
 
       // A suggested note, edited, then sent the usual way. The dialog is the
       // design's: "Suggest with AI" fills the message from the incomplete
-      // checks; without a key it says so and staff write the note themselves.
+      // checks; without a key the note is built from the checks, and says so.
       await clickButton(page, "request more information");
       await waitFor(page, ".admin-review-modal", 10000);
       await clickButton(page, "suggest with ai");
@@ -2637,18 +2637,19 @@ async function main() {
       const suggestion = () => page.evaluate(() => ({
         text: document.querySelector(".admin-review-modal textarea")?.value ?? "",
         error: document.querySelector(".admin-request-ai-error")?.innerText ?? "",
+        notice: document.querySelector(".admin-review-modal [role=status]")?.innerText ?? "",
       }));
       let suggested = await suggestion();
       while (Date.now() < draftDeadline && !suggested.text.trim() && !suggested.error) {
         await page.waitForTimeout(400);
         suggested = await suggestion();
       }
-      console.log(`  Suggestion: ${suggested.error || `${suggested.text.trim().length} characters`}`);
-      const aiDraft = suggested.text.trim().length > 40;
-      const notConfigured = /not configured/i.test(suggested.error);
+      console.log(`  Suggestion: ${suggested.error || suggested.notice || `${suggested.text.trim().length} characters`}`);
+      const aiDraft = suggested.text.trim().length > 40 && !suggested.notice;
+      const fromChecks = suggested.text.trim().length > 40 && /not set up on this site/i.test(suggested.notice);
       if (aiMode === "on") check(aiDraft, `with a key, the AI suggests the message (${suggested.text.trim().length} characters)`);
-      else if (aiMode === "off") check(notConfigured && !suggested.text.trim(), `without a key, the dialog says suggestions are not set up ("${suggested.error}")`);
-      else check(aiDraft || notConfigured, `the message is suggested, or the dialog says it is not set up ("${suggested.error || "suggested"}")`);
+      else if (aiMode === "off") check(fromChecks, `without a key, the note is built from the checks and the dialog says why ("${suggested.notice || suggested.error}")`);
+      else check(aiDraft || fromChecks, `the message is suggested, or built from the checks ("${suggested.notice || suggested.error || "suggested"}")`);
       await record(page, "A suggested request", "staff read and edit it; nothing is sent yet");
       const drafted = suggested.text.trim()
         || "Please upload a current certificate for your certification scope, with its validity dates, so we can complete the review.";

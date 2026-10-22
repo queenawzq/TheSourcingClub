@@ -1077,7 +1077,8 @@ done. Every login uses the password "${PASSWORD}".
   Saved has ${LOGINS.factory.name} and ${LOGINS.tradingCompany.name}.
   The admin's verification queue has ${LOGINS.newFactory.name}: "Ask AI for suggestions" on its review
   page (with an OpenRouter key) should point at its legal name, website, registration and expired GOTS;
-  "Request more information" → "Draft with AI" fills the note, which staff edit before sending.
+  "Request more information" → "Suggest with AI" fills the note, which staff edit before sending
+  (without an OpenRouter key the note is built from the checks, and says so).
   Admin → Settings → Test data finds "Atelier E2E <number>" (a leftover test company) and deletes it.
   Admin → Settings → "Run daily jobs now" reminds ${LOGINS.factory.name} that its capacity is a
   month old${dueSoonStep ? ` and that "${dueSoonStep.title}" is due in three days` : ""} (bell and email, once).

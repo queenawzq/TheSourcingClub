@@ -1971,6 +1971,37 @@ console.log("\nadmin — AI help for reviewers, and clearing test data");
   });
   forged ? ok("even staff CANNOT write suggestions from the browser") : fail("LEAK: record_review_assist is callable by a signed-in user");
 
+  // What staff are told when the model cannot help: what happened, in words.
+  const upstreamAnswers = async (status, run) => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (url, init) => String(url).startsWith("https://openrouter.ai/")
+      ? Promise.resolve(new Response("{}", { status })) : realFetch(url, init);
+    try { return await run(); } finally { globalThis.fetch = realFetch; }
+  };
+  const refused = await upstreamAnswers(401, () => staffRouteAs("admin-review-assist", staff.client, {
+    body: { action: "check", orgId: mill.id }, env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+  }));
+  const broke = await upstreamAnswers(402, () => staffRouteAs("admin-review-assist", staff.client, {
+    body: { action: "check", orgId: mill.id }, env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+  }));
+  refused.available === false && /refused this site's key/.test(refused.reason) && /out of credits/.test(broke.reason)
+    ? ok("a refused key and an empty account are each said as what they are, not \"try again\"")
+    : fail("the model failure reasons", { refused: refused.reason, broke: broke.reason });
+
+  const gaps = [
+    { label: "Business registration", result: "Missing", detail: "No business registration document has been uploaded." },
+    { label: "Duplicate company signal", result: "Review", detail: `Shares a legal name or website domain with: Rival Mill ${stamp}.` },
+  ];
+  const noModelNote = await staffRouteAs("suggest-review-request", staff.client, { body: { companyName: "Assist Mill", gaps } });
+  const refusedNote = await upstreamAnswers(401, () => staffRouteAs("suggest-review-request", staff.client, {
+    body: { companyName: "Assist Mill", gaps }, env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+  }));
+  noModelNote.message?.includes("No business registration document") && /not set up on this site/.test(noModelNote.notice)
+    && /refused this site's key/.test(refusedNote.notice) && refusedNote.message
+    && ![noModelNote.message, refusedNote.message].some((message) => message.includes(`Rival Mill ${stamp}`))
+    ? ok("\"Suggest with AI\" without a model builds the note from the checks, says why, and names no other company")
+    : fail("the request note without a model", { noModelNote, refusedNote });
+
   // Two leftovers made the way the smoke run makes companies: one two hours
   // old (test data), one just made (a run in progress: left alone).
   const { data: leftovers } = await admin.from("orgs").insert([
