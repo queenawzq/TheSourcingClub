@@ -319,7 +319,7 @@ export default function LiveFactoryHome({ org, profile }) {
       capacity={capacity}
       attention={attention}
       onUpdateCapacity={onUpdateCapacity}
-      onPurchaseCredits={() => navigate("/payout")}
+      onPurchaseCredits={() => navigate("/payout?tab=credits")}
       onViewRfqs={() => navigate("/browse")}
       onBrowseRfqs={() => navigate("/browse")}
       onViewRfqDetail={(rfq) => navigate(rfq?.id ? `/browse/${rfq.id}?from=dashboard` : "/")}

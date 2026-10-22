@@ -11,6 +11,13 @@
  * money and never decides whose turn it is: the order total is the sum of the
  * milestones, not of the quote, and the two diverge the moment either side
  * edits the schedule.
+ *
+ * The brand pays each step with the service fee on top, and its Payments
+ * page and Fund screen say so, so its order page shows what it pays too: the
+ * header and each step's amount come from `production_order_charges` and
+ * `order_step_charges`, the same figures summed in SQL with the fee
+ * (migration 20261023000300). The factory is paid the step amount and keeps
+ * reading the summary.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
@@ -31,6 +38,7 @@ import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
 import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import { supabase } from "../../lib/supabase.js";
 import { BrandSchedule } from "./ScheduleBuilder.jsx";
 import CancelNotice from "./CancelNotice.jsx";
 import useOrderCancel from "./useOrderCancel.jsx";
@@ -133,7 +141,7 @@ function paymentLine(payment, isFactory, kind) {
 }
 
 /** The sentence under a step's title, from its own state and its payment's. */
-function statusLine(milestone, { isFactory, isOwner, posted }) {
+function statusLine(milestone, { isFactory, isOwner, orgName, posted }) {
   const payment = milestone.payment;
   const money = paymentLine(payment, isFactory, milestone.kind);
 
@@ -142,6 +150,10 @@ function statusLine(milestone, { isFactory, isOwner, posted }) {
   }
   // Funding comes before the work, so an unfunded step says so first.
   if (["due", "processing", "failed", "sent"].includes(payment?.state) && milestone.state !== "pending") {
+    // A member gets no "Fund milestone" (actionFor): say why, up front.
+    if (!isFactory && !isOwner && (payment.state === "due" || payment.state === "failed")) {
+      return `${money}. Only an owner of ${orgName || "your company"} can pay for it`;
+    }
     return money;
   }
   if (approvable(milestone, posted)) {
@@ -210,12 +222,28 @@ function brandReminderState(milestone, { running, posted, current }) {
 
 const TABS = new Set(["overview", "files", "contract"]);
 
+/**
+ * What the brand pays on this order, the fee included: the header's four
+ * figures and each step's charge by milestone id. Null when they cannot be
+ * read (a database without migration 20261023000300), and the page then
+ * shows the summary's step amounts as it did before.
+ */
+async function brandCharges(orderId) {
+  const [order, steps] = await Promise.all([
+    supabase.from("production_order_charges").select("*").eq("order_id", orderId).maybeSingle(),
+    supabase.from("order_step_charges").select("milestone_id, charged_cents").eq("order_id", orderId),
+  ]);
+  if (order.error || steps.error || !order.data) return null;
+  return { order: order.data, steps: new Map((steps.data ?? []).map((row) => [row.milestone_id, row.charged_cents])) };
+}
+
 export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = false, tab = "overview", step = null }) {
   const { navigate } = useRouter();
   const [order, setOrder] = useState(null);
   const [milestones, setMilestones] = useState([]);
   const [updates, setUpdates] = useState([]);
   const [activity, setActivity] = useState([]);
+  const [charges, setCharges] = useState(null);
   const [requestFiles, setRequestFiles] = useState([]);
   const [photoUrls, setPhotoUrls] = useState({});
   const [location, setLocation] = useState("");
@@ -230,12 +258,14 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
 
   const load = useCallback(async () => {
     try {
-      const [row, steps, posted, events] = await Promise.all([
+      const [row, steps, posted, events, charged] = await Promise.all([
         getOrder(orderId),
         listMilestones(orderId),
         listOrderUpdates(orderId),
         orderActivity(orderId),
+        isFactory ? null : brandCharges(orderId).catch(() => null),
       ]);
+      setCharges(charged);
       setOrder(row);
       setMilestones(steps ?? []);
       setUpdates(posted ?? []);
@@ -243,7 +273,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     } catch (failure) {
       setError(failure);
     }
-  }, [orderId]);
+  }, [orderId, isFactory]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -362,7 +392,10 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const money = (cents) => (cents == null ? "—" : formatMoney(cents, order.currency));
   const other = isFactory ? order.brand?.name : order.factory?.name;
   const running = order.status === "active";
-  const viewer = { isFactory, isOwner };
+  const viewer = { isFactory, isOwner, orgName: org.name };
+  // The brand's figures with the fee (brandCharges); the factory's are the
+  // summary's step amounts.
+  const charged = isFactory ? null : charges;
 
   const shaped = milestones.map((milestone) => {
     const stepUpdates = updates.filter((update) => update.milestone_id === milestone.id);
@@ -393,7 +426,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         milestone.due_on ? `due ${day(milestone.due_on)}` : null,
       ].filter(Boolean).join(" · "),
       ...(hasDispute ? { dueStatus: "Dispute opened", dueTone: "danger" } : dueBadge(milestone)),
-      amount: milestone.amount_cents ? money(milestone.amount_cents) : "",
+      amount: milestone.amount_cents ? money(charged?.steps.get(milestone.id) ?? milestone.amount_cents) : "",
+      // Approving releases the step amount to the factory; the fee stays with TSC.
+      releaseAmount: milestone.amount_cents ? money(milestone.amount_cents) : "",
       description: milestone.description ?? "",
       reviewItem: stepUpdates.length
         ? `${stepUpdates.length} ${stepUpdates.length === 1 ? "update" : "updates"}, ${fileCount} ${fileCount === 1 ? "file" : "files"} posted on this step`
@@ -429,13 +464,21 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     subtitle: [other, order.order_number, order.activated_at ? `Started ${day(order.activated_at)}` : null]
       .filter(Boolean)
       .join(" · "),
-    total: money(order.total_cents),
-    paid: money(order.paid_cents),
+    total: money(charged ? charged.order.total_charged_cents : order.total_cents),
+    paid: money(charged ? charged.order.paid_charged_cents : order.paid_cents),
     // A cancelled order owes nothing more: its unheld payments were cancelled
     // (close_order), though the summary still counts its steps as outstanding.
-    remaining: money(order.status === "cancelled" ? null : order.outstanding_cents),
-    nextPayment: money(order.next_payment_cents),
+    remaining: money(order.status === "cancelled" ? null : charged ? charged.order.outstanding_charged_cents : order.outstanding_cents),
+    nextPayment: money(charged ? charged.order.next_payment_charged_cents : order.next_payment_cents),
   };
+  // The activity panel's payment lines in the same figures, by step title
+  // (the rows carry no step id); a title used twice keeps the step amount.
+  const titleCounts = milestones.reduce((counts, milestone) => counts.set(milestone.title, (counts.get(milestone.title) ?? 0) + 1), new Map());
+  const chargedByStep = charged
+    ? new Map(milestones
+      .filter((milestone) => titleCounts.get(milestone.title) === 1 && charged.steps.has(milestone.id))
+      .map((milestone) => [milestone.title, charged.steps.get(milestone.id)]))
+    : null;
   const onTabChange = (next) => navigate(next === "overview" ? `/orders/${orderId}` : `/orders/${orderId}/${next}`);
   const contract = describeOrderContract({
     order,
@@ -549,7 +592,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           onOpenProfile: () => navigate(`/factories/${order.factory_org_id}?from=order`),
         }}
         onMessage={() => navigate(`/orders/${orderId}/messages`)}
-        activity={activityLines(activity, { order, viewerOrgId: org.id })}
+        activity={activityLines(activity, { order, viewerOrgId: org.id, chargedByStep })}
         files={orderFiles(requestFiles, updates, milestones)}
         onOpenFile={openFile}
         contract={contract}

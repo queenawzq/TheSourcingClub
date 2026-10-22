@@ -53,6 +53,21 @@ export const requestRelease = (paymentId) => call("stripe-release", { paymentId 
 /** A SetupIntent for a company owner to save a future billing method. */
 export const startBillingSetup = (orgId) => call("stripe-billing-setup", { orgId });
 
+/**
+ * The cards saved to the company: [{ id, brand, last4, expMonth, expYear }].
+ * Every brand payment saves its card, and Settings can save one. Any member
+ * may list them.
+ */
+export async function listSavedCards(orgId) {
+  const { cards } = await call("stripe-cards", { orgId, action: "list" });
+  return cards ?? [];
+}
+
+/** Remove a saved card from the company. Owners only. */
+export async function removeSavedCard(orgId, paymentMethodId) {
+  await call("stripe-cards", { orgId, action: "remove", paymentMethodId });
+}
+
 /** onboard | refresh | dashboard, for a factory owner's own company. */
 export const connectAction = (orgId, action, extra = {}) => call("stripe-connect", { orgId, action, ...extra });
 
