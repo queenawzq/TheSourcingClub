@@ -41,7 +41,8 @@ const APPS = [
   ["Viber", String.raw`viber`],
   ["KakaoTalk", String.raw`kakao`],
   ["Instagram", String.raw`instagram|insta\b`],
-  ["Facebook", String.raw`facebook|messenger`],
+  // Not "messenger" alone: it is a bag, a courier, a word.
+  ["Facebook", String.raw`facebook|fb\s?messenger`],
   ["LinkedIn", String.raw`linkedin`],
   ["DingTalk", String.raw`dingtalk|钉钉`],
 ];
@@ -53,12 +54,19 @@ const SHORT_APP_IDS = [
   ["Line", /\bline\s*id\s*[:：]?\s*[a-z0-9_.-]{4,}/i],
   ["Telegram", /\btg\s*[:：@]\s*[a-z0-9_]{4,}/i],
 ];
-// What makes a mention of an app an invitation rather than a remark.
-const INVITE_EN = String.raw`add|contact|message|msg|call|reach|chat|talk|text|find|ping|dm|send|scan|on|via|over|through|my|id|number|account`;
+// What makes a mention of an app an invitation rather than a remark: asking
+// to be reached there ("add me", "message us", "加我"). Everyday words next to
+// a name are not enough on their own: "send the sample on Monday" beside a
+// name, or "as seen on Instagram", is the model's to judge, not a hold.
+const INVITE_EN = String.raw`(?:add|contact|message|msg|call|text|dm|ping|reach|find|chat\s+with|talk\s+to)\s+(?:me|us)|scan`;
 const INVITE_ZH = String.raw`加|联系|找|扫|聊|号`;
 const INVITE = String.raw`\b(?:${INVITE_EN})\b|${INVITE_ZH}`;
 // An id-like token: letters/digits/underscores, at least one digit or underscore.
 const ID_TOKEN = String.raw`(?=[a-z0-9_.-]*[0-9_])[a-z0-9_.-]{5,}`;
+// Straight before the name: "let's talk on WeChat", "move to WhatsApp".
+const MOVE_TO = String.raw`\b(?:talk|chat|speak|continue|move)\s+(?:on|over|via|to)\s+`;
+// Right after the name: "WeChat ID", "WhatsApp me", "skype is lina.rue".
+const ID_AFTER = String.raw`\s*(?:(?:id|number|account|handle)\b|no\.|号)|\s+(?:me|us)\b|\s+is\s+(?=[a-z0-9_.-]*[0-9_.][a-z0-9])[a-z0-9_.-]{4,}`;
 
 // Phone numbers. "+" then digits is always a phone. Without "+", groups split
 // by spaces, dots, dashes or brackets, at least 9 digits, with one group of 4+
@@ -114,7 +122,7 @@ function appIn(text, { nameAlone = false } = {}) {
     if (!mention.test(text)) continue;
     if (nameAlone) return label;
     const invited = new RegExp(
-      String.raw`(?:${INVITE})[^.!?\n]{0,30}(?:${name})|(?:${name})[^.!?\n]{0,25}(?:${INVITE}|${ID_TOKEN}|[:：]\s*\S{4,})`,
+      String.raw`(?:${INVITE})[^.!?\n]{0,30}(?:${name})|${MOVE_TO}(?:${name})|(?:${name})(?:${ID_AFTER})|(?:${name})[^.!?\n]{0,25}(?:${INVITE}|${ID_TOKEN}|[:：]\s*\S{4,}|@[a-z0-9_.]{3,})`,
       "i",
     );
     if (invited.test(text)) return label;
