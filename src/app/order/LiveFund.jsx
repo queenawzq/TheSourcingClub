@@ -196,6 +196,15 @@ function amounts(checkout, currency) {
   };
 }
 
+/**
+ * What a brand reads when Stripe.js refuses the card. Its message for a
+ * failed bank check already says "try again", which the screen adds too.
+ */
+function cardProblem(error) {
+  if (error.code === "payment_intent_authentication_failure") return "Your bank did not confirm this payment, so nothing was charged.";
+  return error.message || "The payment did not go through.";
+}
+
 function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage, order, factory }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -245,7 +254,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
       // Recorded either way: a decline is a failed payment with its reason.
       const synced = await syncPayment(payment.id).catch(() => null);
       if (result.error) {
-        setProblem(result.error.message || "The payment did not go through.");
+        setProblem(cardProblem(result.error));
         return;
       }
       const intent = result.paymentIntent;

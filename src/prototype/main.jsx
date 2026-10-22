@@ -2969,7 +2969,9 @@ export function SettingsScreen({
               <div className="settings-inline-row" key={label}>
                 <div>
                   <strong>{label}</strong>
-                  <span>Send email notifications to members with matching authority.</span>
+                  {/* Live, every member with an email gets these: there are no
+                      per-member permissions yet to narrow it to. */}
+                  <span>{notificationEmails ? "Emails every member of your company." : "Send email notifications to members with matching authority."}</span>
                 </div>
                 <label className="settings-switch">
                   {notificationEmails ? (
