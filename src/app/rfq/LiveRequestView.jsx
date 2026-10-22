@@ -294,7 +294,9 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
             avgResponse: extras.brand.avg_response_hours
               ? `${Math.round(Number(extras.brand.avg_response_hours))} hours`
               : "No replies yet",
-            paymentStatus: extras.brand.payment_verified ? "Verified" : "Not verified",
+            // Whether the brand has funded a step through TSC before; nothing
+            // else about its payments is checked, so nothing else is claimed.
+            paymentStatus: extras.brand.payment_verified ? "Paid through TSC" : "No payments yet",
           } : null}
           // No "N quotes received" line: RLS shows a vendor only its own
           // quotes, so the count read 0 on every request.

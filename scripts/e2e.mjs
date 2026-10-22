@@ -1796,7 +1796,7 @@ async function main() {
     // factory has no Stripe account). The factory's Payments page: "Add
     // payout method" on its Earnings tab opens the set-up dialog, which asks
     // for bank details only where Stripe cannot pay out, so the company is
-    // said to be registered in Hong Kong there (the dialog stores no country).
+    // said to be registered in Hong Kong there, and the country is saved.
     await page.goto(`${APP}/payout`);
     await waitForHeading(page, "payments", 25000);
     await waitFor(page, '[data-testid="add-payout-method"]', 25000);
@@ -1814,9 +1814,10 @@ async function main() {
     await page.waitForTimeout(2500);
 
     const { data: payout } = await db.from("factory_payout_accounts")
-      .select("id, account_number_last4").eq("org_id", factoryOrg.id).single();
+      .select("id, account_number_last4, bank_country").eq("org_id", factoryOrg.id).single();
     check(payout.account_number_last4 === "4417",
       "the factory can say where staff pay it by bank");
+    check(payout.bank_country === "HK", "and the bank's country is kept with it");
 
     // ================= THE BRAND FUNDS THE STEP =================
     // TSC holds the money through Stripe: the step's payment fell due as the
@@ -1983,6 +1984,14 @@ async function main() {
       return Boolean(button);
     }, bornOrder.order_number);
     check(paidOwnRow, "staff mark it paid out by bank, from its row");
+    // It asks once, naming the amount and the factory, before marking it.
+    const confirmed = await page.evaluate((orderNumber) => {
+      const button = [...document.querySelectorAll('[data-section="payout"] [data-testid="release-payment-confirm"]')]
+        .find((candidate) => candidate.closest("tr")?.innerText.includes(orderNumber));
+      button?.click();
+      return Boolean(button);
+    }, bornOrder.order_number);
+    check(confirmed, "and confirm it when asked");
     await page.waitForTimeout(3500);
     await record(page, "Paid out by bank", "for a factory Stripe cannot pay");
 

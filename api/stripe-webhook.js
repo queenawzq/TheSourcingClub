@@ -1,4 +1,5 @@
 import { applyChargeRefund, applyPaymentIntent, rawBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-credits.js";
 
 /**
  * Stripe tells us what happened to a payment, or to a factory's account.
@@ -8,6 +9,11 @@ import { applyChargeRefund, applyPaymentIntent, rawBody, releaseOwedTo, reply, s
  * payment_failed, charge.refunded) and one for connected accounts
  * (account.updated). Locally,
  * `stripe listen` forwards both with one secret.
+ *
+ * A PaymentIntent is either an order payment (metadata payment_id) or a
+ * factory buying credits (metadata kind "credit_purchase", purchase_id); the
+ * second is recorded by applyCreditPurchaseIntent and never reaches the
+ * order-payment code.
  *
  * Signature: anyone can POST to this URL, so nothing is read before the
  * signature over the raw body checks out against one of the secrets.
@@ -66,6 +72,18 @@ export default async function handler(request, response) {
       case "payment_intent.succeeded":
       case "payment_intent.payment_failed": {
         const intent = event.data.object;
+        if (intent.metadata?.kind === "credit_purchase") {
+          try {
+            const purchase = await applyCreditPurchaseIntent({ stripe, db, intent });
+            if (!purchase) console.error("stripe-webhook: no credit purchase for this PaymentIntent", event.id, intent.id);
+          } catch (failure) {
+            // A purchase that is gone, or an intent that is not its own
+            // (22023): retrying cannot fix either.
+            if (!ORPHANED.has(failure.code) && failure.code !== "22023") throw failure;
+            console.error("stripe-webhook: credit purchase not recorded", event.id, intent.id, failure.code, failure.message);
+          }
+          break;
+        }
         try {
           const payment = await applyPaymentIntent({ stripe, db, intent });
           if (!payment) console.error("stripe-webhook: no payment for this PaymentIntent", event.id, intent.id);
@@ -79,7 +97,10 @@ export default async function handler(request, response) {
         // A refund made in Stripe (staff by hand, a dispute, or our own of a
         // stray intent). Another app's charge matches no payment and is left.
         const payment = await applyChargeRefund({ stripe, db, charge: event.data.object });
-        if (!payment) console.error("stripe-webhook: no payment for this refunded charge", event.id, event.data.object.id);
+        if (payment) break;
+        // Not an order payment: a refunded credit pack takes its credits back.
+        const purchase = await applyCreditPurchaseRefund({ db, charge: event.data.object });
+        if (!purchase) console.error("stripe-webhook: no payment for this refunded charge", event.id, event.data.object.id);
         break;
       }
       case "account.updated": {

@@ -327,7 +327,7 @@ export default function LiveFactoryHome({ org, profile }) {
       attention={attention}
       calls={dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall })}
       onUpdateCapacity={onUpdateCapacity}
-      onPurchaseCredits={() => navigate("/payout")}
+      onPurchaseCredits={() => navigate("/payout?tab=credits")}
       onViewRfqs={() => navigate("/browse")}
       onBrowseRfqs={() => navigate("/browse")}
       onViewRfqDetail={(rfq) => navigate(rfq?.id ? `/browse/${rfq.id}?from=dashboard` : "/")}
