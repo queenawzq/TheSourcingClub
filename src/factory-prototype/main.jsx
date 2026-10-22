@@ -6923,30 +6923,67 @@ function BillingScreen({ language = "en", creditBalance = factoryCreditStartingB
   );
 }
 
-function CreditPurchaseModal({ language = "en", onClose }) {
+export function CreditPurchaseModal({
+  language = "en",
+  onClose,
+  // Live mounts pass these; the prototype passes none and is unchanged.
+  // packs: [{ label, value, credits }] from the database. onContinue(pack)
+  // is called with the chosen pack; paymentElement replaces the packs with
+  // the card form once one is chosen, and continueLabel names that step.
+  packs,
+  onContinue,
+  busy = false,
+  error = null,
+  paymentElement = null,
+  description,
+  continueLabel,
+  className = "",
+  layerClassName = "",
+}) {
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
+  const live = Boolean(onContinue);
+  const options = packs === undefined ? factoryCreditPackages : packs ?? [];
+  const [picked, setPicked] = useState(null);
   return (
-    <div className="factory-update-modal-layer" role="presentation">
-      <div className="factory-update-modal factory-credit-purchase-modal" role="dialog" aria-modal="true" aria-labelledby="factory-credit-purchase-title">
+    <div className={`factory-update-modal-layer ${layerClassName}`.trim()} role="presentation">
+      <div className={`factory-update-modal factory-credit-purchase-modal ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby="factory-credit-purchase-title">
         <CloseIconButton className="factory-update-close" label={isZh ? "关闭购买额度弹窗" : "Close credit purchase"} onClick={onClose} />
         <header>
           <h2 id="factory-credit-purchase-title">{tx("Get more credits")}</h2>
-          <p>{tx("Choose a credit pack to keep sending quotes. 500 credits = $50 value.")}</p>
+          <p>{description ?? tx("Choose a credit pack to keep sending quotes. 500 credits = $50 value.")}</p>
         </header>
 
-        <div className="factory-credit-purchase-options">
-          {factoryCreditPackages.map((pack) => (
-            <button type="button" key={pack.label}>
-              <span>{isZh ? pack.label.replace(/credits/g, "额度") : pack.label}</span>
-              <strong>{pack.value}</strong>
-            </button>
-          ))}
-        </div>
+        {error ? <p className="composer-error" role="alert">{error}</p> : null}
+
+        {paymentElement ?? (
+          <div className="factory-credit-purchase-options" role={live ? "radiogroup" : undefined}>
+            {options.map((pack) => (
+              <button
+                type="button"
+                key={pack.label}
+                className={live && picked?.label === pack.label ? "selected" : undefined}
+                role={live ? "radio" : undefined}
+                aria-checked={live ? picked?.label === pack.label : undefined}
+                onClick={live ? () => setPicked(pack) : undefined}
+              >
+                <span>{isZh ? pack.label.replace(/credits/g, "额度") : pack.label}</span>
+                <strong>{pack.value}</strong>
+              </button>
+            ))}
+          </div>
+        )}
 
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>{tx("Cancel")}</button>
-          <button className="primary-btn" type="button" onClick={onClose}>{isZh ? "继续" : "Continue"}</button>
+          <button
+            className="primary-btn"
+            type="button"
+            disabled={live ? busy || (!paymentElement && !picked) : undefined}
+            onClick={live ? () => onContinue(picked) : onClose}
+          >
+            {continueLabel ?? (isZh ? "继续" : "Continue")}
+          </button>
         </footer>
       </div>
     </div>
@@ -10052,12 +10089,19 @@ export function FactoryReviewTotal({
   busy = false,
   error = null,
   onSaveDraft,
+  // The design bands the price by quote type ("Production run"); live has
+  // one price for every quote and passes null, so the row is not drawn.
+  quoteType,
 }) {
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   const creditUnit = isZh ? "额度" : "credits";
   const cost = creditCost ?? factoryQuoteCreditCost.credits;
   const short = creditBalance != null && creditBalance < cost;
+  const quoteTypeLabel = quoteType === undefined ? factoryQuoteCreditCost.label : quoteType;
+  // Live says what is left once this quote is sent; while the balance is
+  // short nothing is sent, so it shows what there is.
+  const remainingBalance = creditCost != null && !short ? creditBalance - cost : creditBalance;
   const sendForCredits = busy
     ? (isZh ? "发送中…" : "Sending…")
     : isZh ? `发送报价，使用 ${cost} 额度` : `Send for ${cost} credits`;
@@ -10118,14 +10162,16 @@ export function FactoryReviewTotal({
                 <span>{tx("Required to send")}</span>
                 <strong>{cost} {creditUnit}</strong>
               </div>
-              <div className="factory-credit-summary">
-                <div>
-                  <span>{tx("Quote type")}</span>
-                  <strong>{tx(factoryQuoteCreditCost.label)}</strong>
+              {quoteTypeLabel && (
+                <div className="factory-credit-summary">
+                  <div>
+                    <span>{tx("Quote type")}</span>
+                    <strong>{tx(quoteTypeLabel)}</strong>
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="factory-credit-balance-strip">
-                {isZh ? "剩余额度：" : "Remaining balance:"} {creditBalance} {creditUnit}
+                {isZh ? "剩余额度：" : "Remaining balance:"} {remainingBalance} {creditUnit}
               </div>
               <button className="secondary-btn compact-btn" type="button" onClick={onPurchaseCredits}>{tx("Purchase more credits")}</button>
             </section>

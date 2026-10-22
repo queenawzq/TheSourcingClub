@@ -1588,6 +1588,106 @@ console.log("\nemail and password sign-in");
     : ok("a reset for an address with no account reports success, like any other");
 }
 
+console.log("\ncredit purchases");
+{
+  // Its own factory, so no other section's balance is counted here.
+  const buyer = await signedInUser(`credits-${stamp}@example.com`);
+  const stranger = await signedInUser(`credits-stranger-${stamp}@example.com`);
+  const { data: buyerOrg } = await buyer.client.rpc("create_org", {
+    org_name: `Credits Factory ${stamp}`, org_kind: "factory",
+  });
+
+  const { data: packs, error: packsError } = await buyer.client.rpc("credit_packs");
+  packsError ? fail("a factory reads the credit packs", packsError)
+    : packs.map((pack) => `${pack.credits}:${pack.amount_cents}`).join(",") === "500:5000,1000:10000,2500:25000"
+      ? ok("the packs are priced in the database: 500 for $50, 1,000 for $100, 2,500 for $250")
+      : fail(`unexpected credit packs ${JSON.stringify(packs)}`);
+
+  const { error: clientCreate } = await buyer.client.rpc("create_credit_purchase", {
+    target_org: buyerOrg.id, pack_credits: 500, buyer: buyer.id,
+  });
+  clientCreate ? ok("a client cannot begin a purchase itself; only the server can")
+               : fail("LEAK: create_credit_purchase ran from the browser");
+
+  const { error: clientRecord } = await buyer.client.rpc("record_credit_purchase_succeeded", {
+    target_purchase: buyerOrg.id, payment_intent: "pi_fake", received: 5000, method_label: null,
+  });
+  clientRecord ? ok("nor say it was paid")
+               : fail("LEAK: record_credit_purchase_succeeded ran from the browser");
+
+  const { error: clientInsert } = await buyer.client.from("credit_purchases").insert({
+    org_id: buyerOrg.id, credits: 500, amount_cents: 5000,
+  });
+  clientInsert ? ok("credit_purchases rejects a client write")
+               : fail("LEAK: credit_purchases accepted a client write");
+
+  const { error: strangerCreate } = await admin.rpc("create_credit_purchase", {
+    target_org: buyerOrg.id, pack_credits: 500, buyer: stranger.id,
+  });
+  strangerCreate?.code === "42501"
+    ? ok("someone who does not own the factory cannot buy for it")
+    : fail("LEAK: a stranger began a credit purchase", strangerCreate);
+
+  const { error: madeUpPack } = await admin.rpc("create_credit_purchase", {
+    target_org: buyerOrg.id, pack_credits: 7, buyer: buyer.id,
+  });
+  madeUpPack ? ok("a pack that is not on sale is refused")
+             : fail("a made-up pack was accepted");
+
+  const { data: purchase, error: createError } = await admin.rpc("create_credit_purchase", {
+    target_org: buyerOrg.id, pack_credits: 1000, buyer: buyer.id,
+  });
+  if (createError) fail("the owner begins a purchase", createError);
+  else {
+    purchase.amount_cents === 10000
+      ? ok("the owner begins a purchase, at the database's price")
+      : fail(`expected 10000 cents, got ${purchase.amount_cents}`);
+
+    const { error: shortError } = await admin.rpc("record_credit_purchase_succeeded", {
+      target_purchase: purchase.id, payment_intent: `pi_smoke_${stamp}`, received: 100, method_label: null,
+    });
+    shortError ? ok("a payment for less than the pack grants nothing")
+               : fail("credits were granted for less than the pack costs");
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await admin.rpc("record_credit_purchase_succeeded", {
+        target_purchase: purchase.id, payment_intent: `pi_smoke_${stamp}`, received: 10000, method_label: "Visa ···4242",
+      });
+    }
+    const { data: lines } = await admin.from("credit_ledger")
+      .select("delta").eq("org_id", buyerOrg.id).eq("reason", "purchase");
+    lines?.length === 1 && lines[0].delta === 1000
+      ? ok("paid twice over (webhook and page), it is still one ledger line of 1,000")
+      : fail(`expected one purchase line of 1000, got ${JSON.stringify(lines)}`);
+
+    const { data: balance } = await buyer.client.rpc("credit_balance", { org: buyerOrg.id });
+    balance === 1000 ? ok("and the factory sees the 1,000 credits it bought")
+                     : fail(`expected a balance of 1000, got ${balance}`);
+
+    // Refunded in Stripe: the refunded share comes back off the balance, and
+    // the charge's running total means a repeat takes nothing more.
+    for (const refunded of [5000, 5000, 10000]) {
+      await admin.rpc("record_credit_purchase_refunded", {
+        payment_intent: `pi_smoke_${stamp}`, refunded_cents: refunded,
+      });
+    }
+    const { data: afterRefund } = await buyer.client.rpc("credit_balance", { org: buyerOrg.id });
+    afterRefund === 0
+      ? ok("a refund takes the credits back, half then the rest, never twice")
+      : fail(`expected a balance of 0 after a full refund, got ${afterRefund}`);
+
+    const { error: clientRefund } = await buyer.client.rpc("record_credit_purchase_refunded", {
+      payment_intent: `pi_smoke_${stamp}`, refunded_cents: 0,
+    });
+    clientRefund ? ok("and only the server records a refund")
+                 : fail("LEAK: record_credit_purchase_refunded ran from the browser");
+
+    const { data: seen } = await stranger.client.from("credit_purchases").select("id").eq("id", purchase.id);
+    seen?.length === 0 ? ok("another company cannot see the purchase")
+                       : fail("LEAK: another company read a credit purchase");
+  }
+}
+
 console.log("\npassword recovery email");
 {
   let mailReachable = true;

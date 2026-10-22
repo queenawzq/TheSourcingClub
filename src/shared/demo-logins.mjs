@@ -16,6 +16,8 @@ export const DEMO_PASSWORD = "demo password 8";
 
 export const DEMO_LOGINS = {
   brand: { role: "Brand", name: "Demo Brand", email: "demo-brand@example.com" },
+  // A member, not an owner, of Demo Brand: sees what an owner must do.
+  brandMember: { role: "Brand member", name: "Demo Brand (member)", email: "demo-brand-member@example.com" },
   newBrand: { role: "New brand", name: "Fresh Thread Studio", email: "demo-brand-new@example.com" },
   factory: { role: "Factory", name: "Demo Factory", email: "demo-factory@example.com" },
   secondFactory: { role: "Factory two", name: "Ningbo Loomworks", email: "demo-factory-two@example.com" },

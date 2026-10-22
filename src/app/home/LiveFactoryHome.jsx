@@ -286,7 +286,9 @@ export default function LiveFactoryHome({ org, profile }) {
   }
 
   const hasHistory = orders.length > 0 || n(quotesSent) > 0;
-  const nextDue = n(snapshot?.payments_due_cents) > 0 ? `${formatMoney(snapshot.payments_due_cents)} due` : null;
+  // What brands still have to fund on this factory's orders: "due" alone read
+  // as if the factory owed it.
+  const nextDue = n(snapshot?.payments_due_cents) > 0 ? `${formatMoney(snapshot.payments_due_cents)} awaiting brand funding` : null;
 
   return (
     <>
@@ -319,7 +321,7 @@ export default function LiveFactoryHome({ org, profile }) {
       capacity={capacity}
       attention={attention}
       onUpdateCapacity={onUpdateCapacity}
-      onPurchaseCredits={() => navigate("/payout")}
+      onPurchaseCredits={() => navigate("/payout?tab=credits")}
       onViewRfqs={() => navigate("/browse")}
       onBrowseRfqs={() => navigate("/browse")}
       onViewRfqDetail={(rfq) => navigate(rfq?.id ? `/browse/${rfq.id}?from=dashboard` : "/")}
