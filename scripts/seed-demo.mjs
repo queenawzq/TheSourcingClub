@@ -38,6 +38,7 @@ import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { DEMO_LOGINS as LOGINS, DEMO_PASSWORD as PASSWORD } from "../src/shared/demo-logins.mjs";
 import { dateIn, zonedTime } from "../src/shared/call-time.mjs";
+import { checkCallText } from "../api/screen-call-text.js";
 
 const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
 
@@ -719,11 +720,20 @@ const BRAND_ZONE = "America/New_York";
 const FACTORY_ZONE = "Europe/Lisbon";
 must(await brand.client.rpc("set_my_time_zone", { zone: BRAND_ZONE }), "brand's time zone");
 must(await factory.client.rpc("set_my_time_zone", { zone: FACTORY_ZONE }), "factory's time zone");
+// A call's words pass the server's contact-details check first, as on the
+// site (api/screen-call-text.js): the database refuses words it did not pass.
+const checked = async (who, texts) => {
+  const result = await checkCallText(admin, who.id, texts.filter(Boolean));
+  if (!result.ok) throw new Error(`call text for ${who.email ?? who.id}: ${result.error}`);
+};
 const daysAhead = (days, minutes, zone) => {
   const { year, month, day } = dateIn(new Date(Date.now() + days * 86400000), zone);
   return zonedTime(year, month, day, minutes, zone).toISOString();
 };
 const orderThreadId = orderThread?.id ?? orderThread;
+await checked(factory, ["Fit sample review", "Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length.",
+  "Too early for Porto, and the wash test is not back yet."]);
+await checked(brand, ["Shirting questions", "Lab dip timing and the three-month price hold.", "Wash test results"]);
 must(await factory.client.rpc("propose_call", {
   target_thread: orderThreadId, starts_at: daysAhead(2, 15 * 60, FACTORY_ZONE), duration_minutes: 30,
   title: "Fit sample review", agenda: "Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length.",

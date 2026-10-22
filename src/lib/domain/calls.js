@@ -46,7 +46,36 @@ export async function listThreadCalls(threadId) {
   );
 }
 
+/**
+ * The server's contact-details check on the words about to be sent
+ * (api/screen-call-text.js). The database refuses call text it did not pass,
+ * so this runs right before every call function that carries words. Throws
+ * with the reason when the words are refused, so the dialog can show it.
+ */
+async function checkCallText(texts) {
+  const words = texts.filter((text) => typeof text === "string" && text.trim());
+  if (!words.length) return;
+  let response;
+  let body = {};
+  try {
+    const { data } = await supabase.auth.getSession();
+    response = await fetch("/api/screen-call-text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${data?.session?.access_token ?? ""}` },
+      body: JSON.stringify({ texts: words }),
+    });
+    body = await response.json().catch(() => ({}));
+  } catch {
+    throw new Error("The call's details could not be checked. Check your connection and try again.");
+  }
+  if (!response.ok) {
+    const text = body.error ? body.error[0].toUpperCase() + body.error.slice(1) : "The call's details could not be checked";
+    throw new Error(/[.!?]$/.test(text) ? text : `${text}.`);
+  }
+}
+
 export async function proposeCall({ threadId, startsAt, durationMinutes = 30, title, agenda, timeZone }) {
+  await checkCallText([title, agenda]);
   return unwrap(
     await supabase.rpc("propose_call", {
       target_thread: threadId,
@@ -61,6 +90,7 @@ export async function proposeCall({ threadId, startsAt, durationMinutes = 30, ti
 }
 
 export async function counterCall({ callId, startsAt, durationMinutes = 30, title, agenda, timeZone }) {
+  await checkCallText([title, agenda]);
   return unwrap(
     await supabase.rpc("counter_call", {
       target_call: callId,
@@ -78,12 +108,15 @@ export async function acceptCall(callId, timeZone = browserTimeZone()) {
   return unwrap(await supabase.rpc("accept_call", { target_call: callId, time_zone: timeZone }), "accept the call");
 }
 
+// A reason reaches the other side too, so it is checked like the call's words.
 export async function declineCall(callId, note = null) {
-  return unwrap(await supabase.rpc("decline_call", { target_call: callId, note }), "decline the call");
+  await checkCallText([note]);
+  return unwrap(await supabase.rpc("decline_call", { target_call: callId, note: note || null }), "decline the call");
 }
 
 export async function cancelCall(callId, note = null) {
-  return unwrap(await supabase.rpc("cancel_call", { target_call: callId, note }), "cancel the call");
+  await checkCallText([note]);
+  return unwrap(await supabase.rpc("cancel_call", { target_call: callId, note: note || null }), "cancel the call");
 }
 
 /** Saves the browser's time zone as the signed-in person's. Never throws. */

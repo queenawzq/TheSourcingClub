@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(54);
+select plan(55);
 
 insert into auth.users (id, email) values
   ('ca110000-0000-0000-0000-000000000001', 'p19-brand@example.com'),
@@ -46,6 +46,18 @@ insert into public.calls (id, thread_id, title, starts_at, proposer_org_id, prop
 values ('ca150000-0000-0000-0000-0000000000aa', 'ca140000-0000-0000-0000-000000000001',
         'P19 passed', now() - interval '1 hour',
         'ca120000-0000-0000-0000-00000000000b', 'ca110000-0000-0000-0000-000000000001');
+
+-- The words each person sends below, passed by the server's contact-details
+-- check (api/screen-call-text.js). Words it did not pass: call_text_test.sql.
+do $$
+begin
+  perform public.record_call_text_check('ca110000-0000-0000-0000-000000000001',
+    array['P19 first', 'Review the fit sample', 'P19 second', 'Our designer is out', 'P19 x']);
+  perform public.record_call_text_check('ca110000-0000-0000-0000-000000000003',
+    array['P19 counter', 'Earlier is better for us', 'Factory closed that week', 'P19 late', 'P19 x']);
+  perform public.record_call_text_check('ca110000-0000-0000-0000-000000000004', array['P19 x']);
+end;
+$$;
 
 -- ---------------------------------------------------------------------------
 -- The brand proposes
@@ -227,6 +239,12 @@ select is(
 select throws_ok(
   $$select public.cancel_call((select id from public.calls where title = 'P19 first'), null)$$,
   '42501', null, 'the other side CANNOT withdraw an invite it did not send (it declines instead)'
+);
+
+select throws_ok(
+  $$select public.counter_call('ca150000-0000-0000-0000-0000000000aa',
+                               now() + interval '3 days', 30, 'P19 x', null, null)$$,
+  '22023', null, 'an invite whose time has passed CANNOT be answered with another time either'
 );
 
 select throws_ok(
