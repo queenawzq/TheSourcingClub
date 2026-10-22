@@ -7,13 +7,19 @@
  * cancelled with the order, and a bank-wire claim made on the old site
  * before payments moved to Stripe, which staff still confirm by hand.
  * Read-only: no bank details and no "I have sent this payment" any more.
+ *
+ * It leads with the total the brand pays, the service fee included, as every
+ * other payment screen does, then the step amount and the fee.
  */
 import React, { useEffect, useState } from "react";
 import { getOrder } from "../../lib/domain/order.js";
-import { feeCents, getPayment } from "../../lib/domain/payment.js";
+import { chargedCents, getPayment } from "../../lib/domain/payment.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import "./order.css";
+
+/** Charged already, or not (yet): the total's label says which. */
+const CHARGED = new Set(["processing", "confirmed", "released"]);
 
 const HEADING = {
   not_due: "Not due yet",
@@ -75,7 +81,9 @@ export default function PaymentInstructions({ orderId, paymentId }) {
 
   const { order, payment } = state;
   const factory = order.factory?.name ?? "the factory";
-  const fee = payment.charged_cents ? payment.charged_cents - payment.amount_cents : feeCents(payment);
+  // chargedCents: what was charged once Stripe has it, else what will be.
+  const total = chargedCents(payment);
+  const fee = total - Number(payment.amount_cents);
 
   return (
     <div className="rfq-page rfq-detail">
@@ -94,7 +102,11 @@ export default function PaymentInstructions({ orderId, paymentId }) {
         <h2>{HEADING[payment.state] ?? "Done"}</h2>
         <dl className="fact-row">
           <div className="fact">
-            <dt>Amount</dt>
+            <dt>{CHARGED.has(payment.state) ? "Total charged" : payment.state === "not_due" ? "Total to pay" : "Total"}</dt>
+            <dd data-testid="pay-total">{formatMoney(total, payment.currency)}</dd>
+          </div>
+          <div className="fact">
+            <dt>Step amount</dt>
             <dd data-testid="pay-amount">{formatMoney(payment.amount_cents, payment.currency)}</dd>
           </div>
           <div className="fact">

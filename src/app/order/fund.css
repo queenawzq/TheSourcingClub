@@ -147,3 +147,17 @@
   font-size: 13px;
   line-height: 1.45;
 }
+
+/* The Fund and success screens are plain flow pages. Between 1181 and 1400px
+   the design drops the flow to two columns but places the right rail only for
+   its quote flows, so here the money summary wrapped into the first column,
+   under the sticky journey rail, which covered it. It goes under the content
+   instead, as the design's quote flows do. */
+@media (min-width: 1181px) and (max-width: 1400px) {
+  .app-shell > main.flow-page:not(.describe-flow):not(.review-flow):not(.quote-action-flow):not(.wide-flow) > .right-rail {
+    grid-column: 2;
+    width: 100%;
+    min-width: 0;
+    margin-top: 20px;
+  }
+}

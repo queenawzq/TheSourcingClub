@@ -18,6 +18,10 @@
 .live-payout-card-action { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 .live-stripe-error { color: var(--danger) !important; }
 .live-payout-method-card .live-payment-notice { color: #157347; }
+.live-payout-method-card p a, .payout-security-copy a { color: var(--blue); font-weight: 600; }
+.live-payout-card-action > .payout-owner-only { max-width: 240px; margin: 0; text-align: right; }
+.billing-saved-card-list { margin-top: 14px; }
+.billing-saved-card-list .billing-history-row > button { justify-self: end; }
 .billing-method-empty { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 22px 24px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
 .billing-method-empty > div { display: grid; gap: 4px; }
 .billing-method-empty strong { color: var(--text); font-size: 17px; }
@@ -137,6 +141,7 @@
   .live-payout-method-card { grid-template-columns: minmax(0, 1fr); padding: 18px; }
   .live-payout-card-action { justify-self: stretch; }
   .live-payout-card-action button { width: 100%; }
+  .live-payout-card-action > .payout-owner-only { max-width: none; text-align: left; }
   .payout-transactions-header { align-items: flex-start; flex-direction: column; }
   .brand-transaction-filters { display: grid; grid-template-columns: 1fr; }
   .brand-transaction-filters label { min-width: 0; }
