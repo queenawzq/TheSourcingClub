@@ -29,7 +29,15 @@ export default function NotificationList({ org, isFactory }) {
   useEffect(load, [load]);
 
   if (error) return <p className="shell-note">{error.message}</p>;
-  if (!items || items.length === 0) return null;
+  // A blank page reads as broken: say it is loading, and say when it is empty.
+  if (!items || items.length === 0) {
+    return (
+      <section className="notif" data-testid="notifications">
+        <header className="notif-head"><h2>Needs your attention</h2></header>
+        <p className="notif-empty" role="status">{items ? "No notifications yet." : "Loading notifications…"}</p>
+      </section>
+    );
+  }
 
   async function open(item) {
     if (!item.read_at) {
