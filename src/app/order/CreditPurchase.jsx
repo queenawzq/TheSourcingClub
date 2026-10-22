@@ -191,7 +191,10 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
       // Recorded either way: a decline is a failed purchase with its reason.
       const synced = await syncCreditPurchase(checkout.purchaseId).catch(() => null);
       if (result.error) {
-        setProblem(`${result.error.message || "The payment did not go through."} Try again, or use another card.`);
+        const reason = result.error.code === "payment_intent_authentication_failure"
+          ? "Your bank did not confirm this payment, so nothing was charged."
+          : result.error.message || "The payment did not go through.";
+        setProblem(`${reason} Try again, or use another card.`);
         return;
       }
       // A failed 3-D Secure check comes back as an intent, not an error.
