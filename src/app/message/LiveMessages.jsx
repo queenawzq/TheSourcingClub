@@ -17,8 +17,9 @@ import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import { fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
-import { acceptCall, browserTimeZone, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, proposeCall, zoneOptions } from "../../lib/domain/calls.js";
+import { acceptCall, browserTimeZone, callState, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
+import CallChangeDialog from "./CallChangeDialog.jsx";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -102,19 +103,29 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const [dialog, setDialog] = useState(null);
   const [callBusy, setCallBusy] = useState(null);
   const [callNotes, setCallNotes] = useState({});
+  // Withdraw, cancel or decline waiting on "are you sure?": { call, mode }.
+  const [confirmCall, setConfirmCall] = useState(null);
   // The call being joined: { call, join, text } while the designed video
   // panel is open; Zoom draws into zoomRoot.
   const [video, setVideo] = useState(null);
   const zoomRoot = useRef(null);
   const zoomClient = useRef(null);
 
+  // The other side's time zone, asked again whenever a conversation opens
+  // and whenever the calls reload rather than kept: it may have moved since.
+  const refreshTheirZone = useCallback((thread) => {
+    if (!thread) return;
+    counterpartyTimeZone(thread).then((zone) => setTheirZones((current) => ({ ...current, [thread]: zone ?? current[thread] ?? null })));
+  }, []);
+
   const reloadCalls = useCallback(async () => {
+    refreshTheirZone(activeThreadRef.current);
     try {
       setCalls(await listCalls(org.id));
     } catch (failure) {
       setError(failure);
     }
-  }, [org.id]);
+  }, [org.id, refreshTheirZone]);
 
   useEffect(() => { reloadCalls(); }, [reloadCalls]);
 
@@ -126,10 +137,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     return () => clearInterval(tick);
   }, []);
 
-  useEffect(() => {
-    if (!activeId || activeId in theirZones) return;
-    counterpartyTimeZone(activeId).then((zone) => setTheirZones((current) => ({ ...current, [activeId]: zone })));
-  }, [activeId, theirZones]);
+  useEffect(() => { refreshTheirZone(activeId); }, [activeId, refreshTheirZone]);
 
   // An order's conversation is reached by the order, not by its thread id.
   // open_order_thread is idempotent — one thread per order — so this both
@@ -308,8 +316,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
 
   const callHandlers = {
     accept: (call) => changeCall(call, () => acceptCall(call.id, ownZone)),
-    decline: (call) => changeCall(call, () => declineCall(call.id)),
-    cancel: (call) => changeCall(call, () => cancelCall(call.id)),
+    // Each closes the call for both sides and cannot be undone: asked first.
+    decline: (call) => setConfirmCall({ call, mode: "decline" }),
+    cancel: (call) => setConfirmCall({ call, mode: call.status === "proposed" ? "withdraw" : "cancel" }),
     counter: (call) => setDialog({ threadId: call.thread_id, counterOf: call, key: call.id, busy: false, error: null }),
     join: async (call) => {
       setCallBusy(call.id);
@@ -323,6 +332,27 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       setVideo({ call, join: answer.join, text: "Connecting to the call…" });
     },
   };
+
+  async function confirmCallChange(reason) {
+    const { call, mode } = confirmCall;
+    await (mode === "decline" ? declineCall(call.id, reason) : cancelCall(call.id, reason));
+    setConfirmCall(null);
+    await reloadCalls();
+  }
+
+  // "Join call" on a dashboard opens this page with ?join=<call>: once the
+  // page and its calls are drawn, that call is joined as if pressed here,
+  // if it is on now.
+  const joinOnOpen = useRef(new URLSearchParams(window.location.search).get("join"));
+  useEffect(() => {
+    const id = joinOnOpen.current;
+    if (!id || !threads || !calls.length) return;
+    joinOnOpen.current = null;
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    const call = calls.find((candidate) => candidate.id === id);
+    if (call && callState(call, org.id) === "live") callHandlers.join(call);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threads, calls]);
 
   // Once the panel is drawn, Zoom joins inside it. Leaving (or switching
   // conversation, or leaving the page) ends the meeting for this person only.
@@ -600,6 +630,15 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         canAttach
         ownName={org.name}
       />
+      {confirmCall && (
+        <CallChangeDialog
+          mode={confirmCall.mode}
+          title={confirmCall.call.title}
+          counterparty={otherSide(confirmCall.call, org.id).name}
+          onConfirm={confirmCallChange}
+          onClose={() => setConfirmCall(null)}
+        />
+      )}
     </>
   );
 }

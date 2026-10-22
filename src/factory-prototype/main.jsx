@@ -2538,7 +2538,7 @@ export function FactoryDashboardPage({
               preHeader={calls?.length ? <FactoryDashboardCallCard language={language} calls={calls} /> : isNewcomer || attention ? null : <FactoryDashboardCallCard language={language} />}
             >
               {attention ? (
-                attention.map((item) => <FactoryAttentionCard {...item} key={item.title} />)
+                attention.map((item) => <FactoryAttentionCard {...item} key={item.id ?? item.title} />)
               ) : isNewcomer ? (
                 <>
                   <FactoryAttentionCard

@@ -109,7 +109,8 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
 
 /**
  * The dashboard's "Scheduled calls": invites waiting on this company and
- * confirmed calls not yet over. Each opens its conversation.
+ * confirmed calls not yet over. Each opens its conversation; "Join call"
+ * opens it and joins (`open(call, { join: true })`), so it does what it says.
  */
 export function dashboardCalls(calls, { orgId, ownZone, zones = {}, open, now = Date.now() }) {
   return calls
@@ -126,7 +127,7 @@ export function dashboardCalls(calls, { orgId, ownZone, zones = {}, open, now = 
         counterpartTime: theirTime(start, other.name, zones[call.thread_id]) || other.name,
         description: call.agenda ?? "",
         action: state === "invite" ? "Review invite" : state === "live" ? "Join call" : "Open",
-        onAction: () => open(call),
+        onAction: () => open(call, { join: state === "live" }),
       };
     });
 }
@@ -138,6 +139,8 @@ export function inviteAttention(calls, { orgId, ownZone, open, now = Date.now() 
     .map((call) => {
       const other = otherSide(call, orgId);
       return {
+        // Two invites from one company share a title: the call is the key.
+        id: call.id,
         type: "Call invite",
         tone: "warning",
         title: `${other.name} invited you to a call`,

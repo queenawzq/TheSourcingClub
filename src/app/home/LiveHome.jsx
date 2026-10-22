@@ -166,7 +166,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
   const [activity, setActivity] = useState(null);
   const [error, setError] = useState(null);
   const [recommended, setRecommended] = useState([]);
-  const { calls, zones } = useDashboardCalls(org.id);
+  const { calls, zones, now } = useDashboardCalls(org.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -261,13 +261,14 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
 
   const { snapshot, dueCents, rfqs, projects, savings } = state;
   const ownZone = browserTimeZone() ?? "UTC";
-  const openCall = (call) => navigate(`/messages/${call.thread_id}`);
+  // "Join call" opens the conversation and joins there (LiveMessages reads ?join).
+  const openCall = (call, { join = false } = {}) => navigate(`/messages/${call.thread_id}${join ? `?join=${call.id}` : ""}`);
   // A call invite waiting on the brand comes first: it has a time on it.
   const attention = [
-    ...inviteAttention(calls, { orgId: org.id, ownZone, open: openCall }),
+    ...inviteAttention(calls, { orgId: org.id, ownZone, open: openCall, now }),
     ...(attentionFrom(snapshot, isFactory, goTo, dueCents) ?? []),
   ];
-  const callCards = dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall });
+  const callCards = dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall, now });
   const isNewcomer = state.loaded && !rfqs.length && !projects.length;
 
   // Recommendations use real vendors rather than the prototype's examples.

@@ -4249,7 +4249,7 @@ export function HomeScreen({
                       Live items are already only the things actually
                       outstanding, so there is nothing to trim. */}
                   {(attention ? attentionItems : attentionItems.slice(2)).map((item) => (
-                    <HomeAttentionCard item={item} key={item.title} />
+                    <HomeAttentionCard item={item} key={item.id ?? item.title} />
                   ))}
                 </div>
               </section>
@@ -4305,7 +4305,7 @@ export function HomeScreen({
               </header>
               <div className="home-attention-grid">
                 {attentionItems.map((item) => (
-                  <HomeAttentionCard item={item} key={item.title} />
+                  <HomeAttentionCard item={item} key={item.id ?? item.title} />
                 ))}
               </div>
             </section>

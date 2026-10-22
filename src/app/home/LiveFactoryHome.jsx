@@ -117,7 +117,7 @@ export default function LiveFactoryHome({ org, profile }) {
   const [reload, setReload] = useState(0);
   // The designed capacity drawer, opened from "Update capacity".
   const [drawer, setDrawer] = useState(null);
-  const { calls, zones } = useDashboardCalls(org.id);
+  const { calls, zones, now } = useDashboardCalls(org.id);
   const [activity, setActivity] = useState(null);
 
   async function openActivity() {
@@ -237,9 +237,10 @@ export default function LiveFactoryHome({ org, profile }) {
   const activeOrders = orders.filter((order) => order.status === "active");
 
   const ownZone = browserTimeZone() ?? "UTC";
-  const openCall = (call) => navigate(`/messages/${call.thread_id}`);
+  // "Join call" opens the conversation and joins there (LiveMessages reads ?join).
+  const openCall = (call, { join = false } = {}) => navigate(`/messages/${call.thread_id}${join ? `?join=${call.id}` : ""}`);
   // A call invite waiting on the factory comes first: it has a time on it.
-  const attention = inviteAttention(calls, { orgId: org.id, ownZone, open: openCall });
+  const attention = inviteAttention(calls, { orgId: org.id, ownZone, open: openCall, now });
   if (profile?.verification_status !== "verified") {
     attention.push({
       type: "Verification",
@@ -327,7 +328,7 @@ export default function LiveFactoryHome({ org, profile }) {
       ]}
       capacity={capacity}
       attention={attention}
-      calls={dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall })}
+      calls={dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall, now })}
       onUpdateCapacity={onUpdateCapacity}
       onPurchaseCredits={() => navigate("/payout?tab=credits")}
       onViewRfqs={() => navigate("/browse")}
