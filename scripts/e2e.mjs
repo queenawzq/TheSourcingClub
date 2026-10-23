@@ -2802,7 +2802,13 @@ async function main() {
       // The invited address signs up through the real vendor form.
       await signOutFully(page);
       await signUp(page, { email: invitedEmail, fullName: "Ines Invited", companyName: invitedName, accountType: "factory", who: "Invited factory" });
-      const { data: invitedOrg } = await db.from("orgs").select("id").eq("name", invitedName).maybeSingle();
+      // The company is created just after the account, so signUp can return
+      // (a screen is up) a moment before it exists. Wait for it.
+      let invitedOrg = null;
+      for (let attempt = 0; attempt < 30 && !invitedOrg; attempt += 1) {
+        ({ data: invitedOrg } = await db.from("orgs").select("id").eq("name", invitedName).maybeSingle());
+        if (!invitedOrg) await new Promise((resolve) => setTimeout(resolve, 500));
+      }
       check(Boolean(invitedOrg), "the invited factory's company exists");
       const { data: linked } = await db.from("referrals").select("referred_org_id, accepted_at").eq("id", inviteRow?.id ?? stamp).maybeSingle();
       check(linked?.referred_org_id === invitedOrg?.id && Boolean(linked?.accepted_at), "signing up with the invited address linked the invite");
