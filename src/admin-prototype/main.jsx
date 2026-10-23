@@ -1338,7 +1338,7 @@ const TEST_EMAILS = [
   { key: "notification", label: "Notification · New quote", localized: true },
 ];
 
-function TestEmailPanel({ email }) {
+function TestEmailPanel({ email, intro }) {
   const actions = useActions();
   const [template, setTemplate] = useState(TEST_EMAILS[0].key);
   const [locale, setLocale] = useState("en");
@@ -1359,7 +1359,7 @@ function TestEmailPanel({ email }) {
   return (
     <Panel
       title="Test emails"
-      subtitle={`Send yourself a sample of the marketplace's emails (onboarding, review decisions and a notification), filled with sample data. It goes only to ${email}.`}
+      subtitle={`${intro ?? "Send yourself any email the marketplace sends, filled with sample data."} It goes only to ${email}.`}
       className="admin-settings-card"
     >
       <form className="admin-threshold-form" onSubmit={send}>
@@ -1525,7 +1525,7 @@ function DailyJobsPanel() {
   );
 }
 
-function SettingsPage({ user, account, onSignOut }) {
+function SettingsPage({ user, account, onSignOut, testEmailsIntro }) {
   const initialThresholds = { autoClear: "95", manualMin: "80", manualMax: "94", moreInformation: "80", authority: "TSC operations" };
   const email = user?.email ?? account?.email ?? "operations@thesourcingclub.com";
   const name = account?.name ?? user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? "TSC Operations";
@@ -1610,14 +1610,14 @@ function SettingsPage({ user, account, onSignOut }) {
           </div>
         )}
       </Panel>
-      <TestEmailPanel email={email} />
+      <TestEmailPanel email={email} intro={testEmailsIntro} />
       <DailyJobsPanel />
       <TestDataPanelIfLive />
     </main>
   );
 }
 
-function App() {
+function App({ testEmailsIntro } = {}) {
   // Everything below reads through the data seam. admin-prototype.html serves
   // the constants in this file; admin.html serves the marketplace. The
   // components in between never learn which.
@@ -1806,7 +1806,7 @@ function App() {
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate("RFQ detail")} />}
-      {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} />}
+      {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} />}
             </>}
       {toast && <div className="app-toast admin-toast" role="status">{toast}</div>}
     </div>
