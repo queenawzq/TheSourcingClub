@@ -7,6 +7,7 @@
  * cannot mark its own quote submitted, let alone accepted.
  */
 import { supabase, unwrap } from "../supabase.js";
+import { dateFrom } from "../dates.js";
 
 const QUOTE_COLUMNS = `
   id, rfq_id, factory_org_id, version, supersedes_quote_id, status,
@@ -459,7 +460,7 @@ export function formatCapacityWindow(quote, now = new Date()) {
   if (!quote) return "";
   const day = (value) => {
     if (!value) return "";
-    const at = new Date(`${value}T00:00:00`);
+    const at = dateFrom(value);
     return at.toLocaleDateString("en", {
       month: "short",
       day: "numeric",

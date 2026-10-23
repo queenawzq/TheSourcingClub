@@ -1,5 +1,6 @@
 /**
- * Call times in words, in whichever time zone they should be read.
+ * Call times in words, in whichever time zone they should be read, and where
+ * a call stands at a given moment.
  *
  * Shared by the designed schedule dialog (src/prototype/main.jsx, live only)
  * and src/lib/domain/calls.js, and the demo seed. No database here: the prototype imports it.
@@ -102,4 +103,70 @@ export function whenIn(date, zone) {
 /** "Atelier Minho: Tue, Oct 14 · 3:00 PM Lisbon", or "" when their zone is unknown. */
 export function theirTime(date, name, zone) {
   return zone ? `${name}: ${whenIn(date, zone)}` : "";
+}
+
+// ---------------------------------------------------------------------------
+// Where a call stands, and when that changes
+// ---------------------------------------------------------------------------
+
+export const JOIN_OPENS_MINUTES = 10;
+export const JOIN_CLOSES_AFTER_END_MINUTES = 30;
+
+export const startOf = (call) => new Date(call.starts_at);
+export const endOf = (call) => new Date(startOf(call).getTime() + call.duration_minutes * 60000);
+
+/**
+ * Where a call stands for this company: "invite" (theirs, waiting on us),
+ * "waiting" (ours, waiting on them), "upcoming", "live", or "past" — plus the
+ * closed states as they are.
+ */
+export function callState(call, orgId, now = Date.now()) {
+  if (call.status === "proposed") {
+    if (startOf(call).getTime() <= now) return "expired";
+    return call.proposer_org_id === orgId ? "waiting" : "invite";
+  }
+  if (call.status === "accepted") {
+    const opens = startOf(call).getTime() - JOIN_OPENS_MINUTES * 60000;
+    const closes = endOf(call).getTime() + JOIN_CLOSES_AFTER_END_MINUTES * 60000;
+    if (now >= closes) return "past";
+    if (now >= opens) return "live";
+    return "upcoming";
+  }
+  return call.status;
+}
+
+/**
+ * The next moment, after `now`, at which any of these calls reads
+ * differently on its own: an invite expires at its start; a confirmed call
+ * opens to Join, turns from "Starting soon" to "On now" at its start, and
+ * ends when Join closes. A page keeping time sets its clock for exactly then,
+ * so "Join call" appears as the window opens rather than up to a poll later.
+ * Null when nothing will change without someone acting.
+ */
+export function nextCallChange(calls, now = Date.now()) {
+  let next = null;
+  for (const call of calls) {
+    const start = startOf(call).getTime();
+    const moments = call.status === "proposed"
+      ? [start]
+      : call.status === "accepted"
+        ? [start - JOIN_OPENS_MINUTES * 60000, start, endOf(call).getTime() + JOIN_CLOSES_AFTER_END_MINUTES * 60000]
+        : [];
+    for (const moment of moments) {
+      if (moment > now && (next === null || moment < next)) next = moment;
+    }
+  }
+  return next;
+}
+
+/**
+ * The time zone the other company's line on a call is read in. A call they
+ * proposed (or answered with another time) carries the zone they chose for
+ * it, which says where they are for this call; their saved zone is only the
+ * browser they last signed in from. A call this company proposed has no zone
+ * of theirs on it, so it uses the saved one.
+ */
+export function theirZoneFor(call, orgId, savedZone) {
+  if (call && call.proposer_org_id !== orgId && call.proposer_time_zone) return call.proposer_time_zone;
+  return savedZone ?? null;
 }

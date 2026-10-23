@@ -64,7 +64,6 @@ import LiveBrandPayments from "./payments/LiveBrandPayments.jsx";
 import LiveBrandPaymentDetail from "./payments/LiveBrandPaymentDetail.jsx";
 import LiveBrandProfile from "./profile/LiveBrandProfile.jsx";
 import LiveFactoryBrandProfile from "./profile/LiveFactoryBrandProfile.jsx";
-import NotificationList from "./NotificationList.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
 import "./shell.css";
 
@@ -1160,12 +1159,12 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
         ) : <NotForThisSide isFactory={false} />,
     },
     {
-      // The designed home puts notifications behind the activity button in its
-      // header rather than listing them inline. The brand's bell opens the
-      // designed drawer (LiveHome); this page stays for the factory's bell and
-      // for links that already point here.
+      // Notifications are the designed Activity drawer behind each
+      // dashboard's bell; there is no page of them. This address (old links,
+      // the prototype's "notifications" key) opens the dashboard with the
+      // drawer open.
       path: "/notifications",
-      render: () => <main className="home-page"><NotificationList org={activeOrg} isFactory={isFactory} /></main>,
+      render: () => <ActivityRedirect navigate={navigate} />,
     },
     {
       render: () =>
@@ -1197,6 +1196,14 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
 function PayoutRedirect({ navigate }) {
   useEffect(() => {
     navigate("/payout", { replace: true });
+  }, [navigate]);
+  return null;
+}
+
+/** /notifications: the dashboard, with its Activity drawer open (useActivity). */
+function ActivityRedirect({ navigate }) {
+  useEffect(() => {
+    navigate("/?activity=open", { replace: true });
   }, [navigate]);
   return null;
 }

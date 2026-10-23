@@ -19,9 +19,10 @@ import { termLabel } from "../../lib/domain/taxonomy.js";
 import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { supabase, unwrap } from "../../lib/supabase.js";
+import { dateFrom } from "../../lib/dates.js";
 import "./rfq.css";
 
-const MONTH = new Intl.DateTimeFormat("en", { month: "long", year: "numeric", timeZone: "UTC" });
+const MONTH = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" });
 
 function Fact({ label, children }) {
   return (
@@ -172,7 +173,7 @@ export default function RfqDetail({ org, rfqId, isFactory, profile }) {
             {formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents)}
           </Fact>
           <Fact label="Bulk delivery">
-            {rfq.target_delivery_month ? MONTH.format(new Date(rfq.target_delivery_month)) : null}
+            {rfq.target_delivery_month ? MONTH.format(dateFrom(rfq.target_delivery_month)) : null}
           </Fact>
           <Fact label="Samples">
             {rfq.requires_sample ? "Required before bulk" : "Not required"}

@@ -16,6 +16,7 @@
  */
 import { supabase, unwrap } from "../supabase.js";
 import { formatMoney } from "../money.js";
+import { dateFrom } from "../dates.js";
 
 /** Credits, in credits — 500 credits is $50 of value. */
 export async function creditBalance(orgId) {
@@ -54,7 +55,7 @@ export async function listDiscountCodes(orgId) {
   return (codes ?? []).map((code) => {
     const uses = usesByCode.get(code.id) ?? [];
     const spent = uses.length >= code.max_uses;
-    const dead = code.revoked_at || (code.expires_at && new Date(code.expires_at).getTime() < now);
+    const dead = code.revoked_at || (code.expires_at && dateFrom(code.expires_at).getTime() < now);
     return {
       code: code.code,
       status: spent ? "Used" : dead ? "Expired" : "Unused",

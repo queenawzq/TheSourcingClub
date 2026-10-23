@@ -15,10 +15,11 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { MessagesScreen } from "../../prototype/main.jsx";
 import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
-import { urlFor } from "../../lib/domain/documents.js";
-import { fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
-import { acceptCall, browserTimeZone, callState, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, zoneOptions } from "../../lib/domain/calls.js";
+import { ATTACHMENT_ACCEPT, attachmentRefusal, urlFor } from "../../lib/domain/documents.js";
+import { awaitingScreen, fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
+import { acceptCall, browserTimeZone, callState, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
+import { useCallClock } from "./use-calls.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
@@ -33,23 +34,48 @@ const initialsOf = (name) =>
     .join("") || "??";
 
 /**
- * What the sender is told about a message that has not reached the other side.
- * Nothing while it is being checked: that takes seconds, and saying so on
- * every message would make every message look suspect.
+ * Why a held message was held, as its sender is told it: the kind the screen
+ * recorded (messages.held_for), never the screen's own words, which are for
+ * staff. A message held for proposing a call elsewhere used to be told it
+ * "shares contact details".
  */
-function deliveryStatus(message) {
+const HELD_FOR = {
+  contact_details: "It looks like it shares contact details. ",
+  outside_platform: "It looks like it suggests continuing outside the platform. ",
+};
+
+/** After this long still being checked, a message says so even before the screen has been asked again. */
+const SAY_CHECKING_AFTER_MS = 15 * 1000;
+
+/**
+ * What the sender is told about a message that has not reached the other side.
+ * Nothing in the first seconds of being checked: that is how long a check
+ * takes, and saying so on every message would make every message look
+ * suspect. Once the screen has answered without a verdict, or it has been a
+ * while, it says so: a message that looks sent and never arrives is the worst
+ * of both.
+ */
+function deliveryStatus(message, { unscreened = false } = {}) {
   if (message.failed) {
     return {
       kind: "rejected",
       label: "Not sent",
-      note: `It could not be saved (${message.failed}). ${message.typed ? "Copy it and send it again." : "Attach the files and send them again."}`,
+      note: `${message.failed} ${message.typed ? "Copy it and send it again." : "Attach the files and send them again."}`,
     };
   }
   if (message.delivery === "held") {
     return {
       kind: "held",
       label: "Held for review: not delivered yet",
-      note: "It looks like it shares contact details. Our team will check it before it is sent.",
+      note: `${HELD_FOR[message.held_for] ?? ""}Our team will check it before it is sent.`,
+    };
+  }
+  if (message.delivery === "checking" && !String(message.id).startsWith("outgoing-")
+      && (unscreened || Date.now() - Date.parse(message.created_at) > SAY_CHECKING_AFTER_MS)) {
+    return {
+      kind: "checking",
+      label: "Checking before it is sent",
+      note: "It has not reached them yet. This page keeps trying; if it is still here in a few minutes, our team will deliver it.",
     };
   }
   if (message.delivery === "rejected") {
@@ -134,12 +160,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   useEffect(() => { reloadCalls(); }, [reloadCalls]);
 
   // The clock the cards read: "Join call" opens and "Starting soon" turns
-  // into "On now" while the page stays open.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const tick = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(tick);
-  }, []);
+  // into "On now" while the page stays open, at the moment each happens.
+  const [now] = useCallClock(calls);
 
   useEffect(() => { refreshTheirZone(activeId); }, [activeId, refreshTheirZone]);
 
@@ -193,22 +215,47 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     setDialog((current) => (current?.threadId === threadId ? current : null));
     activeThreadRef.current = threadId;
     try {
-      let rows = await listMessages(threadId);
+      const rows = await listMessages(threadId);
       setMessagesByThread((current) => ({ ...current, [threadId]: rows ?? [] }));
       setError(null);
       await markRead(threadId);
       reload();
-      // Your own messages still being checked from an earlier visit: ask the
-      // screen again, and show what it decided.
-      if (await rescreenStale(rows, user.id)) {
-        rows = await listMessages(threadId);
-        setMessagesByThread((current) => ({ ...current, [threadId]: rows ?? [] }));
-        reload();
-      }
     } catch (failure) {
       setError(failure);
     }
-  }, [reload, user.id]);
+  }, [reload]);
+
+  /**
+   * Your own messages the screen has not decided: ask it again, on a back-off,
+   * for as long as the page is open. Only asking once, on the send, left a
+   * message whose screen failed in `checking` for good while its sender
+   * looked at it as sent. `unscreened` is the ones the screen was asked about
+   * and did not decide, which then say so.
+   */
+  const [unscreened, setUnscreened] = useState(() => new Set());
+  const attempts = useRef({});
+  const [screenRound, setScreenRound] = useState(0);
+  useEffect(() => {
+    const waiting = Object.values(messagesByThread)
+      .flatMap((rows) => awaitingScreen(rows, user.id))
+      .filter((message) => (attempts.current[message.id] ?? 0) < RESCREEN_AFTER_MS.length);
+    if (!waiting.length) return undefined;
+    const dueAt = (message) => Date.parse(message.created_at) + RESCREEN_AFTER_MS[attempts.current[message.id] ?? 0];
+    const timer = setTimeout(async () => {
+      const due = waiting.filter((message) => dueAt(message) <= Date.now());
+      for (const message of due) attempts.current[message.id] = (attempts.current[message.id] ?? 0) + 1;
+      setUnscreened((current) => new Set([...current, ...due.map((message) => message.id)]));
+      if (await rescreenStale(due, user.id, { olderThanMs: 0 })) {
+        for (const threadId of new Set(due.map((message) => message.thread_id))) {
+          const rows = await listMessages(threadId).catch(() => null);
+          if (rows) setMessagesByThread((current) => ({ ...current, [threadId]: rows }));
+        }
+        reloadRef.current();
+      }
+      setScreenRound((round) => round + 1);
+    }, Math.max(0, Math.min(...waiting.map(dueAt)) - Date.now()));
+    return () => clearTimeout(timer);
+  }, [messagesByThread, screenRound, user.id]);
 
   // Open the conversation that was asked for — an order's own thread, say —
   // or the newest one, the way the design does. Once: a conversation that
@@ -290,13 +337,14 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         dropDraft();
       },
     })
-      .then(({ message, failed }) => {
+      .then(({ message, failed, delivery }) => {
+        if (delivery === "checking") setUnscreened((current) => new Set([...current, message.id]));
         setUploading((current) => {
           const next = { ...current };
           delete next[message.id];
           return next;
         });
-        if (failed.length) setNotice(`Sent, but these did not attach: ${failed.join("; ")}`);
+        if (failed.length) setNotice(`Sent, but without the files: ${failed.join(" ")}`);
         return loadThread(threadId);
       })
       .catch((failure) => {
@@ -570,7 +618,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           time: sentAt(message) ? TIME.format(new Date(sentAt(message))) : "",
           // Only the sender's company ever reads a message that is not
           // delivered (the read policy), so this is always the reader's own.
-          status: deliveryStatus(message),
+          status: deliveryStatus(message, { unscreened: unscreened.has(message.id) }),
           // The reader's own language first, with the original one click
           // away — the rule in CLAUDE.md. The designed bubble shows `body`
           // by default and `translation` when toggled, so the readable text
@@ -620,8 +668,6 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
 
   return (
     <>
-      {error && <p className="messages-load-error" role="alert">{error.message}</p>}
-      {notice && <p className="messages-load-error" role="status">{notice}</p>}
       <MessagesScreen
         calls={callCards}
         video={video ? {
@@ -640,7 +686,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           ownZone,
           zones: zoneOptions(ownZone),
           otherName: dialogOther,
-          otherZone: dialog ? theirZones[dialog.threadId] ?? null : null,
+          // Answering an invite with another time: their times read in the
+          // zone they proposed in.
+          otherZone: dialog ? theirZoneFor(dialog.counterOf, org.id, theirZones[dialog.threadId]) : null,
           heading: dialog?.counterOf ? "Propose another time" : undefined,
           submitLabel: dialog?.counterOf ? "Send new time" : undefined,
           initial: dialog?.counterOf ? { title: dialog.counterOf.title, agenda: dialog.counterOf.agenda ?? "" } : undefined,
@@ -653,6 +701,13 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         onSelectThread={loadThread}
         onSend={send}
         canAttach
+        attachAccept={ATTACHMENT_ACCEPT}
+        acceptFiles={(picked) => {
+          const refused = picked.map(attachmentRefusal).filter(Boolean);
+          setNotice(refused.length ? refused.join(" ") : null);
+          return picked.filter((file) => !attachmentRefusal(file));
+        }}
+        composerNotice={error ? { text: error.message, alert: true } : notice ? { text: notice } : null}
         ownName={org.name}
       />
       {confirmCall && (
