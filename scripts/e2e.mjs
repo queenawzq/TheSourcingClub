@@ -833,7 +833,48 @@ async function main() {
     check(approved, "the queue row for this factory was found and opened");
     await page.waitForTimeout(2500);
 
+    // Staff ask for more information first. The company used to be shown
+    // "awaiting verification" and nothing else: the request reached only its
+    // email and a bell its waiting card does not draw.
+    const askFor = `Please upload a readable business registration (${stamp.toString(36)}).`;
+    await clickButton(page, "request more information");
+    // Its screen-reader label used a class no admin stylesheet defined, so the
+    // label was printed twice.
+    const labelsShown = await page.evaluate(() => [...document.querySelectorAll("span, strong")]
+      .filter((el) => el.textContent.trim() === "Message to applicant" && el.getBoundingClientRect().width > 1).length);
+    check(labelsShown === 1, `the request dialog labels its message once (${labelsShown})`);
+    await page.locator(".admin-request-message textarea").fill(askFor);
+    await clickButton(page, "send request");
+    await page.waitForTimeout(3000);
+    const afterAsk = await page.locator("body").innerText();
+    check(afterAsk.includes(askFor), "the review summary shows the note just sent, without a reload");
+    check(/needs information/i.test(afterAsk), "and the badge says Needs information");
+
+    // The factory, signed in elsewhere (another origin, so its own session),
+    // is shown the request on its waiting card and can answer it.
+    // (signIn() always opens APP's own origin, which would sign staff out.)
+    const factoryPage = await stagehand.browser.context.newPage(`${APP.replace("127.0.0.1", "localhost")}?portal=factory`);
+    await waitFor(factoryPage, 'input[name="email"]', 30000);
+    await factoryPage.locator('input[name="email"]').first().fill(`e2e-factory-${stamp}@example.com`);
+    await factoryPage.locator('input[name="password"]').first().fill(PASSWORD);
+    await clickButton(factoryPage, "log in");
+    await waitForHeading(factoryPage, "we need a little more information", 40000);
+    const askedText = await factoryPage.locator("body").innerText();
+    check(askedText.includes(askFor), "the factory reads the request staff wrote, on its own screen");
+    await record(factoryPage, "Factory asked for more information", "the request is on the company's own waiting card");
+
+    const answering = createClient(
+      process.env.SUPABASE_URL ?? stack.API_URL,
+      process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY,
+      { auth: { persistSession: false } },
+    );
+    await answering.auth.signInWithPassword({ email: `e2e-factory-${stamp}@example.com`, password: PASSWORD });
+    const { data: resent, error: resendError } = await answering.rpc("resubmit_for_review", { target_org: factoryOrg.id });
+    check(!resendError && resent === "ready_for_review", "the factory sends its profile back to staff's queue");
+    await factoryPage.close();
+
     // A factory is approved at a trust tier; with no walkthrough or orders
+    // yet, the picker suggests Basic.    // A factory is approved at a trust tier; with no walkthrough or orders
     // yet, the picker suggests Basic.
     await clickButton(page, "approve as basic");
     await page.waitForTimeout(4000);
