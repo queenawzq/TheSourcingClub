@@ -2151,6 +2151,37 @@ console.log("\ncredits — granted on verification, invites, staff adjustments")
   const stranger = await staffRouteAs("send-invite", brand.client, { body: { orgId: mill.id, email: `x-${stamp}@smoke-mill-c.test` } });
   stranger.status === 403 ? ok("nobody sends invites for a company they are not in") : fail("a stranger's invite", stranger);
 
+  // An address that has an account, on another domain: refused in words, and
+  // the same words when asked again (the refusal is a row, so it counts).
+  const taken = `taken-${stamp}@smoke-mill-d.test`;
+  await signedInUser(taken);
+  const hasAccount = await staffRouteAs("send-invite", owner.client, { body: { orgId: mill.id, email: taken } });
+  const askedAgain = await staffRouteAs("send-invite", owner.client, { body: { orgId: mill.id, email: taken } });
+  hasAccount.status === 400 && /already has a Sourcing Club account/.test(hasAccount.error)
+    && askedAgain.status === 400 && /already has a Sourcing Club account/.test(askedAgain.error)
+    ? ok("an invite to an address with an account is refused, the same way twice")
+    : fail("the already-has-an-account refusal", { hasAccount, askedAgain });
+
+  // Saved but not emailed: the screen is told why, as a code it words
+  // (inviteNotice). Each case runs offline.
+  const mailEnv = ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "MAILPIT_URL"];
+  const savedMailEnv = Object.fromEntries(mailEnv.map((key) => [key, process.env[key]]));
+  const notEmailed = async (email, env) => (await staffRouteAs("send-invite", owner.client, {
+    body: { orgId: mill.id, email }, env: { RESEND_API_KEY: "", RESEND_FROM_EMAIL: "", MAILPIT_URL: "", ...env },
+  }));
+  const noMail = await notEmailed(`plain-${stamp}@smoke-mill-e.test`, {});
+  const reserved = await notEmailed(`reserved-${stamp}@example.com`, { RESEND_API_KEY: "re_smoke_not_a_key", RESEND_FROM_EMAIL: "smoke@sourcing-club.test" });
+  const failed = await notEmailed(`failed-${stamp}@smoke-mill-f.test`, { MAILPIT_URL: "http://127.0.0.1:9" });
+  for (const [key, value] of Object.entries(savedMailEnv)) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  }
+  noMail.status === 200 && noMail.emailed === false && noMail.reason === "email_not_set_up"
+    ? ok("an invite on a server with no email is saved, and says so") : fail("no-email invite", noMail);
+  reserved.status === 200 && reserved.emailed === false && reserved.reason === "reserved_address"
+    ? ok("an invite to a reserved test address is saved, not emailed, and says why") : fail("reserved-address invite", reserved);
+  failed.status === 200 && failed.emailed === false && failed.reason === "email_failed"
+    ? ok("an invite the email service did not take is saved, and says so") : fail("failed-email invite", failed);
+
   const { error: relink } = await owner.client.from("referrals").update({ referred_org_id: org.id }).eq("referrer_org_id", mill.id);
   relink ? ok("a client CANNOT link an invite to a company") : fail("LEAK: a client re-linked its invite");
 

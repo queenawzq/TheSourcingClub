@@ -66,7 +66,11 @@ export default async function handler(request, response) {
   const service = serviceClient(supabaseUrl, serviceKey);
   const { data: org } = await service.from("orgs").select("name, type").eq("id", orgId).single();
 
-  let delivery = { sent: false, reason: "email is not set up on this server" };
+  // Why an invite was saved but not emailed, as a code the screen words
+  // (inviteNotice in src/lib/domain/credits.js): the address is reserved for
+  // testing and cannot receive mail, this server has no email set up, or the
+  // email service did not take it.
+  let delivery = { sent: false, reason: "email_not_set_up" };
   try {
     const { inviteEmail } = await loadEmails();
     const appUrl = publicAppUrl(request);
@@ -82,7 +86,8 @@ export default async function handler(request, response) {
       message: inviteEmail({ inviterName: org?.name, kind: org?.type, message }, env),
     });
   } catch (error) {
-    delivery = { sent: false, reason: String(error.message || error) };
+    console.error("send-invite: the email did not go out", error);
+    delivery = { sent: false, reason: "email_failed" };
   }
 
   if (delivery.sent) {

@@ -286,7 +286,7 @@ export default function LiveFactoryHome({ org, profile }) {
       // The Credits tab says what became of it, under the invite's own row.
       onInviteFactory={async (email, message) => {
         const result = await sendInvite(org.id, email, message);
-        navigate(`/payout?tab=credits&invite=${result.emailed ? "sent" : "saved"}`);
+        navigate(`/payout?tab=credits&invite=${result.emailed ? "sent" : result.reason ?? "saved"}`);
       }}
       onViewRfqs={() => navigate("/browse")}
       onBrowseRfqs={() => navigate("/browse")}

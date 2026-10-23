@@ -90,11 +90,12 @@ export function publicAppUrl(request) {
 /**
  * Sends one email that is not a notification (an invite). Same transport and
  * the same rule for reserved test addresses as the queue.
- * @returns {{ sent: boolean, reason?: string, providerId?: string }}
+ * @returns {{ sent: boolean, reason?: "email_not_set_up" | "reserved_address", providerId?: string }},
+ *   or throws when the provider refuses it
  */
 export async function sendOneEmail({ key, to, message }, mail = transport()) {
-  if (!mail) return { sent: false, reason: "email is not set up on this server" };
-  if (mail.name === "resend" && RESERVED.test(to)) return { sent: false, reason: "reserved test address" };
+  if (!mail) return { sent: false, reason: "email_not_set_up" };
+  if (mail.name === "resend" && RESERVED.test(to)) return { sent: false, reason: "reserved_address" };
   const providerId = await mail.send({ id: key, recipient_email: to, recipient_name: null }, message);
   return { sent: true, providerId };
 }

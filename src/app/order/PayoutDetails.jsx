@@ -23,7 +23,7 @@ import {
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
-import { FACTORY_INVITE_INTRO, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
+import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
@@ -100,10 +100,12 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   });
   const [inviteOpen, setInviteOpen] = useState(false);
   // What just happened on the Credits tab: an invite sent (here, or from the
-  // dashboard, which links here with ?invite=sent|saved) or credits bought.
+  // dashboard, which links here with ?invite=sent or why it was not emailed)
+  // or credits bought.
   const [notice, setNotice] = useState(() => {
     const invite = new URLSearchParams(window.location.search).get("invite");
-    return ["sent", "saved"].includes(invite) ? inviteNotice({ emailed: invite === "sent" }) : null;
+    if (invite === "sent") return inviteNotice({ emailed: true });
+    return ["saved", ...INVITE_NOT_EMAILED].includes(invite) ? inviteNotice({ emailed: false, reason: invite }) : null;
   });
   const [client, setClient] = useState("All clients");
   const [transactionType, setTransactionType] = useState("all");

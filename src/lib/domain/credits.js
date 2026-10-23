@@ -75,7 +75,7 @@ const sentence = (text) => text ? text.charAt(0).toUpperCase() + text.slice(1).r
  * has an account, a repeat and more than 20 a day. Whoever signs up with the
  * address is linked to the invite; a factory that invited a factory earns
  * 500 credits when TSC verifies it. A brand invite earns nothing yet.
- * @returns {{ id, emailed: boolean, reason: string|null }}
+ * @returns {{ id, emailed: boolean, reason: "reserved_address"|"email_not_set_up"|"email_failed"|null }}
  */
 export async function sendInvite(orgId, email, message = null) {
   const address = String(email ?? "").trim().toLowerCase();
@@ -106,16 +106,30 @@ export const FACTORY_CREDIT_NOTE = "500 credits = $50 value. Invite a factory: y
 
 /**
  * What the inviter is told once the invite is in: sent, or saved without the
- * email. Only a factory's invite earns anything, so only it says so. The
- * address is left out where the caller does not have it (a notice carried
- * through a link).
+ * email and why (`reason` from api/send-invite). Each reason says what is
+ * true of it: a reserved test address cannot receive mail (the site could
+ * have sent it); a site with no email set up sends nothing; and a failure
+ * means the site tried. Only a factory's invite earns anything, so only it
+ * says so. The address is left out where the caller does not have it (a
+ * notice carried through a link).
  */
-export function inviteNotice({ emailed }, { email = null, kind = "factory" } = {}) {
-  const to = email ? ` ${emailed ? "to" : "for"} ${email}` : "";
+export const INVITE_NOT_EMAILED = ["reserved_address", "email_not_set_up", "email_failed"];
+
+export function inviteNotice({ emailed, reason = null }, { email = null, kind = "factory" } = {}) {
   const earns = kind === "factory" ? " You earn 500 credits when TSC verifies them." : "";
-  return emailed
-    ? `Invite sent${to}.${earns}`
-    : `Invite saved${to}, but the email could not be sent here.${kind === "factory" ? " If they sign up with that address, it still counts." : ""}`;
+  if (emailed) return `Invite sent${email ? ` to ${email}` : ""}.${earns}`;
+  const saved = `Invite saved${email ? ` for ${email}` : ""}`;
+  const counts = kind === "factory" ? " If they sign up with that address, it still counts." : "";
+  switch (reason) {
+    case "reserved_address":
+      return `${saved}. No email was sent: it is a test address that cannot receive mail.${counts}`;
+    case "email_not_set_up":
+      return `${saved}. This site does not send email, so let them know yourself.${counts}`;
+    case "email_failed":
+      return `${saved}, but the email did not go out. Let them know yourself.${counts}`;
+    default:
+      return `${saved}, but no email was sent. Let them know yourself.${counts}`;
+  }
 }
 
 /** Invite another brand: what the brand dashboard's designed modal calls. */
