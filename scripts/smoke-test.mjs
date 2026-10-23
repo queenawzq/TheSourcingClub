@@ -98,6 +98,32 @@ async function screenAs(client, messageId) {
 }
 
 /**
+ * Run the real api/screen-call-text.js handler as a client: the server's
+ * contact-details check on a call's words, which the database then requires.
+ */
+async function checkCallTextAs(client, texts) {
+  const { default: check } = await import("../api/screen-call-text.js");
+  const { data } = await client.auth.getSession();
+  const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"];
+  const saved = { ...process.env };
+  Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE });
+  let status = 0;
+  let body = null;
+  const response = {
+    status(code) { status = code; return response; },
+    json(payload) { body = payload; return response; },
+  };
+  try {
+    await check({ method: "POST", headers: { authorization: `Bearer ${data?.session?.access_token}` }, body: { texts } }, response);
+  } finally {
+    for (const key of keys) {
+      if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
+    }
+  }
+  return { status, ...body };
+}
+
+/**
  * Run the real api/call-join.js handler as a client. `zoom` sets fake Zoom
  * variables (enough to pass "is Zoom set up?", never enough to reach Zoom);
  * without it they are cleared, as on a site without video.
@@ -1400,6 +1426,37 @@ console.log("\nphase 3 — the order runs");
       // string src/lib/domain/calls.js uses, so a renamed argument or an
       // ambiguous embed fails here rather than on a screen.
       const startsAt = new Date(Date.now() + 2 * 86400000).toISOString();
+
+      // A call's words reach the other side, so they pass the same pattern
+      // check as a message first, and the database refuses words it did not.
+      const sneaky = "Quick one, or just WhatsApp me on +44 7700 900123 instead.";
+      const { error: uncheckedError } = await brand.client.rpc("propose_call", {
+        target_thread: threadId, starts_at: startsAt, duration_minutes: 30,
+        title: "Smoke call", agenda: sneaky, time_zone: "America/New_York",
+      });
+      uncheckedError
+        ? ok("a call's words the server never checked are refused (propose_call called directly)")
+        : fail("LEAK: a call description went out without the contact-details check");
+      const refused = await checkCallTextAs(brand.client, ["Smoke call", sneaky]);
+      refused.status === 422 && /contact details/.test(refused.error ?? "")
+        ? ok("the check refuses a WhatsApp number, saying to keep contact details out")
+        : fail(`the check answered ${refused.status} ${refused.error ?? ""}`);
+      const { error: stillRefused } = await brand.client.rpc("propose_call", {
+        target_thread: threadId, starts_at: startsAt, duration_minutes: 30,
+        title: "Smoke call", agenda: sneaky, time_zone: "America/New_York",
+      });
+      stillRefused ? ok("and a refused description is still refused by the database")
+                   : fail("LEAK: a description the check refused went out");
+      const { error: selfCheck } = await brand.client.rpc("record_call_text_check", {
+        target_user: brand.id, texts: [sneaky],
+      });
+      selfCheck ? ok("a client CANNOT record its own words as checked")
+                : fail("LEAK: a client recorded its own call text as checked");
+      const passed = await checkCallTextAs(brand.client, ["Smoke call"]);
+      passed.status === 200
+        ? ok("ordinary words pass the check")
+        : fail(`ordinary call words answered ${passed.status} ${passed.error ?? ""}`);
+
       const { data: proposed, error: proposeError } = await brand.client.rpc("propose_call", {
         target_thread: threadId, starts_at: startsAt, duration_minutes: 30,
         title: "Smoke call", agenda: null, time_zone: "America/New_York",

@@ -14,13 +14,14 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(26);
+select plan(28);
 
 insert into auth.users (id, email) values
   ('c4000000-0000-0000-0000-000000000001', 'p4-brand@example.com'),
   ('c4000000-0000-0000-0000-000000000002', 'p4-f1@example.com'),
   ('c4000000-0000-0000-0000-000000000003', 'p4-f2@example.com'),
-  ('c4000000-0000-0000-0000-000000000004', 'p4-outsider@example.com');
+  ('c4000000-0000-0000-0000-000000000004', 'p4-outsider@example.com'),
+  ('c4000000-0000-0000-0000-000000000005', 'p4-brand-member@example.com');
 
 insert into public.orgs (id, type, name, slug) values
   ('d4000000-0000-0000-0000-00000000000b', 'brand',   'P4 Brand',     'pgtap4-brand'),
@@ -32,7 +33,8 @@ insert into public.org_members (org_id, user_id, role) values
   ('d4000000-0000-0000-0000-00000000000b', 'c4000000-0000-0000-0000-000000000001', 'owner'),
   ('d4000000-0000-0000-0000-0000000000f1', 'c4000000-0000-0000-0000-000000000002', 'owner'),
   ('d4000000-0000-0000-0000-0000000000f2', 'c4000000-0000-0000-0000-000000000003', 'owner'),
-  ('d4000000-0000-0000-0000-00000000000c', 'c4000000-0000-0000-0000-000000000004', 'owner');
+  ('d4000000-0000-0000-0000-00000000000c', 'c4000000-0000-0000-0000-000000000004', 'owner'),
+  ('d4000000-0000-0000-0000-00000000000b', 'c4000000-0000-0000-0000-000000000005', 'member');
 
 insert into public.brand_profiles (org_id, hq_location) values
   ('d4000000-0000-0000-0000-00000000000b', 'London, UK'),
@@ -283,6 +285,25 @@ select is(
   (select unread_count from public.message_thread_summary where id = (select t1 from p4)),
   0,
   'your own message is never unread to you'
+);
+
+-- A teammate reads the same thread: the brand's message came from their own
+-- company, so it is not waiting on them either (the dashboard said "7 unread"
+-- to a member when the factory had written once).
+reset role;
+set local request.jwt.claims = '{"sub":"c4000000-0000-0000-0000-000000000005","email":"p4-brand-member@example.com","role":"authenticated"}';
+set local role authenticated;
+
+select is(
+  (select unread_count from public.message_thread_summary where id = (select t1 from p4)),
+  0,
+  'nor is a teammate''s: a message from your own company is never unread to you'
+);
+
+select is(
+  (select unread_messages from public.dashboard_snapshot('d4000000-0000-0000-0000-00000000000b')),
+  0,
+  'and the dashboard counts none of it as waiting on a reply'
 );
 
 -- Counted as superuser: a notification addressed to the factory is not
