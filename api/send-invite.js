@@ -9,10 +9,11 @@ const loadEmails = () => import("../scripts/generate-notification-email.mjs");
  *
  * The invite is inserted with the CALLER's token, so the database decides
  * everything: membership (RLS), and the guard on `referrals` refuses the
- * company's own email domain, an address that already has an account, a
- * repeat, and more than 20 a day. Only then is the email sent, with the
- * service key used for nothing but reading the company's name and stamping
- * `emailed_at`.
+ * company's own email domain, a repeat, and more than 20 a day. An address
+ * that already has an account is saved with `refused_at` rather than raised,
+ * so asking about it counts toward the 20; it is answered here as a refusal
+ * and never emailed. Only then is the email sent, with the service key used
+ * for nothing but reading the company's name and stamping `emailed_at`.
  *
  * An invite that is saved but could not be emailed still counts: whoever
  * signs up with that address is linked to it.
@@ -50,11 +51,15 @@ export default async function handler(request, response) {
   const { data: invite, error: inviteError } = await caller
     .from("referrals")
     .insert({ referrer_org_id: orgId, email, message })
-    .select("id, email")
+    .select("id, email, refused_at")
     .single();
   if (inviteError) {
     const status = inviteError.code === "42501" ? 403 : inviteError.code === "54000" ? 429 : 400;
     response.status(status).json({ error: inviteError.message });
+    return;
+  }
+  if (invite.refused_at) {
+    response.status(400).json({ error: "this address already has a Sourcing Club account" });
     return;
   }
 

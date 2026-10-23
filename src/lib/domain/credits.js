@@ -91,6 +91,33 @@ export async function sendInvite(orgId, email, message = null) {
   return result;
 }
 
+/**
+ * The live wording for the designed invite copy, which promises more than the
+ * product gives. A brand invite earns nothing yet (the brand discount is
+ * still to be decided), so the brand's modal and the message it sends
+ * promise no discount. A factory earns 500 when a factory it invited, new to
+ * TSC, is verified; the invited factory gets the 500 every verified factory
+ * gets, not a bonus.
+ */
+export const BRAND_INVITE_INTRO = "Send an invite link to another brand that could use The Sourcing Club for its production.";
+export const BRAND_INVITE_MESSAGE = "I thought The Sourcing Club could be useful for your next production order.";
+export const FACTORY_INVITE_INTRO = "Send an invite link to a factory you trust. You earn 500 credits when TSC verifies it, and it gets the 500 credits every verified factory gets.";
+export const FACTORY_CREDIT_NOTE = "500 credits = $50 value. Invite a factory: you earn 500 credits when TSC verifies it.";
+
+/**
+ * What the inviter is told once the invite is in: sent, or saved without the
+ * email. Only a factory's invite earns anything, so only it says so. The
+ * address is left out where the caller does not have it (a notice carried
+ * through a link).
+ */
+export function inviteNotice({ emailed }, { email = null, kind = "factory" } = {}) {
+  const to = email ? ` ${emailed ? "to" : "for"} ${email}` : "";
+  const earns = kind === "factory" ? " You earn 500 credits when TSC verifies them." : "";
+  return emailed
+    ? `Invite sent${to}.${earns}`
+    : `Invite saved${to}, but the email could not be sent here.${kind === "factory" ? " If they sign up with that address, it still counts." : ""}`;
+}
+
 /** Invite another brand: what the brand dashboard's designed modal calls. */
 export async function inviteBrand(orgId, email, message = null) {
   return sendInvite(orgId, email, message);
@@ -150,6 +177,8 @@ export async function creditHistory(orgId) {
         .select("id, email, accepted_at, rewarded_at, created_at")
         .eq("referrer_org_id", orgId)
         .is("rewarded_at", null)
+        // An address that already had an account was never invited.
+        .is("refused_at", null)
         .order("created_at", { ascending: false }),
       "load your invites",
     ),

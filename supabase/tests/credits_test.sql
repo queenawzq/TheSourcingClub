@@ -1,5 +1,6 @@
 -- ============================================================================
--- Credits granted by the database, invites, staff adjustments (20261017000100)
+-- Credits granted by the database, invites, staff adjustments (20261017000100,
+-- 20261024000501, 20261024000502)
 -- ----------------------------------------------------------------------------
 -- `pgtap23-` fixtures; every count is scoped to them.
 --
@@ -7,13 +8,15 @@
 -- verified: Beta gets 500 for verification, Alpha 500 for the invite.
 -- P23 Gamma (factory) invited Beta later, and gets nothing. P23 Brand invites
 -- a brand that joins: recorded and linked, but no credits and no discount.
+-- P23 Zeta (factory) asks about 21 addresses that have accounts: each counts
+-- toward its 20 a day, and the 21st gets no answer.
 -- ============================================================================
 
 begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(50);
+select plan(59);
 
 insert into auth.users (id, email) values
   ('c2300000-0000-0000-0000-000000000001', 'p23-reviewer@tsc-staff.com'),
@@ -22,7 +25,12 @@ insert into auth.users (id, email) values
   ('c2300000-0000-0000-0000-000000000004', 'owner@p23-gamma.cn'),
   ('c2300000-0000-0000-0000-000000000005', 'owner@p23-brand.com'),
   ('c2300000-0000-0000-0000-000000000006', 'owner@p23-delta.cn'),
-  ('c2300000-0000-0000-0000-000000000007', 'owner@p23-epsilon.cn');
+  ('c2300000-0000-0000-0000-000000000007', 'owner@p23-epsilon.cn'),
+  ('c2300000-0000-0000-0000-000000000010', 'owner@p23-zeta.cn');
+
+-- Addresses that already have accounts, for Zeta to ask about.
+insert into auth.users (id, email)
+select gen_random_uuid(), format('p23-probed-%s@p23-probed.cn', n) from generate_series(1, 21) n;
 
 insert into public.platform_admins (user_id, note)
 values ('c2300000-0000-0000-0000-000000000001', 'pgtap23 fixture');
@@ -32,7 +40,8 @@ insert into public.orgs (id, type, name, slug) values
   ('d2300000-0000-0000-0000-00000000000c', 'factory', 'P23 Gamma',   'pgtap23-gamma'),
   ('d2300000-0000-0000-0000-00000000000b', 'brand',   'P23 Brand',   'pgtap23-brand'),
   ('d2300000-0000-0000-0000-00000000000d', 'factory', 'P23 Delta',   'pgtap23-delta'),
-  ('d2300000-0000-0000-0000-00000000000e', 'factory', 'P23 Epsilon', 'pgtap23-epsilon');
+  ('d2300000-0000-0000-0000-00000000000e', 'factory', 'P23 Epsilon', 'pgtap23-epsilon'),
+  ('d2300000-0000-0000-0000-00000000001a', 'factory', 'P23 Zeta',    'pgtap23-zeta');
 
 insert into public.org_members (org_id, user_id, role) values
   ('d2300000-0000-0000-0000-00000000000a', 'c2300000-0000-0000-0000-000000000002', 'owner'),
@@ -40,7 +49,8 @@ insert into public.org_members (org_id, user_id, role) values
   ('d2300000-0000-0000-0000-00000000000c', 'c2300000-0000-0000-0000-000000000004', 'owner'),
   ('d2300000-0000-0000-0000-00000000000b', 'c2300000-0000-0000-0000-000000000005', 'owner'),
   ('d2300000-0000-0000-0000-00000000000d', 'c2300000-0000-0000-0000-000000000006', 'owner'),
-  ('d2300000-0000-0000-0000-00000000000e', 'c2300000-0000-0000-0000-000000000007', 'owner');
+  ('d2300000-0000-0000-0000-00000000000e', 'c2300000-0000-0000-0000-000000000007', 'owner'),
+  ('d2300000-0000-0000-0000-00000000001a', 'c2300000-0000-0000-0000-000000000010', 'owner');
 
 insert into public.factory_profiles (org_id) values
   ('d2300000-0000-0000-0000-00000000000a'),
@@ -130,11 +140,24 @@ select throws_ok(
   'an address on the company''s own domain is refused'
 );
 
+-- Kept and stamped rather than raised, so that it counts (20261024000502).
+select lives_ok(
+  $$ insert into public.referrals (referrer_org_id, email)
+     values ('d2300000-0000-0000-0000-00000000000a', 'owner@p23-brand.com') $$,
+  'an invite to an address that already has an account is kept, to count'
+);
+
+select ok(
+  (select refused_at is not null from public.referrals
+    where referrer_org_id = 'd2300000-0000-0000-0000-00000000000a' and email = 'owner@p23-brand.com'),
+  'and is marked refused: the address already has an account'
+);
+
 select throws_ok(
   $$ insert into public.referrals (referrer_org_id, email)
      values ('d2300000-0000-0000-0000-00000000000a', 'owner@p23-brand.com') $$,
-  '23505', null,
-  'an address that already has an account is refused'
+  '23505', 'this address already has a Sourcing Club account',
+  'asking about it again gets the same answer, and no second row'
 );
 
 select throws_ok(
@@ -203,6 +226,38 @@ select throws_ok(
 reset role;
 set local request.jwt.claims = '{"role":"service_role"}';
 
+-- Asking about addresses that have accounts counts toward the 20 too.
+set local request.jwt.claims = '{"sub":"c2300000-0000-0000-0000-000000000010","role":"authenticated"}';
+set local role authenticated;
+do $$
+begin
+  for n in 1..20 loop
+    insert into public.referrals (referrer_org_id, email)
+    values ('d2300000-0000-0000-0000-00000000001a', format('p23-probed-%s@p23-probed.cn', n));
+  end loop;
+end $$;
+select throws_ok(
+  $$ insert into public.referrals (referrer_org_id, email)
+     values ('d2300000-0000-0000-0000-00000000001a', 'p23-probed-21@p23-probed.cn') $$,
+  '54000', null,
+  'the 21st question in a day about an address with an account is refused for the limit'
+);
+select throws_ok(
+  $$ insert into public.referrals (referrer_org_id, email)
+     values ('d2300000-0000-0000-0000-00000000001a', 'nobody-yet@p23-fresh.cn') $$,
+  '54000', null,
+  'and so is an ordinary invite that day'
+);
+reset role;
+set local request.jwt.claims = '{"role":"service_role"}';
+
+select is(
+  (select count(*)::int from public.referrals
+    where referrer_org_id = 'd2300000-0000-0000-0000-00000000001a' and refused_at is not null),
+  20,
+  'the twenty refused questions are on record'
+);
+
 -- ---------------------------------------------------------------------------
 -- 5. Linking at sign-up
 -- ---------------------------------------------------------------------------
@@ -213,6 +268,11 @@ insert into auth.users (id, email) values
 set local request.jwt.claims = '{"sub":"c2300000-0000-0000-0000-000000000008","role":"authenticated"}';
 set local role authenticated;
 select lives_ok($$ select public.create_org('P23 Beta', 'factory') $$, 'the invited factory signs up');
+
+-- The brand owner Alpha asked about starts a factory: a refused invite is
+-- never linked.
+set local request.jwt.claims = '{"sub":"c2300000-0000-0000-0000-000000000005","role":"authenticated"}';
+select lives_ok($$ select public.create_org('P23 Brand Mill', 'factory') $$, 'an existing account starts a factory');
 set local request.jwt.claims = '{"sub":"c2300000-0000-0000-0000-000000000009","role":"authenticated"}';
 select lives_ok($$ select public.create_org('P23 New Brand', 'brand') $$, 'the invited brand signs up');
 reset role;
@@ -252,6 +312,13 @@ select is(
   (select referrer_org_id from public.referrals where referred_org_id = (select newbrand from p23)),
   'd2300000-0000-0000-0000-00000000000b'::uuid,
   'a brand invite is linked too'
+);
+
+select is(
+  (select referred_org_id from public.referrals
+    where referrer_org_id = 'd2300000-0000-0000-0000-00000000000a' and email = 'owner@p23-brand.com'),
+  null,
+  'a refused invite is never linked, even when that account starts a factory'
 );
 
 -- A second member joining Beta later is not a sign-up.
@@ -445,6 +512,26 @@ select is(
   public.admin_adjust_credits('d2300000-0000-0000-0000-00000000000a', -1050, 'Closing the test account'),
   0,
   'staff remove credits down to zero'
+);
+reset role;
+set local request.jwt.claims = '{"role":"service_role"}';
+
+-- Epsilon spent credits it then had refunded: it stands at -300.
+insert into public.credit_ledger (org_id, delta, reason, note)
+values ('d2300000-0000-0000-0000-00000000000e',
+        -300 - public.credit_balance('d2300000-0000-0000-0000-00000000000e'), 'refund', 'p23 refund after spending');
+
+set local request.jwt.claims = '{"sub":"c2300000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select is(
+  public.admin_adjust_credits('d2300000-0000-0000-0000-00000000000e', 100, 'Goodwill top-up'),
+  -200,
+  'staff add credits to a company below zero (20261024000501)'
+);
+select throws_ok(
+  $$ select public.admin_adjust_credits('d2300000-0000-0000-0000-00000000000e', -1, 'Remove one more') $$,
+  '22023', null,
+  'but cannot remove any from a company below zero'
 );
 reset role;
 set local request.jwt.claims = '{"role":"service_role"}';
