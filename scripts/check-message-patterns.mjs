@@ -34,6 +34,11 @@ const HOLD = [
   ["it's on maisonrue.com", "a link"],
   ["find us on instagram @maisonrue", "an Instagram contact"],
   ["DM @maison.rue", "a social media handle"],
+  ["WeChat ID: maisonrue", "a WeChat contact"],
+  ["Message me on Facebook", "a Facebook contact"],
+  ["WhatsApp me when the sample ships", "a WhatsApp contact"],
+  ["Our Instagram is maison.rue", "an Instagram contact"],
+  ["Let's talk on WeChat instead", "a WeChat contact"],
 ];
 
 const HOLD_FILES = [
@@ -67,12 +72,17 @@ const DELIVER = [
   "Reference v2.0 of the tech pack",
   "Price @ 18.40 each",
   "Fabric code 1120034 from the mill",
+  // An app's name beside an everyday word is the model's to judge.
+  "Please send the messenger bag sample on Monday.",
+  "We saw your knitwear as seen on Instagram, great work.",
+  "WhatsApp is easier for my team, but we'll keep it here.",
 ];
 
 const DELIVER_FILES = [
   ["SS27-linen-overshirt-techpack.pdf"],
   ["fit_sample_front.jpg", "size-chart-v2.xlsx"],
   ["IMG_20261012_143022.jpg"],
+  ["messenger-bag-front.jpg"],
 ];
 
 let failures = 0;

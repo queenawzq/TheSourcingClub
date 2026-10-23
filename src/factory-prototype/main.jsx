@@ -2538,7 +2538,7 @@ export function FactoryDashboardPage({
               preHeader={calls?.length ? <FactoryDashboardCallCard language={language} calls={calls} /> : isNewcomer || attention ? null : <FactoryDashboardCallCard language={language} />}
             >
               {attention ? (
-                attention.map((item) => <FactoryAttentionCard {...item} key={item.title} />)
+                attention.map((item) => <FactoryAttentionCard {...item} key={item.id ?? item.title} />)
               ) : isNewcomer ? (
                 <>
                   <FactoryAttentionCard
@@ -5783,7 +5783,9 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
   );
 }
 
-export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, backLabel = "‹ Back to RFQs", onEdit, onWithdraw, quote, status, priceTotal }) {
+// `onMessage` is live only: it opens this vendor's conversation with the
+// brand. The prototype passes none and the status card is exactly as drawn.
+export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, backLabel = "‹ Back to RFQs", onEdit, onWithdraw, quote, status, priceTotal, onMessage }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-rfq-read-page">
       <div className="factory-submit-content">
@@ -5837,6 +5839,9 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
                 <ProfileDetailPair label="Quote sent" value={status ? status.sent : "Jul 24"} />
                 <ProfileDetailPair label="Status" value={status ? status.label : "Quote submitted"} />
               </div>
+              {onMessage && (
+                <button className="secondary-btn" type="button" data-testid="message-brand" onClick={onMessage}>Message brand</button>
+              )}
             </section>
           </aside>
         </div>

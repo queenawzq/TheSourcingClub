@@ -2404,6 +2404,10 @@ export function SettingsScreen({
   // The company's email switches: { rfq, payments, messages } and a setter.
   notificationEmails,
   onNotificationEmailChange,
+  // Live only: what each switch covers ({ rfq, payments, messages }), and why
+  // the switches could not be read or saved.
+  notificationEmailNotes,
+  notificationEmailsError = null,
   // Live only: removes a saved card (the brand's list, the factory's Billing
   // tab), and the line a member reads where an owner gets the buttons.
   onRemoveBillingMethod,
@@ -2965,13 +2969,16 @@ export function SettingsScreen({
               <h3>Notifications</h3>
               <p>Choose which updates should reach your team by email.</p>
             </div>
-            {[[isFactory ? "New RFQ matches" : "New quote activity", "rfq"], ["Payment and approval requests", "payments"], ["Messages and call invites", "messages"]].map(([label, key]) => (
+            {notificationEmailsError && (
+              <p className="settings-invite-error" role="alert">{notificationEmailsError.message ?? String(notificationEmailsError)}</p>
+            )}
+            {(notificationEmails || !notificationEmailsError) && [[isFactory ? "New RFQ matches" : "New quote activity", "rfq"], ["Payment and approval requests", "payments"], ["Messages and call invites", "messages"]].map(([label, key]) => (
               <div className="settings-inline-row" key={label}>
                 <div>
                   <strong>{label}</strong>
                   {/* Live, every member with an email gets these: there are no
                       per-member permissions yet to narrow it to. */}
-                  <span>{notificationEmails ? "Emails every member of your company." : "Send email notifications to members with matching authority."}</span>
+                  <span>{notificationEmailNotes?.[key] ?? (notificationEmails ? "Emails every member of your company." : "Send email notifications to members with matching authority.")}</span>
                 </div>
                 <label className="settings-switch">
                   {notificationEmails ? (
@@ -4263,7 +4270,7 @@ export function HomeScreen({
                       Live items are already only the things actually
                       outstanding, so there is nothing to trim. */}
                   {(attention ? attentionItems : attentionItems.slice(2)).map((item) => (
-                    <HomeAttentionCard item={item} key={item.title} />
+                    <HomeAttentionCard item={item} key={item.id ?? item.title} />
                   ))}
                 </div>
               </section>
@@ -4319,7 +4326,7 @@ export function HomeScreen({
               </header>
               <div className="home-attention-grid">
                 {attentionItems.map((item) => (
-                  <HomeAttentionCard item={item} key={item.title} />
+                  <HomeAttentionCard item={item} key={item.id ?? item.title} />
                 ))}
               </div>
             </section>
@@ -4589,7 +4596,10 @@ function InviteBrandModal({ onInvite, onClose }) {
  * `passiveActivityItems`, plus an optional `id`) and `onOpenItem`, which
  * makes each row open what it is about. The prototype passes neither.
  */
-export function ActivityDrawer({ onClose, items, onOpenItem, description = "Passive updates from quotes, files, vendors, and production." }) {
+// Live only: `onMarkAllRead` adds "Mark all read" under the heading, and
+// `emptyText` is said when `items` is empty (loading, or nothing yet). The
+// prototype passes neither and is unchanged.
+export function ActivityDrawer({ onClose, items, onOpenItem, onMarkAllRead, markAllDisabled = false, emptyText, description = "Passive updates from quotes, files, vendors, and production." }) {
   return createPortal((
     <div className="activity-drawer-layer" role="presentation">
       <button className="activity-drawer-scrim" type="button" aria-label="Close activity" onClick={onClose} />
@@ -4598,12 +4608,18 @@ export function ActivityDrawer({ onClose, items, onOpenItem, description = "Pass
           <div>
             <h2 id="activity-drawer-title">Activity</h2>
             <p>{description}</p>
+            {onMarkAllRead && (
+              <button className="live-activity-mark-all" type="button" disabled={markAllDisabled} onClick={onMarkAllRead}>
+                Mark all read
+              </button>
+            )}
           </div>
           <button className="activity-close-btn" type="button" aria-label="Close activity" onClick={onClose}>
             <img src="/assets/prototype-icons/close.svg" alt="" />
           </button>
         </header>
         <div className="activity-drawer-list">
+          {emptyText && items?.length === 0 && <p className="live-activity-empty" role="status">{emptyText}</p>}
           {(items ?? passiveActivityItems).map((item) => (
             <article
               className={item.unread ? "activity-drawer-item unread" : "activity-drawer-item"}

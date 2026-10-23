@@ -5,14 +5,15 @@
 --
 -- Nobody in a browser runs the daily job or reads which reminders went out;
 -- a reminder goes out once however often the job runs; a new request reaches
--- the factories it fits and no others; an invited factory is emailed once.
+-- the factories it fits and no others; an invited factory is emailed once;
+-- a step reminds the side whose turn it is; a bell hears only its own rows.
 -- ============================================================================
 
 begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(29);
+select plan(39);
 
 insert into auth.users (id, email, raw_user_meta_data) values
   ('e9110000-0000-0000-0000-000000000001', 'p21-brand@example.com',       '{"name":"P21 Brand"}'),
@@ -178,18 +179,42 @@ select is(
 -- Capacity reminders
 -- ---------------------------------------------------------------------------
 
+-- A trading company has no capacity card; an unpublished profile is not
+-- shown to brands; a manufacturer that never set capacity is asked to.
+insert into public.orgs (id, type, name, slug) values
+  ('e9120000-0000-0000-0000-0000000000f5', 'factory', 'P21 Trading',     'pgtap21-trading'),
+  ('e9120000-0000-0000-0000-0000000000f6', 'factory', 'P21 Never set',   'pgtap21-never-set'),
+  ('e9120000-0000-0000-0000-0000000000f7', 'factory', 'P21 Unpublished', 'pgtap21-unpublished');
+insert into public.factory_profiles (org_id, country_code, moq, vendor_kind, published_at, verification_status, created_at) values
+  ('e9120000-0000-0000-0000-0000000000f5', 'HK', 100, 'trading_company', now(), 'verified', now() - interval '40 days'),
+  ('e9120000-0000-0000-0000-0000000000f6', 'PT', 100, 'manufacturer',    now(), 'verified', now() - interval '40 days'),
+  ('e9120000-0000-0000-0000-0000000000f7', 'PT', 100, 'manufacturer',    null,  'verified', now() - interval '40 days');
+update p21_ids set orgs = orgs || array['e9120000-0000-0000-0000-0000000000f5', 'e9120000-0000-0000-0000-0000000000f6',
+                                        'e9120000-0000-0000-0000-0000000000f7']::uuid[];
+
 insert into public.factory_capacity (org_id, input_mode, monthly_units, updated_at) values
   ('e9120000-0000-0000-0000-0000000000f1', 'units', 3000, now() - interval '31 days'),
   ('e9120000-0000-0000-0000-0000000000f2', 'units', 3000, now() - interval '3 days'),
-  ('e9120000-0000-0000-0000-0000000000f3', 'units', 3000, now() - interval '90 days');
+  ('e9120000-0000-0000-0000-0000000000f3', 'units', 3000, now() - interval '90 days'),
+  ('e9120000-0000-0000-0000-0000000000f5', 'units', 3000, now() - interval '40 days'),
+  ('e9120000-0000-0000-0000-0000000000f7', 'units', 3000, now() - interval '40 days');
 
 select lives_ok($$select public.run_daily_notifications()$$, 'the daily job runs');
 
 select results_eq(
   $$select org_id::text from public.notifications
-     where kind = 'capacity_reminder' and org_id = any ((select orgs from p21_ids)::uuid[])$$,
-  $$values ('e9120000-0000-0000-0000-0000000000f1')$$,
-  'only a verified factory with capacity a month old is reminded'
+     where kind = 'capacity_reminder' and org_id = any ((select orgs from p21_ids)::uuid[])
+     order by org_id$$,
+  $$values ('e9120000-0000-0000-0000-0000000000f1'), ('e9120000-0000-0000-0000-0000000000f6')$$,
+  'only verified, published manufacturers whose capacity is a month old (or was never set) are reminded'
+);
+
+select results_eq(
+  $$select title, body from public.notifications
+     where kind = 'capacity_reminder' and org_id = 'e9120000-0000-0000-0000-0000000000f6'$$,
+  $$values ('Set your open capacity'::text,
+            'You haven''t set your open capacity yet. Brands see it when they choose who to invite, so add it from your dashboard.'::text)$$,
+  'a factory that never set its capacity is asked to set it, not told when it last did'
 );
 
 select is(
@@ -245,15 +270,39 @@ set local role authenticated;
 select public.agree_schedule((select order_id from p21_order), 1);
 reset role;
 
-update public.order_milestones set due_on = current_date + 3 where id = (select first_step from p21_order);
+-- The first step stands in for a paid step with work ("Fit sample"): open,
+-- with its payment due. Until the brand funds it, it is the brand's turn.
+update public.order_milestones set kind = 'approval_and_payment', due_on = current_date + 3
+ where id = (select first_step from p21_order);
 update public.order_milestones set due_on = current_date + 10 where id = (select last_step from p21_order);
+
+select results_eq(
+  $$select steps_awaiting_you, steps_you_are_working_on
+      from public.dashboard_snapshot('e9120000-0000-0000-0000-0000000000f1')$$,
+  $$values (0, 0)$$,
+  'an unfunded step is not on the factory''s "needs an update" count'
+);
+select results_eq(
+  $$select steps_you_are_working_on, payments_due_cents > 0
+      from public.dashboard_snapshot('e9120000-0000-0000-0000-00000000000b')$$,
+  $$values (0, true)$$,
+  'nor the brand''s "the factory is working on it": the brand owes it'
+);
+
 select public.run_daily_notifications();
 
 select results_eq(
-  $$select org_id::text, subject_id from public.notifications where kind = 'milestone_due_soon'
+  $$select org_id::text, subject_type, subject_id from public.notifications where kind = 'milestone_due_soon'
      and order_id = (select order_id from p21_order)$$,
-  $$select 'e9120000-0000-0000-0000-0000000000f1', first_step from p21_order$$,
-  'three days before, the factory hears about the step it is working on, and only that one'
+  $$select 'e9120000-0000-0000-0000-00000000000b', 'payment',
+           (select id from public.order_payments where milestone_id = first_step) from p21_order$$,
+  'three days before, the brand is reminded to fund it, linked to its payment page, and only about that step'
+);
+
+select is(
+  (select count(*)::int from public.notifications where kind = 'milestone_due_soon'
+     and org_id = 'e9120000-0000-0000-0000-0000000000f1'),
+  0, 'the factory hears nothing about a step it cannot start'
 );
 
 select is(
@@ -269,12 +318,33 @@ select is(
   1, 'running again the same day sends nothing new'
 );
 
+-- Stripe is still confirming the payment: nobody can move the step.
+update public.order_payments set state = 'processing', processing_at = now()
+ where milestone_id = (select first_step from p21_order);
 update public.order_milestones set due_on = current_date + 1 where id = (select first_step from p21_order);
 select public.run_daily_notifications();
 select is(
   (select count(*)::int from public.notifications where kind = 'milestone_due_soon'
-     and order_id = (select order_id from p21_order) and org_id = 'e9120000-0000-0000-0000-0000000000f1'),
-  2, 'the day before, it hears once more'
+     and order_id = (select order_id from p21_order)),
+  1, 'a payment Stripe is still confirming reminds nobody'
+);
+
+-- Funded: now it is the factory's work.
+update public.order_payments set state = 'confirmed', confirmed_at = now()
+ where milestone_id = (select first_step from p21_order);
+select results_eq(
+  $$select steps_awaiting_you from public.dashboard_snapshot('e9120000-0000-0000-0000-0000000000f1')
+    union all
+    select steps_you_are_working_on from public.dashboard_snapshot('e9120000-0000-0000-0000-00000000000b')$$,
+  $$values (1), (1)$$,
+  'once funded, the step needs the factory''s update, on both dashboards'
+);
+select public.run_daily_notifications();
+select results_eq(
+  $$select subject_type, subject_id, body like '%needs an update%' from public.notifications
+     where kind = 'milestone_due_soon' and org_id = 'e9120000-0000-0000-0000-0000000000f1'$$,
+  $$select 'milestone', first_step, true from p21_order$$,
+  'the day before, the factory hears about the funded step it is working on'
 );
 
 update public.order_milestones set state = 'submitted', due_on = current_date + 2
@@ -282,7 +352,8 @@ update public.order_milestones set state = 'submitted', due_on = current_date + 
 select public.run_daily_notifications();
 select is(
   (select count(*)::int from public.notifications where kind = 'milestone_due_soon'
-     and order_id = (select order_id from p21_order) and org_id = 'e9120000-0000-0000-0000-00000000000b'),
+     and order_id = (select order_id from p21_order) and org_id = 'e9120000-0000-0000-0000-00000000000b'
+     and subject_type = 'milestone'),
   1, 'a step waiting for approval reminds the brand, the side that acts'
 );
 
@@ -296,8 +367,41 @@ select is(
 select is(
   (select count(*)::int from public.notification_reminders
     where org_id = any ((select orgs from p21_ids)::uuid[])),
-  6, 'every reminder that went out is recorded once (two matches, one capacity, three due-soon)'
+  7, 'every reminder that went out is recorded once (two matches, two capacity, three due-soon)'
 );
+
+-- A refund asks the brand to pay again; it is emailed like a failed payment.
+select is(public.notification_email_category('payment_refunded'), 'payments',
+  'a refund is emailed under the payment and approval switch');
+
+-- ---------------------------------------------------------------------------
+-- The bell updates live, and only with the reader's own rows
+-- ---------------------------------------------------------------------------
+-- Realtime sends a change only to a subscriber who could SELECT the row, so
+-- the read policy is what keeps one company's bell out of another's.
+
+select ok(
+  exists (select 1 from pg_publication_tables
+           where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'notifications'),
+  'notifications are published to Realtime'
+);
+
+set local request.jwt.claims = '{"sub":"e9110000-0000-0000-0000-000000000003","role":"authenticated"}';
+set local role authenticated;
+select is(
+  (select count(*)::int from public.notifications
+    where org_id in ('e9120000-0000-0000-0000-0000000000f1', 'e9120000-0000-0000-0000-00000000000b')),
+  0, 'another company CANNOT read a factory''s or a brand''s notifications, so Realtime never sends them'
+);
+reset role;
+
+set local request.jwt.claims = '{"sub":"e9110000-0000-0000-0000-000000000002","role":"authenticated"}';
+set local role authenticated;
+select is(
+  (select count(*)::int from public.notifications where org_id <> 'e9120000-0000-0000-0000-0000000000f1'),
+  0, 'and a member reads its own company''s rows only'
+);
+reset role;
 
 -- ---------------------------------------------------------------------------
 -- The sender and the bell read the data
