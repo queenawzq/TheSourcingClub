@@ -15,10 +15,10 @@ import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
 import { acceptInvitation, createOrg, listMyInvitations } from "../lib/domain/org.js";
-import { getBrandProfile, getFactoryProfile } from "../lib/domain/profile.js";
+import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
-import { isConfigured } from "../lib/supabase.js";
+import { isConfigured, supabase } from "../lib/supabase.js";
 import { RouterProvider, useRoute, useRouter } from "../lib/router.jsx";
 import { isPlatformAdmin } from "../lib/domain/admin.js";
 import RfqDetail from "./rfq/RfqDetail.jsx";
@@ -723,6 +723,10 @@ function Shell() {
 
   const [profile, setProfile] = useState(undefined);
   const [profileError, setProfileError] = useState(null);
+  // Staff's answer, for a company still waiting on verification. Without it
+  // the finish card said "awaiting verification" to a company staff had asked
+  // for more information, or declined.
+  const [review, setReview] = useState(null);
 
   // The other side of a call is shown its time in this person's zone, so the
   // browser's zone is saved once per sign-in (a no-op when unchanged).
@@ -731,9 +735,29 @@ function Shell() {
   const loadProfile = useCallback(() => {
     const load = isFactory ? getFactoryProfile : getBrandProfile;
     load(activeOrg.id)
-      .then(setProfile)
+      .then(async (loaded) => {
+        const waiting = loaded?.onboarding_completed_at && loaded.verification_status !== "verified";
+        // A failed read leaves the designed card, never a blank page.
+        setReview(waiting ? await getMyReview(activeOrg.id).catch(() => null) : null);
+        setProfile(loaded);
+      })
       .catch(setProfileError);
   }, [activeOrg.id, isFactory]);
+
+  // While the company waits, staff's decision arrives as a notification. Re-read
+  // on each one, so the request, the decline or the dashboard appears without
+  // a reload.
+  const waitingOnReview = Boolean(profile?.onboarding_completed_at) && profile?.verification_status !== "verified";
+  useEffect(() => {
+    if (!waitingOnReview) return undefined;
+    const channel = supabase
+      .channel(`review:${activeOrg.id}:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `org_id=eq.${activeOrg.id}` }, (change) => {
+        if (String(change.new?.kind ?? "").startsWith("verification_")) loadProfile();
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [waitingOnReview, activeOrg.id, loadProfile]);
 
   useEffect(() => {
     setProfile(undefined);
@@ -767,6 +791,7 @@ function Shell() {
         user={user}
         onComplete={loadProfile}
         onSignOut={signOut}
+        review={review}
         initialStep={isFactory ? 10 : 9}
         initialCompanyType={profile.vendor_kind === "trading_company" ? "trading" : "factory"}
       />

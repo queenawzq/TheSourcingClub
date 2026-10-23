@@ -3072,16 +3072,21 @@ export function BrandOnboarding({
   // Chip groups a live mount puts in front of a step's own, by step index.
   // Absent, every step is exactly as designed.
   extraChipGroups,
+  // Live only: what the finish card says once staff have answered —
+  // { title, intro, icon, reward, cta, onCta }. Without onCta the card has no
+  // button. Absent, the designed "You're all set" card shows.
+  completion = null,
 }) {
   const designedStep = brandOnboardingSteps[step];
   const extraGroups = designedStep.type === "chips" ? extraChipGroups?.[step] : null;
-  const current = designedStep.type === "terms" && (terms || fullTerms)
+  const isFirst = step === 0;
+  const isLast = step === brandOnboardingSteps.length - 1;
+  const shownStep = designedStep.type === "terms" && (terms || fullTerms)
     ? { ...designedStep, terms: terms ?? designedStep.terms, fullTerms }
     : extraGroups?.length
       ? { ...designedStep, groups: [...extraGroups, ...designedStep.groups] }
       : designedStep;
-  const isFirst = step === 0;
-  const isLast = step === brandOnboardingSteps.length - 1;
+  const current = isLast && completion ? { ...shownStep, ...completion } : shownStep;
 
   function clearFieldError(event) {
     event.target.closest(".has-onboarding-error")?.classList.remove("has-onboarding-error");
@@ -3150,6 +3155,11 @@ export function BrandOnboarding({
 
         <footer className="brand-onboarding-actions">
           {!isFirst && !isLast && <button className="secondary-btn" type="button" onClick={onBack}>Previous</button>}
+          {isLast && completion && !completion.onCta ? null : isLast && completion ? (
+            <button className="primary-btn" type="button" disabled={busy} onClick={completion.onCta}>
+              {busy ? "Saving…" : completion.cta}
+            </button>
+          ) : (
           <button
             className="primary-btn"
             type="button"
@@ -3158,6 +3168,7 @@ export function BrandOnboarding({
           >
             {busy ? "Saving…" : isLast && completionPending ? "Verification pending" : isReviewEdit ? "Save" : current.cta || "Next"}
           </button>
+          )}
         </footer>
       </section>
 
@@ -3519,14 +3530,14 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
 
   return (
     <div className="brand-onboarding-complete">
-      <img className="brand-onboarding-success-icon" src="/assets/prototype-icons/success.svg" alt="" />
+      <img className="brand-onboarding-success-icon" src={content.icon ?? "/assets/prototype-icons/success.svg"} alt="" />
       <h1>{content.title}</h1>
       <p>{content.intro}</p>
-      <section className="brand-onboarding-discount-reward">
+      {content.reward !== false && <section className="brand-onboarding-discount-reward">
         <span>Welcome discount</span>
         <strong>$50 discount</strong>
         <p>Available for eligible orders. Invite another brand to earn another $50 discount.</p>
-      </section>
+      </section>}
     </div>
   );
 }

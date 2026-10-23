@@ -18,7 +18,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { FactoryOnboarding, factoryFieldName } from "../../factory-prototype/main.jsx";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
-import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { completeOnboarding, countryCodeFrom as countryCodeIn, firstNumber, getSelectedTerms, resubmitForReview, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { reviewCompletion } from "./review-completion.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { deleteDocument, listDocuments, uploadDocument } from "../../lib/domain/documents.js";
 import {
@@ -127,8 +128,10 @@ const KIND_FOR_LABEL = {
  */
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
-export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, initialCompanyType = null }) {
+export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, initialCompanyType = null, review = null }) {
   const [step, setStep] = useState(initialStep);
+  // True from "Update my profile" until the profile is sent back to staff.
+  const [resubmitting, setResubmitting] = useState(false);
   const [reviewEditStep, setReviewEditStep] = useState(null);
   const [values, setValues] = useState({});
   const [terms, setTerms] = useState({});
@@ -495,7 +498,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         return;
       }
 
-      if (step === LAST_STEP - 1) {
+      if (step === LAST_STEP - 1 && resubmitting) {
+        // Answering staff's request: the profile is already complete and
+        // published, so this only sends it back to their queue.
+        await resubmitForReview(org.id);
+        setResubmitting(false);
+        onComplete();
+      } else if (step === LAST_STEP - 1) {
         // The designed finish card says brands can now find you, so finishing
         // publishes. Verification stays separate: publishing controls
         // visibility, an admin review controls quoting.
@@ -581,6 +590,15 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       documents={documents}
       onDeleteDocument={removeDocument}
       completionPending
+      completion={reviewCompletion(review, {
+        language: language,
+        onUpdate: () => {
+          setResubmitting(true);
+          setReviewEditStep(null);
+          setStep(REVIEW_STEP);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        },
+      })}
     />
   );
 }

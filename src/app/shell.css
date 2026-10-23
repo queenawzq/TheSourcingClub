@@ -615,3 +615,10 @@ body {
 .brand-onboarding-check input:not(:checked):not(:disabled) {
   border-color: #90a1b9;
 }
+
+/* The finish card of onboarding can carry staff's message to the company,
+   written with line breaks (src/app/onboarding/review-completion.js). */
+.factory-onboarding-complete > p,
+.brand-onboarding-complete > p {
+  white-space: pre-line;
+}
