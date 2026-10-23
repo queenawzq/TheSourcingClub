@@ -288,7 +288,7 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate,
         </header>
 
         <div className="factory-dashboard-metrics admin-metrics">
-          <MetricCard label="Profiles awaiting review" value={metrics.profilesAwaitingReview ?? pending.length} note={`${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" />
+          <MetricCard label="Profiles awaiting review" value={metrics.profilesAwaitingReview ?? pending.length} note={`${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" href={metrics.profilesHref} linkLabel="Open queue" />
           <MetricCard label="RFQs submitted today" value={metrics.rfqsSubmittedToday ?? 0} note={`${rfqRows.length} in the marketplace`} tone="green" />
           <MetricCard label="Quotes submitted today" value={metrics.quotesSubmittedToday ?? 0} note={`${quoteRows.length} in the marketplace`} tone="amber" />
           {/* Live only: messages held for review. Nobody can be notified of
@@ -1018,7 +1018,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <h2>Review details</h2>
               {submission && <ProfileDetailPair label="Submitted by" value={submitterName} />}
               {submission && <ProfileDetailPair label="Account email" value={submitterEmail} />}
-              {profile.completion != null && <ProfileDetailPair label="Profile completeness" value={`${profile.completion}%`} />}
+              {(submission?.completion ?? profile.completion) != null && <ProfileDetailPair label="Profile completeness" value={`${submission?.completion ?? profile.completion}%`} />}
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
             </section>
@@ -1344,7 +1344,9 @@ const TEST_EMAILS = [
   { key: "notification", label: "Notification · New quote", localized: true },
 ];
 
-function TestEmailPanel({ email, intro }) {
+// `unavailable` (live only): why this staff member's own address cannot
+// receive a test, said before Send rather than after it fails.
+function TestEmailPanel({ email, intro, unavailable = null }) {
   const actions = useActions();
   const [template, setTemplate] = useState(TEST_EMAILS[0].key);
   const [locale, setLocale] = useState("en");
@@ -1384,9 +1386,10 @@ function TestEmailPanel({ email, intro }) {
             </select>
           </label>
         )}
+        {unavailable && <p className="admin-error" role="note">{unavailable}</p>}
         {status.message && <p className={status.state === "error" ? "admin-error" : "admin-test-email-status"} role={status.state === "error" ? "alert" : "status"}>{status.message}</p>}
         <div className="admin-settings-actions">
-          <button className="primary-btn" type="submit" disabled={status.state === "sending"}>{status.state === "sending" ? "Sending…" : "Send test email"}</button>
+          <button className="primary-btn" type="submit" disabled={Boolean(unavailable) || status.state === "sending"}>{status.state === "sending" ? "Sending…" : "Send test email"}</button>
         </div>
       </form>
     </Panel>
@@ -1531,7 +1534,7 @@ function DailyJobsPanel() {
   );
 }
 
-function SettingsPage({ user, account, onSignOut, testEmailsIntro }) {
+function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUnavailable }) {
   const initialThresholds = { autoClear: "95", manualMin: "80", manualMax: "94", moreInformation: "80", authority: "TSC operations" };
   const email = user?.email ?? account?.email ?? "operations@thesourcingclub.com";
   const name = account?.name ?? user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? "TSC Operations";
@@ -1616,14 +1619,14 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro }) {
           </div>
         )}
       </Panel>
-      <TestEmailPanel email={email} intro={testEmailsIntro} />
+      <TestEmailPanel email={email} intro={testEmailsIntro} unavailable={testEmailsUnavailable} />
       <DailyJobsPanel />
       <TestDataPanelIfLive />
     </main>
   );
 }
 
-function App({ testEmailsIntro } = {}) {
+function App({ testEmailsIntro, testEmailsUnavailable } = {}) {
   // Everything below reads through the data seam. admin-prototype.html serves
   // the constants in this file; admin.html serves the marketplace. The
   // components in between never learn which.
@@ -1851,7 +1854,7 @@ function App({ testEmailsIntro } = {}) {
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate(quoteBack)} detail={shownDetail} backLabel={quoteBack} />}
-      {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} />}
+      {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} testEmailsUnavailable={testEmailsUnavailable} />}
             </>}
       {toast && <div className="app-toast admin-toast" role="status">{toast}</div>}
     </div>

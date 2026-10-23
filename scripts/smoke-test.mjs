@@ -107,7 +107,7 @@ async function screenAs(client, messageId) {
 async function staffRouteAs(route, client, { method = "POST", body, env = {}, model = null } = {}) {
   const { default: handle } = await import(`../api/${route}.js`);
   const { data } = client ? await client.auth.getSession() : { data: null };
-  const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "OPENROUTER_API_KEY"];
+  const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "OPENROUTER_API_KEY", "RESEND_API_KEY", "RESEND_FROM_EMAIL"];
   const saved = Object.fromEntries(keys.filter((key) => key in process.env).map((key) => [key, process.env[key]]));
   Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, OPENROUTER_API_KEY: "" }, env);
   const realFetch = globalThis.fetch;
@@ -2036,6 +2036,35 @@ console.log("\nphase 6 — admin operations");
     (lines.data ?? []).length > 0
       ? ok("and the sample plan lines are really there, not just permitted")
       : fail("staff read no sample lines for a request whose quotes have them");
+  }
+
+  // Test emails. The demo staff login is @example.com, which has no mailbox;
+  // the provider's refusal used to reach the screen word for word.
+  const mailEnv = { RESEND_API_KEY: "re_smoke_not_a_key", RESEND_FROM_EMAIL: "TSC <noreply@smoke.invalid>" };
+  const providerCalls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (url, init) => {
+    if (!String(url).startsWith("https://api.resend.com/")) return realFetch(url, init);
+    providerCalls.push(url);
+    return Promise.resolve(new Response(
+      JSON.stringify({ statusCode: 422, name: "validation_error", message: "Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format." }),
+      { status: 422, headers: { "Content-Type": "application/json" } },
+    ));
+  };
+  try {
+    const reserved = await staffRouteAs("send-test-email", staff.client, { body: { template: "review-approved" }, env: mailEnv });
+    reserved.status === 422 && /reserved for examples and testing/.test(reserved.error ?? "") && providerCalls.length === 0
+      ? ok("a test email to a reserved address is refused in plain words, before the provider is called")
+      : fail(`a reserved address got ${reserved.status}: ${reserved.error} (${providerCalls.length} provider call(s))`);
+
+    const realStaff = await signedInUser(`mail-admin-${stamp}@smoke-mail.dev`);
+    await admin.from("platform_admins").insert({ user_id: realStaff.id });
+    const refused = await staffRouteAs("send-test-email", realStaff.client, { body: { template: "review-approved" }, env: mailEnv });
+    refused.status === 502 && !/`to` field|validation_error/.test(refused.error ?? "") && /nothing was sent/.test(refused.error ?? "")
+      ? ok("and a provider refusal reads as a sentence, not the provider's message")
+      : fail(`a provider refusal read: ${refused.error}`);
+  } finally {
+    globalThis.fetch = realFetch;
   }
 
   const { data: metrics } = await staff.client.rpc("admin_overview_metrics");

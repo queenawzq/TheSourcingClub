@@ -43,7 +43,9 @@ import {
   userDirectory,
   verificationQueue,
 } from "../../lib/domain/admin.js";
+import { createElement } from "react";
 import { urlFor } from "../../lib/domain/documents.js";
+import { profileCompletion } from "./profile-completion.js";
 import { heldMessageQueue } from "../../lib/domain/message.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
@@ -162,14 +164,19 @@ export function toReviewProfile(row) {
       ["Website", row.websiteUrl ?? "—"],
       ["Location", row.location ?? "—"],
       ["Profile status", VERIFICATION_LABEL[row.verificationStatus] ?? row.verificationStatus ?? "—"],
-      ["Last note", row.note ?? "—"],
       ["Decided", row.decidedAt ? shortDate(row.decidedAt) : "Not yet"],
+      // Last, on a row of its own (console-live.css): a request is often a
+      // paragraph and a list, which stretched one third of the grid down the
+      // page and pushed its neighbours to the middle of a tall row.
+      ["Last note", row.note ? createElement("span", { className: "admin-review-note" }, row.note) : "—"],
     ],
     capabilities: row.capabilities ?? [],
     confidence: row.verificationScore ?? null,
     // The queue row's name for that figure; the design's is "Confidence".
     confidenceLabel: "Complete",
-    completion: row.profileCompletion ?? null,
+    // Not the queue's own figure: completeness is the company's, read with
+    // the submission (profile-completion.js), so both sides see one number.
+    completion: null,
     // The designed panel renders [label, result, value, detail] tuples.
     checks: (row.verificationChecks ?? []).map(
       (check) => [check.label, check.result, check.value, check.detail],
@@ -276,10 +283,18 @@ export function toAdminUser(user) {
 }
 
 export function createAdminAdapter({ user, signOut }) {
+  // The last queue read, by company: the submission action is called with an
+  // id, and completeness needs the company's name and kind to load it the way
+  // its own profile page does.
+  const queueRows = new Map();
+
   return {
     viewer: { isAdmin: true, org: null, user },
 
-    verificationQueue: () => verificationQueue().then((rows) => rows.map(toReviewProfile)),
+    verificationQueue: () => verificationQueue().then((rows) => {
+      for (const row of rows) queueRows.set(row.orgId, row);
+      return rows.map(toReviewProfile);
+    }),
     adminRfqs: () => rfqQueue().then((rows) => rows.map(toRfqRow)),
     adminQuotes: () => quoteQueue().then((rows) => rows.map(toQuoteRow)),
     // Held messages are counted from their queue rather than in
@@ -287,7 +302,14 @@ export function createAdminAdapter({ user, signOut }) {
     // overview card is their only prompt.
     adminMetrics: async () => {
       const [metrics, held] = await Promise.all([overviewMetrics(), heldMessageQueue()]);
-      return { ...metrics, messagesHeld: held?.length ?? 0, messagesHref: "/app.html/admin/messages" };
+      // Like the payments and messages cards, the profiles card links to
+      // where its figure is acted on: this workspace's own queue.
+      return {
+        ...metrics,
+        messagesHeld: held?.length ?? 0,
+        messagesHref: "/app.html/admin/messages",
+        profilesHref: "?screen=verification",
+      };
     },
     adminUsers: () => userDirectory().then((rows) => rows.map(toAdminUser)),
 
@@ -321,7 +343,16 @@ export function createAdminAdapter({ user, signOut }) {
        * one handed out at render time is usually dead before it is used.
        */
       orgDocuments: (orgId) => orgDocuments(orgId),
-      orgSubmission: (orgId) => orgSubmission(orgId),
+      orgSubmission: async (orgId) => {
+        const row = queueRows.get(orgId);
+        const [submission, completion] = await Promise.all([
+          orgSubmission(orgId),
+          row
+            ? profileCompletion({ orgId, name: row.name, type: row.type, vendorKind: row.vendorKind }).catch(() => null)
+            : null,
+        ]);
+        return { ...submission, completion };
+      },
       documentUrl: (document) => urlFor(document),
 
       /**
