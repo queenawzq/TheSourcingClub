@@ -1985,13 +1985,13 @@ async function main() {
     }, bornOrder.order_number);
     check(paidOwnRow, "staff mark it paid out by bank, from its row");
     // It asks once, naming the amount and the factory, before marking it.
-    const confirmed = await page.evaluate((orderNumber) => {
+    const confirmedRelease = await page.evaluate((orderNumber) => {
       const button = [...document.querySelectorAll('[data-section="payout"] [data-testid="release-payment-confirm"]')]
         .find((candidate) => candidate.closest("tr")?.innerText.includes(orderNumber));
       button?.click();
       return Boolean(button);
     }, bornOrder.order_number);
-    check(confirmed, "and confirm it when asked");
+    check(confirmedRelease, "and confirm it when asked");
     await page.waitForTimeout(3500);
     await record(page, "Paid out by bank", "for a factory Stripe cannot pay");
 
