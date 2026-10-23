@@ -80,6 +80,14 @@ const DECISION_STATE = {
   "Needs information": "needs_information",
 };
 
+/** The company's profile status, in words rather than the enum. */
+const VERIFICATION_LABEL = {
+  unverified: "Not verified",
+  pending: "Pending",
+  verified: "Verified",
+  rejected: "Not verified (declined)",
+};
+
 const RFQ_LABEL = {
   open: ["Open", "info"],
   awarded: ["Closed", "neutral"],
@@ -153,7 +161,7 @@ export function toReviewProfile(row) {
       ["Legal name", row.legalName ?? "—"],
       ["Website", row.websiteUrl ?? "—"],
       ["Location", row.location ?? "—"],
-      ["Profile status", row.verificationStatus],
+      ["Profile status", VERIFICATION_LABEL[row.verificationStatus] ?? row.verificationStatus ?? "—"],
       ["Last note", row.note ?? "—"],
       ["Decided", row.decidedAt ? shortDate(row.decidedAt) : "Not yet"],
     ],

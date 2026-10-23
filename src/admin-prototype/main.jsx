@@ -1677,6 +1677,12 @@ function App({ testEmailsIntro } = {}) {
   useEffect(() => {
     if (!selectedProfile && profiles.length) setSelectedProfile(requestedProfile);
   }, [profiles, selectedProfile]);
+  // The selected company is a copy of its queue row. When the queue is
+  // re-read (after a decision), the copy is replaced by the fresh row, or the
+  // summary keeps the note, status and decision date it opened with.
+  useEffect(() => {
+    setSelectedProfile((current) => (current && profiles.find((profile) => profile.id === current.id)) || current);
+  }, [profiles]);
 
   useEffect(() => {
     if (!selectedProfile?.id || !actions.orgDocuments) {
