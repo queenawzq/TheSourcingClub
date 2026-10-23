@@ -24,7 +24,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { BrandOnboarding, onboardingFieldName } from "../../prototype/main.jsx";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
-import { completeOnboarding, getSelectedTerms, saveBrandProfile } from "../../lib/domain/profile.js";
+import { completeOnboarding, getSelectedTerms, resubmitForReview, saveBrandProfile } from "../../lib/domain/profile.js";
+import { reviewCompletion } from "./review-completion.js";
 import { inviteMember } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import {
@@ -70,8 +71,10 @@ const MAKE_STEP = 3;
 /** Index of the designed profile review card. */
 const REVIEW_STEP = 7;
 
-export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, initialStep = 0 }) {
+export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, initialStep = 0, review = null }) {
   const [step, setStep] = useState(initialStep);
+  // True from "Update my profile" until the profile is sent back to staff.
+  const [resubmitting, setResubmitting] = useState(false);
   const [reviewEditStep, setReviewEditStep] = useState(null);
   const [values, setValues] = useState({});
   // Files already in storage, keyed by the designed card's field name. The
@@ -296,7 +299,15 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
 
       // The last designed card is "You're all set"; leaving it is what ends
       // onboarding, so the profile is marked complete on the way in.
-      if (step === LAST_STEP - 1) await completeOnboarding(org.id, "brand");
+      if (step === LAST_STEP - 1 && resubmitting) {
+        // Answering staff's request: the profile is already complete, so this
+        // only sends it back to their queue.
+        await resubmitForReview(org.id);
+        setResubmitting(false);
+        onComplete();
+      } else if (step === LAST_STEP - 1) {
+        await completeOnboarding(org.id, "brand");
+      }
       if (step >= LAST_STEP) {
         onComplete();
         return;
@@ -369,6 +380,15 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       terms={signable.sections}
       fullTerms={signable.full}
       completionPending
+      completion={reviewCompletion(review, {
+        language: "en",
+        onUpdate: () => {
+          setResubmitting(true);
+          setReviewEditStep(null);
+          setStep(REVIEW_STEP);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        },
+      })}
     />
   );
 }

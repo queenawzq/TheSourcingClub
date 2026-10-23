@@ -108,3 +108,22 @@
 .admin-credits-lines li span { min-width: 0; overflow-wrap: anywhere; }
 .admin-credits-lines li strong { flex: none; color: #0e1118; font-weight: 600; }
 .admin-credits-direction { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* Live only: the review summary's "Last note" (live-admin-adapter.js) is a
+   whole request, so it takes a full row and keeps its line breaks. */
+.admin-detail-grid > .factory-detail-pair:has(.admin-review-note) {
+  grid-column: 1 / -1;
+}
+
+.admin-review-note {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-weight: 400;
+}
+
+/* Live only: what the Test emails form says (why this address cannot receive
+   a test, or how a send went) reads across the whole form, not in a column. */
+.admin-threshold-form > .admin-error,
+.admin-threshold-form > .admin-test-email-status {
+  grid-column: 1 / -1;
+}

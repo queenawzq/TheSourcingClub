@@ -12,7 +12,7 @@
  * wrong, the message is sent exactly as typed and the reader sees that.
  */
 import { kickNotificationEmails, supabase, unwrap } from "../supabase.js";
-import { uploadDocument } from "./documents.js";
+import { attachmentRefusal, uploadDocument } from "./documents.js";
 
 const THREAD_COLUMNS = `
   id, rfq_id, order_id, brand_org_id, factory_org_id, last_message_at, created_at,
@@ -92,7 +92,7 @@ export async function listMessages(threadId) {
       .select(`
         id, thread_id, sender_org_id, sender_user_id, body, body_lang,
         body_translated, body_translated_lang, translated_by, created_at,
-        delivery, delivered_at, review_note,
+        delivery, delivered_at, review_note, held_for,
         orgs:sender_org_id (name),
         documents (id, bucket, storage_path, file_name, mime_type, size_bytes)
       `)
@@ -145,6 +145,10 @@ export async function markRead(threadId) {
 export async function sendMessage({ threadId, orgId, userId, body, files = [], onSaved }) {
   const typed = (body ?? "").trim();
   if (!typed && !files.length) throw new Error("there is nothing to send");
+  // The picker offers only what may go; this is for anything that got past
+  // it. Refused before anything is saved, so nothing half-sends.
+  const refused = files.map(attachmentRefusal).filter(Boolean);
+  if (refused.length) throw new Error(refused.join(" "));
 
   const failed = [];
   async function upload(file) {
@@ -158,7 +162,8 @@ export async function sendMessage({ threadId, orgId, userId, body, files = [], o
         scopeId: threadId,
       });
     } catch (error) {
-      failed.push(`${file.name}: ${error.message}`);
+      // Already in words that name the file (documents.js).
+      failed.push(error.message);
       return null;
     }
   }
@@ -169,7 +174,7 @@ export async function sendMessage({ threadId, orgId, userId, body, files = [], o
       const doc = await upload(file);
       if (doc) uploadedFirst.push(doc);
     }
-    if (!uploadedFirst.length) throw new Error(`none of the files could be attached (${failed.join("; ")})`);
+    if (!uploadedFirst.length) throw new Error(failed.join(" "));
   }
   const text = typed || fileOnlyBody(uploadedFirst.map((doc) => ({ name: doc.file_name })));
 
@@ -204,7 +209,8 @@ export async function sendMessage({ threadId, orgId, userId, body, files = [], o
         "attach the file",
       );
     } catch (error) {
-      failed.push(`${doc.file_name}: ${error.message}`);
+      console.error("attach", doc.file_name, error.message);
+      failed.push(`${doc.file_name} could not be attached.`);
     }
   }
 
@@ -235,19 +241,26 @@ export async function screenMessage(messageId) {
   }
 }
 
-/** How long a message may sit in `checking` before its sender's page asks again. */
-const STALE_CHECK_MS = 30 * 1000;
+/**
+ * How long one of your own messages may sit in `checking` before the page
+ * asks the screen again, attempt by attempt. A screen that did not answer —
+ * a page closed mid-send, a 504, a sign-in the auth server refused — would
+ * otherwise leave it there with nobody told; after two minutes staff see it
+ * too, as "Not checked".
+ */
+export const RESCREEN_AFTER_MS = [5000, 15000, 30000, 60000];
+
+/** Your own messages still waiting on the screen. */
+export const awaitingScreen = (messages, userId) =>
+  (messages ?? []).filter((message) => message.delivery === "checking" && message.sender_user_id === userId);
 
 /**
- * Re-screen the caller's own messages that have been `checking` for a while:
- * the page closed before the screen answered, or the message was sent from a
- * tab that predates screening. Returns whether any of them moved.
+ * Re-screen the caller's own messages that have been `checking` for at least
+ * `olderThanMs`. Returns whether any of them moved.
  */
-export async function rescreenStale(messages, userId, now = Date.now()) {
-  const stale = (messages ?? []).filter((message) =>
-    message.delivery === "checking"
-    && message.sender_user_id === userId
-    && now - Date.parse(message.created_at) > STALE_CHECK_MS);
+export async function rescreenStale(messages, userId, { now = Date.now(), olderThanMs = RESCREEN_AFTER_MS[0] } = {}) {
+  const stale = awaitingScreen(messages, userId)
+    .filter((message) => now - Date.parse(message.created_at) >= olderThanMs);
   let moved = false;
   for (const message of stale) {
     const result = await screenMessage(message.id);

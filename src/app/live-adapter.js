@@ -13,6 +13,7 @@ import { listOrders, orderStatusLabel, statusTone } from "../lib/domain/order.js
 import { listRfqs } from "../lib/domain/rfq.js";
 import { listThreads } from "../lib/domain/message.js";
 import { formatMoney, formatRange } from "../lib/money.js";
+import { dateFrom } from "../lib/dates.js";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -164,8 +165,9 @@ export function toProjectCard(order, isFactory) {
     statusTone: statusTone(order, { isFactory }),
     statusDetail: statusDetail(order, isFactory),
     currentStep: order.current_milestone_title ?? "—",
+    // A step's due_on is a calendar day; a due payment's due_at an instant.
     nextDue: dueOn
-      ? MONTH_DAY.format(new Date(dueOn))
+      ? MONTH_DAY.format(dateFrom(dueOn))
       : "—",
     progress: progressPosition(order),
     steps: railSteps(order, isFactory),

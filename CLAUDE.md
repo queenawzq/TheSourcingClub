@@ -152,6 +152,7 @@ Things that will bite here:
 - **Screen keys carry no entity ids.** `goTo("projectDetail")`, not `/orders/:id`. `navigateFromPrototype` in `src/app/main.jsx` translates for now; the screens need real ids as they port.
 - **Importing a prototype screen pulls in `src/prototype/styles.css`** — ~16,000 lines with `!important` blocks that restyle every `.primary-btn`, `.tag` and `.project-status` on the page. That is intended (the design is the CSS), but it means the remaining hand-built `src/app` screens are being restyled too.
 - **CSS custom properties must be defined, not merely referenced.** `var(--blue, #2458ff)` with no `--blue` does not warn — it silently paints the wrong colour, and the fallback makes it look deliberate. Phases 3 and 4 shipped 48 of these. `npm run check:css` runs in the build to stop it happening again.
+- **A `date` column is a day, not an instant.** `new Date("2026-10-26")` is midnight UTC, the 25th anywhere in the Americas: the order page said a step was due a day before its reminder did. Read every date-only value (`due_on`, `valid_until`, `target_delivery_month`, …) with `dateFrom()` from `src/lib/dates.js`. `npm run check:dates` runs the formatters in New York and UTC+14 and fails on a one-argument `new Date()` of any `date` column named in the migrations.
 - **Design System v2 sizing lives in `src/app/shell.css`'s `:root`**, copied verbatim from the prototype's. Copied rather than imported to avoid the `!important` blocks above. Keep it in step when v2 moves. Buttons are 34px; **inputs stay 42px**.
 
 ## Design system
@@ -189,6 +190,7 @@ npm run db:reset      # re-apply every migration from scratch
 npm run db:test       # pgTAP access-rule suites (217 assertions, seven files)
 npm run smoke         # 138 checks through supabase-js: embeds, RPC signatures, grants
 npm run check:css     # fails on a CSS variable used but never defined (runs in build)
+npm run check:dates   # fails on a date column read as an instant, in New York and UTC+14 (runs in build)
 npm run check:prototype  # the prototype must still render with NO database
 npm run check:messages   # the contact-detail patterns: hits and near-misses
 npm run check:auth       # "Keep me logged in" across tabs (runs in build)
@@ -296,6 +298,9 @@ A thread belongs to the **request or order it is about**, never to a pair of com
 - **Translation is stored, not computed on read.** `body` is what was typed and is never overwritten; `body_translated` is the other language. Translation **must never block a send** — any failure stores the message untranslated and the reader sees the original. This is the opposite of the taxonomy rule (`label_en`/`label_zh` are hand-written, never machine-translated) and deliberately so: a mistranslated *category* silently corrupts matching, while a mistranslated sentence is visibly a sentence and the person can ask.
 - **Unread is derived per user** from `message_reads.last_read_at`, not stored on the thread, and counts only what the other company wrote: a teammate's message is not waiting on you (20261024000100). The prototype's thread-level integer is never decremented anywhere in either app.
 - Attachments are `documents` with `message_id` and kind `message_attachment`, and need the same three parts as milestone photos: the private bucket, a `documents` policy for the counterparty, and a matching `storage.objects` policy keyed on the thread in the path.
+- **A message carries exactly what the private bucket admits** (`src/shared/private-bucket-types.mjs`; the smoke test fails if the bucket and the list differ). The picker offers only those and anything else is refused in words before upload; storage's own errors never reach the screen raw.
+- **`api/screen-message.js` checks whose message it is through the database, with the sender's token** — not `auth.getUser()`. A session signed out elsewhere leaves a token the database accepts for up to an hour while the auth server refuses it, and the message then sat in `checking` for good. The sender's page re-screens its own unchecked messages on a back-off and says "Checking before it is sent" once the screen has not decided.
+- **The sender of a held message is told why by `messages.held_for`** (`contact_details` / `outside_platform`), cleared the moment it leaves `held`; the screen's own reason stays staff-only. Asking for a call is not a hold. `npm run check:screen` pins the model's judgements (needs `OPENROUTER_API_KEY`).
 - `documents` now has **three** FKs into this graph (`milestone_update_id`, `order_id`, `message_id`). An ambiguous embed is refused rather than guessed; the smoke test pins the exact select strings the domain modules use.
 
 Not built, deliberately: presence and "usually replies in 2h" (hardcoded literals in the prototypes with nothing behind them), and so the instant "Live video chat" button, which needs presence.

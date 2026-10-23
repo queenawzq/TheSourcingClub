@@ -121,9 +121,19 @@ export default async function handler(request, response) {
     return;
   }
 
+  const to = auth.user.email;
+  // A reserved address (the demo staff login is @example.com) has no mailbox,
+  // and the provider refuses it with a message meant for developers. Say so
+  // plainly before trying.
+  const { reservedEmailNotice } = await import("../src/shared/reserved-email.mjs");
+  const reserved = reservedEmailNotice(to);
+  if (reserved) {
+    response.status(422).json({ sent: false, error: reserved });
+    return;
+  }
+
   const name = auth.user.user_metadata?.full_name || auth.user.user_metadata?.name || "";
   const message = await build(locale === "zh" ? "zh" : "en", name);
-  const to = auth.user.email;
 
   try {
     const delivery = await fetch(RESEND_ENDPOINT, {
@@ -132,9 +142,18 @@ export default async function handler(request, response) {
       body: JSON.stringify({ from, to: [to], reply_to: REPLY_TO, ...message, subject: `[Test] ${message.subject}` }),
     });
     const payload = await delivery.json().catch(() => ({}));
-    if (!delivery.ok) throw new Error(payload.message || `email provider returned ${delivery.status}`);
+    if (!delivery.ok) {
+      // The provider's own words are for us, not for the person testing.
+      console.error("send-test-email: provider refused", delivery.status, payload.message ?? "");
+      response.status(502).json({
+        sent: false,
+        error: `The email service did not accept the test email for ${to}, so nothing was sent. Try again in a minute; if it keeps failing, the sending setup needs checking.`,
+      });
+      return;
+    }
     response.status(200).json({ sent: true, to, error: null });
   } catch (error) {
-    response.status(502).json({ sent: false, error: String(error.message || error).slice(0, 300) });
+    console.error("send-test-email: could not reach the provider", error);
+    response.status(502).json({ sent: false, error: "The email service could not be reached, so nothing was sent. Try again in a minute." });
   }
 }

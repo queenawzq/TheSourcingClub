@@ -1755,6 +1755,13 @@ export function MessagesScreen({
   // Live: a call being joined, drawn in the designed video panel with Zoom
   // inside it ({ title, text, mountRef, joinUrl, onLeave }).
   video: liveVideo,
+  // Live only: which files the picker offers, and a filter for what was
+  // picked (it keeps what may go and says why the rest may not).
+  attachAccept,
+  acceptFiles,
+  // Live only: a line about the last send or a failed load, drawn in the
+  // composer so it never adds height to a page sized to the window.
+  composerNotice,
 }) {
   const messageThreads = liveThreads ?? mockMessageThreads;
   const isLive = Boolean(liveThreads);
@@ -1793,17 +1800,37 @@ export function MessagesScreen({
 
   // The newest message is the one people need: open a conversation at its
   // end, and follow new messages while the reader is already at the end.
-  const lastMessageCount = useRef({});
+  // "At the end" is what the reader last scrolled to, kept as they scroll:
+  // measured after the new messages had rendered, every arrival (and the
+  // first load of a conversation) looked like the reader had scrolled away.
+  const shown = useRef({ threadId: null, count: 0 });
+  const atEnd = useRef(true);
   useLayoutEffect(() => {
     const box = timeline.current;
     if (!box || !activeThread) return;
     const count = activeThread.messages.length;
-    const seen = lastMessageCount.current[activeThread.id];
-    const nearEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 160;
+    const switched = shown.current.threadId !== activeThread.id;
+    const firstMessages = shown.current.count === 0;
     const newest = activeThread.messages[count - 1];
-    if (seen === undefined || nearEnd || newest?.own) box.scrollTop = box.scrollHeight;
-    lastMessageCount.current[activeThread.id] = count;
+    if (switched || firstMessages || (count > shown.current.count && (atEnd.current || newest?.own))) {
+      box.scrollTop = box.scrollHeight;
+      atEnd.current = true;
+    }
+    shown.current = { threadId: activeThread.id, count };
   }, [activeThread?.id, activeThread?.messages.length]);
+  // A message can grow after it is drawn (its translation, a file, whether
+  // it was held), and the panel shrinks when files are picked: a reader at
+  // the end stays there, or the newest lines slip out of view.
+  useEffect(() => {
+    const box = timeline.current;
+    if (!box || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => {
+      if (atEnd.current) box.scrollTop = box.scrollHeight;
+    });
+    observer.observe(box);
+    for (const bubble of box.children) observer.observe(bubble);
+    return () => observer.disconnect();
+  });
 
   const send = () => {
     const text = composer.trim();
@@ -1868,6 +1895,12 @@ export function MessagesScreen({
           <button className={onlyUnread ? "pill active" : "pill"} type="button" onClick={() => setOnlyUnread(true)}>Unread</button>
         </div>
         <div className="message-thread-list">
+          {/* Live only: an empty list says why. */}
+          {isLive && !visibleThreads.length && (
+            <p className="message-thread-list-empty" role="status">
+              {query ? `No conversations match "${search.trim()}".` : "No unread conversations."}
+            </p>
+          )}
           {visibleThreads.map((thread) => (
             <button
               className={thread.id === activeThread.id ? "message-thread-card active" : "message-thread-card"}
@@ -1924,7 +1957,14 @@ export function MessagesScreen({
           <VideoCallPanel thread={activeThread} mode={liveVideo ? "active" : callMode} setMode={setCallMode} live={liveVideo} />
         )}
 
-        <div className="message-timeline" ref={timeline}>
+        <div
+          className="message-timeline"
+          ref={timeline}
+          onScroll={(event) => {
+            const box = event.currentTarget;
+            atEnd.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+          }}
+        >
           {activeThread.messages.map((message, index) => {
             const translationKey = `${activeThread.id}-${index}`;
             const showTranslation = Boolean(translatedMessages[translationKey]);
@@ -1955,6 +1995,9 @@ export function MessagesScreen({
             placeholder={`Message ${activeThread.name}...`}
             rows={3}
           />
+          {composerNotice && (
+            <p className="message-composer-notice" role={composerNotice.alert ? "alert" : "status"}>{composerNotice.text}</p>
+          )}
           {canAttach && pendingFiles.length > 0 && (
             <div className="message-pending-files" data-testid="pending-files">
               {pendingFiles.map((file, index) => (
@@ -1972,9 +2015,11 @@ export function MessagesScreen({
                 type="file"
                 multiple
                 hidden
+                accept={attachAccept}
                 data-field="message_files"
                 onChange={(event) => {
-                  setPendingFiles([...pendingFiles, ...Array.from(event.target.files ?? [])]);
+                  const picked = Array.from(event.target.files ?? []);
+                  setPendingFiles([...pendingFiles, ...(acceptFiles ? acceptFiles(picked) : picked)]);
                   event.target.value = "";
                 }}
               />
@@ -3072,16 +3117,21 @@ export function BrandOnboarding({
   // Chip groups a live mount puts in front of a step's own, by step index.
   // Absent, every step is exactly as designed.
   extraChipGroups,
+  // Live only: what the finish card says once staff have answered —
+  // { title, intro, icon, reward, cta, onCta }. Without onCta the card has no
+  // button. Absent, the designed "You're all set" card shows.
+  completion = null,
 }) {
   const designedStep = brandOnboardingSteps[step];
   const extraGroups = designedStep.type === "chips" ? extraChipGroups?.[step] : null;
-  const current = designedStep.type === "terms" && (terms || fullTerms)
+  const isFirst = step === 0;
+  const isLast = step === brandOnboardingSteps.length - 1;
+  const shownStep = designedStep.type === "terms" && (terms || fullTerms)
     ? { ...designedStep, terms: terms ?? designedStep.terms, fullTerms }
     : extraGroups?.length
       ? { ...designedStep, groups: [...extraGroups, ...designedStep.groups] }
       : designedStep;
-  const isFirst = step === 0;
-  const isLast = step === brandOnboardingSteps.length - 1;
+  const current = isLast && completion ? { ...shownStep, ...completion } : shownStep;
 
   function clearFieldError(event) {
     event.target.closest(".has-onboarding-error")?.classList.remove("has-onboarding-error");
@@ -3150,6 +3200,11 @@ export function BrandOnboarding({
 
         <footer className="brand-onboarding-actions">
           {!isFirst && !isLast && <button className="secondary-btn" type="button" onClick={onBack}>Previous</button>}
+          {isLast && completion && !completion.onCta ? null : isLast && completion ? (
+            <button className="primary-btn" type="button" disabled={busy} onClick={completion.onCta}>
+              {busy ? "Saving…" : completion.cta}
+            </button>
+          ) : (
           <button
             className="primary-btn"
             type="button"
@@ -3158,6 +3213,7 @@ export function BrandOnboarding({
           >
             {busy ? "Saving…" : isLast && completionPending ? "Verification pending" : isReviewEdit ? "Save" : current.cta || "Next"}
           </button>
+          )}
         </footer>
       </section>
 
@@ -3519,14 +3575,14 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
 
   return (
     <div className="brand-onboarding-complete">
-      <img className="brand-onboarding-success-icon" src="/assets/prototype-icons/success.svg" alt="" />
+      <img className="brand-onboarding-success-icon" src={content.icon ?? "/assets/prototype-icons/success.svg"} alt="" />
       <h1>{content.title}</h1>
       <p>{content.intro}</p>
-      <section className="brand-onboarding-discount-reward">
+      {content.reward !== false && <section className="brand-onboarding-discount-reward">
         <span>Welcome discount</span>
         <strong>$50 discount</strong>
         <p>Available for eligible orders. Invite another brand to earn another $50 discount.</p>
-      </section>
+      </section>}
     </div>
   );
 }

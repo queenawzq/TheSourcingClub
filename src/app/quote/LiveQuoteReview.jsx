@@ -33,6 +33,7 @@ import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { matchFit } from "../rfq/match-fit.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
+import { dateFrom } from "../../lib/dates.js";
 
 // The same day format as the quote-sent screen, so "Quote due" reads alike.
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -147,7 +148,7 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
           // A bare date parses as UTC midnight and renders a day early west
           // of Greenwich — a quote typed as valid to the 30th expiring on the
           // 29th. Pinning the time makes it local.
-          ? new Date(`${quote.valid_until}T00:00:00`).toLocaleDateString("en", { dateStyle: "medium" })
+          ? dateFrom(quote.valid_until).toLocaleDateString("en", { dateStyle: "medium" })
           : "",
         ...Object.fromEntries(lines.flatMap((line, index) => [
           [`sample.${index}.stage`, line.stage ?? ""],

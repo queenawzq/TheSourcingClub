@@ -6,6 +6,9 @@
  * module only finds the queue and calls it.
  */
 import { supabase, unwrap } from "../supabase.js";
+import { getColourSplits, getRfq } from "./rfq.js";
+import { listQuotesForRfq } from "./quote.js";
+import { listLinks, listTermsByKind } from "./taxonomy.js";
 
 /** True when the signed-in user is on the platform_admins table. */
 export async function isPlatformAdmin() {
@@ -286,6 +289,31 @@ export async function quoteQueue(limit = 200) {
     submittedAt: row.submitted_at,
     decidedAt: row.decided_at,
   }));
+}
+
+/**
+ * One request as staff open it: the brief, and every quote on it that the
+ * quote list shows (everything but drafts, revisions and withdrawals
+ * included). Read through the same readers the brand's screens use, so staff
+ * see the brand's figures; the rfqs and quotes read policies already end in
+ * `or is_platform_admin()`.
+ */
+export async function rfqDetail(rfqId) {
+  const [rfq, termIds, terms, colourSplits, quotes] = await Promise.all([
+    getRfq(rfqId),
+    listLinks("rfq", rfqId),
+    listTermsByKind(["product_category", "incoterm"]),
+    getColourSplits(rfqId),
+    listQuotesForRfq(rfqId, { statuses: ["submitted", "accepted", "declined", "superseded", "withdrawn"] }),
+  ]);
+  const linked = new Set(termIds);
+  return {
+    rfq,
+    categories: (terms.product_category ?? []).filter((term) => linked.has(term.id)),
+    incoterms: terms.incoterm ?? [],
+    colourSplits,
+    quotes,
+  };
 }
 
 /**

@@ -5,17 +5,17 @@
  *
  * It keeps itself current while the dashboard stays open: a call proposed,
  * answered or cancelled by the other side reloads the list (calls are in the
- * Realtime publication, 20261014000300), and `now` ticks so "Join call"
- * appears and an ended call leaves without a refresh.
+ * Realtime publication, 20261014000300), and its clock (`useCallClock`)
+ * moves so "Join call" appears and an ended call leaves without a refresh.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
-import { callState, counterpartyTimeZone, listCalls } from "../../lib/domain/calls.js";
+import { callState, counterpartyTimeZone, listCalls, nextCallChange } from "../../lib/domain/calls.js";
 
 export function useDashboardCalls(orgId) {
   const [calls, setCalls] = useState([]);
   const [zones, setZones] = useState({});
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useCallClock(calls);
   const latest = useRef(0);
 
   const load = useCallback(async () => {
@@ -45,13 +45,53 @@ export function useDashboardCalls(orgId) {
       .channel(`dashboard-calls:${orgId}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, () => load())
       .subscribe();
-    const tick = setInterval(() => setNow(Date.now()), 30_000);
     return () => {
       latest.current += 1;
-      clearInterval(tick);
       supabase.removeChannel(channel);
     };
   }, [orgId, load]);
 
   return { calls, zones, now };
+}
+
+// The longest a clock sleeps between checks: setTimeout cannot wait more than
+// ~24.8 days, and a long sleep is a long time to be wrong if the computer's
+// clock is changed under it.
+const LONGEST_WAIT = 60 * 60000;
+
+/**
+ * The time a page's call cards are read at: `[now, setNow]`.
+ *
+ * It wakes at the moment the next call changes state (`nextCallChange`), not
+ * on a fixed poll. A poll started whenever the page happened to open showed
+ * "Join call" anywhere up to a whole period after the window opened, and a
+ * dashboard left open read "Open" until it was reloaded. A hidden tab's timers
+ * are slowed by the browser, so coming back to the tab reads the time again
+ * at once.
+ */
+export function useCallClock(calls) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const next = nextCallChange(calls, Date.now());
+    if (next === null) return undefined;
+    // A little after the moment, so the state has changed when it is read.
+    const wait = Math.min(Math.max(next - Date.now(), 0) + 250, LONGEST_WAIT);
+    const timer = setTimeout(() => setNow(Date.now()), wait);
+    return () => clearTimeout(timer);
+  }, [calls, now]);
+
+  useEffect(() => {
+    const read = () => {
+      if (document.visibilityState === "visible") setNow(Date.now());
+    };
+    document.addEventListener("visibilitychange", read);
+    window.addEventListener("focus", read);
+    return () => {
+      document.removeEventListener("visibilitychange", read);
+      window.removeEventListener("focus", read);
+    };
+  }, []);
+
+  return [now, setNow];
 }

@@ -6,6 +6,9 @@
  * one read in another tab) moves it without a refresh; the read policy limits
  * what a subscriber hears to its own company's rows. The open drawer reloads
  * with it. "Mark all read" is how a badge longer than the drawer is cleared.
+ *
+ * The drawer is the only list of notifications: `/notifications` lands on the
+ * dashboard as `/?activity=open`, which opens it.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityDrawer } from "../../prototype/main.jsx";
@@ -91,6 +94,15 @@ export function useActivity(orgId, { isFactory, description, onError }) {
     isOpen.current = false;
     setDrawer(null);
   }
+
+  // Arriving from /notifications: open the drawer once, and drop the query
+  // so a refresh or Back does not open it again.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("activity") !== "open") return;
+    navigate("/", { replace: true });
+    openActivity();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setRowUnread = (id, unread) => setDrawer((current) => (current?.items ? {
     items: current.items.map((row) => (row.id === id ? { ...row, unread } : row)),

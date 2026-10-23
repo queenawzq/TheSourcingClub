@@ -77,8 +77,12 @@ const TEST_PASSWORD = "smoke test 8";
  * key here, so a message the patterns pass is delivered as `pattern_only`.
  */
 async function screenAs(client, messageId) {
-  const { default: screen } = await import("../api/screen-message.js");
   const { data } = await client.auth.getSession();
+  return screenWithToken(data?.session?.access_token, messageId);
+}
+
+async function screenWithToken(token, messageId) {
+  const { default: screen } = await import("../api/screen-message.js");
   const saved = { ...process.env };
   Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, OPENROUTER_API_KEY: "" });
   let status = 0;
@@ -88,7 +92,7 @@ async function screenAs(client, messageId) {
     json(payload) { body = payload; return response; },
   };
   try {
-    await screen({ method: "POST", headers: { authorization: `Bearer ${data?.session?.access_token}` }, body: { messageId } }, response);
+    await screen({ method: "POST", headers: { authorization: `Bearer ${token}` }, body: { messageId } }, response);
   } finally {
     for (const key of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "OPENROUTER_API_KEY"]) {
       if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
@@ -107,7 +111,7 @@ async function screenAs(client, messageId) {
 async function staffRouteAs(route, client, { method = "POST", body, env = {}, model = null } = {}) {
   const { default: handle } = await import(`../api/${route}.js`);
   const { data } = client ? await client.auth.getSession() : { data: null };
-  const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "OPENROUTER_API_KEY"];
+  const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "OPENROUTER_API_KEY", "RESEND_API_KEY", "RESEND_FROM_EMAIL"];
   const saved = Object.fromEntries(keys.filter((key) => key in process.env).map((key) => [key, process.env[key]]));
   Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, OPENROUTER_API_KEY: "" }, env);
   const realFetch = globalThis.fetch;
@@ -193,6 +197,17 @@ async function joinAs(client, callId, { zoom = false } = {}) {
     }
   }
   return { status, ...body };
+}
+
+// What a message may carry: the picker's list and the private bucket's
+// allowlist must be the same, or a file is offered and then refused.
+{
+  const { PRIVATE_BUCKET_TYPES } = await import("../src/shared/private-bucket-types.mjs");
+  const { data: bucket } = await admin.storage.getBucket("org-private");
+  const allowed = new Set(bucket?.allowed_mime_types ?? []);
+  const same = allowed.size === PRIVATE_BUCKET_TYPES.length && PRIVATE_BUCKET_TYPES.every((type) => allowed.has(type));
+  if (same) ok("the message file picker offers exactly what the private bucket accepts");
+  else fail(`the private bucket accepts ${[...allowed].join(", ")} but private-bucket-types.mjs offers ${PRIVATE_BUCKET_TYPES.join(", ")}`);
 }
 
 // Where Stripe can pay out: the server (api/_stripe.js) and the factory's
@@ -1443,6 +1458,11 @@ console.log("\nphase 3 — the order runs");
         ? ok("the screen holds it on the patterns, without asking a model")
         : fail(`the screen answered ${JSON.stringify(holding)}`);
 
+      const { data: heldRow } = await brand.client.from("messages").select("held_for").eq("id", held?.id).single();
+      heldRow?.held_for === "contact_details" && holding.heldFor === "contact_details"
+        ? ok("and its sender can read what it was held for (contact details), so the page says the right thing")
+        : fail(`the sender reads held_for ${heldRow?.held_for} (screen said ${holding.heldFor})`);
+
       const { data: why } = await admin.from("message_screenings").select("reason").eq("message_id", held?.id).single();
       why?.reason === "a WeChat contact"
         ? ok(`and records why, for staff ("${why.reason}")`)
@@ -1486,6 +1506,20 @@ console.log("\nphase 3 — the order runs");
       });
       stillRefused ? ok("and a refused description is still refused by the database")
                    : fail("LEAK: a description the check refused went out");
+      // A title reaches the other side on its own (the card, the
+      // notification's title), so contact details in the title alone are
+      // refused like a description's.
+      const sneakyTitle = "Samples: text +44 7700 900123";
+      const titleRefused = await checkCallTextAs(brand.client, [sneakyTitle]);
+      titleRefused.status === 422 && /phone number/.test(titleRefused.error ?? "")
+        ? ok("the check refuses a phone number in a call's title alone")
+        : fail(`a title with a phone number answered ${titleRefused.status} ${titleRefused.error ?? ""}`);
+      const { error: titleStillRefused } = await brand.client.rpc("propose_call", {
+        target_thread: threadId, starts_at: startsAt, duration_minutes: 30,
+        title: sneakyTitle, agenda: null, time_zone: "America/New_York",
+      });
+      titleStillRefused ? ok("and the database refuses that title with no description")
+                        : fail("LEAK: a call title with a phone number went out");
       const { error: selfCheck } = await brand.client.rpc("record_call_text_check", {
         target_user: brand.id, texts: [sneaky],
       });
@@ -1568,6 +1602,41 @@ console.log("\nphase 3 — the order runs");
 
       const { error: cancelError } = await brand.client.rpc("cancel_call", { target_call: proposed?.id, note: null });
       cancelError ? fail("either side cancels an accepted call", cancelError) : ok("either side cancels an accepted call");
+
+      // A session signed out somewhere else. signOut() ends the session on
+      // the auth server at once, but its access token is still a valid JWT
+      // to the database until it expires, so the message is saved. The
+      // screen used to ask the auth server (getUser) and answer 401, and the
+      // message stayed `checking` for good with nobody told (#51's preview,
+      // 23 Oct). It now asks the database, as the insert did.
+      {
+        const second = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+        const { data: login } = await second.auth.signInWithPassword({ email: `brand-${stamp}@example.com`, password: TEST_PASSWORD });
+        const oldToken = login?.session?.access_token;
+        await second.auth.signOut({ scope: "local" });
+        const { data: gone } = await admin.auth.getUser(oldToken);
+        const stale = createClient(URL, ANON, {
+          global: { headers: { Authorization: `Bearer ${oldToken}` } },
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { data: late, error: lateError } = await stale.from("messages").insert({
+          thread_id: threadId,
+          sender_org_id: order.brand_org_id,
+          sender_user_id: brand.id,
+          body: "Packing list attached for the first carton.",
+        }).select("id, delivery").single();
+        !gone?.user && !lateError && late?.delivery === "checking"
+          ? ok("a token whose session was signed out elsewhere still saves a message (the database only checks the JWT)")
+          : fail(`setup: signed-out token ${gone?.user ? "still known to auth" : "refused by auth"}, insert ${lateError?.message ?? late?.delivery}`);
+        const lateScreen = await screenWithToken(oldToken, late?.id);
+        lateScreen.delivery === "delivered"
+          ? ok("and the screen still checks and delivers it, so it cannot sit in checking for good")
+          : fail(`a message sent from a signed-out session was left ${lateScreen.delivery ?? "unscreened"} (${lateScreen.status} ${lateScreen.error ?? ""})`);
+        const forged = await screenWithToken(`${oldToken.split(".")[0]}.${Buffer.from(JSON.stringify({ sub: brand.id, role: "authenticated" })).toString("base64url")}.x`, late?.id);
+        forged.status === 401
+          ? ok("a token with a forged signature CANNOT ask the screen anything")
+          : fail(`a forged token got ${forged.status} ${forged.delivery}`);
+      }
     }
   }
 }
@@ -1940,6 +2009,27 @@ console.log("\nphase 6 — admin operations");
       ? ok("and the company is told what is missing")
       : fail("the company was not notified of what to send");
 
+    // The finish card the company waits on reads this. Without it the
+    // company saw "awaiting verification" and nothing it could act on.
+    const { data: ownReview, error: ownReviewError } = await brand.client
+      .rpc("my_review_status", { target_org: selfOrg });
+    const own = (ownReview ?? [])[0];
+    ownReviewError
+      ? fail("the company can read its own review", ownReviewError)
+      : own?.state === "needs_information" && own?.message === "Please upload your business registration."
+        ? ok("the company reads the request it was sent, on its own screen")
+        : fail(`the company read ${JSON.stringify(own)}`);
+
+    const { error: strangerReview } = await factory.client.rpc("my_review_status", { target_org: selfOrg });
+    strangerReview ? ok("another company CANNOT read that review")
+                   : fail("LEAK: another company read a review that is not its own");
+
+    const { data: resent, error: resentError } = await brand.client
+      .rpc("resubmit_for_review", { target_org: selfOrg });
+    resentError ? fail("the company sends its profile back", resentError)
+      : resent === "ready_for_review" ? ok("and sends its profile back to the top of staff's queue")
+      : fail(`resubmit_for_review returned ${resent}`);
+
     const approved = await staff.client.rpc("admin_review_decision", {
       target_org: selfOrg, decision: "approved", note: "Registration checked.", risk: "low",
     });
@@ -1973,6 +2063,77 @@ console.log("\nphase 6 — admin operations");
     priced && Number.isFinite(Number(priced.total_cents))
       ? ok("and the total is a number, summed in SQL rather than in JavaScript")
       : fail("no quote in the queue carries a usable total");
+  }
+
+  // The request page staff open from that table. It read the prototype's
+  // constants, so a request with quotes said "0 vendor quotes" and an empty
+  // brief. It now reads the records with the brand screens' own select
+  // strings (src/lib/domain/rfq.js, quote.js, admin.js rfqDetail), which only
+  // works because the read policies end in `or is_platform_admin()`.
+  const quoted = (rfqRows ?? []).find((row) => row.quote_count >= 2);
+  if (!quoted) fail("no request in the queue has two quotes after a full run");
+  else {
+    const { data: staffRfq, error: staffRfqError } = await staff.client
+      .from("rfqs")
+      .select("id, title, brief, quantity_total, material_notes, target_delivery_month, requires_sample, sample_notes, target_unit_price_min_cents, target_unit_price_max_cents, currency, additional_details, orgs!rfqs_brand_org_id_fkey (id, name)")
+      .eq("id", quoted.rfq_id)
+      .maybeSingle();
+    staffRfqError || !staffRfq
+      ? fail("staff can read a request's brief", staffRfqError)
+      : ok("staff read the request's brief through the brand's own select");
+
+    const { data: staffQuotes, error: staffQuotesError } = await staff.client
+      .from("quotes")
+      .select("id, status, unit_price_cents, production_quantity, bulk_lead_time_days, deposit_pct, factory_notes, orgs!quotes_factory_org_id_fkey (id, name, slug, factory_profiles (verification_status, trust_tier, location))")
+      .eq("rfq_id", quoted.rfq_id)
+      .in("status", ["submitted", "accepted", "declined", "superseded", "withdrawn"]);
+    staffQuotesError
+      ? fail("staff can read a request's quotes", staffQuotesError)
+      : (staffQuotes ?? []).length === quoted.quote_count
+        ? ok(`and every quote the list counts (${quoted.quote_count}), revisions included`)
+        : fail(`the list counts ${quoted.quote_count} quotes, staff read ${(staffQuotes ?? []).length}`);
+
+    const ids = (staffQuotes ?? []).map((row) => row.id);
+    const [lines, links, splits] = await Promise.all([
+      staff.client.from("quote_sample_lines").select("quote_id, stage, cost_cents, timing_days").in("quote_id", ids),
+      staff.client.from("taxonomy_links").select("term_id").eq("subject_type", "rfq").eq("subject_id", quoted.rfq_id),
+      staff.client.from("rfq_colour_splits").select("id, colour, quantity, sort").eq("rfq_id", quoted.rfq_id),
+    ]);
+    [lines, links, splits].every((result) => !result.error)
+      ? ok("with their sample plans, the request's categories and its colour split")
+      : fail("staff cannot read part of a request's detail", lines.error ?? links.error ?? splits.error);
+    (lines.data ?? []).length > 0
+      ? ok("and the sample plan lines are really there, not just permitted")
+      : fail("staff read no sample lines for a request whose quotes have them");
+  }
+
+  // Test emails. The demo staff login is @example.com, which has no mailbox;
+  // the provider's refusal used to reach the screen word for word.
+  const mailEnv = { RESEND_API_KEY: "re_smoke_not_a_key", RESEND_FROM_EMAIL: "TSC <noreply@smoke.invalid>" };
+  const providerCalls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (url, init) => {
+    if (!String(url).startsWith("https://api.resend.com/")) return realFetch(url, init);
+    providerCalls.push(url);
+    return Promise.resolve(new Response(
+      JSON.stringify({ statusCode: 422, name: "validation_error", message: "Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format." }),
+      { status: 422, headers: { "Content-Type": "application/json" } },
+    ));
+  };
+  try {
+    const reserved = await staffRouteAs("send-test-email", staff.client, { body: { template: "review-approved" }, env: mailEnv });
+    reserved.status === 422 && /reserved for examples and testing/.test(reserved.error ?? "") && providerCalls.length === 0
+      ? ok("a test email to a reserved address is refused in plain words, before the provider is called")
+      : fail(`a reserved address got ${reserved.status}: ${reserved.error} (${providerCalls.length} provider call(s))`);
+
+    const realStaff = await signedInUser(`mail-admin-${stamp}@smoke-mail.dev`);
+    await admin.from("platform_admins").insert({ user_id: realStaff.id });
+    const refused = await staffRouteAs("send-test-email", realStaff.client, { body: { template: "review-approved" }, env: mailEnv });
+    refused.status === 502 && !/`to` field|validation_error/.test(refused.error ?? "") && /nothing was sent/.test(refused.error ?? "")
+      ? ok("and a provider refusal reads as a sentence, not the provider's message")
+      : fail(`a provider refusal read: ${refused.error}`);
+  } finally {
+    globalThis.fetch = realFetch;
   }
 
   const { data: metrics } = await staff.client.rpc("admin_overview_metrics");

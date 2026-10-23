@@ -21,6 +21,7 @@
  */
 import { chargedCents, orderFeeBps } from "../../lib/domain/payment.js";
 import { formatMoney } from "../../lib/money.js";
+import { dateFrom } from "../../lib/dates.js";
 
 /** The design's status word for each payment state that is listed. */
 export const PAYMENT_STATUS = {
@@ -40,7 +41,9 @@ const OPEN = new Set(["pending_schedule", "active"]);
 // Not held yet: production_order_summary counts these as outstanding.
 const UNPAID = new Set(["not_due", "due", "sent", "processing", "failed"]);
 const HELD_OR_PAID = new Set(["confirmed", "released"]);
-const day = (iso) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+// A due row is dated by its step's due_on (a calendar day), the rest by when
+// the payment moved (an instant).
+const day = (value) => dateFrom(value)?.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) ?? "";
 const sum = (items, pick) => items.reduce((total, item) => total + Number(pick(item) ?? 0), 0);
 const sortOf = (payment) => payment.order_milestones?.sort ?? 0;
 const dueOn = (payment) => String(payment.order_milestones?.due_on ?? "9999");
