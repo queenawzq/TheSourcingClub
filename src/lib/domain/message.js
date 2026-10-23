@@ -126,8 +126,8 @@ export async function markRead(threadId) {
 /**
  * Send.
  *
- * Order matters. The message row is written first, because an attachment needs
- * a message to belong to; if an upload then fails, the message stands with a
+ * Order matters. With words typed, the message row is written first, because
+ * an attachment needs a message to belong to; if an upload then fails, the message stands with a
  * note about what did not arrive rather than vanishing along with it. Somebody
  * who has typed a paragraph should not lose it because a photo was too large.
  *
@@ -137,12 +137,41 @@ export async function markRead(threadId) {
  * model before the row exists. `onSaved` runs as soon as it does.
  *
  * A file can go on its own: the database needs words, so the message says
- * which file was sent.
+ * which file was sent. Those words are written after the uploads and name
+ * only the files that arrived; written first, they told the other side about
+ * a file that never came. If none arrives, nothing is sent and the sender is
+ * told why. Nothing typed is lost that way, because nothing was typed.
  */
 export async function sendMessage({ threadId, orgId, userId, body, files = [], onSaved }) {
   const typed = (body ?? "").trim();
-  const text = typed || fileOnlyBody(files);
-  if (!text) throw new Error("there is nothing to send");
+  if (!typed && !files.length) throw new Error("there is nothing to send");
+
+  const failed = [];
+  async function upload(file) {
+    try {
+      return await uploadDocument({
+        orgId,
+        kind: "message_attachment",
+        file,
+        // The thread is the third path segment, which is what makes the
+        // counterparty's storage policy expressible at all.
+        scopeId: threadId,
+      });
+    } catch (error) {
+      failed.push(`${file.name}: ${error.message}`);
+      return null;
+    }
+  }
+
+  const uploadedFirst = [];
+  if (!typed) {
+    for (const file of files) {
+      const doc = await upload(file);
+      if (doc) uploadedFirst.push(doc);
+    }
+    if (!uploadedFirst.length) throw new Error(`none of the files could be attached (${failed.join("; ")})`);
+  }
+  const text = typed || fileOnlyBody(uploadedFirst.map((doc) => ({ name: doc.file_name })));
 
   const message = unwrap(
     await supabase
@@ -159,23 +188,23 @@ export async function sendMessage({ threadId, orgId, userId, body, files = [], o
   );
   onSaved?.(message);
 
-  const failed = [];
-  for (const file of files) {
+  // With words typed, the files go after the message, so a failed upload
+  // never costs the words.
+  const docs = typed ? [] : uploadedFirst;
+  if (typed) {
+    for (const file of files) {
+      const doc = await upload(file);
+      if (doc) docs.push(doc);
+    }
+  }
+  for (const doc of docs) {
     try {
-      const doc = await uploadDocument({
-        orgId,
-        kind: "message_attachment",
-        file,
-        // The thread is the third path segment, which is what makes the
-        // counterparty's storage policy expressible at all.
-        scopeId: threadId,
-      });
       unwrap(
         await supabase.from("documents").update({ message_id: message.id }).eq("id", doc.id).select().single(),
         "attach the file",
       );
     } catch (error) {
-      failed.push(`${file.name}: ${error.message}`);
+      failed.push(`${doc.file_name}: ${error.message}`);
     }
   }
 

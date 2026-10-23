@@ -55,8 +55,10 @@ function Row({ row, onDecide, busy }) {
       </td>
       <td>{when(row.sent_at)}</td>
       <td>
-        <input type="text" placeholder="Reason, required to reject"
-               aria-label="Reason the sender is shown"
+        {/* One box for both buttons: a reject shows the sender this note,
+            a release keeps it for staff and shows it to nobody else. */}
+        <input type="text" placeholder="Required to reject; the sender sees it"
+               aria-label="Note: the sender is shown it if you reject; if you release, only staff see it"
                value={note} onChange={(event) => setNote(event.target.value)} />
       </td>
       <td className="admin-actions">
@@ -154,7 +156,7 @@ export default function AdminMessages() {
                 <th>Message</th>
                 <th>Why held</th>
                 <th>Sent</th>
-                <th>Reason</th>
+                <th>Note</th>
                 <th />
               </tr>
             </thead>

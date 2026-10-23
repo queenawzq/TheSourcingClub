@@ -39,7 +39,11 @@ const initialsOf = (name) =>
  */
 function deliveryStatus(message) {
   if (message.failed) {
-    return { kind: "rejected", label: "Not sent", note: `It could not be saved (${message.failed}). Copy it and send it again.` };
+    return {
+      kind: "rejected",
+      label: "Not sent",
+      note: `It could not be saved (${message.failed}). ${message.typed ? "Copy it and send it again." : "Attach the files and send them again."}`,
+    };
   }
   if (message.delivery === "held") {
     return {
@@ -148,9 +152,12 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     if (threadId || !orderId) return undefined;
     let cancelled = false;
     openOrderThread(orderId)
-      .then((id) => {
+      .then((thread) => {
         if (cancelled) return;
-        setResolvedThreadId(id);
+        // The function returns the thread's row, not its id. Stored whole, it
+        // reached listMessages as "[object Object]" and the screen fell back
+        // to the newest conversation: another order's.
+        setResolvedThreadId(thread?.id ?? null);
         // The thread may have just been created, so the list has to be read
         // again or the screen shows "no conversations yet" over a live one.
         reload();
@@ -476,20 +483,33 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     }
   }
 
-  if (!threads) return null;
+  // Still loading, or an order's conversation still being opened (the empty
+  // state there would claim there is nothing to talk about on a thread one
+  // round trip away). A failure says so: the error line further down is
+  // never reached from here, and the page stayed blank.
+  if (!threads || (orderId && !resolvedThreadId)) {
+    return error ? (
+      <div className="messages-empty" data-testid="threads-error">
+        <h1>Your conversations could not be loaded</h1>
+        <p role="alert">{error.message}</p>
+      </div>
+    ) : (
+      <div className="messages-empty" role="status">
+        <p>Loading your conversations…</p>
+      </div>
+    );
+  }
 
-  // An order's conversation is still being opened; showing the empty state
-  // here would claim there is nothing to talk about on a thread that is one
-  // round trip away.
-  if (orderId && !resolvedThreadId) return null;
-
+  // A conversation exists once either side presses Message, not before:
+  // quoting or starting an order does not open one.
   if (!threads.length) {
     return (
       <div className="messages-empty" data-testid="threads-empty">
         <h1>No conversations yet</h1>
         <p>
-          A conversation opens against a request or an order, so there is one as soon
-          as someone quotes or an order starts.
+          {isFactory
+            ? "Press Message on a request you have quoted, or on an order, to write to the brand. When a brand writes to you, the conversation shows here."
+            : "Press Message on a quote or an order to write to the factory. When a factory writes to you, the conversation shows here."}
         </p>
       </div>
     );
@@ -510,6 +530,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       created_at: item.at,
       delivery: "checking",
       failed: item.failed,
+      typed: item.typed,
       documents: item.files.map((file) => ({ file_name: file.name })),
     }));
     const rows = [...(messagesByThread[thread.id] ?? []), ...outgoingRows];
@@ -554,19 +575,23 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           // away — the rule in CLAUDE.md. The designed bubble shows `body`
           // by default and `translation` when toggled, so the readable text
           // is the body and the toggle reveals what was actually typed.
-          ...(view.isTranslation
+          // Whenever there is text in the other language, it is one click
+          // away, whichever way it goes: a factory reading a brand's English
+          // has the Chinese translation behind the toggle, as a brand reading
+          // a factory's Chinese has the original.
+          ...(view.original
             ? {
               body: view.text,
               translation: view.original,
               language: view.originalLang,
-              ...(mine
+              ...(!mine && view.isTranslation
                 ? {
-                  showAltLabel: `Show translation${LANGUAGE_NAME[view.originalLang] ? ` (${LANGUAGE_NAME[view.originalLang]})` : ""}`,
-                  hideAltLabel: "Show what you wrote",
-                }
-                : {
                   showAltLabel: `Show original${LANGUAGE_NAME[view.originalLang] ? ` (${LANGUAGE_NAME[view.originalLang]})` : ""}`,
                   hideAltLabel: "Show translation",
+                }
+                : {
+                  showAltLabel: `Show translation${LANGUAGE_NAME[view.originalLang] ? ` (${LANGUAGE_NAME[view.originalLang]})` : ""}`,
+                  hideAltLabel: mine ? "Show what you wrote" : "Show original",
                 }),
             }
             : { body: view.text }),

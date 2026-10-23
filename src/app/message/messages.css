@@ -219,3 +219,48 @@ body.tsc-zoom-failed .zoom-MuiDialog-root {
   opacity: 0.6;
   cursor: progress;
 }
+
+/*
+ * Live only: what was typed on two lines reads on two lines. The design's
+ * bubble collapses the line breaks Shift+Enter put there.
+ */
+.message-bubble > p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Live only: a long conversation scrolls inside its own panel, so the box to
+ * write in stays on screen. The design grows the page with the conversation,
+ * which its three sample messages never showed. The shell is the height of
+ * the page inside its padding (the design's own min-height); below 901px the
+ * design stacks the list above the conversation, and the page scrolls.
+ */
+@media (min-width: 901px) {
+  .messages-shell {
+    height: calc(100vh - 72px);
+  }
+
+  .messages-shell > .message-workspace {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .messages-shell > .message-workspace > .message-timeline {
+    flex: 1 1 0;
+  }
+}
+
+/*
+ * Live only: the design's three columns need 1102px, so with the side menu
+ * open the page scrolled sideways below about 1440px and the right rail was
+ * cut off. Between the design's own break at 1220px (where the rail becomes a
+ * drawer) and the width it was drawn at, the columns give way in the design's
+ * proportions instead (300 : 698 : 286 of its 1320px), never narrower than
+ * 232px at the sides. Above that the design's columns stand.
+ */
+@media (min-width: 1221px) and (max-width: 1459px) {
+  .messages-shell {
+    grid-template-columns: minmax(232px, 300fr) minmax(0, 698fr) minmax(232px, 286fr);
+  }
+}
