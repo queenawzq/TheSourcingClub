@@ -2099,6 +2099,11 @@ async function main() {
     if (!openedThread) await page.locator('.message-thread-card').first().click();
     check(openedThread, `the order's own conversation is listed (${bornOrder.order_number})`);
     await waitFor(page, '.message-bubble', 25000);
+    // How far the open conversation is from its newest message, in pixels.
+    const fromNewest = () => page.evaluate(() => {
+      const box = document.querySelector(".message-timeline");
+      return box ? Math.round(box.scrollHeight - box.scrollTop - box.clientHeight) : -1;
+    });
 
     // Every bubble in the thread, not the first: the conversation may already
     // hold older messages, and the one under test is the newest.
@@ -2114,6 +2119,8 @@ async function main() {
       if (readerSees.includes(wanted)) break;
       await page.waitForTimeout(300);
     }
+    const openedGap = await fromNewest();
+    check(openedGap >= 0 && openedGap < 4, `the conversation opens at its newest message (${openedGap}px from it)`);
     if (sent.body_translated) {
       check(readerSees.includes(sent.body_translated.slice(0, 20)),
         "the brand is shown English first, not a sentence it cannot read");
@@ -2216,7 +2223,28 @@ async function main() {
       await page.waitForTimeout(250);
     }
     check(arrivedLive, `the factory's message appears on the brand's open page without a refresh (${Date.now() - liveStarted} ms)`);
+    await page.waitForTimeout(300);
+    const liveGap = await fromNewest();
+    check(liveGap >= 0 && liveGap < 4, `and the open conversation scrolls to it (${liveGap}px from the newest)`);
     await record(page, "It arrives live", "the other side's message appears while the page is open");
+
+    // A file a message cannot carry is refused in words when it is picked,
+    // never sent to storage to come back as "mime type ... is not supported".
+    await page.evaluate(() => {
+      const input = document.querySelector('input[data-field="message_files"]');
+      const list = new DataTransfer();
+      list.items.add(new File(["carton notes"], "carton-notes.txt", { type: "text/plain" }));
+      input.files = list.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await page.waitForTimeout(300);
+    const refusal = await page.evaluate(() => ({
+      notice: document.querySelector(".message-composer-notice")?.textContent ?? "",
+      pending: document.querySelectorAll('[data-testid="pending-files"] span').length,
+      accept: document.querySelector('input[data-field="message_files"]')?.accept ?? "",
+    }));
+    check(/carton-notes\.txt can't be attached/.test(refusal.notice) && refusal.pending === 0 && !refusal.accept.includes(".txt"),
+      `a .txt is not offered, and refused in words if picked ("${refusal.notice.slice(0, 60)}")`);
 
     // Attach file: a real picker, and the file goes with the message.
     const fileName = `measurements-${runWord}.pdf`;
@@ -2249,6 +2277,13 @@ async function main() {
     check(fileStatus === 200, `the factory can open the brand's file (${fileStatus})`);
     check((await eachText(page, '[data-testid="message-attachment"]')).some((text) => text.includes(fileName)),
       "the file is shown on the message, as a button that opens it");
+    const pageAfterFile = await page.evaluate(() => ({
+      top: document.scrollingElement.scrollTop,
+      extra: document.scrollingElement.scrollHeight - window.innerHeight,
+      wide: window.innerWidth,
+    }));
+    check(pageAfterFile.wide < 901 || (pageAfterFile.top === 0 && pageAfterFile.extra <= 1),
+      `sending a file scrolls only the conversation, never the page (page at ${pageAfterFile.top}px, ${pageAfterFile.extra}px taller than the window)`);
     await record(page, "A file", "Attach file works, and the other side can open it");
 
     // Search and the Unread filter do what they say.
@@ -2257,7 +2292,14 @@ async function main() {
     const foundThreads = await eachText(page, ".message-thread-card");
     check(foundThreads.length >= 1 && foundThreads.every((text) => text.includes(bornOrder.order_number)),
       `searching for ${bornOrder.order_number} lists only its conversation (${foundThreads.length})`);
+    await page.locator(".message-search-field input").fill(`no-such-${runWord}`);
+    await page.waitForTimeout(300);
+    const emptyList = await page.evaluate(() => document.querySelector(".message-thread-list-empty")?.textContent ?? "");
+    check(/No conversations match/.test(emptyList), `a search with no match says so ("${emptyList}")`);
     await page.locator(".message-search-field input").fill("");
+    await page.waitForTimeout(300);
+    const reopenedGap = await fromNewest();
+    check(reopenedGap >= 0 && reopenedGap < 4, `the conversation is still at its newest message (${reopenedGap}px)`);
     await factoryClient.auth.signOut();
 
     // ================= HELD FOR REVIEW =================
