@@ -146,6 +146,10 @@ function SignIn() {
   const [resetFor, setResetFor] = useState(null);
   // The address a sign-in code was emailed to, and so the code-entry screen.
   const [codeFor, setCodeFor] = useState(null);
+  // "Keep me logged in", held here rather than inside the form: the demo
+  // buttons and the emailed-code sign-in sit outside it and must follow the
+  // same box.
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
 
   async function authenticate(submitted) {
     if (submitted.provider === "google") {
@@ -184,7 +188,7 @@ function SignIn() {
     clearError();
     setNotice(null);
     setBusy(true);
-    const signedIn = await signInWithPassword({ email: login.email, password: login.password });
+    const signedIn = await signInWithPassword({ email: login.email, password: login.password, keepSignedIn });
     if (signedIn && login.admin) {
       window.location.assign("/admin.html");
       return;
@@ -231,7 +235,7 @@ function SignIn() {
 
   async function submitCode(code) {
     setBusy(true);
-    await verifyEmailCode(codeFor, code);
+    await verifyEmailCode(codeFor, code, { keepSignedIn });
     // On success the session changes and App re-renders; on failure `error`
     // is set by the provider and this screen stays put showing it.
     setBusy(false);
@@ -375,6 +379,8 @@ function SignIn() {
         sendCode(email);
       }}
       onAuthenticate={authenticate}
+      keepSignedIn={keepSignedIn}
+      onKeepSignedInChange={setKeepSignedIn}
       footer={DemoSignIn && (
         <Suspense fallback={null}>
           <DemoSignIn busy={busy} onPick={demoSignIn} />

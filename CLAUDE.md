@@ -191,6 +191,7 @@ npm run smoke         # 138 checks through supabase-js: embeds, RPC signatures, 
 npm run check:css     # fails on a CSS variable used but never defined (runs in build)
 npm run check:prototype  # the prototype must still render with NO database
 npm run check:messages   # the contact-detail patterns: hits and near-misses
+npm run check:auth       # "Keep me logged in" across tabs (runs in build)
 npm run taxonomy      # regenerate migration 007 from the seed JSON
 npm run seed:demo     # demo companies with fixed logins; run again to reset them
 ```
@@ -568,10 +569,18 @@ and the backend answers to it rather than the other way round.
   `minimum_password_length` in `supabase/config.toml` and
   `MIN_PASSWORD_LENGTH` in `src/lib/auth.jsx`. A client-side `minLength` the
   server does not share is a promise the product does not keep.
-- **"Keep me logged in" is real.** Checked, the session goes to
-  `localStorage`; unchecked, to `sessionStorage`, and dies with the tab. The
-  storage adapter in `src/lib/supabase.js` reads *both* on the way out, so a
-  session written under one setting is not lost when the setting changes.
+- **"Keep me logged in" is real, and it belongs to the tab.** Checked, the
+  session goes to `localStorage`; unchecked, to `sessionStorage`, and dies with
+  the tab. The choice is kept in the tab's own `sessionStorage`
+  (`src/lib/session-storage.mjs`): a tab that chose "this tab only" never reads
+  or clears `localStorage`, so two tabs can hold two different sign-ins, and a
+  ticked sign-in elsewhere cannot take it over. supabase-js broadcasts every
+  sign-in to every tab, so `AuthProvider` ignores an event whose session is not
+  the one this tab holds (`isThisTabsSession`). Every sign-in passes the box's
+  value: `signInWithPassword` and `verifyEmailCode` throw without it, because
+  the demo buttons once omitted it and kept every session for the whole
+  browser. The PKCE code verifier always goes to `localStorage`, since the reset
+  link opens in a new tab. `npm run check:auth` runs it as several tabs.
 - **Signing out clears the stored token before awaiting the network call.**
   The login screen renders the instant the status flips — deliberately, since
   clearing orgs while the shell thinks it is signed in crashes it to a blank

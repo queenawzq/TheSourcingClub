@@ -349,13 +349,14 @@ async function signUp(page, { email, fullName, companyName, accountType, who }) 
  * creation did not complete. Someone invited must NOT be asked to start a
  * company of their own, so that stays a distinct state.
  */
-async function signIn(page, email, who, accountType = "brand") {
+async function signIn(page, email, who, accountType = "brand", { keep = true } = {}) {
   await page.goto(portalUrl(accountType));
   await waitFor(page, 'input[name="email"]', 30000);
   await record(page, `${who} sign-in`, "cold start, no session");
 
   await page.locator('input[name="email"]').first().fill(email);
   await page.locator('input[name="password"]').first().fill(PASSWORD);
+  if (!keep) await page.locator('input[name="keepSignedIn"]').first().click();
   await clickButton(page, "log in");
 
   const deadline = Date.now() + 40000;
@@ -913,7 +914,25 @@ async function main() {
     console.log("\nREQUEST FOR QUOTES");
     // The admin was the last account signed in, so come back as the brand.
     await signOutFully(page);
-    await signIn(page, `e2e-brand-${stamp}@example.com`, "Brand returning");
+    // Without "Keep me logged in", the sign-in is this tab's alone: a second
+    // tab opens signed out, can sign in as someone else, and neither tab
+    // takes on the other's account. Every hosted test site failed this.
+    await signIn(page, `e2e-brand-${stamp}@example.com`, "Brand returning", "brand", { keep: false });
+    {
+      const second = await stagehand.browser.context.newPage(APP);
+      await second.setViewportSize(1440, 1100);
+      await waitFor(second, 'input[name="email"]', 30000);
+      check((await second.locator(".home-stack").count()) === 0,
+        "with Keep me logged in unticked, a second tab opens signed out");
+      await signIn(second, `e2e-factory-${stamp}@example.com`, "Second tab", "factory", { keep: false });
+      await page.waitForTimeout(1500);
+      check((await page.locator(".home-stack").count()) > 0 && (await page.locator(".factory-dashboard-page").count()) === 0,
+        "the first tab is still the brand after the second signs in as the factory");
+      await page.reload();
+      await waitFor(page, ".home-stack, .factory-dashboard-page", 30000);
+      check((await page.locator(".factory-dashboard-page").count()) === 0, "and still the brand after a reload");
+      await second.close();
+    }
 
     // The account card opens the brand's own profile, on its design, with
     // what onboarding saved; it used to open Settings.

@@ -40,6 +40,9 @@ function AdminLogin() {
   const [codeFor, setCodeFor] = useState("");
   const [accessState, setAccessState] = useState("idle");
   const [localError, setLocalError] = useState("");
+  // "Keep me signed in", held here so the demo admin button below the form
+  // and the emailed-code sign-in follow the same box as the form.
+  const [keepSignedIn, setKeepSignedIn] = useState(true);
 
   useEffect(() => {
     if (resetting) {
@@ -74,7 +77,7 @@ function AdminLogin() {
     await signInWithPassword({
       email: String(form.get("email") ?? ""),
       password: String(form.get("password") ?? ""),
-      keepSignedIn: form.get("keepSignedIn") === "on",
+      keepSignedIn,
     });
     setBusy(false);
   }
@@ -84,7 +87,7 @@ function AdminLogin() {
     clearError();
     setLocalError("");
     setBusy(true);
-    await signInWithPassword({ email: login.email, password: login.password });
+    await signInWithPassword({ email: login.email, password: login.password, keepSignedIn });
     setBusy(false);
   }
 
@@ -127,7 +130,7 @@ function AdminLogin() {
     setLocalError("");
     setBusy(true);
     const code = String(new FormData(event.currentTarget).get("code") ?? "").trim();
-    await verifyEmailCode(codeFor, code);
+    await verifyEmailCode(codeFor, code, { keepSignedIn });
     setBusy(false);
   }
 
@@ -255,7 +258,7 @@ function AdminLogin() {
                 </span>
               </label>
               <div className="admin-login-options">
-                <label><input type="checkbox" name="keepSignedIn" defaultChecked /><span>Keep me signed in</span></label>
+                <label><input type="checkbox" name="keepSignedIn" checked={keepSignedIn} onChange={(event) => setKeepSignedIn(event.target.checked)} /><span>Keep me signed in</span></label>
                 <button type="button" onClick={() => { setRecovery(true); clearError(); }}>Forgot password?</button>
               </div>
               {(localError || error) && <p className="admin-login-message error" role="alert">{localError || error.message}</p>}

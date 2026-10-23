@@ -8,6 +8,7 @@
  * work that needs it belongs in api/, which is not bundled.
  */
 import { createClient } from "@supabase/supabase-js";
+import { createSessionStorage } from "./session-storage.mjs";
 
 // A PR preview with its own Supabase branch connects to that branch; every
 // other build (production included) uses VITE_SUPABASE_*. See vite.config.js.
@@ -24,59 +25,15 @@ export const isConfigured = Boolean(url && publishableKey);
 /** The database this build talks to. The demo sign-in hides itself on production's. */
 export const supabaseUrl = url ?? "";
 
-/**
- * "Keep me logged in", made real.
- *
- * The designed login screen offers the choice, so it has to mean something.
- * Checked, the session goes to localStorage and survives closing the browser;
- * unchecked, it goes to sessionStorage and dies with the tab — which is what
- * someone ticking nothing on a shared machine is asking for.
- *
- * The preference itself lives in localStorage, because it has to be readable
- * before the session is restored in order to know where to look for it. Reads
- * check both stores regardless: a session written under one setting must not
- * disappear because the preference changed after it was saved.
- *
- * Every accessor is wrapped. Storage throws rather than returning null in a
- * locked-down browser, and an exception here happens before any error
- * boundary exists — it is a white page, not a message.
- */
-const KEEP_KEY = "tscKeepSignedIn";
+// "Keep me logged in": where the session is kept, per tab. See session-storage.mjs.
+const sessionStore = createSessionStorage(globalThis);
 
-const safe = (fn, fallback = null) => {
-  try {
-    return fn();
-  } catch {
-    return fallback;
-  }
-};
+export const setKeepSignedIn = sessionStore.setKeepSignedIn;
 
-export function setKeepSignedIn(keep) {
-  safe(() => window.localStorage.setItem(KEEP_KEY, keep ? "1" : "0"));
+/** Whether an auth event's session is this tab's own, not one broadcast from another tab. */
+export function isThisTabsSession(session) {
+  return sessionStore.isThisTabsSession(supabase.auth.storageKey, session);
 }
-
-const keepSignedIn = () => safe(() => window.localStorage.getItem(KEEP_KEY), "1") !== "0";
-
-const sessionStorageAdapter = {
-  getItem(key) {
-    // Both stores, always. Otherwise a session written before the preference
-    // changed becomes unreachable and the user is silently signed out.
-    return safe(() => window.localStorage.getItem(key) ?? window.sessionStorage.getItem(key));
-  },
-  setItem(key, value) {
-    if (keepSignedIn()) {
-      safe(() => window.localStorage.setItem(key, value));
-      safe(() => window.sessionStorage.removeItem(key));
-    } else {
-      safe(() => window.sessionStorage.setItem(key, value));
-      safe(() => window.localStorage.removeItem(key));
-    }
-  },
-  removeItem(key) {
-    safe(() => window.localStorage.removeItem(key));
-    safe(() => window.sessionStorage.removeItem(key));
-  },
-};
 
 /**
  * Emails go out from a queue the database fills whenever a notification is
@@ -127,7 +84,7 @@ export const supabase = isConfigured
         persistSession: true,
         autoRefreshToken: true,
         flowType: "pkce",
-        storage: sessionStorageAdapter,
+        storage: sessionStore.storage,
       },
     })
   : null;
