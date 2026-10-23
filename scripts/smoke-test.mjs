@@ -77,8 +77,12 @@ const TEST_PASSWORD = "smoke test 8";
  * key here, so a message the patterns pass is delivered as `pattern_only`.
  */
 async function screenAs(client, messageId) {
-  const { default: screen } = await import("../api/screen-message.js");
   const { data } = await client.auth.getSession();
+  return screenWithToken(data?.session?.access_token, messageId);
+}
+
+async function screenWithToken(token, messageId) {
+  const { default: screen } = await import("../api/screen-message.js");
   const saved = { ...process.env };
   Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, OPENROUTER_API_KEY: "" });
   let status = 0;
@@ -88,13 +92,24 @@ async function screenAs(client, messageId) {
     json(payload) { body = payload; return response; },
   };
   try {
-    await screen({ method: "POST", headers: { authorization: `Bearer ${data?.session?.access_token}` }, body: { messageId } }, response);
+    await screen({ method: "POST", headers: { authorization: `Bearer ${token}` }, body: { messageId } }, response);
   } finally {
     for (const key of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "OPENROUTER_API_KEY"]) {
       if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
     }
   }
   return { status, ...body };
+}
+
+// What a message may carry: the picker's list and the private bucket's
+// allowlist must be the same, or a file is offered and then refused.
+{
+  const { PRIVATE_BUCKET_TYPES } = await import("../src/shared/private-bucket-types.mjs");
+  const { data: bucket } = await admin.storage.getBucket("org-private");
+  const allowed = new Set(bucket?.allowed_mime_types ?? []);
+  const same = allowed.size === PRIVATE_BUCKET_TYPES.length && PRIVATE_BUCKET_TYPES.every((type) => allowed.has(type));
+  if (same) ok("the message file picker offers exactly what the private bucket accepts");
+  else fail(`the private bucket accepts ${[...allowed].join(", ")} but private-bucket-types.mjs offers ${PRIVATE_BUCKET_TYPES.join(", ")}`);
 }
 
 // Where Stripe can pay out: the server (api/_stripe.js) and the factory's
@@ -1345,6 +1360,11 @@ console.log("\nphase 3 — the order runs");
         ? ok("the screen holds it on the patterns, without asking a model")
         : fail(`the screen answered ${JSON.stringify(holding)}`);
 
+      const { data: heldRow } = await brand.client.from("messages").select("held_for").eq("id", held?.id).single();
+      heldRow?.held_for === "contact_details" && holding.heldFor === "contact_details"
+        ? ok("and its sender can read what it was held for (contact details), so the page says the right thing")
+        : fail(`the sender reads held_for ${heldRow?.held_for} (screen said ${holding.heldFor})`);
+
       const { data: why } = await admin.from("message_screenings").select("reason").eq("message_id", held?.id).single();
       why?.reason === "a WeChat contact"
         ? ok(`and records why, for staff ("${why.reason}")`)
@@ -1362,6 +1382,41 @@ console.log("\nphase 3 — the order runs");
       afterHold.length === 1
         ? ok("and is not notified of it")
         : fail(`expected still one notification, got ${afterHold.length}`);
+
+      // A session signed out somewhere else. signOut() ends the session on
+      // the auth server at once, but its access token is still a valid JWT
+      // to the database until it expires, so the message is saved. The
+      // screen used to ask the auth server (getUser) and answer 401, and the
+      // message stayed `checking` for good with nobody told (#51's preview,
+      // 23 Oct). It now asks the database, as the insert did.
+      {
+        const second = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+        const { data: login } = await second.auth.signInWithPassword({ email: `brand-${stamp}@example.com`, password: TEST_PASSWORD });
+        const oldToken = login?.session?.access_token;
+        await second.auth.signOut({ scope: "local" });
+        const { data: gone } = await admin.auth.getUser(oldToken);
+        const stale = createClient(URL, ANON, {
+          global: { headers: { Authorization: `Bearer ${oldToken}` } },
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { data: late, error: lateError } = await stale.from("messages").insert({
+          thread_id: threadId,
+          sender_org_id: order.brand_org_id,
+          sender_user_id: brand.id,
+          body: "Packing list attached for the first carton.",
+        }).select("id, delivery").single();
+        !gone?.user && !lateError && late?.delivery === "checking"
+          ? ok("a token whose session was signed out elsewhere still saves a message (the database only checks the JWT)")
+          : fail(`setup: signed-out token ${gone?.user ? "still known to auth" : "refused by auth"}, insert ${lateError?.message ?? late?.delivery}`);
+        const lateScreen = await screenWithToken(oldToken, late?.id);
+        lateScreen.delivery === "delivered"
+          ? ok("and the screen still checks and delivers it, so it cannot sit in checking for good")
+          : fail(`a message sent from a signed-out session was left ${lateScreen.delivery ?? "unscreened"} (${lateScreen.status} ${lateScreen.error ?? ""})`);
+        const forged = await screenWithToken(`${oldToken.split(".")[0]}.${Buffer.from(JSON.stringify({ sub: brand.id, role: "authenticated" })).toString("base64url")}.x`, late?.id);
+        forged.status === 401
+          ? ok("a token with a forged signature CANNOT ask the screen anything")
+          : fail(`a forged token got ${forged.status} ${forged.delivery}`);
+      }
     }
   }
 }
