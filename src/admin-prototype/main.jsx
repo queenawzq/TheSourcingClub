@@ -928,12 +928,19 @@ function CreditsCard({ orgId, refreshKey }) {
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState("");
+  // A refusal belongs to the attempt it answers. Kept with the values that
+  // were sent, it shows only while the form still holds them: switching to
+  // "Add credits" or changing the amount is a different attempt, and a
+  // "you cannot remove 500" left under it would be about nothing on screen.
+  const [refusal, setRefusal] = useState(null);
+  const formError = refusal && refusal.direction === direction && refusal.amount === amount && refusal.reason === reason
+    ? refusal.message
+    : "";
 
   const load = () => actions.companyCredits(orgId).then(setCredits).catch((failure) => setError(failure.message));
   useEffect(() => { setCredits(null); setError(""); load(); }, [orgId, refreshKey]);
 
-  const close = () => { setOpen(false); setAmount(""); setReason(""); setFormError(""); setDirection("add"); };
+  const close = () => { setOpen(false); setAmount(""); setReason(""); setRefusal(null); setDirection("add"); };
   const units = Number.parseInt(amount, 10);
   const valid = Number.isInteger(units) && units > 0 && reason.trim().length >= 5;
   // Said under the form while Save is off, so staff are not left guessing why.
@@ -944,14 +951,15 @@ function CreditsCard({ orgId, refreshKey }) {
       : "";
   const save = async () => {
     setBusy(true);
-    setFormError("");
+    setRefusal(null);
+    const attempt = { direction, amount, reason };
     try {
       await actions.adjustCredits(orgId, direction === "add" ? units : -units, reason.trim());
       close();
       await load();
     } catch (failure) {
-      const reason = failure.message.replace(/^adjust the credits: /, "");
-      setFormError(`${reason.charAt(0).toUpperCase()}${reason.slice(1)}.`);
+      const why = failure.message.replace(/^adjust the credits: /, "");
+      setRefusal({ ...attempt, message: `${why.charAt(0).toUpperCase()}${why.slice(1)}.` });
     } finally {
       setBusy(false);
     }

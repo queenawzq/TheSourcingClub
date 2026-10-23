@@ -2849,6 +2849,17 @@ async function main() {
       const tooMuch = await page.locator(".admin-review-modal .admin-error").innerText().catch(() => "");
       check(/you cannot remove 600/i.test(tooMuch), `removing more than the balance is refused ("${tooMuch}")`);
       await record(page, "Adjust refused", "a balance never goes below zero");
+      // The refusal is about that attempt only: switching to Add, or changing
+      // the amount, must not leave it under a form it no longer describes.
+      await page.locator('input[name="credit-direction"][aria-label="Add credits"]').first().click();
+      await page.waitForTimeout(300);
+      check((await page.locator(".admin-review-modal .admin-error").count()) === 0,
+        "switching to Add credits clears the refusal");
+      await page.locator('input[name="credit-direction"][aria-label="Remove credits"]').first().click();
+      await page.locator('.admin-review-modal input[type="number"]').first().fill("60");
+      await page.waitForTimeout(300);
+      check((await page.locator(".admin-review-modal .admin-error").count()) === 0,
+        "and so does changing the amount");
       await page.locator(".admin-review-modal footer .secondary-btn").first().click();
       await page.waitForTimeout(500);
       const adjustReason = `Welcome credit for joining by invite ${stamp}`;
