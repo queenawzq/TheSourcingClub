@@ -1111,10 +1111,13 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   );
 }
 
-function AdminRfqDetail({ rfq, onBack, backLabel, onOpenQuote }) {
+// Live mounts pass `quoteRows` (the workspace's own quote list) and `detail`
+// ({ brief, quotes: { [quoteRef]: {...} } }, read from the records). The
+// prototype passes neither and keeps its constants.
+function AdminRfqDetail({ rfq, onBack, backLabel, onOpenQuote, quoteRows = quotes, detail = null }) {
   if (!rfq) return null;
-  const rfqQuotes = quotes.filter((item) => item[3] === rfq[0]);
-  const details = rfqDetails[rfq[0]] || {};
+  const rfqQuotes = quoteRows.filter((item) => item[3] === rfq[0]);
+  const details = detail ? detail.brief : rfqDetails[rfq[0]] || {};
   return (
     <main className="factory-profile-page brand-profile-page admin-page admin-review-page admin-rfq-detail-page">
       <div className="admin-review-shell">
@@ -1133,8 +1136,8 @@ function AdminRfqDetail({ rfq, onBack, backLabel, onOpenQuote }) {
                     <header><div><span>{quote[0]} · Submitted {quote[5]}</span><h3>{quote[1]}</h3></div><StatusPill tone={quote[7]}>{quote[6]}</StatusPill></header>
                     <div className="admin-quote-card-stats">
                       <ProfileDetailPair label="Quote total" value={quote[4]} />
-                      <ProfileDetailPair label="Bulk lead" value={`${[28, 31, 26][index % 3]} days`} />
-                      <ProfileDetailPair label="Sample cost" value={["$260", "$310", "$240"][index % 3]} />
+                      <ProfileDetailPair label="Bulk lead" value={detail ? detail.quotes[quote[0]]?.lead : `${[28, 31, 26][index % 3]} days`} />
+                      <ProfileDetailPair label="Sample cost" value={detail ? detail.quotes[quote[0]]?.sampleCost : ["$260", "$310", "$240"][index % 3]} />
                     </div>
                     <button className="secondary-btn compact-btn" type="button" onClick={() => onOpenQuote(quote)}>View quote</button>
                   </article>
@@ -1187,22 +1190,25 @@ function AdminRfqDetail({ rfq, onBack, backLabel, onOpenQuote }) {
   );
 }
 
-function AdminQuoteDetail({ quote, rfq, onBack }) {
+// Live mounts pass `detail` (as AdminRfqDetail) and `backLabel` ("Quotes"
+// when it was opened from the quote list). The prototype passes neither.
+function AdminQuoteDetail({ quote, rfq, onBack, detail = null, backLabel = null }) {
   if (!quote || !rfq) return null;
-  const details = rfqDetails[rfq[0]] || {};
+  const details = detail ? detail.brief : rfqDetails[rfq[0]] || {};
   const siblingQuotes = quotes.filter((item) => item[3] === rfq[0]);
   const quoteIndex = Math.max(0, siblingQuotes.findIndex((item) => item[0] === quote[0]));
   const quantity = Number.parseInt(details.quantity, 10) || 300;
   const total = Number.parseFloat(quote[4].replace(/[$,]/g, "")) || 0;
-  const unitPrice = `$${(total / quantity).toFixed(2)}`;
-  const lead = `${[28, 31, 26][quoteIndex % 3]} days`;
-  const sampleCost = ["$260", "$310", "$240"][quoteIndex % 3];
-  const paymentTerms = ["30% deposit · 70% before shipment", "40% deposit · 60% before shipment", "30% deposit · 70% net 7"][quoteIndex % 3];
-  const shipping = ["EXW · freight not included", "FOB · export handling included", "FOB · freight quoted separately"][quoteIndex % 3];
+  const live = detail ? detail.quotes[quote[0]] ?? {} : null;
+  const unitPrice = live ? live.unitPrice : `$${(total / quantity).toFixed(2)}`;
+  const lead = live ? live.lead : `${[28, 31, 26][quoteIndex % 3]} days`;
+  const sampleCost = live ? live.sampleCost : ["$260", "$310", "$240"][quoteIndex % 3];
+  const paymentTerms = live ? live.paymentTerms : ["30% deposit · 70% before shipment", "40% deposit · 60% before shipment", "30% deposit · 70% net 7"][quoteIndex % 3];
+  const shipping = live ? live.shipping : ["EXW · freight not included", "FOB · export handling included", "FOB · freight quoted separately"][quoteIndex % 3];
   return (
     <main className="factory-profile-page brand-profile-page admin-page admin-review-page admin-quote-detail-page">
       <div className="admin-review-shell">
-        <button className="admin-back-link" type="button" onClick={onBack}>‹ Back to {rfq[0]} quotes</button>
+        <button className="admin-back-link" type="button" onClick={onBack}>‹ Back to {backLabel === "Quotes" ? "quotes" : `${rfq[0]} quotes`}</button>
         <header className="admin-review-header admin-rfq-detail-header">
           <div><span className="admin-eyebrow">{quote[0]}</span><h1>{quote[1]} quotation</h1><p>{rfq[1]} · Submitted {quote[5]}</p></div>
           <StatusPill tone={quote[7]}>{quote[6]}</StatusPill>
@@ -1213,9 +1219,9 @@ function AdminQuoteDetail({ quote, rfq, onBack }) {
               <div className="admin-detail-grid admin-quote-detail-grid">
                 <ProfileDetailPair label="Quote total" value={quote[4]} />
                 <ProfileDetailPair label="Unit price" value={unitPrice} />
-                <ProfileDetailPair label="Quantity" value={details.quantity} />
+                <ProfileDetailPair label="Quantity" value={live ? live.quantity : details.quantity} />
                 <ProfileDetailPair label="Bulk lead time" value={lead} />
-                <ProfileDetailPair label="Sample plan" value={details.samples} />
+                <ProfileDetailPair label="Sample plan" value={live ? live.samples : details.samples} />
                 <ProfileDetailPair label="Sample cost" value={sampleCost} />
               </div>
             </Panel>
@@ -1223,8 +1229,8 @@ function AdminQuoteDetail({ quote, rfq, onBack }) {
               <div className="admin-rfq-requirement-list">
                 <ProfileDetailPair label="Payment terms" value={paymentTerms} />
                 <ProfileDetailPair label="Shipping / incoterms" value={shipping} />
-                <ProfileDetailPair label="Materials included" value={details.materials} />
-                <ProfileDetailPair label="Vendor note" value={`Capacity is reserved for the requested delivery window. Final pricing is subject to approved samples, confirmed specifications, and color standards.`} />
+                <ProfileDetailPair label="Materials included" value={live ? live.materials : details.materials} />
+                <ProfileDetailPair label="Vendor note" value={live ? live.note : `Capacity is reserved for the requested delivery window. Final pricing is subject to approved samples, confirmed specifications, and color standards.`} />
               </div>
             </Panel>
             <Panel title="Original request" subtitle={`${rfq[0]} from ${rfq[2]}`}>
@@ -1650,6 +1656,11 @@ function App({ testEmailsIntro } = {}) {
   const [selectedQuote, setSelectedQuote] = useState(requestedQuote);
   const [reviewBack, setReviewBack] = useState("Verification");
   const [rfqBack, setRfqBack] = useState(requested === "rfq-detail" ? "RFQs" : "Overview");
+  // Where a quote was opened from: the quote list, or its request's page.
+  const [quoteBack, setQuoteBack] = useState(requested === "quote-detail" ? "Quotes" : "RFQ detail");
+  // Live only: the open request's brief and quote figures, read from the
+  // records when it opens. The mock has no `rfqDetail` and keeps its constants.
+  const [rfqDetail, setRfqDetail] = useState(null);
   const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [toast, setToast] = useState("");
   // The files the company under review uploaded. Fetched per company rather
@@ -1696,6 +1707,30 @@ function App({ testEmailsIntro } = {}) {
     if (!selectedQuote && quoteList.length) setSelectedQuote(requestedQuote);
   }, [quoteList, selectedQuote]);
 
+  const detailRow = screen === "Quote detail" ? selectedQuote : screen === "RFQ detail" ? selectedRfq : null;
+  const detailKey = screen === "Quote detail" ? selectedQuote?.[3] : selectedRfq?.[0];
+  useEffect(() => {
+    if (!detailRow || !actions.rfqDetail) return undefined;
+    let cancelled = false;
+    setRfqDetail((current) => (current?.key === detailKey ? current : null));
+    Promise.resolve(actions.rfqDetail(detailRow))
+      .then((detail) => { if (!cancelled) setRfqDetail({ key: detailKey, ...detail }); })
+      .catch((error) => { if (!cancelled) setRfqDetail({ key: detailKey, error }); });
+    return () => { cancelled = true; };
+  }, [detailKey, Boolean(detailRow), actions]);
+  // Never the previous request's figures under this one's title, and never
+  // the prototype's constants while the real ones load: live, a detail that
+  // is not here yet says so in every field.
+  const loadedDetail = rfqDetail?.key === detailKey ? rfqDetail : null;
+  const placeholder = (text) => ({
+    brief: Object.fromEntries(["category", "quantity", "targetPrice", "delivery", "materials", "samples", "requirements"].map((key) => [key, text])),
+    quotes: {},
+  });
+  const shownDetail = !actions.rfqDetail ? null
+    : !loadedDetail ? placeholder("Loading…")
+    : loadedDetail.error ? placeholder("Could not load")
+    : loadedDetail;
+
   useEffect(() => {
     const media = window.matchMedia("(max-width: 760px)");
     const sync = () => setCollapsed(media.matches);
@@ -1732,6 +1767,7 @@ function App({ testEmailsIntro } = {}) {
     const matchingRfq = rfqList.find((rfq) => rfq[0] === quote[3]);
     if (matchingRfq) setSelectedRfq(matchingRfq);
     setSelectedQuote(quote);
+    setQuoteBack(screen === "Quotes" ? "Quotes" : "RFQ detail");
     setScreen("Quote detail");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1780,7 +1816,10 @@ function App({ testEmailsIntro } = {}) {
     window.setTimeout(() => setToast(""), 2400);
   };
   const navigate = (label) => { setScreen(label); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const active = screen === "Review" ? reviewBack : ["RFQ detail", "Quote detail"].includes(screen) ? (rfqBack === "Overview" ? "Overview" : "RFQs") : screen;
+  const active = screen === "Review" ? reviewBack
+    : screen === "Quote detail" && quoteBack === "Quotes" ? "Quotes"
+    : ["RFQ detail", "Quote detail"].includes(screen) ? (rfqBack === "Overview" ? "Overview" : "RFQs")
+    : screen;
 
   return (
     <div className={collapsed ? "app-shell nav-collapsed admin-app" : "app-shell admin-app"}>
@@ -1804,8 +1843,8 @@ function App({ testEmailsIntro } = {}) {
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} />}
-      {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} />}
-      {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate("RFQ detail")} />}
+      {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}
+      {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate(quoteBack)} detail={shownDetail} backLabel={quoteBack} />}
       {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} />}
             </>}
       {toast && <div className="app-toast admin-toast" role="status">{toast}</div>}

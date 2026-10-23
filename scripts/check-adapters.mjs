@@ -39,6 +39,9 @@ const ALLOWED_ABSENT = {
   "admin:reviewAssistInput:mock": "live only; only called from the AI panel, which needs reviewAssist",
   // Clearing test data deletes real rows; the prototype has none to clear.
   "admin:testData:mock": "live test builds only; Settings draws no test-data card without it",
+  // The request and quote pages keep the design's constants with no detail;
+  // live reads the records, so it never borrows them.
+  "admin:rfqDetail:mock": "the mock's request and quote pages read the design's constants",
 };
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");

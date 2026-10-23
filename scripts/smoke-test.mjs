@@ -1940,6 +1940,27 @@ console.log("\nphase 6 — admin operations");
       ? ok("and the company is told what is missing")
       : fail("the company was not notified of what to send");
 
+    // The finish card the company waits on reads this. Without it the
+    // company saw "awaiting verification" and nothing it could act on.
+    const { data: ownReview, error: ownReviewError } = await brand.client
+      .rpc("my_review_status", { target_org: selfOrg });
+    const own = (ownReview ?? [])[0];
+    ownReviewError
+      ? fail("the company can read its own review", ownReviewError)
+      : own?.state === "needs_information" && own?.message === "Please upload your business registration."
+        ? ok("the company reads the request it was sent, on its own screen")
+        : fail(`the company read ${JSON.stringify(own)}`);
+
+    const { error: strangerReview } = await factory.client.rpc("my_review_status", { target_org: selfOrg });
+    strangerReview ? ok("another company CANNOT read that review")
+                   : fail("LEAK: another company read a review that is not its own");
+
+    const { data: resent, error: resentError } = await brand.client
+      .rpc("resubmit_for_review", { target_org: selfOrg });
+    resentError ? fail("the company sends its profile back", resentError)
+      : resent === "ready_for_review" ? ok("and sends its profile back to the top of staff's queue")
+      : fail(`resubmit_for_review returned ${resent}`);
+
     const approved = await staff.client.rpc("admin_review_decision", {
       target_org: selfOrg, decision: "approved", note: "Registration checked.", risk: "low",
     });
@@ -1973,6 +1994,48 @@ console.log("\nphase 6 — admin operations");
     priced && Number.isFinite(Number(priced.total_cents))
       ? ok("and the total is a number, summed in SQL rather than in JavaScript")
       : fail("no quote in the queue carries a usable total");
+  }
+
+  // The request page staff open from that table. It read the prototype's
+  // constants, so a request with quotes said "0 vendor quotes" and an empty
+  // brief. It now reads the records with the brand screens' own select
+  // strings (src/lib/domain/rfq.js, quote.js, admin.js rfqDetail), which only
+  // works because the read policies end in `or is_platform_admin()`.
+  const quoted = (rfqRows ?? []).find((row) => row.quote_count >= 2);
+  if (!quoted) fail("no request in the queue has two quotes after a full run");
+  else {
+    const { data: staffRfq, error: staffRfqError } = await staff.client
+      .from("rfqs")
+      .select("id, title, brief, quantity_total, material_notes, target_delivery_month, requires_sample, sample_notes, target_unit_price_min_cents, target_unit_price_max_cents, currency, additional_details, orgs!rfqs_brand_org_id_fkey (id, name)")
+      .eq("id", quoted.rfq_id)
+      .maybeSingle();
+    staffRfqError || !staffRfq
+      ? fail("staff can read a request's brief", staffRfqError)
+      : ok("staff read the request's brief through the brand's own select");
+
+    const { data: staffQuotes, error: staffQuotesError } = await staff.client
+      .from("quotes")
+      .select("id, status, unit_price_cents, production_quantity, bulk_lead_time_days, deposit_pct, factory_notes, orgs!quotes_factory_org_id_fkey (id, name, slug, factory_profiles (verification_status, trust_tier, location))")
+      .eq("rfq_id", quoted.rfq_id)
+      .in("status", ["submitted", "accepted", "declined", "superseded", "withdrawn"]);
+    staffQuotesError
+      ? fail("staff can read a request's quotes", staffQuotesError)
+      : (staffQuotes ?? []).length === quoted.quote_count
+        ? ok(`and every quote the list counts (${quoted.quote_count}), revisions included`)
+        : fail(`the list counts ${quoted.quote_count} quotes, staff read ${(staffQuotes ?? []).length}`);
+
+    const ids = (staffQuotes ?? []).map((row) => row.id);
+    const [lines, links, splits] = await Promise.all([
+      staff.client.from("quote_sample_lines").select("quote_id, stage, cost_cents, timing_days").in("quote_id", ids),
+      staff.client.from("taxonomy_links").select("term_id").eq("subject_type", "rfq").eq("subject_id", quoted.rfq_id),
+      staff.client.from("rfq_colour_splits").select("id, colour, quantity, sort").eq("rfq_id", quoted.rfq_id),
+    ]);
+    [lines, links, splits].every((result) => !result.error)
+      ? ok("with their sample plans, the request's categories and its colour split")
+      : fail("staff cannot read part of a request's detail", lines.error ?? links.error ?? splits.error);
+    (lines.data ?? []).length > 0
+      ? ok("and the sample plan lines are really there, not just permitted")
+      : fail("staff read no sample lines for a request whose quotes have them");
   }
 
   const { data: metrics } = await staff.client.rpc("admin_overview_metrics");

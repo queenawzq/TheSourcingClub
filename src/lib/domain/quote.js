@@ -217,20 +217,21 @@ export async function setAnswers(quoteId, answers) {
 // ---- Comparison -----------------------------------------------------------
 
 /**
- * Every live quote on a request, for the brand's comparison table.
+ * Every live quote on a request, for the brand's comparison table. Staff
+ * pass `statuses` to read the revised and withdrawn ones their list shows too.
  *
  * The partial unique indexes guarantee at most one submitted quote per factory
  * per request, so filtering on status IS "the latest per factory" — there is
  * no is_latest flag to drift, and no need to fetch every version and filter in
  * JavaScript.
  */
-export async function listQuotesForRfq(rfqId) {
+export async function listQuotesForRfq(rfqId, { statuses = ["submitted", "accepted", "declined"] } = {}) {
   const quotes = unwrap(
     await supabase
       .from("quotes")
       .select(`${QUOTE_COLUMNS}, orgs!quotes_factory_org_id_fkey (id, name, slug, factory_profiles (verification_status, trust_tier, location))`)
       .eq("rfq_id", rfqId)
-      .in("status", ["submitted", "accepted", "declined"])
+      .in("status", statuses)
       .order("unit_price_cents", { ascending: true }),
     "load the quotes",
   );

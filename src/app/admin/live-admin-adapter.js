@@ -16,6 +16,11 @@
  * DataTable, RfqActivityCards and every filter predicate in QueuePage — a
  * large diff through Queena's file for no gain, and the next merge would pay
  * for it.
+ *
+ * Each tuple also carries the record's full id as a named property
+ * (`row.id`). The design slices the tuple by position, so a named property is
+ * invisible to it, and the detail screens need the id to read the request:
+ * the shortened ref on screen is not unique enough to look anything up by.
  */
 import {
   claimReview,
@@ -28,6 +33,7 @@ import {
   quoteQueue,
   reviewAssist,
   reviewAssistInput,
+  rfqDetail,
   rfqQueue,
   runDailyJobs,
   sendTestEmail,
@@ -39,7 +45,10 @@ import {
 } from "../../lib/domain/admin.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import { heldMessageQueue } from "../../lib/domain/message.js";
-import { formatMoney } from "../../lib/money.js";
+import { formatMoney, formatRange } from "../../lib/money.js";
+import { termLabel } from "../../lib/domain/taxonomy.js";
+import { describeQuote } from "../quote/quote-view.js";
+import { monthLine, quantityLine } from "../rfq/resume-fields.js";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -165,7 +174,7 @@ export function toRfqRow(rfq) {
   // "Quotes received" is a real distinction the design's tabs filter on, and
   // it is the count that decides it, not a separate status column.
   const status = rfq.status === "open" && rfq.quoteCount > 0 ? "Quotes received" : label;
-  return [
+  return Object.assign([
     ref("RFQ", rfq.id),
     rfq.title || "Untitled request",
     rfq.brandName,
@@ -173,12 +182,12 @@ export function toRfqRow(rfq) {
     `${rfq.invitedCount} vendors`,
     status,
     status === "Quotes received" ? "success" : tone,
-  ];
+  ], { id: rfq.id });
 }
 
 export function toQuoteRow(quote) {
   const [status, tone] = QUOTE_LABEL[quote.status] ?? ["Submitted", "info"];
-  return [
+  return Object.assign([
     ref("Q", quote.id),
     quote.factoryName,
     quote.brandName,
@@ -187,7 +196,57 @@ export function toQuoteRow(quote) {
     shortDate(quote.submittedAt),
     status,
     tone,
-  ];
+  ], { id: quote.id, rfqId: quote.rfqId });
+}
+
+/** What the detail screens print for a field with nothing behind it. */
+const NOT_GIVEN = "Not given";
+const given = (value) => (value == null || value === "" ? NOT_GIVEN : value);
+
+/**
+ * One request and its quotes, in the design's `rfqDetails` shape, plus one
+ * entry per quote keyed by the quote's on-screen ref. Every figure is read
+ * from the records through the brand screens' own mappers (describeQuote);
+ * the design's per-vendor constants (28/31/26 days, $260 samples, "30%
+ * deposit") have nothing behind them live, so a field with no record says
+ * "Not given" rather than borrowing one.
+ */
+export function toRfqDetail({ rfq, categories, incoterms, colourSplits, quotes }) {
+  const sampleNotes = rfq?.sample_notes?.trim();
+  const brief = {
+    category: given(categories.map((term) => termLabel(term)).join(", ")),
+    quantity: given(quantityLine(rfq?.quantity_total, colourSplits)),
+    targetPrice: given(
+      rfq?.target_unit_price_min_cents == null && rfq?.target_unit_price_max_cents == null
+        ? ""
+        : `${formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents, rfq.currency)} / unit`,
+    ),
+    delivery: given(monthLine(rfq?.target_delivery_month)),
+    materials: given(rfq?.material_notes?.trim()),
+    samples: given(
+      rfq?.requires_sample
+        ? sampleNotes ? `Sample required · ${sampleNotes}` : "Sample required"
+        : sampleNotes || (rfq ? "No sample" : ""),
+    ),
+    requirements: given([rfq?.brief?.trim(), rfq?.additional_details?.trim()].filter(Boolean).join("\n\n")),
+  };
+
+  const byRef = {};
+  for (const quote of quotes) {
+    const shown = describeQuote(quote, { incoterms });
+    byRef[ref("Q", quote.id)] = {
+      quantity: given(shown.quantity),
+      unitPrice: given(shown.price),
+      lead: given(shown.lead),
+      samples: given(shown.samplePlan),
+      sampleCost: given(shown.sampleSubtotal),
+      paymentTerms: given(shown.paymentTerms),
+      shipping: given(shown.shipping),
+      materials: given(shown.materialCosts.map((line) => `${line.material}${line.included ? "" : " (not included)"}`).filter(Boolean).join(", ")),
+      note: given(shown.notes?.trim()),
+    };
+  }
+  return { brief, quotes: byRef };
 }
 
 export function toAdminUser(user) {
@@ -240,6 +299,9 @@ export function createAdminAdapter({ user, signOut }) {
         return decideReview(orgId, decision, note ?? null, null, tier ?? null);
       },
       suggestReviewRequest,
+      // The detail screens' data, read when one opens. The row is a queue
+      // tuple; its named `rfqId` (a quote) or `id` (a request) says which.
+      rfqDetail: (row) => rfqDetail(row.rfqId ?? row.id).then(toRfqDetail),
       toggleUserAccess: (userId, disabled) => setUserDisabled(userId, disabled),
 
       /**
