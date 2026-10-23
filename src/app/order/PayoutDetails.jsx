@@ -23,7 +23,7 @@ import {
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
-import { creditHistory, sendInvite } from "../../lib/domain/credits.js";
+import { FACTORY_INVITE_INTRO, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
@@ -99,7 +99,12 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     return ["billing", "credits"].includes(asked) ? asked : "earnings";
   });
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [invited, setInvited] = useState(null);
+  // What just happened on the Credits tab: an invite sent (here, or from the
+  // dashboard, which links here with ?invite=sent|saved) or credits bought.
+  const [notice, setNotice] = useState(() => {
+    const invite = new URLSearchParams(window.location.search).get("invite");
+    return ["sent", "saved"].includes(invite) ? inviteNotice({ emailed: invite === "sent" }) : null;
+  });
   const [client, setClient] = useState("All clients");
   const [transactionType, setTransactionType] = useState("all");
   const [account, setAccount] = useState(null);
@@ -462,11 +467,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
               <p>500 credits = $50 value. Credits are used when a quote is sent.</p>
             </div>
             <div className="factory-credit-billing-action">
-              <button className="secondary-btn compact-btn" type="button" onClick={() => { setInvited(null); setInviteOpen(true); }}>Invite a factory</button>
-              <CreditPurchaseButton orgId={org.id} orgName={org.name} isOwner={isOwner} onPurchased={reloadCredits} />
+              <button className="secondary-btn compact-btn" type="button" onClick={() => { setNotice(null); setInviteOpen(true); }}>Invite a factory</button>
+              <CreditPurchaseButton orgId={org.id} orgName={org.name} isOwner={isOwner} onPurchased={reloadCredits} onNotice={setNotice} />
             </div>
           </section>
-          {invited ? <p className="live-payment-notice" role="status">{invited}</p> : null}
+          {notice ? <p className="live-payment-notice" role="status">{notice}</p> : null}
           {credits.rows.length ? (
             <div className="billing-history-list">
               {credits.rows.map((row) => (
@@ -485,11 +490,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
 
       {inviteOpen ? (
         <InviteFactoryModal
+          intro={FACTORY_INVITE_INTRO}
           onInvite={async (email, message) => {
             const result = await sendInvite(org.id, email, message);
-            setInvited(result.emailed
-              ? `Invite sent to ${email}. You earn 500 credits when TSC verifies them.`
-              : `Invite saved for ${email}, but the email could not be sent here. If they sign up with that address, it still counts.`);
+            setNotice(inviteNotice(result, { email }));
             await load();
           }}
           onClose={() => setInviteOpen(false)}

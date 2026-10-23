@@ -2435,6 +2435,9 @@ export function FactoryDashboardPage({
   // Live: the company's upcoming calls. The design draws its card only on
   // the example dashboard; live draws it whenever there is a call.
   calls,
+  // Live: the credits card's line and the invite dialog's, in words the
+  // product keeps. The prototype passes neither and keeps the design's copy.
+  creditNote, inviteIntro,
 }) {
   const capacityUnits = capacity?.units ?? getCapacityUnitRange(capacityValue);
   const [inviteFactoryOpen, setInviteFactoryOpen] = useState(false);
@@ -2521,7 +2524,7 @@ export function FactoryDashboardPage({
               <div>
                 <span>{creditCardCopy.label}</span>
                 <strong>{creditCardCopy.value}</strong>
-                <p>{creditCardCopy.description}</p>
+                <p>{creditNote ?? creditCardCopy.description}</p>
               </div>
               <div className="factory-dashboard-credit-actions">
                 <button className="primary-btn compact-btn" type="button" onClick={onPurchaseCredits}>{creditCardCopy.purchase}</button>
@@ -2619,7 +2622,7 @@ export function FactoryDashboardPage({
         </section>
       </div>
       {inviteFactoryOpen && (
-        <InviteFactoryModal language={language} onInvite={onInviteFactory} onClose={() => setInviteFactoryOpen(false)} />
+        <InviteFactoryModal language={language} intro={inviteIntro} onInvite={onInviteFactory} onClose={() => setInviteFactoryOpen(false)} />
       )}
     </main>
   );
@@ -2678,7 +2681,7 @@ function getFactoryActivityCopy(value) {
   return copy[value] || getTranslatedProjectTitle(value);
 }
 
-export function InviteFactoryModal({ language = "en", onInvite, onClose }) {
+export function InviteFactoryModal({ language = "en", intro, onInvite, onClose }) {
   // The prototype's modal closes and nothing happens. A live mount passes
   // onInvite(email, message), and then the invite is real.
   const [email, setEmail] = useState("");
@@ -2724,7 +2727,7 @@ export function InviteFactoryModal({ language = "en", onInvite, onClose }) {
         <CloseIconButton className="factory-update-close" label={copy.close} onClick={onClose} />
         <header>
           <h2 id="factory-invite-title">{copy.title}</h2>
-          <p>{copy.intro}</p>
+          <p>{intro ?? copy.intro}</p>
         </header>
 
         <label className="factory-invite-field">

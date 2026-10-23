@@ -28,7 +28,7 @@ import {
 } from "@stripe/react-stripe-js";
 import { CreditPurchaseModal } from "../../factory-prototype/main.jsx";
 import { buyCredits, creditPacks, syncCreditPurchase } from "../../lib/domain/credits.js";
-import { STRIPE_PUBLISHABLE_KEY } from "../../lib/domain/stripe.js";
+import { STRIPE_PUBLISHABLE_KEY, withCardAdvice } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
 import "./fund.css";
 import "./credit-purchase.css";
@@ -59,10 +59,14 @@ const creditsLabel = (credits) => `${Number(credits).toLocaleString("en-US")} cr
  * The Credits tab's action. `onPurchased({ credits, state, purchase })` is
  * called once Stripe has charged the card; `state` is "succeeded" when the
  * credits are already on the ledger, "pending" while the record catches up.
+ * With `onNotice`, the page shows what happened on a line of its own;
+ * without it, the note sits beside the button.
  */
-export function CreditPurchaseButton({ orgId, orgName, isOwner = false, onPurchased }) {
+export function CreditPurchaseButton({ orgId, orgName, isOwner = false, onPurchased, onNotice }) {
   const [open, setOpen] = useState(false);
-  const [notice, setNotice] = useState(null);
+  const [ownNotice, setOwnNotice] = useState(null);
+  const notice = onNotice ? null : ownNotice;
+  const setNotice = onNotice ?? setOwnNotice;
 
   if (!isOwner) {
     return (
@@ -194,13 +198,13 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
         const reason = result.error.code === "payment_intent_authentication_failure"
           ? "Your bank did not confirm this payment, so nothing was charged."
           : result.error.message || "The payment did not go through.";
-        setProblem(`${reason} Try again, or use another card.`);
+        setProblem(withCardAdvice(reason));
         return;
       }
       // A failed 3-D Secure check comes back as an intent, not an error.
       const intent = result.paymentIntent;
       if (synced?.state === "failed" || intent?.status === "requires_payment_method" || intent?.status === "canceled") {
-        setProblem(`${synced?.failure_reason || intent?.last_payment_error?.message || "The payment did not go through."} Try again, or use another card.`);
+        setProblem(withCardAdvice(synced?.failure_reason || intent?.last_payment_error?.message));
         return;
       }
       onDone({ credits: checkout.credits, state: synced?.state ?? "pending", purchase: synced });

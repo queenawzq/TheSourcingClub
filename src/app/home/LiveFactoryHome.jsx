@@ -18,7 +18,7 @@ import { dashboardSnapshot } from "../../lib/domain/dashboard.js";
 import { listOpenRfqs } from "../../lib/domain/rfq.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { getCapacity, saveCapacity } from "../../lib/domain/capacity-store.js";
-import { creditBalance, sendInvite } from "../../lib/domain/credits.js";
+import { FACTORY_CREDIT_NOTE, FACTORY_INVITE_INTRO, creditBalance, sendInvite } from "../../lib/domain/credits.js";
 import { listTermsByKind } from "../../lib/domain/taxonomy.js";
 import {
   activityType, countUnreadNotifications, listNotifications, markRead, notificationLink, timeAgo,
@@ -330,9 +330,12 @@ export default function LiveFactoryHome({ org, profile }) {
       calls={dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall })}
       onUpdateCapacity={onUpdateCapacity}
       onPurchaseCredits={() => navigate("/payout?tab=credits")}
+      creditNote={FACTORY_CREDIT_NOTE}
+      inviteIntro={FACTORY_INVITE_INTRO}
+      // The Credits tab says what became of it, under the invite's own row.
       onInviteFactory={async (email, message) => {
-        await sendInvite(org.id, email, message);
-        navigate("/payout?tab=credits");
+        const result = await sendInvite(org.id, email, message);
+        navigate(`/payout?tab=credits&invite=${result.emailed ? "sent" : "saved"}`);
       }}
       onViewRfqs={() => navigate("/browse")}
       onBrowseRfqs={() => navigate("/browse")}

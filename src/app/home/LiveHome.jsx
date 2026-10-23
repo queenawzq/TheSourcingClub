@@ -27,7 +27,7 @@ import { listThreads } from "../../lib/domain/message.js";
 import {
   activityType, countUnreadNotifications, listNotifications, markAllRead, markRead, notificationBody, notificationLink, timeAgo,
 } from "../../lib/domain/notifications.js";
-import { inviteBrand, savingsFor } from "../../lib/domain/credits.js";
+import { BRAND_INVITE_INTRO, BRAND_INVITE_MESSAGE, inviteBrand, inviteNotice, savingsFor } from "../../lib/domain/credits.js";
 import { toProjectCard, toRfqCard } from "../live-adapter.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -166,6 +166,8 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
   const [activity, setActivity] = useState(null);
   const [error, setError] = useState(null);
   const [recommended, setRecommended] = useState([]);
+  // What became of the invite just sent, on the Savings card it came from.
+  const [inviteSent, setInviteSent] = useState(null);
   const { calls, zones } = useDashboardCalls(org.id);
 
   useEffect(() => {
@@ -296,7 +298,19 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         attention={attention}
         rfqs={rfqs}
         projects={projects}
-        savings={savings ? { ...savings, onInvite: (email, message) => inviteBrand(org.id, email, message) } : null}
+        // A brand invite earns nothing yet, so the modal and its message
+        // promise no discount.
+        savings={savings ? {
+          ...savings,
+          inviteIntro: BRAND_INVITE_INTRO,
+          inviteMessage: BRAND_INVITE_MESSAGE,
+          notice: inviteSent,
+          onInvite: async (email, message) => {
+            setInviteSent(null);
+            const result = await inviteBrand(org.id, email, message);
+            setInviteSent(inviteNotice(result, { email, kind: "brand" }));
+          },
+        } : null}
         // No credit and no codes means no Savings panel, rather than the
         // design's $50 shown to a brand that has none.
         showSavings={Boolean(savings)}
