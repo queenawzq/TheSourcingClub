@@ -19,7 +19,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(60);
+select plan(66);
 
 insert into auth.users (id, email) values
   ('b1000000-0000-0000-0000-000000000001', 'p15-brand@example.com'),
@@ -143,8 +143,12 @@ update public.messages set created_at = now() - interval '1 hour'
 update public.messages set created_at = now() - interval '45 minutes',
                            delivered_at = now() - interval '45 minutes'
  where id = 'b5000000-0000-0000-0000-000000000002';
+-- Eleven and ten minutes, not both ten: the queue is read oldest first, and
+-- a tie came back in either order.
+update public.messages set created_at = now() - interval '11 minutes'
+ where id = 'b5000000-0000-0000-0000-000000000003';
 update public.messages set created_at = now() - interval '10 minutes'
- where id in ('b5000000-0000-0000-0000-000000000003', 'b5000000-0000-0000-0000-000000000004');
+ where id = 'b5000000-0000-0000-0000-000000000004';
 
 insert into public.message_reads (thread_id, user_id, last_read_at) values
   ('b4000000-0000-0000-0000-000000000001', 'b1000000-0000-0000-0000-000000000003', now() - interval '50 minutes'),
@@ -190,14 +194,22 @@ set local role service_role;
 
 select lives_ok(
   $$select public.record_message_screening('b5000000-0000-0000-0000-000000000001', 'held',
-                                           'pattern', 'email address', null)$$,
+                                           'pattern', 'email address', null, 'contact_details')$$,
   'the server records the verdict'
 );
 
 select lives_ok(
   $$select public.record_message_screening('b5000000-0000-0000-0000-000000000003', 'held',
-                                           'ai', 'asks to move to WeChat', 'test-model')$$,
+                                           'ai', 'asks to move to WeChat', 'test-model', 'outside_platform')$$,
   'for each message it checks'
+);
+
+select throws_ok(
+  $$select public.record_message_screening('b5000000-0000-0000-0000-000000000004', 'held',
+                                           'ai', 'x', null, 'looks odd')$$,
+  '22023',
+  null,
+  'a hold names one of the two kinds a sender can be told, or none'
 );
 
 reset role;
@@ -206,6 +218,28 @@ select is(
   (select delivery from public.messages where id = 'b5000000-0000-0000-0000-000000000001'),
   'held',
   'and the message is held'
+);
+
+-- Why, for the sender: the kind the screen found, so a message held for
+-- proposing to go elsewhere is not told it "shares contact details".
+set local request.jwt.claims = '{"sub":"b1000000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+select is(
+  (select string_agg(held_for, ',' order by id) from public.messages
+    where id in ('b5000000-0000-0000-0000-000000000001', 'b5000000-0000-0000-0000-000000000003')),
+  'contact_details,outside_platform',
+  'the sender reads what each held message was held for'
+);
+
+reset role;
+
+update public.messages set held_for = 'contact_details' where id = 'b5000000-0000-0000-0000-000000000002';
+
+select is(
+  (select held_for from public.messages where id = 'b5000000-0000-0000-0000-000000000002'),
+  null,
+  'a message that is not held has no reason to be held, whoever writes one'
 );
 
 -- ---------------------------------------------------------------------------
@@ -495,6 +529,12 @@ select is(
 );
 
 select is(
+  (select held_for from public.messages where id = 'b5000000-0000-0000-0000-000000000001'),
+  null,
+  'and NOT why it was held: the reason goes with the hold'
+);
+
+select is(
   (select unread_count from public.message_thread_summary where id = 'b4000000-0000-0000-0000-000000000002'),
   1,
   'as unread, although it was written before the recipient last opened the thread'
@@ -547,6 +587,23 @@ select is(
   (select delivery || '|' || review_note from public.messages where id = 'b5000000-0000-0000-0000-000000000003'),
   'rejected|Please keep contact details on the platform.',
   'the sender sees its rejected message with the reason'
+);
+
+select is(
+  (select held_for from public.messages where id = 'b5000000-0000-0000-0000-000000000003'),
+  null,
+  'a rejected message keeps only the staff reason, not the screen kind'
+);
+
+insert into public.messages (id, thread_id, sender_org_id, sender_user_id, body, held_for) values
+  ('b5000000-0000-0000-0000-00000000000a', 'b4000000-0000-0000-0000-000000000003',
+   'b2000000-0000-0000-0000-00000000000b', 'b1000000-0000-0000-0000-000000000001',
+   'Sizes confirmed', 'outside_platform');
+
+select is(
+  (select coalesce(held_for, 'none') from public.messages where id = 'b5000000-0000-0000-0000-00000000000a'),
+  'none',
+  'a sender CANNOT write a hold reason on its own message'
 );
 
 select is(
