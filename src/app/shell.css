@@ -617,8 +617,18 @@ body {
 }
 
 /* The finish card of onboarding can carry staff's message to the company,
-   written with line breaks (src/app/onboarding/review-completion.js). */
-.factory-onboarding-complete > p,
-.brand-onboarding-complete > p {
+   written with line breaks (src/app/onboarding/review-completion.js). The
+   designed card is a fixed 560px for its one-line intro; it keeps that as a
+   minimum and grows for a longer message, which reads left-aligned as the
+   list it usually is. The warning icon is only ever drawn for that message. */
+.factory-onboarding-card.step-11,
+.brand-onboarding-card.complete {
+  height: auto;
+}
+
+.factory-onboarding-complete:has(> img[src$="circle-warning.svg"]) > p,
+.brand-onboarding-complete:has(> img[src$="circle-warning.svg"]) > p {
+  max-width: 460px;
   white-space: pre-line;
+  text-align: left;
 }

@@ -744,12 +744,11 @@ function Shell() {
       .catch(setProfileError);
   }, [activeOrg.id, isFactory]);
 
-  // While the company waits, staff's decision arrives as a notification. Re-read
-  // on each one, so the request, the decline or the dashboard appears without
-  // a reload.
-  const waitingOnReview = Boolean(profile?.onboarding_completed_at) && profile?.verification_status !== "verified";
+  // Staff's decisions arrive as notifications. Re-read on each one, so the
+  // request, the decline or the dashboard appears without a reload — also for
+  // a verified company, which a request for more information returns to
+  // pending.
   useEffect(() => {
-    if (!waitingOnReview) return undefined;
     const channel = supabase
       .channel(`review:${activeOrg.id}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `org_id=eq.${activeOrg.id}` }, (change) => {
@@ -757,7 +756,7 @@ function Shell() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [waitingOnReview, activeOrg.id, loadProfile]);
+  }, [activeOrg.id, loadProfile]);
 
   useEffect(() => {
     setProfile(undefined);
