@@ -1447,6 +1447,20 @@ console.log("\nphase 3 — the order runs");
       });
       stillRefused ? ok("and a refused description is still refused by the database")
                    : fail("LEAK: a description the check refused went out");
+      // A title reaches the other side on its own (the card, the
+      // notification's title), so contact details in the title alone are
+      // refused like a description's.
+      const sneakyTitle = "Samples: text +44 7700 900123";
+      const titleRefused = await checkCallTextAs(brand.client, [sneakyTitle]);
+      titleRefused.status === 422 && /phone number/.test(titleRefused.error ?? "")
+        ? ok("the check refuses a phone number in a call's title alone")
+        : fail(`a title with a phone number answered ${titleRefused.status} ${titleRefused.error ?? ""}`);
+      const { error: titleStillRefused } = await brand.client.rpc("propose_call", {
+        target_thread: threadId, starts_at: startsAt, duration_minutes: 30,
+        title: sneakyTitle, agenda: null, time_zone: "America/New_York",
+      });
+      titleStillRefused ? ok("and the database refuses that title with no description")
+                        : fail("LEAK: a call title with a phone number went out");
       const { error: selfCheck } = await brand.client.rpc("record_call_text_check", {
         target_user: brand.id, texts: [sneaky],
       });
