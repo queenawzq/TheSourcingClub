@@ -1809,6 +1809,19 @@ export function MessagesScreen({
     }
     shown.current = { threadId: activeThread.id, count };
   }, [activeThread?.id, activeThread?.messages.length]);
+  // A message can grow after it is drawn (its translation, a file, whether
+  // it was held), and the panel shrinks when files are picked: a reader at
+  // the end stays there, or the newest lines slip out of view.
+  useEffect(() => {
+    const box = timeline.current;
+    if (!box || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => {
+      if (atEnd.current) box.scrollTop = box.scrollHeight;
+    });
+    observer.observe(box);
+    for (const bubble of box.children) observer.observe(bubble);
+    return () => observer.disconnect();
+  });
 
   const send = () => {
     const text = composer.trim();
