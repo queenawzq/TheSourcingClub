@@ -7,8 +7,8 @@
  *     a verdict, never "approve" or "decline" (CLAUDE.md, Admin operations: a
  *     number on a reviewer's screen gets trusted, and the model has nothing
  *     behind one). No key, a failure or a timeout answers
- *     `{ available: false }`: there is no stand-in, because a made-up list
- *     would be worse than none.
+ *     `{ available: false, reason }`, the reason in plain words: there is no
+ *     stand-in, because a made-up list would be worse than none.
  *
  *   POST { action: "draft", orgId, topics: [...], hint }
  *     The "needs more information" note, for staff to edit before they send
@@ -165,10 +165,30 @@ export function templateDraft(input, topics = []) {
   return `Thank you for applying to The Sourcing Club. Before we can finish reviewing your profile, we need the following:\n\n${lines.join("\n")}\n\nYou can add these from your profile. Reply to this email if anything is unclear.`;
 }
 
-/** The model's tool-call arguments, or null. Never throws. */
+export const NOT_SET_UP = "AI suggestions are not set up on this site.";
+
+/**
+ * What went wrong with the model, in words staff can act on. A refused key
+ * and an empty account are not "try again": someone has to fix the site.
+ */
+export function modelFailure(status) {
+  if (status === 401 || status === 403) return "The AI service refused this site's key. Whoever runs the site needs to check OPENROUTER_API_KEY.";
+  if (status === 402) return "The AI service account is out of credits. Whoever runs the site needs to top it up.";
+  if (status === 429) return "The AI service is busy right now. Try again in a minute.";
+  if (status === 404 || status === 502 || status === 503) return "The AI model is not available right now. Try again later.";
+  if (status === "timeout") return "The AI did not answer in time. Try again.";
+  if (status === "unreadable") return "The AI's answer could not be read. Try again.";
+  if (status === "unreachable") return "The AI service could not be reached. Try again.";
+  return `The AI service could not answer (error ${status}). Try again later.`;
+}
+
+/**
+ * `{ fields, model }` from the model's tool call, or `{ failure }` saying
+ * why there is none. Never throws.
+ */
 async function askModel(instructions, schema, toolName, payload, maxTokens) {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) return null;
+  if (!apiKey) return { failure: NOT_SET_UP };
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), MODEL_TIMEOUT_MS);
@@ -196,15 +216,20 @@ async function askModel(instructions, schema, toolName, payload, maxTokens) {
     });
     if (!upstream.ok) {
       console.error("admin-review-assist upstream", upstream.status, (await upstream.text()).slice(0, 300));
-      return null;
+      return { failure: modelFailure(upstream.status) };
     }
-    const answer = await upstream.json();
+    const answer = await upstream.json().catch(() => null);
     const raw = answer?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-    if (!raw) return null;
-    return { fields: typeof raw === "string" ? JSON.parse(raw) : raw, model: answer.model ?? MODEL };
+    if (!raw) return { failure: modelFailure("unreadable") };
+    try {
+      return { fields: typeof raw === "string" ? JSON.parse(raw) : raw, model: answer.model ?? MODEL };
+    } catch {
+      console.error("admin-review-assist answer", answer?.choices?.[0]?.finish_reason, JSON.stringify(answer?.usage ?? {}));
+      return { failure: modelFailure("unreadable") };
+    }
   } catch (error) {
     console.error("admin-review-assist model", error.name === "AbortError" ? "the model took too long" : error.message);
-    return null;
+    return { failure: modelFailure(error.name === "AbortError" ? "timeout" : "unreachable") };
   } finally {
     clearTimeout(timeout);
   }
@@ -249,12 +274,7 @@ export default async function handler(request, response) {
 
   if (action === "check") {
     const ai = await askModel(CHECK_INSTRUCTIONS, CHECK_SCHEMA, "submit_review_notes", input, 2000);
-    if (!ai) {
-      return json(response, 200, {
-        available: false,
-        reason: process.env.OPENROUTER_API_KEY ? "The AI did not answer in time. Try again." : "AI suggestions are not set up on this site.",
-      });
-    }
+    if (!ai.fields) return json(response, 200, { available: false, reason: ai.failure });
     const { findings, dropped } = keepGroundedFindings(ai.fields?.findings, input);
     const checked = (Array.isArray(ai.fields?.checked) ? ai.fields.checked : []).map((item) => String(item).slice(0, 80)).slice(0, 12);
     const output = { checked, findings, dropped };
@@ -272,5 +292,5 @@ export default async function handler(request, response) {
   const message = drafted ? ai.fields.message.trim().slice(0, 2000) : templateDraft(input, ticked);
   const source = drafted ? "ai" : "template";
   await save("draft", drafted ? ai.model : null, { message, source, topics: ticked });
-  return json(response, 200, { message, source, model: drafted ? ai.model : null });
+  return json(response, 200, { message, source, model: drafted ? ai.model : null, reason: drafted ? null : ai.failure ?? null });
 }

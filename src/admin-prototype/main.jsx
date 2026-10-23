@@ -217,7 +217,7 @@ function VerificationRow({ profile, onReview }) {
         </div>
       </div>
       {profile.confidence != null
-        ? <div className="admin-row-stat"><span>Confidence</span><strong>{profile.confidence}%</strong></div>
+        ? <div className="admin-row-stat"><span>{profile.confidenceLabel ?? "Confidence"}</span><strong>{profile.confidence}%</strong></div>
         : <div className="admin-row-stat"><span>Assigned</span><strong>{profile.owner || "Unassigned"}</strong></div>}
       <div className="admin-row-stat"><span>Evidence</span><strong>{profile.evidence}</strong></div>
       <StatusPill tone={profile.tone}>{profile.status}</StatusPill>
@@ -1011,6 +1011,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const [requestNote, setRequestNote] = useState("");
   const [requestSuggestionLoading, setRequestSuggestionLoading] = useState(false);
   const [requestSuggestionError, setRequestSuggestionError] = useState("");
+  // Live only: why the note came from the checks rather than the model.
+  const [requestSuggestionNotice, setRequestSuggestionNotice] = useState("");
   const [declineNote, setDeclineNote] = useState("");
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState(null);
@@ -1034,14 +1036,17 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const suggestRequest = async () => {
     setRequestSuggestionLoading(true);
     setRequestSuggestionError("");
+    setRequestSuggestionNotice("");
     try {
       const result = await onSuggestRequest?.({
         companyName: profile.name,
         entityType: profile.entityType,
         gaps: requestGaps,
       });
-      if (result?.message) setRequestNote(result.message);
-      else setRequestSuggestionError(result?.error || "The suggestion could not be generated. You can still write the message manually.");
+      if (result?.message) {
+        setRequestNote(result.message);
+        setRequestSuggestionNotice(result.notice || "");
+      } else setRequestSuggestionError(result?.error || "The suggestion could not be generated. You can still write the message manually.");
     } catch (error) {
       setRequestSuggestionError(error.message || "The suggestion could not be generated. You can still write the message manually.");
     } finally {
@@ -1179,6 +1184,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             </div>
             <label className="factory-onboarding-field admin-request-message"><span className="sr-only">Message to applicant</span><textarea value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Explain which document or information is missing and what the applicant should upload..." /></label>
             {requestSuggestionError && <p className="admin-request-ai-error" role="alert">{requestSuggestionError}</p>}
+            {requestSuggestionNotice && <p className="admin-assist-meta" role="status">{requestSuggestionNotice}</p>}
             <footer><button className="secondary-btn" type="button" onClick={() => setRequestOpen(false)}>Cancel</button><button className="primary-btn" type="button" disabled={!requestNote.trim()} onClick={() => { setRequestOpen(false); onDecision(profile.id, "Needs information", requestNote.trim()); setRequestNote(""); }}>Send request</button></footer>
           </section>
         </div>
@@ -1426,7 +1432,7 @@ const TEST_EMAILS = [
   { key: "notification", label: "Notification · New quote", localized: true },
 ];
 
-function TestEmailPanel({ email }) {
+function TestEmailPanel({ email, intro }) {
   const actions = useActions();
   const [template, setTemplate] = useState(TEST_EMAILS[0].key);
   const [locale, setLocale] = useState("en");
@@ -1447,7 +1453,7 @@ function TestEmailPanel({ email }) {
   return (
     <Panel
       title="Test emails"
-      subtitle={`Send yourself any email the marketplace sends, filled with sample data. It goes only to ${email}.`}
+      subtitle={`${intro ?? "Send yourself any email the marketplace sends, filled with sample data."} It goes only to ${email}.`}
       className="admin-settings-card"
     >
       <form className="admin-threshold-form" onSubmit={send}>
@@ -1613,7 +1619,7 @@ function DailyJobsPanel() {
   );
 }
 
-function SettingsPage({ user, account, onSignOut }) {
+function SettingsPage({ user, account, onSignOut, testEmailsIntro }) {
   const initialThresholds = { autoClear: "95", manualMin: "80", manualMax: "94", moreInformation: "80", authority: "TSC operations" };
   const email = user?.email ?? account?.email ?? "operations@thesourcingclub.com";
   const name = account?.name ?? user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? "TSC Operations";
@@ -1698,14 +1704,14 @@ function SettingsPage({ user, account, onSignOut }) {
           </div>
         )}
       </Panel>
-      <TestEmailPanel email={email} />
+      <TestEmailPanel email={email} intro={testEmailsIntro} />
       <DailyJobsPanel />
       <TestDataPanelIfLive />
     </main>
   );
 }
 
-function App() {
+function App({ testEmailsIntro } = {}) {
   // Everything below reads through the data seam. admin-prototype.html serves
   // the constants in this file; admin.html serves the marketplace. The
   // components in between never learn which.
@@ -1748,9 +1754,11 @@ function App() {
 
   // Against the mock every list is populated on the first render, so these
   // seeds are no-ops. Against the network the first render has nothing, and a
-  // deep link would otherwise land on a blank detail screen.
+  // deep link would otherwise land on a blank detail screen. They seed from
+  // the link, not the first row: the URL still names the company (or request,
+  // or quote) the link was for until something is selected.
   useEffect(() => {
-    if (!selectedProfile && profiles.length) setSelectedProfile(profiles[0]);
+    if (!selectedProfile && profiles.length) setSelectedProfile(requestedProfile);
   }, [profiles, selectedProfile]);
 
   useEffect(() => {
@@ -1776,10 +1784,10 @@ function App() {
     return () => { cancelled = true; };
   }, [selectedProfile?.id, actions]);
   useEffect(() => {
-    if (!selectedRfq && rfqList.length) setSelectedRfq(rfqList[0]);
+    if (!selectedRfq && rfqList.length) setSelectedRfq(requestedRfq);
   }, [rfqList, selectedRfq]);
   useEffect(() => {
-    if (!selectedQuote && quoteList.length) setSelectedQuote(quoteList[0]);
+    if (!selectedQuote && quoteList.length) setSelectedQuote(requestedQuote);
   }, [quoteList, selectedQuote]);
 
   useEffect(() => {
@@ -1892,7 +1900,7 @@ function App() {
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate("RFQ detail")} />}
-      {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} />}
+      {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} />}
             </>}
       {toast && <div className="app-toast admin-toast" role="status">{toast}</div>}
     </div>

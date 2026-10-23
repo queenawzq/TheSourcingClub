@@ -111,7 +111,8 @@ function AdminConsole() {
 
   return (
     <DataProvider adapter={createAdminAdapter({ user, signOut })}>
-      <App />
+      {/* The design's card says "any email"; live, say which ones it sends. */}
+      <App testEmailsIntro="Send yourself a sample of the marketplace's emails (onboarding, review decisions and a notification), filled with sample data." />
     </DataProvider>
   );
 }

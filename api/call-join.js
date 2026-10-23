@@ -10,7 +10,8 @@
  * call_meetings, which the browser cannot read: this is the only way to them.
  *
  * Without the Zoom variables the answer is 503 and the screen says video
- * isn't set up yet: calls still schedule and sit in both calendars.
+ * isn't set up yet: calls still schedule and stay confirmed, but nothing
+ * puts them in anyone's calendar (only the card's own calendar buttons do).
  */
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
@@ -59,7 +60,7 @@ export default async function handler(request, response) {
   if (now > new Date(call.closes_at).getTime()) return json(response, 409, { error: "this call has ended" });
 
   if (!zoomConfigured()) {
-    return json(response, 503, { error: "video isn't set up yet. The call is still confirmed and in both calendars." });
+    return json(response, 503, { error: "video isn't set up on this site yet, so the call can't be joined here. It is still confirmed for both sides" });
   }
 
   // The meeting: reuse it, wait for the request creating it, or create it.

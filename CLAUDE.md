@@ -293,7 +293,7 @@ A thread belongs to the **request or order it is about**, never to a pair of com
   - **Delivery is the event, not the insert.** The bump, the notification and unread (`delivered_at`) happen when a message is delivered, so a released message arrives as new. What the screen found lives in staff-only `message_screenings`; the sender sees only `review_note` on a rejected message, plus a notification.
 - **The screen is live and never waits.** Send draws the message and empties the box at once (`LiveMessages.jsx` keeps it as "outgoing" until the row exists), and the button is free for the next one. Each draft and its chosen files belong to one conversation. `messages` is in the `supabase_realtime` publication (`20261013000600`); the page listens for any change and re-reads the conversation it moved in through the normal query. Realtime applies `messages_read` per subscriber, so the other side hears of a message only once it is delivered. "Attach file", search, the Unread filter and opening a file are live through optional props on `MessagesScreen` (`canAttach`, attachments as `{ name, onOpen }`); the prototype passes none. A file can go on its own: the body then says which file was sent (`fileOnlyBody`). Your own bubbles show what you typed, the translation one click away. **Test it as two people at once** (two origins: 127.0.0.1 and localhost keep separate sign-ins); `scripts/e2e.mjs` "A LIVE CONVERSATION" writes from a second signed-in client while the page stays open.
 - **Translation is stored, not computed on read.** `body` is what was typed and is never overwritten; `body_translated` is the other language. Translation **must never block a send** — any failure stores the message untranslated and the reader sees the original. This is the opposite of the taxonomy rule (`label_en`/`label_zh` are hand-written, never machine-translated) and deliberately so: a mistranslated *category* silently corrupts matching, while a mistranslated sentence is visibly a sentence and the person can ask.
-- **Unread is derived per user** from `message_reads.last_read_at`, not stored on the thread. The prototype's thread-level integer is never decremented anywhere in either app.
+- **Unread is derived per user** from `message_reads.last_read_at`, not stored on the thread, and counts only what the other company wrote: a teammate's message is not waiting on you (20261024000100). The prototype's thread-level integer is never decremented anywhere in either app.
 - Attachments are `documents` with `message_id` and kind `message_attachment`, and need the same three parts as milestone photos: the private bucket, a `documents` policy for the counterparty, and a matching `storage.objects` policy keyed on the thread in the path.
 - `documents` now has **three** FKs into this graph (`milestone_update_id`, `order_id`, `message_id`). An ambiguous embed is refused rather than guessed; the smoke test pins the exact select strings the domain modules use.
 
@@ -305,6 +305,7 @@ A call belongs to a conversation (`calls.thread_id`), so `is_thread_party()` alr
 
 - **Only functions write.** `propose_call`, `accept_call`, `decline_call`, `counter_call`, `cancel_call`, each checking the party first, then the state. Only the OTHER side answers an invite; a counter is a new row (`counter_of`) and the old one becomes `countered`, so every time offered stays in the history. The proposer withdraws; either side cancels an accepted call before it starts. Each step notifies the other company with `subject_type 'thread'`, so the link opens the conversation.
 - **Times are UTC; zones are people's.** `user_profiles.time_zone` is saved from the browser on sign-in (`set_my_time_zone`, checked against `pg_timezone_names`); `thread_counterparty_time_zone()` gives the other company's most recently seen zone and nothing else. Words for times come from `src/shared/call-time.mjs` (shared with the prototype and the seed), never from the design's fixed offsets.
+- **A call's words are checked for contact details, and the database insists** (`20261024000201`). Title, description and a decline or cancel reason reach the other side, so `api/screen-call-text.js` runs the message patterns on them first and records what it passed (`call_text_checks`, server only); a trigger on `calls` refuses a signed-in person's words the server did not pass in the last 10 minutes. Refused, not held: no staff review behind it, so patterns only, no model. `src/lib/domain/calls.js` checks before every call function; a script or test calling the RPCs as a person records its words first (`checkCallText` in the seed, `record_call_text_check` in pgTAP). The server's own writes are not checked.
 - **Calendar entries point at the conversation, not at Zoom** (`.ics` built in the browser, folded per RFC 5545, and a Google Calendar link): people join on TSC.
 - **The Zoom meeting is TSC's and the browser never sees its details.** `call_meetings` has no grants; the server creates the meeting at the first Join (`claim_call_meeting` lets one request create it while a second waits) and records it with `record_call_meeting`. The Meeting SDK can only join meetings in its own account without Zoom's review, which is why TSC's account owns every meeting.
 
@@ -338,22 +339,30 @@ a company-level verdict and a file-level one cannot contradict each other.
 - **AI help is text a person reads, never a score or a decision**
   (`20261016000100`, `api/admin-review-assist.js`). On the review page,
   "Ask AI for suggestions" lists what to look at, each with the evidence it
-  rests on and a question to ask; "Draft with AI" in "Request more
-  information" fills the note, which staff edit and send through the usual
-  decision. Both are live only and run only when asked. What the model reads
-  is `admin_review_assist_input()`: the company's details, certification
-  records, the file LIST (never the files) and the evidence checks without
-  their percentages; no person's name or address. A suggestion whose
-  evidence has a word or number not in that input is dropped
-  (`keepGroundedFindings`), and the screen says how many. Without a key
-  there are no suggestions (nothing stands in), and the draft is built from
-  the ticked topics and the incomplete checks. What staff were shown is kept
-  in staff-only `org_review_assists`. The model is
-  `OPENROUTER_REVIEW_MODEL` ?? Haiku 5.5: 8 s budget, Opus took 12.
+  rests on and a question to ask; the design's "Suggest with AI" in "Request
+  more information" (`api/suggest-review-request.js`) fills the note, which
+  staff edit and send through the usual decision. Both are live only and run
+  only when asked. What the model reads is `admin_review_assist_input()`: the
+  company's details, certification records, the file LIST (never the files)
+  and the evidence checks without their percentages; no person's name or
+  address, so the terms check leaves out the signature and the duplicate
+  check leaves out the other companies' names (`20261024000401`; the note's
+  route drops those names too). A suggestion whose evidence has a word or
+  number not in that input is dropped (`keepGroundedFindings`), and the
+  screen says how many. Without a key there are no suggestions (nothing
+  stands in), and the note is built from the incomplete checks, with a line
+  saying why. Every failure is said as what happened (`modelFailure`: not
+  set up, key refused, out of credits, busy, model unavailable, timed out),
+  never one "try again". What staff were shown is kept in staff-only
+  `org_review_assists`. The model is `OPENROUTER_REVIEW_MODEL` ?? Haiku 5.5:
+  8 s budget, Opus took 12.
 - **Test data is recognised in exactly one place**, `test_data_candidates()`:
-  a slug ending in a 10+ digit run stamp, over an hour old, `is_demo` false,
-  every member a test user (`is_test_email`: a reserved test domain, a run
-  stamp, not `demo-…`), and no order with a company that is not test data.
+  a slug ending in a run stamp (`Date.now()`: 13 digits, 17… to 19…; a phone
+  number is not one), over an hour old, `is_demo` false, every member a test
+  user (`is_test_email`: a reserved test domain, a run stamp, not `demo-…`)
+  or no members and the same stamp in the name, and nothing shared (an order,
+  a quote, an invitation, a conversation) with a company that is not test
+  data (`20261024000402`): deleting it would delete the other side's records.
   Admin → Settings → Test data (test builds only) lists them, and
   `/api/admin-test-data` refuses the production project, removes the files,
   then calls `purge_test_data()` (service role), which deletes only the ids
@@ -369,8 +378,8 @@ a company-level verdict and a file-level one cannot contradict each other.
 
 ### Test emails
 
-Admin Settings → Test emails sends any email the marketplace sends, with
-sample data, to the signed-in admin's **own** address and nobody else's
+Admin Settings → Test emails sends a sample of the marketplace's emails
+(onboarding, review decisions and one notification), with sample data, to the signed-in admin's **own** address and nobody else's
 (`api/send-test-email.js`). It builds the message with the same code as the
 real send — Queena's designed onboarding emails from
 `scripts/generate-onboarding-emails.mjs`, and `messageFor()` from

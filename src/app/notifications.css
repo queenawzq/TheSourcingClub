@@ -59,3 +59,21 @@
   margin-right: 8px;
   vertical-align: middle;
 }
+
+.notif-empty { margin: 12px 0 0; font-size: 14px; color: var(--text-muted); }
+
+/* The dashboards' Activity drawer: "Mark all read" beside the design's
+   heading, and its loading and empty line. */
+.live-activity-mark-all {
+  margin-top: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.live-activity-mark-all:disabled { color: var(--text-muted); cursor: default; }
+.live-activity-empty { margin: 20px 0 0; font-size: 14px; color: var(--text-muted); }

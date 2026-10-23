@@ -38,6 +38,7 @@ import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { DEMO_LOGINS as LOGINS, DEMO_PASSWORD as PASSWORD } from "../src/shared/demo-logins.mjs";
 import { dateIn, zonedTime } from "../src/shared/call-time.mjs";
+import { checkCallText } from "../api/screen-call-text.js";
 
 const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
 
@@ -759,11 +760,20 @@ const BRAND_ZONE = "America/New_York";
 const FACTORY_ZONE = "Europe/Lisbon";
 must(await brand.client.rpc("set_my_time_zone", { zone: BRAND_ZONE }), "brand's time zone");
 must(await factory.client.rpc("set_my_time_zone", { zone: FACTORY_ZONE }), "factory's time zone");
+// A call's words pass the server's contact-details check first, as on the
+// site (api/screen-call-text.js): the database refuses words it did not pass.
+const checked = async (who, texts) => {
+  const result = await checkCallText(admin, who.id, texts.filter(Boolean));
+  if (!result.ok) throw new Error(`call text for ${who.email ?? who.id}: ${result.error}`);
+};
 const daysAhead = (days, minutes, zone) => {
   const { year, month, day } = dateIn(new Date(Date.now() + days * 86400000), zone);
   return zonedTime(year, month, day, minutes, zone).toISOString();
 };
 const orderThreadId = orderThread?.id ?? orderThread;
+await checked(factory, ["Fit sample review", "Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length.",
+  "Too early for Porto, and the wash test is not back yet."]);
+await checked(brand, ["Shirting questions", "Lab dip timing and the three-month price hold.", "Wash test results"]);
 must(await factory.client.rpc("propose_call", {
   target_thread: orderThreadId, starts_at: daysAhead(2, 15 * 60, FACTORY_ZONE), duration_minutes: 30,
   title: "Fit sample review", agenda: "Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length.",
@@ -1015,18 +1025,25 @@ must(await admin.from("discount_codes").insert({
 }), "discount code");
 
 // Something for the daily job to say (Admin → Settings → "Run daily jobs
-// now"): one of Demo Factory's steps in progress is due in three days, and
-// its capacity was last changed 31 days ago. Rows are written again rather
-// than updated, because an update stamps updated_at with now.
+// now"): one of Demo Factory's steps in progress is due in three days, and so
+// is one still waiting for the brand's payment, which reminds the brand, not
+// the factory (milestone_waiting_on). Its capacity was last changed 31 days
+// ago. Rows are written again rather than updated, because an update stamps
+// updated_at with now.
 console.log("daily reminders");
 const factoryOrders = must(await admin.from("production_orders").select("id")
   .eq("factory_org_id", factoryOrg.id).eq("status", "active"), "the factory's running orders");
-const [dueSoonStep] = must(await admin.from("order_milestones").select("id, title")
-  .in("order_id", factoryOrders.map((order) => order.id)).eq("state", "active").order("sort").limit(1), "a step in progress");
-if (dueSoonStep) {
+const openSteps = must(await admin.from("order_milestones").select("id, title")
+  .in("order_id", factoryOrders.map((order) => order.id)).eq("state", "active").order("sort"), "the steps in progress");
+const openPayments = must(await admin.from("order_payments").select("milestone_id, state")
+  .in("milestone_id", openSteps.map((step) => step.id)), "their payments");
+const paymentOf = (step) => openPayments.find((payment) => payment.milestone_id === step.id)?.state;
+const dueSoonStep = openSteps.find((step) => [undefined, "confirmed", "released"].includes(paymentOf(step)));
+const unfundedStep = openSteps.find((step) => ["due", "failed"].includes(paymentOf(step)));
+for (const step of [dueSoonStep, unfundedStep].filter(Boolean)) {
   must(await admin.from("order_milestones")
     .update({ due_on: new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10) })
-    .eq("id", dueSoonStep.id), "a step due in three days");
+    .eq("id", step.id), "a step due in three days");
 }
 const monthAgo = new Date(Date.now() - 31 * 864e5).toISOString();
 const [capacityRow] = must(await admin.from("factory_capacity").select("*").eq("org_id", factoryOrg.id), "the factory's capacity");
@@ -1087,10 +1104,12 @@ done. Every login uses the password "${PASSWORD}".
   Approving ${LOGINS.newFactory.name} in the admin grants it 500 credits (Payments → Credits, and the bell).
   The admin's verification queue has ${LOGINS.newFactory.name}: "Ask AI for suggestions" on its review
   page (with an OpenRouter key) should point at its legal name, website, registration and expired GOTS;
-  "Request more information" → "Draft with AI" fills the note, which staff edit before sending.
+  "Request more information" → "Suggest with AI" fills the note, which staff edit before sending
+  (without an OpenRouter key the note is built from the checks, and says so).
   Admin → Settings → Test data finds "Atelier E2E <number>" (a leftover test company) and deletes it.
   Admin → Settings → "Run daily jobs now" reminds ${LOGINS.factory.name} that its capacity is a
-  month old${dueSoonStep ? ` and that "${dueSoonStep.title}" is due in three days` : ""} (bell and email, once).
+  month old${dueSoonStep ? ` and that "${dueSoonStep.title}" is due in three days` : ""} (bell and email, once)${unfundedStep ? `,
+  and the brand whose payment "${unfundedStep.title}" is waiting for, that it is due in three days` : ""}.
 
   Run this again at any time to put the demo companies back to this state.
   It deletes them, and any order another company has with them.

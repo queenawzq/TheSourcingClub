@@ -205,7 +205,8 @@ export async function decideReview(orgId, decision, note = null, risk = null, ti
 /**
  * Draft the note for a needs-information decision. The model only suggests
  * copy: the reviewer can edit it, and decideReview is still the only action
- * that records or sends anything.
+ * that records or sends anything. Without the model the note is built from
+ * the incomplete checks, and `notice` says so and why.
  */
 export async function suggestReviewRequest({ companyName, entityType, gaps }) {
   try {
@@ -222,6 +223,7 @@ export async function suggestReviewRequest({ companyName, entityType, gaps }) {
     return {
       message: typeof result.message === "string" ? result.message.trim() : "",
       error: result.error ?? (response.ok ? null : "The suggestion could not be generated."),
+      notice: result.notice ?? null,
     };
   } catch (error) {
     return { message: "", error: error.message };

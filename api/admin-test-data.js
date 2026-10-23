@@ -72,7 +72,9 @@ export default async function handler(request, response) {
   const matching = new Set((preview.companies ?? []).map((company) => company.id));
   const orgs = asked.filter((id) => matching.has(id));
 
-  // Files first: once the rows are gone nothing says where they were.
+  // Files first: once the rows are gone nothing says where they were. The
+  // count is of the companies' file records, which is what the preview's
+  // "Files" column counts; one whose stored copy was already gone still goes.
   let filesRemoved = 0;
   if (orgs.length) {
     const { data: files, error: filesError } = await service
@@ -80,12 +82,12 @@ export default async function handler(request, response) {
       .select("bucket, storage_path")
       .in("org_id", orgs);
     if (filesError) return json(response, 500, { error: "the companies' files could not be listed" });
+    filesRemoved = files.length;
     for (const bucket of new Set(files.map((file) => file.bucket))) {
       const paths = files.filter((file) => file.bucket === bucket && file.storage_path).map((file) => file.storage_path);
       for (let start = 0; start < paths.length; start += 100) {
-        const { data: removed, error } = await service.storage.from(bucket).remove(paths.slice(start, start + 100));
+        const { error } = await service.storage.from(bucket).remove(paths.slice(start, start + 100));
         if (error) return json(response, 500, { error: `files in ${bucket} could not be removed` });
-        filesRemoved += removed?.length ?? 0;
       }
     }
   }

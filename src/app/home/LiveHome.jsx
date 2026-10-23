@@ -17,16 +17,13 @@
  * prototype cannot have and the product cannot do without.
  */
 import React, { useEffect, useState } from "react";
-import { ActivityDrawer, HomeScreen } from "../../prototype/main.jsx";
+import { HomeScreen } from "../../prototype/main.jsx";
 import { dashboardSnapshot } from "../../lib/domain/dashboard.js";
 import { listRfqs } from "../../lib/domain/rfq.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { chargedCents, listPaymentsForOrders } from "../../lib/domain/payment.js";
 import { listArchivedOrderIds } from "../../lib/domain/order-tabs.js";
 import { listThreads } from "../../lib/domain/message.js";
-import {
-  activityType, countUnreadNotifications, listNotifications, markAllRead, markRead, notificationBody, notificationLink, timeAgo,
-} from "../../lib/domain/notifications.js";
 import { BRAND_INVITE_INTRO, BRAND_INVITE_MESSAGE, inviteBrand, inviteNotice, savingsFor } from "../../lib/domain/credits.js";
 import { toProjectCard, toRfqCard } from "../live-adapter.js";
 import { formatMoney } from "../../lib/money.js";
@@ -36,6 +33,7 @@ import { loadRecommendedVendors } from "../profile/load-profile.js";
 import { browserTimeZone } from "../../lib/domain/calls.js";
 import { dashboardCalls, inviteAttention } from "../message/live-calls.js";
 import { useDashboardCalls } from "../message/use-calls.js";
+import { useActivity } from "./use-activity.jsx";
 
 /**
  * A recommended vendor as the designed dashboard card. Like the invite
@@ -143,32 +141,17 @@ function attentionFrom(snapshot, isFactory, goTo, dueCents = null) {
   return items;
 }
 
-/** A notification as a row of the designed Activity drawer. */
-function toActivityItem(notification) {
-  return {
-    id: notification.id,
-    notification,
-    type: activityType(notification.kind),
-    title: notification.title,
-    meta: notificationBody(notification),
-    time: timeAgo(notification.created_at),
-    unread: !notification.read_at,
-  };
-}
-
 export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProject }) {
   const { navigate } = useRouter();
   const [state, setState] = useState({ snapshot: null, dueCents: null, rfqs: [], projects: [], savings: null, loaded: false });
+  const [error, setError] = useState(null);
   // The bell is the Activity drawer's, so it counts unread activity, not
   // unread messages (those have their own card in "Needs your attention").
-  const [unreadActivity, setUnreadActivity] = useState(0);
-  // null while the drawer is shut; the rows once it is open.
-  const [activity, setActivity] = useState(null);
-  const [error, setError] = useState(null);
+  const { unreadCount: unreadActivity, openActivity, activityDrawer } = useActivity(org.id, { isFactory, onError: setError });
   const [recommended, setRecommended] = useState([]);
   // What became of the invite just sent, on the Savings card it came from.
   const [inviteSent, setInviteSent] = useState(null);
-  const { calls, zones } = useDashboardCalls(org.id);
+  const { calls, zones, now } = useDashboardCalls(org.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -218,58 +201,16 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
     return () => { cancelled = true; };
   }, [org.id, isFactory]);
 
-  useEffect(() => {
-    let cancelled = false;
-    countUnreadNotifications(org.id)
-      .then((count) => !cancelled && setUnreadActivity(count))
-      .catch((failure) => !cancelled && setError(failure));
-    return () => { cancelled = true; };
-  }, [org.id]);
-
-  /** Opening the drawer is not the same as reading every activity. */
-  async function openActivity() {
-    setActivity([]);
-    try {
-      const rows = await listNotifications(org.id);
-      setActivity((rows ?? []).map(toActivityItem));
-    } catch (failure) {
-      setError(failure);
-    }
-  }
-
-  async function openActivityItem(item) {
-    const link = notificationLink(item.notification, { isFactory });
-    if (item.unread) {
-      setActivity((current) => current?.map((row) => (
-        row.id === item.id ? { ...row, unread: false } : row
-      )) ?? current);
-      setUnreadActivity((count) => Math.max(0, count - 1));
-      try {
-        await markRead(item.id);
-      } catch (failure) {
-        setActivity((current) => current?.map((row) => (
-          row.id === item.id ? { ...row, unread: true } : row
-        )) ?? current);
-        setUnreadActivity((count) => count + 1);
-        setError(failure);
-        return;
-      }
-    }
-    if (link) {
-      setActivity(null);
-      navigate(link);
-    }
-  }
-
   const { snapshot, dueCents, rfqs, projects, savings } = state;
   const ownZone = browserTimeZone() ?? "UTC";
-  const openCall = (call) => navigate(`/messages/${call.thread_id}`);
+  // "Join call" opens the conversation and joins there (LiveMessages reads ?join).
+  const openCall = (call, { join = false } = {}) => navigate(`/messages/${call.thread_id}${join ? `?join=${call.id}` : ""}`);
   // A call invite waiting on the brand comes first: it has a time on it.
   const attention = [
-    ...inviteAttention(calls, { orgId: org.id, ownZone, open: openCall }),
+    ...inviteAttention(calls, { orgId: org.id, ownZone, open: openCall, now }),
     ...(attentionFrom(snapshot, isFactory, goTo, dueCents) ?? []),
   ];
-  const callCards = dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall });
+  const callCards = dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall, now });
   const isNewcomer = state.loaded && !rfqs.length && !projects.length;
 
   // Recommendations use real vendors rather than the prototype's examples.
@@ -322,9 +263,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         onViewProject={onViewProject}
         unreadCount={unreadActivity}
       />
-      {activity && (
-        <ActivityDrawer items={activity} onOpenItem={openActivityItem} onClose={() => setActivity(null)} />
-      )}
+      {activityDrawer}
     </>
   );
 }

@@ -1,7 +1,9 @@
 /**
- * Translate a message between English and Chinese. Shared by /api/translate
- * and the screen (api/screen-message.js), which translates while it checks so
- * a message costs one round trip, not two in a row.
+ * Translate a message between English and Chinese, for the screen
+ * (api/screen-message.js), which translates while it checks so a message
+ * costs one round trip, not two in a row. There is no /api/translate any
+ * more: nothing called it once the screen translated, and it answered anyone,
+ * signed in or not, with our model key.
  *
  * Never throws. Any failure — no key, bad model, timeout, nonsense back —
  * returns a null translation with the reason, and the message goes as typed.

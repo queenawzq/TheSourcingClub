@@ -29,6 +29,12 @@ export function notificationLink(notification, { isFactory }) {
 
   // Capacity is updated from the factory's dashboard.
   if (type === "capacity" && isFactory) return "/";
+  // A verification decision is about the company's profile, which is where
+  // the information asked for is added.
+  if (type === "org") return "/profile";
+  // A vendor earns its referral credits on the credits tab; a brand invites
+  // from its dashboard's savings panel.
+  if (type === "referral") return isFactory ? "/payout?tab=credits" : "/";
 
   // Credits are on the factory's Payments page.
   if (type === "credits" && isFactory) return "/payout?tab=credits";

@@ -137,6 +137,32 @@ async function staffRouteAs(route, client, { method = "POST", body, env = {}, mo
 }
 
 /**
+ * Run the real api/screen-call-text.js handler as a client: the server's
+ * contact-details check on a call's words, which the database then requires.
+ */
+async function checkCallTextAs(client, texts) {
+  const { default: check } = await import("../api/screen-call-text.js");
+  const { data } = await client.auth.getSession();
+  const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY"];
+  const saved = { ...process.env };
+  Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE });
+  let status = 0;
+  let body = null;
+  const response = {
+    status(code) { status = code; return response; },
+    json(payload) { body = payload; return response; },
+  };
+  try {
+    await check({ method: "POST", headers: { authorization: `Bearer ${data?.session?.access_token}` }, body: { texts } }, response);
+  } finally {
+    for (const key of keys) {
+      if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
+    }
+  }
+  return { status, ...body };
+}
+
+/**
  * Run the real api/call-join.js handler as a client. `zoom` sets fake Zoom
  * variables (enough to pass "is Zoom set up?", never enough to reach Zoom);
  * without it they are cleared, as on a site without video.
@@ -1439,6 +1465,37 @@ console.log("\nphase 3 — the order runs");
       // string src/lib/domain/calls.js uses, so a renamed argument or an
       // ambiguous embed fails here rather than on a screen.
       const startsAt = new Date(Date.now() + 2 * 86400000).toISOString();
+
+      // A call's words reach the other side, so they pass the same pattern
+      // check as a message first, and the database refuses words it did not.
+      const sneaky = "Quick one, or just WhatsApp me on +44 7700 900123 instead.";
+      const { error: uncheckedError } = await brand.client.rpc("propose_call", {
+        target_thread: threadId, starts_at: startsAt, duration_minutes: 30,
+        title: "Smoke call", agenda: sneaky, time_zone: "America/New_York",
+      });
+      uncheckedError
+        ? ok("a call's words the server never checked are refused (propose_call called directly)")
+        : fail("LEAK: a call description went out without the contact-details check");
+      const refused = await checkCallTextAs(brand.client, ["Smoke call", sneaky]);
+      refused.status === 422 && /contact details/.test(refused.error ?? "")
+        ? ok("the check refuses a WhatsApp number, saying to keep contact details out")
+        : fail(`the check answered ${refused.status} ${refused.error ?? ""}`);
+      const { error: stillRefused } = await brand.client.rpc("propose_call", {
+        target_thread: threadId, starts_at: startsAt, duration_minutes: 30,
+        title: "Smoke call", agenda: sneaky, time_zone: "America/New_York",
+      });
+      stillRefused ? ok("and a refused description is still refused by the database")
+                   : fail("LEAK: a description the check refused went out");
+      const { error: selfCheck } = await brand.client.rpc("record_call_text_check", {
+        target_user: brand.id, texts: [sneaky],
+      });
+      selfCheck ? ok("a client CANNOT record its own words as checked")
+                : fail("LEAK: a client recorded its own call text as checked");
+      const passed = await checkCallTextAs(brand.client, ["Smoke call"]);
+      passed.status === 200
+        ? ok("ordinary words pass the check")
+        : fail(`ordinary call words answered ${passed.status} ${passed.error ?? ""}`);
+
       const { data: proposed, error: proposeError } = await brand.client.rpc("propose_call", {
         target_thread: threadId, starts_at: startsAt, duration_minutes: 30,
         title: "Smoke call", agenda: null, time_zone: "America/New_York",
@@ -1524,13 +1581,27 @@ console.log("\nnotification emails");
     ["rfq", "quote_received"], ["rfq", "rfq_invited"], ["order", "order_created"],
     ["milestone", "milestone_submitted"], ["payment", "payment_due"], ["thread", "message"],
     ["capacity", "capacity_reminder"], ["milestone", "milestone_due_soon"], ["rfq", "rfq_matched"],
-    ["credits", "credits_granted"], ["credits", "credits_adjusted"], ["referral", "referral_joined"], ["unknown", "x"],
+    ["credits", "credits_granted"], ["credits", "credits_adjusted"], ["org", "verification_needs_information"], ["referral", "referral_joined"], ["unknown", "x"],
   ].flatMap(([subject_type, kind]) => [true, false].map((isFactory) => [{
     subject_type, kind, subject_id: "00000000-0000-0000-0000-000000000001", order_id: "00000000-0000-0000-0000-000000000002",
   }, isFactory]));
   samples.every(([n, isFactory]) => notificationLink(n, { isFactory }) === notificationPath(n, { isFactory }))
     ? ok("an email's button opens where the bell's link does")
     : fail("the email's link rules differ from the bell's");
+
+  // A vendor signed out lands on the vendor sign-in, still on its deep link.
+  const { notificationEmail } = await import("./generate-notification-email.mjs");
+  const emailEnv = { appUrl: "https://tsc.test", logoUrl: "", supportEmail: "ops@tsc.test", companyAddress: "" };
+  const linkOf = (row) => notificationEmail({ category: "payments", title: "t", ...row }, emailEnv).text.match(/https:\/\/tsc\.test\S*/)?.[0];
+  const ids = { subject_id: "00000000-0000-0000-0000-000000000001", order_id: "00000000-0000-0000-0000-000000000002" };
+  const vendorStep = linkOf({ org_type: "factory", subject_type: "milestone", kind: "milestone_due_soon", ...ids });
+  const vendorCredits = linkOf({ org_type: "factory", subject_type: "referral", kind: "referral_joined", ...ids });
+  const brandStep = linkOf({ org_type: "brand", subject_type: "milestone", kind: "milestone_due_soon", ...ids });
+  vendorStep === `https://tsc.test/app.html/orders/${ids.order_id}/milestones/${ids.subject_id}?portal=factory`
+    && vendorCredits === "https://tsc.test/app.html/payout?tab=credits&portal=factory"
+    && brandStep === `https://tsc.test/app.html/orders/${ids.order_id}/milestones/${ids.subject_id}`
+    ? ok("a vendor's email links open the vendor sign-in; a brand's open the brand's")
+    : fail(`email links: ${vendorStep} / ${vendorCredits} / ${brandStep}`);
 
   const sender = await signedInUser(`notify-sender-${stamp}@example.com`);
   const receiver = await signedInUser(`notify-receiver-${stamp}@example.com`);
@@ -1971,6 +2042,37 @@ console.log("\nadmin — AI help for reviewers, and clearing test data");
     target_org: mill.id, assist_kind: "check", model_name: "x", assist: {}, acting_user: staff.id,
   });
   forged ? ok("even staff CANNOT write suggestions from the browser") : fail("LEAK: record_review_assist is callable by a signed-in user");
+
+  // What staff are told when the model cannot help: what happened, in words.
+  const upstreamAnswers = async (status, run) => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (url, init) => String(url).startsWith("https://openrouter.ai/")
+      ? Promise.resolve(new Response("{}", { status })) : realFetch(url, init);
+    try { return await run(); } finally { globalThis.fetch = realFetch; }
+  };
+  const refused = await upstreamAnswers(401, () => staffRouteAs("admin-review-assist", staff.client, {
+    body: { action: "check", orgId: mill.id }, env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+  }));
+  const broke = await upstreamAnswers(402, () => staffRouteAs("admin-review-assist", staff.client, {
+    body: { action: "check", orgId: mill.id }, env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+  }));
+  refused.available === false && /refused this site's key/.test(refused.reason) && /out of credits/.test(broke.reason)
+    ? ok("a refused key and an empty account are each said as what they are, not \"try again\"")
+    : fail("the model failure reasons", { refused: refused.reason, broke: broke.reason });
+
+  const gaps = [
+    { label: "Business registration", result: "Missing", detail: "No business registration document has been uploaded." },
+    { label: "Duplicate company signal", result: "Review", detail: `Shares a legal name or website domain with: Rival Mill ${stamp}.` },
+  ];
+  const noModelNote = await staffRouteAs("suggest-review-request", staff.client, { body: { companyName: "Assist Mill", gaps } });
+  const refusedNote = await upstreamAnswers(401, () => staffRouteAs("suggest-review-request", staff.client, {
+    body: { companyName: "Assist Mill", gaps }, env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+  }));
+  noModelNote.message?.includes("No business registration document") && /not set up on this site/.test(noModelNote.notice)
+    && /refused this site's key/.test(refusedNote.notice) && refusedNote.message
+    && ![noModelNote.message, refusedNote.message].some((message) => message.includes(`Rival Mill ${stamp}`))
+    ? ok("\"Suggest with AI\" without a model builds the note from the checks, says why, and names no other company")
+    : fail("the request note without a model", { noModelNote, refusedNote });
 
   // Two leftovers made the way the smoke run makes companies: one two hours
   // old (test data), one just made (a run in progress: left alone).

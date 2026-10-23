@@ -37,6 +37,8 @@ export function notificationPath(notification, { isFactory }) {
   if (type === "capacity" && isFactory) return "/";
   // Credits are on the factory's Payments page.
   if (type === "credits" && isFactory) return "/payout?tab=credits";
+  if (type === "org") return "/profile";
+  if (type === "referral") return isFactory ? "/payout?tab=credits" : "/";
   return null;
 }
 
@@ -183,7 +185,10 @@ export function notificationEmail(row, env) {
   const company = row.org_name || (locale === "zh" ? "你的公司" : "your company");
   const setting = t.eyebrow[row.category]?.(isFactory) ?? "";
   const path = notificationPath(row, { isFactory });
-  const url = `${env.appUrl}/app.html${path ?? ""}${!path && isFactory ? "?portal=factory" : ""}`;
+  // A vendor's link opens the vendor sign-in when it is signed out; the
+  // route survives signing in, as the path is kept and the query ignored.
+  const portal = isFactory ? `${path?.includes("?") ? "&" : "?"}portal=factory` : "";
+  const url = `${env.appUrl}/app.html${path ?? ""}${portal}`;
   const cta = path ? t.cta : t.ctaFallback;
   const title = String(row.title ?? "").trim() || t.lead(company);
   // Dates in the recipient's saved zone, named; UTC, named, when unknown.
