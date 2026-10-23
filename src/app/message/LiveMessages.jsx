@@ -17,8 +17,9 @@ import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { urlFor } from "../../lib/domain/documents.js";
 import { fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
-import { acceptCall, browserTimeZone, callState, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, zoneOptions } from "../../lib/domain/calls.js";
+import { acceptCall, browserTimeZone, callState, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
+import { useCallClock } from "./use-calls.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
@@ -134,12 +135,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   useEffect(() => { reloadCalls(); }, [reloadCalls]);
 
   // The clock the cards read: "Join call" opens and "Starting soon" turns
-  // into "On now" while the page stays open.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const tick = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(tick);
-  }, []);
+  // into "On now" while the page stays open, at the moment each happens.
+  const [now] = useCallClock(calls);
 
   useEffect(() => { refreshTheirZone(activeId); }, [activeId, refreshTheirZone]);
 
@@ -640,7 +637,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           ownZone,
           zones: zoneOptions(ownZone),
           otherName: dialogOther,
-          otherZone: dialog ? theirZones[dialog.threadId] ?? null : null,
+          // Answering an invite with another time: their times read in the
+          // zone they proposed in.
+          otherZone: dialog ? theirZoneFor(dialog.counterOf, org.id, theirZones[dialog.threadId]) : null,
           heading: dialog?.counterOf ? "Propose another time" : undefined,
           submitLabel: dialog?.counterOf ? "Send new time" : undefined,
           initial: dialog?.counterOf ? { title: dialog.counterOf.title, agenda: dialog.counterOf.agenda ?? "" } : undefined,

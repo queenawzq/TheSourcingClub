@@ -2394,7 +2394,15 @@ async function main() {
     const factoryPanel = await page.locator(".message-side-panel").innerText();
     check(/invited you/.test(factoryPanel), "the factory sees the invite, with Accept / Propose another time / Decline");
     check(await inPanel("Propose another time"), "the factory proposes another time");
-    check(await pickTime(16), "it picks another day and time");
+    // In Shanghai time, whatever zone this browser is in: the brand must read
+    // the factory's line in the zone it proposed in, not its saved one.
+    await waitFor(page, ".message-schedule-modal select", 15000);
+    await page.evaluate(() => {
+      const select = document.querySelector(".message-schedule-modal select");
+      Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value").set.call(select, "Asia/Shanghai");
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    check(await pickTime(16), "it picks another day and time, in Shanghai time");
     await record(page, "Propose another time", "prefilled with the brand's title");
     check(await inDialog("Send new time"), "Send new time");
     let counter = null;
@@ -2427,14 +2435,30 @@ async function main() {
 
     await page.goto(APP);
     await waitFor(page, ".home-upcoming-call-card", 25000);
-    check((await page.locator(".home-upcoming-call-card").innerText()).includes(callTitle), "the brand's dashboard lists it under Scheduled calls");
+    const brandCallCard = await page.locator(".home-upcoming-call-card").innerText();
+    check(brandCallCard.includes(callTitle), "the brand's dashboard lists it under Scheduled calls");
+    check(/Shanghai/.test(brandCallCard), "with the factory's time in the zone it proposed in (Shanghai)");
     await record(page, "Brand dashboard: Scheduled calls");
+
+    // Left open across the Join window: the card turns to "Join call" as the
+    // window opens, not a poll or a reload later. The call is moved (as the
+    // server, which the text check lets through) so its window opens in 12 s.
+    const opensAt = Date.now() + 12000;
+    await db.from("calls").update({ starts_at: new Date(opensAt + 10 * 60000).toISOString() }).eq("id", accepted?.id);
+    const joinButton = () => page.evaluate(() => [...document.querySelectorAll(".home-upcoming-call-card button")].map((node) => node.textContent.trim()));
+    await page.waitForTimeout(4000);
+    check((await joinButton()).includes("Open"), "before the window opens, the open dashboard says Open");
+    await page.waitForTimeout(Math.max(opensAt + 3000 - Date.now(), 0));
+    check((await joinButton()).includes("Join call"), "and within 3 s of the window opening it says Join call, with no reload");
+    await record(page, "Brand dashboard: Join call", "the window opened while the page was open");
 
     await signOutFully(page);
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory dashboard with a call", "factory");
     await page.goto(APP);
     await waitFor(page, ".factory-upcoming-call-card", 25000);
     check((await page.locator(".factory-upcoming-call-card").innerText()).includes(callTitle), "the factory's dashboard lists it too");
+    check(await page.evaluate(() => [...document.querySelectorAll(".factory-upcoming-call-card button")].some((node) => node.textContent.trim() === "Join call")),
+      "with Join call, since its window is open");
     await record(page, "Factory dashboard: Scheduled calls");
 
     // ================= INVITE ONLY =================

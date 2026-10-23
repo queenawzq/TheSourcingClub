@@ -12,7 +12,7 @@
  * the brand and "10:00 PM Shanghai" to the factory.
  */
 import { supabase, unwrap } from "../supabase.js";
-import { browserTimeZone } from "../../shared/call-time.mjs";
+import { browserTimeZone, endOf, startOf } from "../../shared/call-time.mjs";
 
 // The time-zone helpers live beside the designed screens, which use them too.
 export * from "../../shared/call-time.mjs";
@@ -137,34 +137,9 @@ export async function counterpartyTimeZone(threadId) {
 }
 
 // ---------------------------------------------------------------------------
-// What a call is, for the person looking at it
+// What a call is, for the person looking at it (its state and clock are in
+// call-time.mjs, re-exported above, so they can be checked without a database)
 // ---------------------------------------------------------------------------
-
-export const JOIN_OPENS_MINUTES = 10;
-export const JOIN_CLOSES_AFTER_END_MINUTES = 30;
-
-export const startOf = (call) => new Date(call.starts_at);
-export const endOf = (call) => new Date(startOf(call).getTime() + call.duration_minutes * 60000);
-
-/**
- * Where a call stands for this company: "invite" (theirs, waiting on us),
- * "waiting" (ours, waiting on them), "upcoming", "live", or "past" — plus the
- * closed states as they are.
- */
-export function callState(call, orgId, now = Date.now()) {
-  if (call.status === "proposed") {
-    if (startOf(call).getTime() <= now) return "expired";
-    return call.proposer_org_id === orgId ? "waiting" : "invite";
-  }
-  if (call.status === "accepted") {
-    const opens = startOf(call).getTime() - JOIN_OPENS_MINUTES * 60000;
-    const closes = endOf(call).getTime() + JOIN_CLOSES_AFTER_END_MINUTES * 60000;
-    if (now >= closes) return "past";
-    if (now >= opens) return "live";
-    return "upcoming";
-  }
-  return call.status;
-}
 
 /** The other company in the call's conversation. */
 export function otherSide(call, orgId) {
