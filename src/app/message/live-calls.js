@@ -3,7 +3,8 @@
  *
  * `UpcomingCallCard` (conversation panel) takes { title, brandTime,
  * factoryTime, agenda }: the strong line is the reader's own time and the
- * small one the other side's, whichever side the reader is on. The dashboard
+ * small one the other side's, whichever side the reader is on (in the zone
+ * they proposed the call in, when they did: `theirZoneFor`). The dashboard
  * cards take { title, time, counterpartTime, description, action }.
  */
 import {
@@ -13,6 +14,7 @@ import {
   otherSide,
   startOf,
   theirTime,
+  theirZoneFor,
   whenIn,
   JOIN_OPENS_MINUTES,
 } from "../../lib/domain/calls.js";
@@ -93,7 +95,7 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
     id: call.id,
     title: call.title,
     brandTime: whenIn(start, ownZone),
-    factoryTime: theirTime(start, other.name, otherZone),
+    factoryTime: theirTime(start, other.name, theirZoneFor(call, orgId, otherZone)),
     agenda: call.response_note && (state === "declined" || state === "cancelled")
       ? `“${call.response_note}”`
       : call.agenda ?? "",
@@ -124,7 +126,7 @@ export function dashboardCalls(calls, { orgId, ownZone, zones = {}, open, now = 
         id: call.id,
         title: state === "invite" ? `${call.title} (invite)` : call.title,
         time: whenIn(start, ownZone),
-        counterpartTime: theirTime(start, other.name, zones[call.thread_id]) || other.name,
+        counterpartTime: theirTime(start, other.name, theirZoneFor(call, orgId, zones[call.thread_id])) || other.name,
         description: call.agenda ?? "",
         action: state === "invite" ? "Review invite" : state === "live" ? "Join call" : "Open",
         onAction: () => open(call, { join: state === "live" }),

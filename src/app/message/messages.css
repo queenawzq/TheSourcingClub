@@ -3,12 +3,14 @@
  * The designed bubble has no such state, so it is drawn as the bubble muted,
  * with a note under the text in the bubble's own type sizes.
  */
+.message-bubble.message-bubble-checking,
 .message-bubble.message-bubble-held,
 .message-bubble.message-bubble-rejected {
   border-style: dashed;
   background: #f7f8fa;
 }
 
+.message-bubble.message-bubble-checking > p,
 .message-bubble.message-bubble-held > p,
 .message-bubble.message-bubble-rejected > p {
   color: #60769b;
@@ -26,6 +28,10 @@
   font-size: 12px;
   font-weight: 700;
   line-height: 16px;
+}
+
+.message-bubble-checking .message-status-note strong {
+  color: #33415c;
 }
 
 .message-bubble-rejected .message-status-note strong {
@@ -243,6 +249,15 @@ body.tsc-zoom-failed .zoom-MuiDialog-root {
     height: calc(100vh - 72px);
   }
 
+  /* The app shell keeps 92px at the bottom for the design's bottom bar,
+     which this page does not have. Beside a shell the height of the
+     window, that made every conversation page 92px taller than the window:
+     a send (or a scroll past the end of the timeline) scrolled the whole
+     page, cutting off its top and leaving a blank band at the bottom. */
+  .app-shell:has(> .messages-page > .messages-shell) {
+    padding-bottom: 0;
+  }
+
   .messages-shell > .message-workspace {
     display: flex;
     flex-direction: column;
@@ -265,4 +280,32 @@ body.tsc-zoom-failed .zoom-MuiDialog-root {
   .messages-shell {
     grid-template-columns: minmax(232px, 300fr) minmax(0, 698fr) minmax(232px, 286fr);
   }
+}
+
+/*
+ * Live only: a search or filter that leaves the list empty says so, in the
+ * list's own type.
+ */
+.message-thread-list-empty {
+  margin: 8px 4px;
+  color: #60769b;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+/*
+ * Live only: what happened to the last send (files refused, or not
+ * attached), or why something did not load, inside the composer.
+ */
+.message-composer-notice {
+  margin: 0;
+  color: #8a5a00;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.message-composer-notice[role="alert"] {
+  color: #b42318;
 }
