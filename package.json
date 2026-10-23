@@ -15,7 +15,8 @@
     "check:adapters": "node scripts/check-adapters.mjs",
     "check:prototype": "node scripts/check-prototype.mjs",
     "check:messages": "node scripts/check-message-patterns.mjs",
-    "check:calls": "node scripts/check-calls.mjs"
+    "check:calls": "node scripts/check-calls.mjs",
+    "check:screen": "node scripts/check-message-screen.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "6.12.0",

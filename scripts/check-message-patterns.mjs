@@ -76,6 +76,11 @@ const DELIVER = [
   "Please send the messenger bag sample on Monday.",
   "We saw your knitwear as seen on Instagram, great work.",
   "WhatsApp is easier for my team, but we'll keep it here.",
+  // Asking for a call is ordinary: the platform has its own calls. Held on
+  // #51's preview on 23 Oct (by the model; check-message-screen.mjs pins that).
+  "Hi Ningbo, thanks for the quote. Could we talk through the fit sample on a short call?",
+  "Can we have a quick video call tomorrow to go over the lab dips?",
+  "Let's schedule a meeting next week to review the PP sample.",
 ];
 
 const DELIVER_FILES = [
