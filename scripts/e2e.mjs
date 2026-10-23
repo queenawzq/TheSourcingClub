@@ -1693,14 +1693,18 @@ async function main() {
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Winning factory", "factory");
     await waitFor(page, DASHBOARD, 30000);
 
-    // The hand-built home listed notifications inline. The designed one puts
-    // them behind the activity button in its header, which is where a vendor
-    // would actually look for them.
-    await page.goto(`${APP}/notifications`);
-    await waitFor(page, '[data-testid="notifications"]', 20000);
-    const notifText = await page.locator('[data-testid="notifications"]').innerText();
+    // Notifications are the designed Activity drawer behind the dashboard's
+    // bell, which is where a vendor would actually look for them. The old
+    // /notifications address opens the same drawer.
+    await page.locator('button[aria-label="Open activity"]').click();
+    await waitFor(page, ".activity-drawer-item", 20000);
+    const notifText = await page.locator(".activity-drawer").innerText();
     check(/accepted/i.test(notifText), "the winning factory is told on its dashboard, without asking");
     await record(page, "Factory hears the outcome", "award_quote wrote this row; now something shows it");
+    await page.goto(`${APP}/notifications`);
+    await waitFor(page, ".activity-drawer-item", 20000);
+    check(new URL(page.url()).pathname.replace(/\/$/, "").endsWith("/app.html"), "/notifications opens the dashboard's Activity drawer");
+    await page.locator(".activity-close-btn").click();
 
     // ================= THE FACTORY WORKS =================
     console.log("\nTHE FACTORY WORKS");
