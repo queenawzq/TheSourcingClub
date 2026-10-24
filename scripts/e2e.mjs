@@ -2723,6 +2723,21 @@ async function main() {
     while (Date.now() < runDeadline && !(await page.evaluate(() => [...document.querySelectorAll("button")].some((node) => node.textContent.trim() === "Run daily jobs now")))) {
       await page.waitForTimeout(300);
     }
+    // An error on the console is drawn in the danger colour. The rule lived
+    // only in a stylesheet admin.html never loads, so errors read as grey.
+    // This admin's address is a reserved one, so Test emails always says so.
+    const errorColour = await page.evaluate(() => {
+      const note = document.querySelector(".admin-error");
+      const probe = document.createElement("span");
+      probe.style.color = "var(--danger)";
+      document.body.append(probe);
+      const danger = getComputedStyle(probe).color;
+      probe.remove();
+      return note ? { shown: getComputedStyle(note).color, danger, body: getComputedStyle(document.body).color } : null;
+    });
+    // Unequal to the body text too: an undefined --danger would leave both grey.
+    check(Boolean(errorColour) && errorColour.shown === errorColour.danger && errorColour.danger !== errorColour.body,
+      `an admin error is drawn in the danger colour (${errorColour?.shown} vs ${errorColour?.danger})`);
     await clickButton(page, "run daily jobs now");
     // The Daily jobs card's own line: the Test emails card above it can carry
     // a note of its own (a staff address that cannot receive a test).
