@@ -620,9 +620,13 @@ body {
    written with line breaks (src/app/onboarding/review-completion.js). The
    designed card is a fixed 560px for its one-line intro; it keeps that as a
    minimum and grows for a longer message, which reads left-aligned as the
-   list it usually is. The warning icon is only ever drawn for that message. */
-.factory-onboarding-card.step-11,
-.brand-onboarding-card.complete {
+   list it usually is. The warning icon is only ever drawn for that message.
+   Scoped by the page so it wins on specificity, not file order: a build puts
+   this file in a chunk shared with admin.html, linked before the designs'
+   styles.css, so the same selector alone lost to the design's 560px there
+   and the note ran out of the card. */
+.factory-onboarding-page .factory-onboarding-card.step-11,
+.brand-onboarding-page .brand-onboarding-card.complete {
   height: auto;
 }
 
