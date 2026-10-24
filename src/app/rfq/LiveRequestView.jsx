@@ -47,6 +47,7 @@ import {
 } from "../../lib/domain/quote.js";
 import { quoteCreditCost } from "../../lib/domain/credits.js";
 import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
+import { openRfqThread } from "../../lib/domain/message.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import QuoteActionDialog, { reviseCopy } from "../quote/QuoteActionDialog.jsx";
@@ -328,6 +329,19 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     setVersion((current) => current + 1);
   }
 
+  // A vendor that has sent a quote can write to the brand about it. Nothing
+  // else on the vendor's side opened a request's conversation, so the brand
+  // had to write first. open_rfq_thread lets a vendor open one only on a
+  // request it can see, and only for itself.
+  async function message() {
+    try {
+      const thread = await openRfqThread(rfq.id, org.id);
+      navigate(`/messages/${thread.id}`);
+    } catch (failure) {
+      setError(failure);
+    }
+  }
+
   // A draft opens straight into the form. A sent quote asks first, then
   // becomes a new draft version; the old form used to open on the sent row
   // and fail to save, because only a draft is editable.
@@ -442,6 +456,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         // Only a draft or a sent quote on an open request can still change.
         onEdit={onEdit}
         onWithdraw={open && myQuote.status === "submitted" ? () => setAsking("withdraw") : undefined}
+        // A draft was never sent, so the brand has nothing from this vendor yet.
+        onMessage={myQuote.status !== "draft" && org?.id ? message : undefined}
       />
     </>
   );

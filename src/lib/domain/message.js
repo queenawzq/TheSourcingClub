@@ -12,12 +12,13 @@
  * wrong, the message is sent exactly as typed and the reader sees that.
  */
 import { supabase, unwrap } from "../supabase.js";
-import { uploadDocument } from "./documents.js";
+import { attachmentRefusal, uploadDocument } from "./documents.js";
 
 const THREAD_COLUMNS = `
   id, rfq_id, order_id, brand_org_id, factory_org_id, last_message_at, created_at,
   brand_name, factory_name, subject_title, subject_kind,
-  last_body, last_sender_org_id, unread_count, message_count
+  last_body, last_sender_org_id, unread_count, message_count,
+  last_body_translated, last_body_translated_lang
 `;
 
 export async function listThreads(orgId) {
@@ -85,12 +86,13 @@ export async function openRfqThread(rfqId, factoryOrgId) {
 }
 
 export async function listMessages(threadId) {
-  return unwrap(
+  const rows = unwrap(
     await supabase
       .from("messages")
       .select(`
         id, thread_id, sender_org_id, sender_user_id, body, body_lang,
         body_translated, body_translated_lang, translated_by, created_at,
+        delivery, delivered_at, review_note, held_for,
         orgs:sender_org_id (name),
         documents (id, bucket, storage_path, file_name, mime_type, size_bytes)
       `)
@@ -98,7 +100,21 @@ export async function listMessages(threadId) {
       .order("created_at"),
     "load the messages",
   );
+  // A released message arrives when staff release it, not when it was typed,
+  // so the thread reads in delivery order. The sender's own held or rejected
+  // messages were never delivered and keep the time they were written.
+  return [...(rows ?? [])].sort((a, b) => Date.parse(sentAt(a)) - Date.parse(sentAt(b)));
 }
+
+/** The words of a message that is only files. */
+export function fileOnlyBody(files) {
+  const names = (files ?? []).map((file) => file.name).filter(Boolean);
+  if (!names.length) return "";
+  return names.length === 1 ? `Sent a file: ${names[0]}` : `Sent ${names.length} files: ${names.join(", ")}`;
+}
+
+/** When a message reached the thread: its delivery, or its writing if it has not. */
+export const sentAt = (message) => message.delivered_at ?? message.created_at;
 
 export async function markRead(threadId) {
   return unwrap(
@@ -108,37 +124,59 @@ export async function markRead(threadId) {
 }
 
 /**
- * Ask the server to translate. Never throws, and a failure is indistinguishable
- * from "there was nothing to translate" — both mean the message goes as typed.
- */
-async function translate(text) {
-  try {
-    const response = await fetch("/api/translate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    const result = await response.json();
-    if (!result?.translation) return null;
-    return result;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Send.
  *
- * Order matters. The message row is written first, because an attachment needs
- * a message to belong to; if an upload then fails, the message stands with a
+ * Order matters. With words typed, the message row is written first, because
+ * an attachment needs a message to belong to; if an upload then fails, the message stands with a
  * note about what did not arrive rather than vanishing along with it. Somebody
  * who has typed a paragraph should not lose it because a photo was too large.
+ *
+ * The row is saved as `checking` (the database insists), and only the screen
+ * delivers it, after the files are linked so their names are checked too. The
+ * screen also translates, at the same time as it checks: nothing waits on a
+ * model before the row exists. `onSaved` runs as soon as it does.
+ *
+ * A file can go on its own: the database needs words, so the message says
+ * which file was sent. Those words are written after the uploads and name
+ * only the files that arrived; written first, they told the other side about
+ * a file that never came. If none arrives, nothing is sent and the sender is
+ * told why. Nothing typed is lost that way, because nothing was typed.
  */
-export async function sendMessage({ threadId, orgId, userId, body, files = [] }) {
-  const text = body.trim();
-  if (!text) throw new Error("there is nothing to send");
+export async function sendMessage({ threadId, orgId, userId, body, files = [], onSaved }) {
+  const typed = (body ?? "").trim();
+  if (!typed && !files.length) throw new Error("there is nothing to send");
+  // The picker offers only what may go; this is for anything that got past
+  // it. Refused before anything is saved, so nothing half-sends.
+  const refused = files.map(attachmentRefusal).filter(Boolean);
+  if (refused.length) throw new Error(refused.join(" "));
 
-  const translation = await translate(text);
+  const failed = [];
+  async function upload(file) {
+    try {
+      return await uploadDocument({
+        orgId,
+        kind: "message_attachment",
+        file,
+        // The thread is the third path segment, which is what makes the
+        // counterparty's storage policy expressible at all.
+        scopeId: threadId,
+      });
+    } catch (error) {
+      // Already in words that name the file (documents.js).
+      failed.push(error.message);
+      return null;
+    }
+  }
+
+  const uploadedFirst = [];
+  if (!typed) {
+    for (const file of files) {
+      const doc = await upload(file);
+      if (doc) uploadedFirst.push(doc);
+    }
+    if (!uploadedFirst.length) throw new Error(failed.join(" "));
+  }
+  const text = typed || fileOnlyBody(uploadedFirst.map((doc) => ({ name: doc.file_name })));
 
   const message = unwrap(
     await supabase
@@ -148,37 +186,85 @@ export async function sendMessage({ threadId, orgId, userId, body, files = [] })
         sender_org_id: orgId,
         sender_user_id: userId,
         body: text,
-        body_lang: translation?.source_language ?? null,
-        body_translated: translation?.translation ?? null,
-        body_translated_lang: translation?.target_language ?? null,
-        translated_by: translation?.model ?? null,
       })
       .select()
       .single(),
     "send your message",
   );
+  onSaved?.(message);
 
-  const failed = [];
-  for (const file of files) {
+  // With words typed, the files go after the message, so a failed upload
+  // never costs the words.
+  const docs = typed ? [] : uploadedFirst;
+  if (typed) {
+    for (const file of files) {
+      const doc = await upload(file);
+      if (doc) docs.push(doc);
+    }
+  }
+  for (const doc of docs) {
     try {
-      const doc = await uploadDocument({
-        orgId,
-        kind: "message_attachment",
-        file,
-        // The thread is the third path segment, which is what makes the
-        // counterparty's storage policy expressible at all.
-        scopeId: threadId,
-      });
       unwrap(
         await supabase.from("documents").update({ message_id: message.id }).eq("id", doc.id).select().single(),
         "attach the file",
       );
     } catch (error) {
-      failed.push(`${file.name}: ${error.message}`);
+      console.error("attach", doc.file_name, error.message);
+      failed.push(`${doc.file_name} could not be attached.`);
     }
   }
 
-  return { message, failed };
+  const screened = await screenMessage(message.id);
+  return { message, failed, delivery: screened?.delivery ?? message.delivery };
+}
+
+/**
+ * Ask the server to screen one of your own messages (api/screen-message.js).
+ * Never throws: a screen that does not answer leaves the message `checking`,
+ * where the next visit asks again and staff see it after two minutes.
+ */
+export async function screenMessage(messageId) {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) return null;
+    const response = await fetch("/api/screen-message", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ messageId }),
+    });
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * How long one of your own messages may sit in `checking` before the page
+ * asks the screen again, attempt by attempt. A screen that did not answer —
+ * a page closed mid-send, a 504, a sign-in the auth server refused — would
+ * otherwise leave it there with nobody told; after two minutes staff see it
+ * too, as "Not checked".
+ */
+export const RESCREEN_AFTER_MS = [5000, 15000, 30000, 60000];
+
+/** Your own messages still waiting on the screen. */
+export const awaitingScreen = (messages, userId) =>
+  (messages ?? []).filter((message) => message.delivery === "checking" && message.sender_user_id === userId);
+
+/**
+ * Re-screen the caller's own messages that have been `checking` for at least
+ * `olderThanMs`. Returns whether any of them moved.
+ */
+export async function rescreenStale(messages, userId, { now = Date.now(), olderThanMs = RESCREEN_AFTER_MS[0] } = {}) {
+  const stale = awaitingScreen(messages, userId)
+    .filter((message) => now - Date.parse(message.created_at) >= olderThanMs);
+  let moved = false;
+  for (const message of stale) {
+    const result = await screenMessage(message.id);
+    if (result?.delivery && result.delivery !== "checking") moved = true;
+  }
+  return moved;
 }
 
 /**
@@ -211,3 +297,28 @@ export function readable(message, { preferred = "en" } = {}) {
 }
 
 export const LANGUAGE_NAME = { en: "English", zh: "中文" };
+
+/**
+ * Staff: the messages waiting on a person. Held ones, and any still being
+ * checked after two minutes (the screen never answered). Platform staff have
+ * no org and cannot be notified, so this list is the only prompt there is.
+ */
+export async function heldMessageQueue() {
+  return unwrap(await supabase.rpc("admin_message_queue"), "load the messages held for review");
+}
+
+/** Staff: deliver a held message. The recipient is notified as if it had just been sent. */
+export async function releaseHeldMessage(messageId, note = null) {
+  return unwrap(
+    await supabase.rpc("release_held_message", { target_message: messageId, note: note?.trim() || null }),
+    "release the message",
+  );
+}
+
+/** Staff: refuse a held message. The reason is required: the sender is shown it. */
+export async function rejectHeldMessage(messageId, note) {
+  return unwrap(
+    await supabase.rpc("reject_held_message", { target_message: messageId, note }),
+    "reject the message",
+  );
+}

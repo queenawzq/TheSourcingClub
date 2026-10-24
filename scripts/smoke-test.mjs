@@ -71,6 +71,47 @@ const fail = (message, detail) => {
  */
 const TEST_PASSWORD = "smoke test 8";
 
+/**
+ * Run the real api/screen-message.js handler for a user's message, the way the
+ * page does after a send, with Vercel's (request, response) shape. No model
+ * key here, so a message the patterns pass is delivered as `pattern_only`.
+ */
+async function screenAs(client, messageId) {
+  const { data } = await client.auth.getSession();
+  return screenWithToken(data?.session?.access_token, messageId);
+}
+
+async function screenWithToken(token, messageId) {
+  const { default: screen } = await import("../api/screen-message.js");
+  const saved = { ...process.env };
+  Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, OPENROUTER_API_KEY: "" });
+  let status = 0;
+  let body = null;
+  const response = {
+    status(code) { status = code; return response; },
+    json(payload) { body = payload; return response; },
+  };
+  try {
+    await screen({ method: "POST", headers: { authorization: `Bearer ${token}` }, body: { messageId } }, response);
+  } finally {
+    for (const key of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "OPENROUTER_API_KEY"]) {
+      if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
+    }
+  }
+  return { status, ...body };
+}
+
+// What a message may carry: the picker's list and the private bucket's
+// allowlist must be the same, or a file is offered and then refused.
+{
+  const { PRIVATE_BUCKET_TYPES } = await import("../src/shared/private-bucket-types.mjs");
+  const { data: bucket } = await admin.storage.getBucket("org-private");
+  const allowed = new Set(bucket?.allowed_mime_types ?? []);
+  const same = allowed.size === PRIVATE_BUCKET_TYPES.length && PRIVATE_BUCKET_TYPES.every((type) => allowed.has(type));
+  if (same) ok("the message file picker offers exactly what the private bucket accepts");
+  else fail(`the private bucket accepts ${[...allowed].join(", ")} but private-bucket-types.mjs offers ${PRIVATE_BUCKET_TYPES.join(", ")}`);
+}
+
 // Where Stripe can pay out: the server (api/_stripe.js) and the factory's
 // Payments page keep their own copies, because Vercel builds api/ on its own.
 {
@@ -1192,7 +1233,7 @@ console.log("\nphase 3 — the order runs");
 
       // Sending is a plain insert governed by a with-check, unlike almost
       // everything else in this schema. Worth exercising through PostgREST.
-      const { error: sendError } = await brand.client.from("messages").insert({
+      const { data: sent, error: sendError } = await brand.client.from("messages").insert({
         thread_id: threadId,
         sender_org_id: order.brand_org_id,
         sender_user_id: brand.id,
@@ -1201,8 +1242,32 @@ console.log("\nphase 3 — the order runs");
         body_translated: "你能确认PP样品的袖口尺寸吗？",
         body_translated_lang: "zh",
         translated_by: "smoke-test",
-      });
+        delivery: "delivered",
+      }).select("id, delivery").single();
       sendError ? fail("the brand sends a message", sendError) : ok("the brand sends a message");
+      sent?.delivery === "checking"
+        ? ok("it is saved to be checked first, even when the insert asks for delivered")
+        : fail(`LEAK: a client wrote its own message as ${sent?.delivery}`);
+
+      const { data: unscreened } = await factoryClient.from("messages").select("id").eq("id", sent?.id);
+      (unscreened ?? []).length === 0
+        ? ok("the factory sees nothing of it until the screen has looked")
+        : fail("LEAK: the factory read a message still being checked");
+
+      const strangerScreen = await screenAs(factoryClient, sent?.id);
+      strangerScreen.status === 404
+        ? ok("the other side CANNOT ask the screen to decide someone else's message")
+        : fail(`the factory screened the brand's message (${strangerScreen.status} ${strangerScreen.delivery})`);
+
+      const screened = await screenAs(brand.client, sent?.id);
+      screened.delivery === "delivered" && screened.method === "pattern_only"
+        ? ok("the screen delivers an ordinary message (no model key: pattern_only)")
+        : fail(`the screen answered ${JSON.stringify(screened)}`);
+
+      const rescreened = await screenAs(brand.client, sent?.id);
+      rescreened.delivery === "delivered" && rescreened.method === null
+        ? ok("screening it again changes nothing")
+        : fail(`a repeated screen answered ${JSON.stringify(rescreened)}`);
 
       const { error: impersonation } = await brand.client.from("messages").insert({
         thread_id: threadId,
@@ -1271,6 +1336,87 @@ console.log("\nphase 3 — the order runs");
       msgNotif.length === 1 && msgNotif[0].org_id === order.factory_org_id
         ? ok("sending notified the other side, and only the other side")
         : fail(`expected one notification to the factory, got ${msgNotif.length}`);
+
+      // A message saved to be checked first. Only the server, holding the
+      // secret key, records the verdict; while it is held the factory sees
+      // nothing of it and is told nothing.
+      const { data: held, error: heldError } = await brand.client.from("messages").insert({
+        thread_id: threadId,
+        sender_org_id: order.brand_org_id,
+        sender_user_id: brand.id,
+        body: "Easier on WeChat, my ID is smoke_brand_88",
+      }).select("id").single();
+      heldError ? fail("the brand sends a message with a WeChat ID", heldError)
+                : ok("the brand sends a message with a WeChat ID");
+
+      const { error: selfVerdict } = await brand.client.rpc("record_message_screening", {
+        target_message: held?.id, outcome: "delivered", method: "ai",
+      });
+      selfVerdict ? ok("a sender CANNOT record the verdict on its own message")
+                  : fail("LEAK: a sender delivered its own message past the check");
+
+      const holding = await screenAs(brand.client, held?.id);
+      holding.delivery === "held" && holding.method === "pattern"
+        ? ok("the screen holds it on the patterns, without asking a model")
+        : fail(`the screen answered ${JSON.stringify(holding)}`);
+
+      const { data: heldRow } = await brand.client.from("messages").select("held_for").eq("id", held?.id).single();
+      heldRow?.held_for === "contact_details" && holding.heldFor === "contact_details"
+        ? ok("and its sender can read what it was held for (contact details), so the page says the right thing")
+        : fail(`the sender reads held_for ${heldRow?.held_for} (screen said ${holding.heldFor})`);
+
+      const { data: why } = await admin.from("message_screenings").select("reason").eq("message_id", held?.id).single();
+      why?.reason === "a WeChat contact"
+        ? ok(`and records why, for staff ("${why.reason}")`)
+        : fail(`the screening reason is ${why?.reason}`);
+
+      const { data: factorySeesHeld } = await factoryClient
+        .from("messages").select("id").eq("id", held?.id);
+      (factorySeesHeld ?? []).length === 0
+        ? ok("the factory CANNOT read a held message")
+        : fail("LEAK: the factory read a held message");
+
+      const { data: afterHold } = await admin
+        .from("notifications").select("id")
+        .eq("subject_type", "thread").eq("subject_id", threadId);
+      afterHold.length === 1
+        ? ok("and is not notified of it")
+        : fail(`expected still one notification, got ${afterHold.length}`);
+
+      // A session signed out somewhere else. signOut() ends the session on
+      // the auth server at once, but its access token is still a valid JWT
+      // to the database until it expires, so the message is saved. The
+      // screen used to ask the auth server (getUser) and answer 401, and the
+      // message stayed `checking` for good with nobody told (#51's preview,
+      // 23 Oct). It now asks the database, as the insert did.
+      {
+        const second = createClient(URL, ANON, { auth: { persistSession: false, autoRefreshToken: false } });
+        const { data: login } = await second.auth.signInWithPassword({ email: `brand-${stamp}@example.com`, password: TEST_PASSWORD });
+        const oldToken = login?.session?.access_token;
+        await second.auth.signOut({ scope: "local" });
+        const { data: gone } = await admin.auth.getUser(oldToken);
+        const stale = createClient(URL, ANON, {
+          global: { headers: { Authorization: `Bearer ${oldToken}` } },
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+        const { data: late, error: lateError } = await stale.from("messages").insert({
+          thread_id: threadId,
+          sender_org_id: order.brand_org_id,
+          sender_user_id: brand.id,
+          body: "Packing list attached for the first carton.",
+        }).select("id, delivery").single();
+        !gone?.user && !lateError && late?.delivery === "checking"
+          ? ok("a token whose session was signed out elsewhere still saves a message (the database only checks the JWT)")
+          : fail(`setup: signed-out token ${gone?.user ? "still known to auth" : "refused by auth"}, insert ${lateError?.message ?? late?.delivery}`);
+        const lateScreen = await screenWithToken(oldToken, late?.id);
+        lateScreen.delivery === "delivered"
+          ? ok("and the screen still checks and delivers it, so it cannot sit in checking for good")
+          : fail(`a message sent from a signed-out session was left ${lateScreen.delivery ?? "unscreened"} (${lateScreen.status} ${lateScreen.error ?? ""})`);
+        const forged = await screenWithToken(`${oldToken.split(".")[0]}.${Buffer.from(JSON.stringify({ sub: brand.id, role: "authenticated" })).toString("base64url")}.x`, late?.id);
+        forged.status === 401
+          ? ok("a token with a forged signature CANNOT ask the screen anything")
+          : fail(`a forged token got ${forged.status} ${forged.delivery}`);
+      }
     }
   }
 }

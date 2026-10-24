@@ -1810,7 +1810,7 @@ async function main() {
     await page.locator('[data-field="payout_swift"]').fill("BCOMPTPL");
     await record(page, "Bank details for manual payouts", "no full account number is asked for, or stored");
 
-    await page.locator('[data-testid="save-payout"]').click();
+    await clickButton(page, "save payout method");
     await page.waitForTimeout(2500);
 
     const { data: payout } = await db.from("factory_payout_accounts")
@@ -1985,13 +1985,13 @@ async function main() {
     }, bornOrder.order_number);
     check(paidOwnRow, "staff mark it paid out by bank, from its row");
     // It asks once, naming the amount and the factory, before marking it.
-    const confirmed = await page.evaluate((orderNumber) => {
+    const confirmedRelease = await page.evaluate((orderNumber) => {
       const button = [...document.querySelectorAll('[data-section="payout"] [data-testid="release-payment-confirm"]')]
         .find((candidate) => candidate.closest("tr")?.innerText.includes(orderNumber));
       button?.click();
       return Boolean(button);
     }, bornOrder.order_number);
-    check(confirmed, "and confirm it when asked");
+    check(confirmedRelease, "and confirm it when asked");
     await page.waitForTimeout(3500);
     await record(page, "Paid out by bank", "for a factory Stripe cannot pay");
 
@@ -2033,10 +2033,18 @@ async function main() {
     const { data: runThread } = await db.from("message_threads")
       .select("id").eq("order_id", bornOrder.id).single();
 
-    const { data: sentRows } = await db.from("messages")
-      .select("body, body_lang, body_translated, body_translated_lang, sender_org_id")
-      .eq("thread_id", runThread.id)
-      .order("created_at");
+    // The translation is written by the screen, with the delivery, so read
+    // the message once it is delivered rather than the moment it is saved.
+    let sentRows = [];
+    const deliveredDeadline = Date.now() + 20000;
+    while (Date.now() < deliveredDeadline) {
+      ({ data: sentRows } = await db.from("messages")
+        .select("body, body_lang, body_translated, body_translated_lang, sender_org_id, delivery")
+        .eq("thread_id", runThread.id)
+        .order("created_at"));
+      if (sentRows?.[sentRows.length - 1]?.delivery === "delivered") break;
+      await page.waitForTimeout(300);
+    }
     const sent = sentRows[sentRows.length - 1];
 
     check(sent.body === factoryLine,
@@ -2091,6 +2099,11 @@ async function main() {
     if (!openedThread) await page.locator('.message-thread-card').first().click();
     check(openedThread, `the order's own conversation is listed (${bornOrder.order_number})`);
     await waitFor(page, '.message-bubble', 25000);
+    // How far the open conversation is from its newest message, in pixels.
+    const fromNewest = () => page.evaluate(() => {
+      const box = document.querySelector(".message-timeline");
+      return box ? Math.round(box.scrollHeight - box.scrollTop - box.clientHeight) : -1;
+    });
 
     // Every bubble in the thread, not the first: the conversation may already
     // hold older messages, and the one under test is the newest.
@@ -2106,6 +2119,8 @@ async function main() {
       if (readerSees.includes(wanted)) break;
       await page.waitForTimeout(300);
     }
+    const openedGap = await fromNewest();
+    check(openedGap >= 0 && openedGap < 4, `the conversation opens at its newest message (${openedGap}px from it)`);
     if (sent.body_translated) {
       check(readerSees.includes(sent.body_translated.slice(0, 20)),
         "the brand is shown English first, not a sentence it cannot read");
@@ -2125,16 +2140,18 @@ async function main() {
     await page.locator('.message-composer textarea').fill("Confirmed, that matches the chart. Go ahead.");
     await page.locator('[data-testid="send-message"]').click();
 
-    // Wait for the message to actually arrive, not for a guessed duration.
-    // sendMessage awaits /api/translate BEFORE inserting, and a model round
-    // trip routinely outlasts a fixed 4s sleep — which is how this passed
-    // locally and failed as soon as the model was slower.
+    // Wait for the message to actually arrive, not for a guessed duration:
+    // it is delivered once the screen (and the translation beside it) have
+    // answered, which a fixed sleep would race.
     let exchanged = 0;
     const sendDeadline = Date.now() + 45000;
     while (Date.now() < sendDeadline) {
+      // Delivered, not merely saved: every message is checked first, and an
+      // ordinary one has to come out of the screen delivered.
       const { count } = await db.from("messages")
         .select("*", { count: "exact", head: true })
-        .eq("thread_id", runThread.id);
+        .eq("thread_id", runThread.id)
+        .eq("delivery", "delivered");
       exchanged = count ?? 0;
       if (exchanged >= 2) break;
       await page.waitForTimeout(500);
@@ -2142,8 +2159,215 @@ async function main() {
     // Counted on this thread, not across the database. A bare count(*) passes
     // on a fresh stack and fails the moment the smoke suite has run first,
     // which is the failure this file has already been bitten by once.
-    check(exchanged === 2, `both sides have now said something (${exchanged} messages on this thread)`);
+    check(exchanged === 2, `both sides have now said something (${exchanged} delivered messages on this thread)`);
     await record(page, "A reply", "the first conversation either prototype could not actually have");
+
+    // ================= A LIVE CONVERSATION =================
+    // Until 2026-10-18 this walkthrough signed in as one side at a time and
+    // never had both in the conversation at once, which is how a screen that
+    // needed a refresh to show anything, an "Attach file" that did nothing and
+    // a Send that took seconds all passed. Here the brand's page stays open and
+    // the factory writes from a second, real signed-in client.
+    console.log("\nA LIVE CONVERSATION");
+
+    // Send is instant: the box empties and exactly one bubble carries the
+    // words, before any server has answered.
+    // A run's stamp is a bare 13-digit number, which reads like an account
+    // id: the check (rightly) holds it. Ordinary lines carry a word instead.
+    const runWord = `run-${stamp.toString(36)}`;
+    const instantLine = `Thanks, looking at it now (${runWord}).`;
+    await page.locator('.message-composer textarea').fill(instantLine);
+    const sendSeen = await page.evaluate(async (line) => {
+      const started = performance.now();
+      document.querySelector('[data-testid="send-message"]').click();
+      while (performance.now() - started < 1500) {
+        const box = document.querySelector(".message-composer textarea").value;
+        const bubbles = [...document.querySelectorAll(".message-bubble")].filter((bubble) => bubble.textContent.includes(line)).length;
+        if (!box && bubbles >= 1) return { ms: Math.round(performance.now() - started), bubbles, box };
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      return { ms: null };
+    }, instantLine);
+    check(sendSeen.ms !== null && sendSeen.bubbles === 1 && sendSeen.box === "",
+      `pressing Send empties the box and draws the message once, at once (${sendSeen.ms} ms, ${sendSeen.bubbles} bubble)`);
+
+    // The factory writes from somewhere else; the brand's page is not reloaded.
+    const factoryClient = createClient(
+      process.env.SUPABASE_URL ?? stack.API_URL,
+      process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY,
+      { auth: { persistSession: false } },
+    );
+    const { data: factorySession } = await factoryClient.auth.signInWithPassword({
+      email: `e2e-factory-${stamp}@example.com`, password: PASSWORD,
+    });
+    const liveLine = `Packing list for ${bornOrder.order_number} is ready (${runWord}).`;
+    const { data: liveRow, error: liveError } = await factoryClient.from("messages").insert({
+      thread_id: runThread.id,
+      sender_org_id: factoryOrg.id,
+      sender_user_id: factorySession?.user?.id,
+      body: liveLine,
+    }).select("id").single();
+    check(!liveError, `the factory's message was saved from its own session${liveError ? `: ${liveError.message}` : ""}`);
+    const liveStarted = Date.now();
+    await fetch(`${APP.replace(/\/app\.html$/, "")}/api/screen-message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${factorySession?.session?.access_token}` },
+      body: JSON.stringify({ messageId: liveRow?.id }),
+    }).catch(() => null);
+    let arrivedLive = false;
+    while (Date.now() - liveStarted < 15000) {
+      if ((await eachText(page, ".message-bubble")).some((text) => text.includes(runWord) && text.includes("Packing list"))) {
+        arrivedLive = true;
+        break;
+      }
+      await page.waitForTimeout(250);
+    }
+    check(arrivedLive, `the factory's message appears on the brand's open page without a refresh (${Date.now() - liveStarted} ms)`);
+    await page.waitForTimeout(300);
+    const liveGap = await fromNewest();
+    check(liveGap >= 0 && liveGap < 4, `and the open conversation scrolls to it (${liveGap}px from the newest)`);
+    await record(page, "It arrives live", "the other side's message appears while the page is open");
+
+    // A file a message cannot carry is refused in words when it is picked,
+    // never sent to storage to come back as "mime type ... is not supported".
+    await page.evaluate(() => {
+      const input = document.querySelector('input[data-field="message_files"]');
+      const list = new DataTransfer();
+      list.items.add(new File(["carton notes"], "carton-notes.txt", { type: "text/plain" }));
+      input.files = list.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await page.waitForTimeout(300);
+    const refusal = await page.evaluate(() => ({
+      notice: document.querySelector(".message-composer-notice")?.textContent ?? "",
+      pending: document.querySelectorAll('[data-testid="pending-files"] span').length,
+      accept: document.querySelector('input[data-field="message_files"]')?.accept ?? "",
+    }));
+    check(/carton-notes\.txt can't be attached/.test(refusal.notice) && refusal.pending === 0 && !refusal.accept.includes(".txt"),
+      `a .txt is not offered, and refused in words if picked ("${refusal.notice.slice(0, 60)}")`);
+
+    // Attach file: a real picker, and the file goes with the message.
+    const fileName = `measurements-${runWord}.pdf`;
+    await page.evaluate(async (name) => {
+      document.querySelector(".message-upload-btn").click();
+      const input = document.querySelector('input[data-field="message_files"]');
+      const file = new File(["%PDF-1.4\n%%EOF\n"], name, { type: "application/pdf" });
+      const list = new DataTransfer();
+      list.items.add(file);
+      input.files = list.files;
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    }, fileName);
+    await waitFor(page, '[data-testid="pending-files"]', 5000);
+    await page.locator('[data-testid="send-message"]').click();
+    let attached = null;
+    const attachDeadline = Date.now() + 20000;
+    while (Date.now() < attachDeadline) {
+      ({ data: attached } = await db.from("documents")
+        .select("id, bucket, storage_path, message_id, messages!inner (thread_id, delivery)")
+        .eq("file_name", fileName).maybeSingle());
+      if (attached?.messages?.delivery === "delivered") break;
+      await page.waitForTimeout(400);
+    }
+    check(attached?.messages?.thread_id === runThread.id && attached?.messages?.delivery === "delivered",
+      `a file sent on its own is linked to its message and delivered (${attached?.messages?.delivery})`);
+    const { data: factoryLink } = attached
+      ? await factoryClient.storage.from(attached.bucket).createSignedUrl(attached.storage_path, 60)
+      : { data: null };
+    const fileStatus = factoryLink?.signedUrl ? await fetch(factoryLink.signedUrl).then((response) => response.status).catch(() => 0) : 0;
+    check(fileStatus === 200, `the factory can open the brand's file (${fileStatus})`);
+    check((await eachText(page, '[data-testid="message-attachment"]')).some((text) => text.includes(fileName)),
+      "the file is shown on the message, as a button that opens it");
+    const pageAfterFile = await page.evaluate(() => ({
+      top: document.scrollingElement.scrollTop,
+      extra: document.scrollingElement.scrollHeight - window.innerHeight,
+      wide: window.innerWidth,
+    }));
+    check(pageAfterFile.wide < 901 || (pageAfterFile.top === 0 && pageAfterFile.extra <= 1),
+      `sending a file scrolls only the conversation, never the page (page at ${pageAfterFile.top}px, ${pageAfterFile.extra}px taller than the window)`);
+    await record(page, "A file", "Attach file works, and the other side can open it");
+
+    // Search and the Unread filter do what they say.
+    await page.locator(".message-search-field input").fill(bornOrder.order_number);
+    await page.waitForTimeout(300);
+    const foundThreads = await eachText(page, ".message-thread-card");
+    check(foundThreads.length >= 1 && foundThreads.every((text) => text.includes(bornOrder.order_number)),
+      `searching for ${bornOrder.order_number} lists only its conversation (${foundThreads.length})`);
+    await page.locator(".message-search-field input").fill(`no-such-${runWord}`);
+    await page.waitForTimeout(300);
+    const emptyList = await page.evaluate(() => document.querySelector(".message-thread-list-empty")?.textContent ?? "");
+    check(/No conversations match/.test(emptyList), `a search with no match says so ("${emptyList}")`);
+    await page.locator(".message-search-field input").fill("");
+    await page.waitForTimeout(300);
+    const reopenedGap = await fromNewest();
+    check(reopenedGap >= 0 && reopenedGap < 4, `the conversation is still at its newest message (${reopenedGap}px)`);
+    await factoryClient.auth.signOut();
+
+    // ================= HELD FOR REVIEW =================
+    // A phone number is a way off the platform. The screen holds it on the
+    // patterns: the brand sees it marked, the factory sees nothing and is told
+    // nothing, and only staff can let it through.
+    console.log("\nHELD FOR REVIEW");
+    const phoneLine = `Call me on +44 7700 900123 to sort the rest (${stamp}).`;
+    const factoryNotices = async () => (await db.from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("org_id", factoryOrg.id).eq("subject_type", "thread").eq("subject_id", runThread.id)).count ?? 0;
+    const noticesBefore = await factoryNotices();
+
+    await page.locator('.message-composer textarea').fill(phoneLine);
+    await page.locator('[data-testid="send-message"]').click();
+    let heldRow = null;
+    const holdDeadline = Date.now() + 30000;
+    while (Date.now() < holdDeadline) {
+      ({ data: heldRow } = await db.from("messages")
+        .select("id, delivery, message_screenings (method, reason)")
+        .eq("thread_id", runThread.id).eq("body", phoneLine).maybeSingle());
+      if (heldRow && heldRow.delivery !== "checking") break;
+      await page.waitForTimeout(500);
+    }
+    check(heldRow?.delivery === "held", `a phone number is held, not delivered (${heldRow?.delivery})`);
+    const screening = Array.isArray(heldRow?.message_screenings) ? heldRow.message_screenings[0] : heldRow?.message_screenings;
+    check(screening?.method === "pattern", `the patterns caught it without asking a model (${screening?.method}: ${screening?.reason})`);
+
+    let senderSees = "";
+    const labelDeadline = Date.now() + 15000;
+    while (Date.now() < labelDeadline) {
+      senderSees = (await eachText(page, ".message-bubble")).join("\n");
+      if (/held for review/i.test(senderSees)) break;
+      await page.waitForTimeout(300);
+    }
+    check(/held for review/i.test(senderSees), "the brand sees its message marked \"Held for review\"");
+    check(await factoryNotices() === noticesBefore, "and the factory is told nothing");
+    await record(page, "Held for review", "contact details wait for staff; the factory sees nothing");
+
+    await signOutFully(page);
+    await signIn(page, adminEmail, "Admin reviewing messages");
+    await page.goto(`${APP}/admin/messages`);
+    await waitFor(page, '[data-testid="held-message"]', 25000);
+    const heldRows = await page.locator('[data-testid="held-message"]').count();
+    let released = false;
+    for (let index = 0; index < heldRows; index += 1) {
+      const row = page.locator('[data-testid="held-message"]').nth(index);
+      // The whole line: earlier runs leave held messages that start the same.
+      if (!(await row.innerText().catch(() => "")).includes(phoneLine)) continue;
+      await record(page, "Messages held for review", "staff see the brand, the factory, the order and why");
+      await page.evaluate((words) => {
+        const target = [...document.querySelectorAll('[data-testid="held-message"]')].find((tr) => tr.innerText.includes(words));
+        target?.querySelector('[data-testid="release-message"]')?.click();
+      }, phoneLine);
+      released = true;
+      break;
+    }
+    check(released, "staff find the held message on their page");
+
+    let afterRelease = null;
+    const releaseDeadline = Date.now() + 20000;
+    while (Date.now() < releaseDeadline) {
+      ({ data: afterRelease } = await db.from("messages").select("delivery, delivered_at").eq("id", heldRow?.id).single());
+      if (afterRelease?.delivery === "delivered") break;
+      await page.waitForTimeout(500);
+    }
+    check(afterRelease?.delivery === "delivered", "staff release it, and it is delivered");
+    check(await factoryNotices() === noticesBefore + 1, "the factory is notified once, as for any new message");
 
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
@@ -2320,11 +2544,11 @@ async function main() {
     await record(page, "Payments", "the brand's order payments, on the designed Payments page");
     const paymentsText = await page.locator(".billing-history-page").innerText();
     const { data: brandPayments } = await db.from("order_payments")
-      .select("id, state, amount_cents, fee_bps, charged_cents, order_id").eq("order_id", bornOrder.id).neq("state", "not_due");
+      .select("id, state, amount_cents, fee_bps, charged_cents, order_id").eq("order_id", bornOrder.id).not("state", "in", "(not_due,due)");
     // Each row is what the brand is charged: the step plus the service fee.
     const chargedOf = (payment) => Number(payment.charged_cents ?? Number(payment.amount_cents) + Math.floor(Number(payment.amount_cents) * Number(payment.fee_bps) / 10000));
     check(brandPayments.length > 0 && brandPayments.every((payment) => paymentsText.includes(`$${(chargedOf(payment) / 100).toLocaleString("en", { minimumFractionDigits: 2 })}`)),
-      `every payment on the brand's order that is due or further along is listed, fee included (${brandPayments.length})`);
+      `every payment on the brand's order that money has moved for is listed, fee included (${brandPayments.length})`);
     check(/Funded|Paid/.test(paymentsText) && paymentsText.includes(factoryName), "with its state in the design's words and the factory's name");
     check(!brandPayments.some((payment) => payment.state === "due") || /Not paid/.test(paymentsText),
       "a payment still due is in the list too, as Not paid");

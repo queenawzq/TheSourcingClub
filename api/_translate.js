@@ -1,28 +1,19 @@
 /**
- * Translate a message between English and Chinese.
+ * Translate a message between English and Chinese, for the screen
+ * (api/screen-message.js), which translates while it checks so a message
+ * costs one round trip, not two in a row. There is no /api/translate any
+ * more: nothing called it once the screen translated, and it answered anyone,
+ * signed in or not, with our model key.
  *
- * The second serverless function here, and it exists for the same reason as
- * the first: the key must never reach a client bundle.
+ * Never throws. Any failure — no key, bad model, timeout, nonsense back —
+ * returns a null translation with the reason, and the message goes as typed.
  *
- * The rule this follows is the one that matters for a marketplace where one
- * side writes English and the other writes Chinese: **it never blocks a
- * message being sent**. Any failure — no key, bad model, timeout, nonsense
- * back — returns a null translation, the message is stored exactly as typed,
- * and the reader sees the original. Someone with something urgent to say is
- * not made to wait on a model, and a conversation never loses a sentence
- * because a translation could not be produced.
- *
- * The original is always stored alongside. A translation is a convenience, not
- * a record: when it is wrong — and on quantities, tolerances and dates it will
- * sometimes be wrong — the person needs to be able to see what was actually
- * written, and to point at it.
+ * Haiku by default, NOT OPENROUTER_MODEL: this sits on every send, and Opus
+ * made a message take seconds to reach the other side (John, 2026-10-18).
  */
 
-const MODEL = process.env.OPENROUTER_MODEL ?? "anthropic/claude-opus-5";
+const MODEL = process.env.OPENROUTER_TRANSLATE_MODEL || "anthropic/claude-haiku-5.5";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
-// Under Vercel's Hobby ceiling (10s). See the note in generate-brief.js:
-// exceeding it turns a designed soft failure into a platform 504.
-const TIMEOUT_MS = 9000;
 
 const SCHEMA = {
   type: "object",
@@ -35,32 +26,19 @@ const SCHEMA = {
   },
 };
 
-function soft(reason) {
+export function softTranslation(reason) {
   return { source_language: null, target_language: null, translation: null, error: reason };
 }
 
-export default async function handler(request, response) {
-  if (request.method !== "POST") {
-    response.status(405).json(soft("method not allowed"));
-    return;
-  }
-
+export async function translateText(input, { timeoutMs = 8000 } = {}) {
   const apiKey = process.env.OPENROUTER_API_KEY;
-  if (!apiKey) {
-    response.status(200).json(soft("no model key configured on the server"));
-    return;
-  }
+  if (!apiKey) return softTranslation("no model key configured on the server");
 
-  const body = typeof request.body === "string" ? JSON.parse(request.body) : request.body ?? {};
-  const text = String(body.text ?? "").trim();
-
-  if (!text) {
-    response.status(200).json(soft("nothing to translate"));
-    return;
-  }
+  const text = String(input ?? "").trim();
+  if (!text) return softTranslation("nothing to translate");
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const upstream = await fetch(ENDPOINT, {
@@ -112,16 +90,12 @@ ${text.slice(0, 4000)}
     if (!upstream.ok) {
       const detail = await upstream.text();
       console.error("translate upstream", upstream.status, detail.slice(0, 300));
-      response.status(200).json(soft(`the model service returned ${upstream.status}`));
-      return;
+      return softTranslation(`the model service returned ${upstream.status}`);
     }
 
     const payload = await upstream.json();
     const raw = payload?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-    if (!raw) {
-      response.status(200).json(soft("the model returned nothing usable"));
-      return;
-    }
+    if (!raw) return softTranslation("the model returned nothing usable");
 
     const fields = typeof raw === "string" ? JSON.parse(raw) : raw;
 
@@ -134,21 +108,20 @@ ${text.slice(0, 4000)}
       fields.source_language === fields.target_language ||
       fields.translation.trim() === text
     ) {
-      response.status(200).json(soft("nothing to translate into"));
-      return;
+      return softTranslation("nothing to translate into");
     }
 
-    response.status(200).json({
+    return {
       source_language: fields.source_language,
       target_language: fields.target_language,
       translation: fields.translation,
       model: payload.model ?? MODEL,
       error: null,
-    });
+    };
   } catch (error) {
     const reason = error.name === "AbortError" ? "the model took too long" : error.message;
     console.error("translate failed", reason);
-    response.status(200).json(soft(reason));
+    return softTranslation(reason);
   } finally {
     clearTimeout(timeout);
   }
