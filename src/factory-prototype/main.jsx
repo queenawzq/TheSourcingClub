@@ -9187,20 +9187,6 @@ export function FactoryProjectDetail({
   saved,
   onToggleSave,
 }) {
-  const isZh = language === "zh";
-  const translatedTitle = getTranslatedProjectTitle(project.title);
-  const requestImages = project.images || [];
-  const [primaryImage, ...supportImages] = requestImages;
-  const hasGallery = requestImages.length >= 3;
-  // A live request need not carry every fact — a deadline is optional. An empty
-  // tile reads as a missing value, so the row is dropped rather than drawn blank.
-  const requestFacts = [
-    ["Unit target", project.budget],
-    ["Quantity", project.quantity],
-    ["Samples", project.samples],
-    ["Quote due", project.quoteDue]
-  ].filter(([, value]) => value);
-
   return (
     <main className="factory-detail-page factory-rfq-detail-page">
       <header className="factory-detail-header">
@@ -9211,82 +9197,12 @@ export function FactoryProjectDetail({
 
       <div className="factory-detail-layout">
         <section className="factory-detail-main">
-          <article className={project.featured ? "factory-request-card featured factory-detail-hero-card" : "factory-request-card factory-detail-hero-card"}>
-            <div className="factory-request-card-top">
-              <div className="factory-request-title">
-                <div className="factory-avatar">{project.initials}</div>
-                <div>
-                  <h1 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h1>
-                  <p data-no-translate>
-                    {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : `${project.brand} · ${project.location} · ${project.posted}`}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {isZh && (
-              <div className="brand-brief-translation-meta factory-detail-translation-meta">
-                <span>由英文自动翻译</span>
-                <button type="button">查看英文原文</button>
-              </div>
-            )}
-
-            <div className="factory-request-card-body">
-              <aside className="factory-request-brief">
-                <div className="factory-request-facts">
-                  {requestFacts.map(([label, value]) => (
-                    <div key={label}>
-                      <span>{label}</span>
-                      <strong>{value}</strong>
-                    </div>
-                  ))}
-                </div>
-                {isZh ? (
-                  <TranslatedProjectSummary project={project} />
-                ) : (
-                  <p data-no-translate>{project.specialty}</p>
-                )}
-                {(project.paymentVerified ?? true) && (
-                  <div className="factory-request-trust">
-                    <span className="factory-request-trust-icon" aria-hidden="true">$</span>
-                    <strong>Payment verified</strong>
-                    <span>{project.trust}</span>
-                  </div>
-                )}
-                {project.tags?.length > 0 && (
-                <div className="factory-request-tags">
-                  <span className="marketplace-tag-label">Request tags</span>
-                  <div className="tag-row compact-tags">
-                    {project.tags.map((tag) => (
-                      <span className="tag garment-tag" key={tag}>{tag}</span>
-                    ))}
-                  </div>
-                </div>
-                )}
-                <FactoryRequestRequirements project={project} />
-              </aside>
-
-              <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${project.brand} request references`}>
-                {primaryImage ? (
-                  <figure className="factory-request-visual-main">
-                    <img src={primaryImage.src} alt={`${project.title} ${primaryImage.label}`} />
-                    <figcaption>{primaryImage.label}</figcaption>
-                  </figure>
-                ) : (
-                  <div className="factory-request-visual-placeholder">
-                    <strong>No reference image uploaded</strong>
-                    <span>Review the written brief, request tags, and attached tech pack in details.</span>
-                  </div>
-                )}
-                {hasGallery && supportImages.slice(0, 2).map((image) => (
-                  <figure key={image.label}>
-                    <img src={image.src} alt={`${project.title} ${image.label}`} />
-                    <figcaption>{image.label}</figcaption>
-                  </figure>
-                ))}
-              </div>
-            </div>
-          </article>
+          <FactoryQuoteRequestCard
+            project={project}
+            companyType={companyType}
+            language={language}
+            attachments={attachments}
+          />
 
           {(brief === undefined || brief) && (
             <DetailCard title="Project brief">
@@ -9351,27 +9267,6 @@ export function FactoryProjectDetail({
           {materials?.additionalDetails && (
             <DetailCard title="Additional details">
               <p className="factory-request-additional-details">{materials.additionalDetails}</p>
-            </DetailCard>
-          )}
-
-          {(attachments ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"]).length > 0 && (
-            <DetailCard title="Brand attachments">
-              <div className="factory-card-header-row">
-                <p>Review these before quoting. Files open in the brand request workspace.</p>
-                {!attachments && <button className="text-link" type="button">Download files</button>}
-              </div>
-              <div className="factory-attachment-row">
-                {(attachments ?? [
-                  { name: "Tech pack v3.pdf" },
-                  { name: "Measurement chart" },
-                  { name: "Reference photos" },
-                ]).map((file) => (
-                  <button type="button" key={file.name ?? file} onClick={file.onOpen}>
-                    {file.name ?? file}
-                    <img src="/assets/prototype-icons/download.svg" alt="" />
-                  </button>
-                ))}
-              </div>
             </DetailCard>
           )}
 
@@ -10289,7 +10184,7 @@ export function FactoryReviewTotal({
   );
 }
 
-function FactoryQuoteRequestCard({ project, companyType = "factory", language }) {
+function FactoryQuoteRequestCard({ project, companyType = "factory", language, attachments }) {
   const isZh = language === "zh";
   const translatedTitle = getTranslatedProjectTitle(project.title);
   const requestImages = project.images || [];
@@ -10303,7 +10198,12 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
     ["Quantity", project.quantity],
     ["Samples", project.samples],
     ["Quote due", project.quoteDue]
-  ];
+  ].filter(([, value]) => value);
+  const requestFiles = attachments?.map((file) => file.name ?? file)
+    ?? project.files
+    ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"];
+  const downloadFiles = project.onDownloadFiles
+    ?? (attachments?.length ? () => attachments.forEach((file) => file.onOpen?.()) : undefined);
 
   return (
     <article className="factory-submit-card factory-submit-project-card factory-request-card">
@@ -10380,11 +10280,11 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
       {/* Live mounts pass project.files. The prototype passes none and keeps
           the design's example list; a real request with no attachments shows
           no attachment row rather than three files that do not exist. */}
-      {(project.files ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"]).length > 0 && (
+      {requestFiles.length > 0 && (
         <div className="factory-submit-attachments">
           <span>Brand attachments</span>
-          <strong>{(project.files ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"]).join(" · ")}</strong>
-          <button className="text-link" type="button" onClick={project.onDownloadFiles}>Download files</button>
+          <strong>{requestFiles.join(" · ")}</strong>
+          <button className="text-link" type="button" onClick={downloadFiles}>Download files</button>
         </div>
       )}
     </article>

@@ -1,12 +1,11 @@
 /**
  * A request as a factory reads it, on Queena's designed screens.
  *
- * There are two of them, and which one is right depends on whether this vendor
- * has quoted yet:
+ * The request summary is shared across both states so the brand requirements
+ * and attachments never move when a factory starts a quote:
  *
- *   * no quote  → `FactoryProjectDetail`, the design's "RFQ details" — the
- *     request, the brand behind it, how well it matches, and the primary
- *     action that matters: Send quote.
+ *   * no quote  → `FactoryProjectDetail`, with the shared request card plus
+ *     the brand, match details, and the primary action: Send quote.
  *   * a draft or a submitted quote → `FactoryReadOnlyRfqPage`, which reads
  *     back what was sent.
  *
@@ -261,6 +260,24 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     capacity: fit ? [fit.label] : [],
     images: extras.images,
     files: extras.files.map((file) => file.file_name),
+    onDownloadFiles: extras.files.length > 0 ? async () => {
+      const downloads = await Promise.all(
+        extras.files.map(async (file) => ({
+          name: file.file_name,
+          href: await urlFor(file),
+        })),
+      );
+      downloads.filter(({ href }) => href).forEach(({ href, name }) => {
+        const link = document.createElement("a");
+        link.href = href;
+        link.download = name;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      });
+    } : undefined,
     fitTone: fit?.tone ?? "",
     insight: [],
   };
