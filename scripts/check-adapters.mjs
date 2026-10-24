@@ -32,6 +32,16 @@ const SURFACES = [
 const ALLOWED_ABSENT = {
   "admin:documentUrl:mock":
     "the mock has no storage; DocumentLink renders plain text without it",
+  // AI help is live only: the design has none, and the prototype must render
+  // exactly as drawn, so without these the review page draws no AI pieces.
+  "admin:reviewAssist:mock": "live only; the review page draws no AI help without it",
+  "admin:latestReviewAssists:mock": "live only; only called from the AI panel, which needs reviewAssist",
+  "admin:reviewAssistInput:mock": "live only; only called from the AI panel, which needs reviewAssist",
+  // Clearing test data deletes real rows; the prototype has none to clear.
+  "admin:testData:mock": "live test builds only; Settings draws no test-data card without it",
+  // The request and quote pages keep the design's constants with no detail;
+  // live reads the records, so it never borrows them.
+  "admin:rfqDetail:mock": "the mock's request and quote pages read the design's constants",
 };
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");

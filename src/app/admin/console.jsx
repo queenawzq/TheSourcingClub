@@ -23,6 +23,7 @@ import { DataProvider } from "../../lib/data/DataProvider.jsx";
 import { createAdminAdapter } from "./live-admin-adapter.js";
 import ErrorBoundary from "../../lib/ErrorBoundary.jsx";
 import App from "../../admin-prototype/main.jsx";
+import { reservedEmailNotice } from "../../shared/reserved-email.mjs";
 import "../shell.css";
 import "./console-live.css";
 
@@ -111,7 +112,11 @@ function AdminConsole() {
 
   return (
     <DataProvider adapter={createAdminAdapter({ user, signOut })}>
-      <App />
+      {/* The design's card says "any email"; live, say which ones it sends. */}
+      <App
+        testEmailsIntro="Send yourself a sample of the marketplace's emails (onboarding, review decisions and a notification), filled with sample data."
+        testEmailsUnavailable={reservedEmailNotice(user?.email)}
+      />
     </DataProvider>
   );
 }

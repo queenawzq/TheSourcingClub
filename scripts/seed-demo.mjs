@@ -409,19 +409,51 @@ for (const [file, name, caption] of [
 // A factory that finished onboarding and waits for a decision: the admin
 // console's verification queue has it, and its own login sees "in review".
 const newFactoryOrg = must(await newFactory.client.rpc("create_org", { org_name: LOGINS.newFactory.name, org_kind: "factory" }), "create new factory org");
+// It also carries what a reviewer (and the admin's AI suggestions) should
+// notice: a legal name that is not the company's, a website on another
+// domain than its email, a founding year before its registration, an
+// expired certificate with no file, and an empty registration upload.
 must(await admin.from("factory_profiles").upsert({
   org_id: newFactoryOrg.id,
-  legal_name: "Atlas Knit Studio Ltd",
-  website_url: "https://atlasknit.example.com",
+  legal_name: "Atlas Garment Trading Co. Ltd",
+  website_url: "https://atlas-knits-global.example.net",
   country_code: "GB",
   location: "Leicester, UK",
   founded_year: 2014,
+  registration_date: "2019-06-01",
+  employee_count: 6,
   moq: 100,
   typical_lead_days: 30,
   intro: "Circular and flat knitwear, 100-unit minimums, sampling in a week.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "pending",
 }), "new factory profile");
+must(await admin.from("factory_certifications").insert({
+  org_id: newFactoryOrg.id,
+  term_id: await termId("certification", "gots"),
+  expires_at: "2025-03-31",
+}), "new factory's expired certificate");
+{
+  const path = `${newFactoryOrg.id}/business_registration/${crypto.randomUUID()}-Company-registration.pdf`;
+  must(await newFactory.client.storage.from("org-private").upload(path, new Uint8Array(0), { contentType: "application/pdf" }), "upload the empty registration");
+  must(await admin.from("documents").insert({
+    org_id: newFactoryOrg.id, kind: "business_registration", bucket: "org-private", storage_path: path,
+    file_name: "Company registration.pdf", mime_type: "application/pdf", size_bytes: 0, status: "pending",
+  }), "record the empty registration");
+}
+
+// One company a test run would have left behind, so Admin → Settings → Test
+// data has something to find on a fresh test database. Two hours old (the
+// cleanup leaves anything younger alone) and with no members, like the ones
+// the smoke run inserts. The previous seed's one goes first.
+must(await admin.from("orgs").delete().like("slug", "atelier-e2e-seed-%"), "clear the last leftover test company");
+{
+  const stamp = Date.now();
+  must(await admin.from("orgs").insert({
+    type: "factory", name: `Atelier E2E ${stamp}`, slug: `atelier-e2e-seed-${stamp}`,
+    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  }), "a leftover test company");
+}
 
 // A brand that has just finished onboarding: no requests and no orders, so
 // its dashboard shows the newcomer layout and its "Recommended factories".
@@ -1060,7 +1092,11 @@ done. Every login uses the password "${PASSWORD}".
   ${LOGINS.factory.name} has it under Saved → Saved brands.
   Browse vendors lists ${LOGINS.factory.name} and ${LOGINS.secondFactory.name} (Factories) and ${LOGINS.tradingCompany.name} (Trading companies).
   Saved has ${LOGINS.factory.name} and ${LOGINS.tradingCompany.name}.
-  The admin's verification queue has ${LOGINS.newFactory.name}.
+  The admin's verification queue has ${LOGINS.newFactory.name}: "Ask AI for suggestions" on its review
+  page (with an OpenRouter key) should point at its legal name, website, registration and expired GOTS;
+  "Request more information" → "Suggest with AI" fills the note, which staff edit before sending
+  (without an OpenRouter key the note is built from the checks, and says so).
+  Admin → Settings → Test data finds "Atelier E2E <number>" (a leftover test company) and deletes it.
   Admin → Settings → "Run daily jobs now" reminds ${LOGINS.factory.name} that its capacity is a
   month old${dueSoonStep ? ` and that "${dueSoonStep.title}" is due in three days` : ""} (bell and email, once)${unfundedStep ? `,
   and the brand whose payment "${unfundedStep.title}" is waiting for, that it is due in three days` : ""}.

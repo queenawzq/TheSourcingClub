@@ -102,6 +102,45 @@ async function screenWithToken(token, messageId) {
 }
 
 /**
+ * Run one of the staff routes (api/admin-review-assist.js,
+ * api/admin-test-data.js) as a client, the way screenAs runs the screen.
+ * `env` overrides variables for the one call (an OpenRouter key, or a
+ * production address to prove it is refused); `model` stands in for
+ * OpenRouter, so no request ever leaves the machine.
+ */
+async function staffRouteAs(route, client, { method = "POST", body, env = {}, model = null } = {}) {
+  const { default: handle } = await import(`../api/${route}.js`);
+  const { data } = client ? await client.auth.getSession() : { data: null };
+  const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "OPENROUTER_API_KEY", "RESEND_API_KEY", "RESEND_FROM_EMAIL"];
+  const saved = Object.fromEntries(keys.filter((key) => key in process.env).map((key) => [key, process.env[key]]));
+  Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, OPENROUTER_API_KEY: "" }, env);
+  const realFetch = globalThis.fetch;
+  if (model) {
+    globalThis.fetch = (url, init) => String(url).startsWith("https://openrouter.ai/")
+      ? Promise.resolve(new Response(JSON.stringify({
+        model: "smoke/fake-model",
+        choices: [{ message: { tool_calls: [{ function: { arguments: JSON.stringify(model) } }] } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      : realFetch(url, init);
+  }
+  let status = 0;
+  let payload = null;
+  const response = {
+    status(code) { status = code; return response; },
+    json(value) { payload = value; return response; },
+  };
+  try {
+    await handle({ method, headers: { authorization: data?.session ? `Bearer ${data.session.access_token}` : "" }, body }, response);
+  } finally {
+    globalThis.fetch = realFetch;
+    for (const key of keys) {
+      if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
+    }
+  }
+  return { status, ...payload };
+}
+
+/**
  * Run the real api/screen-call-text.js handler as a client: the server's
  * contact-details check on a call's words, which the database then requires.
  */
@@ -1970,6 +2009,27 @@ console.log("\nphase 6 — admin operations");
       ? ok("and the company is told what is missing")
       : fail("the company was not notified of what to send");
 
+    // The finish card the company waits on reads this. Without it the
+    // company saw "awaiting verification" and nothing it could act on.
+    const { data: ownReview, error: ownReviewError } = await brand.client
+      .rpc("my_review_status", { target_org: selfOrg });
+    const own = (ownReview ?? [])[0];
+    ownReviewError
+      ? fail("the company can read its own review", ownReviewError)
+      : own?.state === "needs_information" && own?.message === "Please upload your business registration."
+        ? ok("the company reads the request it was sent, on its own screen")
+        : fail(`the company read ${JSON.stringify(own)}`);
+
+    const { error: strangerReview } = await factory.client.rpc("my_review_status", { target_org: selfOrg });
+    strangerReview ? ok("another company CANNOT read that review")
+                   : fail("LEAK: another company read a review that is not its own");
+
+    const { data: resent, error: resentError } = await brand.client
+      .rpc("resubmit_for_review", { target_org: selfOrg });
+    resentError ? fail("the company sends its profile back", resentError)
+      : resent === "ready_for_review" ? ok("and sends its profile back to the top of staff's queue")
+      : fail(`resubmit_for_review returned ${resent}`);
+
     const approved = await staff.client.rpc("admin_review_decision", {
       target_org: selfOrg, decision: "approved", note: "Registration checked.", risk: "low",
     });
@@ -2005,6 +2065,77 @@ console.log("\nphase 6 — admin operations");
       : fail("no quote in the queue carries a usable total");
   }
 
+  // The request page staff open from that table. It read the prototype's
+  // constants, so a request with quotes said "0 vendor quotes" and an empty
+  // brief. It now reads the records with the brand screens' own select
+  // strings (src/lib/domain/rfq.js, quote.js, admin.js rfqDetail), which only
+  // works because the read policies end in `or is_platform_admin()`.
+  const quoted = (rfqRows ?? []).find((row) => row.quote_count >= 2);
+  if (!quoted) fail("no request in the queue has two quotes after a full run");
+  else {
+    const { data: staffRfq, error: staffRfqError } = await staff.client
+      .from("rfqs")
+      .select("id, title, brief, quantity_total, material_notes, target_delivery_month, requires_sample, sample_notes, target_unit_price_min_cents, target_unit_price_max_cents, currency, additional_details, orgs!rfqs_brand_org_id_fkey (id, name)")
+      .eq("id", quoted.rfq_id)
+      .maybeSingle();
+    staffRfqError || !staffRfq
+      ? fail("staff can read a request's brief", staffRfqError)
+      : ok("staff read the request's brief through the brand's own select");
+
+    const { data: staffQuotes, error: staffQuotesError } = await staff.client
+      .from("quotes")
+      .select("id, status, unit_price_cents, production_quantity, bulk_lead_time_days, deposit_pct, factory_notes, orgs!quotes_factory_org_id_fkey (id, name, slug, factory_profiles (verification_status, trust_tier, location))")
+      .eq("rfq_id", quoted.rfq_id)
+      .in("status", ["submitted", "accepted", "declined", "superseded", "withdrawn"]);
+    staffQuotesError
+      ? fail("staff can read a request's quotes", staffQuotesError)
+      : (staffQuotes ?? []).length === quoted.quote_count
+        ? ok(`and every quote the list counts (${quoted.quote_count}), revisions included`)
+        : fail(`the list counts ${quoted.quote_count} quotes, staff read ${(staffQuotes ?? []).length}`);
+
+    const ids = (staffQuotes ?? []).map((row) => row.id);
+    const [lines, links, splits] = await Promise.all([
+      staff.client.from("quote_sample_lines").select("quote_id, stage, cost_cents, timing_days").in("quote_id", ids),
+      staff.client.from("taxonomy_links").select("term_id").eq("subject_type", "rfq").eq("subject_id", quoted.rfq_id),
+      staff.client.from("rfq_colour_splits").select("id, colour, quantity, sort").eq("rfq_id", quoted.rfq_id),
+    ]);
+    [lines, links, splits].every((result) => !result.error)
+      ? ok("with their sample plans, the request's categories and its colour split")
+      : fail("staff cannot read part of a request's detail", lines.error ?? links.error ?? splits.error);
+    (lines.data ?? []).length > 0
+      ? ok("and the sample plan lines are really there, not just permitted")
+      : fail("staff read no sample lines for a request whose quotes have them");
+  }
+
+  // Test emails. The demo staff login is @example.com, which has no mailbox;
+  // the provider's refusal used to reach the screen word for word.
+  const mailEnv = { RESEND_API_KEY: "re_smoke_not_a_key", RESEND_FROM_EMAIL: "TSC <noreply@smoke.invalid>" };
+  const providerCalls = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (url, init) => {
+    if (!String(url).startsWith("https://api.resend.com/")) return realFetch(url, init);
+    providerCalls.push(url);
+    return Promise.resolve(new Response(
+      JSON.stringify({ statusCode: 422, name: "validation_error", message: "Invalid `to` field. The email address needs to follow the `email@example.com` or `Name <email@example.com>` format." }),
+      { status: 422, headers: { "Content-Type": "application/json" } },
+    ));
+  };
+  try {
+    const reserved = await staffRouteAs("send-test-email", staff.client, { body: { template: "review-approved" }, env: mailEnv });
+    reserved.status === 422 && /reserved for examples and testing/.test(reserved.error ?? "") && providerCalls.length === 0
+      ? ok("a test email to a reserved address is refused in plain words, before the provider is called")
+      : fail(`a reserved address got ${reserved.status}: ${reserved.error} (${providerCalls.length} provider call(s))`);
+
+    const realStaff = await signedInUser(`mail-admin-${stamp}@smoke-mail.dev`);
+    await admin.from("platform_admins").insert({ user_id: realStaff.id });
+    const refused = await staffRouteAs("send-test-email", realStaff.client, { body: { template: "review-approved" }, env: mailEnv });
+    refused.status === 502 && !/`to` field|validation_error/.test(refused.error ?? "") && /nothing was sent/.test(refused.error ?? "")
+      ? ok("and a provider refusal reads as a sentence, not the provider's message")
+      : fail(`a provider refusal read: ${refused.error}`);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
   const { data: metrics } = await staff.client.rpc("admin_overview_metrics");
   const m = (metrics ?? [])[0];
   m && typeof m.payments_awaiting_confirmation === "number"
@@ -2012,6 +2143,131 @@ console.log("\nphase 6 — admin operations");
     : fail("admin_overview_metrics did not return the payment backstop count");
 }
 
+
+console.log("\nadmin — AI help for reviewers, and clearing test data");
+{
+  const staff = await signedInUser(`assist-admin-${stamp}@example.com`);
+  await admin.from("platform_admins").insert({ user_id: staff.id });
+  const { data: mill } = await admin.from("orgs")
+    .insert({ type: "factory", name: `Assist Mill ${stamp}`, slug: `assist-mill-${stamp}` })
+    .select("id").single();
+  await admin.from("factory_profiles").insert({
+    org_id: mill.id, legal_name: "Assist Mill Textiles Ltd", website_url: "https://assist-mill.example.com",
+    country_code: "PT", moq: 200, intro: "Jersey and fleece.",
+  });
+
+  const { data: input, error: inputError } = await staff.client.rpc("admin_review_assist_input", { target_org: mill.id });
+  inputError ? fail("staff read what the AI would be given", inputError)
+    : input?.profile?.legal_name === "Assist Mill Textiles Ltd" && !JSON.stringify(input).includes(`assist-admin-${stamp}`)
+      ? ok("the AI reads the company's details and no one's address")
+      : fail("admin_review_assist_input did not read as expected");
+
+  const stranger = await staffRouteAs("admin-review-assist", brand.client, { body: { action: "check", orgId: mill.id } });
+  stranger.status === 403 ? ok("a company CANNOT ask for review suggestions") : fail(`a brand got ${stranger.status} from review help`);
+
+  const noKey = await staffRouteAs("admin-review-assist", staff.client, { body: { action: "check", orgId: mill.id } });
+  noKey.status === 200 && noKey.available === false && !noKey.findings
+    ? ok("without a model key there are no suggestions, and nothing stands in for them")
+    : fail("review suggestions without a key", noKey);
+
+  const draft = await staffRouteAs("admin-review-assist", staff.client, {
+    body: { action: "draft", orgId: mill.id, topics: ["Company ownership details", "not a topic"] },
+  });
+  draft.source === "template" && draft.message.includes("Company ownership details")
+    && draft.message.includes("Business registration") && !draft.message.includes("not a topic")
+    ? ok("without a model the draft is built from the ticked topics and the incomplete checks")
+    : fail("the fallback draft", draft);
+
+  const grounded = await staffRouteAs("admin-review-assist", staff.client, {
+    body: { action: "check", orgId: mill.id },
+    env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+    model: {
+      checked: ["Legal name", "Business registration"],
+      findings: [
+        { topic: "Legal name", observation: "The legal name differs from the company name.", evidence: "Assist Mill Textiles Ltd", ask: "Which entity signs contracts?" },
+        { topic: "Registration", observation: "Registered in Delaware.", evidence: "Registered in Delaware in 1999", ask: "Send the certificate." },
+      ],
+      score: 92,
+    },
+  });
+  grounded.available && grounded.findings?.length === 1 && grounded.dropped === 1 && !("score" in grounded)
+    ? ok("a suggestion whose evidence is not in the submission is dropped, and no score gets through")
+    : fail("the evidence check on suggestions", grounded);
+
+  const { data: saved } = await staff.client.rpc("admin_review_assists", { target_org: mill.id });
+  saved?.check?.output?.findings?.length === 1 && saved.check.model === "smoke/fake-model"
+    ? ok("staff see the last suggestions again without asking the model")
+    : fail("the saved suggestions", saved);
+
+  const { error: forged } = await staff.client.rpc("record_review_assist", {
+    target_org: mill.id, assist_kind: "check", model_name: "x", assist: {}, acting_user: staff.id,
+  });
+  forged ? ok("even staff CANNOT write suggestions from the browser") : fail("LEAK: record_review_assist is callable by a signed-in user");
+
+  // What staff are told when the model cannot help: what happened, in words.
+  const upstreamAnswers = async (status, run) => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (url, init) => String(url).startsWith("https://openrouter.ai/")
+      ? Promise.resolve(new Response("{}", { status })) : realFetch(url, init);
+    try { return await run(); } finally { globalThis.fetch = realFetch; }
+  };
+  const refused = await upstreamAnswers(401, () => staffRouteAs("admin-review-assist", staff.client, {
+    body: { action: "check", orgId: mill.id }, env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+  }));
+  const broke = await upstreamAnswers(402, () => staffRouteAs("admin-review-assist", staff.client, {
+    body: { action: "check", orgId: mill.id }, env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+  }));
+  refused.available === false && /refused this site's key/.test(refused.reason) && /out of credits/.test(broke.reason)
+    ? ok("a refused key and an empty account are each said as what they are, not \"try again\"")
+    : fail("the model failure reasons", { refused: refused.reason, broke: broke.reason });
+
+  const gaps = [
+    { label: "Business registration", result: "Missing", detail: "No business registration document has been uploaded." },
+    { label: "Duplicate company signal", result: "Review", detail: `Shares a legal name or website domain with: Rival Mill ${stamp}.` },
+  ];
+  const noModelNote = await staffRouteAs("suggest-review-request", staff.client, { body: { companyName: "Assist Mill", gaps } });
+  const refusedNote = await upstreamAnswers(401, () => staffRouteAs("suggest-review-request", staff.client, {
+    body: { companyName: "Assist Mill", gaps }, env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+  }));
+  noModelNote.message?.includes("No business registration document") && /not set up on this site/.test(noModelNote.notice)
+    && /refused this site's key/.test(refusedNote.notice) && refusedNote.message
+    && ![noModelNote.message, refusedNote.message].some((message) => message.includes(`Rival Mill ${stamp}`))
+    ? ok("\"Suggest with AI\" without a model builds the note from the checks, says why, and names no other company")
+    : fail("the request note without a model", { noModelNote, refusedNote });
+
+  // Two leftovers made the way the smoke run makes companies: one two hours
+  // old (test data), one just made (a run in progress: left alone).
+  const { data: leftovers } = await admin.from("orgs").insert([
+    { type: "factory", name: `Smoke Leftover ${stamp}`, slug: `smoke-leftover-${stamp}`, created_at: new Date(Date.now() - 2 * 3600e3).toISOString() },
+    { type: "factory", name: `Smoke Fresh ${stamp}`, slug: `smoke-fresh-${stamp}`, created_at: new Date().toISOString() },
+  ]).select("id, slug");
+  const old = leftovers.find((row) => row.slug.startsWith("smoke-leftover-"));
+  const fresh = leftovers.find((row) => row.slug.startsWith("smoke-fresh-"));
+
+  const preview = await staffRouteAs("admin-test-data", staff.client, { method: "GET" });
+  const listed = new Set((preview.companies ?? []).map((company) => company.id));
+  preview.status === 200 && listed.has(old.id) && !listed.has(fresh.id) && !listed.has(org.id) && !listed.has(mill.id)
+    && !(preview.companies ?? []).some((company) => company.name.startsWith("Demo "))
+    ? ok("the test-data list has an old leftover, not a fresh one, a demo company or one without a run number")
+    : fail("the test-data preview", { status: preview.status, count: preview.companies?.length });
+
+  const brandPreview = await staffRouteAs("admin-test-data", brand.client, { method: "GET" });
+  brandPreview.status === 403 ? ok("a company CANNOT list test data") : fail(`a brand got ${brandPreview.status} from the test-data list`);
+
+  const production = await staffRouteAs("admin-test-data", staff.client, {
+    method: "GET", env: { SUPABASE_URL: "https://wxzliajdtwekqdvwzqfb.supabase.co" },
+  });
+  production.status === 403 ? ok("clearing test data is refused on the production project") : fail(`the production project answered ${production.status}`);
+
+  const purged = await staffRouteAs("admin-test-data", staff.client, { body: { orgIds: [old.id, fresh.id, org.id], userIds: [] } });
+  const { data: still } = await admin.from("orgs").select("id").in("id", [old.id, fresh.id, org.id]);
+  const left = new Set((still ?? []).map((row) => row.id));
+  purged.status === 200 && purged.companies === 1 && purged.skipped === 2 && !left.has(old.id) && left.has(fresh.id) && left.has(org.id)
+    ? ok("the cleanup deletes only what still matches the rule, whatever ids it is sent")
+    : fail("the cleanup", purged);
+
+  await admin.from("orgs").delete().in("id", [fresh.id, mill.id]);
+}
 
 console.log("\nemail and password sign-in");
 {

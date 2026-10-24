@@ -68,4 +68,10 @@ a day, sent and received together, so a busy day needs a paid plan.
 - `OPENROUTER_SCREEN_MODEL`, `OPENROUTER_TRANSLATE_MODEL`: optional; message
   checking and translation default to `anthropic/claude-haiku-5.5` (never
   `OPENROUTER_MODEL`: they sit on every send and must answer in a second or two).
+- `OPENROUTER_REVIEW_MODEL`: optional; the admin's review help defaults to
+  `anthropic/claude-haiku-5.5` (it must answer within 8 s). Without
+  `OPENROUTER_API_KEY` the review page says suggestions are not set up, and
+  "Suggest with AI" in "Request more information" builds the note from the
+  checks instead and says so. A key that is refused, out of credits or rate
+  limited is reported as that, in plain words.
 - `SUPABASE_DB_URL` (Production only): runs the new migrations on deploy.
