@@ -4,6 +4,7 @@
  *   supabase start
  *   npm run dev          # in another terminal
  *   npm run e2e
+ *   TZ=Asia/Shanghai npm run e2e   # the browser and the reminders in another zone
  *
  * Drives a real browser through everything a new user meets — request a
  * sign-in code, read it out of the local mail server, create an organisation,
@@ -26,6 +27,7 @@ import { execFileSync } from "node:child_process";
 import { Stagehand, localBrowser } from "@browserbasehq/stagehand";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
+import { notificationTitle } from "../src/shared/notification-text.mjs";
 
 const APP = process.env.E2E_URL ?? "http://127.0.0.1:5173/app.html";
 const OUT = path.resolve("e2e-evidence");
@@ -2639,11 +2641,16 @@ async function main() {
       .select("brand_org_id, factory_org_id").eq("id", bornOrder.id).single();
     const brandsTurn = ["due", "failed"].includes(stepPayment?.state);
     const dueSubject = brandsTurn ? stepPayment.id : openStep?.id ?? bornOrder.id;
-    const { data: dueNotices } = await db.from("notifications").select("id, title, org_id")
+    const { data: dueNotices } = await db.from("notifications").select("id, kind, title, data, org_id")
       .eq("kind", "milestone_due_soon").eq("subject_id", dueSubject);
     check((dueNotices ?? []).length === 1 && dueNotices[0].org_id === (brandsTurn ? orderParties.brand_org_id : orderParties.factory_org_id),
       brandsTurn ? "the brand, which has to fund the step, is reminded once" : "the factory, which acts on the step, is reminded once");
-    check(Boolean(dueNotices?.[0] && await mailFor(brandsTurn ? brandEmail : factoryEmail, dueNotices[0].title)), "and the reminder arrives by email");
+    // Its days count from the reader's own day, not the UTC day the job ran
+    // on: run with TZ=Asia/Shanghai (or another zone) to see it say so.
+    const readerZone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const readerTitle = dueNotices?.[0] ? notificationTitle(dueNotices[0], { timeZone: readerZone }) : null;
+    check(Boolean(readerTitle && await mailFor(brandsTurn ? brandEmail : factoryEmail, readerTitle)),
+      `and the reminder arrives by email, worded for ${readerZone}: "${readerTitle}"`);
     await clickButton(page, "run daily jobs now");
     await page.waitForTimeout(4000);
     const { count: dueAgain } = await db.from("notifications").select("*", { count: "exact", head: true })

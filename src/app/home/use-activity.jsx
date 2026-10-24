@@ -13,7 +13,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityDrawer } from "../../prototype/main.jsx";
 import {
-  activityType, countUnreadNotifications, listNotifications, markAllRead, markRead, notificationBody, notificationLink, timeAgo,
+  activityType, countUnreadNotifications, listNotifications, markAllRead, markRead, notificationBody, notificationLink, notificationTitle, timeAgo,
 } from "../../lib/domain/notifications.js";
 import { supabase } from "../../lib/supabase.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -27,7 +27,7 @@ function toActivityItem(notification) {
     id: notification.id,
     notification,
     type: activityType(notification.kind),
-    title: notification.title,
+    title: notificationTitle(notification),
     meta: notificationBody(notification),
     time: timeAgo(notification.created_at),
     unread: !notification.read_at,
