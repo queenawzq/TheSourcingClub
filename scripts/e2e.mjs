@@ -2666,8 +2666,15 @@ async function main() {
       await page.waitForTimeout(300);
     }
     await clickButton(page, "run daily jobs now");
-    await waitFor(page, ".admin-test-email-status, .admin-error", 60000);
-    const jobStatus = await page.locator(".admin-test-email-status, .admin-error").first().innerText();
+    // The Daily jobs card's own line: the Test emails card above it can carry
+    // a note of its own (a staff address that cannot receive a test).
+    const jobLine = () => page.evaluate(() => {
+      const run = [...document.querySelectorAll("button")].find((node) => /^(Run daily jobs now|Running…)$/.test(node.textContent.trim()));
+      return run?.closest(".admin-settings-card")?.querySelector(".admin-test-email-status, .admin-error")?.textContent.trim() ?? "";
+    });
+    const jobDeadline = Date.now() + 60000;
+    let jobStatus = "";
+    while (Date.now() < jobDeadline && !(jobStatus = await jobLine())) await page.waitForTimeout(400);
     check(/steps? due soon/.test(jobStatus), `the job reports what it sent ("${jobStatus}")`);
     await record(page, "Daily jobs", "run by hand on a test site");
     // Whose turn it is decides who is reminded (milestone_waiting_on): a step
