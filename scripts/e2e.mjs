@@ -2132,9 +2132,17 @@ async function main() {
     }
     await record(page, "The brand reads it", "in its own language, with the original one click away");
 
-    const { data: readState } = await db.from("message_reads")
-      .select("thread_id, user_id").eq("thread_id", runThread.id);
-    check(readState.length >= 2,
+    // Read once the page has written it: the messages are drawn first and the
+    // read is recorded just after.
+    let readState = [];
+    const readStateDeadline = Date.now() + 10000;
+    while (Date.now() < readStateDeadline) {
+      ({ data: readState } = await db.from("message_reads")
+        .select("thread_id, user_id").eq("thread_id", runThread.id));
+      if ((readState ?? []).length >= 2) break;
+      await page.waitForTimeout(250);
+    }
+    check((readState ?? []).length >= 2,
       "opening the conversation recorded that it was read — the count cannot get stuck");
 
     await page.locator('.message-composer textarea').fill("Confirmed, that matches the chart. Go ahead.");
@@ -2227,6 +2235,39 @@ async function main() {
     const liveGap = await fromNewest();
     check(liveGap >= 0 && liveGap < 4, `and the open conversation scrolls to it (${liveGap}px from the newest)`);
     await record(page, "It arrives live", "the other side's message appears while the page is open");
+
+    // A conversation the brand has never seen, started by the other side
+    // while the page is open, arrives unread, and the one on screen stays
+    // open. The page used to open the newest conversation again on every
+    // arrival, behind the one shown, and mark it read: no badge.
+    const cardsBefore = await page.locator(".message-thread-card").count();
+    const { data: newThread, error: newThreadError } = await factoryClient.rpc("open_rfq_thread", {
+      target_rfq: publishedRfq.id, factory_org: factoryOrg.id,
+    });
+    const newLine = `Before you reorder, we have new trims to show you (${runWord}).`;
+    const { data: newRow } = await factoryClient.from("messages").insert({
+      thread_id: newThread?.id, sender_org_id: factoryOrg.id, sender_user_id: factorySession?.user?.id, body: newLine,
+    }).select("id").single();
+    await fetch(`${APP.replace(/\/app\.html$/, "")}/api/screen-message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${factorySession?.session?.access_token}` },
+      body: JSON.stringify({ messageId: newRow?.id }),
+    }).catch(() => null);
+    const cardFor = () => page.evaluate((word) => {
+      const card = [...document.querySelectorAll(".message-thread-card")].find((item) => item.textContent.includes("new trims") && item.textContent.includes(word));
+      return card ? { badge: card.querySelector("b")?.textContent ?? "" } : null;
+    }, runWord);
+    let newCard = null;
+    const newDeadline = Date.now() + 15000;
+    while (Date.now() < newDeadline && !(newCard = await cardFor())) await page.waitForTimeout(250);
+    // Long enough for the page to have opened it and marked it read, as it did.
+    await page.waitForTimeout(2000);
+    newCard = await cardFor();
+    const openCard = await page.locator(".message-thread-card.active").innerText().catch(() => "");
+    const { data: brandRead } = await db.from("message_reads").select("user_id")
+      .eq("thread_id", newThread?.id ?? "").neq("user_id", factorySession?.user?.id ?? "");
+    check(!newThreadError && cardsBefore >= 1 && newCard?.badge === "1" && openCard.includes(bornOrder.order_number) && (brandRead ?? []).length === 0,
+      `a new conversation from the other side arrives live with an unread badge of 1, and the open one stays open (badge "${newCard?.badge ?? "no card"}", ${(brandRead ?? []).length} read${newThreadError ? `, ${newThreadError.message}` : ""})`);
 
     // A file a message cannot carry is refused in words when it is picked,
     // never sent to storage to come back as "mime type ... is not supported".
