@@ -2904,6 +2904,10 @@ async function main() {
         await page.waitForTimeout(2500);
       };
       await openInvite(`colleague-${stamp}@example.com`);
+      // The invite is an email with the sign-up link, not a link of its own.
+      const inviteIntro = await page.locator(".factory-invite-modal header p").innerText().catch(() => "");
+      check(/^We'll email this factory/.test(inviteIntro) && !/invite link/i.test(inviteIntro),
+        `the invite dialog says an email is sent ("${inviteIntro}")`);
       const ownDomainError = await page.locator(".factory-invite-modal .auth-error").innerText().catch(() => "");
       check(/domain/i.test(ownDomainError), `an address on the company's own domain is refused ("${ownDomainError}")`);
       await record(page, "Invite refused", "the company's own email domain does not count");

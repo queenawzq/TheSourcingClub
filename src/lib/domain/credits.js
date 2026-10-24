@@ -99,10 +99,14 @@ export async function sendInvite(orgId, email, message = null) {
  * promise no discount. A factory earns 500 when a factory it invited, new to
  * TSC, is verified; the invited factory gets the 500 every verified factory
  * gets, not a bonus.
+ *
+ * What is sent is an email (api/send-invite) whose one link is the ordinary
+ * sign-up page. No link is personal: an invite counts when the company signs
+ * up with the address it was sent to, so the intro says that.
  */
-export const BRAND_INVITE_INTRO = "Send an invite link to another brand that could use The Sourcing Club for its production.";
+export const BRAND_INVITE_INTRO = "We'll email this brand an invitation to join The Sourcing Club, with a link to sign up.";
 export const BRAND_INVITE_MESSAGE = "I thought The Sourcing Club could be useful for your next production order.";
-export const FACTORY_INVITE_INTRO = "Send an invite link to a factory you trust. You earn 500 credits when TSC verifies it, and it gets the 500 credits every verified factory gets.";
+export const FACTORY_INVITE_INTRO = "We'll email this factory an invitation to join, with a link to sign up. You earn 500 credits when it joins with this address and TSC verifies it; it gets the 500 credits every verified factory gets.";
 export const FACTORY_CREDIT_NOTE = "500 credits = $50 value. Invite a factory: you earn 500 credits when TSC verifies it.";
 
 /**
