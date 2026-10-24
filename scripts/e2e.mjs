@@ -2660,6 +2660,10 @@ async function main() {
     await page.goto(`${APP}/messages/${runThread.id}`);
     await waitFor(page, ".message-side-panel .call-card-status", 25000);
     check(await inPanel("Withdraw invite"), "the brand withdraws the follow-up invite");
+    // Withdrawing asks first (CallChangeDialog), so the invite only goes once confirmed.
+    await waitFor(page, ".approve-fund-modal", 10000);
+    await page.evaluate(() => [...document.querySelectorAll(".approve-fund-modal button")]
+      .find((node) => node.textContent.trim() === "Withdraw invite")?.click());
     let withdrawn = null;
     const withdrawDeadline = Date.now() + 15000;
     while (Date.now() < withdrawDeadline && !withdrawn) {
@@ -2689,18 +2693,36 @@ async function main() {
       await page.waitForTimeout(300);
     }
     await clickButton(page, "run daily jobs now");
-    await waitFor(page, ".admin-test-email-status, .admin-error", 60000);
-    const jobStatus = await page.locator(".admin-test-email-status, .admin-error").first().innerText();
+    // The Daily jobs card's own line: the Test emails card above it can carry
+    // a note of its own (a staff address that cannot receive a test).
+    const jobLine = () => page.evaluate(() => {
+      const run = [...document.querySelectorAll("button")].find((node) => /^(Run daily jobs now|Running…)$/.test(node.textContent.trim()));
+      return run?.closest(".admin-settings-card")?.querySelector(".admin-test-email-status, .admin-error")?.textContent.trim() ?? "";
+    });
+    const jobDeadline = Date.now() + 60000;
+    let jobStatus = "";
+    while (Date.now() < jobDeadline && !(jobStatus = await jobLine())) await page.waitForTimeout(400);
     check(/steps? due soon/.test(jobStatus), `the job reports what it sent ("${jobStatus}")`);
     await record(page, "Daily jobs", "run by hand on a test site");
+    // Whose turn it is decides who is reminded (milestone_waiting_on): a step
+    // whose payment is still due waits on the brand to fund it, and that
+    // reminder is about the payment; otherwise the factory is reminded about
+    // the step. With no Stripe key on the dev server the step stays unfunded.
+    const { data: stepPayment } = await db.from("order_payments").select("id, state")
+      .eq("milestone_id", openStep?.id ?? bornOrder.id).maybeSingle();
+    const { data: orderParties } = await db.from("production_orders")
+      .select("brand_org_id, factory_org_id").eq("id", bornOrder.id).single();
+    const brandsTurn = ["due", "failed"].includes(stepPayment?.state);
+    const dueSubject = brandsTurn ? stepPayment.id : openStep?.id ?? bornOrder.id;
     const { data: dueNotices } = await db.from("notifications").select("id, title, org_id")
-      .eq("kind", "milestone_due_soon").eq("subject_id", openStep?.id ?? bornOrder.id);
-    check((dueNotices ?? []).length === 1 && dueNotices[0].org_id === factoryOrg.id, "the factory, which acts on the step, is reminded once");
-    check(Boolean(dueNotices?.[0] && await mailFor(factoryEmail, dueNotices[0].title)), "and the reminder arrives by email");
+      .eq("kind", "milestone_due_soon").eq("subject_id", dueSubject);
+    check((dueNotices ?? []).length === 1 && dueNotices[0].org_id === (brandsTurn ? orderParties.brand_org_id : orderParties.factory_org_id),
+      brandsTurn ? "the brand, which has to fund the step, is reminded once" : "the factory, which acts on the step, is reminded once");
+    check(Boolean(dueNotices?.[0] && await mailFor(brandsTurn ? brandEmail : factoryEmail, dueNotices[0].title)), "and the reminder arrives by email");
     await clickButton(page, "run daily jobs now");
     await page.waitForTimeout(4000);
     const { count: dueAgain } = await db.from("notifications").select("*", { count: "exact", head: true })
-      .eq("kind", "milestone_due_soon").eq("subject_id", openStep?.id ?? bornOrder.id);
+      .eq("kind", "milestone_due_soon").eq("subject_id", dueSubject);
     check(dueAgain === 1, "running it again sends nothing twice");
 
     // ================= ADMIN: AI HELP AND TEST DATA =================
