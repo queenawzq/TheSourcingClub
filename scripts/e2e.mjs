@@ -2429,6 +2429,28 @@ async function main() {
     check(/Waiting for/.test(brandPanel) && brandPanel.includes(callTitle), "the brand's panel shows the invite, waiting for the factory");
     await record(page, "Invite sent", "Waiting for the factory to answer");
 
+    // A session ended elsewhere, mid-flow. The page still holds a token the
+    // database accepts, but the server's text check asks the auth server,
+    // which refuses it: the screen must lead to sign-in, not say "sign in is
+    // required" and stay put.
+    await page.evaluate(() => [...document.querySelectorAll(".message-room-actions button")].find((node) => node.textContent.trim() === "Schedule call")?.click());
+    check(await pickTime(17), "a second invite is started");
+    await page.locator('.message-schedule-modal .schedule-field input').fill(`${callTitle} after sign-out`);
+    const pageToken = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((name) => name.endsWith("-auth-token"));
+      return key ? JSON.parse(localStorage.getItem(key))?.access_token ?? "" : "";
+    });
+    const ended = await fetch(`${process.env.SUPABASE_URL ?? stack.API_URL}/auth/v1/logout?scope=local`, {
+      method: "POST",
+      headers: { apikey: process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, authorization: `Bearer ${pageToken}` },
+    });
+    check(ended.status === 204, `the page's session is ended on the server (${ended.status})`);
+    check(await inDialog("Send invite"), "Send invite, with the ended session");
+    const toSignIn = await page.waitForSelector('input[name="email"]', { timeout: 15000 }).then(() => true, () => false);
+    check(toSignIn, "the screen goes to sign-in");
+    check(!(await callsOnThread()).some((call) => call.title === `${callTitle} after sign-out`), "and no invite was saved");
+    await record(page, "Session ended elsewhere", "sending a call leads to sign-in");
+
     await signOutFully(page);
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory answering a call", "factory");
     await page.goto(`${APP}/messages/${runThread.id}`);
