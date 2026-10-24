@@ -1744,7 +1744,7 @@ async function main() {
     await record(page, "Factory hears the outcome", "award_quote wrote this row; now something shows it");
     await page.goto(`${APP}/notifications`);
     await waitFor(page, ".activity-drawer-item", 20000);
-    check(new URL(page.url()).pathname.replace(/\/$/, "").endsWith("/app.html"), "/notifications opens the dashboard's Activity drawer");
+    check(new URL(String(await page.url())).pathname.replace(/\/$/, "").endsWith("/app.html"), "/notifications opens the dashboard's Activity drawer");
     await page.locator(".activity-close-btn").click();
 
     // ================= THE FACTORY WORKS =================
