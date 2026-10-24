@@ -6937,6 +6937,8 @@ export function CreditPurchaseModal({
   paymentElement = null,
   description,
   continueLabel,
+  customMinimumCredits,
+  customRateCents,
   className = "",
   layerClassName = "",
 }) {
@@ -6945,6 +6947,31 @@ export function CreditPurchaseModal({
   const live = Boolean(onContinue);
   const options = packs === undefined ? factoryCreditPackages : packs ?? [];
   const [picked, setPicked] = useState(null);
+  const [customCredits, setCustomCredits] = useState("");
+  const [customActive, setCustomActive] = useState(false);
+  const customMinimum = Number(customMinimumCredits);
+  const customRate = Number(customRateCents);
+  const customEnabled = live && Number.isInteger(customMinimum) && customMinimum > 0 && Number.isFinite(customRate) && customRate > 0;
+  const customAmount = Number(customCredits);
+  const customValid = customEnabled
+    && /^\d+$/.test(customCredits)
+    && Number.isSafeInteger(customAmount)
+    && customAmount >= customMinimum;
+  const customPrice = customValid
+    ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((customAmount * customRate) / 100)
+    : "—";
+
+  const selectCustomAmount = (value) => {
+    setCustomCredits(value);
+    setCustomActive(true);
+    const amount = Number(value);
+    const valid = /^\d+$/.test(value) && Number.isSafeInteger(amount) && amount >= customMinimum;
+    setPicked(valid ? {
+      credits: amount,
+      label: `${amount.toLocaleString("en-US")} credits`,
+      value: new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((amount * customRate) / 100),
+    } : null);
+  };
   return (
     <div className={`factory-update-modal-layer ${layerClassName}`.trim()} role="presentation">
       <div className={`factory-update-modal factory-credit-purchase-modal ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby="factory-credit-purchase-title">
@@ -6965,12 +6992,38 @@ export function CreditPurchaseModal({
                 className={live && picked?.label === pack.label ? "selected" : undefined}
                 role={live ? "radio" : undefined}
                 aria-checked={live ? picked?.label === pack.label : undefined}
-                onClick={live ? () => setPicked(pack) : undefined}
+                onClick={live ? () => { setCustomActive(false); setPicked(pack); } : undefined}
               >
                 <span>{isZh ? pack.label.replace(/credits/g, "额度") : pack.label}</span>
                 <strong>{pack.value}</strong>
               </button>
             ))}
+            {customEnabled ? (
+              <div className={`tsc-credit-custom-option${customActive ? " selected" : ""}`}>
+                <div className="tsc-credit-custom-heading">
+                  <label htmlFor="tsc-custom-credit-amount">Custom amount</label>
+                  <strong aria-live="polite">{customPrice}</strong>
+                </div>
+                <div className="tsc-credit-custom-input-wrap">
+                  <input
+                    id="tsc-custom-credit-amount"
+                    type="number"
+                    min={customMinimum}
+                    step="25"
+                    inputMode="numeric"
+                    value={customCredits}
+                    placeholder={`Minimum ${customMinimum}`}
+                    aria-describedby="tsc-custom-credit-help"
+                    onFocus={() => selectCustomAmount(customCredits)}
+                    onChange={(event) => selectCustomAmount(event.target.value)}
+                  />
+                  <span>credits</span>
+                </div>
+                <small id="tsc-custom-credit-help">
+                  Minimum {customMinimum.toLocaleString("en-US")} credits · {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((customMinimum * customRate) / 100)} minimum
+                </small>
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -9093,6 +9146,27 @@ function getTranslatedProjectSummary(project) {
   return translatedSummaries[project.title] || project.specialty;
 }
 
+function FactoryRequestRequirements({ project }) {
+  const groups = [
+    ["Certifications needed", project.certifications],
+    ["Services needed", project.services],
+  ].filter(([, items]) => items?.length);
+
+  if (!groups.length) return null;
+  return (
+    <div className="factory-request-requirements">
+      {groups.map(([label, items]) => (
+        <div className="factory-request-requirement-row" key={label}>
+          <span>{label}</span>
+          <div className="tag-row compact-tags">
+            {items.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function FactoryProjectDetail({
   project,
   companyType = "factory",
@@ -9189,6 +9263,7 @@ export function FactoryProjectDetail({
                   </div>
                 </div>
                 )}
+                <FactoryRequestRequirements project={project} />
               </aside>
 
               <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${project.brand} request references`}>
@@ -9241,6 +9316,8 @@ export function FactoryProjectDetail({
               {[
                 ["Main material", materials?.mainMaterial ?? "Organic cotton poplin, mid-weight"],
                 ["Quality preference", materials?.quality ?? "GOTS preferred; brand can confirm certification path"],
+                ["Services requested", materials?.services],
+                ["Sourcing responsibility", materials?.sourcingResponsibility],
               ].filter(([, value]) => value).map(([label, value]) => (
                 <ProfileDetailPair label={label} value={value} key={label} />
               ))}
@@ -9262,7 +9339,19 @@ export function FactoryProjectDetail({
               </div>
             </section>
             )}
+            {materials?.sourcingDetails && (
+              <section className="factory-request-sourcing-details">
+                <h3>Material sourcing details</h3>
+                <p>{materials.sourcingDetails}</p>
+              </section>
+            )}
           </DetailCard>
+          )}
+
+          {materials?.additionalDetails && (
+            <DetailCard title="Additional details">
+              <p className="factory-request-additional-details">{materials.additionalDetails}</p>
+            </DetailCard>
           )}
 
           {(attachments ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"]).length > 0 && (
@@ -10254,14 +10343,17 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
               <span>{project.trust}</span>
             </div>
           )}
-          <div className="factory-request-tags">
-            <span className="marketplace-tag-label">Request tags</span>
-            <div className="tag-row compact-tags factory-submit-tags">
-              {project.tags.map((tag) => (
-                <span className="tag garment-tag" key={tag}>{tag}</span>
-              ))}
+          {project.tags?.length > 0 && (
+            <div className="factory-request-tags">
+              <span className="marketplace-tag-label">Request tags</span>
+              <div className="tag-row compact-tags factory-submit-tags">
+                {project.tags.map((tag) => (
+                  <span className="tag garment-tag" key={tag}>{tag}</span>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+          <FactoryRequestRequirements project={project} />
         </aside>
 
         <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${project.brand} request references`}>
@@ -10292,7 +10384,7 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
         <div className="factory-submit-attachments">
           <span>Brand attachments</span>
           <strong>{(project.files ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"]).join(" · ")}</strong>
-          <button className="text-link" type="button">Download files</button>
+          <button className="text-link" type="button" onClick={project.onDownloadFiles}>Download files</button>
         </div>
       )}
     </article>
@@ -10387,6 +10479,24 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
       </SubmitSection>
 
       <SubmitSection title="Material sourcing and cost breakdown" description="Show who supplies each material, what it costs, and whether it is included in the unit price.">
+        {values?.brandSourcing && Object.values(values.brandSourcing).some(Boolean) && (
+          <section className="factory-brand-sourcing-request">
+            <h3>Brand sourcing requirements</h3>
+            <div className="factory-brand-sourcing-grid">
+              {[
+                ["Requested material", values.brandSourcing.material],
+                ["Services requested", values.brandSourcing.services],
+                ["Sourcing responsibility", values.brandSourcing.responsibility],
+                ["What the brand needs sourced", values.brandSourcing.details],
+              ].filter(([, value]) => value).map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <p data-no-translate>{value}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {!values && (
         <section className="factory-sourcing-brand-provided">
           <div>
@@ -10409,8 +10519,9 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
             <p>List each material or component separately. Costs marked not included are added on top of the quoted unit price.</p>
           </div>
         </div>
-        <div className="factory-material-cost-rows">
-          {materialCosts.map((item) => (
+        {materialCosts.length > 0 && (
+          <div className="factory-material-cost-rows">
+            {materialCosts.map((item) => (
             <MaterialCostRow
               item={item}
               readOnly={readOnly}
@@ -10421,8 +10532,9 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
               onTreatmentChange={(included) => updateMaterialCost(item.id, { included })}
               key={item.id}
             />
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
         <div className="factory-material-cost-summary">
           <QuoteField
             label="Materials included in unit price"
@@ -10474,6 +10586,12 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
       )}
 
       <SubmitSection title="Additional details and questions" description="Add supporting files or questions regarding the quote.">
+        {values?.brandAdditionalDetails && (
+          <section className="factory-brand-additional-details">
+            <span>Brand additional details</span>
+            <p data-no-translate>{values.brandAdditionalDetails}</p>
+          </section>
+        )}
         <QuoteTextarea name="factoryNotes" editable={reviewEnglish || canType} value={values?.factoryNotes ?? (values ? "" : (isZh && !readOnly
           ? (companyType === "trading"
               ? "技术包确认后，合作工厂即可开始试身样。生产窗口已确认至 8 月 30 日。"

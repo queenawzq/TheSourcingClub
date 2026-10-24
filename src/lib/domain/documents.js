@@ -178,6 +178,28 @@ export async function urlFor(document, expiresInSeconds = 300) {
   return data.signedUrl;
 }
 
+/** Download a private or public document without navigating away from the app. */
+export async function downloadDocument(file) {
+  const href = await urlFor(file, 300);
+  const response = await fetch(href);
+  if (!response.ok) throw new Error(`download ${file.file_name}: ${response.statusText || response.status}`);
+
+  const objectUrl = URL.createObjectURL(await response.blob());
+  const link = window.document.createElement("a");
+  link.href = objectUrl;
+  link.download = file.file_name;
+  link.hidden = true;
+  window.document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+/** Download every attachment from a single, explicit user action. */
+export async function downloadDocuments(files) {
+  await Promise.all(files.map(downloadDocument));
+}
+
 /** Rename a file, or change its description, without uploading it again. */
 export async function updateDocumentDetails(documentId, { title, caption }) {
   return unwrap(
@@ -218,4 +240,28 @@ export async function listRfqDocuments(rfqId) {
       .order("created_at"),
     "load the request's attachments",
   );
+}
+
+/**
+ * The request files in the two shapes its designed cards need: every filename
+ * for the attachment row, and renderable URLs for image files in the gallery.
+ */
+export async function getRfqDocumentPresentation(rfqId) {
+  const files = await listRfqDocuments(rfqId);
+  const images = (await Promise.all(
+    files
+      .filter((file) => file.mime_type?.startsWith("image/"))
+      .map(async (file) => {
+        try {
+          return {
+            src: await urlFor(file, 3600),
+            label: file.file_name,
+          };
+        } catch {
+          return null;
+        }
+      }),
+  )).filter(Boolean);
+
+  return { files, images };
 }

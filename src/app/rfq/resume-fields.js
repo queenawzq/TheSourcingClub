@@ -40,6 +40,16 @@ export function sourcingChoice(termId, sourcingTerms, slugByChoice) {
   return Object.keys(slugByChoice).find((choice) => slugByChoice[choice] === slug);
 }
 
+/** The exact option wording the brand saw when choosing sourcing support. */
+export function sourcingChoiceLabel(term) {
+  return {
+    "factory-sources": "Vendor should source all materials and components",
+    mixed: "Vendor should source some materials or components",
+    "brand-supplies": "Brand will provide all materials and components",
+    unsure: "Not sure yet",
+  }[term?.slug] ?? "";
+}
+
 /** "2026-11-01" → "November 2026", which deliveryMonthFrom() reads back. */
 export function monthLine(date) {
   const [year, month] = String(date ?? "").split("-").map(Number);

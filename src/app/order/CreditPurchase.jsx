@@ -306,7 +306,9 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
       error={problem}
       description={checkout
         ? `${creditsLabel(checkout.credits)} for ${amount}, paid by card. The credits are added as soon as the payment goes through.`
-        : undefined}
+        : "Choose a pack or enter a custom amount. 10 credits = $1. Minimum 50 credits."}
+      customMinimumCredits={50}
+      customRateCents={10}
       continueLabel={checkout ? (busy ? "Paying…" : `Pay ${amount}`) : busy ? "Starting…" : undefined}
       paymentElement={paymentElement}
       onContinue={checkout ? pay : choose}

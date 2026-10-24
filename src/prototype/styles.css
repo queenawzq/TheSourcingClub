@@ -4329,6 +4329,17 @@ textarea.question-field::placeholder {
   background: #f6f9fc;
 }
 
+/* On the RFQ review step the surrounding card already provides the surface.
+   Keep uploaded files as chips instead of placing them inside a second panel. */
+.review-brief-stack .attachment-tray {
+  min-height: 0;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .attachment-chip {
   display: inline-flex;
   align-items: center;
@@ -4550,6 +4561,10 @@ button.compact-filter-button {
 }
 
 .filter-chip {
+  display: inline-flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
   height: 28px;
   padding: 0 14px;
   border: 1px solid var(--border);
@@ -4558,6 +4573,7 @@ button.compact-filter-button {
   color: var(--text);
   font-size: 12px;
   font-weight: 700;
+  line-height: 1;
 }
 
 .clear-filters {
@@ -11738,6 +11754,24 @@ body:has(.brand-onboarding-page) {
   padding: var(--button-padding);
 }
 
+.review-service-selector {
+  margin-top: 4px;
+  padding: 16px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.review-service-selector > strong {
+  color: #0b1020;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.review-service-selector .brand-onboarding-chip-add-row {
+  max-width: none;
+}
+
 .brand-assets-dropzone {
   display: grid;
   justify-items: center;
@@ -18027,6 +18061,12 @@ button.sort-button {
   font-weight: 700;
 }
 
+.field .field-input::placeholder {
+  color: #8796ad;
+  font-weight: 400;
+  opacity: 1;
+}
+
 .field .field-input:focus {
   outline: 2px solid var(--blue, #2458ff);
   outline-offset: 2px;
@@ -18055,7 +18095,8 @@ button.sort-button {
 }
 
 .field .tsc-date-trigger.placeholder > span {
-  color: #8291aa;
+  color: #8796ad;
+  font-weight: 400;
 }
 
 .tsc-date-trigger > i {
