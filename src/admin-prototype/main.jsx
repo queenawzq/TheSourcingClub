@@ -1179,7 +1179,7 @@ function AdminRfqDetail({ rfq, onBack, backLabel, onOpenQuote, quoteRows = quote
               <h2>Request timeline</h2>
               <div className="admin-rfq-timeline">
                 <p><strong>{rfq[3]}</strong>RFQ submitted by {rfq[2]}</p>
-                <p><strong>{rfq[3]}</strong>{rfq[4]} invited to quote</p>
+                <p><strong>{rfq[3]}</strong>{rfq.invitedEvent ?? `${rfq[4]} invited to quote`}</p>
                 {rfqQuotes[0] && <p><strong>{rfqQuotes[0][5]}</strong>{rfqQuotes.length} vendor quotes received</p>}
               </div>
             </section>

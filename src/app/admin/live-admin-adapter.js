@@ -189,15 +189,24 @@ export function toRfqRow(rfq) {
   // "Quotes received" is a real distinction the design's tabs filter on, and
   // it is the count that decides it, not a separate status column.
   const status = rfq.status === "open" && rfq.quoteCount > 0 ? "Quotes received" : label;
+  const openToAll = rfq.visibility === "open_to_all";
   return Object.assign([
     ref("RFQ", rfq.id),
     rfq.title || "Untitled request",
     rfq.brandName,
     shortDate(rfq.publishedAt ?? rfq.createdAt),
-    `${rfq.invitedCount} vendors`,
+    // A request open to all vendors is quoted by vendors nobody invited, so
+    // "0 vendors" beside its quotes read as a miscount.
+    openToAll ? "Open to all vendors" : `${rfq.invitedCount} vendors`,
     status,
     status === "Quotes received" ? "success" : tone,
-  ], { id: rfq.id });
+  ], {
+    id: rfq.id,
+    // The request timeline's line; the design's says "N vendors invited".
+    invitedEvent: openToAll
+      ? `Published to all vendors${rfq.invitedCount ? `, ${rfq.invitedCount} invited by name` : ""}`
+      : `${rfq.invitedCount} vendors invited to quote`,
+  });
 }
 
 export function toQuoteRow(quote) {
