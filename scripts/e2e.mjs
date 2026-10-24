@@ -836,7 +836,21 @@ async function main() {
     // Staff ask for more information first. The company used to be shown
     // "awaiting verification" and nothing else: the request reached only its
     // email and a bell its waiting card does not draw.
-    const askFor = `Please upload a readable business registration (${stamp.toString(36)}).`;
+    // Long and in lines, as staff write them: the company's finish card has
+    // to hold all of it.
+    const askFor = [
+      `Please upload a readable business registration (${stamp.toString(36)}).`,
+      "",
+      "1. The file you uploaded is a photo taken at an angle and the registration number cannot be read.",
+      "2. Your certificate on the profile has expired; please add the current one with its file.",
+      "3. Add your monthly capacity in units, so brands can see whether you can take their order.",
+      "",
+      "Once these are on your profile, finish onboarding again and it comes straight back to us.",
+    ].join("\n");
+    // What a pair on the review page says, by its label.
+    const detailValue = (label) => page.evaluate((wanted) => [...document.querySelectorAll(".factory-detail-pair")]
+      .find((pair) => pair.querySelector("span")?.textContent.trim() === wanted)
+      ?.querySelector("strong")?.textContent.trim() ?? null, label);
     await clickButton(page, "request more information");
     // Its screen-reader label used a class no admin stylesheet defined, so the
     // label was printed twice.
@@ -847,8 +861,15 @@ async function main() {
     await clickButton(page, "send request");
     await page.waitForTimeout(3000);
     const afterAsk = await page.locator("body").innerText();
-    check(afterAsk.includes(askFor), "the review summary shows the note just sent, without a reload");
+    check(afterAsk.includes(askFor.split("\n")[0]), "the review summary shows the note just sent, without a reload");
     check(/needs information/i.test(afterAsk), "and the badge says Needs information");
+    // It said "Pending": the review state and the profile's own column.
+    const statusShown = await detailValue("Profile status");
+    check(statusShown === "Needs information", `and Profile status says the same (${statusShown})`);
+    // A chip heading with no chips under it is a heading for nothing.
+    const emptyChipHeadings = await page.evaluate(() => [...document.querySelectorAll(".admin-review-page .factory-profile-chip-section")]
+      .filter((section) => !section.querySelector(".tag")).length);
+    check(emptyChipHeadings === 0, `no chip heading is drawn without chips (${emptyChipHeadings})`);
 
     // The factory, signed in elsewhere (another origin, so its own session),
     // is shown the request on its waiting card and can answer it.
@@ -860,7 +881,29 @@ async function main() {
     await clickButton(factoryPage, "log in");
     await waitForHeading(factoryPage, "we need a little more information", 40000);
     const askedText = await factoryPage.locator("body").innerText();
-    check(askedText.includes(askFor), "the factory reads the request staff wrote, on its own screen");
+    check(askedText.includes(askFor.split("\n")[0]) && askedText.includes(askFor.split("\n").at(-1)), "the factory reads the request staff wrote, on its own screen");
+    // The note ran out of the card and over the step dots. Measured, not
+    // looked at: every box inside the card, and the card above the dots.
+    const finishCardFits = () => factoryPage.evaluate(() => {
+      const card = document.querySelector(".factory-onboarding-card, .brand-onboarding-card");
+      const dots = document.querySelector(".factory-onboarding-progress, .brand-onboarding-progress");
+      if (!card) return "no card";
+      const box = card.getBoundingClientRect();
+      const out = [...card.querySelectorAll("*")].filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.height > 0 && (r.bottom > box.bottom + 1 || r.right > box.right + 1 || r.left < box.left - 1);
+      });
+      if (out.length) return `${out.length} boxes outside the card, first ${out[0].tagName.toLowerCase()}.${out[0].className}`;
+      if (card.scrollHeight > card.clientHeight + 1) return `card scrolls (${card.scrollHeight} > ${card.clientHeight})`;
+      if (dots && dots.getBoundingClientRect().top < box.bottom - 1) return "the card runs over the step dots";
+      return "fits";
+    });
+    const fitsWide = await finishCardFits();
+    check(fitsWide === "fits", `the long request fits its card at desktop width (${fitsWide})`);
+    await factoryPage.setViewportSize(375, 812);
+    await factoryPage.waitForTimeout(500);
+    const fitsNarrow = await finishCardFits();
+    check(fitsNarrow === "fits", `and at 375px wide (${fitsNarrow})`);
     await record(factoryPage, "Factory asked for more information", "the request is on the company's own waiting card");
 
     const answering = createClient(
@@ -879,6 +922,9 @@ async function main() {
     await clickButton(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
+    // Profile completeness used to vanish once a decision was made.
+    const completenessShown = await detailValue("Profile completeness");
+    check(/^\d+%$/.test(completenessShown ?? ""), `Profile completeness is still shown after approval (${completenessShown})`);
 
     const { data: verified } = await db
       .from("factory_profiles").select("verification_status, trust_tier").eq("org_id", factoryOrg.id).single();
@@ -942,6 +988,18 @@ async function main() {
     const quotesText = await page.locator("body").innerText();
     check(/quotes/i.test(quotesText), "the marketplace-wide quote table opens");
     await record(page, "Marketplace quotes", "every quote across the marketplace, staff only");
+
+    // A request open to all vendors is quoted by vendors nobody invited; its
+    // row said "0 vendors" beside its quotes.
+    const { data: openRequest } = await db.from("rfqs").select("title, rfq_invitations(count)")
+      .eq("visibility", "open_to_all").neq("status", "draft").limit(1).maybeSingle();
+    if (openRequest) {
+      await page.goto(`${ADMIN}?screen=rfqs`);
+      await page.waitForTimeout(3500);
+      const openRow = await page.evaluate((title) => [...document.querySelectorAll("tr")]
+        .find((row) => row.innerText.includes(title))?.innerText ?? "", openRequest.title);
+      check(/open to all vendors/i.test(openRow), `an open request says it is open to all, not how many were invited (${openRow.replace(/\s+/g, " ").slice(0, 80)})`);
+    }
 
     // ================= RFQ =================
     console.log("\nREQUEST FOR QUOTES");
