@@ -9,11 +9,16 @@
  */
 import { formatMoney, toCents } from "../../lib/money.js";
 import { formatCapacityWindow } from "../../lib/domain/quote.js";
+import { dateFrom } from "../../lib/dates.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 const DAY_TIME = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
-export const day = (value) => (value ? DAY.format(new Date(value)) : "");
+/** "Oct 26", for a step's due_on as much as for a timestamp. */
+export const day = (value) => {
+  const date = dateFrom(value);
+  return date ? DAY.format(date) : "";
+};
 
 /** "AM" for "Atelier Minho"; one letter for one word. */
 export function initials(name) {

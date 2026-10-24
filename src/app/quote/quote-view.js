@@ -14,6 +14,7 @@
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { formatCapacityWindow, formatDayRange, quoteTotalCents, quoteTotalMaxCents } from "../../lib/domain/quote.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
+import { dateFrom } from "../../lib/dates.js";
 
 export const initialsOf = (name) =>
   (name ?? "")
@@ -56,9 +57,7 @@ export function samplePlanOf(quote) {
 
 export function validUntilOf(quote) {
   if (!quote?.valid_until) return "";
-  // A bare date parses as UTC midnight and renders a day early west of
-  // Greenwich; pinning the time keeps it the day the vendor typed.
-  return new Date(`${quote.valid_until}T00:00:00`).toLocaleDateString("en", { dateStyle: "medium" });
+  return dateFrom(quote.valid_until).toLocaleDateString("en", { dateStyle: "medium" });
 }
 
 /**

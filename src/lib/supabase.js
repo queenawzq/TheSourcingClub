@@ -78,8 +78,48 @@ const sessionStorageAdapter = {
   },
 };
 
+/**
+ * Emails go out from a queue the database fills whenever a notification is
+ * written (api/notification-emails.js). Nothing calls that sender per action:
+ * after any successful write through this client, and after a server route
+ * that notifies (screening a message, Stripe), the browser asks it once to
+ * send what is due, a moment later, without waiting for the answer. A daily
+ * job catches anything this misses.
+ */
+let emailKick = null;
+export function kickNotificationEmails(round = 0) {
+  clearTimeout(emailKick);
+  emailKick = setTimeout(async () => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token;
+      if (!token) return;
+      const answer = await fetch("/api/notification-emails", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        keepalive: true,
+      });
+      const body = await answer.json().catch(() => ({}));
+      if (body.more && round < 3) kickNotificationEmails(round + 1);
+    } catch {
+      // Never surfaces: the queue keeps the email for the next try.
+    }
+  }, round ? 300 : 1500);
+}
+
+function fetchThenKick(input, init) {
+  return fetch(input, init).then((response) => {
+    const method = String(init?.method ?? "GET").toUpperCase();
+    if (response.ok && method !== "GET" && method !== "HEAD" && String(input).includes("/rest/v1/")) {
+      kickNotificationEmails();
+    }
+    return response;
+  });
+}
+
 export const supabase = isConfigured
   ? createClient(url, publishableKey, {
+      global: { fetch: fetchThenKick },
       auth: {
         // Google and the password-reset link both come back with the session
         // in the URL; pick it up and then clean the address bar.

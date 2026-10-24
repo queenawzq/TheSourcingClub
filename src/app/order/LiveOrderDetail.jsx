@@ -52,6 +52,7 @@ import {
   orderFiles,
   updateTime,
 } from "./order-view.js";
+import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
 
 /**
@@ -178,7 +179,7 @@ function dueBadge(milestone, today = new Date()) {
   if (!milestone.due_on || milestone.state === "complete" || milestone.state === "cancelled") {
     return { dueStatus: "", dueTone: "" };
   }
-  const due = new Date(`${milestone.due_on}T00:00:00`);
+  const due = dateFrom(milestone.due_on);
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   const days = Math.round((due - start) / 86400000);
   if (days < 0) return { dueStatus: "Overdue", dueTone: "danger" };
@@ -200,7 +201,7 @@ const waitingOnOther = (milestone, isFactory, posted) => (isFactory
 /** Brands nudge factories only when the current work is genuinely close. */
 function nearOrPastDue(milestone, today = new Date()) {
   if (!milestone.due_on) return false;
-  const due = new Date(`${milestone.due_on}T00:00:00`);
+  const due = dateFrom(milestone.due_on);
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
   return Math.round((due - start) / 86400000) <= 7;
 }

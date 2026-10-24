@@ -152,6 +152,7 @@ Things that will bite here:
 - **Screen keys carry no entity ids.** `goTo("projectDetail")`, not `/orders/:id`. `navigateFromPrototype` in `src/app/main.jsx` translates for now; the screens need real ids as they port.
 - **Importing a prototype screen pulls in `src/prototype/styles.css`** — ~16,000 lines with `!important` blocks that restyle every `.primary-btn`, `.tag` and `.project-status` on the page. That is intended (the design is the CSS), but it means the remaining hand-built `src/app` screens are being restyled too.
 - **CSS custom properties must be defined, not merely referenced.** `var(--blue, #2458ff)` with no `--blue` does not warn — it silently paints the wrong colour, and the fallback makes it look deliberate. Phases 3 and 4 shipped 48 of these. `npm run check:css` runs in the build to stop it happening again.
+- **A `date` column is a day, not an instant.** `new Date("2026-10-26")` is midnight UTC, the 25th anywhere in the Americas: the order page said a step was due a day before its reminder did. Read every date-only value (`due_on`, `valid_until`, `target_delivery_month`, …) with `dateFrom()` from `src/lib/dates.js`. `npm run check:dates` runs the formatters in New York and UTC+14 and fails on a one-argument `new Date()` of any `date` column named in the migrations.
 - **Design System v2 sizing lives in `src/app/shell.css`'s `:root`**, copied verbatim from the prototype's. Copied rather than imported to avoid the `!important` blocks above. Keep it in step when v2 moves. Buttons are 34px; **inputs stay 42px**.
 
 ## Design system
@@ -189,6 +190,7 @@ npm run db:reset      # re-apply every migration from scratch
 npm run db:test       # pgTAP access-rule suites (217 assertions, seven files)
 npm run smoke         # 138 checks through supabase-js: embeds, RPC signatures, grants
 npm run check:css     # fails on a CSS variable used but never defined (runs in build)
+npm run check:dates   # fails on a date column read as an instant, in New York and UTC+14 (runs in build)
 npm run check:prototype  # the prototype must still render with NO database
 npm run check:messages   # the contact-detail patterns: hits and near-misses
 npm run taxonomy      # regenerate migration 007 from the seed JSON
