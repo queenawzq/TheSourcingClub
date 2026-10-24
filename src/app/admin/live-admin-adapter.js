@@ -163,7 +163,12 @@ export function toReviewProfile(row) {
       ["Legal name", row.legalName ?? "—"],
       ["Website", row.websiteUrl ?? "—"],
       ["Location", row.location ?? "—"],
-      ["Profile status", VERIFICATION_LABEL[row.verificationStatus] ?? row.verificationStatus ?? "—"],
+      // A company waiting on staff is 'pending' whatever staff have done, so
+      // its words come from the review, as the badge's do: "Pending" beside
+      // "Needs information" said two different things.
+      ["Profile status", row.verificationStatus === "pending"
+        ? status
+        : VERIFICATION_LABEL[row.verificationStatus] ?? row.verificationStatus ?? "—"],
       ["Decided", row.decidedAt ? shortDate(row.decidedAt) : "Not yet"],
       // Last, on a row of its own (console-live.css): a request is often a
       // paragraph and a list, which stretched one third of the grid down the
