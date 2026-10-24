@@ -24,7 +24,7 @@ import { listOrders } from "../../lib/domain/order.js";
 import { chargedCents, listPaymentsForOrders } from "../../lib/domain/payment.js";
 import { listArchivedOrderIds } from "../../lib/domain/order-tabs.js";
 import { listThreads } from "../../lib/domain/message.js";
-import { inviteBrand, savingsFor } from "../../lib/domain/credits.js";
+import { BRAND_INVITE_INTRO, BRAND_INVITE_MESSAGE, inviteBrand, inviteNotice, savingsFor } from "../../lib/domain/credits.js";
 import { toProjectCard, toRfqCard } from "../live-adapter.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -149,6 +149,8 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
   // unread messages (those have their own card in "Needs your attention").
   const { unreadCount: unreadActivity, openActivity, activityDrawer } = useActivity(org.id, { isFactory, onError: setError });
   const [recommended, setRecommended] = useState([]);
+  // What became of the invite just sent, on the Savings card it came from.
+  const [inviteSent, setInviteSent] = useState(null);
   const { calls, zones, now } = useDashboardCalls(org.id);
 
   useEffect(() => {
@@ -237,7 +239,19 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         attention={attention}
         rfqs={rfqs}
         projects={projects}
-        savings={savings ? { ...savings, onInvite: (email) => inviteBrand(org.id, email) } : null}
+        // A brand invite earns nothing yet, so the modal and its message
+        // promise no discount.
+        savings={savings ? {
+          ...savings,
+          inviteIntro: BRAND_INVITE_INTRO,
+          inviteMessage: BRAND_INVITE_MESSAGE,
+          notice: inviteSent,
+          onInvite: async (email, message) => {
+            setInviteSent(null);
+            const result = await inviteBrand(org.id, email, message);
+            setInviteSent(inviteNotice(result, { email, kind: "brand" }));
+          },
+        } : null}
         // No credit and no codes means no Savings panel, rather than the
         // design's $50 shown to a brand that has none.
         showSavings={Boolean(savings)}

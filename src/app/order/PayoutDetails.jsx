@@ -23,6 +23,8 @@ import {
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
+import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
+import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
 import "./order.css";
@@ -37,15 +39,6 @@ const FIELDS = [
   ["swift", "SWIFT / BIC", "8 or 11 characters"],
   ["iban", "IBAN", "Only if your bank uses one"],
 ];
-
-const CREDIT_REASON = {
-  onboarding_grant: "Verified onboarding bonus",
-  referral_grant: "Referral bonus",
-  purchase: "Credit purchase",
-  admin_adjustment: "Account adjustment",
-  quote_submission: "Quote submitted",
-  refund: "Credit refund",
-};
 
 const dateLabel = (value) => value
   ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -102,8 +95,17 @@ const BILLING_CARD_OPTIONS = {
 
 export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const [tab, setTab] = useState(() => {
-    const requested = new URLSearchParams(window.location.search).get("tab");
-    return ["billing", "credits"].includes(requested) ? requested : "earnings";
+    const asked = new URLSearchParams(window.location.search).get("tab");
+    return ["billing", "credits"].includes(asked) ? asked : "earnings";
+  });
+  const [inviteOpen, setInviteOpen] = useState(false);
+  // What just happened on the Credits tab: an invite sent (here, or from the
+  // dashboard, which links here with ?invite=sent or why it was not emailed)
+  // or credits bought.
+  const [notice, setNotice] = useState(() => {
+    const invite = new URLSearchParams(window.location.search).get("invite");
+    if (invite === "sent") return inviteNotice({ emailed: true });
+    return ["saved", ...INVITE_NOT_EMAILED].includes(invite) ? inviteNotice({ emailed: false, reason: invite }) : null;
   });
   const [client, setClient] = useState("All clients");
   const [transactionType, setTransactionType] = useState("all");
@@ -123,16 +125,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const [removingCard, setRemovingCard] = useState(null);
   const [cardBusy, setCardBusy] = useState(false);
 
+  // The ledger and the factory's invites (creditHistory), read again after
+  // a purchase as well as on load.
   const loadCredits = useCallback(async () => {
-    const rows = unwrap(
-      await supabase
-        .from("credit_ledger")
-        .select("id, delta, reason, note, created_at")
-        .eq("org_id", org.id)
-        .order("created_at", { ascending: false }),
-      "load your credits",
-    );
-    setCredits(rows);
+    setCredits(await creditHistory(org.id));
   }, [org.id]);
 
   // Saved cards live on Stripe, not in the database, so the server lists
@@ -253,7 +249,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   ]
     .filter((row) => transactionType === "all" || row.type === transactionType)
     .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-  const creditBalance = (credits ?? []).reduce((sum, row) => sum + row.delta, 0);
+  const creditBalance = credits?.balance ?? 0;
 
   if (!isFactory) {
     return <section className="billing-history-page"><h1>Payments</h1><p className="projects-empty">Factory payment tools are not available on a brand account.</p></section>;
@@ -467,18 +463,24 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       {tab === "credits" && (
         <>
           <section className="factory-credit-billing-card">
-            <div><span>Credit balance</span><strong>{creditBalance.toLocaleString()} credits</strong><p>Credits earned and used by this factory account.</p></div>
+            <div>
+              <span>Credit balance</span>
+              <strong>{creditBalance.toLocaleString()} credits</strong>
+              <p>500 credits = $50 value. Credits are used when a quote is sent.</p>
+            </div>
             <div className="factory-credit-billing-action">
-              <CreditPurchaseButton orgId={org.id} orgName={org.name} isOwner={isOwner} onPurchased={reloadCredits} />
+              <button className="secondary-btn compact-btn" type="button" onClick={() => { setNotice(null); setInviteOpen(true); }}>Invite a factory</button>
+              <CreditPurchaseButton orgId={org.id} orgName={org.name} isOwner={isOwner} onPurchased={reloadCredits} onNotice={setNotice} />
             </div>
           </section>
-          {credits.length ? (
+          {notice ? <p className="live-payment-notice" role="status">{notice}</p> : null}
+          {credits.rows.length ? (
             <div className="billing-history-list">
-              {credits.map((row) => (
+              {credits.rows.map((row) => (
                 <article className="billing-history-row" key={row.id}>
-                  <div><strong>{CREDIT_REASON[row.reason] || row.reason}</strong><span>{row.note || dateLabel(row.created_at)}</span></div>
-                  <span className="billing-status">{row.delta > 0 ? "Earned" : "Used"}</span>
-                  <strong>{row.delta > 0 ? "+" : ""}{row.delta.toLocaleString()} credits</strong>
+                  <div><strong>{row.title}</strong><span>{row.meta}</span></div>
+                  <span className="billing-status">{row.status}</span>
+                  <strong>{row.amount}</strong>
                 </article>
               ))}
             </div>
@@ -487,6 +489,18 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       )}
 
       {error && <p className="projects-empty projects-error" role="alert">{error.message}</p>}
+
+      {inviteOpen ? (
+        <InviteFactoryModal
+          intro={FACTORY_INVITE_INTRO}
+          onInvite={async (email, message) => {
+            const result = await sendInvite(org.id, email, message);
+            setNotice(inviteNotice(result, { email }));
+            await load();
+          }}
+          onClose={() => setInviteOpen(false)}
+        />
+      ) : null}
 
       {billingSecret ? (
         <BillingMethodFlow clientSecret={billingSecret} onClose={() => setBillingSecret(null)} onSaved={() => { setBillingSecret(null); setBillingSaved(true); loadCards(); }} />

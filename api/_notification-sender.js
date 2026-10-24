@@ -82,6 +82,24 @@ function transport() {
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The app's public address for links in an email. */
+export function publicAppUrl(request) {
+  return appUrl(request);
+}
+
+/**
+ * Sends one email that is not a notification (an invite). Same transport and
+ * the same rule for reserved test addresses as the queue.
+ * @returns {{ sent: boolean, reason?: "email_not_set_up" | "reserved_address", providerId?: string }},
+ *   or throws when the provider refuses it
+ */
+export async function sendOneEmail({ key, to, message }, mail = transport()) {
+  if (!mail) return { sent: false, reason: "email_not_set_up" };
+  if (mail.name === "resend" && RESERVED.test(to)) return { sent: false, reason: "reserved_address" };
+  const providerId = await mail.send({ id: key, recipient_email: to, recipient_name: null }, message);
+  return { sent: true, providerId };
+}
+
 /** Whether this server can send at all (a provider, or Mailpit locally). */
 export function emailTransport() {
   return transport();
