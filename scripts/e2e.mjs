@@ -2812,7 +2812,10 @@ async function main() {
       // The last saved answer loads with the page, so the button may read "Ask again".
       const askLabel = await page.evaluate(() => [...document.querySelectorAll(".admin-assist-panel button")].map((node) => node.textContent.trim()).find((text) => /^Ask (AI for suggestions|again)$/.test(text)) ?? "");
       check(Boolean(askLabel), `the review page offers AI suggestions, on request only ("${askLabel}")`);
-      await clickButton(page, askLabel || "ask ai for suggestions");
+      // By its place, not its label: the saved answer can arrive between the
+      // read above and this click and turn "Ask AI for suggestions" into
+      // "Ask again" (any run after the first on the same database).
+      await page.locator(".admin-assist-actions .secondary-btn").first().click();
       await page.waitForTimeout(500);
       const askDeadline = Date.now() + 45000;
       while (Date.now() < askDeadline && await page.evaluate(() => [...document.querySelectorAll(".admin-assist-panel button")].some((node) => node.textContent.includes("Asking")))) {
