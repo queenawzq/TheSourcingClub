@@ -1742,15 +1742,32 @@ export function MessagesScreen({
   onSelectThread,
   onSend,
   sending = false,
+  // Live only: "Attach file" opens a file picker and the chosen files go
+  // with the message. The prototype's button stays as drawn.
+  canAttach = false,
   // The reader's own company. With it, a live message marks itself `own`
   // and the bubble no longer assumes the reader is the brand.
   ownName,
+  // Live only: which files the picker offers, and a filter for what was
+  // picked (it keeps what may go and says why the rest may not).
+  attachAccept,
+  acceptFiles,
+  // Live only: a line about the last send or a failed load, drawn in the
+  // composer so it never adds height to a page sized to the window.
+  composerNotice,
 }) {
   const messageThreads = liveThreads ?? mockMessageThreads;
   const isLive = Boolean(liveThreads);
   // A conversation opened from an order or a request arrives with its own id.
   const [activeThreadId, setActiveThreadId] = useState(initialThreadId ?? messageThreads[0]?.id);
-  const [composer, setComposer] = useState("");
+  // One draft per conversation: text typed to one company never shows up in
+  // the box of another.
+  const [drafts, setDrafts] = useState({});
+  const [attachments, setAttachments] = useState({});
+  const [search, setSearch] = useState("");
+  const [onlyUnread, setOnlyUnread] = useState(false);
+  const fileInput = useRef(null);
+  const timeline = useRef(null);
   const [showSchedule, setShowSchedule] = useState(false);
   const [isCallPanelOpen, setIsCallPanelOpen] = useState(false);
   const [callMode, setCallMode] = useState("idle");
@@ -1765,6 +1782,59 @@ export function MessagesScreen({
     }
   });
   const activeThread = messageThreads.find((thread) => thread.id === activeThreadId) || messageThreads[0];
+  const composer = drafts[activeThread?.id] ?? "";
+  const setComposer = (value) => setDrafts((current) => ({ ...current, [activeThread.id]: value }));
+  const pendingFiles = attachments[activeThread?.id] ?? [];
+  const setPendingFiles = (files) => setAttachments((current) => ({ ...current, [activeThread.id]: files }));
+  const query = search.trim().toLowerCase();
+  const visibleThreads = messageThreads.filter((thread) =>
+    (!onlyUnread || thread.unread > 0 || thread.id === activeThread?.id)
+    && (!query || [thread.name, thread.project, thread.lastPreview].some((text) => String(text ?? "").toLowerCase().includes(query))));
+
+  // The newest message is the one people need: open a conversation at its
+  // end, and follow new messages while the reader is already at the end.
+  // "At the end" is what the reader last scrolled to, kept as they scroll:
+  // measured after the new messages had rendered, every arrival (and the
+  // first load of a conversation) looked like the reader had scrolled away.
+  const shown = useRef({ threadId: null, count: 0 });
+  const atEnd = useRef(true);
+  useLayoutEffect(() => {
+    const box = timeline.current;
+    if (!box || !activeThread) return;
+    const count = activeThread.messages.length;
+    const switched = shown.current.threadId !== activeThread.id;
+    const firstMessages = shown.current.count === 0;
+    const newest = activeThread.messages[count - 1];
+    if (switched || firstMessages || (count > shown.current.count && (atEnd.current || newest?.own))) {
+      box.scrollTop = box.scrollHeight;
+      atEnd.current = true;
+    }
+    shown.current = { threadId: activeThread.id, count };
+  }, [activeThread?.id, activeThread?.messages.length]);
+  // A message can grow after it is drawn (its translation, a file, whether
+  // it was held), and the panel shrinks when files are picked: a reader at
+  // the end stays there, or the newest lines slip out of view.
+  useEffect(() => {
+    const box = timeline.current;
+    if (!box || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => {
+      if (atEnd.current) box.scrollTop = box.scrollHeight;
+    });
+    observer.observe(box);
+    for (const bubble of box.children) observer.observe(bubble);
+    return () => observer.disconnect();
+  });
+
+  const send = () => {
+    const text = composer.trim();
+    if (isLive) {
+      if (!text && !pendingFiles.length) return;
+      // Cleared at once: the message is in the timeline now, not in the box.
+      onSend?.(activeThread.id, text, pendingFiles);
+      setPendingFiles([]);
+    }
+    setComposer("");
+  };
 
   // The design switches threads in its own state; the live mount needs to know
   // so it can fetch that conversation and mark it read.
@@ -1802,15 +1872,26 @@ export function MessagesScreen({
         <label className="rfqs-search message-search-field">
           <div>
             <SearchIcon />
-            <input placeholder="Search conversations..." />
+            <input
+              placeholder="Search conversations..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              aria-label="Search conversations"
+            />
           </div>
         </label>
         <div className="message-filter-row">
-          <button className="pill active" type="button">All</button>
-          <button className="pill" type="button">Unread</button>
+          <button className={onlyUnread ? "pill" : "pill active"} type="button" onClick={() => setOnlyUnread(false)}>All</button>
+          <button className={onlyUnread ? "pill active" : "pill"} type="button" onClick={() => setOnlyUnread(true)}>Unread</button>
         </div>
         <div className="message-thread-list">
-          {messageThreads.map((thread) => (
+          {/* Live only: an empty list says why. */}
+          {isLive && !visibleThreads.length && (
+            <p className="message-thread-list-empty" role="status">
+              {query ? `No conversations match "${search.trim()}".` : "No unread conversations."}
+            </p>
+          )}
+          {visibleThreads.map((thread) => (
             <button
               className={thread.id === activeThread.id ? "message-thread-card active" : "message-thread-card"}
               type="button"
@@ -1866,7 +1947,14 @@ export function MessagesScreen({
           <VideoCallPanel thread={activeThread} mode={callMode} setMode={setCallMode} />
         )}
 
-        <div className="message-timeline">
+        <div
+          className="message-timeline"
+          ref={timeline}
+          onScroll={(event) => {
+            const box = event.currentTarget;
+            atEnd.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+          }}
+        >
           {activeThread.messages.map((message, index) => {
             const translationKey = `${activeThread.id}-${index}`;
             const showTranslation = Boolean(translatedMessages[translationKey]);
@@ -1877,7 +1965,7 @@ export function MessagesScreen({
                 onToggleTranslation={() => toggleTranslation(activeThread.id, index)}
                 ownName={ownName}
                 otherName={activeThread.name}
-                key={`${message.time}-${index}`}
+                key={message.id ?? `${message.time}-${index}`}
               />
             );
           })}
@@ -1887,11 +1975,46 @@ export function MessagesScreen({
           <textarea
             value={composer}
             onChange={(event) => setComposer(event.target.value)}
+            onKeyDown={(event) => {
+              // Enter sends, Shift+Enter starts a new line (live only).
+              if (isLive && event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                send();
+              }
+            }}
             placeholder={`Message ${activeThread.name}...`}
             rows={3}
           />
+          {composerNotice && (
+            <p className="message-composer-notice" role={composerNotice.alert ? "alert" : "status"}>{composerNotice.text}</p>
+          )}
+          {canAttach && pendingFiles.length > 0 && (
+            <div className="message-pending-files" data-testid="pending-files">
+              {pendingFiles.map((file, index) => (
+                <span key={`${file.name}-${index}`}>
+                  {file.name}
+                  <button type="button" aria-label={`Remove ${file.name}`} onClick={() => setPendingFiles(pendingFiles.filter((_, other) => other !== index))}>×</button>
+                </span>
+              ))}
+            </div>
+          )}
           <div className="message-send-actions">
-            <button className="message-upload-btn" type="button">
+            {canAttach && (
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                hidden
+                accept={attachAccept}
+                data-field="message_files"
+                onChange={(event) => {
+                  const picked = Array.from(event.target.files ?? []);
+                  setPendingFiles([...pendingFiles, ...(acceptFiles ? acceptFiles(picked) : picked)]);
+                  event.target.value = "";
+                }}
+              />
+            )}
+            <button className="message-upload-btn" type="button" onClick={canAttach ? () => fileInput.current?.click() : undefined}>
               <img src="/assets/prototype-icons/upload.svg" alt="" />
               <span>Attach file</span>
             </button>
@@ -1899,14 +2022,8 @@ export function MessagesScreen({
               className="primary-btn compact-btn"
               type="button"
               data-testid="send-message"
-              disabled={sending || (isLive && !composer.trim())}
-              onClick={async () => {
-                if (isLive) {
-                  if (!composer.trim()) return;
-                  await onSend?.(activeThread.id, composer.trim());
-                }
-                setComposer("");
-              }}
+              disabled={sending || (isLive && !composer.trim() && !pendingFiles.length)}
+              onClick={send}
             >
               {sending ? "Sending…" : "Send"}
             </button>
@@ -1956,9 +2073,12 @@ function MessageBubble({ message, showTranslation, onToggleTranslation, ownName,
   // always read by the brand.
   const isOwn = message.own ?? message.from === "brand";
   const hasTranslation = Boolean(message.translation);
+  // Live only: a message of the reader's own that has not reached the other
+  // side (held for review, or not delivered). The design has no such state.
+  const status = message.status ?? null;
 
   return (
-    <article className={isOwn ? "message-bubble own" : "message-bubble"}>
+    <article className={`${isOwn ? "message-bubble own" : "message-bubble"}${status ? ` message-bubble-${status.kind}` : ""}`}>
       <div>
         <span>{isOwn ? ownName ?? "Maison Rue" : otherName ?? "Factory"}</span>
         <time>{message.time}</time>
@@ -1978,12 +2098,25 @@ function MessageBubble({ message, showTranslation, onToggleTranslation, ownName,
       )}
       {message.attachments && (
         <div className="message-attachment-row">
-          {message.attachments.map((attachment) => (
-            <button type="button" key={attachment}>
-              <span>{attachment}</span>
+          {message.attachments.map((attachment, index) => (
+            // Live attachments carry their own way to open; the design's are names.
+            <button
+              type="button"
+              key={`${attachment.name ?? attachment}-${index}`}
+              onClick={attachment.onOpen}
+              disabled={attachment.uploading}
+              data-testid="message-attachment"
+            >
+              <span>{attachment.name ?? attachment}</span>
               <img src="/assets/prototype-icons/download.svg" alt="" />
             </button>
           ))}
+        </div>
+      )}
+      {status && (
+        <div className="message-status-note" role="status">
+          <strong>{status.label}</strong>
+          {status.note && <span>{status.note}</span>}
         </div>
       )}
     </article>

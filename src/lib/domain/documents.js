@@ -11,6 +11,7 @@
  * belongs to, so every path built here starts with the org id.
  */
 import { supabase, unwrap } from "../supabase.js";
+import { PRIVATE_BUCKET_LIMIT_MB, PRIVATE_BUCKET_TYPES } from "../../shared/private-bucket-types.mjs";
 
 /**
  * Anything commercially sensitive is private. When adding a kind, the question
@@ -75,10 +76,49 @@ const EXTENSION_TYPES = {
   xls: "application/vnd.ms-excel",
 };
 
+const KNOWN_TYPES = new Set(Object.values(EXTENSION_TYPES));
+
+/**
+ * The browser's type when it is one we know, otherwise the extension's.
+ * Windows labels a ZIP `application/x-zip-compressed`, which the allowlist
+ * refuses although the file is exactly what it admits.
+ */
 function resolveContentType(file) {
-  if (file.type && file.type !== "application/octet-stream") return file.type;
+  if (file.type && KNOWN_TYPES.has(file.type)) return file.type;
   const extension = file.name.split(".").pop()?.toLowerCase();
-  return EXTENSION_TYPES[extension] ?? file.type ?? "application/octet-stream";
+  return EXTENSION_TYPES[extension] ?? (file.type || "application/octet-stream");
+}
+
+/** For a file input's `accept`: the extensions of what the private bucket admits. */
+export const ATTACHMENT_ACCEPT = Object.entries(EXTENSION_TYPES)
+  .filter(([, type]) => PRIVATE_BUCKET_TYPES.includes(type))
+  .map(([extension]) => `.${extension}`)
+  .join(",");
+
+const ATTACHMENT_KINDS_IN_WORDS = "a PDF, a photo (PNG, JPG, WebP or HEIC), an Excel sheet or a ZIP";
+
+/** Why a file cannot go with a message, in words for its sender, or null when it can. */
+export function attachmentRefusal(file) {
+  if (!PRIVATE_BUCKET_TYPES.includes(resolveContentType(file))) {
+    return `${file.name} can't be attached. Attach ${ATTACHMENT_KINDS_IN_WORDS}.`;
+  }
+  if (file.size > PRIVATE_BUCKET_LIMIT_MB * 1024 * 1024) {
+    return `${file.name} is larger than ${PRIVATE_BUCKET_LIMIT_MB} MB, the most a file can be.`;
+  }
+  return null;
+}
+
+/**
+ * Storage's own refusals, in words a person can act on. Its messages
+ * ("mime type text/plain is not supported") name internals; the raw text
+ * goes to the console for whoever is debugging.
+ */
+function uploadFailureInWords(file, error) {
+  console.error("upload", file.name, error?.message);
+  const raw = String(error?.message ?? "");
+  if (/mime type|invalid_mime_type/i.test(raw)) return `${file.name} can't be uploaded here: that type of file is not accepted.`;
+  if (/maximum allowed size|too large|payload/i.test(raw)) return `${file.name} is too large to upload.`;
+  return `${file.name} could not be uploaded. Check your connection and try again.`;
 }
 
 /** Strip anything that would make a storage key awkward or ambiguous. */
@@ -113,7 +153,7 @@ export async function uploadDocument({ orgId, kind, file, scopeId = null, title 
     .upload(path, file, { cacheControl: "3600", upsert: false, contentType });
 
   if (uploadError) {
-    throw new Error(`upload ${file.name}: ${uploadError.message}`);
+    throw new Error(uploadFailureInWords(file, uploadError));
   }
 
   try {

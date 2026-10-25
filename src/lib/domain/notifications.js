@@ -98,7 +98,8 @@ export function notificationLink(notification, { isFactory }) {
  */
 export function activityType(kind = "") {
   if (kind.startsWith("quote_")) return "Quote";
-  if (kind === "message") return "Message";
+  // A held message that staff rejected is still news about a conversation.
+  if (kind === "message" || kind === "message_rejected") return "Message";
   if (kind.startsWith("payment_") || kind === "funds_released") return "Payment";
   if (kind.startsWith("verification_")) return "Verification";
   if (kind.startsWith("rfq_")) return "Request";

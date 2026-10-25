@@ -32,6 +32,7 @@ import {
   verificationQueue,
 } from "../../lib/domain/admin.js";
 import { urlFor } from "../../lib/domain/documents.js";
+import { heldMessageQueue } from "../../lib/domain/message.js";
 import { formatMoney } from "../../lib/money.js";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -206,7 +207,13 @@ export function createAdminAdapter({ user, signOut }) {
     verificationQueue: () => verificationQueue().then((rows) => rows.map(toReviewProfile)),
     adminRfqs: () => rfqQueue().then((rows) => rows.map(toRfqRow)),
     adminQuotes: () => quoteQueue().then((rows) => rows.map(toQuoteRow)),
-    adminMetrics: () => overviewMetrics(),
+    // Held messages are counted from their queue rather than in
+    // admin_overview_metrics: nobody is notified of them either, so the
+    // overview card is their only prompt.
+    adminMetrics: async () => {
+      const [metrics, held] = await Promise.all([overviewMetrics(), heldMessageQueue()]);
+      return { ...metrics, messagesHeld: held?.length ?? 0, messagesHref: "/app.html/admin/messages" };
+    },
     adminUsers: () => userDirectory().then((rows) => rows.map(toAdminUser)),
 
     actions: {

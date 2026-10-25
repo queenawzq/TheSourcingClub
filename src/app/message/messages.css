@@ -1,0 +1,168 @@
+/*
+ * Live only: the sender's own message that has not reached the other side.
+ * The designed bubble has no such state, so it is drawn as the bubble muted,
+ * with a note under the text in the bubble's own type sizes.
+ */
+.message-bubble.message-bubble-checking,
+.message-bubble.message-bubble-held,
+.message-bubble.message-bubble-rejected {
+  border-style: dashed;
+  background: #f7f8fa;
+}
+
+.message-bubble.message-bubble-checking > p,
+.message-bubble.message-bubble-held > p,
+.message-bubble.message-bubble-rejected > p {
+  color: #60769b;
+}
+
+.message-status-note {
+  display: grid;
+  gap: 2px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.message-bubble .message-status-note strong {
+  color: #8a5a00;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.message-bubble-checking .message-status-note strong {
+  color: #33415c;
+}
+
+.message-bubble-rejected .message-status-note strong {
+  color: #b42318;
+}
+
+.message-bubble .message-status-note span {
+  color: #60769b;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+/*
+ * Live only: files chosen with "Attach file", waiting to go with the next
+ * message. Drawn as the design's attachment chips, with a way to take one off.
+ */
+.message-pending-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.message-pending-files span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f7f8fa;
+  color: #33415c;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+
+.message-pending-files button {
+  border: 0;
+  background: none;
+  color: #60769b;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.message-attachment-row button[disabled] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/*
+ * Live only: what was typed on two lines reads on two lines. The design's
+ * bubble collapses the line breaks Shift+Enter put there.
+ */
+.message-bubble > p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Live only: a long conversation scrolls inside its own panel, so the box to
+ * write in stays on screen. The design grows the page with the conversation,
+ * which its three sample messages never showed. The shell is the height of
+ * the page inside its padding (the design's own min-height); below 901px the
+ * design stacks the list above the conversation, and the page scrolls.
+ */
+@media (min-width: 901px) {
+  .messages-shell {
+    height: calc(100vh - 72px);
+  }
+
+  /* The app shell keeps 92px at the bottom for the design's bottom bar,
+     which this page does not have. Beside a shell the height of the
+     window, that made every conversation page 92px taller than the window:
+     a send (or a scroll past the end of the timeline) scrolled the whole
+     page, cutting off its top and leaving a blank band at the bottom. */
+  .app-shell:has(> .messages-page > .messages-shell) {
+    padding-bottom: 0;
+  }
+
+  .messages-shell > .message-workspace {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .messages-shell > .message-workspace > .message-timeline {
+    flex: 1 1 0;
+  }
+}
+
+/*
+ * Live only: the design's three columns need 1102px, so with the side menu
+ * open the page scrolled sideways below about 1440px and the right rail was
+ * cut off. Between the design's own break at 1220px (where the rail becomes a
+ * drawer) and the width it was drawn at, the columns give way in the design's
+ * proportions instead (300 : 698 : 286 of its 1320px), never narrower than
+ * 232px at the sides. Above that the design's columns stand.
+ */
+@media (min-width: 1221px) and (max-width: 1459px) {
+  .messages-shell {
+    grid-template-columns: minmax(232px, 300fr) minmax(0, 698fr) minmax(232px, 286fr);
+  }
+}
+
+/*
+ * Live only: a search or filter that leaves the list empty says so, in the
+ * list's own type.
+ */
+.message-thread-list-empty {
+  margin: 8px 4px;
+  color: #60769b;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+/*
+ * Live only: what happened to the last send (files refused, or not
+ * attached), or why something did not load, inside the composer.
+ */
+.message-composer-notice {
+  margin: 0;
+  color: #8a5a00;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.message-composer-notice[role="alert"] {
+  color: #b42318;
+}

@@ -290,6 +290,13 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate,
           <MetricCard label="Profiles awaiting review" value={metrics.profilesAwaitingReview ?? pending.length} note={`${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" />
           <MetricCard label="RFQs submitted today" value={metrics.rfqsSubmittedToday ?? 0} note={`${rfqRows.length} in the marketplace`} tone="green" />
           <MetricCard label="Quotes submitted today" value={metrics.quotesSubmittedToday ?? 0} note={`${quoteRows.length} in the marketplace`} tone="amber" />
+          {/* Live only: messages held for review. Nobody can be notified of
+              them either, so this card is their only prompt. The design has
+              no moderation, so the prototype's mock passes nothing and keeps
+              its four cards. */}
+          {metrics.messagesHeld != null && (
+            <MetricCard label="Messages held for review" value={metrics.messagesHeld} note="Contact details, waiting on a decision" tone="red" href={metrics.messagesHref} linkLabel="Open messages" />
+          )}
           {/* Where the design puts "low-confidence checks". There is no
               confidence score, and platform staff have no org and so cannot be
               notified of anything — a payment sits at 'sent' until a human
