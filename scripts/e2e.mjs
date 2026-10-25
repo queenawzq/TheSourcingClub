@@ -1513,6 +1513,11 @@ async function main() {
     await setQuoteField("incoterms", "FOB quoted");
     const validUntil = localIso(new Date(Date.now() + 30 * 864e5));
     await pickQuoteDate("validUntil", validUntil);
+    // A new quote starts with no sample rows; the vendor adds each stage.
+    for (let row = 0; row < 2; row += 1) {
+      if (await page.locator(`[data-quote-field="sample.${row}.stage"]`).count()) continue;
+      await page.locator(".factory-add-stage").click();
+    }
     await setQuoteField("sample.0.stage", "Fit sample");
     await setQuoteField("sample.0.cost", "$95");
     await setQuoteField("sample.0.timing", "10 days");
