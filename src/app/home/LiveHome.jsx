@@ -33,6 +33,9 @@ import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { initialsOf } from "../profile/factory-profile-view.js";
 import { loadRecommendedVendors } from "../profile/load-profile.js";
+import { browserTimeZone } from "../../lib/domain/calls.js";
+import { dashboardCalls, inviteAttention } from "../message/live-calls.js";
+import { useDashboardCalls } from "../message/use-calls.js";
 
 /**
  * A recommended vendor as the designed dashboard card. Like the invite
@@ -163,6 +166,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
   const [activity, setActivity] = useState(null);
   const [error, setError] = useState(null);
   const [recommended, setRecommended] = useState([]);
+  const { calls, zones, now } = useDashboardCalls(org.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -256,7 +260,15 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
   }
 
   const { snapshot, dueCents, rfqs, projects, savings } = state;
-  const attention = attentionFrom(snapshot, isFactory, goTo, dueCents) ?? [];
+  const ownZone = browserTimeZone() ?? "UTC";
+  // "Join call" opens the conversation and joins there (LiveMessages reads ?join).
+  const openCall = (call, { join = false } = {}) => navigate(`/messages/${call.thread_id}${join ? `?join=${call.id}` : ""}`);
+  // A call invite waiting on the brand comes first: it has a time on it.
+  const attention = [
+    ...inviteAttention(calls, { orgId: org.id, ownZone, open: openCall, now }),
+    ...(attentionFrom(snapshot, isFactory, goTo, dueCents) ?? []),
+  ];
+  const callCards = dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall, now });
   const isNewcomer = state.loaded && !rfqs.length && !projects.length;
 
   // Recommendations use real vendors rather than the prototype's examples.
@@ -289,7 +301,9 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         // No credit and no codes means no Savings panel, rather than the
         // design's $50 shown to a brand that has none.
         showSavings={Boolean(savings)}
-        showCalls={false}
+        // The designed "Scheduled calls" card, only when there is a call.
+        showCalls={callCards.length > 0}
+        calls={callCards}
         showSearch={false}
         onViewRfq={onViewRfq}
         onViewProject={onViewProject}

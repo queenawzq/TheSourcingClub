@@ -2433,6 +2433,9 @@ export function FactoryDashboardPage({
   companyType = "factory", dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity,
   // Live mounts pass these; the prototype passes none and is unchanged.
   orgName, rfqs, projects, metrics, capacity, attention, unreadCount,
+  // Live: the company's upcoming calls. The design draws its card only on
+  // the example dashboard; live draws it whenever there is a call.
+  calls,
 }) {
   const capacityUnits = capacity?.units ?? getCapacityUnitRange(capacityValue);
   const [inviteFactoryOpen, setInviteFactoryOpen] = useState(false);
@@ -2533,10 +2536,10 @@ export function FactoryDashboardPage({
               subtitle={isNewcomer
                 ? tx(isTradingCompany ? "Complete the essentials that help brands understand your sourcing network and oversight." : "Finish the essentials that help brands trust and contact your factory.")
                 : tx("Priority RFQs, messages, and production steps.")}
-              preHeader={isNewcomer || attention ? null : <FactoryDashboardCallCard language={language} />}
+              preHeader={calls?.length ? <FactoryDashboardCallCard language={language} calls={calls} /> : isNewcomer || attention ? null : <FactoryDashboardCallCard language={language} />}
             >
               {attention ? (
-                attention.map((item) => <FactoryAttentionCard {...item} key={item.title} />)
+                attention.map((item) => <FactoryAttentionCard {...item} key={item.id ?? item.title} />)
               ) : isNewcomer ? (
                 <>
                   <FactoryAttentionCard
@@ -4588,9 +4591,9 @@ function FactoryDashboardRfqRow({ rfq, language, onView }) {
   );
 }
 
-function FactoryDashboardCallCard({ language }) {
+function FactoryDashboardCallCard({ language, calls: liveCalls }) {
   const isZh = language === "zh";
-  const calls = [
+  const calls = liveCalls ?? [
     {
       title: isZh ? "样衣评审通话" : "Sample review call",
       time: isZh ? "周二 3:00 PM" : "Tue 3:00 PM",
@@ -4610,7 +4613,7 @@ function FactoryDashboardCallCard({ language }) {
       <h2 className="factory-upcoming-call-label">{isZh ? "已安排通话" : "Scheduled calls"}</h2>
       <div className="factory-upcoming-call-list">
         {calls.map((call) => (
-          <section className="factory-upcoming-call-time" key={call.title}>
+          <section className="factory-upcoming-call-time" key={call.id ?? call.title}>
             <div className="factory-upcoming-call-heading">
               <h3>{call.title}</h3>
               <strong>{call.time}</strong>
@@ -4618,7 +4621,7 @@ function FactoryDashboardCallCard({ language }) {
             <span>{call.counterpartTime}</span>
             <div className="factory-upcoming-call-actions">
               <p className="factory-upcoming-call-description">{call.description}</p>
-              <button className="secondary-btn compact-btn" type="button">{isZh ? "加入通话" : "Join call"}</button>
+              <button className="secondary-btn compact-btn" type="button" onClick={call.onAction}>{call.action ?? (isZh ? "加入通话" : "Join call")}</button>
             </div>
           </section>
         ))}

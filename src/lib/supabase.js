@@ -93,6 +93,35 @@ export const supabase = isConfigured
   : null;
 
 /**
+ * POST to one of our own api/ functions as the signed-in person.
+ *
+ * A session ended elsewhere (signing out ends every session of the user)
+ * leaves this tab a token the database still accepts, so the app keeps
+ * working, while a server that asks the auth server is refused: 401. Nothing
+ * here would otherwise notice, and the screen was left saying "sign in is
+ * required" with no way to. So a 401 is handed to the auth layer:
+ * getUser() asks the auth server, and when it says the session is gone it
+ * removes it and emits SIGNED_OUT, which is how every lost session reaches
+ * the sign-in screen (AuthProvider). Only that answer signs anyone out; a
+ * network failure does not.
+ *
+ * Resolves the Response, or throws on a network failure as fetch does.
+ */
+export async function fetchApi(path, body) {
+  const { data } = await supabase.auth.getSession();
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${data?.session?.access_token ?? ""}` },
+    body: JSON.stringify(body),
+  });
+  if (response.status === 401) await supabase.auth.getUser().catch(() => {});
+  return response;
+}
+
+/** What a screen says for an api/ 401, in the moment before sign-in replaces it. */
+export const SIGN_IN_ENDED = "Your sign-in has ended. Sign in again.";
+
+/**
  * Supabase returns { data, error } rather than throwing. Swallowing `error` is
  * the single easiest way to ship a screen that silently renders empty, so
  * every call in the domain layer goes through here.

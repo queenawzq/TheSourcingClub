@@ -4,11 +4,12 @@
  * `MessagesScreen` is imported from src/prototype/main.jsx and mounted here
  * with live threads behind it. This file is the seam.
  *
- * Three things the design draws that have nothing behind them — call
- * scheduling, presence, and "usually replies in 2h" — are absent in the live
- * mount rather than rendered with invented values. The prototype keeps them.
- * Offering a brand a video call that cannot happen is worse than not offering
- * one.
+ * Calls are live: "Schedule call" opens the designed dialog, and the
+ * conversation's calls are the designed cards in the "Scheduled call" panel
+ * (see live-calls.js). Two things the design draws still have nothing behind
+ * them, presence and "usually replies in 2h", and an instant "Live video
+ * chat" needs presence, so all three stay absent here; the prototype keeps
+ * them.
  */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { MessagesScreen } from "../../prototype/main.jsx";
@@ -16,6 +17,10 @@ import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { ATTACHMENT_ACCEPT, attachmentRefusal, urlFor } from "../../lib/domain/documents.js";
 import { awaitingScreen, fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
+import { acceptCall, browserTimeZone, callState, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
+import { callsForPanel, panelCard } from "./live-calls.js";
+import { useCallClock } from "./use-calls.js";
+import CallChangeDialog from "./CallChangeDialog.jsx";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -118,6 +123,48 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const [notice, setNotice] = useState(null);
   const activeThreadRef = useRef(threadId ?? null);
 
+  // Calls: every call in the company's conversations, the other side's time
+  // zone per conversation, the dialog (open to propose, or to answer one call
+  // with another time), and which call is being changed.
+  const ownZone = browserTimeZone() ?? "UTC";
+  const [calls, setCalls] = useState([]);
+  const [theirZones, setTheirZones] = useState({});
+  const [activeId, setActiveId] = useState(threadId ?? null);
+  const [dialog, setDialog] = useState(null);
+  const [callBusy, setCallBusy] = useState(null);
+  const [callNotes, setCallNotes] = useState({});
+  // Withdraw, cancel or decline waiting on "are you sure?": { call, mode }.
+  const [confirmCall, setConfirmCall] = useState(null);
+  // The call being joined: { call, join, text } while the designed video
+  // panel is open; Zoom draws into zoomRoot.
+  const [video, setVideo] = useState(null);
+  const zoomRoot = useRef(null);
+  const zoomClient = useRef(null);
+
+  // The other side's time zone, asked again whenever a conversation opens
+  // and whenever the calls reload rather than kept: it may have moved since.
+  const refreshTheirZone = useCallback((thread) => {
+    if (!thread) return;
+    counterpartyTimeZone(thread).then((zone) => setTheirZones((current) => ({ ...current, [thread]: zone ?? current[thread] ?? null })));
+  }, []);
+
+  const reloadCalls = useCallback(async () => {
+    refreshTheirZone(activeThreadRef.current);
+    try {
+      setCalls(await listCalls(org.id));
+    } catch (failure) {
+      setError(failure);
+    }
+  }, [org.id, refreshTheirZone]);
+
+  useEffect(() => { reloadCalls(); }, [reloadCalls]);
+
+  // The clock the cards read: "Join call" opens and "Starting soon" turns
+  // into "On now" while the page stays open, at the moment each happens.
+  const [now] = useCallClock(calls);
+
+  useEffect(() => { refreshTheirZone(activeId); }, [activeId, refreshTheirZone]);
+
   // An order's conversation is reached by the order, not by its thread id.
   // open_order_thread is idempotent — one thread per order — so this both
   // finds an existing conversation and starts the first one.
@@ -164,6 +211,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
    */
   const loadThread = useCallback(async (threadId) => {
     if (!threadId) return;
+    setActiveId(threadId);
+    setDialog((current) => (current?.threadId === threadId ? current : null));
     activeThreadRef.current = threadId;
     try {
       const rows = await listMessages(threadId);
@@ -235,6 +284,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   loadThreadRef.current = loadThread;
   const reloadRef = useRef(reload);
   reloadRef.current = reload;
+  const reloadCallsRef = useRef(reloadCalls);
+  reloadCallsRef.current = reloadCalls;
   useEffect(() => {
     let listTimer = null;
     const channel = supabase
@@ -247,6 +298,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           listTimer = setTimeout(() => reloadRef.current(), 300);
         }
       })
+      // A call proposed, answered or cancelled by the other side shows up
+      // in the panel at once (20261014000300).
+      .on("postgres_changes", { event: "*", schema: "public", table: "calls" }, () => reloadCallsRef.current())
       .subscribe();
     return () => {
       clearTimeout(listTimer);
@@ -301,6 +355,181 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           [threadId]: (current[threadId] ?? []).map((item) => (item.tempId === draft.tempId ? { ...item, failed: failure.message } : item)),
         }));
       });
+  }
+
+  async function changeCall(call, change) {
+    setCallBusy(call.id);
+    setCallNotes((current) => ({ ...current, [call.id]: null }));
+    try {
+      await change();
+      await reloadCalls();
+    } catch (failure) {
+      setCallNotes((current) => ({ ...current, [call.id]: { text: failure.message, error: true } }));
+    } finally {
+      setCallBusy(null);
+    }
+  }
+
+  const callHandlers = {
+    accept: (call) => changeCall(call, () => acceptCall(call.id, ownZone)),
+    // Each closes the call for both sides and cannot be undone: asked first.
+    decline: (call) => setConfirmCall({ call, mode: "decline" }),
+    cancel: (call) => setConfirmCall({ call, mode: call.status === "proposed" ? "withdraw" : "cancel" }),
+    counter: (call) => setDialog({ threadId: call.thread_id, counterOf: call, key: call.id, busy: false, error: null }),
+    join: async (call) => {
+      setCallBusy(call.id);
+      setCallNotes((current) => ({ ...current, [call.id]: null }));
+      const answer = await joinCall(call.id);
+      setCallBusy(null);
+      if (!answer.ok) {
+        setCallNotes((current) => ({ ...current, [call.id]: { text: answer.message, error: true } }));
+        return;
+      }
+      setVideo({ call, join: answer.join, text: "Connecting to the call…" });
+    },
+  };
+
+  async function confirmCallChange(reason) {
+    const { call, mode } = confirmCall;
+    await (mode === "decline" ? declineCall(call.id, reason) : cancelCall(call.id, reason));
+    setConfirmCall(null);
+    await reloadCalls();
+  }
+
+  // "Join call" on a dashboard opens this page with ?join=<call>: once the
+  // page and its calls are drawn, that call is joined as if pressed here,
+  // if it is on now.
+  const joinOnOpen = useRef(new URLSearchParams(window.location.search).get("join"));
+  useEffect(() => {
+    const id = joinOnOpen.current;
+    if (!id || !threads || !calls.length) return;
+    joinOnOpen.current = null;
+    window.history.replaceState(window.history.state, "", window.location.pathname);
+    const call = calls.find((candidate) => candidate.id === id);
+    if (call && callState(call, org.id) === "live") callHandlers.join(call);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [threads, calls]);
+
+  // Once the panel is drawn, Zoom joins inside it. Leaving (or switching
+  // conversation, or leaving the page) ends the meeting for this person only.
+  useEffect(() => {
+    // Once per join: a failure updates `video` too, which must not retry.
+    if (!video?.join || video.attempted || !zoomRoot.current) return undefined;
+    // Zoom's meeting view is never narrower than about 360px: on a phone it
+    // would be cut off, so the call opens in Zoom's app straight away.
+    if (zoomRoot.current.clientWidth < 360) {
+      setVideo((current) => current && {
+        ...current,
+        attempted: true,
+        failed: true,
+        text: "On a screen this narrow, the call opens in the Zoom app.",
+      });
+      return undefined;
+    }
+    setVideo((current) => current && { ...current, attempted: true });
+    document.body.classList.remove("tsc-zoom-failed");
+    (async () => {
+      try {
+        const ZoomMtgEmbedded = await loadZoomEmbedded();
+        const client = ZoomMtgEmbedded.createClient();
+        zoomClient.current = client;
+        // Zoom draws its view at a fixed size: the panel's width, 16:9, in
+        // speaker view (its default, "ribbon", is a small floating window).
+        const width = Math.floor(zoomRoot.current.clientWidth);
+        await client.init({
+          zoomAppRoot: zoomRoot.current,
+          language: "en-US",
+          patchJsMedia: true,
+          leaveOnPageUnload: true,
+          customize: {
+            video: { defaultViewType: "speaker", isResizable: false, viewSizes: { default: { width, height: Math.round((width * 9) / 16) } } },
+          },
+        });
+        await client.join({
+          sdkKey: video.join.sdkKey,
+          signature: video.join.signature,
+          meetingNumber: video.join.meetingNumber,
+          password: video.join.passcode,
+          userName: video.join.userName,
+        });
+        setVideo((current) => current && { ...current, joined: true, text: "You're in the call. The other side joins from this conversation." });
+      } catch (failure) {
+        // Zoom's own error box would sit over the page with a Retry that
+        // fails the same way: take Zoom's view away and offer its app.
+        console.warn("zoom join", failure?.errorCode, failure?.reason ?? failure?.message);
+        try {
+          window.ZoomMtgEmbedded?.destroyClient();
+        } catch {
+          // Nothing to tidy.
+        }
+        // Zoom puts its error dialog on <body>, outside its own view, keeps
+        // drawing it after the client is gone, and its Retry fails the same
+        // way. Hidden until this panel closes (messages.css).
+        document.body.classList.add("tsc-zoom-failed");
+        zoomClient.current = null;
+        setVideo((current) => current && {
+          ...current,
+          failed: true,
+          text: "The video can't open inside this page right now. Join the same call in the Zoom app.",
+        });
+      }
+    })();
+    return undefined;
+  }, [video]);
+
+  // Opening another conversation leaves the call: its panel is this one's.
+  useEffect(() => {
+    if (video && video.call.thread_id !== activeId) leaveVideo();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  // Leaving the page (another screen of the app) leaves the call too:
+  // otherwise Zoom stays joined, with sound, behind a panel that is gone.
+  useEffect(() => () => {
+    const client = zoomClient.current;
+    zoomClient.current = null;
+    Promise.resolve()
+      .then(() => client?.leaveMeeting())
+      .catch(() => null)
+      .finally(() => {
+        try {
+          window.ZoomMtgEmbedded?.destroyClient();
+        } catch {
+          // Nothing to tidy.
+        }
+      });
+    document.body.classList.remove("tsc-zoom-failed");
+  }, []);
+
+  async function leaveVideo() {
+    try {
+      await zoomClient.current?.leaveMeeting();
+    } catch {
+      // Already out.
+    }
+    try {
+      window.ZoomMtgEmbedded?.destroyClient();
+    } catch {
+      // Nothing to tidy.
+    }
+    zoomClient.current = null;
+    document.body.classList.remove("tsc-zoom-failed");
+    setVideo(null);
+  }
+
+  async function submitSchedule({ startsAt, timeZone, title, agenda }) {
+    setDialog((current) => ({ ...current, busy: true, error: null }));
+    try {
+      if (dialog.counterOf) {
+        await counterCall({ callId: dialog.counterOf.id, startsAt, title, agenda, timeZone });
+      } else {
+        await proposeCall({ threadId: dialog.threadId, startsAt, title, agenda, timeZone });
+      }
+      setDialog(null);
+      await reloadCalls();
+    } catch (failure) {
+      setDialog((current) => current && { ...current, busy: false, error: failure.message });
+    }
   }
 
   // Still loading, or an order's conversation still being opened (the empty
@@ -421,9 +650,53 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     };
   });
 
+  // Each conversation's calls as the designed cards.
+  const callCards = {};
+  for (const thread of threads) {
+    const theirs = calls.filter((call) => call.thread_id === thread.id);
+    callCards[thread.id] = callsForPanel(theirs, org.id, now).map((call) => panelCard(call, {
+      now,
+      orgId: org.id,
+      ownZone,
+      otherZone: theirZones[thread.id] ?? null,
+      handlers: callHandlers,
+      busyId: callBusy,
+      notes: callNotes,
+    }));
+  }
+  const dialogThread = dialog ? threads.find((thread) => thread.id === dialog.threadId) : null;
+  const dialogOther = dialogThread ? (isFactory ? dialogThread.brand_name : dialogThread.factory_name) ?? "" : "";
+
   return (
     <>
       <MessagesScreen
+        calls={callCards}
+        video={video ? {
+          title: video.call.title,
+          text: video.text,
+          mountRef: zoomRoot,
+          failed: Boolean(video.failed),
+          joinUrl: video.join.joinUrl,
+          onLeave: leaveVideo,
+        } : null}
+        scheduling={{
+          open: Boolean(dialog),
+          key: dialog?.key ?? "new",
+          onOpen: () => activeId && setDialog({ threadId: activeId, key: `new-${Date.now()}`, busy: false, error: null }),
+          onClose: () => setDialog(null),
+          ownZone,
+          zones: zoneOptions(ownZone),
+          otherName: dialogOther,
+          // Answering an invite with another time: their times read in the
+          // zone they proposed in.
+          otherZone: dialog ? theirZoneFor(dialog.counterOf, org.id, theirZones[dialog.threadId]) : null,
+          heading: dialog?.counterOf ? "Propose another time" : undefined,
+          submitLabel: dialog?.counterOf ? "Send new time" : undefined,
+          initial: dialog?.counterOf ? { title: dialog.counterOf.title, agenda: dialog.counterOf.agenda ?? "" } : undefined,
+          busy: dialog?.busy ?? false,
+          error: dialog?.error ?? null,
+          onSubmit: submitSchedule,
+        }}
         threads={shaped}
         initialThreadId={resolvedThreadId}
         onSelectThread={loadThread}
@@ -438,6 +711,15 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         composerNotice={error ? { text: error.message, alert: true } : notice ? { text: notice } : null}
         ownName={org.name}
       />
+      {confirmCall && (
+        <CallChangeDialog
+          mode={confirmCall.mode}
+          title={confirmCall.call.title}
+          counterparty={otherSide(confirmCall.call, org.id).name}
+          onConfirm={confirmCallChange}
+          onClose={() => setConfirmCall(null)}
+        />
+      )}
     </>
   );
 }
