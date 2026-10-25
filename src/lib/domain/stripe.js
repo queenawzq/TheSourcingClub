@@ -6,7 +6,7 @@
  * Only the publishable key reaches the browser (VITE_STRIPE_PUBLISHABLE_KEY);
  * the secret key and the webhook secrets stay on the server.
  */
-import { supabase } from "../supabase.js";
+import { kickNotificationEmails, supabase } from "../supabase.js";
 
 export const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ?? "";
 
@@ -26,6 +26,8 @@ async function call(route, body) {
     },
     body: JSON.stringify(body),
   });
+  // A payment recorded on the server notifies the other side.
+  if (response.ok) kickNotificationEmails();
   let result = {};
   try {
     result = await response.json();

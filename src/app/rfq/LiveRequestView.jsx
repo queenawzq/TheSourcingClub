@@ -54,6 +54,7 @@ import { useRouter } from "../../lib/router.jsx";
 import QuoteActionDialog, { reviseCopy } from "../quote/QuoteActionDialog.jsx";
 import { matchFit } from "./match-fit.js";
 import { getRequestBackTarget, getRequestOrigin, withRequestOrigin } from "./request-origin.js";
+import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -466,7 +467,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
             : "",
           incoterms: myQuote.shipping_notes ?? "",
           validUntil: myQuote.valid_until
-            ? new Date(`${myQuote.valid_until}T00:00:00`).toLocaleDateString("en", { dateStyle: "medium" })
+            ? dateFrom(myQuote.valid_until).toLocaleDateString("en", { dateStyle: "medium" })
             : "",
           ...Object.fromEntries(sampleLines.flatMap((line, index) => [
             [`sample.${index}.stage`, line.stage ?? ""],

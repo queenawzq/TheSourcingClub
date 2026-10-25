@@ -12,9 +12,10 @@ import { listRfqDocuments } from "../../lib/domain/documents.js";
 import { listTermsByKind } from "../../lib/domain/taxonomy.js";
 import { formatRange } from "../../lib/money.js";
 import { describeQuote } from "./quote-view.js";
+import { dateFrom } from "../../lib/dates.js";
 import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 
-const MONTH = new Intl.DateTimeFormat("en", { month: "long", year: "numeric", timeZone: "UTC" });
+const MONTH = new Intl.DateTimeFormat("en", { month: "long", year: "numeric" });
 
 /** The request as the "Original request" card and the rail print it. */
 export function describeRequest(rfq, { colours = [], sourcingTerms = [] } = {}) {
@@ -34,7 +35,7 @@ export function describeRequest(rfq, { colours = [], sourcingTerms = [] } = {}) 
       ? `${formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents, rfq.currency)} / unit`
       : "",
     samples: rfq.sample_notes?.trim() || (rfq.requires_sample ? "Sample required" : ""),
-    targetDate: rfq.target_delivery_month ? `Delivery by ${MONTH.format(new Date(rfq.target_delivery_month))}` : "",
+    targetDate: rfq.target_delivery_month ? `Delivery by ${MONTH.format(dateFrom(rfq.target_delivery_month))}` : "",
     sourcing: sourcingChoiceLabel(sourcing),
     sourcingDetails: rfq.sourcing_details?.trim() || sourcing?.extra?.note || "",
     materials: rfq.material_notes ?? "",

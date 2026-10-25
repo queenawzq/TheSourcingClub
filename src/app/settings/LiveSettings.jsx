@@ -25,8 +25,9 @@
  * The factory's copy (RFQ wording, "Trading company account") follows
  * factory-prototype.html's own Settings screen.
  *
- * Password and notification preferences are drawn against nothing and are
- * left exactly as drawn.
+ * Password is drawn against nothing and is left exactly as drawn. The email
+ * switches are the company's (notification_preferences), loaded on their own
+ * so that a failure there does not blank the page.
  */
 import React, { useCallback, useEffect, useState } from "react";
 import { SettingsScreen, factoryAccountPermissionLabels, settingsPermissionLabels } from "../../prototype/main.jsx";
@@ -34,6 +35,7 @@ import { inviteMember, listMembers, listPendingInvitations } from "../../lib/dom
 import { listPayoutAccounts } from "../../lib/domain/payment.js";
 import { connectAccountFor, connectAction, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { getBrandProfile, getFactoryProfile } from "../../lib/domain/profile.js";
+import { getNotificationEmails, setNotificationEmail } from "../../lib/domain/notification-preferences.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import StripePayoutCard from "../order/StripePayoutCard.jsx";
 import { BillingMethodFlow } from "../order/PayoutDetails.jsx";
@@ -56,6 +58,23 @@ const blankPayout = (row) => ({
 });
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+
+// What each email switch covers (notification_email_category), since the
+// designed labels name only part of it. Every member with an email gets them:
+// there are no per-member permissions yet.
+const EVERY_MEMBER = "Emails every member of your company.";
+const SHARED_EMAIL_NOTES = {
+  payments: `Payments, steps to approve, steps due soon and changes to your orders. ${EVERY_MEMBER}`,
+  messages: `New messages (at most one email per conversation every 6 hours) and call invites. ${EVERY_MEMBER}`,
+};
+const FACTORY_EMAIL_NOTES = {
+  rfq: `Requests that match you or invite you, decisions on your quotes, and capacity reminders. ${EVERY_MEMBER}`,
+  ...SHARED_EMAIL_NOTES,
+};
+const BRAND_EMAIL_NOTES = {
+  rfq: `Quotes sent or withdrawn on your requests. ${EVERY_MEMBER}`,
+  ...SHARED_EMAIL_NOTES,
+};
 
 /** A saved card as the designed payment-method row draws it. */
 const cardRow = (card) => ({
@@ -90,6 +109,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   const [cards, setCards] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [notificationEmails, setNotificationEmails] = useState(null);
+  const [notificationEmailsError, setNotificationEmailsError] = useState(null);
 
   // A site with no Stripe keys has no saved cards to show; any other failure
   // is said, since an empty list would claim nothing is saved.
@@ -97,6 +118,15 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     setCards([]);
     if (failure.status !== 503) setError(failure);
   }), [org.id]);
+
+  // The email switches load on their own: a failure there is said in their
+  // section, and the rest of Settings still renders.
+  const loadNotificationEmails = useCallback(() => getNotificationEmails(org.id).then((loaded) => {
+    setNotificationEmails(loaded);
+    setNotificationEmailsError(null);
+  }, setNotificationEmailsError), [org.id]);
+
+  useEffect(() => { loadNotificationEmails(); }, [loadNotificationEmails]);
 
   const reload = useCallback(async () => {
     try {
@@ -275,10 +305,23 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     })),
   };
 
-  if (!members) return null;
+  if (!members) return error ? <p className="shell-note" role="alert">{error.message ?? String(error)}</p> : null;
 
   const openPayoutFlow = (action) => setPayoutFlow({ action, id: Date.now() });
   const isOwner = org.role === "owner";
+
+  // The switch moves at once; a refused save puts it back and says why.
+  async function changeNotificationEmail(category, enabled) {
+    const before = notificationEmails;
+    setNotificationEmails({ ...before, [category]: enabled });
+    setNotificationEmailsError(null);
+    try {
+      setNotificationEmails(await setNotificationEmail(org.id, category, enabled));
+    } catch (problem) {
+      setNotificationEmails(before);
+      setNotificationEmailsError(problem);
+    }
+  }
 
   return (
     <>
@@ -298,6 +341,10 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         team={team}
         {...live}
         onInvite={invite}
+        notificationEmails={notificationEmails ?? undefined}
+        onNotificationEmailChange={changeNotificationEmail}
+        notificationEmailNotes={isFactory ? FACTORY_EMAIL_NOTES : BRAND_EMAIL_NOTES}
+        notificationEmailsError={notificationEmailsError}
         busy={busy || billingBusy}
         error={error}
         onSignOut={onSignOut}

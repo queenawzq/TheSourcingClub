@@ -407,3 +407,19 @@ export async function sendTestEmail(template, locale = "en") {
   if (!response.ok || !result.sent) throw new Error(result.error || "the test email could not be sent");
   return result;
 }
+
+/**
+ * Run the daily job now: capacity reminders, steps due soon, then every
+ * queued email. Test sites have no crons, so staff run it from here; running
+ * it twice sends nothing twice.
+ */
+export async function runDailyJobs() {
+  const { data: { session } } = await supabase.auth.getSession();
+  const response = await fetch("/api/cron-daily", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${session?.access_token ?? ""}` },
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.error) throw new Error(result.error || "the daily jobs could not run");
+  return result;
+}

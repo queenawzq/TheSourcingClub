@@ -13,7 +13,7 @@ export async function listNotifications(orgId, { limit = 20 } = {}) {
   return unwrap(
     await supabase
       .from("notifications")
-      .select("id, kind, subject_type, subject_id, order_id, title, body, read_at, created_at")
+      .select("id, kind, subject_type, subject_id, order_id, title, body, data, read_at, created_at")
       .eq("org_id", orgId)
       .order("created_at", { ascending: false })
       .limit(limit),
@@ -59,38 +59,8 @@ export async function markAllRead(orgId) {
   );
 }
 
-/**
- * Where a notification should take you.
- *
- * Kept here rather than in the component so both dashboards agree, and so a
- * new notification kind has one obvious place to be handled.
- */
-export function notificationLink(notification, { isFactory }) {
-  const { subject_type: type, subject_id: id } = notification;
-  if (!id) return null;
-
-  // A request lives at a different address for each side; an order does not —
-  // it is one row with two parties, and the same link has to open for both.
-  // A quote arriving or leaving is news about the comparison, so the brand
-  // lands on it rather than on the request.
-  if (type === "rfq" && !isFactory && ["quote_received", "quote_withdrawn"].includes(notification.kind)) {
-    return `/rfqs/${id}/quotes`;
-  }
-  if (type === "rfq") return isFactory ? `/browse/${id}` : `/rfqs/${id}`;
-  if (type === "order") return `/orders/${id}`;
-
-  // Milestones and payments carry their order id alongside the subject, since
-  // neither is addressable without it.
-  if (type === "milestone" && notification.order_id) {
-    return `/orders/${notification.order_id}/milestones/${id}`;
-  }
-  if (type === "payment" && notification.order_id) {
-    return `/orders/${notification.order_id}/payments/${id}`;
-  }
-  if (type === "thread") return `/messages/${id}`;
-
-  return null;
-}
+export { notificationLink } from "../../shared/notification-link.mjs";
+export { notificationBody, notificationTitle } from "../../shared/notification-text.mjs";
 
 /**
  * The label the Activity drawer puts on a notification. The design types its

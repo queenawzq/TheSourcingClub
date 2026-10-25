@@ -1602,6 +1602,179 @@ console.log("\nphase 3 — the order runs");
   }
 }
 
+console.log("\nnotification emails");
+{
+  // The server's copy of the link rules must open the same place as the bell.
+  const { notificationLink } = await import("../src/shared/notification-link.mjs");
+  const { notificationPath } = await import("./generate-notification-email.mjs");
+  const samples = [
+    ["rfq", "quote_received"], ["rfq", "rfq_invited"], ["order", "order_created"],
+    ["milestone", "milestone_submitted"], ["payment", "payment_due"], ["thread", "message"],
+    ["capacity", "capacity_reminder"], ["milestone", "milestone_due_soon"], ["rfq", "rfq_matched"],
+    ["org", "verification_needs_information"], ["referral", "referral_joined"], ["unknown", "x"],
+  ].flatMap(([subject_type, kind]) => [true, false].map((isFactory) => [{
+    subject_type, kind, subject_id: "00000000-0000-0000-0000-000000000001", order_id: "00000000-0000-0000-0000-000000000002",
+  }, isFactory]));
+  samples.every(([n, isFactory]) => notificationLink(n, { isFactory }) === notificationPath(n, { isFactory }))
+    ? ok("an email's button opens where the bell's link does")
+    : fail("the email's link rules differ from the bell's");
+
+  // A vendor signed out lands on the vendor sign-in, still on its deep link.
+  const { notificationEmail } = await import("./generate-notification-email.mjs");
+  const emailEnv = { appUrl: "https://tsc.test", logoUrl: "", supportEmail: "ops@tsc.test", companyAddress: "" };
+  const linkOf = (row) => notificationEmail({ category: "payments", title: "t", ...row }, emailEnv).text.match(/https:\/\/tsc\.test\S*/)?.[0];
+  const ids = { subject_id: "00000000-0000-0000-0000-000000000001", order_id: "00000000-0000-0000-0000-000000000002" };
+  const vendorStep = linkOf({ org_type: "factory", subject_type: "milestone", kind: "milestone_due_soon", ...ids });
+  const vendorCredits = linkOf({ org_type: "factory", subject_type: "referral", kind: "referral_joined", ...ids });
+  const brandStep = linkOf({ org_type: "brand", subject_type: "milestone", kind: "milestone_due_soon", ...ids });
+  vendorStep === `https://tsc.test/app.html/orders/${ids.order_id}/milestones/${ids.subject_id}?portal=factory`
+    && vendorCredits === "https://tsc.test/app.html/payout?tab=credits&portal=factory"
+    && brandStep === `https://tsc.test/app.html/orders/${ids.order_id}/milestones/${ids.subject_id}`
+    ? ok("a vendor's email links open the vendor sign-in; a brand's open the brand's")
+    : fail(`email links: ${vendorStep} / ${vendorCredits} / ${brandStep}`);
+
+  const sender = await signedInUser(`notify-sender-${stamp}@example.com`);
+  const receiver = await signedInUser(`notify-receiver-${stamp}@example.com`);
+  const { data: senderOrg } = await sender.client.rpc("create_org", { org_name: `Notify Brand ${stamp}`, org_kind: "brand" });
+  const { data: receiverOrg } = await receiver.client.rpc("create_org", { org_name: `Notify Factory ${stamp}`, org_kind: "factory" });
+
+  const { error: strangerSet } = await sender.client.rpc("set_notification_preference", { target_org: receiverOrg?.id, category: "rfq", enabled: false });
+  strangerSet ? ok("a company CANNOT change another company's email switches")
+              : fail("LEAK: a company changed another's email switches");
+  const { data: strangerRead } = await sender.client.from("notification_preferences").select("org_id").eq("org_id", receiverOrg?.id);
+  (strangerRead ?? []).length === 0 ? ok("nor read them") : fail("LEAK: a company read another's email switches");
+  const { data: queueRead, error: queueError } = await sender.client.from("notification_email_outbox").select("id").limit(1);
+  queueError || (queueRead ?? []).length === 0 ? ok("the email queue is unreadable from the browser") : fail("LEAK: a user read the email queue");
+  const { error: claimError } = await sender.client.rpc("claim_notification_emails", { max_rows: 1 });
+  claimError ? ok("a user CANNOT claim emails (the server's job)") : fail("LEAK: a user claimed emails");
+
+  const { data: switched, error: switchError } = await receiver.client.rpc("set_notification_preference", { target_org: receiverOrg?.id, category: "messages", enabled: false });
+  !switchError && switched?.message_emails === false && switched?.rfq_emails === true
+    ? ok("a member turns one switch off, and only that one")
+    : fail("a member turns a switch off", switchError);
+
+  // Notifications are written by functions; the secret key stands in here.
+  const { data: quoteNote } = await admin.from("notifications").insert({
+    org_id: receiverOrg?.id, kind: "rfq_invited", subject_type: "rfq", subject_id: senderOrg?.id,
+    title: `Notify Brand ${stamp} invited you to quote`, body: "Quotes close soon.",
+  }).select().single();
+  const { data: messageNote } = await admin.from("notifications").insert({
+    org_id: receiverOrg?.id, kind: "message", subject_type: "thread", subject_id: senderOrg?.id, title: "A message",
+  }).select().single();
+  const { data: queued } = await admin.from("notification_email_outbox").select("notification_id, status").eq("org_id", receiverOrg?.id);
+  (queued ?? []).length === 1 && queued[0].notification_id === quoteNote?.id
+    ? ok("the invite is queued for email; the message, with its switch off, is not")
+    : fail(`queued ${JSON.stringify(queued)}`);
+
+  const { default: send } = await import("../api/notification-emails.js");
+  const callSender = async (token) => {
+    const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "RESEND_API_KEY", "RESEND_FROM_EMAIL", "MAILPIT_URL", "VERCEL"];
+    const saved = { ...process.env };
+    Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, MAILPIT_URL: "http://127.0.0.1:54324" });
+    for (const key of ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "VERCEL"]) delete process.env[key];
+    let status = 0;
+    let body = null;
+    const response = { status(code) { status = code; return response; }, json(payload) { body = payload; return response; } };
+    try {
+      await send({ method: "POST", headers: { host: "127.0.0.1:5173", ...(token ? { authorization: `Bearer ${token}` } : {}) } }, response);
+    } finally {
+      for (const key of keys) if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
+    }
+    return { status, ...body };
+  };
+
+  (await callSender(null)).status === 401 ? ok("sending needs a sign-in") : fail("a signed-out caller ran the sender");
+
+  const mailpitUp = await fetch("http://127.0.0.1:54324/api/v1/info").then((r) => r.ok).catch(() => false);
+  if (!mailpitUp) {
+    ok("(skipped: no local Mailpit to send to)");
+  } else {
+    const { data: session } = await sender.client.auth.getSession();
+    let row = null;
+    for (let round = 0; round < 30 && row?.status !== "sent"; round += 1) {
+      await callSender(session?.session?.access_token);
+      ({ data: row } = await admin.from("notification_email_outbox").select("status, last_error").eq("notification_id", quoteNote?.id).single());
+    }
+    row?.status === "sent" ? ok("the sender delivers it") : fail(`the queued email is ${row?.status}`, row?.last_error);
+    const search = await fetch(`http://127.0.0.1:54324/api/v1/search?query=${encodeURIComponent(`to:notify-receiver-${stamp}@example.com`)}`).then((r) => r.json());
+    const arrived = (search.messages ?? []).find((message) => message.Subject === quoteNote?.title);
+    arrived ? ok("and it arrives, with the notification's title as its subject") : fail("no email arrived in Mailpit");
+  }
+  void messageNote;
+}
+
+console.log("\ndaily notifications and dates in the reader's zone");
+{
+  // The server's copy of the date wording must say what the bell says.
+  const { notificationBody } = await import("../src/shared/notification-text.mjs");
+  const { notificationBody: emailBody } = await import("./generate-notification-email.mjs");
+  const deadline = "2026-11-20T20:00:00+00:00";
+  const samples = [
+    { kind: "rfq_invited", body: "Quotes close Nov 20.", data: { quote_deadline: deadline } },
+    { kind: "rfq_matched", body: "Demo Brand is looking for a factory. Quotes close Nov 20.", data: { quote_deadline: deadline } },
+    { kind: "call_proposed", body: "Fit review", data: { starts_at: deadline, duration_minutes: 30 } },
+    { kind: "message", body: "A message", data: {} },
+    { kind: "rfq_invited", body: "Quotes close Nov 20.", data: null },
+  ];
+  const zones = [undefined, "UTC", "Asia/Shanghai", "America/New_York", "Not/AZone"];
+  samples.every((n) => zones.every((timeZone) => [true, false].every((withZone) =>
+    notificationBody(n, { timeZone, withZone }) === emailBody(n, { timeZone, withZone }))))
+    ? ok("an email words its dates as the bell does")
+    : fail("the email's date wording differs from the bell's");
+  const { notificationTitle } = await import("../src/shared/notification-text.mjs");
+  const { notificationTitle: emailTitle } = await import("./generate-notification-email.mjs");
+  const titles = [
+    { kind: "milestone_due_soon", title: '"Fit sample" is due in 3 days', data: { due_on: "2026-11-05" } },
+    { kind: "milestone_due_soon", title: '"Fit sample" is due today', data: { due_on: "2026-10-20" } },
+    { kind: "milestone_due_soon", title: '"Fit sample" is due tomorrow', data: null },
+    { kind: "quote_received", title: "New quote", data: {} },
+  ];
+  const instants = ["2026-11-02T07:00:00Z", "2026-11-04T20:00:00Z"].map((iso) => new Date(iso));
+  titles.every((n) => zones.every((timeZone) => instants.every((now) =>
+    notificationTitle(n, { timeZone, now }) === emailTitle(n, { timeZone, now }))))
+    ? ok("an email counts a step's days as the bell does")
+    : fail("the email's due-date title differs from the bell's");
+  const shanghai = notificationBody(samples[0], { timeZone: "Asia/Shanghai", withZone: true });
+  const utc = notificationBody(samples[0], { timeZone: "UTC", withZone: true });
+  /Nov 21/.test(shanghai) && /Nov 20/.test(utc) && /GMT\+8/.test(shanghai)
+    ? ok(`a deadline is said in the reader's zone: "${utc}" / "${shanghai}"`)
+    : fail(`deadline wording: "${utc}" / "${shanghai}"`);
+
+  const stranger = await signedInUser(`daily-stranger-${stamp}@example.com`);
+  const { error: runError } = await stranger.client.rpc("run_daily_notifications");
+  runError ? ok("a user CANNOT run the daily job") : fail("LEAK: a user ran the daily job");
+  const { error: matchError } = await stranger.client.rpc("notify_rfq_matches", { target_rfq: "00000000-0000-0000-0000-000000000001" });
+  matchError ? ok("nor tell factories about a request") : fail("LEAK: a user sent request matches");
+  const { data: remindersRead, error: remindersError } = await stranger.client.from("notification_reminders").select("kind").limit(1);
+  remindersError || (remindersRead ?? []).length === 0 ? ok("nor read which reminders went out") : fail("LEAK: a user read the reminders");
+  const { data: noticeData, error: noticeDataError } = await admin.from("notifications").select("data").limit(1);
+  !noticeDataError && Array.isArray(noticeData) ? ok("notifications carry data") : fail("notifications.data", noticeDataError);
+
+  // The route refuses everyone but the cron and staff. Running it for real is
+  // the e2e's job (it sends reminders to whoever is due).
+  const { default: daily } = await import("../api/cron-daily.js");
+  const callDaily = async (method, authorization) => {
+    const saved = { ...process.env };
+    Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, CRON_SECRET: "smoke-secret" });
+    let status = 0;
+    const response = { status(code) { status = code; return response; }, json() { return response; } };
+    try {
+      await daily({ method, headers: { host: "127.0.0.1:5173", ...(authorization ? { authorization } : {}) } }, response);
+    } finally {
+      for (const key of ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "CRON_SECRET"]) {
+        if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
+      }
+    }
+    return status;
+  };
+  const { data: strangerSession } = await stranger.client.auth.getSession();
+  (await callDaily("GET", null)) === 401 ? ok("the daily job refuses a call with no secret") : fail("the daily job ran without its secret");
+  (await callDaily("GET", "Bearer wrong")) === 401 ? ok("and a wrong secret") : fail("the daily job ran with a wrong secret");
+  (await callDaily("POST", `Bearer ${strangerSession?.session?.access_token}`)) === 401
+    ? ok("and a signed-in user who is not staff") : fail("LEAK: a user ran the daily job through the route");
+  (await callDaily("PUT", null)) === 405 ? ok("and any other method") : fail("the daily job took a PUT");
+}
+
 console.log("\nphase 5 — the home screen, and joining a team");
 {
   // dashboard_snapshot is the single source for every figure on the home

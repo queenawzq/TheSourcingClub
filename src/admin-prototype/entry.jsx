@@ -97,6 +97,7 @@ const mockAdapter = {
     signOut: () => {},
     // No mail server behind the prototype; the panel shows where it would go.
     sendTestEmail: () => ({ sent: true, to: "operations@thesourcingclub.com" }),
+    runDailyJobs: () => ({ reminders: { capacity_reminders: 2, due_soon: 1 }, emails: { sent: 3, skipped: 0, failed: 0, configured: true } }),
     suggestReviewRequest: ({ companyName }) => ({
       message: `Hi ${companyName} team,\n\nThank you for submitting your profile. Before we can complete the review, please upload the missing supporting document and confirm its current scope and validity. You can add it from your company profile.\n\nThank you,\nThe Sourcing Club`,
       error: null,

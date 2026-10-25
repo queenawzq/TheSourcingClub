@@ -1230,6 +1230,7 @@ const TEST_EMAILS = [
   { key: "review-approved", label: "Review decision · Approved", localized: true },
   { key: "review-needs-information", label: "Review decision · Needs information", localized: true },
   { key: "review-declined", label: "Review decision · Declined", localized: true },
+  { key: "notification", label: "Notification · New quote", localized: true },
 ];
 
 function TestEmailPanel({ email }) {
@@ -1277,6 +1278,42 @@ function TestEmailPanel({ email }) {
           <button className="primary-btn" type="submit" disabled={status.state === "sending"}>{status.state === "sending" ? "Sending…" : "Send test email"}</button>
         </div>
       </form>
+    </Panel>
+  );
+}
+
+// Test sites have no scheduled jobs, so staff run the daily one by hand.
+function DailyJobsPanel() {
+  const actions = useActions();
+  const [status, setStatus] = useState({ state: "idle", message: "" });
+
+  const run = async () => {
+    setStatus({ state: "running", message: "" });
+    try {
+      const { reminders = {}, emails = {} } = await actions.runDailyJobs();
+      const count = (n, one, many) => `${n ?? 0} ${(n ?? 0) === 1 ? one : many}`;
+      const sent = emails.configured === false ? "emails wait until sending is set up" : `${count(emails.sent, "email", "emails")} sent`;
+      setStatus({
+        state: "done",
+        message: `${count(reminders.capacity_reminders, "capacity reminder", "capacity reminders")}, ${count(reminders.due_soon, "step due soon", "steps due soon")}; ${sent}.`,
+      });
+    } catch (error) {
+      setStatus({ state: "error", message: error.message });
+    }
+  };
+
+  return (
+    <Panel
+      title="Daily jobs"
+      subtitle="Every morning the marketplace reminds factories whose capacity is a month old and whoever acts on a step due within three days, then sends the emails waiting. Run it now to see what it would send today; nothing is sent twice."
+      className="admin-settings-card"
+    >
+      <div className="admin-threshold-form">
+        {status.message && <p className={status.state === "error" ? "admin-error" : "admin-test-email-status"} role={status.state === "error" ? "alert" : "status"}>{status.message}</p>}
+        <div className="admin-settings-actions">
+          <button className="primary-btn" type="button" onClick={run} disabled={status.state === "running"}>{status.state === "running" ? "Running…" : "Run daily jobs now"}</button>
+        </div>
+      </div>
     </Panel>
   );
 }
@@ -1367,6 +1404,7 @@ function SettingsPage({ user, account, onSignOut }) {
         )}
       </Panel>
       <TestEmailPanel email={email} />
+      <DailyJobsPanel />
     </main>
   );
 }

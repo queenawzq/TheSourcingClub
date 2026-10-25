@@ -42,7 +42,30 @@ const TEMPLATES = {
   "review-approved": (locale, name) => review("approved", locale, name, ""),
   "review-needs-information": (locale, name) => review("needs_information", locale, name, SAMPLE_NOTE),
   "review-declined": (locale, name) => review("declined", locale, name, SAMPLE_NOTE),
+  "notification": (locale, name) => sampleNotification(locale, name),
 };
+
+// The email a member gets for an ordinary notification, with a sample quote.
+async function sampleNotification(locale, name) {
+  const { notificationEmail } = await import("../scripts/generate-notification-email.mjs");
+  return notificationEmail({
+    locale,
+    recipient_name: name,
+    org_name: "Sample Brand Co.",
+    org_type: "brand",
+    category: "rfq",
+    kind: "quote_received",
+    subject_type: "rfq",
+    subject_id: null,
+    title: "Sample Factory Ltd. sent a quote on \"Organic cotton shirts\"",
+    body: "$18.40 a unit for 300 units, 28 days after sample approval.",
+  }, {
+    appUrl: appUrl(),
+    logoUrl: `${appUrl()}/assets/logo.png`,
+    supportEmail: REPLY_TO,
+    companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
+  });
+}
 
 function sampleOnboarding(companyName, path) {
   return {
