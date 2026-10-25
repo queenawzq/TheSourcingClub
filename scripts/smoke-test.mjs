@@ -1760,6 +1760,19 @@ console.log("\ndaily notifications and dates in the reader's zone");
     notificationBody(n, { timeZone, withZone }) === emailBody(n, { timeZone, withZone }))))
     ? ok("an email words its dates as the bell does")
     : fail("the email's date wording differs from the bell's");
+  const { notificationTitle } = await import("../src/shared/notification-text.mjs");
+  const { notificationTitle: emailTitle } = await import("./generate-notification-email.mjs");
+  const titles = [
+    { kind: "milestone_due_soon", title: '"Fit sample" is due in 3 days', data: { due_on: "2026-11-05" } },
+    { kind: "milestone_due_soon", title: '"Fit sample" is due today', data: { due_on: "2026-10-20" } },
+    { kind: "milestone_due_soon", title: '"Fit sample" is due tomorrow', data: null },
+    { kind: "quote_received", title: "New quote", data: {} },
+  ];
+  const instants = ["2026-11-02T07:00:00Z", "2026-11-04T20:00:00Z"].map((iso) => new Date(iso));
+  titles.every((n) => zones.every((timeZone) => instants.every((now) =>
+    notificationTitle(n, { timeZone, now }) === emailTitle(n, { timeZone, now }))))
+    ? ok("an email counts a step's days as the bell does")
+    : fail("the email's due-date title differs from the bell's");
   const shanghai = notificationBody(samples[0], { timeZone: "Asia/Shanghai", withZone: true });
   const utc = notificationBody(samples[0], { timeZone: "UTC", withZone: true });
   /Nov 21/.test(shanghai) && /Nov 20/.test(utc) && /GMT\+8/.test(shanghai)
