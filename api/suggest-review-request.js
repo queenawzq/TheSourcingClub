@@ -2,9 +2,12 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { NOT_SET_UP, modelFailure, templateDraft } from "./admin-review-assist.js";
 
-const MODEL = process.env.OPENROUTER_MODEL ?? "anthropic/claude-opus-5";
+// The review help's model and limit (admin-review-assist.js), not
+// OPENROUTER_MODEL: a 60-120 word note needs no more, and Opus left little
+// room under Vercel Hobby's 10 s ceiling.
+const MODEL = process.env.OPENROUTER_REVIEW_MODEL ?? "anthropic/claude-haiku-5.5";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
-const TIMEOUT_MS = 9000;
+const TIMEOUT_MS = 8000;
 
 const jsonBody = (request) =>
   typeof request.body === "string" ? JSON.parse(request.body) : request.body ?? {};
@@ -131,6 +134,10 @@ export default async function handler(request, response) {
         }],
         max_tokens: 350,
         temperature: 0.3,
+        // Haiku otherwise thinks first and spends all 350 tokens on it, so
+        // the note came back empty (measured 2026-10-25). The tool-call
+        // routes need nothing: a forced tool call does not think.
+        reasoning: { enabled: false },
       }),
     });
     if (!upstream.ok) {
@@ -138,7 +145,15 @@ export default async function handler(request, response) {
       response.status(200).json(fromChecks(gaps, modelFailure(upstream.status)));
       return;
     }
-    const payload = await upstream.json().catch(() => null);
+    // Inside the try, as in screen-message.js: an abort while the body is
+    // still arriving is a timeout, not an answer that could not be read.
+    let payload;
+    try {
+      payload = await upstream.json();
+    } catch (error) {
+      if (error.name === "AbortError") throw error;
+      payload = null;
+    }
     const message = cleanSuggestion(payload?.choices?.[0]?.message?.content);
     if (!message) {
       response.status(200).json(fromChecks(gaps, modelFailure("unreadable")));

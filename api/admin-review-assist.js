@@ -34,8 +34,13 @@ import { supabaseServerEnv } from "./_supabase-env.js";
 const MODEL = process.env.OPENROUTER_REVIEW_MODEL ?? "anthropic/claude-haiku-5.5";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 // Under Vercel Hobby's 10 s ceiling with the database calls either side, as
-// in screen-message.js.
+// in screen-message.js. So the check asks for a short answer and caps it:
+// measured 2026-10-25, the old long answer took 1,000-1,900 tokens and
+// 5-8.5 s, past this limit about half the time; the short one 600-730 tokens
+// and 3-4 s.
 const MODEL_TIMEOUT_MS = 8000;
+// About 4.5 s of Haiku output, so even a long answer finishes inside the limit.
+const CHECK_MAX_TOKENS = 1000;
 
 /** The four things the designed "Request more information" dialog offers. */
 export const REQUEST_TOPICS = [
@@ -50,10 +55,10 @@ export const CHECK_SCHEMA = {
   additionalProperties: false,
   required: ["checked", "findings"],
   properties: {
-    checked: { type: "array", items: { type: "string" }, maxItems: 12 },
+    checked: { type: "array", items: { type: "string" }, maxItems: 8 },
     findings: {
       type: "array",
-      maxItems: 8,
+      maxItems: 5,
       items: {
         type: "object",
         additionalProperties: false,
@@ -82,7 +87,7 @@ export const CHECK_INSTRUCTIONS = `You help a staff member at The Sourcing Club,
 
 Look for: details that are missing or empty; details that contradict each other (the legal name against the company name, the website's domain against the email domains, the founding year against the registration date, a team size that does not fit the stated capacity); certifications that have expired, have no file attached, or are claimed without a record; files that are empty (0 bytes), missing, or named as something else; anything that reads like it was copied or is a placeholder.
 
-For each finding give: topic (a few words), observation (one plain sentence), evidence (the value or values it rests on, copied exactly as they appear in the data, so the reviewer can find them), and ask (one question the reviewer could put to the company). Also list in "checked" the things you looked at, in a few words each.
+Give at most 5 findings, the ones most worth a reviewer's time. For each give: topic (a few words), observation (one short plain sentence), evidence (only the value or values it rests on, copied exactly as they appear in the data so the reviewer can find them: the values themselves, never a whole record or a check's full text), and ask (one short question the reviewer could put to the company). Also list in "checked" at most 8 things you looked at, two to five words each. Keep the whole answer brief: the reviewer reads it while deciding.
 
 How the data is stored, so it is not mistaken for a problem: company.type is "factory" for every vendor, and profile.vendor_kind says whether it is a manufacturer or a trading company; existing_checks are TSC's own automatic checks of what was submitted.
 
@@ -177,6 +182,7 @@ export function modelFailure(status) {
   if (status === 429) return "The AI service is busy right now. Try again in a minute.";
   if (status === 404 || status === 502 || status === 503) return "The AI model is not available right now. Try again later.";
   if (status === "timeout") return "The AI did not answer in time. Try again.";
+  if (status === "cut_off") return "The AI's answer was too long and was cut off. Try again.";
   if (status === "unreadable") return "The AI's answer could not be read. Try again.";
   if (status === "unreachable") return "The AI service could not be reached. Try again.";
   return `The AI service could not answer (error ${status}). Try again later.`;
@@ -218,7 +224,20 @@ async function askModel(instructions, schema, toolName, payload, maxTokens) {
       console.error("admin-review-assist upstream", upstream.status, (await upstream.text()).slice(0, 300));
       return { failure: modelFailure(upstream.status) };
     }
-    const answer = await upstream.json().catch(() => null);
+    // Inside the try, as in screen-message.js: OpenRouter sends its headers at
+    // once and the body only when the answer is complete, so the abort usually
+    // lands here, and it is a timeout, not an answer that could not be read.
+    let answer;
+    try {
+      answer = await upstream.json();
+    } catch (error) {
+      if (error.name === "AbortError") throw error;
+      answer = null;
+    }
+    if (answer?.choices?.[0]?.finish_reason === "length") {
+      console.error("admin-review-assist answer cut off", JSON.stringify(answer?.usage ?? {}));
+      return { failure: modelFailure("cut_off") };
+    }
     const raw = answer?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
     if (!raw) return { failure: modelFailure("unreadable") };
     try {
@@ -257,6 +276,10 @@ export default async function handler(request, response) {
   // The database refuses anyone who is not staff (42501) before it looks the
   // company up, so this is the access check as well as the read.
   const { data: input, error: inputError } = await caller.rpc("admin_review_assist_input", { target_org: orgId });
+  // A token the database refuses (expired, or not ours) is a sign-in problem.
+  if (inputError && /^PGRST30/.test(inputError.code ?? "")) {
+    return json(response, 401, { error: "your sign-in has expired: sign in again" });
+  }
   if (inputError) {
     const status = inputError.code === "42501" ? 403 : inputError.code === "P0002" ? 404 : 500;
     return json(response, status, { error: status === 403 ? "platform staff access is required" : "that company could not be read" });
@@ -273,10 +296,10 @@ export default async function handler(request, response) {
   };
 
   if (action === "check") {
-    const ai = await askModel(CHECK_INSTRUCTIONS, CHECK_SCHEMA, "submit_review_notes", input, 2000);
+    const ai = await askModel(CHECK_INSTRUCTIONS, CHECK_SCHEMA, "submit_review_notes", input, CHECK_MAX_TOKENS);
     if (!ai.fields) return json(response, 200, { available: false, reason: ai.failure });
     const { findings, dropped } = keepGroundedFindings(ai.fields?.findings, input);
-    const checked = (Array.isArray(ai.fields?.checked) ? ai.fields.checked : []).map((item) => String(item).slice(0, 80)).slice(0, 12);
+    const checked = (Array.isArray(ai.fields?.checked) ? ai.fields.checked : []).map((item) => String(item).slice(0, 80)).slice(0, 8);
     const output = { checked, findings, dropped };
     const createdAt = await save("check", ai.model, output);
     return json(response, 200, { available: true, ...output, model: ai.model, createdAt, input });

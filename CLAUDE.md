@@ -360,8 +360,13 @@ a company-level verdict and a file-level one cannot contradict each other.
   saying why. Every failure is said as what happened (`modelFailure`: not
   set up, key refused, out of credits, busy, model unavailable, timed out),
   never one "try again". What staff were shown is kept in staff-only
-  `org_review_assists`. The model is `OPENROUTER_REVIEW_MODEL` ?? Haiku 5.5:
-  8 s budget, Opus took 12.
+  `org_review_assists`. Both routes use `OPENROUTER_REVIEW_MODEL` ?? Haiku
+  5.5 with an 8 s budget (Opus took 12). The check asks for at most five short
+  findings and caps the answer at 1,000 tokens, because the old long answer
+  ran 5-8.5 s; the note turns Haiku's thinking off, which otherwise spent its
+  350 tokens. OpenRouter sends headers at once and the body when the answer
+  is done, so the timeout usually fires while reading the body: read it
+  inside the `try`, or a timeout is reported as an unreadable answer.
 - **Test data is recognised in exactly one place**, `test_data_candidates()`:
   a slug ending in a run stamp (`Date.now()`: 13 digits, 17… to 19…; a phone
   number is not one), over an hour old, `is_demo` false, every member a test
