@@ -775,6 +775,7 @@ const factoryMainZhText = {
   "Open capacity window *": "可接单时间窗口 *",
   "Payment terms": "付款条款",
   "Shipping / incoterms": "运输 / 贸易条款",
+  "Shipping / incoterms *": "运输 / 贸易条款 *",
   "Quote valid until": "报价有效期至",
   "Material sourcing and component costs": "材料采购和辅料成本",
   "Specify what is included in your quote and what the brand must provide.": "说明报价中包含哪些项目，以及品牌需要提供什么。",
@@ -5687,6 +5688,22 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, language
 }
 
 function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const dismiss = (event) => {
+      if (event.type === "keydown" ? event.key === "Escape" : !menuRef.current?.contains(event.target)) setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", dismiss);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", dismiss);
+    };
+  }, [menuOpen]);
+  const draft = rfq.quoteStatus === "draft" || (!rfq.id && rfq.status === "Draft");
+  const submitted = rfq.quoteStatus === "submitted" || (!rfq.id && rfq.status === "Quote submitted");
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   // Nothing verifies a brand's payment before an order exists, so a live card
@@ -5723,7 +5740,20 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
           >
             {tx("View RFQ")}
           </button>
-          <button className="rfq-more" type="button" aria-label={isZh ? `${getTranslatedProjectTitle(rfq.title)} 的更多操作` : `More options for ${rfq.title}`}>...</button>
+          <div className="project-overflow" ref={menuRef}>
+            <button className="rfq-more" type="button" aria-label={isZh ? `${getTranslatedProjectTitle(rfq.title)} 的更多操作` : `More options for ${rfq.title}`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
+            {menuOpen && (
+              <div className="project-overflow-menu rfq-overflow-menu" role="menu">
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onViewRequest?.(); }}>{tx("View RFQ")}</button>
+                {rfq.requestOpen !== false && draft && (
+                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onEditQuote?.(); }}>{isZh ? "编辑报价" : "Edit quote"}</button>
+                )}
+                {rfq.requestOpen !== false && submitted && (
+                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onViewRequest?.(); }}>{isZh ? "管理报价" : "Manage quote"}</button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -9754,11 +9784,11 @@ function FactoryPostedUpdateCard({ update }) {
               {(item.photos?.length > 0 || item.extraFiles > 0) && (
                 <div className="factory-posted-file-row">
                   {item.photos?.map((photo) => (
-                    <div className="factory-posted-file" key={photo.id}>
+                    <div className="factory-posted-file update-attachment-card" key={photo.id}>
                       <button className="update-attachment-preview" type="button" onClick={photo.onPreview} aria-label={`Preview ${photo.label}`}>
                         {photo.url ? <img src={photo.url} alt="" /> : null}
-                        <span>{photo.label}</span>
                       </button>
+                      <button className="update-attachment-name" type="button" onClick={photo.onPreview} title={photo.label}>{photo.label}</button>
                       <button className="update-attachment-download" type="button" onClick={photo.onDownload} aria-label={`Download ${photo.label}`} title="Download">
                         <img src="/assets/prototype-icons/download.svg" alt="" />
                       </button>
@@ -10295,6 +10325,10 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language, a
 }
 
 function FactoryQuoteSections({ companyType = "factory", language = "en", readOnly = false, values }) {
+  const [sampleIds, setSampleIds] = useState(() => values
+    ? Object.keys(values).filter((key) => /^sample\.\d+\.stage$/.test(key)).map((key) => Number(key.split(".")[1])).sort((a, b) => a - b)
+    : [0, 1]);
+  const nextSampleId = useRef(Math.max(-1, ...sampleIds) + 1);
   const isZh = language === "zh";
   const reviewEnglish = isZh && readOnly;
   // `readOnly` is the read-back and the review step; anything else is the form
@@ -10376,7 +10410,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
             placeholder="e.g. 30/70, paid in full, or Net 30"
             {...reviewFieldProps}
           />
-          <QuoteField name="incoterms" label="Shipping / incoterms" value={values?.incoterms ?? "EXW quoted; shipping TBD"} {...reviewFieldProps} />
+          <QuoteField name="incoterms" label="Shipping / incoterms *" value={values?.incoterms ?? "EXW quoted; shipping TBD"} {...reviewFieldProps} />
           <QuoteDateField name="validUntil" label="Quote valid until" value={values?.validUntil ?? "Aug 1, 2026"} {...reviewFieldProps} />
         </div>
       </SubmitSection>
@@ -10456,10 +10490,17 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
 
       <SubmitSection title="Sample plan" description="Break out sample stages so the brand can compare quotes clearly.">
         <div className="factory-submit-sample-rows">
-          <SamplePlanRow index={0} stage={values?.["sample.0.stage"] ?? (values ? "" : "Fit sample")} cost={values?.["sample.0.cost"] ?? (values ? "" : "$95")} timing={values?.["sample.0.timing"] ?? (values ? "" : "10 days")} includes={values?.["sample.0.includes"] ?? (values ? "" : "1 revision round")} readOnly={readOnly} reviewEnglish={reviewEnglish} />
-          <SamplePlanRow index={1} stage={values?.["sample.1.stage"] ?? (values ? "" : "PP sample")} cost={values?.["sample.1.cost"] ?? (values ? "" : "$165")} timing={values?.["sample.1.timing"] ?? (values ? "" : "11 days")} includes={values?.["sample.1.includes"] ?? (values ? "" : "1 revision round")} readOnly={readOnly} reviewEnglish={reviewEnglish} />
+          {sampleIds.map((index) => (
+            <SamplePlanRow key={index} index={index}
+              stage={values?.[`sample.${index}.stage`] ?? (!values && index < 2 ? ["Fit sample", "PP sample"][index] : "")}
+              cost={values?.[`sample.${index}.cost`] ?? (!values && index < 2 ? ["$95", "$165"][index] : "")}
+              timing={values?.[`sample.${index}.timing`] ?? (!values && index < 2 ? ["10 days", "11 days"][index] : "")}
+              includes={values?.[`sample.${index}.includes`] ?? (!values && index < 2 ? "1 revision round" : "")}
+              readOnly={readOnly} reviewEnglish={reviewEnglish}
+              onRemove={() => setSampleIds((ids) => ids.filter((id) => id !== index))} />
+          ))}
         </div>
-        {!readOnly && <button className="factory-add-stage" type="button">+ Add sample stage</button>}
+        {!readOnly && <button className="factory-add-stage" type="button" onClick={() => { const id = nextSampleId.current++; setSampleIds((ids) => [...ids, id]); }}>+ Add sample stage</button>}
       </SubmitSection>
 
       {/* Prototype-only examples remain available for the design preview. A
@@ -10761,7 +10802,7 @@ function QuoteTextarea({ value, label, editable = false, name }) {
   );
 }
 
-function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, reviewEnglish = false, index }) {
+function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, reviewEnglish = false, index, onRemove }) {
   const reviewFieldProps = reviewEnglish
     ? { valueNoTranslate: true, editable: true }
     : !readOnly ? { editable: true } : {};
@@ -10775,7 +10816,7 @@ function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, review
       <QuoteField name={at("cost")} label="Cost" value={cost} {...reviewFieldProps} />
       <QuoteField name={at("timing")} label="Timing" value={timing} placeholder="e.g. 7–10 days" {...reviewFieldProps} />
       <QuoteField name={at("includes")} label="Includes" value={includes} {...reviewFieldProps} />
-      {!readOnly && <CloseIconButton label={`Remove ${stage}`} />}
+      {!readOnly && <CloseIconButton label={`Remove ${stage || "sample stage"}`} onClick={onRemove} />}
     </div>
   );
 }

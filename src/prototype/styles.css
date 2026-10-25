@@ -4953,10 +4953,6 @@ button.compact-filter-button {
   line-height: 18px;
 }
 
-.home-recommended-invite-card .invite-factory-top .marketplace-factory-title p {
-  margin-top: 4px;
-}
-
 .invite-factory-top .factory-card-metrics {
   justify-content: flex-start;
   justify-self: start;
@@ -9154,6 +9150,46 @@ select {
   text-align: left;
   cursor: pointer;
   overflow-wrap: anywhere;
+}
+
+.sample-file.update-attachment-card,
+.factory-posted-file.update-attachment-card {
+  box-sizing: border-box;
+  width: 180px;
+  max-width: 100%;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-attachment-card .update-attachment-preview {
+  grid-column: 1 / -1;
+}
+
+.sample-file.update-attachment-card .update-attachment-preview img,
+.factory-posted-file.update-attachment-card .update-attachment-preview img {
+  width: 100%;
+  height: 110px;
+  object-fit: contain;
+}
+
+.update-attachment-card .update-attachment-name {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.sample-file-row:has(.update-attachment-card),
+.factory-posted-file-row:has(.update-attachment-card) {
+  flex-wrap: wrap;
 }
 
 .update-attachment-download {
@@ -17582,7 +17618,7 @@ button.sort-button {
 }
 
 .home-recommended-invite-card .invite-factory-top .marketplace-factory-title p {
-  margin-top: -4px;
+  margin-top: 4px;
   font-size: 12px;
   line-height: 16px;
 }
@@ -17649,11 +17685,12 @@ button.sort-button {
   line-height: var(--card-title-line) !important;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transform: translateY(2px);
+  transform: none;
 }
 
 .home-recommended-invite-card .invite-factory-top .factory-name-row {
   display: flex;
+  min-height: 28px;
   align-items: flex-start;
   gap: 2px;
 }

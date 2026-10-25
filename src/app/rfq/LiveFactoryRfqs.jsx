@@ -78,6 +78,7 @@ function toCard(rfq, quote, images = [], tagMetadata = {}) {
   return {
     id: rfq.id,
     quoteStatus: statusKey,
+    requestOpen: rfq.status === "open",
     initials: initialsOf(rfq.orgs?.name),
     title: rfq.title || "Untitled request",
     brand: rfq.orgs?.name ?? "A brand",

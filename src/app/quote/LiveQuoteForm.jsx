@@ -236,7 +236,10 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
 
     // Each designed sample stage becomes a row; the quote total is computed
     // from them rather than typed.
-    const stages = [0, 1]
+    const stages = Object.keys(values)
+      .filter((key) => /^sample\.\d+\.stage$/.test(key))
+      .map((key) => Number(key.split(".")[1]))
+      .sort((a, b) => a - b)
       .map((index) => ({
         stage: values[`sample.${index}.stage`]?.trim(),
         cost_cents: (() => {
@@ -249,7 +252,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         sort: index,
       }))
       .filter((row) => row.stage && row.cost_cents != null);
-    if (stages.length) await setSampleLines(quote.id, stages);
+    await setSampleLines(quote.id, stages);
 
     await setMaterialLines(quote.id, (values.materialCosts ?? []).map((line) => ({
       material: line.material,
@@ -302,7 +305,6 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   if (!rfq || !quote) return null;
 
   const money = (cents) => (cents == null ? "" : `$${(cents / 100).toFixed(2)}`);
-  const line = (index) => lines[index];
   const fit = matchFit(matchScore);
   const selectedSourcing = (terms.sourcing_responsibility ?? []).find(
     (term) => term.id === rfq.sourcing_responsibility_term_id,
@@ -380,14 +382,12 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
           : "",
         incoterms: quote.shipping_notes ?? "",
         validUntil: quote.valid_until ?? "",
-        "sample.0.stage": line(0)?.stage ?? "",
-        "sample.0.cost": line(0) ? money(line(0).cost_cents) : "",
-        "sample.0.timing": formatDayRange(line(0)?.timing_days, line(0)?.timing_max_days),
-        "sample.0.includes": line(0)?.includes ?? "",
-        "sample.1.stage": line(1)?.stage ?? "",
-        "sample.1.cost": line(1) ? money(line(1).cost_cents) : "",
-        "sample.1.timing": formatDayRange(line(1)?.timing_days, line(1)?.timing_max_days),
-        "sample.1.includes": line(1)?.includes ?? "",
+        ...Object.fromEntries(lines.flatMap((line, index) => [
+          [`sample.${index}.stage`, line.stage ?? ""],
+          [`sample.${index}.cost`, money(line.cost_cents)],
+          [`sample.${index}.timing`, formatDayRange(line.timing_days, line.timing_max_days)],
+          [`sample.${index}.includes`, line.includes ?? ""],
+        ])),
       }}
       onBack={() => navigate(requestPath)}
       onReviewTotal={saveAndReview}

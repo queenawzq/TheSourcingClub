@@ -8626,11 +8626,11 @@ function ProjectUpdateCard({ update }) {
               {(item.photos?.length > 0 || item.extraFiles > 0) && (
                 <div className="sample-file-row">
                   {item.photos?.map((photo) => (
-                    <div className="sample-file" key={photo.id}>
+                    <div className="sample-file update-attachment-card" key={photo.id}>
                       <button className="update-attachment-preview" type="button" onClick={photo.onPreview} aria-label={`Preview ${photo.label}`}>
                         {photo.url ? <img src={photo.url} alt="" /> : null}
-                        <span>{photo.label}</span>
                       </button>
+                      <button className="update-attachment-name" type="button" onClick={photo.onPreview} title={photo.label}>{photo.label}</button>
                       <button className="update-attachment-download" type="button" onClick={photo.onDownload} aria-label={`Download ${photo.label}`} title="Download">
                         <img src="/assets/prototype-icons/download.svg" alt="" />
                       </button>
