@@ -1,6 +1,6 @@
 -- ============================================================================
 -- Credits granted by the database, invites, staff adjustments (20261017000100,
--- 20261024000501, 20261024000502)
+-- 20261024000501, 20261024000502, 20261025000500)
 -- ----------------------------------------------------------------------------
 -- `pgtap23-` fixtures; every count is scoped to them.
 --
@@ -9,14 +9,16 @@
 -- P23 Gamma (factory) invited Beta later, and gets nothing. P23 Brand invites
 -- a brand that joins: recorded and linked, but no credits and no discount.
 -- P23 Zeta (factory) asks about 21 addresses that have accounts: each counts
--- toward its 20 a day, and the 21st gets no answer.
+-- toward its 20 a day, and the 21st gets no answer. Its owner then creates
+-- P23 Zeta Two: the 20 are the person's too, so the new company asks nothing
+-- more that day, while Zeta Two's other member still invites.
 -- ============================================================================
 
 begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(59);
+select plan(63);
 
 insert into auth.users (id, email) values
   ('c2300000-0000-0000-0000-000000000001', 'p23-reviewer@tsc-staff.com'),
@@ -26,7 +28,8 @@ insert into auth.users (id, email) values
   ('c2300000-0000-0000-0000-000000000005', 'owner@p23-brand.com'),
   ('c2300000-0000-0000-0000-000000000006', 'owner@p23-delta.cn'),
   ('c2300000-0000-0000-0000-000000000007', 'owner@p23-epsilon.cn'),
-  ('c2300000-0000-0000-0000-000000000010', 'owner@p23-zeta.cn');
+  ('c2300000-0000-0000-0000-000000000010', 'owner@p23-zeta.cn'),
+  ('c2300000-0000-0000-0000-000000000011', 'sales@p23-zeta-two.cn');
 
 -- Addresses that already have accounts, for Zeta to ask about.
 insert into auth.users (id, email)
@@ -41,7 +44,8 @@ insert into public.orgs (id, type, name, slug) values
   ('d2300000-0000-0000-0000-00000000000b', 'brand',   'P23 Brand',   'pgtap23-brand'),
   ('d2300000-0000-0000-0000-00000000000d', 'factory', 'P23 Delta',   'pgtap23-delta'),
   ('d2300000-0000-0000-0000-00000000000e', 'factory', 'P23 Epsilon', 'pgtap23-epsilon'),
-  ('d2300000-0000-0000-0000-00000000001a', 'factory', 'P23 Zeta',    'pgtap23-zeta');
+  ('d2300000-0000-0000-0000-00000000001a', 'factory', 'P23 Zeta',    'pgtap23-zeta'),
+  ('d2300000-0000-0000-0000-00000000001b', 'factory', 'P23 Zeta Two', 'pgtap23-zeta-two');
 
 insert into public.org_members (org_id, user_id, role) values
   ('d2300000-0000-0000-0000-00000000000a', 'c2300000-0000-0000-0000-000000000002', 'owner'),
@@ -50,7 +54,9 @@ insert into public.org_members (org_id, user_id, role) values
   ('d2300000-0000-0000-0000-00000000000b', 'c2300000-0000-0000-0000-000000000005', 'owner'),
   ('d2300000-0000-0000-0000-00000000000d', 'c2300000-0000-0000-0000-000000000006', 'owner'),
   ('d2300000-0000-0000-0000-00000000000e', 'c2300000-0000-0000-0000-000000000007', 'owner'),
-  ('d2300000-0000-0000-0000-00000000001a', 'c2300000-0000-0000-0000-000000000010', 'owner');
+  ('d2300000-0000-0000-0000-00000000001a', 'c2300000-0000-0000-0000-000000000010', 'owner'),
+  ('d2300000-0000-0000-0000-00000000001b', 'c2300000-0000-0000-0000-000000000010', 'owner'),
+  ('d2300000-0000-0000-0000-00000000001b', 'c2300000-0000-0000-0000-000000000011', 'member');
 
 insert into public.factory_profiles (org_id) values
   ('d2300000-0000-0000-0000-00000000000a'),
@@ -256,6 +262,40 @@ select is(
     where referrer_org_id = 'd2300000-0000-0000-0000-00000000001a' and refused_at is not null),
   20,
   'the twenty refused questions are on record'
+);
+
+-- A second company is not a second 20: the limit is the person's too
+-- (20261025000500).
+set local request.jwt.claims = '{"sub":"c2300000-0000-0000-0000-000000000010","role":"authenticated"}';
+set local role authenticated;
+select throws_ok(
+  $$ insert into public.referrals (referrer_org_id, email)
+     values ('d2300000-0000-0000-0000-00000000001b', 'p23-probed-21@p23-probed.cn') $$,
+  '54000', null,
+  'the same person asking from a second company is refused for the limit'
+);
+select throws_ok(
+  $$ insert into public.referrals (referrer_org_id, email)
+     values ('d2300000-0000-0000-0000-00000000001b', 'nobody-yet@p23-fresh.cn') $$,
+  '54000', null,
+  'and so is an ordinary invite from it'
+);
+
+set local request.jwt.claims = '{"sub":"c2300000-0000-0000-0000-000000000011","role":"authenticated"}';
+select lives_ok(
+  $$ insert into public.referrals (referrer_org_id, email)
+     values ('d2300000-0000-0000-0000-00000000001b', 'nobody-yet@p23-fresh.cn') $$,
+  'another member of that company still invites: its own 20 are untouched'
+);
+reset role;
+set local request.jwt.claims = '{"role":"service_role"}';
+
+select is(
+  (select count(*)::int from public.referrals
+    where referrer_org_id = 'd2300000-0000-0000-0000-00000000001b'
+      and created_by = 'c2300000-0000-0000-0000-000000000010'),
+  0,
+  'and the refused attempts left no row behind'
 );
 
 -- ---------------------------------------------------------------------------
