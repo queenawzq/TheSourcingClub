@@ -1097,6 +1097,7 @@ export function FlowShell({
   // The bottom bar's centre button and a primary that can wait (the schedule
   // cannot be agreed while it has unsaved edits or does not add up).
   centerAction = null,
+  secondaryAction = null,
   primaryDisabled = false,
   // Live only: a heading for what actually happened (a bank payment still
   // clearing is not yet "funded").
@@ -1141,6 +1142,7 @@ export function FlowShell({
           primaryLabel={busy ? "Saving…" : primaryLabel ?? meta.cta}
           centerText={centerText}
           centerAction={centerAction}
+          secondaryAction={secondaryAction}
           primaryDisabled={primaryDisabled}
         />
       )}
@@ -3914,6 +3916,7 @@ function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
             <li>Sample stages needed</li>
             <li>Timeline</li>
             <li>Material / quality level</li>
+            <li>Services required</li>
             <li>Materials and components sourcing responsibility</li>
             <li>Target unit price range</li>
             <li>Preferred region</li>
@@ -3933,6 +3936,7 @@ function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
             <li>Sample stages needed</li>
             <li>Timeline</li>
             <li>Material / quality level</li>
+            <li>Services required</li>
             <li>Materials and components sourcing responsibility</li>
             <li>Target unit price range</li>
             <li>Questions vendors should answer</li>
@@ -4419,6 +4423,7 @@ export function HomeScreen({
 }
 
 function HomeRecommendedFactoryCard({ factory, goTo }) {
+  const sampleProducts = (factory.products ?? []).filter((product) => product.image);
   const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
   const updateSampleScroll = (element) => {
     if (!element) return;
@@ -4479,7 +4484,7 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
               <p>{factory.notes[0]}</p>
             </div>
           </div>
-          <div className="marketplace-samples-shell invite-samples-shell">
+          {sampleProducts.length > 0 && <div className="marketplace-samples-shell invite-samples-shell">
             <button
               className={sampleScroll.left ? "marketplace-samples-prev visible" : "marketplace-samples-prev"}
               type="button"
@@ -4493,7 +4498,7 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
               <img src="/assets/prototype-icons/dropdown.svg" alt="" />
             </button>
             <div className="marketplace-samples invite-samples" aria-label={`${factory.name} sample products`} onScroll={(event) => updateSampleScroll(event.currentTarget)}>
-              {factory.products.map((product) => (
+              {sampleProducts.map((product) => (
                 <figure className="marketplace-sample invite-sample" key={product.name}>
                   <img src={product.image} alt={`${factory.name} ${product.name}`} />
                   <figcaption><strong>{product.name}</strong></figcaption>
@@ -4512,7 +4517,7 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
             >
               <img src="/assets/prototype-icons/dropdown.svg" alt="" />
             </button>
-          </div>
+          </div>}
         </div>
       </div>
     </article>
@@ -7125,7 +7130,7 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote, live
             ))}
           </div>
           {(!live || factory.notes[0]) && (
-          <div className="marketplace-note-list">
+          <div className="marketplace-note-list marketplace-description-preview">
             <p>{factory.notes[0]}</p>
           </div>
           )}
@@ -7728,7 +7733,7 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, o
                       onArchive?.(rfq);
                     }}
                   >
-                    Archive quote
+                    Close request
                   </button>
                 )}
               </div>
@@ -7811,11 +7816,9 @@ export function ProjectsScreen({
   const [draftTabs, setDraftTabs] = useState(projectTabs);
   const customTabs = projectTabs.filter((tab) => !tab.locked);
   const orderRows = orders ?? [];
-  // "Archived" joins the strip only while the company has archived something.
-  const stripTabs = tabStore ? withArchivedTab(projectTabs, orderRows, tabStore.archived) : projectTabs;
+  const stripTabs = withArchivedTab(projectTabs);
 
-  // A tab a teammate deleted, or this person just did, falls back to Active;
-  // an archive emptied by Unarchive falls back to Closed, where the order went.
+  // A deleted custom tab falls back to Active. Archived remains even when empty.
   useEffect(() => {
     if (loading || !tabStore || stripTabs.some((tab) => tab.key === activeTab)) return;
     setActiveTab(activeTab === "archived" ? "closed" : "active");
@@ -8062,7 +8065,7 @@ export function ProjectsScreen({
         document.body
       )}
 
-      <section className="projects-list" aria-label={activeTab === "closed" ? "Closed orders" : activeTab === "archived" ? "Archived orders" : "Active orders"}>
+      <section className="projects-list" aria-label={activeTab === "closed" ? "Closed orders" : activeTab === "archived" ? "Cancelled orders" : "Active orders"}>
         {/* Three states the prototype has never had. Against the mock adapter
             only the last one is ever reached, which is why the page looks
             unchanged; against a network all three happen. */}
@@ -8079,7 +8082,7 @@ export function ProjectsScreen({
               : activeTab === "closed"
               ? "Nothing closed yet."
               : activeTab === "archived"
-              ? "No archived orders."
+              ? "No cancelled orders."
               : activeTab !== "active"
               ? "No orders in this tab yet. Add one from an order's ··· menu."
               : "No production orders yet. One appears here when a quote is awarded."}
@@ -8923,9 +8926,14 @@ function ProjectUpdateCard({ update }) {
               {(item.photos?.length > 0 || item.extraFiles > 0) && (
                 <div className="sample-file-row">
                   {item.photos?.map((photo) => (
-                    <div className="sample-file" key={photo.id}>
-                      {photo.url ? <img src={photo.url} alt="" /> : null}
-                      <span>{photo.label}</span>
+                    <div className="sample-file update-attachment-card" key={photo.id}>
+                      <button className="update-attachment-preview" type="button" onClick={photo.onPreview} aria-label={`Preview ${photo.label}`}>
+                        {photo.url ? <img src={photo.url} alt="" /> : null}
+                      </button>
+                      <button className="update-attachment-name" type="button" onClick={photo.onPreview} title={photo.label}>{photo.label}</button>
+                      <button className="update-attachment-download" type="button" onClick={photo.onDownload} aria-label={`Download ${photo.label}`} title="Download">
+                        <img src="/assets/prototype-icons/download.svg" alt="" />
+                      </button>
                     </div>
                   ))}
                   {item.extraFiles > 0 && (
@@ -9055,7 +9063,67 @@ function GrowingLine({ value, onValue, ...props }) {
   );
 }
 
-export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments = null, onAddFiles, onRemoveFile, uploading = false }) {
+function ReviewServiceSelector({ options = [], value = "", onChange }) {
+  const [customValue, setCustomValue] = useState("");
+  const serviceLabel = (option) => ({
+    "Full package": "Full package (factory sources materials)",
+    CMT: "CMT (brand supplies materials)",
+  })[option] ?? option;
+  const selected = String(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const visibleOptions = [...new Set([...options, ...selected])];
+
+  function write(next) {
+    onChange?.([...new Set(next)].join(", "));
+  }
+
+  function toggle(option) {
+    write(selected.includes(option)
+      ? selected.filter((item) => item !== option)
+      : [...selected, option]);
+  }
+
+  function addCustomOption(event) {
+    event.preventDefault();
+    const option = customValue.trim();
+    if (!option) return;
+    write([...selected, option]);
+    setCustomValue("");
+  }
+
+  return (
+    <section className="brand-onboarding-chip-group review-service-selector brief-grid-full">
+      <strong>Services needed</strong>
+      <small>Select all services vendors should include in their quote.</small>
+      <div className="tag-row compact-tags">
+        {visibleOptions.map((option) => (
+          <button
+            className={selected.includes(option) ? "selected" : ""}
+            type="button"
+            aria-pressed={selected.includes(option)}
+            onClick={() => toggle(option)}
+            key={option}
+          >
+            {serviceLabel(option)}
+          </button>
+        ))}
+      </div>
+      <form className="brand-onboarding-chip-add-row" onSubmit={addCustomOption}>
+        <input
+          value={customValue}
+          onChange={(event) => setCustomValue(event.target.value)}
+          placeholder="Add your own"
+          aria-label="Add another service"
+        />
+        <button className="secondary-btn compact-btn" type="submit">Add</button>
+      </form>
+    </section>
+  );
+}
+
+export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments = null, onAddFiles, onRemoveFile, uploading = false, serviceOptions = [] }) {
   // The prototype passes none of these and reads exactly as drawn.
   const isLive = Boolean(values);
   const at = (key, drawn) => (isLive ? values[key] ?? "" : drawn);
@@ -9096,14 +9164,67 @@ export function ReviewScreen({ brief, values, onChange, onEditBrief, attachments
         </section>
         <h3 className="section-title">Quote requirements</h3>
         <div className="brief-grid">
-          <Field label="Product category *" name="category" value={at("category", "Womenswear / woven shirting")} onChange={change} />
-          <Field label="Quantity + color split *" name="quantity" value={at("quantity", "300 units total · 3 colors, 100 each")} onChange={change} />
-          <Field label="Material / quality *" name="material" value={at("material", "Organic cotton poplin, mid-weight")} onChange={change} />
-          <Field label="Target timeline *" name="timeline" value={at("timeline", "Sample in August, bulk by late September")} onChange={change} />
-          <Field label="Sample requirement *" name="samples" value={at("samples", "Fit sample + PP sample before bulk")} onChange={change} />
-          <Field label="Target unit price" name="price" value={at("price", "Ideal $18-$24 per unit")} onChange={change} />
-          <Field label="Vendor region preference" name="regions" value={at("regions", "China, Portugal, Korea")} onChange={change} />
-          <Field label="Certifications" name="certifications" value={at("certifications", "GOTS preferred")} onChange={change} />
+          <Field
+            label="Product category *"
+            name="category"
+            value={at("category", "Womenswear / woven shirting")}
+            placeholder="e.g. Womenswear / woven shirting"
+            onChange={change}
+          />
+          <Field
+            label="Quantity + color split *"
+            name="quantity"
+            value={at("quantity", "300 units total · 3 colors, 100 each")}
+            placeholder="e.g. 300 units · 3 colors, 100 each"
+            onChange={change}
+          />
+          <Field
+            label="Material / quality *"
+            name="material"
+            value={at("material", "Organic cotton poplin, mid-weight")}
+            placeholder="e.g. Organic cotton poplin, mid-weight"
+            onChange={change}
+          />
+          <Field
+            label="Target timeline *"
+            name="timeline"
+            value={at("timeline", "Sample in August, bulk by late September")}
+            placeholder="e.g. Sample in August, bulk by late September"
+            onChange={change}
+          />
+          <Field
+            label="Sample requirement *"
+            name="samples"
+            value={at("samples", "Fit sample + PP sample before bulk")}
+            placeholder="e.g. Fit sample + PP sample before bulk"
+            onChange={change}
+          />
+          <Field
+            label="Target unit price"
+            name="price"
+            value={at("price", "Ideal $18-$24 per unit")}
+            placeholder="e.g. $18–$24 per unit"
+            onChange={change}
+          />
+          <Field
+            label="Vendor region preference"
+            name="regions"
+            value={at("regions", "China, Portugal, Korea")}
+            placeholder="e.g. Portugal, Turkey"
+            onChange={change}
+          />
+          <Field
+            label="Certifications"
+            name="certifications"
+            value={at("certifications", "GOTS preferred")}
+            placeholder="e.g. GOTS, OEKO-TEX, GRS"
+            onChange={change}
+          />
+          <ReviewServiceSelector
+            options={serviceOptions.length ? serviceOptions : ["Full package", "CMT", "Pattern making", "Sample development", "Fabric sourcing"]}
+            value={at("services", "Full package, Sample development")}
+            onChange={isLive ? (next) => onChange("services", next) : undefined}
+          />
           <Field label="Quote deadline" name="deadline" type="date" value={at("deadline", "Jul 24, 2026 · 5 business days after publish")} onChange={change} className="brief-grid-full" />
         </div>
         <section className="brief-sourcing-block">
@@ -10783,7 +10904,7 @@ function TscDatePicker({ name, value, onChange, readOnly = false, dialogLabel = 
   );
 }
 
-function Field({ label, value, muted = false, className = "", name, onChange, type }) {
+function Field({ label, value, muted = false, className = "", name, onChange, type, placeholder = "—" }) {
   return (
     <div className={`${muted ? "field muted-field" : "field"} ${className}`}>
       <span>{label}</span>
@@ -10798,7 +10919,7 @@ function Field({ label, value, muted = false, className = "", name, onChange, ty
           name={name}
           type={type}
           value={value ?? ""}
-          placeholder="—"
+          placeholder={placeholder}
           onChange={(event) => onChange(name, event.target.value)}
         />
       ) : (
@@ -10826,7 +10947,7 @@ function AcceptedQuoteField({ label, value, readOnly = false }) {
   );
 }
 
-function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null, primaryDisabled = false }) {
+function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null, secondaryAction = null, primaryDisabled = false }) {
   return (
     <footer className={canBack ? "bottom-bar has-back" : "bottom-bar no-back"}>
       {canBack && (
@@ -10845,6 +10966,11 @@ function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", cen
         </div>
       )}
       <div className="bottom-actions">
+        {secondaryAction && (
+          <button className="secondary-btn" type="button" disabled={secondaryAction.disabled} onClick={secondaryAction.onClick}>
+            {secondaryAction.label}
+          </button>
+        )}
         {primaryLabel && (
           <button className="primary-btn" type="button" onClick={onNext} disabled={primaryDisabled || undefined}>
             {primaryLabel}

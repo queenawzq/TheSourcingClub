@@ -23,6 +23,88 @@
   cursor: default;
 }
 
+.tsc-credit-custom-option {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid #d3e0f0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.tsc-credit-custom-option.selected {
+  border-color: #1a4df2;
+  background: #f2f7fd;
+  box-shadow: inset 0 0 0 1px #1a4df2;
+}
+
+.tsc-credit-custom-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tsc-credit-custom-heading label,
+.tsc-credit-buy-modal .factory-credit-purchase-options .tsc-credit-custom-heading strong {
+  color: #0b1223;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.tsc-credit-buy-modal .factory-credit-purchase-options .tsc-credit-custom-heading strong {
+  color: #5c749c;
+}
+
+.tsc-credit-custom-input-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #c8d6e8;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.tsc-credit-custom-input-wrap:focus-within {
+  border-color: #1a4df2;
+  box-shadow: 0 0 0 1px #1a4df2;
+}
+
+.tsc-credit-custom-input-wrap input {
+  min-width: 0;
+  height: 42px;
+  padding: 0 12px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #0b1223;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.tsc-credit-custom-input-wrap input::placeholder {
+  color: #8a98ad;
+  font-weight: 400;
+}
+
+.tsc-credit-buy-modal .factory-credit-purchase-options .tsc-credit-custom-input-wrap span {
+  padding-right: 12px;
+  color: #5c749c;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.tsc-credit-custom-option small {
+  color: #5c749c;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
 .tsc-credit-buy-payment {
   margin-bottom: 0;
 }
