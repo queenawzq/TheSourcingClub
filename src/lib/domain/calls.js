@@ -11,7 +11,7 @@
  * takes the time zone it should speak in, so one call reads "10:00 AM ET" to
  * the brand and "10:00 PM Shanghai" to the factory.
  */
-import { supabase, unwrap } from "../supabase.js";
+import { fetchApi, SIGN_IN_ENDED, supabase, unwrap } from "../supabase.js";
 import { browserTimeZone, endOf, startOf } from "../../shared/call-time.mjs";
 
 // The time-zone helpers live beside the designed screens, which use them too.
@@ -58,16 +58,12 @@ async function checkCallText(texts) {
   let response;
   let body = {};
   try {
-    const { data } = await supabase.auth.getSession();
-    response = await fetch("/api/screen-call-text", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${data?.session?.access_token ?? ""}` },
-      body: JSON.stringify({ texts: words }),
-    });
+    response = await fetchApi("/api/screen-call-text", { texts: words });
     body = await response.json().catch(() => ({}));
   } catch {
     throw new Error("The call's details could not be checked. Check your connection and try again.");
   }
+  if (response.status === 401) throw new Error(SIGN_IN_ENDED);
   if (!response.ok) {
     const text = body.error ? body.error[0].toUpperCase() + body.error.slice(1) : "The call's details could not be checked";
     throw new Error(/[.!?]$/.test(text) ? text : `${text}.`);
@@ -244,14 +240,8 @@ export function googleCalendarUrl(call, otherName, link = callLink(call)) {
  */
 export async function joinCall(callId) {
   try {
-    const { data } = await supabase.auth.getSession();
-    const token = data?.session?.access_token;
-    if (!token) return { ok: false, message: "Sign in again to join." };
-    const response = await fetch("/api/call-join", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ callId }),
-    });
+    const response = await fetchApi("/api/call-join", { callId });
+    if (response.status === 401) return { ok: false, message: SIGN_IN_ENDED };
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
       const text = body.error ? body.error[0].toUpperCase() + body.error.slice(1) : "The call could not be opened.";

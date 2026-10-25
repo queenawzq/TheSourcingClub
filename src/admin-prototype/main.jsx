@@ -1078,7 +1078,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
           <div className="admin-review-main">
             <Panel title="Profile summary" subtitle={profile.summary} action="View full submission" onAction={() => setFullProfileOpen(true)}>
               <div className="admin-detail-grid">{profile.details.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
-              <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} />
+              {profile.capabilities?.length ? <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} /> : null}
             </Panel>
             {profile.checks?.length ? (
             <Panel title="Verification checks" subtitle="Each check reads what this company submitted and what TSC already holds. None of them contacts an outside registry or certifier.">
@@ -1281,7 +1281,7 @@ function AdminRfqDetail({ rfq, onBack, backLabel, onOpenQuote, quoteRows = quote
               <h2>Request timeline</h2>
               <div className="admin-rfq-timeline">
                 <p><strong>{rfq[3]}</strong>RFQ submitted by {rfq[2]}</p>
-                <p><strong>{rfq[3]}</strong>{rfq[4]} invited to quote</p>
+                <p><strong>{rfq[3]}</strong>{rfq.invitedEvent ?? `${rfq[4]} invited to quote`}</p>
                 {rfqQuotes[0] && <p><strong>{rfqQuotes[0][5]}</strong>{rfqQuotes.length} vendor quotes received</p>}
               </div>
             </section>

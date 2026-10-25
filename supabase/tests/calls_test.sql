@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(55);
+select plan(59);
 
 insert into auth.users (id, email) values
   ('ca110000-0000-0000-0000-000000000001', 'p19-brand@example.com'),
@@ -52,7 +52,7 @@ values ('ca150000-0000-0000-0000-0000000000aa', 'ca140000-0000-0000-0000-0000000
 do $$
 begin
   perform public.record_call_text_check('ca110000-0000-0000-0000-000000000001',
-    array['P19 first', 'Review the fit sample', 'P19 second', 'Our designer is out', 'P19 x']);
+    array['P19 first', 'Review the fit sample', 'P19 second', 'Our designer is out', 'P19 x', 'P19 withdrawn']);
   perform public.record_call_text_check('ca110000-0000-0000-0000-000000000003',
     array['P19 counter', 'Earlier is better for us', 'Factory closed that week', 'P19 late', 'P19 x']);
   perform public.record_call_text_check('ca110000-0000-0000-0000-000000000004', array['P19 x']);
@@ -332,6 +332,17 @@ select throws_ok(
   '22023', null, 'cancelling twice is refused'
 );
 
+select lives_ok(
+  $$select public.propose_call('ca140000-0000-0000-0000-000000000001', now() + interval '6 days', 30,
+                               'P19 withdrawn', null, null)$$,
+  'an invite to withdraw'
+);
+
+select lives_ok(
+  $$select public.cancel_call((select id from public.calls where title = 'P19 withdrawn'), null)$$,
+  'its proposer withdraws it before anyone answers'
+);
+
 -- ---------------------------------------------------------------------------
 -- The factory declines
 -- ---------------------------------------------------------------------------
@@ -356,8 +367,23 @@ select is(
      from public.notifications n join public.orgs o on o.id = n.org_id
     where n.org_id in ('ca120000-0000-0000-0000-00000000000b', 'ca120000-0000-0000-0000-0000000000f1')
       and n.kind like 'call_%'),
-  'call_accepted>P19 Factory, call_cancelled>P19 Factory, call_countered>P19 Brand, call_declined>P19 Brand, call_proposed>P19 Factory, call_proposed>P19 Factory',
+  'call_accepted>P19 Factory, call_cancelled>P19 Factory, call_cancelled>P19 Factory, call_countered>P19 Brand, call_declined>P19 Brand, call_proposed>P19 Factory, call_proposed>P19 Factory, call_proposed>P19 Factory',
   'every step notified the other side, and only the other side'
+);
+
+-- The withdraw dialog says the other side "is told the invite is
+-- withdrawn"; a confirmed call is cancelled.
+select is(
+  (select title from public.notifications
+    where org_id = 'ca120000-0000-0000-0000-0000000000f1' and kind = 'call_cancelled' and body = 'P19 withdrawn'),
+  'P19 Brand withdrew the invite to a call about ' || (select public.thread_subject(t) from public.message_threads t where id = 'ca140000-0000-0000-0000-000000000001'),
+  'a withdrawn invite tells the other side it was withdrawn'
+);
+
+select ok(
+  (select title like 'P19 Brand cancelled the call about %' from public.notifications
+    where org_id = 'ca120000-0000-0000-0000-0000000000f1' and kind = 'call_cancelled' and body = 'Our designer is out'),
+  'a cancelled confirmed call still says cancelled'
 );
 
 select is(

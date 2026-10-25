@@ -10,7 +10,8 @@
  * Self-contained on purpose: Vercel builds api/ on its own and a static
  * import from src/ stops the function starting, so the link rules are a copy
  * of `notificationLink` in src/shared/notification-link.mjs, and the dates a
- * copy of `notificationBody` in src/shared/notification-text.mjs. The smoke
+ * copy of `notificationBody` and `notificationTitle` in
+ * src/shared/notification-text.mjs. The smoke
  * test fails if either pair ever disagrees.
  */
 
@@ -57,6 +58,37 @@ export function notificationBody(notification, { timeZone, withZone = false } = 
     if (when) return body ? `${body} · ${when}` : when;
   }
   return body;
+}
+
+/** Same answers as notificationTitle() in src/shared/notification-text.mjs. */
+export function notificationTitle(notification, { timeZone, now = new Date() } = {}) {
+  const title = String(notification?.title ?? "");
+  const due = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(notification?.data?.due_on ?? ""));
+  const stem = / is due (?:today|tomorrow|in \d+ days)$/.exec(title);
+  if (notification?.kind !== "milestone_due_soon" || !due || !stem) return title;
+  const today = calendarDay(now, timeZone);
+  if (!today) return title;
+  const days = Math.round((Date.UTC(+due[1], +due[2] - 1, +due[3]) - today) / 86400000);
+  const words = days < 0
+    ? `was due ${new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" }).format(Date.UTC(+due[1], +due[2] - 1, +due[3]))}`
+    : `is due ${days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`}`;
+  return `${title.slice(0, stem.index)} ${words}`;
+}
+
+/** The day `now` falls on in the zone, as UTC midnight of that date; null for a bad value. */
+function calendarDay(now, timeZone) {
+  const date = new Date(now);
+  if (Number.isNaN(date.getTime())) return null;
+  const options = { year: "numeric", month: "numeric", day: "numeric" };
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat("en-US", { ...options, ...(timeZone ? { timeZone } : {}) }).formatToParts(date);
+  } catch {
+    // An unknown zone name: count from the UTC day rather than not at all.
+    parts = new Intl.DateTimeFormat("en-US", { ...options, timeZone: "UTC" }).formatToParts(date);
+  }
+  const part = (type) => Number(parts.find((each) => each.type === type)?.value);
+  return Date.UTC(part("year"), part("month") - 1, part("day"));
 }
 
 function formatMoment(iso, timeZone, withZone) {
@@ -190,8 +222,8 @@ export function notificationEmail(row, env) {
   const portal = isFactory ? `${path?.includes("?") ? "&" : "?"}portal=factory` : "";
   const url = `${env.appUrl}/app.html${path ?? ""}${portal}`;
   const cta = path ? t.cta : t.ctaFallback;
-  const title = String(row.title ?? "").trim() || t.lead(company);
   // Dates in the recipient's saved zone, named; UTC, named, when unknown.
+  const title = notificationTitle(row, { timeZone: row.time_zone || "UTC" }).trim() || t.lead(company);
   const body = notificationBody(row, { timeZone: row.time_zone || "UTC", withZone: true }).trim();
   const why = t.why(company, setting);
 

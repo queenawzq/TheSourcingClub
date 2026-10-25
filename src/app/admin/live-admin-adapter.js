@@ -165,7 +165,12 @@ export function toReviewProfile(row) {
       ["Legal name", row.legalName ?? "—"],
       ["Website", row.websiteUrl ?? "—"],
       ["Location", row.location ?? "—"],
-      ["Profile status", VERIFICATION_LABEL[row.verificationStatus] ?? row.verificationStatus ?? "—"],
+      // A company waiting on staff is 'pending' whatever staff have done, so
+      // its words come from the review, as the badge's do: "Pending" beside
+      // "Needs information" said two different things.
+      ["Profile status", row.verificationStatus === "pending"
+        ? status
+        : VERIFICATION_LABEL[row.verificationStatus] ?? row.verificationStatus ?? "—"],
       ["Decided", row.decidedAt ? shortDate(row.decidedAt) : "Not yet"],
       // Last, on a row of its own (console-live.css): a request is often a
       // paragraph and a list, which stretched one third of the grid down the
@@ -191,15 +196,24 @@ export function toRfqRow(rfq) {
   // "Quotes received" is a real distinction the design's tabs filter on, and
   // it is the count that decides it, not a separate status column.
   const status = rfq.status === "open" && rfq.quoteCount > 0 ? "Quotes received" : label;
+  const openToAll = rfq.visibility === "open_to_all";
   return Object.assign([
     ref("RFQ", rfq.id),
     rfq.title || "Untitled request",
     rfq.brandName,
     shortDate(rfq.publishedAt ?? rfq.createdAt),
-    `${rfq.invitedCount} vendors`,
+    // A request open to all vendors is quoted by vendors nobody invited, so
+    // "0 vendors" beside its quotes read as a miscount.
+    openToAll ? "Open to all vendors" : `${rfq.invitedCount} vendors`,
     status,
     status === "Quotes received" ? "success" : tone,
-  ], { id: rfq.id });
+  ], {
+    id: rfq.id,
+    // The request timeline's line; the design's says "N vendors invited".
+    invitedEvent: openToAll
+      ? `Published to all vendors${rfq.invitedCount ? `, ${rfq.invitedCount} invited by name` : ""}`
+      : `${rfq.invitedCount} vendors invited to quote`,
+  });
 }
 
 export function toQuoteRow(quote) {
@@ -285,18 +299,10 @@ export function toAdminUser(user) {
 }
 
 export function createAdminAdapter({ user, signOut }) {
-  // The last queue read, by company: the submission action is called with an
-  // id, and completeness needs the company's name and kind to load it the way
-  // its own profile page does.
-  const queueRows = new Map();
-
   return {
     viewer: { isAdmin: true, org: null, user },
 
-    verificationQueue: () => verificationQueue().then((rows) => {
-      for (const row of rows) queueRows.set(row.orgId, row);
-      return rows.map(toReviewProfile);
-    }),
+    verificationQueue: () => verificationQueue().then((rows) => rows.map(toReviewProfile)),
     adminRfqs: () => rfqQueue().then((rows) => rows.map(toRfqRow)),
     adminQuotes: () => quoteQueue().then((rows) => rows.map(toQuoteRow)),
     // Held messages are counted from their queue rather than in
@@ -345,14 +351,20 @@ export function createAdminAdapter({ user, signOut }) {
        * one handed out at render time is usually dead before it is used.
        */
       orgDocuments: (orgId) => orgDocuments(orgId),
+      // Completeness is loaded the way the company's own profile page loads
+      // it, which needs its name and kind: those come from the submission
+      // just read. They used to come from a cache of the last queue read,
+      // which a re-created adapter did not have, so the row vanished.
       orgSubmission: async (orgId) => {
-        const row = queueRows.get(orgId);
-        const [submission, completion] = await Promise.all([
-          orgSubmission(orgId),
-          row
-            ? profileCompletion({ orgId, name: row.name, type: row.type, vendorKind: row.vendorKind }).catch(() => null)
-            : null,
-        ]);
+        const submission = await orgSubmission(orgId);
+        const completion = submission?.org
+          ? await profileCompletion({
+            orgId,
+            name: submission.org.name,
+            type: submission.org.type,
+            vendorKind: submission.profile?.vendor_kind,
+          }).catch(() => null)
+          : null;
         return { ...submission, completion };
       },
       documentUrl: (document) => urlFor(document),

@@ -60,7 +60,7 @@ export async function markAllRead(orgId) {
 }
 
 export { notificationLink } from "../../shared/notification-link.mjs";
-export { notificationBody } from "../../shared/notification-text.mjs";
+export { notificationBody, notificationTitle } from "../../shared/notification-text.mjs";
 
 /**
  * The label the Activity drawer puts on a notification. The design types its

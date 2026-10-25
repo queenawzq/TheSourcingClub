@@ -7,8 +7,10 @@
  * Nothing about that looks broken on a machine east of Greenwich.
  *
  * Two checks:
- * 1. The screens' own formatters, run in a zone behind UTC (New York) and one
- *    far ahead (Kiritimati, UTC+14), must say the stored day. This process
+ * 1. The screens' own formatters, run in zones behind UTC (New York, Los
+ *    Angeles) and ahead of it (Shanghai, Kiritimati at UTC+14), must say the
+ *    stored day, and a reminder's "due in N days" must count from the
+ *    reader's own day, not the UTC day the daily job ran on. This process
  *    runs each zone as a child, since a zone is fixed per process.
  * 2. A guard: in src/app, src/lib and src/shared, a one-argument
  *    `new Date(…)` or `Date.parse(…)` of anything named after a `date` column
@@ -21,7 +23,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ZONES = ["America/New_York", "Pacific/Kiritimati"];
+const ZONES = ["America/New_York", "America/Los_Angeles", "Asia/Shanghai", "Pacific/Kiritimati"];
 const zone = process.env.CHECK_DATES_ZONE;
 
 if (!zone) {
@@ -116,6 +118,7 @@ async function formatters() {
     const { brandPaymentsView } = await load("/src/app/payments/brand-payments-view.js");
     const { validUntilOf } = await load("/src/app/quote/quote-view.js");
     const { formatCapacityWindow } = await load("/src/lib/domain/quote.js");
+    const { notificationTitle } = await load("/src/shared/notification-text.mjs");
 
     const calendar = dateFrom("2026-10-26");
     expect("dateFrom day", [calendar.getFullYear(), calendar.getMonth(), calendar.getDate()].join("-"), "2026-9-26");
@@ -143,6 +146,24 @@ async function formatters() {
     expect("quote: capacity window",
       formatCapacityWindow({ capacity_window_start: "2026-11-01", capacity_window_end: "2026-11-30" }, new Date(2026, 9, 1)),
       "Nov 1 - Nov 30");
+
+    // The daily job runs at 07:00 UTC and wrote "in 3 days" for a step due
+    // Nov 5. It is still Nov 1 in Los Angeles, and the 2nd everywhere else.
+    const reminder = (dueOn) => ({ kind: "milestone_due_soon", title: '"Fit sample" is due in 3 days', data: { due_on: dueOn } });
+    const cron = new Date("2026-11-02T07:00:00Z");
+    const behind = zone === "America/Los_Angeles";
+    expect("reminder: three days out", notificationTitle(reminder("2026-11-05"), { now: cron }),
+      `"Fit sample" is due ${behind ? "in 4 days" : "in 3 days"}`);
+    expect("reminder: the UTC day", notificationTitle(reminder("2026-11-02"), { now: cron }),
+      `"Fit sample" is due ${behind ? "tomorrow" : "today"}`);
+    // Run by hand at 20:00 UTC: tomorrow already in Shanghai and Kiritimati.
+    const evening = new Date("2026-10-26T20:00:00Z");
+    const ahead = ["Asia/Shanghai", "Pacific/Kiritimati"].includes(zone);
+    expect("reminder: run in the evening", notificationTitle(reminder("2026-10-28"), { now: evening }),
+      `"Fit sample" is due ${ahead ? "tomorrow" : "in 2 days"}`);
+    expect("reminder: read after the day", notificationTitle(reminder("2026-10-20"), { now: evening }), '"Fit sample" was due Oct 20');
+    expect("reminder: the email's zone", notificationTitle(reminder("2026-10-28"), { now: evening, timeZone: "UTC" }), '"Fit sample" is due in 2 days');
+    expect("other titles kept", notificationTitle({ kind: "quote_received", title: "x is due in 3 days", data: { due_on: "2026-10-20" } }), "x is due in 3 days");
   } catch (failure) {
     failures.push(failure.stack ?? String(failure));
   } finally {

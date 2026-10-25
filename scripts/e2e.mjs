@@ -4,6 +4,7 @@
  *   supabase start
  *   npm run dev          # in another terminal
  *   npm run e2e
+ *   TZ=Asia/Shanghai npm run e2e   # the browser and the reminders in another zone
  *
  * Drives a real browser through everything a new user meets — request a
  * sign-in code, read it out of the local mail server, create an organisation,
@@ -26,6 +27,7 @@ import { execFileSync } from "node:child_process";
 import { Stagehand, localBrowser } from "@browserbasehq/stagehand";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
+import { notificationTitle } from "../src/shared/notification-text.mjs";
 
 const APP = process.env.E2E_URL ?? "http://127.0.0.1:5173/app.html";
 const OUT = path.resolve("e2e-evidence");
@@ -838,7 +840,21 @@ async function main() {
     // Staff ask for more information first. The company used to be shown
     // "awaiting verification" and nothing else: the request reached only its
     // email and a bell its waiting card does not draw.
-    const askFor = `Please upload a readable business registration (${stamp.toString(36)}).`;
+    // Long and in lines, as staff write them: the company's finish card has
+    // to hold all of it.
+    const askFor = [
+      `Please upload a readable business registration (${stamp.toString(36)}).`,
+      "",
+      "1. The file you uploaded is a photo taken at an angle and the registration number cannot be read.",
+      "2. Your certificate on the profile has expired; please add the current one with its file.",
+      "3. Add your monthly capacity in units, so brands can see whether you can take their order.",
+      "",
+      "Once these are on your profile, finish onboarding again and it comes straight back to us.",
+    ].join("\n");
+    // What a pair on the review page says, by its label.
+    const detailValue = (label) => page.evaluate((wanted) => [...document.querySelectorAll(".factory-detail-pair")]
+      .find((pair) => pair.querySelector("span")?.textContent.trim() === wanted)
+      ?.querySelector("strong")?.textContent.trim() ?? null, label);
     await clickButton(page, "request more information");
     // Its screen-reader label used a class no admin stylesheet defined, so the
     // label was printed twice.
@@ -849,8 +865,15 @@ async function main() {
     await clickButton(page, "send request");
     await page.waitForTimeout(3000);
     const afterAsk = await page.locator("body").innerText();
-    check(afterAsk.includes(askFor), "the review summary shows the note just sent, without a reload");
+    check(afterAsk.includes(askFor.split("\n")[0]), "the review summary shows the note just sent, without a reload");
     check(/needs information/i.test(afterAsk), "and the badge says Needs information");
+    // It said "Pending": the review state and the profile's own column.
+    const statusShown = await detailValue("Profile status");
+    check(statusShown === "Needs information", `and Profile status says the same (${statusShown})`);
+    // A chip heading with no chips under it is a heading for nothing.
+    const emptyChipHeadings = await page.evaluate(() => [...document.querySelectorAll(".admin-review-page .factory-profile-chip-section")]
+      .filter((section) => !section.querySelector(".tag")).length);
+    check(emptyChipHeadings === 0, `no chip heading is drawn without chips (${emptyChipHeadings})`);
 
     // The factory, signed in elsewhere (another origin, so its own session),
     // is shown the request on its waiting card and can answer it.
@@ -862,7 +885,29 @@ async function main() {
     await clickButton(factoryPage, "log in");
     await waitForHeading(factoryPage, "we need a little more information", 40000);
     const askedText = await factoryPage.locator("body").innerText();
-    check(askedText.includes(askFor), "the factory reads the request staff wrote, on its own screen");
+    check(askedText.includes(askFor.split("\n")[0]) && askedText.includes(askFor.split("\n").at(-1)), "the factory reads the request staff wrote, on its own screen");
+    // The note ran out of the card and over the step dots. Measured, not
+    // looked at: every box inside the card, and the card above the dots.
+    const finishCardFits = () => factoryPage.evaluate(() => {
+      const card = document.querySelector(".factory-onboarding-card, .brand-onboarding-card");
+      const dots = document.querySelector(".factory-onboarding-progress, .brand-onboarding-progress");
+      if (!card) return "no card";
+      const box = card.getBoundingClientRect();
+      const out = [...card.querySelectorAll("*")].filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.height > 0 && (r.bottom > box.bottom + 1 || r.right > box.right + 1 || r.left < box.left - 1);
+      });
+      if (out.length) return `${out.length} boxes outside the card, first ${out[0].tagName.toLowerCase()}.${out[0].className}`;
+      if (card.scrollHeight > card.clientHeight + 1) return `card scrolls (${card.scrollHeight} > ${card.clientHeight})`;
+      if (dots && dots.getBoundingClientRect().top < box.bottom - 1) return "the card runs over the step dots";
+      return "fits";
+    });
+    const fitsWide = await finishCardFits();
+    check(fitsWide === "fits", `the long request fits its card at desktop width (${fitsWide})`);
+    await factoryPage.setViewportSize(375, 812);
+    await factoryPage.waitForTimeout(500);
+    const fitsNarrow = await finishCardFits();
+    check(fitsNarrow === "fits", `and at 375px wide (${fitsNarrow})`);
     await record(factoryPage, "Factory asked for more information", "the request is on the company's own waiting card");
 
     const answering = createClient(
@@ -881,6 +926,9 @@ async function main() {
     await clickButton(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
+    // Profile completeness used to vanish once a decision was made.
+    const completenessShown = await detailValue("Profile completeness");
+    check(/^\d+%$/.test(completenessShown ?? ""), `Profile completeness is still shown after approval (${completenessShown})`);
 
     const { data: verified } = await db
       .from("factory_profiles").select("verification_status, trust_tier").eq("org_id", factoryOrg.id).single();
@@ -950,6 +998,18 @@ async function main() {
     const quotesText = await page.locator("body").innerText();
     check(/quotes/i.test(quotesText), "the marketplace-wide quote table opens");
     await record(page, "Marketplace quotes", "every quote across the marketplace, staff only");
+
+    // A request open to all vendors is quoted by vendors nobody invited; its
+    // row said "0 vendors" beside its quotes.
+    const { data: openRequest } = await db.from("rfqs").select("title, rfq_invitations(count)")
+      .eq("visibility", "open_to_all").neq("status", "draft").limit(1).maybeSingle();
+    if (openRequest) {
+      await page.goto(`${ADMIN}?screen=rfqs`);
+      await page.waitForTimeout(3500);
+      const openRow = await page.evaluate((title) => [...document.querySelectorAll("tr")]
+        .find((row) => row.innerText.includes(title))?.innerText ?? "", openRequest.title);
+      check(/open to all vendors/i.test(openRow), `an open request says it is open to all, not how many were invited (${openRow.replace(/\s+/g, " ").slice(0, 80)})`);
+    }
 
     // ================= RFQ =================
     console.log("\nREQUEST FOR QUOTES");
@@ -2204,9 +2264,17 @@ async function main() {
     }
     await record(page, "The brand reads it", "in its own language, with the original one click away");
 
-    const { data: readState } = await db.from("message_reads")
-      .select("thread_id, user_id").eq("thread_id", runThread.id);
-    check(readState.length >= 2,
+    // Read once the page has written it: the messages are drawn first and the
+    // read is recorded just after.
+    let readState = [];
+    const readStateDeadline = Date.now() + 10000;
+    while (Date.now() < readStateDeadline) {
+      ({ data: readState } = await db.from("message_reads")
+        .select("thread_id, user_id").eq("thread_id", runThread.id));
+      if ((readState ?? []).length >= 2) break;
+      await page.waitForTimeout(250);
+    }
+    check((readState ?? []).length >= 2,
       "opening the conversation recorded that it was read — the count cannot get stuck");
 
     await page.locator('.message-composer textarea').fill("Confirmed, that matches the chart. Go ahead.");
@@ -2299,6 +2367,39 @@ async function main() {
     const liveGap = await fromNewest();
     check(liveGap >= 0 && liveGap < 4, `and the open conversation scrolls to it (${liveGap}px from the newest)`);
     await record(page, "It arrives live", "the other side's message appears while the page is open");
+
+    // A conversation the brand has never seen, started by the other side
+    // while the page is open, arrives unread, and the one on screen stays
+    // open. The page used to open the newest conversation again on every
+    // arrival, behind the one shown, and mark it read: no badge.
+    const cardsBefore = await page.locator(".message-thread-card").count();
+    const { data: newThread, error: newThreadError } = await factoryClient.rpc("open_rfq_thread", {
+      target_rfq: publishedRfq.id, factory_org: factoryOrg.id,
+    });
+    const newLine = `Before you reorder, we have new trims to show you (${runWord}).`;
+    const { data: newRow } = await factoryClient.from("messages").insert({
+      thread_id: newThread?.id, sender_org_id: factoryOrg.id, sender_user_id: factorySession?.user?.id, body: newLine,
+    }).select("id").single();
+    await fetch(`${APP.replace(/\/app\.html$/, "")}/api/screen-message`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${factorySession?.session?.access_token}` },
+      body: JSON.stringify({ messageId: newRow?.id }),
+    }).catch(() => null);
+    const cardFor = () => page.evaluate((word) => {
+      const card = [...document.querySelectorAll(".message-thread-card")].find((item) => item.textContent.includes("new trims") && item.textContent.includes(word));
+      return card ? { badge: card.querySelector("b")?.textContent ?? "" } : null;
+    }, runWord);
+    let newCard = null;
+    const newDeadline = Date.now() + 15000;
+    while (Date.now() < newDeadline && !(newCard = await cardFor())) await page.waitForTimeout(250);
+    // Long enough for the page to have opened it and marked it read, as it did.
+    await page.waitForTimeout(2000);
+    newCard = await cardFor();
+    const openCard = await page.locator(".message-thread-card.active").innerText().catch(() => "");
+    const { data: brandRead } = await db.from("message_reads").select("user_id")
+      .eq("thread_id", newThread?.id ?? "").neq("user_id", factorySession?.user?.id ?? "");
+    check(!newThreadError && cardsBefore >= 1 && newCard?.badge === "1" && openCard.includes(bornOrder.order_number) && (brandRead ?? []).length === 0,
+      `a new conversation from the other side arrives live with an unread badge of 1, and the open one stays open (badge "${newCard?.badge ?? "no card"}", ${(brandRead ?? []).length} read${newThreadError ? `, ${newThreadError.message}` : ""})`);
 
     // A file a message cannot carry is refused in words when it is picked,
     // never sent to storage to come back as "mime type ... is not supported".
@@ -2501,6 +2602,28 @@ async function main() {
     check(/Waiting for/.test(brandPanel) && brandPanel.includes(callTitle), "the brand's panel shows the invite, waiting for the factory");
     await record(page, "Invite sent", "Waiting for the factory to answer");
 
+    // A session ended elsewhere, mid-flow. The page still holds a token the
+    // database accepts, but the server's text check asks the auth server,
+    // which refuses it: the screen must lead to sign-in, not say "sign in is
+    // required" and stay put.
+    await page.evaluate(() => [...document.querySelectorAll(".message-room-actions button")].find((node) => node.textContent.trim() === "Schedule call")?.click());
+    check(await pickTime(17), "a second invite is started");
+    await page.locator('.message-schedule-modal .schedule-field input').fill(`${callTitle} after sign-out`);
+    const pageToken = await page.evaluate(() => {
+      const key = Object.keys(localStorage).find((name) => name.endsWith("-auth-token"));
+      return key ? JSON.parse(localStorage.getItem(key))?.access_token ?? "" : "";
+    });
+    const ended = await fetch(`${process.env.SUPABASE_URL ?? stack.API_URL}/auth/v1/logout?scope=local`, {
+      method: "POST",
+      headers: { apikey: process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, authorization: `Bearer ${pageToken}` },
+    });
+    check(ended.status === 204, `the page's session is ended on the server (${ended.status})`);
+    check(await inDialog("Send invite"), "Send invite, with the ended session");
+    const toSignIn = await page.waitForSelector('input[name="email"]', { timeout: 15000 }).then(() => true, () => false);
+    check(toSignIn, "the screen goes to sign-in");
+    check(!(await callsOnThread()).some((call) => call.title === `${callTitle} after sign-out`), "and no invite was saved");
+    await record(page, "Session ended elsewhere", "sending a call leads to sign-in");
+
     await signOutFully(page);
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory answering a call", "factory");
     await page.goto(`${APP}/messages/${runThread.id}`);
@@ -2692,6 +2815,21 @@ async function main() {
     while (Date.now() < runDeadline && !(await page.evaluate(() => [...document.querySelectorAll("button")].some((node) => node.textContent.trim() === "Run daily jobs now")))) {
       await page.waitForTimeout(300);
     }
+    // An error on the console is drawn in the danger colour. The rule lived
+    // only in a stylesheet admin.html never loads, so errors read as grey.
+    // This admin's address is a reserved one, so Test emails always says so.
+    const errorColour = await page.evaluate(() => {
+      const note = document.querySelector(".admin-error");
+      const probe = document.createElement("span");
+      probe.style.color = "var(--danger)";
+      document.body.append(probe);
+      const danger = getComputedStyle(probe).color;
+      probe.remove();
+      return note ? { shown: getComputedStyle(note).color, danger, body: getComputedStyle(document.body).color } : null;
+    });
+    // Unequal to the body text too: an undefined --danger would leave both grey.
+    check(Boolean(errorColour) && errorColour.shown === errorColour.danger && errorColour.danger !== errorColour.body,
+      `an admin error is drawn in the danger colour (${errorColour?.shown} vs ${errorColour?.danger})`);
     await clickButton(page, "run daily jobs now");
     // The Daily jobs card's own line: the Test emails card above it can carry
     // a note of its own (a staff address that cannot receive a test).
@@ -2714,11 +2852,16 @@ async function main() {
       .select("brand_org_id, factory_org_id").eq("id", bornOrder.id).single();
     const brandsTurn = ["due", "failed"].includes(stepPayment?.state);
     const dueSubject = brandsTurn ? stepPayment.id : openStep?.id ?? bornOrder.id;
-    const { data: dueNotices } = await db.from("notifications").select("id, title, org_id")
+    const { data: dueNotices } = await db.from("notifications").select("id, kind, title, data, org_id")
       .eq("kind", "milestone_due_soon").eq("subject_id", dueSubject);
     check((dueNotices ?? []).length === 1 && dueNotices[0].org_id === (brandsTurn ? orderParties.brand_org_id : orderParties.factory_org_id),
       brandsTurn ? "the brand, which has to fund the step, is reminded once" : "the factory, which acts on the step, is reminded once");
-    check(Boolean(dueNotices?.[0] && await mailFor(brandsTurn ? brandEmail : factoryEmail, dueNotices[0].title)), "and the reminder arrives by email");
+    // Its days count from the reader's own day, not the UTC day the job ran
+    // on: run with TZ=Asia/Shanghai (or another zone) to see it say so.
+    const readerZone = await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const readerTitle = dueNotices?.[0] ? notificationTitle(dueNotices[0], { timeZone: readerZone }) : null;
+    check(Boolean(readerTitle && await mailFor(brandsTurn ? brandEmail : factoryEmail, readerTitle)),
+      `and the reminder arrives by email, worded for ${readerZone}: "${readerTitle}"`);
     await clickButton(page, "run daily jobs now");
     await page.waitForTimeout(4000);
     const { count: dueAgain } = await db.from("notifications").select("*", { count: "exact", head: true })
@@ -2766,7 +2909,10 @@ async function main() {
       // The last saved answer loads with the page, so the button may read "Ask again".
       const askLabel = await page.evaluate(() => [...document.querySelectorAll(".admin-assist-panel button")].map((node) => node.textContent.trim()).find((text) => /^Ask (AI for suggestions|again)$/.test(text)) ?? "");
       check(Boolean(askLabel), `the review page offers AI suggestions, on request only ("${askLabel}")`);
-      await clickButton(page, askLabel || "ask ai for suggestions");
+      // By its place, not its label: the saved answer can arrive between the
+      // read above and this click and turn "Ask AI for suggestions" into
+      // "Ask again" (any run after the first on the same database).
+      await page.locator(".admin-assist-actions .secondary-btn").first().click();
       await page.waitForTimeout(500);
       const askDeadline = Date.now() + 45000;
       while (Date.now() < askDeadline && await page.evaluate(() => [...document.querySelectorAll(".admin-assist-panel button")].some((node) => node.textContent.includes("Asking")))) {

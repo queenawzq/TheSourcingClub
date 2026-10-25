@@ -1,3 +1,9 @@
+/* The console's error line (Test emails, AI suggestions, Test data, a
+   refused staff action). Its rule lived only in admin.css, which the
+   hand-built boards import on app.html and admin.html never loads, so every
+   error here read as grey body text. */
+.admin-error { color: var(--danger); font-size: 13px; font-weight: 500; }
+
 /* Live only: the overview's cards link to the boards that act on them. */
 .admin-metric-link {
   display: inline-block;
