@@ -225,7 +225,7 @@ export function toRfqCard(rfq, messageCount = 0) {
     status: rfq.status === "awarded"
       ? "Awarded"
       : rfq.status === "cancelled"
-        ? "Archived"
+        ? "Cancelled"
         : quotes > 0
         ? "Ready to compare"
         : rfq.status === "draft"
@@ -266,8 +266,7 @@ export function createLiveAdapter({ org, isFactory, user }) {
       return {
         active: bucket((r) => r.status === "open"),
         drafts: bucket((r) => r.status === "draft"),
-        closed: bucket((r) => r.status === "awarded"),
-        archived: bucket((r) => r.status === "cancelled"),
+        closed: bucket((r) => r.status === "awarded" || r.status === "cancelled"),
       };
     },
   };

@@ -1,7 +1,7 @@
 /**
  * The brand's requests, on Queena's designed `RfqsScreen`.
  *
- * The card's "Archive quote" menu item cancels the request through
+ * The card's "Close request" menu item cancels the request through
  * cancel_rfq(), which closes the quotes on it and tells every vendor involved.
  * That is not something to do on one mis-click, so it asks first — in the
  * design's own modal, not a browser dialog.
@@ -61,11 +61,11 @@ export default function LiveRfqs({ org, user, isOwner, goTo }) {
           <section className="brand-profile-modal" role="dialog" aria-modal="true" aria-labelledby="cancel-rfq-title">
             <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={close}>×</button>
             <header className="brand-profile-modal-header">
-              <h1 id="cancel-rfq-title">Archive “{confirming.title}”?</h1>
+              <h1 id="cancel-rfq-title">Close “{confirming.title}”?</h1>
               <p>
                 {isOwner
                   ? "The request closes to new quotes. Quotes already sent on it are declined, and every vendor you invited or who quoted is told."
-                  : "Only an owner of your company can archive a request, because it closes every vendor's quote on it."}
+                  : "Only an owner of your company can close a request, because it closes every vendor's quote on it."}
               </p>
             </header>
             {error && <p className="composer-error" role="alert">{error.message}</p>}
@@ -73,7 +73,7 @@ export default function LiveRfqs({ org, user, isOwner, goTo }) {
               <button className="secondary-btn" type="button" onClick={close}>Keep request</button>
               {isOwner && (
                 <button className="primary-btn" type="button" onClick={confirm} disabled={busy} data-testid="confirm-cancel-rfq">
-                  {busy ? "Archiving…" : "Archive request"}
+                  {busy ? "Closing…" : "Close request"}
                 </button>
               )}
             </footer>

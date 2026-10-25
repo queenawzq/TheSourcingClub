@@ -53,12 +53,12 @@ export function rowsForTab(rows, tabKey, membership = null, archived = null) {
 }
 
 /**
- * The tab strip as drawn, plus a permanent "Archived" tab. It is not one of
+ * The tab strip as drawn, plus a permanent "Cancelled" tab (stored as archived). It is not one of
  * the company's saved tabs, so it never
  * reaches "Manage tabs" and cannot be renamed or moved.
  */
 export function withArchivedTab(tabs) {
-  return [...tabs.filter((tab) => tab.key !== "archived"), { key: "archived", label: "Archived", locked: true }];
+  return [...tabs.filter((tab) => tab.key !== "archived"), { key: "archived", label: "Cancelled", locked: true }];
 }
 
 /**

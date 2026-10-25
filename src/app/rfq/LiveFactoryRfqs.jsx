@@ -71,7 +71,7 @@ function toCard(rfq, quote, images = [], tagMetadata = {}) {
   // A cancelled request closes every quote on it; "Not selected" would say
   // the brand chose someone else, which is not what happened.
   const [status, statusTone] = rfq.status === "cancelled"
-    ? ["Request archived", "neutral"]
+    ? ["Request cancelled", "neutral"]
     : due ?? STATUS[statusKey] ?? STATUS.invited;
   const quoted = quote?.unit_price_cents != null ? `${formatMoney(quote.unit_price_cents, quote.currency)} / unit` : "Not quoted";
 
@@ -124,20 +124,19 @@ export default function LiveFactoryRfqs({ org }) {
           loadRequestTagMetadata([...new Map(requests.map((rfq) => [rfq.id, rfq])).values()]),
         ]);
         if (cancelled) return;
-        const closedRfq = (rfq) => rfq.status === "awarded";
+        const closedRfq = (rfq) => rfq.status === "awarded" || rfq.status === "cancelled";
         const quotedRfqIds = new Set(quotes.map((quote) => quote.rfq_id));
-        const byTab = { active: [], drafts: [], invited: [], closed: [], archived: [] };
+        const byTab = { active: [], drafts: [], invited: [], closed: [] };
 
         for (const quote of quotes) {
           const card = toCard(quote.rfqs, quote, presentations.get(quote.rfq_id)?.images ?? [], tagMetadata.get(quote.rfq_id));
-          if (quote.rfqs.status === "cancelled") byTab.archived.push(card);
-          else if (closedRfq(quote.rfqs) || ["accepted", "declined", "withdrawn"].includes(quote.status)) byTab.closed.push(card);
+          if (closedRfq(quote.rfqs) || ["accepted", "declined", "withdrawn"].includes(quote.status)) byTab.closed.push(card);
           else if (quote.status === "draft") byTab.drafts.push(card);
           else byTab.active.push(card);
         }
         for (const invitation of invitations) {
           if (quotedRfqIds.has(invitation.rfq_id) || !invitation.rfqs) continue;
-          (invitation.rfqs.status === "cancelled" ? byTab.archived : closedRfq(invitation.rfqs) ? byTab.closed : byTab.invited).push(
+          (closedRfq(invitation.rfqs) ? byTab.closed : byTab.invited).push(
             toCard(invitation.rfqs, null, presentations.get(invitation.rfq_id)?.images ?? [], tagMetadata.get(invitation.rfq_id)),
           );
         }

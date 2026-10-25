@@ -2296,6 +2296,38 @@ button {
   align-items: center;
 }
 
+/* Vendor profiles have no owner/status sidebar: do not inherit the brand
+   profile's tablet grid, which squeezes the hero beside the back link. */
+.brand-profile-redesign.brand-factory-public-profile.is-public-view .factory-profile-shell {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "back" "hero" "layout";
+}
+
+.brand-profile-redesign.brand-factory-public-profile .brand-factory-profile-back-row {
+  grid-area: back;
+}
+
+.brand-profile-redesign.brand-factory-public-profile .factory-profile-hero {
+  grid-area: hero;
+  min-width: 0;
+}
+
+.brand-profile-redesign.brand-factory-public-profile .factory-profile-layout {
+  grid-area: layout;
+}
+
+@media (max-width: 1180px) {
+  .brand-profile-redesign.brand-factory-public-profile .factory-profile-hero {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+  }
+
+  .brand-profile-redesign.brand-factory-public-profile .factory-profile-actions {
+    flex-wrap: wrap;
+  }
+}
+
 .brand-factory-public-profile .brand-factory-profile-side-details {
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
@@ -9111,6 +9143,23 @@ select {
   height: 60px;
   object-fit: cover;
   border-radius: 3px;
+}
+
+.update-attachment-preview {
+  display: grid;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.sample-file > .text-link,
+.factory-posted-file > .text-link {
+  padding: 0;
+  font-size: 10px;
 }
 
 .sample-file span,

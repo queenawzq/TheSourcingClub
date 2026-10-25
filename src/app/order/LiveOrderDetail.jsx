@@ -34,7 +34,7 @@ import {
 } from "../../lib/domain/milestone.js";
 import { brandSummary } from "../../lib/domain/rfq.js";
 import { requestRelease } from "../../lib/domain/stripe.js";
-import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
+import { downloadDocument, listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
 import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -450,7 +450,15 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       ...next,
       // Approval ends the work, not its history. Keep existing comments and
       // attachments visible on completed steps for both participants.
-      update: latestUpdateFor(milestone.id, updates, { urls: photoUrls, onViewAll: () => openStep(milestone) }),
+      update: latestUpdateFor(milestone.id, updates, {
+        urls: photoUrls,
+        onViewAll: () => openStep(milestone),
+        onOpenFile: (document) => openFile({ document }),
+        onDownloadFile: async (document) => {
+          try { await downloadDocument(document); }
+          catch (failure) { setError(failure); }
+        },
+      }),
     };
   });
 

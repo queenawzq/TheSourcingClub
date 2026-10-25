@@ -4722,8 +4722,7 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
     { key: "active", label: `Active RFQs (${countFor("active", 4)})`, locked: true },
     { key: "drafts", label: `Drafts (${countFor("drafts", 3)})`, locked: true },
     { key: "invited", label: `Invited (${countFor("invited", 2)})`, locked: true },
-    { key: "closed", label: `Closed (${countFor("closed", 6)})`, locked: true },
-    { key: "archived", label: `Archived (${countFor("archived", 0)})`, locked: true }
+    { key: "closed", label: `Closed (${countFor("closed", 6)})`, locked: true }
   ]);
   const [isAddingTab, setIsAddingTab] = useState(false);
   const [newTabName, setNewTabName] = useState("");
@@ -4733,8 +4732,7 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
     active: factoryRfqs,
     drafts: factoryDraftRfqs,
     invited: factoryInvitedRfqs,
-    closed: factoryClosedRfqs,
-    archived: []
+    closed: factoryClosedRfqs
   };
   const activeRfqs = rfqDataByTab[activeTab] || (rfqsByTab ? [] : factoryRfqs);
 
@@ -6195,7 +6193,7 @@ export function FactoryProjectsPage({
                 : activeTab === "closed"
                 ? "Nothing closed yet."
                 : activeTab === "archived"
-                ? "No archived orders."
+                ? "No cancelled orders."
                 : activeTab !== "active"
                 ? "No orders in this tab yet. Add one from an order's ··· menu."
                 : "No production orders yet. One appears here when a brand awards you a quote."}
@@ -9757,8 +9755,11 @@ function FactoryPostedUpdateCard({ update }) {
                 <div className="factory-posted-file-row">
                   {item.photos?.map((photo) => (
                     <div className="factory-posted-file" key={photo.id}>
-                      {photo.url ? <img src={photo.url} alt="" /> : null}
-                      <span>{photo.label}</span>
+                      <button className="update-attachment-preview" type="button" onClick={photo.onPreview} aria-label={`Preview ${photo.label}`}>
+                        {photo.url ? <img src={photo.url} alt="" /> : null}
+                        <span>{photo.label}</span>
+                      </button>
+                      <button className="text-link" type="button" onClick={photo.onDownload} aria-label={`Download ${photo.label}`}>Download</button>
                     </div>
                   ))}
                   {item.extraFiles > 0 && (

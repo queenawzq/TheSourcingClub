@@ -7113,8 +7113,7 @@ export function RfqsScreen({
   const [rfqTabs, setRfqTabs] = useState([
     { key: "active", label: "Active quotes (4)", locked: true },
     { key: "drafts", label: "Drafts (2)", locked: true },
-    { key: "closed", label: "Closed (6)", locked: true },
-    { key: "archived", label: "Archived (0)", locked: true }
+    { key: "closed", label: "Closed (6)", locked: true }
   ]);
   const [isAddingTab, setIsAddingTab] = useState(false);
   const [newTabName, setNewTabName] = useState("");
@@ -7124,7 +7123,7 @@ export function RfqsScreen({
   // app.html. The adapter returns the three buckets already split, because
   // which statuses count as "closed" is a domain question, not a screen one.
   const { data: rfqBuckets, loading: rfqsLoading, error: rfqsError } = useRfqs();
-  const rfqDataByTab = rfqBuckets ?? { active: [], drafts: [], closed: [], archived: [] };
+  const rfqDataByTab = rfqBuckets ?? { active: [], drafts: [], closed: [] };
   const activeRfqsForTab = rfqDataByTab[activeTab] ?? [];
 
   /**
@@ -7434,7 +7433,7 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, o
                       onArchive?.(rfq);
                     }}
                   >
-                    Archive quote
+                    Close request
                   </button>
                 )}
               </div>
@@ -7766,7 +7765,7 @@ export function ProjectsScreen({
         document.body
       )}
 
-      <section className="projects-list" aria-label={activeTab === "closed" ? "Closed orders" : activeTab === "archived" ? "Archived orders" : "Active orders"}>
+      <section className="projects-list" aria-label={activeTab === "closed" ? "Closed orders" : activeTab === "archived" ? "Cancelled orders" : "Active orders"}>
         {/* Three states the prototype has never had. Against the mock adapter
             only the last one is ever reached, which is why the page looks
             unchanged; against a network all three happen. */}
@@ -7783,7 +7782,7 @@ export function ProjectsScreen({
               : activeTab === "closed"
               ? "Nothing closed yet."
               : activeTab === "archived"
-              ? "No archived orders."
+              ? "No cancelled orders."
               : activeTab !== "active"
               ? "No orders in this tab yet. Add one from an order's ··· menu."
               : "No production orders yet. One appears here when a quote is awarded."}
@@ -8628,8 +8627,11 @@ function ProjectUpdateCard({ update }) {
                 <div className="sample-file-row">
                   {item.photos?.map((photo) => (
                     <div className="sample-file" key={photo.id}>
-                      {photo.url ? <img src={photo.url} alt="" /> : null}
-                      <span>{photo.label}</span>
+                      <button className="update-attachment-preview" type="button" onClick={photo.onPreview} aria-label={`Preview ${photo.label}`}>
+                        {photo.url ? <img src={photo.url} alt="" /> : null}
+                        <span>{photo.label}</span>
+                      </button>
+                      <button className="text-link" type="button" onClick={photo.onDownload} aria-label={`Download ${photo.label}`}>Download</button>
                     </div>
                   ))}
                   {item.extraFiles > 0 && (

@@ -7067,7 +7067,8 @@ body:has(.factory-onboarding-page) {
   background: #fff;
 }
 
-.factory-posted-file > img:first-child {
+.factory-posted-file > img:first-child,
+.factory-posted-file .update-attachment-preview img {
   width: 60px;
   height: 60px;
   object-fit: cover;
