@@ -39,6 +39,23 @@ const HOLD = [
   ["WhatsApp me when the sample ships", "a WhatsApp contact"],
   ["Our Instagram is maison.rue", "an Instagram contact"],
   ["Let's talk on WeChat instead", "a WeChat contact"],
+  // Found slipping through by the independent test of Oct 25 (and with them
+  // through a call's title, which no model reads).
+  ["Ring 07700 900123", "a phone number"],
+  ["call me on 07700900123", "a phone number"],
+  ["call 2125550187", "a phone number"],
+  ["Text me first on 07700900123 or call 2125550187", "a phone number"],
+  ["1 3 8 1 2 3 4 5 6 7 8", "a phone number"],
+  ["my mobile is 1 3 8 1 2 3 4 5 6 7 8", "a phone number"],
+  ["我的电话 一三八 一二三四 五六七八", "a phone number"],
+  ["j o h n @ g m a i l . c o m", "an email address"],
+  ["Visit tscmill dot com", "a link"],
+  ["tscmill [dot] com", "a link"],
+  ["q q:12345678", "a QQ contact"],
+  ["call 12125550187", "a phone number"],
+  ["447700900123 on whatsapp later", "a phone number"],
+  ["8613800138000", "a phone number"],
+  ["0 7 7 0 0 9 0 0 1 2 3", "a phone number"],
 ];
 
 const HOLD_FILES = [
@@ -81,6 +98,30 @@ const DELIVER = [
   "Hi Ningbo, thanks for the quote. Could we talk through the fit sample on a short call?",
   "Can we have a quick video call tomorrow to go over the lab dips?",
   "Let's schedule a meeting next week to review the PP sample.",
+  // Next to the shapes added on Oct 25: runs of digits that are not phones,
+  // spaced letters that are not addresses, "dot" that is not a domain.
+  "Order TSC-000022 is in production",
+  "Invoice 2026102501 attached",
+  "PO 4500012345 for the jersey",
+  "Barcode 4006381333931 on the swing tag",
+  "300 units at $12.50, total $3,750.00",
+  "Total 2125550187 units across the season",
+  "MOQ 1000 pcs, lead time 45 days, ship 2026-11-02",
+  "Delivery 25/10/2026, samples by 2026年11月1日",
+  "Sizes XS S M L XL XXL",
+  "Size run 2 4 6 8 10 12",
+  "Ratio 1 2 2 1 for S M L XL",
+  "Years 2024 2025 2026 all in stock",
+  "Payment 30% deposit, 70% before shipment, $18,400.00",
+  "Fabric 100% cotton, 180 gsm, width 150 cm",
+  "Carton 60 x 40 x 35 cm, 12 pcs per carton",
+  "We loved the polka dot co-ord in your lookbook.",
+  "Polka dot com-pared to stripes looks better",
+  "That was in the dot com bubble years.",
+  "一件一套，一共三百件",
+  "数量：一千二百件，交期三十天",
+  "Q4 delivery, Q1 reorder",
+  "Price is 1 2 . 5 0 USD",
 ];
 
 const DELIVER_FILES = [
