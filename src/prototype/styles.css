@@ -2296,6 +2296,38 @@ button {
   align-items: center;
 }
 
+/* Vendor profiles have no owner/status sidebar: do not inherit the brand
+   profile's tablet grid, which squeezes the hero beside the back link. */
+.brand-profile-redesign.brand-factory-public-profile.is-public-view .factory-profile-shell {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "back" "hero" "layout";
+}
+
+.brand-profile-redesign.brand-factory-public-profile .brand-factory-profile-back-row {
+  grid-area: back;
+}
+
+.brand-profile-redesign.brand-factory-public-profile .factory-profile-hero {
+  grid-area: hero;
+  min-width: 0;
+}
+
+.brand-profile-redesign.brand-factory-public-profile .factory-profile-layout {
+  grid-area: layout;
+}
+
+@media (max-width: 1180px) {
+  .brand-profile-redesign.brand-factory-public-profile .factory-profile-hero {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 20px;
+  }
+
+  .brand-profile-redesign.brand-factory-public-profile .factory-profile-actions {
+    flex-wrap: wrap;
+  }
+}
+
 .brand-factory-public-profile .brand-factory-profile-side-details {
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
@@ -4329,6 +4361,17 @@ textarea.question-field::placeholder {
   background: #f6f9fc;
 }
 
+/* On the RFQ review step the surrounding card already provides the surface.
+   Keep uploaded files as chips instead of placing them inside a second panel. */
+.review-brief-stack .attachment-tray {
+  min-height: 0;
+  margin-top: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .attachment-chip {
   display: inline-flex;
   align-items: center;
@@ -4550,6 +4593,10 @@ button.compact-filter-button {
 }
 
 .filter-chip {
+  display: inline-flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
   height: 28px;
   padding: 0 14px;
   border: 1px solid var(--border);
@@ -4558,6 +4605,7 @@ button.compact-filter-button {
   color: var(--text);
   font-size: 12px;
   font-weight: 700;
+  line-height: 1;
 }
 
 .clear-filters {
@@ -8162,9 +8210,11 @@ select {
 }
 
 .project-progress {
+  --project-step-count: 5;
+  --project-rail-inset: 10%;
   position: relative;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(var(--project-step-count), 1fr);
   width: min(100%, 504px);
   margin-top: 8px;
   margin-left: -18px;
@@ -8180,8 +8230,8 @@ select {
 .project-progress-line {
   position: absolute;
   top: 21px;
-  left: 10%;
-  right: 10%;
+  left: var(--project-rail-inset);
+  right: var(--project-rail-inset);
   height: 2px;
   border-radius: 999px;
   background: linear-gradient(90deg, #1a4df2 0 var(--project-progress), #d7e0ea var(--project-progress) 100%);
@@ -9091,6 +9141,76 @@ select {
   border-radius: 3px;
 }
 
+.update-attachment-preview {
+  display: grid;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.sample-file.update-attachment-card,
+.factory-posted-file.update-attachment-card {
+  box-sizing: border-box;
+  width: 180px;
+  max-width: 100%;
+  flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+}
+
+.update-attachment-card .update-attachment-preview {
+  grid-column: 1 / -1;
+}
+
+.sample-file.update-attachment-card .update-attachment-preview img,
+.factory-posted-file.update-attachment-card .update-attachment-preview img {
+  width: 100%;
+  height: 110px;
+  object-fit: contain;
+}
+
+.update-attachment-card .update-attachment-name {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.sample-file-row:has(.update-attachment-card),
+.factory-posted-file-row:has(.update-attachment-card) {
+  flex-wrap: wrap;
+}
+
+.update-attachment-download {
+  display: grid;
+  place-items: center;
+  justify-self: end;
+  width: 28px;
+  height: 28px;
+  padding: 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.sample-file .update-attachment-download img,
+.factory-posted-file .update-attachment-download img {
+  width: 16px;
+  height: 16px;
+}
+
 .sample-file span,
 .sample-file-row > button {
   color: #0b1020;
@@ -9827,6 +9947,15 @@ select {
   line-height: 18px;
 }
 
+/* Keep Browse card identity spacing consistent with and without a badge. */
+.marketplace-factory-card .marketplace-factory-title .factory-name-row {
+  min-height: 32px;
+}
+
+.marketplace-factory-card .marketplace-factory-title p {
+  margin-top: 4px;
+}
+
 .marketplace-vendor-type {
   display: inline-flex;
   align-items: center;
@@ -9953,6 +10082,15 @@ select {
   font-size: 13px;
   font-weight: 500;
   line-height: 18px;
+}
+
+/* Browse cards show a brief preview; the profile keeps the full description. */
+.marketplace-description-preview p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .marketplace-samples-shell {
@@ -10091,6 +10229,25 @@ select {
 .marketplace-tag-section {
   display: grid;
   gap: 8px;
+}
+
+/* Two complete tag rows on browse cards; full lists remain on profiles. */
+.marketplace-factory-card > .marketplace-tag-section .tag-row {
+  max-height: 64px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.marketplace-factory-card > .marketplace-tag-section .tag {
+  box-sizing: border-box;
+  display: block;
+  height: 28px;
+  min-height: 28px;
+  max-width: 100%;
+  line-height: 26px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .marketplace-tag-label {
@@ -11736,6 +11893,24 @@ body:has(.brand-onboarding-page) {
 .brand-onboarding-chip-add-row .compact-btn {
   min-height: 34px;
   padding: var(--button-padding);
+}
+
+.review-service-selector {
+  margin-top: 4px;
+  padding: 16px;
+  border: 1px solid #d7e0ea;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.review-service-selector > strong {
+  color: #0b1020;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.review-service-selector .brand-onboarding-chip-add-row {
+  max-width: none;
 }
 
 .brand-assets-dropzone {
@@ -16092,7 +16267,7 @@ button.sort-button {
 }
 
 .home-production-card > .home-production-progress .project-progress {
-  grid-template-columns: repeat(5, 1fr) !important;
+  grid-template-columns: repeat(var(--project-step-count), 1fr) !important;
   gap: 0 !important;
   min-height: var(--production-card-detail-row-height) !important;
   width: 100% !important;
@@ -17443,7 +17618,7 @@ button.sort-button {
 }
 
 .home-recommended-invite-card .invite-factory-top .marketplace-factory-title p {
-  margin-top: -4px;
+  margin-top: 4px;
   font-size: 12px;
   line-height: 16px;
 }
@@ -17510,11 +17685,12 @@ button.sort-button {
   line-height: var(--card-title-line) !important;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transform: translateY(2px);
+  transform: none;
 }
 
 .home-recommended-invite-card .invite-factory-top .factory-name-row {
   display: flex;
+  min-height: 28px;
   align-items: flex-start;
   gap: 2px;
 }
@@ -18027,6 +18203,12 @@ button.sort-button {
   font-weight: 700;
 }
 
+.field .field-input::placeholder {
+  color: #8796ad;
+  font-weight: 400;
+  opacity: 1;
+}
+
 .field .field-input:focus {
   outline: 2px solid var(--blue, #2458ff);
   outline-offset: 2px;
@@ -18055,7 +18237,8 @@ button.sort-button {
 }
 
 .field .tsc-date-trigger.placeholder > span {
-  color: #8291aa;
+  color: #8796ad;
+  font-weight: 400;
 }
 
 .tsc-date-trigger > i {

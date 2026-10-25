@@ -11,8 +11,9 @@
  * the model is off or wrong, and it is why the review fields have to be
  * editable rather than read-only.
  *
- * The draft row exists before a single field is filled, so nothing typed is
- * ever held only in component state.
+ * The draft row exists before a single field is filled. Review edits are
+ * persisted by the explicit Save changes action or while advancing to Invite
+ * vendors; attachment uploads persist immediately.
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DescribeScreen, FlowShell, InviteScreen, InviteSuccessScreen, ReviewScreen } from "../../prototype/main.jsx";
@@ -23,12 +24,12 @@ import { getOrder } from "../../lib/domain/order.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
 import { categoryTermIds, fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
-import { listLinks, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
+import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { linkedLabels, mentionsLabel, monthLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 
-const KINDS = ["product_category", "certification", "region", "sourcing_responsibility"];
+const KINDS = ["product_category", "certification", "region", "service", "sourcing_responsibility"];
 
 /** "$18-$24" → 1800 / 2400. Unreadable text stores nothing rather than a guess. */
 function priceRange(text) {
@@ -64,7 +65,7 @@ const SOURCING_SLUG = {
   full: "factory-sources",
   partial: "mixed",
   "brand-provided": "brand-supplies",
-  unsure: null,
+  unsure: "unsure",
 };
 
 /**
@@ -162,6 +163,7 @@ export function requestFilters(values) {
     text("category"),
     quantity ? `MOQ ≤ ${quantity.toLocaleString("en-US")}` : "",
     text("certifications"),
+    text("services"),
     text("regions").split(/\s*(?:,|\/|\bor\b|\band\b)\s*/i).filter(Boolean).join(" / "),
   ].filter(Boolean);
 }
@@ -183,6 +185,7 @@ export default function LiveComposer({ org, rfqId }) {
   const [invited, setInvited] = useState([]);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
+  const [saveState, setSaveState] = useState("saved");
   // A reorder: the order this draft repeats, and its factory, which the
   // invite step ticks once (and only once, so unticking it sticks).
   const [reorder, setReorder] = useState(null);
@@ -220,8 +223,10 @@ export default function LiveComposer({ org, rfqId }) {
             : "",
           category: linkedLabels(linked, byKind.product_category),
           certifications: linkedLabels(linked, byKind.certification),
+          services: linkedLabels(linked, byKind.service),
           regions: linkedLabels(linked, byKind.region),
           sourcing: sourcingChoice(row.sourcing_responsibility_term_id, byKind.sourcing_responsibility, SOURCING_SLUG),
+          sourcingDetails: row.sourcing_details ?? "",
           additionalDetails: row.additional_details ?? "",
           // Read back as the date it is, so saving again parses the same way.
           deadline: datePickerValue(row.quote_deadline),
@@ -232,6 +237,7 @@ export default function LiveComposer({ org, rfqId }) {
         const fromBrief = fieldsFromBrief(row.brief, byKind.product_category, byKind);
         if (row.reorder_of_order_id) delete fromBrief.timeline;
         setValues((current) => fillBlanks(current, fromBrief));
+        setSaveState("saved");
 
         if (row.reorder_of_order_id) {
           // Read under RLS: an order this brand is not on comes back empty,
@@ -302,6 +308,7 @@ export default function LiveComposer({ org, rfqId }) {
 
   const change = useCallback((name, value) => {
     setValues((current) => ({ ...current, [name]: value }));
+    setSaveState("dirty");
   }, []);
 
   /**
@@ -359,12 +366,93 @@ export default function LiveComposer({ org, rfqId }) {
       // what is still blank — with the model off, skipped or failed, the card
       // still opens with the brief's own facts rather than empty fields.
       setValues((current) => fillBlanks(fillBlanks(current, fromModel(fields)), fieldsFromBrief(freeText, terms.product_category, terms)));
+      setSaveState("dirty");
 
       setStep("review");
     } catch (failure) {
       setError(failure);
     } finally {
       setBusy(false);
+    }
+  }
+
+  /** Persist every editable field on the review card without navigating. */
+  async function persistReview() {
+    const deadline = quoteDeadlineFrom(values.deadline);
+    if (deadline.error) throw new Error(deadline.error);
+
+    await saveRfq(draftId, {
+        title: values.title?.trim() || values.category?.trim() || "Untitled request",
+        quote_deadline: deadline.value,
+        brief: freeText || null,
+        quantity_total: firstNumber(values.quantity),
+        material_notes: values.material?.trim() || null,
+        sample_notes: values.samples?.trim() || null,
+        sourcing_details: values.sourcingDetails?.trim() || null,
+        additional_details: values.additionalDetails?.trim() || null,
+        target_delivery_month: deliveryMonthFrom(values.timeline),
+        sourcing_responsibility_term_id:
+          (terms.sourcing_responsibility ?? []).find((term) => term.slug === SOURCING_SLUG[values.sourcing ?? "partial"])?.id ?? null,
+        ...priceRange(values.price),
+    });
+    // Category, certifications, services and regions are stored as taxonomy
+    // card and stored as taxonomy links, because matching is on slugs. A
+    // phrase that matches no term links nothing rather than linking something
+    // close.
+    const linkKinds = [
+      ["product_category", values.category],
+      ["certification", values.certifications],
+      ["service", values.services],
+      ["region", values.regions],
+    ];
+    for (const [kind, typed] of linkKinds) {
+      if (typed === undefined) continue;
+      // The category line is prose ("Womenswear / poplin shirts"), so a
+      // garment word links its category too.
+      let availableTerms = terms[kind] ?? [];
+      if (kind === "service") {
+        const selectedLabels = String(typed)
+          .split(",")
+          .map((label) => label.trim())
+          .filter(Boolean);
+        for (const label of selectedLabels) {
+          const exists = availableTerms.some((term) => termLabel(term).toLowerCase() === label.toLowerCase());
+          if (!exists) availableTerms = [...availableTerms, await addCustomTerm(org.id, kind, label)];
+        }
+        setTerms((current) => ({ ...current, service: availableTerms }));
+      }
+      const termIds = kind === "product_category"
+        ? categoryTermIds(typed, terms[kind])
+        : availableTerms
+          .filter((term) => kind === "service"
+            ? String(typed).split(",").some((label) => label.trim().toLowerCase() === termLabel(term).toLowerCase())
+            : mentionsLabel(typed, termLabel(term)))
+          .map((term) => term.id);
+      await setLinks({ subjectType: "rfq", subjectId: draftId, orgId: org.id, kind, termIds });
+    }
+
+    const splits = colourSplitsFrom(values.quantity);
+    if (splits.length) await setColourSplits(draftId, splits);
+
+    // The brand's own questions, as rows a vendor answers against.
+    const questions = String(values.vendorQuestions ?? "")
+      .split(/\r?\n/)
+      .map((prompt) => prompt.trim())
+      .filter(Boolean)
+      .map((prompt, index) => ({ prompt, sort: index }));
+    await setQuestions(draftId, questions);
+  }
+
+  async function saveReview() {
+    if (busy || saveState === "saving" || !draftId) return;
+    setSaveState("saving");
+    setError(null);
+    try {
+      await persistReview();
+      setSaveState("saved");
+    } catch (failure) {
+      setSaveState("dirty");
+      setError(failure);
     }
   }
 
@@ -377,63 +465,14 @@ export default function LiveComposer({ org, rfqId }) {
    * visibility for the brand and then asking them about it.
    */
   async function toInvite() {
-    if (busy || !draftId) return;
+    if (busy || saveState === "saving" || !draftId) return;
     setBusy(true);
+    setSaveState("saving");
     setError(null);
 
     try {
-      const deadline = quoteDeadlineFrom(values.deadline);
-      if (deadline.error) throw new Error(deadline.error);
-
-      await saveRfq(draftId, {
-        title: values.title?.trim() || values.category?.trim() || "Untitled request",
-        quote_deadline: deadline.value,
-        brief: freeText || null,
-        quantity_total: firstNumber(values.quantity),
-        material_notes: values.material?.trim() || null,
-        sample_notes: values.samples?.trim() || null,
-        // There is no sourcing_notes column — who sources what is a sentence
-        // about the request, so it joins additional_details rather than
-        // inventing a column for one textarea.
-        additional_details: [values.additionalDetails?.trim(), values.sourcingDetails?.trim()]
-          .filter(Boolean)
-          .join("\n\n") || null,
-        target_delivery_month: deliveryMonthFrom(values.timeline),
-        sourcing_responsibility_term_id:
-          (terms.sourcing_responsibility ?? []).find((term) => term.slug === SOURCING_SLUG[values.sourcing ?? "partial"])?.id ?? null,
-        ...priceRange(values.price),
-      });
-      // Category, certifications and regions are typed as prose on the review
-      // card and stored as taxonomy links, because matching is on slugs. A
-      // phrase that matches no term links nothing rather than linking something
-      // close.
-      const linkKinds = [
-        ["product_category", values.category],
-        ["certification", values.certifications],
-        ["region", values.regions],
-      ];
-      for (const [kind, typed] of linkKinds) {
-        if (typed === undefined) continue;
-        // The category line is prose ("Womenswear / poplin shirts"), so a
-        // garment word links its category too.
-        const termIds = kind === "product_category"
-          ? categoryTermIds(typed, terms[kind])
-          : (terms[kind] ?? [])
-            .filter((term) => mentionsLabel(typed, termLabel(term)))
-            .map((term) => term.id);
-        await setLinks({ subjectType: "rfq", subjectId: draftId, orgId: org.id, kind, termIds });
-      }
-
-      const splits = colourSplitsFrom(values.quantity);
-      if (splits.length) await setColourSplits(draftId, splits);
-
-      // The brand's own questions, as rows a vendor answers against.
-      const questions = String(values.vendorQuestions ?? "")
-        .split(/\r?\n/)
-        .map((prompt) => prompt.trim())
-        .filter(Boolean)
-        .map((prompt, index) => ({ prompt, sort: index }));
-      await setQuestions(draftId, questions);
+      await persistReview();
+      setSaveState("saved");
 
       const rows = unwrap(
         await supabase
@@ -463,6 +502,7 @@ export default function LiveComposer({ org, rfqId }) {
       );
       setStep("invite");
     } catch (failure) {
+      setSaveState("dirty");
       setError(failure);
     } finally {
       setBusy(false);
@@ -636,6 +676,12 @@ export default function LiveComposer({ org, rfqId }) {
       busy={busy}
       onBack={() => setStep("describe")}
       onNext={toInvite}
+      primaryDisabled={saveState === "saving"}
+      secondaryAction={{
+        label: saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save changes",
+        onClick: saveReview,
+        disabled: busy || saveState === "saving" || saveState === "saved",
+      }}
     >
       {reorder && (
         <p className="composer-note" data-testid="reorder-note">
@@ -651,6 +697,7 @@ export default function LiveComposer({ org, rfqId }) {
         onAddFiles={addFiles}
         onRemoveFile={removeFile}
         uploading={uploading}
+        serviceOptions={(terms.service ?? []).map((term) => termLabel(term))}
       />
       {error && <p className="composer-error" role="alert">{error.message}</p>}
     </FlowShell>
