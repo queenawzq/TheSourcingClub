@@ -8631,7 +8631,9 @@ function ProjectUpdateCard({ update }) {
                         {photo.url ? <img src={photo.url} alt="" /> : null}
                         <span>{photo.label}</span>
                       </button>
-                      <button className="text-link" type="button" onClick={photo.onDownload} aria-label={`Download ${photo.label}`}>Download</button>
+                      <button className="update-attachment-download" type="button" onClick={photo.onDownload} aria-label={`Download ${photo.label}`} title="Download">
+                        <img src="/assets/prototype-icons/download.svg" alt="" />
+                      </button>
                     </div>
                   ))}
                   {item.extraFiles > 0 && (

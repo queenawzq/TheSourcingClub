@@ -309,13 +309,11 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order?.id, isFactory]);
 
-  // Signed URLs for the photos the update cards show: the latest update on
-  // each step, at most three photos each. Minted per view, never stored.
+  // Include history photos too: expanding comments must retain thumbnails.
+  // At most three photos per update. Minted per view, never stored.
   useEffect(() => {
     let cancelled = false;
-    const latest = new Map();
-    for (const update of updates) if (!latest.has(update.milestone_id)) latest.set(update.milestone_id, update);
-    const photos = [...latest.values()]
+    const photos = updates
       .flatMap((update) => (update.documents ?? []).filter((doc) => /^image\//.test(doc.mime_type ?? "")).slice(0, 3));
     Promise.all(photos.map(async (doc) => [doc.id, await urlFor(doc).catch(() => null)]))
       .then((pairs) => { if (!cancelled) setPhotoUrls(Object.fromEntries(pairs)); });
