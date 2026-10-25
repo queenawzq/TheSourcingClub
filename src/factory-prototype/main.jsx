@@ -4722,7 +4722,8 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
     { key: "active", label: `Active RFQs (${countFor("active", 4)})`, locked: true },
     { key: "drafts", label: `Drafts (${countFor("drafts", 3)})`, locked: true },
     { key: "invited", label: `Invited (${countFor("invited", 2)})`, locked: true },
-    { key: "closed", label: `Closed (${countFor("closed", 6)})`, locked: true }
+    { key: "closed", label: `Closed (${countFor("closed", 6)})`, locked: true },
+    { key: "archived", label: `Archived (${countFor("archived", 0)})`, locked: true }
   ]);
   const [isAddingTab, setIsAddingTab] = useState(false);
   const [newTabName, setNewTabName] = useState("");
@@ -4732,7 +4733,8 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
     active: factoryRfqs,
     drafts: factoryDraftRfqs,
     invited: factoryInvitedRfqs,
-    closed: factoryClosedRfqs
+    closed: factoryClosedRfqs,
+    archived: []
   };
   const activeRfqs = rfqDataByTab[activeTab] || (rfqsByTab ? [] : factoryRfqs);
 
@@ -5921,11 +5923,9 @@ export function FactoryProjectsPage({
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
   const [draftTabs, setDraftTabs] = useState(projectTabs);
   const orderRows = live?.projects ?? [];
-  // "Archived" joins the strip only while the company has archived something.
-  const stripTabs = tabStore ? withArchivedTab(projectTabs, orderRows, tabStore.archived) : projectTabs;
+  const stripTabs = withArchivedTab(projectTabs);
 
-  // A tab a teammate deleted, or this person just did, falls back to Active;
-  // an archive emptied by Unarchive falls back to Closed, where the order went.
+  // A deleted custom tab falls back to Active. Archived remains even when empty.
   useEffect(() => {
     if (live?.loading || !tabStore || stripTabs.some((tab) => tab.key === activeTab)) return;
     setActiveTab(activeTab === "archived" ? "closed" : "active");

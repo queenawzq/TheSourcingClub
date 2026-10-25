@@ -434,9 +434,10 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         ? `${stepUpdates.length} ${stepUpdates.length === 1 ? "update" : "updates"}, ${fileCount} ${fileCount === 1 ? "file" : "files"} posted on this step`
         : "Nothing posted on this step yet",
       ...reminder,
-      // post_milestone_update takes a post only while work is happening.
-      // A payment-only step (deposit, balance) has no work to report on.
-      canComment: running && milestone.kind !== "payment_only" && (milestone.state === "active" || milestone.state === "submitted"),
+      // Discussion remains open after approval, including completed orders.
+      canComment: (running || order.status === "completed")
+        && (milestone.state === "complete" || (milestone.kind !== "payment_only"
+          && (milestone.state === "active" || milestone.state === "submitted"))),
       // Keep the factory's next action visible on every work/approval step,
       // just as the brand sees its future milestone CTAs. Pending buttons are
       // disabled until sequencing opens the step; payment-only rows need no
@@ -447,10 +448,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         && milestone.kind !== "payment_only",
       canDispute: running && !hasDispute && (milestone.state === "active" || milestone.state === "submitted"),
       ...next,
-      // The latest real update, on the steps where work is happening.
-      update: milestone.state === "active" || milestone.state === "submitted"
-        ? latestUpdateFor(milestone.id, updates, { urls: photoUrls, onViewAll: () => openStep(milestone) })
-        : null,
+      // Approval ends the work, not its history. Keep existing comments and
+      // attachments visible on completed steps for both participants.
+      update: latestUpdateFor(milestone.id, updates, { urls: photoUrls, onViewAll: () => openStep(milestone) }),
     };
   });
 

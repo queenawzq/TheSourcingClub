@@ -56,7 +56,7 @@ export default function LiveRfqs({ org, user, isOwner, goTo }) {
         />
       </DataProvider>
       {confirming && createPortal(
-        <div className="brand-profile-modal-layer" data-testid="cancel-rfq-dialog">
+        <div className="brand-profile-modal-layer quote-action-dialog-layer" data-testid="cancel-rfq-dialog">
           <button className="brand-profile-modal-scrim" type="button" aria-label="Keep the request" onClick={close} />
           <section className="brand-profile-modal" role="dialog" aria-modal="true" aria-labelledby="cancel-rfq-title">
             <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={close}>×</button>

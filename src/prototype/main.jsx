@@ -4132,6 +4132,7 @@ export function HomeScreen({
 }
 
 function HomeRecommendedFactoryCard({ factory, goTo }) {
+  const sampleProducts = (factory.products ?? []).filter((product) => product.image);
   const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
   const updateSampleScroll = (element) => {
     if (!element) return;
@@ -4192,7 +4193,7 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
               <p>{factory.notes[0]}</p>
             </div>
           </div>
-          <div className="marketplace-samples-shell invite-samples-shell">
+          {sampleProducts.length > 0 && <div className="marketplace-samples-shell invite-samples-shell">
             <button
               className={sampleScroll.left ? "marketplace-samples-prev visible" : "marketplace-samples-prev"}
               type="button"
@@ -4206,7 +4207,7 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
               <img src="/assets/prototype-icons/dropdown.svg" alt="" />
             </button>
             <div className="marketplace-samples invite-samples" aria-label={`${factory.name} sample products`} onScroll={(event) => updateSampleScroll(event.currentTarget)}>
-              {factory.products.map((product) => (
+              {sampleProducts.map((product) => (
                 <figure className="marketplace-sample invite-sample" key={product.name}>
                   <img src={product.image} alt={`${factory.name} ${product.name}`} />
                   <figcaption><strong>{product.name}</strong></figcaption>
@@ -4225,7 +4226,7 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
             >
               <img src="/assets/prototype-icons/dropdown.svg" alt="" />
             </button>
-          </div>
+          </div>}
         </div>
       </div>
     </article>
@@ -6829,7 +6830,7 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote, live
             ))}
           </div>
           {(!live || factory.notes[0]) && (
-          <div className="marketplace-note-list">
+          <div className="marketplace-note-list marketplace-description-preview">
             <p>{factory.notes[0]}</p>
           </div>
           )}
@@ -7112,7 +7113,8 @@ export function RfqsScreen({
   const [rfqTabs, setRfqTabs] = useState([
     { key: "active", label: "Active quotes (4)", locked: true },
     { key: "drafts", label: "Drafts (2)", locked: true },
-    { key: "closed", label: "Closed (6)", locked: true }
+    { key: "closed", label: "Closed (6)", locked: true },
+    { key: "archived", label: "Archived (0)", locked: true }
   ]);
   const [isAddingTab, setIsAddingTab] = useState(false);
   const [newTabName, setNewTabName] = useState("");
@@ -7122,7 +7124,7 @@ export function RfqsScreen({
   // app.html. The adapter returns the three buckets already split, because
   // which statuses count as "closed" is a domain question, not a screen one.
   const { data: rfqBuckets, loading: rfqsLoading, error: rfqsError } = useRfqs();
-  const rfqDataByTab = rfqBuckets ?? { active: [], drafts: [], closed: [] };
+  const rfqDataByTab = rfqBuckets ?? { active: [], drafts: [], closed: [], archived: [] };
   const activeRfqsForTab = rfqDataByTab[activeTab] ?? [];
 
   /**
@@ -7515,11 +7517,9 @@ export function ProjectsScreen({
   const [draftTabs, setDraftTabs] = useState(projectTabs);
   const customTabs = projectTabs.filter((tab) => !tab.locked);
   const orderRows = orders ?? [];
-  // "Archived" joins the strip only while the company has archived something.
-  const stripTabs = tabStore ? withArchivedTab(projectTabs, orderRows, tabStore.archived) : projectTabs;
+  const stripTabs = withArchivedTab(projectTabs);
 
-  // A tab a teammate deleted, or this person just did, falls back to Active;
-  // an archive emptied by Unarchive falls back to Closed, where the order went.
+  // A deleted custom tab falls back to Active. Archived remains even when empty.
   useEffect(() => {
     if (loading || !tabStore || stripTabs.some((tab) => tab.key === activeTab)) return;
     setActiveTab(activeTab === "archived" ? "closed" : "active");

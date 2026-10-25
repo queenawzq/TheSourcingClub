@@ -4921,6 +4921,10 @@ button.compact-filter-button {
   line-height: 18px;
 }
 
+.home-recommended-invite-card .invite-factory-top .marketplace-factory-title p {
+  margin-top: 4px;
+}
+
 .invite-factory-top .factory-card-metrics {
   justify-content: flex-start;
   justify-self: start;
@@ -8178,9 +8182,11 @@ select {
 }
 
 .project-progress {
+  --project-step-count: 5;
+  --project-rail-inset: 10%;
   position: relative;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(var(--project-step-count), 1fr);
   width: min(100%, 504px);
   margin-top: 8px;
   margin-left: -18px;
@@ -8196,8 +8202,8 @@ select {
 .project-progress-line {
   position: absolute;
   top: 21px;
-  left: 10%;
-  right: 10%;
+  left: var(--project-rail-inset);
+  right: var(--project-rail-inset);
   height: 2px;
   border-radius: 999px;
   background: linear-gradient(90deg, #1a4df2 0 var(--project-progress), #d7e0ea var(--project-progress) 100%);
@@ -9971,6 +9977,15 @@ select {
   line-height: 18px;
 }
 
+/* Browse cards show a brief preview; the profile keeps the full description. */
+.marketplace-description-preview p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
 .marketplace-samples-shell {
   position: relative;
   min-width: 0;
@@ -10107,6 +10122,25 @@ select {
 .marketplace-tag-section {
   display: grid;
   gap: 8px;
+}
+
+/* Two complete tag rows on browse cards; full lists remain on profiles. */
+.marketplace-factory-card > .marketplace-tag-section .tag-row {
+  max-height: 64px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.marketplace-factory-card > .marketplace-tag-section .tag {
+  box-sizing: border-box;
+  display: block;
+  height: 28px;
+  min-height: 28px;
+  max-width: 100%;
+  line-height: 26px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .marketplace-tag-label {
@@ -16126,7 +16160,7 @@ button.sort-button {
 }
 
 .home-production-card > .home-production-progress .project-progress {
-  grid-template-columns: repeat(5, 1fr) !important;
+  grid-template-columns: repeat(var(--project-step-count), 1fr) !important;
   gap: 0 !important;
   min-height: var(--production-card-detail-row-height) !important;
   width: 100% !important;
