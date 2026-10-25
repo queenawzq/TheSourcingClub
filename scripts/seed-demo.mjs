@@ -122,7 +122,8 @@ const newBrand = await demoUser(LOGINS.newBrand);
 const tradingCompany = await demoUser(LOGINS.tradingCompany);
 const adminUser = await demoUser(LOGINS.admin);
 const brandMember = await demoUser(LOGINS.brandMember);
-const demoUsers = { brand, brandMember, factory, secondFactory, newFactory, returnedFactory, newBrand, tradingCompany, admin: adminUser };
+const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
+const demoUsers = { brand, brandMember, factory, secondFactory, newFactory, returnedFactory, newBrand, tradingCompany, otherDomainFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -204,8 +205,16 @@ const validUntil = new Date(Date.now() + 21 * 864e5).toISOString();
 // Sending a quote costs credits now, so the factory starts with the grant a
 // verified vendor gets.
 must(await admin.from("credit_ledger").insert({
-  org_id: factoryOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
+  org_id: factoryOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",
 }), "factory credits");
+
+// An invite still waiting (Payments → Credits shows it as a pending referral
+// bonus). Written as the service, so it skips the "already has an account"
+// and domain checks a real invite goes through.
+must(await admin.from("referrals").insert({
+  referrer_org_id: factoryOrg.id, email: "partner-mill@example.com",
+  message: "I thought The Sourcing Club could be useful for your factory.",
+}), "a pending factory invite");
 
 // The demo factory's profile, filled in the way onboarding fills it, through
 // its own login: production-fit tags, capacity, references, certifications and
@@ -368,7 +377,7 @@ must(await admin.from("factory_profiles").upsert({
   published_at: new Date().toISOString(),
 }), "second factory profile");
 must(await admin.from("credit_ledger").insert({
-  org_id: secondFactoryOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
+  org_id: secondFactoryOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",
 }), "second factory credits");
 // Its profile filled in through its own login, so Browse vendors has a second
 // full card and its filters (production type, price, location, lead time,
@@ -443,6 +452,25 @@ must(await admin.from("factory_certifications").insert({
   }), "record the empty registration");
 }
 
+// A verified factory whose login is on example.net, not example.com like
+// every other demo login. The invite guard refuses a company's own email
+// domain before it says whether an address has an account, so this is the
+// one address a demo company can invite and be told "already has a Sourcing
+// Club account". Not published: it is not one of Browse's factories.
+const otherDomainOrg = must(await otherDomainFactory.client.rpc("create_org", { org_name: LOGINS.otherDomainFactory.name, org_kind: "factory" }), "create other-domain factory org");
+must(await admin.from("factory_profiles").upsert({
+  org_id: otherDomainOrg.id,
+  country_code: "GB",
+  location: "Bradford, UK",
+  moq: 300,
+  typical_lead_days: 42,
+  intro: "Worsted and woollen cloth, 300-metre minimums.",
+  onboarding_completed_at: new Date().toISOString(),
+  verification_status: "verified",
+}), "other-domain factory profile");
+must(await admin.from("credit_ledger").insert({
+  org_id: otherDomainOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",
+}), "other-domain factory credits");
 // A factory staff sent back: "Needs information" with the kind of note staff
 // actually write, a paragraph and a list, long enough that its finish card
 // must grow to hold it. The decision goes through the admin's own call, so
@@ -533,7 +561,7 @@ must(await admin.from("factory_profiles").upsert({
   published_at: new Date().toISOString(),
 }), "trading company profile");
 must(await admin.from("credit_ledger").insert({
-  org_id: tradingOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
+  org_id: tradingOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",
 }), "trading company credits");
 const tradingTags = [
   ["production_program", "oem"], ["production_program", "full-package"], ["production_program", "small-batch"],
@@ -1043,7 +1071,7 @@ must(await brand.client.from("saved_factories").insert([
 
 // Credits and a discount code, so the Savings card has real figures.
 must(await admin.from("credit_ledger").insert({
-  org_id: brandOrg.id, delta: 500, reason: "onboarding_grant", note: "demo seed",
+  org_id: brandOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",
 }), "credits");
 must(await admin.from("discount_codes").insert({
   code: "DEMO-BRAND", owner_org_id: brandOrg.id, amount_cents: 5000,
@@ -1101,6 +1129,7 @@ done. Every login uses the password "${PASSWORD}".
   returned factory ${LOGINS.returnedFactory.email}   (asked for more information, a long note)
   new brand       ${LOGINS.newBrand.email}   (no requests yet: recommended factories)
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory
+  other domain    ${LOGINS.otherDomainFactory.email}   (invite it from another demo company: "already has an account")
   admin           ${LOGINS.admin.email}   ${app.replace("app.html", "admin.html")}
 
   The brand has:
@@ -1126,6 +1155,8 @@ done. Every login uses the password "${PASSWORD}".
   ${LOGINS.factory.name} has it under Saved → Saved brands.
   Browse vendors lists ${LOGINS.factory.name} and ${LOGINS.secondFactory.name} (Factories) and ${LOGINS.tradingCompany.name} (Trading companies).
   Saved has ${LOGINS.factory.name} and ${LOGINS.tradingCompany.name}.
+  ${LOGINS.factory.name}'s Payments → Credits: 500 credits, quotes it sent, and a pending invite (partner-mill@example.com).
+  Approving ${LOGINS.newFactory.name} in the admin grants it 500 credits (Payments → Credits, and the bell).
   The admin's verification queue has ${LOGINS.newFactory.name}: "Ask AI for suggestions" on its review
   page (with an OpenRouter key) should point at its legal name, website, registration and expired GOTS;
   "Request more information" → "Suggest with AI" fills the note, which staff edit before sending

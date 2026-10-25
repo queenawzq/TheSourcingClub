@@ -32,7 +32,7 @@ import {
 import { FlowShell, FundScreen, SuccessScreen } from "../../prototype/main.jsx";
 import { getOrder } from "../../lib/domain/order.js";
 import { getPayment, listPayments } from "../../lib/domain/payment.js";
-import { STRIPE_PUBLISHABLE_KEY, startCheckout, syncPayment } from "../../lib/domain/stripe.js";
+import { STRIPE_PUBLISHABLE_KEY, startCheckout, syncPayment, withCardAdvice } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
 import { useAuth } from "../../lib/auth.jsx";
 import { useRouter } from "../../lib/router.jsx";
@@ -328,7 +328,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
           onAgree: (index, value) => setAgreed((current) => current.map((item, i) => (i === index ? value : item))),
           paymentElement: (
             <div className="live-payment-element" data-testid="payment-element">
-              {problem ? <p className="composer-error" role="alert">{problem} Try again, or use another card.</p> : null}
+              {problem ? <p className="composer-error" role="alert">{withCardAdvice(problem)}</p> : null}
               {savedCards.length > 0 && (
                 <div className="saved-card-list" role="radiogroup" aria-label="Saved cards">
                   {savedCards.map((card) => (

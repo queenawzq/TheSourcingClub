@@ -4424,7 +4424,7 @@ export function HomeScreen({
         </>
       )}
       {inviteBrandOpen && (
-        <InviteBrandModal onInvite={savings?.onInvite} onClose={() => setInviteBrandOpen(false)} />
+        <InviteBrandModal onInvite={savings?.onInvite} intro={savings?.inviteIntro} message={savings?.inviteMessage} onClose={() => setInviteBrandOpen(false)} />
       )}
       {discountCodesOpen && (
         <DiscountCodesModal codes={savings?.codes} onClose={() => setDiscountCodesOpen(false)} />
@@ -4536,7 +4536,8 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
 }
 
 // `savings` is the org's real credit balance and codes where a live mount
-// passes it; the prototype keeps the design's $50 example.
+// passes it, and `notice` once an invite is sent; the prototype keeps the
+// design's $50 example.
 function BrandDashboardDiscountCard({ savings, onInvite, onViewCodes }) {
   const amount = savings?.amount ?? "$50";
   const note = savings?.note ?? "For eligible orders. Invite a brand to earn another $50 discount.";
@@ -4552,6 +4553,7 @@ function BrandDashboardDiscountCard({ savings, onInvite, onViewCodes }) {
         <div>
           <strong>{amount}</strong>
           <p>{note}</p>
+          {savings?.notice && <p role="status">{savings.notice}</p>}
         </div>
       </div>
     </section>
@@ -4602,19 +4604,22 @@ function DiscountCodesModal({ codes, onClose }) {
   ), document.body);
 }
 
-function InviteBrandModal({ onInvite, onClose }) {
+function InviteBrandModal({ onInvite, onClose, intro, message: liveMessage }) {
   // The prototype's modal closes and nothing happens. A live mount passes
-  // onInvite, and then the address typed here becomes a real referral.
+  // onInvite, and then the address typed here becomes a real referral. It
+  // passes `intro` and `message` too, in place of the design's $50 promise.
   const [email, setEmail] = useState("");
+  const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const defaultMessage = liveMessage ?? "I thought The Sourcing Club could be useful for your next production order. If you join and place an eligible order, we both get a $50 discount.";
 
   const send = async () => {
     if (!onInvite) return onClose();
     setBusy(true);
     setError(null);
     try {
-      await onInvite(email.trim());
+      await onInvite(email.trim(), message ?? defaultMessage);
       onClose();
     } catch (failure) {
       setError(failure.message);
@@ -4632,7 +4637,7 @@ function InviteBrandModal({ onInvite, onClose }) {
         </button>
         <header className="brand-profile-modal-header">
           <h1 id="brand-invite-title">Invite a brand</h1>
-          <p>Send an invite link to another brand. When they place an eligible order, you earn a $50 discount and they get $50 too.</p>
+          <p>{intro ?? "Send an invite link to another brand. When they place an eligible order, you earn a $50 discount and they get $50 too."}</p>
         </header>
         <label className="brand-profile-edit-field full-width">
           <span>Brand email</span>
@@ -4640,7 +4645,7 @@ function InviteBrandModal({ onInvite, onClose }) {
         </label>
         <label className="brand-profile-edit-field full-width">
           <span>Message</span>
-          <textarea defaultValue="I thought The Sourcing Club could be useful for your next production order. If you join and place an eligible order, we both get a $50 discount." />
+          <textarea defaultValue={defaultMessage} onChange={onInvite ? (event) => setMessage(event.target.value) : undefined} />
         </label>
         {error && <p className="auth-error" role="alert">{error}</p>}
         <div className="brand-profile-modal-actions">

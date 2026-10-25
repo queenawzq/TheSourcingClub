@@ -18,7 +18,7 @@
  * It is not a way to sign in without a password.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { supabase, isConfigured, setKeepSignedIn } from "./supabase.js";
+import { supabase, isConfigured, setKeepSignedIn, isThisTabsSession } from "./supabase.js";
 import { createOrg, listMyOrgs } from "./domain/org.js";
 
 /** Mirrors `minimum_password_length` in supabase/config.toml and the design's copy. */
@@ -56,6 +56,17 @@ function readable(authError) {
 const AuthContext = createContext(null);
 const SESSION_RESTORE_TIMEOUT_MS = 4000;
 const ORG_LOAD_TIMEOUT_MS = 8000;
+
+/**
+ * Every sign-in says where its session goes. A path that forgets would
+ * silently keep the session for the whole browser, which is the bug the demo
+ * buttons had; this makes the omission loud instead.
+ */
+function requireKeepChoice(keepSignedIn) {
+  if (typeof keepSignedIn !== "boolean") {
+    throw new TypeError("a sign-in must say whether to keep the session (keepSignedIn)");
+  }
+}
 
 export function AuthProvider({ children }) {
   // `undefined` means Supabase has not finished restoring the browser session
@@ -126,6 +137,10 @@ export function AuthProvider({ children }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      // supabase-js tells every tab on the site about every sign-in, sign-out
+      // and refresh. A tab signed in without "Keep me logged in" holds its
+      // own session, and must not turn into whoever signed in next door.
+      if (!isThisTabsSession(nextSession)) return;
       finishRestore(nextSession);
     });
 
@@ -267,6 +282,9 @@ export function AuthProvider({ children }) {
           return false;
         }
 
+        // The signup screen offers no "keep me logged in": a new account stays
+        // signed in, in this browser.
+        setKeepSignedIn(true);
         const { data, error: signUpError } = await supabase.auth.signUp({
           email: email.trim().toLowerCase(),
           password,
@@ -305,8 +323,16 @@ export function AuthProvider({ children }) {
         return true;
       },
 
-      /** The design's login form. */
-      async signInWithPassword({ email, password, keepSignedIn = true }) {
+      /**
+       * The design's login form, and the test sites' demo buttons.
+       *
+       * `keepSignedIn` is required: it is what the screen's "Keep me logged
+       * in" box says. It once defaulted to true, and the demo buttons, which
+       * never passed it, kept every session for the whole browser whatever
+       * the box said.
+       */
+      async signInWithPassword({ email, password, keepSignedIn }) {
+        requireKeepChoice(keepSignedIn);
         setError(null);
         setKeepSignedIn(keepSignedIn);
 
@@ -396,9 +422,11 @@ export function AuthProvider({ children }) {
         return true;
       },
 
-      /** Exchange the emailed code for a session. */
-      async verifyEmailCode(email, token) {
+      /** Exchange the emailed code for a session, kept as the login form's box says. */
+      async verifyEmailCode(email, token, { keepSignedIn } = {}) {
+        requireKeepChoice(keepSignedIn);
         setError(null);
+        setKeepSignedIn(keepSignedIn);
         const { error: verifyError } = await supabase.auth.verifyOtp({
           email: email.trim().toLowerCase(),
           token: token.trim(),

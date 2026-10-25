@@ -26,5 +26,9 @@ export const DEMO_LOGINS = {
   // hold the whole note.
   returnedFactory: { role: "Factory asked for more information", name: "Harbour Line Apparel", email: "demo-factory-returned@example.com" },
   tradingCompany: { role: "Trading company", name: "Kowloon Sourcing Partners", email: "demo-trading@example.com" },
+  // On another email domain than every other login, so an invite to it is
+  // answered with "already has an account" instead of "your own email
+  // domain", which the database checks first.
+  otherDomainFactory: { role: "Factory, other domain", name: "Lakeside Mills", email: "demo-lakeside@example.net" },
   admin: { role: "Admin", name: "Demo Admin", email: "demo-admin@example.com", admin: true },
 };

@@ -194,13 +194,14 @@ npm run check:css     # fails on a CSS variable used but never defined (runs in 
 npm run check:dates   # fails on a date column read as an instant, in New York and UTC+14 (runs in build)
 npm run check:prototype  # the prototype must still render with NO database
 npm run check:messages   # the contact-detail patterns: hits and near-misses
+npm run check:auth       # "Keep me logged in" across tabs (runs in build)
 npm run taxonomy      # regenerate migration 007 from the seed JSON
 npm run seed:demo     # demo companies with fixed logins; run again to reset them
 ```
 
 Put the local URL and publishable key in `.env.local` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; `app.html` shows a setup message rather than crashing when they are absent.
 
-**Demo data.** `npm run seed:demo` (`scripts/seed-demo.mjs`) fills the database with demo companies, requests, quotes and orders behind fixed logins, all with the password `demo password 8`: `demo-brand@example.com`, `demo-factory@example.com`, `demo-factory-two@example.com` (a competing quote), `demo-factory-new@example.com` (waiting for verification), `demo-brand-new@example.com` (a brand with nothing yet, so its dashboard recommends factories), `demo-trading@example.com` (a trading company) and `demo-admin@example.com` (platform admin, `/admin.html`). Each run deletes the demo companies and every order one of them is part of, then builds them again, so running it again is the reset. It only targets a local stack unless given `--remote` with `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` for a test database, and it refuses the production project. A PR that adds a state a tester needs to see adds it here. **A scenario that needs an account of its own** (a role or company state none of the logins has) adds the login to `src/shared/demo-logins.mjs` and its setup to the seed; the seed stops if a listed login has no setup. That list is also what the test sites' one-click sign-in shows: on test builds only (the dev server, PR previews and the qa site: `__DEMO_SIGN_IN__` in `vite.config.js`), the sign-in screens offer a button per login (`src/shared/DemoSignIn.jsx`). A production build leaves that code and the list out, and the buttons hide themselves when connected to the production database.
+**Demo data.** `npm run seed:demo` (`scripts/seed-demo.mjs`) fills the database with demo companies, requests, quotes and orders behind fixed logins, all with the password `demo password 8`: `demo-brand@example.com`, `demo-factory@example.com`, `demo-factory-two@example.com` (a competing quote), `demo-factory-new@example.com` (waiting for verification), `demo-brand-new@example.com` (a brand with nothing yet, so its dashboard recommends factories), `demo-trading@example.com` (a trading company), `demo-lakeside@example.net` (a factory on another email domain: inviting it shows "already has an account", since every other login shares `example.com` and the guard refuses a company's own domain first) and `demo-admin@example.com` (platform admin, `/admin.html`). Each run deletes the demo companies and every order one of them is part of, then builds them again, so running it again is the reset. It only targets a local stack unless given `--remote` with `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` for a test database, and it refuses the production project. A PR that adds a state a tester needs to see adds it here. **A scenario that needs an account of its own** (a role or company state none of the logins has) adds the login to `src/shared/demo-logins.mjs` and its setup to the seed; the seed stops if a listed login has no setup. That list is also what the test sites' one-click sign-in shows: on test builds only (the dev server, PR previews and the qa site: `__DEMO_SIGN_IN__` in `vite.config.js`), the sign-in screens offer a button per login (`src/shared/DemoSignIn.jsx`). A production build leaves that code and the list out, and the buttons hide themselves when connected to the production database.
 
 **PR previews get their own database.** Supabase branching (GitHub integration, "Supabase changes only") creates a database branch when a PR that changes `supabase/` is opened, runs its migrations and `seed.sql`, and writes the branch's details into Vercel for that PR's preview. It deletes the branch when the PR is merged or closed. It writes its own variable names, so on a Vercel **preview** build only:
 - `vite.config.js` bakes `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` into `__PREVIEW_SUPABASE__`, which `src/lib/supabase.js` prefers;
@@ -480,6 +481,40 @@ the form behind it only saves.
   embed names its foreign key (`orgs!rfqs_brand_org_id_fkey`). PostgREST
   refuses an ambiguous embed rather than guessing.
 
+### Credits: granted by the database
+
+`20261017000100`. Factories spend 25 credits per quote (`submit_quote()`); the
+database grants them, never a client and never the seed's pattern of a
+hand-written line.
+
+- **500 when a factory becomes verified**, by a trigger on
+  `factory_profiles.verification_status`, in the same transaction as the
+  verification, whatever path verified it (`admin_review_decision`,
+  `review_document`). Once per company: any earlier `onboarding_grant` line
+  counts, and the once-index on `(org_id, reason, ref_id)` settles a race.
+  It fires on UPDATE only, so fixtures that insert a verified profile keep
+  their own lines. Factories verified before the migration got the 500 by
+  backfill.
+- **Only staff change `verification_status`** (`guard_verification_status`).
+  Members could update it on their own row before; with credits attached
+  that would have minted them.
+- **Invites are `referrals`**, sent through `/api/send-invite` (the caller's
+  token inserts the row, so RLS and the guard decide; then one email through
+  the notification transport). Clients may insert only `referrer_org_id`,
+  `email` and `message`. The guard refuses the company's own email domain
+  (public mail providers excepted), an address that already has an account,
+  a repeat, and more than 20 a day. When the invited address creates its
+  company (first owner in `org_members`), the earliest invite from a company
+  of the same kind is linked. A factory whose invited factory is verified
+  earns 500 (`referral_grant`). **Brand invites earn nothing yet**: the $50
+  brand discount is not decided.
+- **Staff adjust credits** with `admin_adjust_credits` (factories only, a
+  reason the company sees, never below zero), from a live-only card on the
+  admin review page.
+- The factory's Payments → Credits tab (`/payout?tab=credits`) reads the
+  ledger through `creditHistory()`, with invites still waiting shown as
+  Pending.
+
 ### Mock data leaking into the live app
 
 A designed component that falls back to its own constants when a prop is
@@ -545,10 +580,18 @@ and the backend answers to it rather than the other way round.
   `minimum_password_length` in `supabase/config.toml` and
   `MIN_PASSWORD_LENGTH` in `src/lib/auth.jsx`. A client-side `minLength` the
   server does not share is a promise the product does not keep.
-- **"Keep me logged in" is real.** Checked, the session goes to
-  `localStorage`; unchecked, to `sessionStorage`, and dies with the tab. The
-  storage adapter in `src/lib/supabase.js` reads *both* on the way out, so a
-  session written under one setting is not lost when the setting changes.
+- **"Keep me logged in" is real, and it belongs to the tab.** Checked, the
+  session goes to `localStorage`; unchecked, to `sessionStorage`, and dies with
+  the tab. The choice is kept in the tab's own `sessionStorage`
+  (`src/lib/session-storage.mjs`): a tab that chose "this tab only" never reads
+  or clears `localStorage`, so two tabs can hold two different sign-ins, and a
+  ticked sign-in elsewhere cannot take it over. supabase-js broadcasts every
+  sign-in to every tab, so `AuthProvider` ignores an event whose session is not
+  the one this tab holds (`isThisTabsSession`). Every sign-in passes the box's
+  value: `signInWithPassword` and `verifyEmailCode` throw without it, because
+  the demo buttons once omitted it and kept every session for the whole
+  browser. The PKCE code verifier always goes to `localStorage`, since the reset
+  link opens in a new tab. `npm run check:auth` runs it as several tabs.
 - **Signing out clears the stored token before awaiting the network call.**
   The login screen renders the instant the status flips — deliberately, since
   clearing orgs while the shell thinks it is signed in crashes it to a blank

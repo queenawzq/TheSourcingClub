@@ -1650,7 +1650,7 @@ console.log("\nnotification emails");
     ["rfq", "quote_received"], ["rfq", "rfq_invited"], ["order", "order_created"],
     ["milestone", "milestone_submitted"], ["payment", "payment_due"], ["thread", "message"],
     ["capacity", "capacity_reminder"], ["milestone", "milestone_due_soon"], ["rfq", "rfq_matched"],
-    ["org", "verification_needs_information"], ["referral", "referral_joined"], ["unknown", "x"],
+    ["credits", "credits_granted"], ["credits", "credits_adjusted"], ["org", "verification_needs_information"], ["referral", "referral_joined"], ["unknown", "x"],
   ].flatMap(([subject_type, kind]) => [true, false].map((isFactory) => [{
     subject_type, kind, subject_id: "00000000-0000-0000-0000-000000000001", order_id: "00000000-0000-0000-0000-000000000002",
   }, isFactory]));
@@ -2280,6 +2280,103 @@ console.log("\nadmin — AI help for reviewers, and clearing test data");
     : fail("the cleanup", purged);
 
   await admin.from("orgs").delete().in("id", [fresh.id, mill.id]);
+}
+
+console.log("\ncredits — granted on verification, invites, staff adjustments");
+{
+  const staff = await signedInUser(`credits-admin-${stamp}@example.com`);
+  await admin.from("platform_admins").insert({ user_id: staff.id });
+  const owner = await signedInUser(`credits-owner-${stamp}@smoke-mill-a.test`);
+  const { data: mill } = await owner.client.rpc("create_org", { org_name: `Credits Mill ${stamp}`, org_kind: "factory" });
+  await owner.client.from("factory_profiles").insert({ org_id: mill.id, intro: "Knitwear." });
+
+  const { error: selfVerify } = await owner.client.from("factory_profiles")
+    .update({ verification_status: "verified" }).eq("org_id", mill.id);
+  selfVerify ? ok("a factory CANNOT verify itself") : fail("LEAK: a factory set its own profile to verified");
+
+  const { error: decideError } = await staff.client.rpc("admin_review_decision", { target_org: mill.id, decision: "approved" });
+  if (decideError) fail("staff approve the factory", decideError);
+  const { data: lines } = await owner.client.from("credit_ledger").select("delta, reason").eq("org_id", mill.id);
+  (lines ?? []).length === 1 && lines[0].delta === 500 && lines[0].reason === "onboarding_grant"
+    ? ok("verification grants 500 credits, read by the factory itself")
+    : fail("the verification grant", lines);
+  const { data: bell } = await owner.client.from("notifications").select("kind, subject_type").eq("org_id", mill.id).eq("kind", "credits_granted");
+  (bell ?? []).length === 1 && bell[0].subject_type === "credits"
+    ? ok("and the factory is notified")
+    : fail("the credits notification", bell);
+
+  const invitee = `invited-${stamp}@smoke-mill-b.test`;
+  const sent = await staffRouteAs("send-invite", owner.client, {
+    body: { orgId: mill.id, email: invitee, message: "Join us on TSC" },
+    env: { MAILPIT_URL: MAIL, RESEND_API_KEY: "" },
+  });
+  sent.status === 200 && sent.id && (sent.emailed || !MAIL)
+    ? ok(`an invite is saved${sent.emailed ? " and emailed" : ""}`)
+    : fail("send an invite", sent);
+  if (MAIL && sent.emailed) {
+    const found = await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:${invitee}`)}`).then((r) => r.json()).catch(() => null);
+    (found?.messages ?? []).some((m) => m.Subject?.includes(`Credits Mill ${stamp} invited you`))
+      ? ok("the invite email arrives, naming the inviting company")
+      : fail("the invite email was not in Mailpit", found);
+  }
+
+  const ownDomain = await staffRouteAs("send-invite", owner.client, { body: { orgId: mill.id, email: `cousin-${stamp}@smoke-mill-a.test` } });
+  ownDomain.status === 400 ? ok("an invite to the company's own email domain is refused") : fail("own-domain invite", ownDomain);
+  const stranger = await staffRouteAs("send-invite", brand.client, { body: { orgId: mill.id, email: `x-${stamp}@smoke-mill-c.test` } });
+  stranger.status === 403 ? ok("nobody sends invites for a company they are not in") : fail("a stranger's invite", stranger);
+
+  // An address that has an account, on another domain: refused in words, and
+  // the same words when asked again (the refusal is a row, so it counts).
+  const taken = `taken-${stamp}@smoke-mill-d.test`;
+  await signedInUser(taken);
+  const hasAccount = await staffRouteAs("send-invite", owner.client, { body: { orgId: mill.id, email: taken } });
+  const askedAgain = await staffRouteAs("send-invite", owner.client, { body: { orgId: mill.id, email: taken } });
+  hasAccount.status === 400 && /already has a Sourcing Club account/.test(hasAccount.error)
+    && askedAgain.status === 400 && /already has a Sourcing Club account/.test(askedAgain.error)
+    ? ok("an invite to an address with an account is refused, the same way twice")
+    : fail("the already-has-an-account refusal", { hasAccount, askedAgain });
+
+  // Saved but not emailed: the screen is told why, as a code it words
+  // (inviteNotice). Each case runs offline.
+  const mailEnv = ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "MAILPIT_URL"];
+  const savedMailEnv = Object.fromEntries(mailEnv.map((key) => [key, process.env[key]]));
+  const notEmailed = async (email, env) => (await staffRouteAs("send-invite", owner.client, {
+    body: { orgId: mill.id, email }, env: { RESEND_API_KEY: "", RESEND_FROM_EMAIL: "", MAILPIT_URL: "", ...env },
+  }));
+  const noMail = await notEmailed(`plain-${stamp}@smoke-mill-e.test`, {});
+  const reserved = await notEmailed(`reserved-${stamp}@example.com`, { RESEND_API_KEY: "re_smoke_not_a_key", RESEND_FROM_EMAIL: "smoke@sourcing-club.test" });
+  const failed = await notEmailed(`failed-${stamp}@smoke-mill-f.test`, { MAILPIT_URL: "http://127.0.0.1:9" });
+  for (const [key, value] of Object.entries(savedMailEnv)) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  }
+  noMail.status === 200 && noMail.emailed === false && noMail.reason === "email_not_set_up"
+    ? ok("an invite on a server with no email is saved, and says so") : fail("no-email invite", noMail);
+  reserved.status === 200 && reserved.emailed === false && reserved.reason === "reserved_address"
+    ? ok("an invite to a reserved test address is saved, not emailed, and says why") : fail("reserved-address invite", reserved);
+  failed.status === 200 && failed.emailed === false && failed.reason === "email_failed"
+    ? ok("an invite the email service did not take is saved, and says so") : fail("failed-email invite", failed);
+
+  const { error: relink } = await owner.client.from("referrals").update({ referred_org_id: org.id }).eq("referrer_org_id", mill.id);
+  relink ? ok("a client CANNOT link an invite to a company") : fail("LEAK: a client re-linked its invite");
+
+  const joined = await signedInUser(invitee);
+  const { data: joinedOrg } = await joined.client.rpc("create_org", { org_name: `Invited Mill ${stamp}`, org_kind: "factory" });
+  const { data: link } = await owner.client.from("referrals").select("referred_org_id, accepted_at").eq("email", invitee).single();
+  link?.referred_org_id === joinedOrg?.id && link?.accepted_at
+    ? ok("signing up with the invited address links the invite")
+    : fail("the invite was not linked", link);
+
+  await admin.from("factory_profiles").insert({ org_id: joinedOrg.id });
+  await staff.client.rpc("admin_review_decision", { target_org: joinedOrg.id, decision: "approved" });
+  const { data: earned } = await owner.client.from("credit_ledger").select("delta").eq("org_id", mill.id).eq("reason", "referral_grant");
+  (earned ?? []).length === 1 && earned[0].delta === 500
+    ? ok("the inviter earns 500 when the invited factory is verified")
+    : fail("the referral grant", earned);
+
+  const { error: selfAdjust } = await owner.client.rpc("admin_adjust_credits", { target_org: mill.id, amount: 100, reason: "More please" });
+  selfAdjust ? ok("a factory CANNOT adjust its own credits") : fail("LEAK: a factory adjusted its credits");
+  const { data: after, error: adjustError } = await staff.client.rpc("admin_adjust_credits", { target_org: mill.id, amount: -200, reason: "Smoke adjustment" });
+  !adjustError && after === 800 ? ok("staff remove 200 credits with a reason (balance 800)") : fail("staff adjustment", adjustError ?? after);
 }
 
 console.log("\nemail and password sign-in");

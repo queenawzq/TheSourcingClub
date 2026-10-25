@@ -73,6 +73,7 @@ export function activityType(kind = "") {
   if (kind.startsWith("payment_") || kind === "funds_released") return "Payment";
   if (kind.startsWith("verification_")) return "Verification";
   if (kind.startsWith("rfq_")) return "Request";
+  if (kind.startsWith("credits_") || kind.startsWith("referral_")) return "Credits";
   return "Status";
 }
 

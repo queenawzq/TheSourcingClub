@@ -36,5 +36,8 @@ export function notificationLink(notification, { isFactory }) {
   // from its dashboard's savings panel.
   if (type === "referral") return isFactory ? "/payout?tab=credits" : "/";
 
+  // Credits are on the factory's Payments page.
+  if (type === "credits" && isFactory) return "/payout?tab=credits";
+
   return null;
 }

@@ -37,6 +37,9 @@ const ALLOWED_ABSENT = {
   "admin:reviewAssist:mock": "live only; the review page draws no AI help without it",
   "admin:latestReviewAssists:mock": "live only; only called from the AI panel, which needs reviewAssist",
   "admin:reviewAssistInput:mock": "live only; only called from the AI panel, which needs reviewAssist",
+  // Credits are not in the admin design (rule B: built live only, flagged).
+  "admin:companyCredits:mock": "live only; the review page draws no credits card without it",
+  "admin:adjustCredits:mock": "live only; only called from the credits card, which needs companyCredits",
   // Clearing test data deletes real rows; the prototype has none to clear.
   "admin:testData:mock": "live test builds only; Settings draws no test-data card without it",
   // The request and quote pages keep the design's constants with no detail;

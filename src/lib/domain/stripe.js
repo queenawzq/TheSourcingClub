@@ -10,6 +10,16 @@ import { kickNotificationEmails, supabase } from "../supabase.js";
 
 export const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ?? "";
 
+/**
+ * A failed card payment's reason, with our advice once. Stripe's own words
+ * often carry some already ("Your card has insufficient funds. Try a
+ * different card."), and saying it twice reads as a glitch.
+ */
+export function withCardAdvice(reason) {
+  const text = String(reason || "The payment did not go through.").trim();
+  return /\btry\b/i.test(text) ? text : `${text} Try again, or use another card.`;
+}
+
 /** Test-mode objects live under /test/ in Stripe's dashboard. */
 export function stripeDashboardUrl(kind, id) {
   const mode = STRIPE_PUBLISHABLE_KEY.startsWith("pk_live_") ? "" : "test/";

@@ -52,6 +52,11 @@ export function AuthScreen({
   // Shown under the card. app.html puts the test sites' demo sign-in here;
   // the prototypes pass nothing.
   footer = null,
+  // "Keep me logged in", controlled. app.html passes both so the demo
+  // sign-in under the card and the emailed-code sign-in honour the same box
+  // as the form; the prototypes pass neither and the box is its own.
+  keepSignedIn,
+  onKeepSignedInChange,
 }) {
   const [mode, setMode] = useState(initialMode);
   const [showPassword, setShowPassword] = useState(false);
@@ -205,7 +210,7 @@ export function AuthScreen({
 
             {!isSignup && (
               <div className="auth-form-options">
-                <label><input type="checkbox" name="keepSignedIn" defaultChecked /> <span>{copy?.keepSignedIn ?? "Keep me logged in"}</span></label>
+                <label><input type="checkbox" name="keepSignedIn" {...(onKeepSignedInChange ? { checked: Boolean(keepSignedIn), onChange: (event) => onKeepSignedInChange(event.target.checked) } : { defaultChecked: true })} /> <span>{copy?.keepSignedIn ?? "Keep me logged in"}</span></label>
                 <button type="button" onClick={() => onForgotPassword?.()}>{copy?.forgot ?? "Forgot password?"}</button>
               </div>
             )}
