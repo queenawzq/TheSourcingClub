@@ -1,3 +1,9 @@
+/* The console's error line (Test emails, AI suggestions, Test data, a
+   refused staff action). Its rule lived only in admin.css, which the
+   hand-built boards import on app.html and admin.html never loads, so every
+   error here read as grey body text. */
+.admin-error { color: var(--danger); font-size: 13px; font-weight: 500; }
+
 /* Live only: the overview's cards link to the boards that act on them. */
 .admin-metric-link {
   display: inline-block;
@@ -19,4 +25,89 @@
   .admin-metrics:has(> .admin-metric-card:nth-child(5)) {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
+}
+
+/* Live only: AI suggestions on the review page, and its draft button in the
+   "Request more information" dialog. Built from the design's check rows. */
+.admin-assist-panel .admin-check-row { cursor: default; }
+.admin-assist-panel .admin-check-row:hover { background: none; box-shadow: none; }
+
+.admin-assist-meta {
+  margin: 0 0 12px;
+  color: #4c6487;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+
+.admin-check-row p.admin-assist-ask { color: #0e1118; }
+
+.admin-assist-actions,
+.admin-assist-draft {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-top: 16px;
+}
+
+.admin-assist-draft { margin-top: 0; }
+.admin-assist-draft .admin-assist-meta,
+.admin-assist-draft .admin-error { margin: 0; flex: 1 1 200px; }
+
+.admin-assist-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-assist-input {
+  max-height: 320px;
+  margin: 12px 0 0;
+  padding: 12px;
+  overflow: auto;
+  border: 1px solid #e4eaf1;
+  border-radius: 8px;
+  background: #f7f9fd;
+  color: #0e1118;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Live only, test builds only: Settings → Test data. */
+.admin-testdata-table { max-height: 360px; overflow: auto; margin-bottom: 12px; }
+.admin-testdata-table td { overflow-wrap: anywhere; vertical-align: top; }
+.admin-testdata-table small { color: #8795aa; }
+/* One column: the settings cards' form grid would put the rule, the table
+   and the user list side by side. The dialog is portalled to <body>, because
+   the page's pageIn animation leaves a transform that would pin it to the
+   top of the page. */
+.admin-testdata { display: grid; gap: 12px; min-width: 0; }
+.admin-testdata .admin-assist-meta { margin: 0; }
+
+/* Live only: the review summary's "Last note" (live-admin-adapter.js) is a
+   whole request, so it takes a full row and keeps its line breaks. */
+.admin-detail-grid > .factory-detail-pair:has(.admin-review-note) {
+  grid-column: 1 / -1;
+}
+
+.admin-review-note {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  font-weight: 400;
+}
+
+/* Live only: what the Test emails form says (why this address cannot receive
+   a test, or how a send went) reads across the whole form, not in a column. */
+.admin-threshold-form > .admin-error,
+.admin-threshold-form > .admin-test-email-status {
+  grid-column: 1 / -1;
 }

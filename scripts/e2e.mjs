@@ -835,11 +835,98 @@ async function main() {
     check(approved, "the queue row for this factory was found and opened");
     await page.waitForTimeout(2500);
 
+    // Staff ask for more information first. The company used to be shown
+    // "awaiting verification" and nothing else: the request reached only its
+    // email and a bell its waiting card does not draw.
+    // Long and in lines, as staff write them: the company's finish card has
+    // to hold all of it.
+    const askFor = [
+      `Please upload a readable business registration (${stamp.toString(36)}).`,
+      "",
+      "1. The file you uploaded is a photo taken at an angle and the registration number cannot be read.",
+      "2. Your certificate on the profile has expired; please add the current one with its file.",
+      "3. Add your monthly capacity in units, so brands can see whether you can take their order.",
+      "",
+      "Once these are on your profile, finish onboarding again and it comes straight back to us.",
+    ].join("\n");
+    // What a pair on the review page says, by its label.
+    const detailValue = (label) => page.evaluate((wanted) => [...document.querySelectorAll(".factory-detail-pair")]
+      .find((pair) => pair.querySelector("span")?.textContent.trim() === wanted)
+      ?.querySelector("strong")?.textContent.trim() ?? null, label);
+    await clickButton(page, "request more information");
+    // Its screen-reader label used a class no admin stylesheet defined, so the
+    // label was printed twice.
+    const labelsShown = await page.evaluate(() => [...document.querySelectorAll("span, strong")]
+      .filter((el) => el.textContent.trim() === "Message to applicant" && el.getBoundingClientRect().width > 1).length);
+    check(labelsShown === 1, `the request dialog labels its message once (${labelsShown})`);
+    await page.locator(".admin-request-message textarea").fill(askFor);
+    await clickButton(page, "send request");
+    await page.waitForTimeout(3000);
+    const afterAsk = await page.locator("body").innerText();
+    check(afterAsk.includes(askFor.split("\n")[0]), "the review summary shows the note just sent, without a reload");
+    check(/needs information/i.test(afterAsk), "and the badge says Needs information");
+    // It said "Pending": the review state and the profile's own column.
+    const statusShown = await detailValue("Profile status");
+    check(statusShown === "Needs information", `and Profile status says the same (${statusShown})`);
+    // A chip heading with no chips under it is a heading for nothing.
+    const emptyChipHeadings = await page.evaluate(() => [...document.querySelectorAll(".admin-review-page .factory-profile-chip-section")]
+      .filter((section) => !section.querySelector(".tag")).length);
+    check(emptyChipHeadings === 0, `no chip heading is drawn without chips (${emptyChipHeadings})`);
+
+    // The factory, signed in elsewhere (another origin, so its own session),
+    // is shown the request on its waiting card and can answer it.
+    // (signIn() always opens APP's own origin, which would sign staff out.)
+    const factoryPage = await stagehand.browser.context.newPage(`${APP.replace("127.0.0.1", "localhost")}?portal=factory`);
+    await waitFor(factoryPage, 'input[name="email"]', 30000);
+    await factoryPage.locator('input[name="email"]').first().fill(`e2e-factory-${stamp}@example.com`);
+    await factoryPage.locator('input[name="password"]').first().fill(PASSWORD);
+    await clickButton(factoryPage, "log in");
+    await waitForHeading(factoryPage, "we need a little more information", 40000);
+    const askedText = await factoryPage.locator("body").innerText();
+    check(askedText.includes(askFor.split("\n")[0]) && askedText.includes(askFor.split("\n").at(-1)), "the factory reads the request staff wrote, on its own screen");
+    // The note ran out of the card and over the step dots. Measured, not
+    // looked at: every box inside the card, and the card above the dots.
+    const finishCardFits = () => factoryPage.evaluate(() => {
+      const card = document.querySelector(".factory-onboarding-card, .brand-onboarding-card");
+      const dots = document.querySelector(".factory-onboarding-progress, .brand-onboarding-progress");
+      if (!card) return "no card";
+      const box = card.getBoundingClientRect();
+      const out = [...card.querySelectorAll("*")].filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.height > 0 && (r.bottom > box.bottom + 1 || r.right > box.right + 1 || r.left < box.left - 1);
+      });
+      if (out.length) return `${out.length} boxes outside the card, first ${out[0].tagName.toLowerCase()}.${out[0].className}`;
+      if (card.scrollHeight > card.clientHeight + 1) return `card scrolls (${card.scrollHeight} > ${card.clientHeight})`;
+      if (dots && dots.getBoundingClientRect().top < box.bottom - 1) return "the card runs over the step dots";
+      return "fits";
+    });
+    const fitsWide = await finishCardFits();
+    check(fitsWide === "fits", `the long request fits its card at desktop width (${fitsWide})`);
+    await factoryPage.setViewportSize(375, 812);
+    await factoryPage.waitForTimeout(500);
+    const fitsNarrow = await finishCardFits();
+    check(fitsNarrow === "fits", `and at 375px wide (${fitsNarrow})`);
+    await record(factoryPage, "Factory asked for more information", "the request is on the company's own waiting card");
+
+    const answering = createClient(
+      process.env.SUPABASE_URL ?? stack.API_URL,
+      process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY,
+      { auth: { persistSession: false } },
+    );
+    await answering.auth.signInWithPassword({ email: `e2e-factory-${stamp}@example.com`, password: PASSWORD });
+    const { data: resent, error: resendError } = await answering.rpc("resubmit_for_review", { target_org: factoryOrg.id });
+    check(!resendError && resent === "ready_for_review", "the factory sends its profile back to staff's queue");
+    await factoryPage.close();
+
     // A factory is approved at a trust tier; with no walkthrough or orders
+    // yet, the picker suggests Basic.    // A factory is approved at a trust tier; with no walkthrough or orders
     // yet, the picker suggests Basic.
     await clickButton(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
+    // Profile completeness used to vanish once a decision was made.
+    const completenessShown = await detailValue("Profile completeness");
+    check(/^\d+%$/.test(completenessShown ?? ""), `Profile completeness is still shown after approval (${completenessShown})`);
 
     const { data: verified } = await db
       .from("factory_profiles").select("verification_status, trust_tier").eq("org_id", factoryOrg.id).single();
@@ -903,6 +990,18 @@ async function main() {
     const quotesText = await page.locator("body").innerText();
     check(/quotes/i.test(quotesText), "the marketplace-wide quote table opens");
     await record(page, "Marketplace quotes", "every quote across the marketplace, staff only");
+
+    // A request open to all vendors is quoted by vendors nobody invited; its
+    // row said "0 vendors" beside its quotes.
+    const { data: openRequest } = await db.from("rfqs").select("title, rfq_invitations(count)")
+      .eq("visibility", "open_to_all").neq("status", "draft").limit(1).maybeSingle();
+    if (openRequest) {
+      await page.goto(`${ADMIN}?screen=rfqs`);
+      await page.waitForTimeout(3500);
+      const openRow = await page.evaluate((title) => [...document.querySelectorAll("tr")]
+        .find((row) => row.innerText.includes(title))?.innerText ?? "", openRequest.title);
+      check(/open to all vendors/i.test(openRow), `an open request says it is open to all, not how many were invited (${openRow.replace(/\s+/g, " ").slice(0, 80)})`);
+    }
 
     // ================= RFQ =================
     console.log("\nREQUEST FOR QUOTES");
@@ -2696,9 +2795,31 @@ async function main() {
     while (Date.now() < runDeadline && !(await page.evaluate(() => [...document.querySelectorAll("button")].some((node) => node.textContent.trim() === "Run daily jobs now")))) {
       await page.waitForTimeout(300);
     }
+    // An error on the console is drawn in the danger colour. The rule lived
+    // only in a stylesheet admin.html never loads, so errors read as grey.
+    // This admin's address is a reserved one, so Test emails always says so.
+    const errorColour = await page.evaluate(() => {
+      const note = document.querySelector(".admin-error");
+      const probe = document.createElement("span");
+      probe.style.color = "var(--danger)";
+      document.body.append(probe);
+      const danger = getComputedStyle(probe).color;
+      probe.remove();
+      return note ? { shown: getComputedStyle(note).color, danger, body: getComputedStyle(document.body).color } : null;
+    });
+    // Unequal to the body text too: an undefined --danger would leave both grey.
+    check(Boolean(errorColour) && errorColour.shown === errorColour.danger && errorColour.danger !== errorColour.body,
+      `an admin error is drawn in the danger colour (${errorColour?.shown} vs ${errorColour?.danger})`);
     await clickButton(page, "run daily jobs now");
-    await waitFor(page, ".admin-test-email-status, .admin-error", 60000);
-    const jobStatus = await page.locator(".admin-test-email-status, .admin-error").first().innerText();
+    // The Daily jobs card's own line: the Test emails card above it can carry
+    // a note of its own (a staff address that cannot receive a test).
+    const jobLine = () => page.evaluate(() => {
+      const run = [...document.querySelectorAll("button")].find((node) => /^(Run daily jobs now|Running…)$/.test(node.textContent.trim()));
+      return run?.closest(".admin-settings-card")?.querySelector(".admin-test-email-status, .admin-error")?.textContent.trim() ?? "";
+    });
+    const jobDeadline = Date.now() + 60000;
+    let jobStatus = "";
+    while (Date.now() < jobDeadline && !(jobStatus = await jobLine())) await page.waitForTimeout(400);
     check(/steps? due soon/.test(jobStatus), `the job reports what it sent ("${jobStatus}")`);
     await record(page, "Daily jobs", "run by hand on a test site");
     // Whose turn it is decides who is reminded (milestone_waiting_on): a step
@@ -2726,6 +2847,154 @@ async function main() {
     const { count: dueAgain } = await db.from("notifications").select("*", { count: "exact", head: true })
       .eq("kind", "milestone_due_soon").eq("subject_id", dueSubject);
     check(dueAgain === 1, "running it again sends nothing twice");
+
+    // ================= ADMIN: AI HELP AND TEST DATA =================
+    // E2E_AI=on demands the model's answers, off demands the stand-ins (no
+    // OPENROUTER_API_KEY on the dev server); unset takes either and says which.
+    console.log("\nADMIN: AI HELP AND TEST DATA");
+    const aiMode = process.env.E2E_AI ?? "auto";
+    // Atlas Knit Studio is the seeded factory waiting for review. Sending it a
+    // request changes its review, so what it was is put back afterwards.
+    const { data: atlas } = await db.from("orgs").select("id").eq("name", "Atlas Knit Studio").maybeSingle();
+    check(Boolean(atlas), "the seeded factory waiting for review is there (run seed:demo if not)");
+    const { data: atlasReviewBefore } = atlas ? await db.from("org_reviews").select("*").eq("org_id", atlas.id).maybeSingle() : { data: null };
+    const { data: atlasProfileBefore } = atlas ? await db.from("factory_profiles").select("verification_status").eq("org_id", atlas.id).maybeSingle() : { data: null };
+    const { count: assistsBefore } = await db.from("org_review_assists").select("*", { count: "exact", head: true }).eq("org_id", atlas?.id ?? stamp);
+    const sectionStart = new Date().toISOString();
+    // A leftover from an earlier run, two hours old and with no members, like
+    // the ones smoke leaves: the cleanup must find this one and only data like it.
+    const { data: leftover } = await db.from("orgs").insert({
+      type: "factory", name: `Atelier E2E cleanup ${stamp}`, slug: `atelier-e2e-cleanup-${stamp}`,
+      created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    }).select("id, name").single();
+    check(Boolean(leftover), "a two-hour-old leftover test company is in place");
+
+    if (atlas) {
+      await page.goto(`${ADMIN}?screen=verification`);
+      await page.waitForTimeout(3000);
+      const atlasRows = await page.locator(".admin-verification-row").count();
+      let atlasOpened = false;
+      for (let index = 0; index < atlasRows; index += 1) {
+        const text = await page.locator(".admin-verification-row").nth(index).innerText().catch(() => "");
+        if (!text.includes("Atlas Knit Studio")) continue;
+        await page.locator(reviewButtons).nth(index).click();
+        atlasOpened = true;
+        break;
+      }
+      check(atlasOpened, "staff open Atlas Knit Studio's review");
+      await waitForHeading(page, "Atlas Knit Studio", 25000).catch(() => {});
+
+      // Suggestions, asked for by hand.
+      await waitFor(page, ".admin-assist-panel", 25000);
+      // The last saved answer loads with the page, so the button may read "Ask again".
+      const askLabel = await page.evaluate(() => [...document.querySelectorAll(".admin-assist-panel button")].map((node) => node.textContent.trim()).find((text) => /^Ask (AI for suggestions|again)$/.test(text)) ?? "");
+      check(Boolean(askLabel), `the review page offers AI suggestions, on request only ("${askLabel}")`);
+      // By its place, not its label: the saved answer can arrive between the
+      // read above and this click and turn "Ask AI for suggestions" into
+      // "Ask again" (any run after the first on the same database).
+      await page.locator(".admin-assist-actions .secondary-btn").first().click();
+      await page.waitForTimeout(500);
+      const askDeadline = Date.now() + 45000;
+      while (Date.now() < askDeadline && await page.evaluate(() => [...document.querySelectorAll(".admin-assist-panel button")].some((node) => node.textContent.includes("Asking")))) {
+        await page.waitForTimeout(400);
+      }
+      const panelText = await page.locator(".admin-assist-panel").innerText();
+      const findings = await page.locator(".admin-assist-row").count();
+      const { count: assistsAfter } = await db.from("org_review_assists").select("*", { count: "exact", head: true }).eq("org_id", atlas.id);
+      const freshAnswer = assistsAfter === (assistsBefore ?? 0) + 1;
+      const aiAnswered = freshAnswer && findings > 0 && /Seen: /.test(panelText);
+      const notSetUp = /not set up on this site/i.test(panelText);
+      console.log(`  AI suggestions: ${aiAnswered ? `${findings} from the model` : notSetUp ? "not set up (no key)" : "neither"}`);
+      if (aiMode === "on") check(aiAnswered, `with a key, the AI lists what to look at, each with what it saw (${findings}), kept for the record`);
+      else if (aiMode === "off") check(notSetUp && !freshAnswer, "without a key, the page says suggestions are not set up, and nothing new is recorded");
+      else check(aiAnswered || notSetUp, "the AI lists suggestions, or the page says it is not set up");
+      // Each row is labelled "Suggestion" and nothing else: no score, no pass or fail.
+      const rowLabels = await page.evaluate(() => [...document.querySelectorAll(".admin-assist-row")].map((row) => row.lastElementChild?.textContent.trim()));
+      check(rowLabels.every((label) => label === "Suggestion"), `each suggestion is labelled "Suggestion", with no score or verdict (${[...new Set(rowLabels)].join(", ") || "none shown"})`);
+      await record(page, "AI suggestions", aiAnswered ? "what to look at, with the evidence seen and a question to ask" : "no key on this site: nothing stands in");
+
+      // A suggested note, edited, then sent the usual way. The dialog is the
+      // design's: "Suggest with AI" fills the message from the incomplete
+      // checks; without a key the note is built from the checks, and says so.
+      await clickButton(page, "request more information");
+      await waitFor(page, ".admin-review-modal", 10000);
+      await clickButton(page, "suggest with ai");
+      const draftDeadline = Date.now() + 45000;
+      const suggestion = () => page.evaluate(() => ({
+        text: document.querySelector(".admin-review-modal textarea")?.value ?? "",
+        error: document.querySelector(".admin-request-ai-error")?.innerText ?? "",
+        notice: document.querySelector(".admin-review-modal [role=status]")?.innerText ?? "",
+      }));
+      let suggested = await suggestion();
+      while (Date.now() < draftDeadline && !suggested.text.trim() && !suggested.error) {
+        await page.waitForTimeout(400);
+        suggested = await suggestion();
+      }
+      console.log(`  Suggestion: ${suggested.error || suggested.notice || `${suggested.text.trim().length} characters`}`);
+      const aiDraft = suggested.text.trim().length > 40 && !suggested.notice;
+      const fromChecks = suggested.text.trim().length > 40 && /not set up on this site/i.test(suggested.notice);
+      if (aiMode === "on") check(aiDraft, `with a key, the AI suggests the message (${suggested.text.trim().length} characters)`);
+      else if (aiMode === "off") check(fromChecks, `without a key, the note is built from the checks and the dialog says why ("${suggested.notice || suggested.error}")`);
+      else check(aiDraft || fromChecks, `the message is suggested, or built from the checks ("${suggested.notice || suggested.error || "suggested"}")`);
+      await record(page, "A suggested request", "staff read and edit it; nothing is sent yet");
+      const drafted = suggested.text.trim()
+        || "Please upload a current certificate for your certification scope, with its validity dates, so we can complete the review.";
+      const edited = `${drafted.trim()}\n\nEdited by staff ${stamp}.`;
+      await page.locator(".admin-review-modal textarea").fill(edited);
+      await clickButton(page, "send request");
+      let sentReview = null;
+      const sendDeadline = Date.now() + 20000;
+      while (Date.now() < sendDeadline) {
+        ({ data: sentReview } = await db.from("org_reviews").select("state, note").eq("org_id", atlas.id).maybeSingle());
+        if (sentReview?.state === "needs_information") break;
+        await page.waitForTimeout(500);
+      }
+      check(sentReview?.state === "needs_information", "sending records the request for more information");
+      check(sentReview?.note === edited.trim(), "with the note exactly as staff edited it");
+      const { data: askedNotice } = await db.from("notifications").select("id, body")
+        .eq("org_id", atlas.id).eq("kind", "verification_needs_information").gte("created_at", sectionStart);
+      check((askedNotice ?? []).some((notice) => notice.body === edited.trim()), "and the factory is told, in those words");
+      await record(page, "Request sent", "the factory's review now waits on it");
+
+      // Put Atlas back the way the seed left it.
+      if (atlasReviewBefore) await db.from("org_reviews").upsert(atlasReviewBefore);
+      else await db.from("org_reviews").delete().eq("org_id", atlas.id);
+      if (atlasProfileBefore) await db.from("factory_profiles").update({ verification_status: atlasProfileBefore.verification_status }).eq("org_id", atlas.id);
+      await db.from("notifications").delete().eq("org_id", atlas.id).eq("kind", "verification_needs_information").gte("created_at", sectionStart);
+    }
+
+    // Test data: found, confirmed, deleted.
+    const demoNamesListed = (text) => /Demo Brand|Demo Factory|Ningbo Loomworks|Atlas Knit Studio|Fresh Thread Studio|Kowloon Sourcing Partners/.test(text);
+    await page.goto(`${ADMIN}?screen=settings`);
+    const findDeadline = Date.now() + 30000;
+    while (Date.now() < findDeadline && !(await page.evaluate(() => [...document.querySelectorAll("button")].some((node) => node.textContent.trim() === "Find test data")))) {
+      await page.waitForTimeout(300);
+    }
+    await clickButton(page, "find test data");
+    await waitFor(page, ".admin-testdata-table, .admin-testdata .admin-error", 30000);
+    const listed = await page.locator(".admin-testdata").innerText();
+    check(Boolean(leftover) && listed.includes(leftover.name), "Settings → Test data lists the leftover company");
+    check(!listed.includes(brandName) && !listed.includes(factoryName), "but not this run's own companies (under an hour old)");
+    check(!demoNamesListed(listed), "and not the demo companies");
+    await page.evaluate(() => document.querySelector(".admin-testdata")?.scrollIntoView({ block: "center" }));
+    await record(page, "Test data found", "the list, and the rule in words, before anything is deleted");
+    await clickButton(page, "delete ");
+    await waitFor(page, "#test-data-title", 10000);
+    const confirmTitle = await page.locator("#test-data-title").innerText();
+    check(/^Delete \d+ compan/.test(confirmTitle), `deleting asks first ("${confirmTitle}")`);
+    await record(page, "Confirm", "nothing is deleted until staff confirm");
+    await clickButton(page, "delete test data");
+    await waitFor(page, ".admin-testdata [role=status]", 60000);
+    const purgeResult = await page.locator(".admin-testdata [role=status]").innerText();
+    check(/^Deleted \d+ compan/.test(purgeResult), `and says what it deleted ("${purgeResult}")`);
+    await record(page, "Test data deleted", purgeResult);
+    const { data: leftoverAfter } = await db.from("orgs").select("id").eq("id", leftover?.id ?? stamp).maybeSingle();
+    check(!leftoverAfter, "the leftover company is gone");
+    const { count: ownLeft } = await db.from("orgs").select("*", { count: "exact", head: true }).in("id", [brandOrg.id, factoryOrg.id]);
+    check(ownLeft === 2, "this run's companies are untouched");
+    const demoNames = ["Demo Brand", "Demo Factory", "Ningbo Loomworks", "Atlas Knit Studio", "Fresh Thread Studio", "Kowloon Sourcing Partners"];
+    const { count: demoLeft } = await db.from("orgs").select("*", { count: "exact", head: true }).in("name", demoNames);
+    check(demoLeft === demoNames.length, `the demo companies are untouched (${demoLeft} of ${demoNames.length})`);
 
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.

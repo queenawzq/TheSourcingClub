@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { PrototypeSideNav, ProfileChipSection, ProfileDetailPair } from "../shared/ProfileShell.jsx";
 import { useActions, useAdminMetrics, useAdminQuotes, useAdminRfqs, useAdminUsers, useVerificationQueue, useViewer } from "../lib/data/DataProvider.jsx";
 import "../prototype/styles.css";
@@ -216,7 +217,7 @@ function VerificationRow({ profile, onReview }) {
         </div>
       </div>
       {profile.confidence != null
-        ? <div className="admin-row-stat"><span>Confidence</span><strong>{profile.confidence}%</strong></div>
+        ? <div className="admin-row-stat"><span>{profile.confidenceLabel ?? "Confidence"}</span><strong>{profile.confidence}%</strong></div>
         : <div className="admin-row-stat"><span>Assigned</span><strong>{profile.owner || "Unassigned"}</strong></div>}
       <div className="admin-row-stat"><span>Evidence</span><strong>{profile.evidence}</strong></div>
       <StatusPill tone={profile.tone}>{profile.status}</StatusPill>
@@ -287,7 +288,7 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate,
         </header>
 
         <div className="factory-dashboard-metrics admin-metrics">
-          <MetricCard label="Profiles awaiting review" value={metrics.profilesAwaitingReview ?? pending.length} note={`${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" />
+          <MetricCard label="Profiles awaiting review" value={metrics.profilesAwaitingReview ?? pending.length} note={`${metrics.profilesSubmittedToday ?? 0} submitted today`} tone="blue" href={metrics.profilesHref} linkLabel="Open queue" />
           <MetricCard label="RFQs submitted today" value={metrics.rfqsSubmittedToday ?? 0} note={`${rfqRows.length} in the marketplace`} tone="green" />
           <MetricCard label="Quotes submitted today" value={metrics.quotesSubmittedToday ?? 0} note={`${quoteRows.length} in the marketplace`} tone="amber" />
           {/* Live only: messages held for review. Nobody can be notified of
@@ -812,6 +813,101 @@ function EvidenceDetailModal({ profile, check, documents, onDocumentUrl, onClose
   );
 }
 
+/**
+ * What an AI model suggests a reviewer look at. Live only: the prototype's
+ * adapter has no `reviewAssist`, so nothing here is drawn there. Not in the
+ * design; built from the design's panel and check rows.
+ *
+ * Text, never a score (CLAUDE.md, Admin operations). Each suggestion shows
+ * the evidence it rests on, quoted from the submission, and the server drops
+ * any whose evidence is not there. It runs when staff ask, never by itself,
+ * and the caption says what the model did and did not read.
+ */
+function AiSuggestionsPanel({ orgId }) {
+  const actions = useActions();
+  const [state, setState] = useState({ status: "idle", result: null, message: "" });
+  const [input, setInput] = useState(null);
+  const [inputOpen, setInputOpen] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setState({ status: "idle", result: null, message: "" });
+    setInput(null);
+    setInputOpen(false);
+    actions.latestReviewAssists?.(orgId)
+      .then((saved) => {
+        if (live && saved?.check) {
+          setState({ status: "done", result: { ...saved.check.output, model: saved.check.model, createdAt: saved.check.createdAt }, message: "" });
+        }
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [orgId]);
+
+  const ask = async () => {
+    setState((current) => ({ ...current, status: "asking", message: "" }));
+    try {
+      const result = await actions.reviewAssist("check", orgId);
+      if (!result.available) {
+        setState((current) => ({ ...current, status: current.result ? "done" : "idle", message: result.reason }));
+        return;
+      }
+      if (result.input) setInput(result.input);
+      setState({ status: "done", result, message: "" });
+    } catch (error) {
+      setState((current) => ({ ...current, status: current.result ? "done" : "idle", message: error.message }));
+    }
+  };
+
+  const toggleInput = async () => {
+    if (!inputOpen && !input) {
+      try { setInput(await actions.reviewAssistInput(orgId)); } catch (error) { setState((current) => ({ ...current, message: error.message })); return; }
+    }
+    setInputOpen(!inputOpen);
+  };
+
+  const { result } = state;
+  const asked = result?.createdAt ? new Date(result.createdAt).toLocaleString("en", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : null;
+
+  return (
+    <Panel
+      title="AI suggestions"
+      subtitle="Suggestions from an AI model. It read the profile text, the certificate records and the list of files; it did not open the files or contact any registry. No score and no decision: the decision is yours."
+      className="admin-assist-panel"
+    >
+      {state.message && <p className="admin-error" role="alert">{state.message}</p>}
+      {result && (
+        <>
+          <p className="admin-assist-meta">Asked {asked}{result.model ? ` · ${result.model}` : ""}{result.dropped ? ` · ${result.dropped} suggestion${result.dropped === 1 ? "" : "s"} left out: their evidence was not in the submission` : ""}</p>
+          {result.findings?.length ? (
+            <div className="admin-check-list">
+              {result.findings.map((finding, index) => (
+                <article className="admin-check-row admin-assist-row" key={`${finding.topic}-${index}`}>
+                  <div className="admin-check-copy">
+                    <strong>{finding.topic}</strong>
+                    <p>{finding.observation}</p>
+                    <span>Seen: “{finding.evidence}”</span>
+                    {finding.ask && <p className="admin-assist-ask">Could ask: {finding.ask}</p>}
+                  </div>
+                  <StatusPill tone="info">Suggestion</StatusPill>
+                </article>
+              ))}
+            </div>
+          ) : <p className="admin-assist-meta">Nothing stood out to the AI. That is not a check passed: review the evidence as usual.</p>}
+          {result.checked?.length ? <p className="admin-assist-meta">Looked at: {result.checked.join(", ")}</p> : null}
+        </>
+      )}
+      <div className="admin-assist-actions">
+        <button className="secondary-btn" type="button" onClick={ask} disabled={state.status === "asking"}>
+          {state.status === "asking" ? "Asking…" : result ? "Ask again" : "Ask AI for suggestions"}
+        </button>
+        <button className="admin-assist-link" type="button" onClick={toggleInput} aria-expanded={inputOpen}>{inputOpen ? "Hide what the AI reads" : "What the AI reads"}</button>
+      </div>
+      {inputOpen && input && <pre className="admin-assist-input">{JSON.stringify(input, null, 2)}</pre>}
+    </Panel>
+  );
+}
+
 function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest }) {
   const [requestOpen, setRequestOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
@@ -822,9 +918,13 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const [requestNote, setRequestNote] = useState("");
   const [requestSuggestionLoading, setRequestSuggestionLoading] = useState(false);
   const [requestSuggestionError, setRequestSuggestionError] = useState("");
+  // Live only: why the note came from the checks rather than the model.
+  const [requestSuggestionNotice, setRequestSuggestionNotice] = useState("");
   const [declineNote, setDeclineNote] = useState("");
   const [fullProfileOpen, setFullProfileOpen] = useState(false);
   const [selectedCheck, setSelectedCheck] = useState(null);
+  // Live only: reviewAssist draws the AI suggestions panel below.
+  const actions = useActions();
   const eligibility = submission?.trustEligibility ?? null;
   const isVendor = profile?.entityType === "Factory" || profile?.entityType === "Trading company";
   const hasWalkthrough = eligibility?.hasWalkthrough ?? (documents ?? []).some(
@@ -843,14 +943,17 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const suggestRequest = async () => {
     setRequestSuggestionLoading(true);
     setRequestSuggestionError("");
+    setRequestSuggestionNotice("");
     try {
       const result = await onSuggestRequest?.({
         companyName: profile.name,
         entityType: profile.entityType,
         gaps: requestGaps,
       });
-      if (result?.message) setRequestNote(result.message);
-      else setRequestSuggestionError(result?.error || "The suggestion could not be generated. You can still write the message manually.");
+      if (result?.message) {
+        setRequestNote(result.message);
+        setRequestSuggestionNotice(result.notice || "");
+      } else setRequestSuggestionError(result?.error || "The suggestion could not be generated. You can still write the message manually.");
     } catch (error) {
       setRequestSuggestionError(error.message || "The suggestion could not be generated. You can still write the message manually.");
     } finally {
@@ -874,7 +977,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
           <div className="admin-review-main">
             <Panel title="Profile summary" subtitle={profile.summary} action="View full submission" onAction={() => setFullProfileOpen(true)}>
               <div className="admin-detail-grid">{profile.details.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
-              <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} />
+              {profile.capabilities?.length ? <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} /> : null}
             </Panel>
             {profile.checks?.length ? (
             <Panel title="Verification checks" subtitle="Each check reads what this company submitted and what TSC already holds. None of them contacts an outside registry or certifier.">
@@ -907,6 +1010,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               </div>
             </Panel>
             ) : null}
+            {actions.reviewAssist && <AiSuggestionsPanel orgId={profile.id} />}
           </div>
           <aside className="admin-review-side">
             {profile.confidence != null && <ConfidenceCard score={profile.confidence} />}
@@ -914,7 +1018,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <h2>Review details</h2>
               {submission && <ProfileDetailPair label="Submitted by" value={submitterName} />}
               {submission && <ProfileDetailPair label="Account email" value={submitterEmail} />}
-              {profile.completion != null && <ProfileDetailPair label="Profile completeness" value={`${profile.completion}%`} />}
+              {(submission?.completion ?? profile.completion) != null && <ProfileDetailPair label="Profile completeness" value={`${submission?.completion ?? profile.completion}%`} />}
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
             </section>
@@ -986,6 +1090,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             </div>
             <label className="factory-onboarding-field admin-request-message"><span className="sr-only">Message to applicant</span><textarea value={requestNote} onChange={(event) => setRequestNote(event.target.value)} placeholder="Explain which document or information is missing and what the applicant should upload..." /></label>
             {requestSuggestionError && <p className="admin-request-ai-error" role="alert">{requestSuggestionError}</p>}
+            {requestSuggestionNotice && <p className="admin-assist-meta" role="status">{requestSuggestionNotice}</p>}
             <footer><button className="secondary-btn" type="button" onClick={() => setRequestOpen(false)}>Cancel</button><button className="primary-btn" type="button" disabled={!requestNote.trim()} onClick={() => { setRequestOpen(false); onDecision(profile.id, "Needs information", requestNote.trim()); setRequestNote(""); }}>Send request</button></footer>
           </section>
         </div>
@@ -1006,10 +1111,13 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   );
 }
 
-function AdminRfqDetail({ rfq, onBack, backLabel, onOpenQuote }) {
+// Live mounts pass `quoteRows` (the workspace's own quote list) and `detail`
+// ({ brief, quotes: { [quoteRef]: {...} } }, read from the records). The
+// prototype passes neither and keeps its constants.
+function AdminRfqDetail({ rfq, onBack, backLabel, onOpenQuote, quoteRows = quotes, detail = null }) {
   if (!rfq) return null;
-  const rfqQuotes = quotes.filter((item) => item[3] === rfq[0]);
-  const details = rfqDetails[rfq[0]] || {};
+  const rfqQuotes = quoteRows.filter((item) => item[3] === rfq[0]);
+  const details = detail ? detail.brief : rfqDetails[rfq[0]] || {};
   return (
     <main className="factory-profile-page brand-profile-page admin-page admin-review-page admin-rfq-detail-page">
       <div className="admin-review-shell">
@@ -1028,8 +1136,8 @@ function AdminRfqDetail({ rfq, onBack, backLabel, onOpenQuote }) {
                     <header><div><span>{quote[0]} · Submitted {quote[5]}</span><h3>{quote[1]}</h3></div><StatusPill tone={quote[7]}>{quote[6]}</StatusPill></header>
                     <div className="admin-quote-card-stats">
                       <ProfileDetailPair label="Quote total" value={quote[4]} />
-                      <ProfileDetailPair label="Bulk lead" value={`${[28, 31, 26][index % 3]} days`} />
-                      <ProfileDetailPair label="Sample cost" value={["$260", "$310", "$240"][index % 3]} />
+                      <ProfileDetailPair label="Bulk lead" value={detail ? detail.quotes[quote[0]]?.lead : `${[28, 31, 26][index % 3]} days`} />
+                      <ProfileDetailPair label="Sample cost" value={detail ? detail.quotes[quote[0]]?.sampleCost : ["$260", "$310", "$240"][index % 3]} />
                     </div>
                     <button className="secondary-btn compact-btn" type="button" onClick={() => onOpenQuote(quote)}>View quote</button>
                   </article>
@@ -1071,7 +1179,7 @@ function AdminRfqDetail({ rfq, onBack, backLabel, onOpenQuote }) {
               <h2>Request timeline</h2>
               <div className="admin-rfq-timeline">
                 <p><strong>{rfq[3]}</strong>RFQ submitted by {rfq[2]}</p>
-                <p><strong>{rfq[3]}</strong>{rfq[4]} invited to quote</p>
+                <p><strong>{rfq[3]}</strong>{rfq.invitedEvent ?? `${rfq[4]} invited to quote`}</p>
                 {rfqQuotes[0] && <p><strong>{rfqQuotes[0][5]}</strong>{rfqQuotes.length} vendor quotes received</p>}
               </div>
             </section>
@@ -1082,22 +1190,25 @@ function AdminRfqDetail({ rfq, onBack, backLabel, onOpenQuote }) {
   );
 }
 
-function AdminQuoteDetail({ quote, rfq, onBack }) {
+// Live mounts pass `detail` (as AdminRfqDetail) and `backLabel` ("Quotes"
+// when it was opened from the quote list). The prototype passes neither.
+function AdminQuoteDetail({ quote, rfq, onBack, detail = null, backLabel = null }) {
   if (!quote || !rfq) return null;
-  const details = rfqDetails[rfq[0]] || {};
+  const details = detail ? detail.brief : rfqDetails[rfq[0]] || {};
   const siblingQuotes = quotes.filter((item) => item[3] === rfq[0]);
   const quoteIndex = Math.max(0, siblingQuotes.findIndex((item) => item[0] === quote[0]));
   const quantity = Number.parseInt(details.quantity, 10) || 300;
   const total = Number.parseFloat(quote[4].replace(/[$,]/g, "")) || 0;
-  const unitPrice = `$${(total / quantity).toFixed(2)}`;
-  const lead = `${[28, 31, 26][quoteIndex % 3]} days`;
-  const sampleCost = ["$260", "$310", "$240"][quoteIndex % 3];
-  const paymentTerms = ["30% deposit · 70% before shipment", "40% deposit · 60% before shipment", "30% deposit · 70% net 7"][quoteIndex % 3];
-  const shipping = ["EXW · freight not included", "FOB · export handling included", "FOB · freight quoted separately"][quoteIndex % 3];
+  const live = detail ? detail.quotes[quote[0]] ?? {} : null;
+  const unitPrice = live ? live.unitPrice : `$${(total / quantity).toFixed(2)}`;
+  const lead = live ? live.lead : `${[28, 31, 26][quoteIndex % 3]} days`;
+  const sampleCost = live ? live.sampleCost : ["$260", "$310", "$240"][quoteIndex % 3];
+  const paymentTerms = live ? live.paymentTerms : ["30% deposit · 70% before shipment", "40% deposit · 60% before shipment", "30% deposit · 70% net 7"][quoteIndex % 3];
+  const shipping = live ? live.shipping : ["EXW · freight not included", "FOB · export handling included", "FOB · freight quoted separately"][quoteIndex % 3];
   return (
     <main className="factory-profile-page brand-profile-page admin-page admin-review-page admin-quote-detail-page">
       <div className="admin-review-shell">
-        <button className="admin-back-link" type="button" onClick={onBack}>‹ Back to {rfq[0]} quotes</button>
+        <button className="admin-back-link" type="button" onClick={onBack}>‹ Back to {backLabel === "Quotes" ? "quotes" : `${rfq[0]} quotes`}</button>
         <header className="admin-review-header admin-rfq-detail-header">
           <div><span className="admin-eyebrow">{quote[0]}</span><h1>{quote[1]} quotation</h1><p>{rfq[1]} · Submitted {quote[5]}</p></div>
           <StatusPill tone={quote[7]}>{quote[6]}</StatusPill>
@@ -1108,9 +1219,9 @@ function AdminQuoteDetail({ quote, rfq, onBack }) {
               <div className="admin-detail-grid admin-quote-detail-grid">
                 <ProfileDetailPair label="Quote total" value={quote[4]} />
                 <ProfileDetailPair label="Unit price" value={unitPrice} />
-                <ProfileDetailPair label="Quantity" value={details.quantity} />
+                <ProfileDetailPair label="Quantity" value={live ? live.quantity : details.quantity} />
                 <ProfileDetailPair label="Bulk lead time" value={lead} />
-                <ProfileDetailPair label="Sample plan" value={details.samples} />
+                <ProfileDetailPair label="Sample plan" value={live ? live.samples : details.samples} />
                 <ProfileDetailPair label="Sample cost" value={sampleCost} />
               </div>
             </Panel>
@@ -1118,8 +1229,8 @@ function AdminQuoteDetail({ quote, rfq, onBack }) {
               <div className="admin-rfq-requirement-list">
                 <ProfileDetailPair label="Payment terms" value={paymentTerms} />
                 <ProfileDetailPair label="Shipping / incoterms" value={shipping} />
-                <ProfileDetailPair label="Materials included" value={details.materials} />
-                <ProfileDetailPair label="Vendor note" value={`Capacity is reserved for the requested delivery window. Final pricing is subject to approved samples, confirmed specifications, and color standards.`} />
+                <ProfileDetailPair label="Materials included" value={live ? live.materials : details.materials} />
+                <ProfileDetailPair label="Vendor note" value={live ? live.note : `Capacity is reserved for the requested delivery window. Final pricing is subject to approved samples, confirmed specifications, and color standards.`} />
               </div>
             </Panel>
             <Panel title="Original request" subtitle={`${rfq[0]} from ${rfq[2]}`}>
@@ -1233,7 +1344,9 @@ const TEST_EMAILS = [
   { key: "notification", label: "Notification · New quote", localized: true },
 ];
 
-function TestEmailPanel({ email }) {
+// `unavailable` (live only): why this staff member's own address cannot
+// receive a test, said before Send rather than after it fails.
+function TestEmailPanel({ email, intro, unavailable = null }) {
   const actions = useActions();
   const [template, setTemplate] = useState(TEST_EMAILS[0].key);
   const [locale, setLocale] = useState("en");
@@ -1254,7 +1367,7 @@ function TestEmailPanel({ email }) {
   return (
     <Panel
       title="Test emails"
-      subtitle={`Send yourself any email the marketplace sends, filled with sample data. It goes only to ${email}.`}
+      subtitle={`${intro ?? "Send yourself any email the marketplace sends, filled with sample data."} It goes only to ${email}.`}
       className="admin-settings-card"
     >
       <form className="admin-threshold-form" onSubmit={send}>
@@ -1273,11 +1386,114 @@ function TestEmailPanel({ email }) {
             </select>
           </label>
         )}
+        {unavailable && <p className="admin-error" role="note">{unavailable}</p>}
         {status.message && <p className={status.state === "error" ? "admin-error" : "admin-test-email-status"} role={status.state === "error" ? "alert" : "status"}>{status.message}</p>}
         <div className="admin-settings-actions">
-          <button className="primary-btn" type="submit" disabled={status.state === "sending"}>{status.state === "sending" ? "Sending…" : "Send test email"}</button>
+          <button className="primary-btn" type="submit" disabled={Boolean(unavailable) || status.state === "sending"}>{status.state === "sending" ? "Sending…" : "Send test email"}</button>
         </div>
       </form>
+    </Panel>
+  );
+}
+
+/**
+ * Clearing what test runs leave behind. Live, on test builds only: the
+ * prototype's adapter and a production build have no `testData`, so nothing
+ * is drawn; the route also refuses the production project. Not in the
+ * design; built from the settings card and the design's table.
+ *
+ * Staff always see the list first, and the database deletes only what it
+ * still recognises as test data (purge_test_data).
+ */
+function TestDataPanelIfLive() {
+  const actions = useActions();
+  return actions.testData ? <TestDataPanel /> : null;
+}
+
+function TestDataPanel() {
+  const actions = useActions();
+  const [state, setState] = useState({ status: "idle", preview: null, message: "" });
+  const [confirming, setConfirming] = useState(false);
+
+  const find = async () => {
+    setState({ status: "finding", preview: null, message: "" });
+    try {
+      setState({ status: "found", preview: await actions.testData.preview(), message: "" });
+    } catch (error) {
+      setState({ status: "error", preview: null, message: error.message });
+    }
+  };
+
+  const companies = state.preview?.companies ?? [];
+  const users = state.preview?.users ?? [];
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+
+  const purge = async () => {
+    setConfirming(false);
+    setState((current) => ({ ...current, status: "deleting", message: "" }));
+    try {
+      const result = await actions.testData.purge(companies.map((company) => company.id), users.map((user) => user.id));
+      const kept = result.keptUsers?.length ? `; kept ${plural(result.keptUsers.length, "user", "users")} other records still point to` : "";
+      const skipped = result.skipped ? `; skipped ${plural(result.skipped, "company", "companies")} that no longer match` : "";
+      setState({
+        status: "done",
+        preview: null,
+        message: `Deleted ${plural(result.companies, "company", "companies")}, ${plural(result.orders, "order", "orders")}, ${plural(result.users, "user", "users")} and ${plural(result.files ?? 0, "file", "files")}${kept}${skipped}.`,
+      });
+    } catch (error) {
+      setState((current) => ({ ...current, status: "found", message: error.message }));
+    }
+  };
+
+  return (
+    <Panel
+      title="Test data"
+      subtitle="Companies and users left behind by test runs. Nothing is deleted until you have seen the list and confirmed. Not available on the live marketplace."
+      className="admin-settings-card"
+    >
+      <div className="admin-testdata">
+        {state.message && <p className={state.status === "error" || state.status === "found" ? "admin-error" : "admin-test-email-status"} role={state.status === "done" ? "status" : "alert"}>{state.message}</p>}
+        {state.preview && (
+          <>
+            <p className="admin-assist-meta">{state.preview.rule}</p>
+            {companies.length ? (
+              <div className="admin-table-wrap admin-testdata-table">
+                <table className="admin-table">
+                  <thead><tr><th>Company</th><th>Members</th><th>Requests</th><th>Quotes</th><th>Orders</th><th>Files</th></tr></thead>
+                  <tbody>
+                    {companies.map((company) => (
+                      <tr key={company.id}>
+                        <td><strong>{company.name}</strong><br /><small>{company.type} · {new Date(company.createdAt).toLocaleDateString("en", { month: "short", day: "numeric" })}</small></td>
+                        <td>{company.members.length ? company.members.join(", ") : "None"}</td>
+                        <td>{company.requests}</td><td>{company.quotes}</td><td>{company.orders}</td><td>{company.files}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : <p className="admin-assist-meta">No test companies.</p>}
+            <p className="admin-assist-meta">{users.length ? `${plural(users.length, "test user", "test users")}: ${users.slice(0, 12).map((user) => user.email).join(", ")}${users.length > 12 ? `, and ${users.length - 12} more` : ""}.` : "No test users."}</p>
+          </>
+        )}
+        <div className="admin-settings-actions">
+          {state.preview && (companies.length || users.length) ? (
+            <button className="primary-btn danger-action" type="button" onClick={() => setConfirming(true)} disabled={state.status === "deleting"}>
+              {state.status === "deleting" ? "Deleting…" : `Delete ${plural(companies.length, "company", "companies")} and ${plural(users.length, "user", "users")}`}
+            </button>
+          ) : null}
+          <button className="secondary-btn" type="button" onClick={find} disabled={state.status === "finding" || state.status === "deleting"}>{state.status === "finding" ? "Looking…" : state.preview ? "Look again" : "Find test data"}</button>
+        </div>
+      </div>
+      {confirming && createPortal(
+        <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setConfirming(false)}>
+          <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="test-data-title">
+            <button className="settings-drawer-close" type="button" aria-label="Close" onClick={() => setConfirming(false)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
+            <header><div><span>Test data</span><h2 id="test-data-title">Delete {plural(companies.length, "company", "companies")} and {plural(users.length, "user", "users")}?</h2><p>This cannot be undone</p></div></header>
+            <footer><button className="secondary-btn" type="button" onClick={() => setConfirming(false)}>Cancel</button><button className="primary-btn danger-action" type="button" onClick={purge}>Delete test data</button></footer>
+          </section>
+        </div>,
+        document.body,
+      )}
     </Panel>
   );
 }
@@ -1318,7 +1534,7 @@ function DailyJobsPanel() {
   );
 }
 
-function SettingsPage({ user, account, onSignOut }) {
+function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUnavailable }) {
   const initialThresholds = { autoClear: "95", manualMin: "80", manualMax: "94", moreInformation: "80", authority: "TSC operations" };
   const email = user?.email ?? account?.email ?? "operations@thesourcingclub.com";
   const name = account?.name ?? user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? "TSC Operations";
@@ -1403,13 +1619,14 @@ function SettingsPage({ user, account, onSignOut }) {
           </div>
         )}
       </Panel>
-      <TestEmailPanel email={email} />
+      <TestEmailPanel email={email} intro={testEmailsIntro} unavailable={testEmailsUnavailable} />
       <DailyJobsPanel />
+      <TestDataPanelIfLive />
     </main>
   );
 }
 
-function App() {
+function App({ testEmailsIntro, testEmailsUnavailable } = {}) {
   // Everything below reads through the data seam. admin-prototype.html serves
   // the constants in this file; admin.html serves the marketplace. The
   // components in between never learn which.
@@ -1442,6 +1659,11 @@ function App() {
   const [selectedQuote, setSelectedQuote] = useState(requestedQuote);
   const [reviewBack, setReviewBack] = useState("Verification");
   const [rfqBack, setRfqBack] = useState(requested === "rfq-detail" ? "RFQs" : "Overview");
+  // Where a quote was opened from: the quote list, or its request's page.
+  const [quoteBack, setQuoteBack] = useState(requested === "quote-detail" ? "Quotes" : "RFQ detail");
+  // Live only: the open request's brief and quote figures, read from the
+  // records when it opens. The mock has no `rfqDetail` and keeps its constants.
+  const [rfqDetail, setRfqDetail] = useState(null);
   const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [toast, setToast] = useState("");
   // The files the company under review uploaded. Fetched per company rather
@@ -1452,10 +1674,18 @@ function App() {
 
   // Against the mock every list is populated on the first render, so these
   // seeds are no-ops. Against the network the first render has nothing, and a
-  // deep link would otherwise land on a blank detail screen.
+  // deep link would otherwise land on a blank detail screen. They seed from
+  // the link, not the first row: the URL still names the company (or request,
+  // or quote) the link was for until something is selected.
   useEffect(() => {
-    if (!selectedProfile && profiles.length) setSelectedProfile(profiles[0]);
+    if (!selectedProfile && profiles.length) setSelectedProfile(requestedProfile);
   }, [profiles, selectedProfile]);
+  // The selected company is a copy of its queue row. When the queue is
+  // re-read (after a decision), the copy is replaced by the fresh row, or the
+  // summary keeps the note, status and decision date it opened with.
+  useEffect(() => {
+    setSelectedProfile((current) => (current && profiles.find((profile) => profile.id === current.id)) || current);
+  }, [profiles]);
 
   useEffect(() => {
     if (!selectedProfile?.id || !actions.orgDocuments) {
@@ -1480,11 +1710,35 @@ function App() {
     return () => { cancelled = true; };
   }, [selectedProfile?.id, actions]);
   useEffect(() => {
-    if (!selectedRfq && rfqList.length) setSelectedRfq(rfqList[0]);
+    if (!selectedRfq && rfqList.length) setSelectedRfq(requestedRfq);
   }, [rfqList, selectedRfq]);
   useEffect(() => {
-    if (!selectedQuote && quoteList.length) setSelectedQuote(quoteList[0]);
+    if (!selectedQuote && quoteList.length) setSelectedQuote(requestedQuote);
   }, [quoteList, selectedQuote]);
+
+  const detailRow = screen === "Quote detail" ? selectedQuote : screen === "RFQ detail" ? selectedRfq : null;
+  const detailKey = screen === "Quote detail" ? selectedQuote?.[3] : selectedRfq?.[0];
+  useEffect(() => {
+    if (!detailRow || !actions.rfqDetail) return undefined;
+    let cancelled = false;
+    setRfqDetail((current) => (current?.key === detailKey ? current : null));
+    Promise.resolve(actions.rfqDetail(detailRow))
+      .then((detail) => { if (!cancelled) setRfqDetail({ key: detailKey, ...detail }); })
+      .catch((error) => { if (!cancelled) setRfqDetail({ key: detailKey, error }); });
+    return () => { cancelled = true; };
+  }, [detailKey, Boolean(detailRow), actions]);
+  // Never the previous request's figures under this one's title, and never
+  // the prototype's constants while the real ones load: live, a detail that
+  // is not here yet says so in every field.
+  const loadedDetail = rfqDetail?.key === detailKey ? rfqDetail : null;
+  const placeholder = (text) => ({
+    brief: Object.fromEntries(["category", "quantity", "targetPrice", "delivery", "materials", "samples", "requirements"].map((key) => [key, text])),
+    quotes: {},
+  });
+  const shownDetail = !actions.rfqDetail ? null
+    : !loadedDetail ? placeholder("Loading…")
+    : loadedDetail.error ? placeholder("Could not load")
+    : loadedDetail;
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 760px)");
@@ -1522,6 +1776,7 @@ function App() {
     const matchingRfq = rfqList.find((rfq) => rfq[0] === quote[3]);
     if (matchingRfq) setSelectedRfq(matchingRfq);
     setSelectedQuote(quote);
+    setQuoteBack(screen === "Quotes" ? "Quotes" : "RFQ detail");
     setScreen("Quote detail");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1570,7 +1825,10 @@ function App() {
     window.setTimeout(() => setToast(""), 2400);
   };
   const navigate = (label) => { setScreen(label); window.scrollTo({ top: 0, behavior: "smooth" }); };
-  const active = screen === "Review" ? reviewBack : ["RFQ detail", "Quote detail"].includes(screen) ? (rfqBack === "Overview" ? "Overview" : "RFQs") : screen;
+  const active = screen === "Review" ? reviewBack
+    : screen === "Quote detail" && quoteBack === "Quotes" ? "Quotes"
+    : ["RFQ detail", "Quote detail"].includes(screen) ? (rfqBack === "Overview" ? "Overview" : "RFQs")
+    : screen;
 
   return (
     <div className={collapsed ? "app-shell nav-collapsed admin-app" : "app-shell admin-app"}>
@@ -1594,9 +1852,9 @@ function App() {
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} />}
-      {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} />}
-      {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate("RFQ detail")} />}
-      {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} />}
+      {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}
+      {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate(quoteBack)} detail={shownDetail} backLabel={quoteBack} />}
+      {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} testEmailsUnavailable={testEmailsUnavailable} />}
             </>}
       {toast && <div className="app-toast admin-toast" role="status">{toast}</div>}
     </div>

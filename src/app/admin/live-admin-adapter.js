@@ -16,25 +16,41 @@
  * DataTable, RfqActivityCards and every filter predicate in QueuePage — a
  * large diff through Queena's file for no gain, and the next merge would pay
  * for it.
+ *
+ * Each tuple also carries the record's full id as a named property
+ * (`row.id`). The design slices the tuple by position, so a named property is
+ * invisible to it, and the detail screens need the id to read the request:
+ * the shortened ref on screen is not unique enough to look anything up by.
  */
 import {
   claimReview,
   decideReview,
+  latestReviewAssists,
   orgDocuments,
   orgSubmission,
   overviewMetrics,
+  purgeTestData,
   quoteQueue,
+  reviewAssist,
+  reviewAssistInput,
+  rfqDetail,
   rfqQueue,
   runDailyJobs,
   sendTestEmail,
   setUserDisabled,
   suggestReviewRequest,
+  testDataPreview,
   userDirectory,
   verificationQueue,
 } from "../../lib/domain/admin.js";
+import { createElement } from "react";
 import { urlFor } from "../../lib/domain/documents.js";
+import { profileCompletion } from "./profile-completion.js";
 import { heldMessageQueue } from "../../lib/domain/message.js";
-import { formatMoney } from "../../lib/money.js";
+import { formatMoney, formatRange } from "../../lib/money.js";
+import { termLabel } from "../../lib/domain/taxonomy.js";
+import { describeQuote } from "../quote/quote-view.js";
+import { monthLine, quantityLine } from "../rfq/resume-fields.js";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -64,6 +80,14 @@ const DECISION_STATE = {
   Approved: "approved",
   Declined: "declined",
   "Needs information": "needs_information",
+};
+
+/** The company's profile status, in words rather than the enum. */
+const VERIFICATION_LABEL = {
+  unverified: "Not verified",
+  pending: "Pending",
+  verified: "Verified",
+  rejected: "Not verified (declined)",
 };
 
 const RFQ_LABEL = {
@@ -139,13 +163,25 @@ export function toReviewProfile(row) {
       ["Legal name", row.legalName ?? "—"],
       ["Website", row.websiteUrl ?? "—"],
       ["Location", row.location ?? "—"],
-      ["Profile status", row.verificationStatus],
-      ["Last note", row.note ?? "—"],
+      // A company waiting on staff is 'pending' whatever staff have done, so
+      // its words come from the review, as the badge's do: "Pending" beside
+      // "Needs information" said two different things.
+      ["Profile status", row.verificationStatus === "pending"
+        ? status
+        : VERIFICATION_LABEL[row.verificationStatus] ?? row.verificationStatus ?? "—"],
       ["Decided", row.decidedAt ? shortDate(row.decidedAt) : "Not yet"],
+      // Last, on a row of its own (console-live.css): a request is often a
+      // paragraph and a list, which stretched one third of the grid down the
+      // page and pushed its neighbours to the middle of a tall row.
+      ["Last note", row.note ? createElement("span", { className: "admin-review-note" }, row.note) : "—"],
     ],
     capabilities: row.capabilities ?? [],
     confidence: row.verificationScore ?? null,
-    completion: row.profileCompletion ?? null,
+    // The queue row's name for that figure; the design's is "Confidence".
+    confidenceLabel: "Complete",
+    // Not the queue's own figure: completeness is the company's, read with
+    // the submission (profile-completion.js), so both sides see one number.
+    completion: null,
     // The designed panel renders [label, result, value, detail] tuples.
     checks: (row.verificationChecks ?? []).map(
       (check) => [check.label, check.result, check.value, check.detail],
@@ -158,20 +194,29 @@ export function toRfqRow(rfq) {
   // "Quotes received" is a real distinction the design's tabs filter on, and
   // it is the count that decides it, not a separate status column.
   const status = rfq.status === "open" && rfq.quoteCount > 0 ? "Quotes received" : label;
-  return [
+  const openToAll = rfq.visibility === "open_to_all";
+  return Object.assign([
     ref("RFQ", rfq.id),
     rfq.title || "Untitled request",
     rfq.brandName,
     shortDate(rfq.publishedAt ?? rfq.createdAt),
-    `${rfq.invitedCount} vendors`,
+    // A request open to all vendors is quoted by vendors nobody invited, so
+    // "0 vendors" beside its quotes read as a miscount.
+    openToAll ? "Open to all vendors" : `${rfq.invitedCount} vendors`,
     status,
     status === "Quotes received" ? "success" : tone,
-  ];
+  ], {
+    id: rfq.id,
+    // The request timeline's line; the design's says "N vendors invited".
+    invitedEvent: openToAll
+      ? `Published to all vendors${rfq.invitedCount ? `, ${rfq.invitedCount} invited by name` : ""}`
+      : `${rfq.invitedCount} vendors invited to quote`,
+  });
 }
 
 export function toQuoteRow(quote) {
   const [status, tone] = QUOTE_LABEL[quote.status] ?? ["Submitted", "info"];
-  return [
+  return Object.assign([
     ref("Q", quote.id),
     quote.factoryName,
     quote.brandName,
@@ -180,7 +225,57 @@ export function toQuoteRow(quote) {
     shortDate(quote.submittedAt),
     status,
     tone,
-  ];
+  ], { id: quote.id, rfqId: quote.rfqId });
+}
+
+/** What the detail screens print for a field with nothing behind it. */
+const NOT_GIVEN = "Not given";
+const given = (value) => (value == null || value === "" ? NOT_GIVEN : value);
+
+/**
+ * One request and its quotes, in the design's `rfqDetails` shape, plus one
+ * entry per quote keyed by the quote's on-screen ref. Every figure is read
+ * from the records through the brand screens' own mappers (describeQuote);
+ * the design's per-vendor constants (28/31/26 days, $260 samples, "30%
+ * deposit") have nothing behind them live, so a field with no record says
+ * "Not given" rather than borrowing one.
+ */
+export function toRfqDetail({ rfq, categories, incoterms, colourSplits, quotes }) {
+  const sampleNotes = rfq?.sample_notes?.trim();
+  const brief = {
+    category: given(categories.map((term) => termLabel(term)).join(", ")),
+    quantity: given(quantityLine(rfq?.quantity_total, colourSplits)),
+    targetPrice: given(
+      rfq?.target_unit_price_min_cents == null && rfq?.target_unit_price_max_cents == null
+        ? ""
+        : `${formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents, rfq.currency)} / unit`,
+    ),
+    delivery: given(monthLine(rfq?.target_delivery_month)),
+    materials: given(rfq?.material_notes?.trim()),
+    samples: given(
+      rfq?.requires_sample
+        ? sampleNotes ? `Sample required · ${sampleNotes}` : "Sample required"
+        : sampleNotes || (rfq ? "No sample" : ""),
+    ),
+    requirements: given([rfq?.brief?.trim(), rfq?.additional_details?.trim()].filter(Boolean).join("\n\n")),
+  };
+
+  const byRef = {};
+  for (const quote of quotes) {
+    const shown = describeQuote(quote, { incoterms });
+    byRef[ref("Q", quote.id)] = {
+      quantity: given(shown.quantity),
+      unitPrice: given(shown.price),
+      lead: given(shown.lead),
+      samples: given(shown.samplePlan),
+      sampleCost: given(shown.sampleSubtotal),
+      paymentTerms: given(shown.paymentTerms),
+      shipping: given(shown.shipping),
+      materials: given(shown.materialCosts.map((line) => `${line.material}${line.included ? "" : " (not included)"}`).filter(Boolean).join(", ")),
+      note: given(shown.notes?.trim()),
+    };
+  }
+  return { brief, quotes: byRef };
 }
 
 export function toAdminUser(user) {
@@ -213,7 +308,14 @@ export function createAdminAdapter({ user, signOut }) {
     // overview card is their only prompt.
     adminMetrics: async () => {
       const [metrics, held] = await Promise.all([overviewMetrics(), heldMessageQueue()]);
-      return { ...metrics, messagesHeld: held?.length ?? 0, messagesHref: "/app.html/admin/messages" };
+      // Like the payments and messages cards, the profiles card links to
+      // where its figure is acted on: this workspace's own queue.
+      return {
+        ...metrics,
+        messagesHeld: held?.length ?? 0,
+        messagesHref: "/app.html/admin/messages",
+        profilesHref: "?screen=verification",
+      };
     },
     adminUsers: () => userDirectory().then((rows) => rows.map(toAdminUser)),
 
@@ -233,6 +335,9 @@ export function createAdminAdapter({ user, signOut }) {
         return decideReview(orgId, decision, note ?? null, null, tier ?? null);
       },
       suggestReviewRequest,
+      // The detail screens' data, read when one opens. The row is a queue
+      // tuple; its named `rfqId` (a quote) or `id` (a request) says which.
+      rfqDetail: (row) => rfqDetail(row.rfqId ?? row.id).then(toRfqDetail),
       toggleUserAccess: (userId, disabled) => setUserDisabled(userId, disabled),
 
       /**
@@ -244,8 +349,39 @@ export function createAdminAdapter({ user, signOut }) {
        * one handed out at render time is usually dead before it is used.
        */
       orgDocuments: (orgId) => orgDocuments(orgId),
-      orgSubmission: (orgId) => orgSubmission(orgId),
+      // Completeness is loaded the way the company's own profile page loads
+      // it, which needs its name and kind: those come from the submission
+      // just read. They used to come from a cache of the last queue read,
+      // which a re-created adapter did not have, so the row vanished.
+      orgSubmission: async (orgId) => {
+        const submission = await orgSubmission(orgId);
+        const completion = submission?.org
+          ? await profileCompletion({
+            orgId,
+            name: submission.org.name,
+            type: submission.org.type,
+            vendorKind: submission.profile?.vendor_kind,
+          }).catch(() => null)
+          : null;
+        return { ...submission, completion };
+      },
       documentUrl: (document) => urlFor(document),
+
+      /**
+       * AI help on the review page. Live only: the prototype's adapter has
+       * none of these, so its screens draw none of it. Suggestions are text a
+       * person reads, never a score; a draft only fills the note.
+       */
+      reviewAssist,
+      latestReviewAssists,
+      reviewAssistInput,
+
+      /**
+       * Clearing test data, on test builds only. A production build has no
+       * such action, so the panel is not drawn; the route refuses the
+       * production project as well.
+       */
+      ...(import.meta.env.DEV || __DEMO_SIGN_IN__ ? { testData: { preview: testDataPreview, purge: purgeTestData } } : {}),
     },
   };
 }

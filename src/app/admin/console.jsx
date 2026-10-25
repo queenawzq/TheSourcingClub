@@ -14,7 +14,7 @@
  * gated on is_platform_admin() inside the database, so a non-admin who edits
  * this check out gets four 42501s and an empty screen.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../../lib/auth.jsx";
 import { isConfigured } from "../../lib/supabase.js";
@@ -23,6 +23,7 @@ import { DataProvider } from "../../lib/data/DataProvider.jsx";
 import { createAdminAdapter } from "./live-admin-adapter.js";
 import ErrorBoundary from "../../lib/ErrorBoundary.jsx";
 import App from "../../admin-prototype/main.jsx";
+import { reservedEmailNotice } from "../../shared/reserved-email.mjs";
 import "../shell.css";
 import "./console-live.css";
 
@@ -63,6 +64,16 @@ const SIGNED_IN = ["ready", "no-org"];
 function AdminConsole() {
   const { status, error, user, signOut } = useAuth();
   const [staff, setStaff] = useState(null);
+  // One adapter per signed-in person. Made on every render, each auth event
+  // handed every screen a new set of actions, and the review page re-read the
+  // company it already showed.
+  const signOutRef = useRef(signOut);
+  signOutRef.current = signOut;
+  const adapter = useMemo(
+    () => createAdminAdapter({ user, signOut: (...args) => signOutRef.current(...args) }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user?.id],
+  );
 
   useEffect(() => {
     if (!SIGNED_IN.includes(status)) {
@@ -110,8 +121,12 @@ function AdminConsole() {
   }
 
   return (
-    <DataProvider adapter={createAdminAdapter({ user, signOut })}>
-      <App />
+    <DataProvider adapter={adapter}>
+      {/* The design's card says "any email"; live, say which ones it sends. */}
+      <App
+        testEmailsIntro="Send yourself a sample of the marketplace's emails (onboarding, review decisions and a notification), filled with sample data."
+        testEmailsUnavailable={reservedEmailNotice(user?.email)}
+      />
     </DataProvider>
   );
 }

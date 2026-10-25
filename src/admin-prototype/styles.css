@@ -8,6 +8,21 @@
   color: #0b1020;
 }
 
+/* A label read by screen readers only (the request dialog's textarea).
+   Only the marketing stylesheet defined this, and the admin pages do not load
+   it, so "Message to applicant" was printed twice. */
+.admin-app .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .admin-app .side-nav .account-card > span {
   background: #174df2;
 }

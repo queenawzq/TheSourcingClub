@@ -117,11 +117,12 @@ const brand = await demoUser(LOGINS.brand);
 const factory = await demoUser(LOGINS.factory);
 const secondFactory = await demoUser(LOGINS.secondFactory);
 const newFactory = await demoUser(LOGINS.newFactory);
+const returnedFactory = await demoUser(LOGINS.returnedFactory);
 const newBrand = await demoUser(LOGINS.newBrand);
 const tradingCompany = await demoUser(LOGINS.tradingCompany);
 const adminUser = await demoUser(LOGINS.admin);
 const brandMember = await demoUser(LOGINS.brandMember);
-const demoUsers = { brand, brandMember, factory, secondFactory, newFactory, newBrand, tradingCompany, admin: adminUser };
+const demoUsers = { brand, brandMember, factory, secondFactory, newFactory, returnedFactory, newBrand, tradingCompany, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -409,19 +410,83 @@ for (const [file, name, caption] of [
 // A factory that finished onboarding and waits for a decision: the admin
 // console's verification queue has it, and its own login sees "in review".
 const newFactoryOrg = must(await newFactory.client.rpc("create_org", { org_name: LOGINS.newFactory.name, org_kind: "factory" }), "create new factory org");
+// It also carries what a reviewer (and the admin's AI suggestions) should
+// notice: a legal name that is not the company's, a website on another
+// domain than its email, a founding year before its registration, an
+// expired certificate with no file, and an empty registration upload.
 must(await admin.from("factory_profiles").upsert({
   org_id: newFactoryOrg.id,
-  legal_name: "Atlas Knit Studio Ltd",
-  website_url: "https://atlasknit.example.com",
+  legal_name: "Atlas Garment Trading Co. Ltd",
+  website_url: "https://atlas-knits-global.example.net",
   country_code: "GB",
   location: "Leicester, UK",
   founded_year: 2014,
+  registration_date: "2019-06-01",
+  employee_count: 6,
   moq: 100,
   typical_lead_days: 30,
   intro: "Circular and flat knitwear, 100-unit minimums, sampling in a week.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "pending",
 }), "new factory profile");
+must(await admin.from("factory_certifications").insert({
+  org_id: newFactoryOrg.id,
+  term_id: await termId("certification", "gots"),
+  expires_at: "2025-03-31",
+}), "new factory's expired certificate");
+{
+  const path = `${newFactoryOrg.id}/business_registration/${crypto.randomUUID()}-Company-registration.pdf`;
+  must(await newFactory.client.storage.from("org-private").upload(path, new Uint8Array(0), { contentType: "application/pdf" }), "upload the empty registration");
+  must(await admin.from("documents").insert({
+    org_id: newFactoryOrg.id, kind: "business_registration", bucket: "org-private", storage_path: path,
+    file_name: "Company registration.pdf", mime_type: "application/pdf", size_bytes: 0, status: "pending",
+  }), "record the empty registration");
+}
+
+// A factory staff sent back: "Needs information" with the kind of note staff
+// actually write, a paragraph and a list, long enough that its finish card
+// must grow to hold it. The decision goes through the admin's own call, so
+// the notification it reads is the real one.
+const returnedFactoryOrg = must(await returnedFactory.client.rpc("create_org", { org_name: LOGINS.returnedFactory.name, org_kind: "factory" }), "create returned factory org");
+must(await admin.from("factory_profiles").upsert({
+  org_id: returnedFactoryOrg.id,
+  legal_name: "Harbour Line Apparel Ltd",
+  country_code: "PT",
+  location: "Porto, Portugal",
+  founded_year: 2011,
+  employee_count: 85,
+  moq: 300,
+  typical_lead_days: 45,
+  intro: "Woven shirting and light outerwear, cut and sewn in-house.",
+  onboarding_completed_at: new Date().toISOString(),
+  verification_status: "pending",
+}), "returned factory profile");
+const RETURNED_NOTE = [
+  "Thank you for submitting your profile. Before we can verify Harbour Line Apparel we need a few more things from you:",
+  "",
+  "1. A clear scan of your certificate of commercial registration (certidão permanente). The file you uploaded is a photo taken at an angle and the registration number cannot be read.",
+  "2. Your current OEKO-TEX certificate. The one on your profile expired in March, and brands filter on it.",
+  "3. Your monthly capacity in units for woven shirting, so brands can see whether you can take their order.",
+  "4. A website or a public listing for the company, so we can match the legal name to the business.",
+  "",
+  "Once these are on your profile, finish onboarding again and it comes straight back to us. If anything here is unclear, reply to this email and we will help.",
+].join("\n");
+must(await adminUser.client.rpc("admin_review_decision_with_tier", {
+  target_org: returnedFactoryOrg.id, decision: "needs_information", note: RETURNED_NOTE, risk: null, tier: null,
+}), "ask the returned factory for more information");
+
+// One company a test run would have left behind, so Admin → Settings → Test
+// data has something to find on a fresh test database. Two hours old (the
+// cleanup leaves anything younger alone) and with no members, like the ones
+// the smoke run inserts. The previous seed's one goes first.
+must(await admin.from("orgs").delete().like("slug", "atelier-e2e-seed-%"), "clear the last leftover test company");
+{
+  const stamp = Date.now();
+  must(await admin.from("orgs").insert({
+    type: "factory", name: `Atelier E2E ${stamp}`, slug: `atelier-e2e-seed-${stamp}`,
+    created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+  }), "a leftover test company");
+}
 
 // A brand that has just finished onboarding: no requests and no orders, so
 // its dashboard shows the newcomer layout and its "Recommended factories".
@@ -1033,6 +1098,7 @@ done. Every login uses the password "${PASSWORD}".
   factory         ${LOGINS.factory.email}   ${app}?portal=factory
   second factory  ${LOGINS.secondFactory.email}   (a competing quote)
   new factory     ${LOGINS.newFactory.email}   (waiting for verification)
+  returned factory ${LOGINS.returnedFactory.email}   (asked for more information, a long note)
   new brand       ${LOGINS.newBrand.email}   (no requests yet: recommended factories)
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory
   admin           ${LOGINS.admin.email}   ${app.replace("app.html", "admin.html")}
@@ -1060,7 +1126,11 @@ done. Every login uses the password "${PASSWORD}".
   ${LOGINS.factory.name} has it under Saved → Saved brands.
   Browse vendors lists ${LOGINS.factory.name} and ${LOGINS.secondFactory.name} (Factories) and ${LOGINS.tradingCompany.name} (Trading companies).
   Saved has ${LOGINS.factory.name} and ${LOGINS.tradingCompany.name}.
-  The admin's verification queue has ${LOGINS.newFactory.name}.
+  The admin's verification queue has ${LOGINS.newFactory.name}: "Ask AI for suggestions" on its review
+  page (with an OpenRouter key) should point at its legal name, website, registration and expired GOTS;
+  "Request more information" → "Suggest with AI" fills the note, which staff edit before sending
+  (without an OpenRouter key the note is built from the checks, and says so).
+  Admin → Settings → Test data finds "Atelier E2E <number>" (a leftover test company) and deletes it.
   Admin → Settings → "Run daily jobs now" reminds ${LOGINS.factory.name} that its capacity is a
   month old${dueSoonStep ? ` and that "${dueSoonStep.title}" is due in three days` : ""} (bell and email, once)${unfundedStep ? `,
   and the brand whose payment "${unfundedStep.title}" is waiting for, that it is due in three days` : ""}.

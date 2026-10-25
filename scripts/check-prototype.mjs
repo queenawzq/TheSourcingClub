@@ -281,6 +281,19 @@ try {
     queueBody.includes("Porto Stitch Studio"),
     "the quote table still reads its rows after they moved to a prop",
   );
+
+  // The request page now takes its quotes and brief as props, so the live
+  // console can pass real ones. Without them it must still show the design's.
+  const adminRfq = await stagehand.browser.context.newPage(
+    `${BASE}/admin-prototype.html?screen=rfq-detail&rfq=RFQ-1048`,
+  );
+  await adminRfq.setViewportSize(1440, 1100);
+  await adminRfq.waitForTimeout(3500);
+  const rfqBody = await adminRfq.locator("body").innerText();
+  check(
+    /\b[1-9]\d* vendor quotes?\b/i.test(rfqBody) && /organic cotton poplin/i.test(rfqBody),
+    "the admin request page still shows the design's quotes and brief",
+  );
 } finally {
   await stagehand.close();
   await browser.close().catch(() => {});

@@ -110,6 +110,34 @@ export async function saveFactoryProfile(orgId, patch) {
 }
 
 /**
+ * Where staff's review of this company stands, as the company may see it:
+ * the state, and for "needs information" or "declined" the notification it
+ * was sent (title and message). Never the reviewer's own note or name; those
+ * stay on the staff-only org_reviews row.
+ */
+export async function getMyReview(orgId) {
+  const rows = unwrap(
+    await supabase.rpc("my_review_status", { target_org: orgId }),
+    "load your verification status",
+  );
+  const row = rows?.[0] ?? {};
+  return {
+    state: row.state ?? "ready_for_review",
+    title: row.title ?? null,
+    message: row.message ?? null,
+    sentAt: row.sent_at ?? null,
+  };
+}
+
+/** Send a profile staff returned for more information back to their queue. */
+export async function resubmitForReview(orgId) {
+  return unwrap(
+    await supabase.rpc("resubmit_for_review", { target_org: orgId }),
+    "send your profile back for review",
+  );
+}
+
+/**
  * Mark onboarding finished.
  *
  * A factory is published at the same moment, which makes it visible in brand

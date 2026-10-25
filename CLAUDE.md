@@ -342,6 +342,43 @@ a company-level verdict and a file-level one cannot contradict each other.
   before any `select` — checking afterwards leaks existence through `P0002`
   versus `42501`. `supabase/tests/admin_access_test.sql` is accordingly almost
   entirely negative.
+- **AI help is text a person reads, never a score or a decision**
+  (`20261016000100`, `api/admin-review-assist.js`). On the review page,
+  "Ask AI for suggestions" lists what to look at, each with the evidence it
+  rests on and a question to ask; the design's "Suggest with AI" in "Request
+  more information" (`api/suggest-review-request.js`) fills the note, which
+  staff edit and send through the usual decision. Both are live only and run
+  only when asked. What the model reads is `admin_review_assist_input()`: the
+  company's details, certification records, the file LIST (never the files)
+  and the evidence checks without their percentages; no person's name or
+  address, so the terms check leaves out the signature and the duplicate
+  check leaves out the other companies' names (`20261024000401`; the note's
+  route drops those names too). A suggestion whose evidence has a word or
+  number not in that input is dropped (`keepGroundedFindings`), and the
+  screen says how many. Without a key there are no suggestions (nothing
+  stands in), and the note is built from the incomplete checks, with a line
+  saying why. Every failure is said as what happened (`modelFailure`: not
+  set up, key refused, out of credits, busy, model unavailable, timed out),
+  never one "try again". What staff were shown is kept in staff-only
+  `org_review_assists`. Both routes use `OPENROUTER_REVIEW_MODEL` ?? Haiku
+  5.5 with an 8 s budget (Opus took 12). The check asks for at most five short
+  findings and caps the answer at 1,000 tokens, because the old long answer
+  ran 5-8.5 s; the note turns Haiku's thinking off, which otherwise spent its
+  350 tokens. OpenRouter sends headers at once and the body when the answer
+  is done, so the timeout usually fires while reading the body: read it
+  inside the `try`, or a timeout is reported as an unreadable answer.
+- **Test data is recognised in exactly one place**, `test_data_candidates()`:
+  a slug ending in a run stamp (`Date.now()`: 13 digits, 17… to 19…; a phone
+  number is not one), over an hour old, `is_demo` false, every member a test
+  user (`is_test_email`: a reserved test domain, a run stamp, not `demo-…`)
+  or no members and the same stamp in the name, and nothing shared (an order,
+  a quote, an invitation, a conversation) with a company that is not test
+  data (`20261024000402`): deleting it would delete the other side's records.
+  Admin → Settings → Test data (test builds only) lists them, and
+  `/api/admin-test-data` refuses the production project, removes the files,
+  then calls `purge_test_data()` (service role), which deletes only the ids
+  sent that still match. A test script that names its companies or users
+  differently will not be cleaned up; keep the stamp.
 - **RLS says what may be read; it does not say what a query means.**
   `org_members_read` ends in `or is_platform_admin()`, so an unfiltered read of
   that table returns every membership in the marketplace to staff.
@@ -352,8 +389,8 @@ a company-level verdict and a file-level one cannot contradict each other.
 
 ### Test emails
 
-Admin Settings → Test emails sends any email the marketplace sends, with
-sample data, to the signed-in admin's **own** address and nobody else's
+Admin Settings → Test emails sends a sample of the marketplace's emails
+(onboarding, review decisions and one notification), with sample data, to the signed-in admin's **own** address and nobody else's
 (`api/send-test-email.js`). It builds the message with the same code as the
 real send — Queena's designed onboarding emails from
 `scripts/generate-onboarding-emails.mjs`, and `messageFor()` from
@@ -401,7 +438,9 @@ links point.
   funds"), copied verbatim from the designed cards. Since payments moved to
   Stripe that is what happens, so the terms stay at v1.
 - **The privacy policy names every processor** (Supabase, Vercel, Resend,
-  OpenRouter, Google Sheets, Netlify Forms, and from v2 Stripe). Adding a service that touches
+  OpenRouter, Google Sheets, Netlify Forms, from v2 Stripe, from v3 Zoom),
+  and from v4 what OpenRouter does: translation, drafting, message
+  screening and help with profile reviews. Adding a service that touches
   personal data means publishing a new version of it.
 
 ### The factory's request screens, and what a quote costs

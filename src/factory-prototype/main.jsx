@@ -7522,15 +7522,20 @@ export function FactoryOnboarding({
   // The published terms and their full page. Absent, the designed copy shows.
   terms,
   fullTerms,
+  // Live only: what the finish card says once staff have answered —
+  // { title, intro, icon, reward, cta, onCta }. Without onCta the card has no
+  // button. Absent, the designed "You're all set" card shows.
+  completion = null,
 }) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
   const designedStep = copy.steps[step];
-  const current = designedStep.terms && (terms || fullTerms)
-    ? { ...designedStep, terms: terms ?? designedStep.terms, fullTerms }
-    : designedStep;
   const isFirst = step === 0;
   const isLast = step === copy.steps.length - 1;
+  const withTerms = designedStep.terms && (terms || fullTerms)
+    ? { ...designedStep, terms: terms ?? designedStep.terms, fullTerms }
+    : designedStep;
+  const current = isLast && completion ? { ...withTerms, ...completion } : withTerms;
   const cardStepClass = current.type === "complete" ? "step-11" : `step-${step + 1}`;
   const clearFieldError = (event) => {
     event.target.closest(".has-onboarding-error")?.classList.remove("has-onboarding-error");
@@ -7614,12 +7619,18 @@ export function FactoryOnboarding({
               {copy.back}
             </button>
           )}
+          {isLast && completion && !completion.onCta ? null : isLast && completion ? (
+            <button className="primary-btn" type="button" disabled={busy} onClick={completion.onCta}>
+              {busy ? (language === "zh" ? "保存中…" : "Saving…") : completion.cta}
+            </button>
+          ) : (
           <button className="primary-btn" type="button" disabled={busy || (isLast && completionPending)} onClick={handleNext}>
             {busy
               ? (language === "zh" ? "保存中…" : "Saving…")
               : isLast && completionPending ? (language === "zh" ? "等待验证" : "Verification pending")
               : isReviewEdit ? (language === "zh" ? "保存" : "Save") : current.cta || (isLast ? copy.steps[copy.steps.length - 1].cta : copy.next)}
           </button>
+          )}
         </footer>
       </section>
 
@@ -8181,14 +8192,14 @@ function FactoryOnboardingStep({
 
   return (
     <div className="factory-onboarding-complete">
-      <img className="factory-onboarding-success-icon" src="/assets/prototype-icons/success.svg" alt="" />
+      <img className="factory-onboarding-success-icon" src={content.icon ?? "/assets/prototype-icons/success.svg"} alt="" />
       <h1>{content.title}</h1>
       <p>{content.intro}</p>
-      <section className="factory-onboarding-credit-reward">
+      {content.reward !== false && <section className="factory-onboarding-credit-reward">
         <span>{language === "zh" ? "验证奖励" : "Verification reward"}</span>
         <strong>{language === "zh" ? "500 额度" : "500 credits"}</strong>
         <p>{language === "zh" ? "资料通过验证后可用于发送报价。500 额度 = $50 价值。" : "Available after your profile is verified. 500 credits = $50 value."}</p>
-      </section>
+      </section>}
     </div>
   );
 }
