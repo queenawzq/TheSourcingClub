@@ -4715,16 +4715,27 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
   );
 }
 
-export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote, rfqsByTab }) {
+export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote, rfqsByTab, organization }) {
+  const [localOrganization, setLocalOrganization] = useState({});
+  const settings = organization?.settings ?? localOrganization;
+  const saveOrganization = async (patch) => {
+    if (organization) return organization.save(patch);
+    setLocalOrganization((old) => ({ ...old, ...patch }));
+    return true;
+  };
+  const [archiveTarget, setArchiveTarget] = useState(null);
   const [activeTab, setActiveTab] = useState("active");
   // Live, the counts are counts of real rows; the drawn ones are an example.
   const countFor = (key, drawn) => (rfqsByTab ? (rfqsByTab[key] ?? []).length : drawn);
-  const [rfqTabs, setRfqTabs] = useState([
+  const defaultRfqTabs = [
     { key: "active", label: `Active RFQs (${countFor("active", 4)})`, locked: true },
     { key: "drafts", label: `Drafts (${countFor("drafts", 3)})`, locked: true },
     { key: "invited", label: `Invited (${countFor("invited", 2)})`, locked: true },
     { key: "closed", label: `Closed (${countFor("closed", 6)})`, locked: true }
-  ]);
+  ];
+  const archived = new Set(settings.archived ?? []);
+  const rawTabs = settings.tabs ?? defaultRfqTabs;
+  const rfqTabs = rawTabs.map((tab) => ({ ...tab, label: tab.label.replace(/ \(\d+\)$/, "") }));
   const [isAddingTab, setIsAddingTab] = useState(false);
   const [newTabName, setNewTabName] = useState("");
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
@@ -4735,7 +4746,14 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
     invited: factoryInvitedRfqs,
     closed: factoryClosedRfqs
   };
-  const activeRfqs = rfqDataByTab[activeTab] || (rfqsByTab ? [] : factoryRfqs);
+  const allRfqs = [...new Map(Object.values(rfqDataByTab).flat().map((row) => [row.id ?? row.title, row])).values()];
+  const idFor = (row) => row.id ?? row.title;
+  const rowsFor = (key) => key === "closed"
+    ? allRfqs.filter((row) => archived.has(idFor(row)) || rfqDataByTab.closed?.includes(row))
+    : Object.hasOwn(rfqDataByTab, key)
+      ? rfqDataByTab[key].filter((row) => !archived.has(idFor(row)))
+      : allRfqs.filter((row) => !archived.has(idFor(row)) && settings.membership?.[key]?.includes(idFor(row)));
+  const activeRfqs = rowsFor(activeTab);
 
   function openManageTabs() {
     setDraftTabs(rfqTabs);
@@ -4743,12 +4761,12 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
     setManageTabsOpen(true);
   }
 
-  function addCustomTab(event) {
+  async function addCustomTab(event) {
     event.preventDefault();
     const trimmedName = newTabName.trim();
     if (!trimmedName || rfqTabs.some((tab) => tab.label === trimmedName)) return;
     const nextTab = { key: `custom-${trimmedName}`, label: trimmedName, locked: false };
-    setRfqTabs((tabs) => [...tabs, nextTab]);
+    if (!await saveOrganization({ tabs: [...rfqTabs, nextTab] })) return;
     setActiveTab(nextTab.key);
     setNewTabName("");
     setIsAddingTab(false);
@@ -4772,19 +4790,19 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
     });
   }
 
-  function saveManagedTabs() {
+  async function saveManagedTabs() {
     const cleanedTabs = [];
     const seenKeys = new Set();
     draftTabs.forEach((tab) => {
       const label = tab.label.trim();
       if (!label) return;
-      const key = tab.locked ? tab.key : `custom-${label}`;
+      const key = tab.key;
       if (seenKeys.has(key)) return;
       seenKeys.add(key);
       cleanedTabs.push({ key, label, locked: tab.locked });
     });
     const nextTabs = cleanedTabs.length ? cleanedTabs : rfqTabs;
-    setRfqTabs(nextTabs);
+    if (!await saveOrganization({ tabs: nextTabs })) return;
     if (!nextTabs.some((tab) => tab.key === activeTab)) {
       setActiveTab(nextTabs[0]?.key || "active");
     }
@@ -4822,7 +4840,7 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
 
         <nav className="rfqs-tabs projects-tabs" aria-label="RFQ status">
           <div className="project-tabs-scroll">
-            {rfqTabs.map((tab) => (
+            {rfqTabs.map((item) => { const tab = { ...item, label: `${item.label} (${rowsFor(item.key).length})` }; return (
               !tab.locked ? (
                 <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
                   <button
@@ -4845,7 +4863,7 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
                   {tab.label}
                 </button>
               )
-            ))}
+            ); })}
             {isAddingTab ? (
               <form className="project-tab-add-form" onSubmit={addCustomTab}>
                 <input
@@ -4914,6 +4932,7 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
         )}
 
         <section className="rfq-list" aria-label="Factory RFQs">
+          {organization?.error && <p role="alert" className="composer-error">{organization.error.message}</p>}
           {activeRfqs.map((rfq) => (
             <FactoryRfqCard
               rfq={rfq}
@@ -4921,6 +4940,17 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
               key={rfq.id ?? rfq.title}
               onViewRequest={() => onViewRequest?.(rfq)}
               onEditQuote={() => onEditQuote?.(rfq)}
+              customTabs={rfqTabs.filter((tab) => !tab.locked)}
+              onCreateTab={() => setIsAddingTab(true)}
+              isFiled={(key) => settings.membership?.[key]?.includes(idFor(rfq))}
+              onToggleTab={(key) => {
+                const members = settings.membership?.[key] ?? [];
+                saveOrganization({ membership: { ...settings.membership, [key]: members.includes(idFor(rfq)) ? members.filter((id) => id !== idFor(rfq)) : [...members, idFor(rfq)] } });
+              }}
+              archived={archived.has(idFor(rfq))}
+              busy={organization?.busy}
+              onArchive={() => setArchiveTarget(rfq)}
+              onRestore={() => saveOrganization({ archived: [...archived].filter((id) => id !== idFor(rfq)) })}
             />
           ))}
           {rfqsByTab && activeRfqs.length === 0 && (
@@ -4929,6 +4959,24 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
             </p>
           )}
         </section>
+        {archiveTarget && createPortal(
+          <div className="brand-profile-modal-layer quote-action-dialog-layer">
+            <button className="brand-profile-modal-scrim" aria-label="Close" onClick={() => setArchiveTarget(null)} />
+            <section className="brand-profile-modal" role="dialog" aria-modal="true" aria-labelledby="archive-factory-rfq-title">
+              <header className="brand-profile-modal-header">
+                <h1 id="archive-factory-rfq-title">Archive “{archiveTarget.title}”?</h1>
+                <p>This moves it to your Closed tab. The brand’s request stays open, and any submitted quote remains visible to the brand. You can restore it later.</p>
+              </header>
+              {organization?.error && <p role="alert">{organization.error.message}</p>}
+              <footer className="brand-profile-modal-actions">
+                <button className="secondary-btn" onClick={() => setArchiveTarget(null)}>Keep RFQ</button>
+                <button className="primary-btn" disabled={organization?.busy} onClick={async () => {
+                  if (await saveOrganization({ archived: [...new Set([...archived, idFor(archiveTarget)])] })) setArchiveTarget(null);
+                }}>Archive</button>
+              </footer>
+            </section>
+          </div>, document.body
+        )}
       </div>
     </main>
   );
@@ -5687,7 +5735,7 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, language
   );
 }
 
-function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
+function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote, customTabs = [], onCreateTab, isFiled, onToggleTab, archived, busy, onArchive, onRestore }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   useEffect(() => {
@@ -5732,11 +5780,11 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
           </div>
         </div>
         <div className="factory-request-card-actions factory-rfq-card-actions shared-card-actions">
-          {rfq.status && <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{tx(rfq.status)}</span>}
+          {rfq.status && <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{archived ? "Archived" : tx(rfq.status)}</span>}
           <button
             className="primary-btn"
             type="button"
-            onClick={rfq.status === "Quote submitted" ? onViewRequest : onEditQuote}
+            onClick={archived || rfq.status === "Quote submitted" ? onViewRequest : onEditQuote}
           >
             {tx("View RFQ")}
           </button>
@@ -5744,13 +5792,17 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
             <button className="rfq-more" type="button" aria-label={isZh ? `${getTranslatedProjectTitle(rfq.title)} 的更多操作` : `More options for ${rfq.title}`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
             {menuOpen && (
               <div className="project-overflow-menu rfq-overflow-menu" role="menu">
-                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onViewRequest?.(); }}>{tx("View RFQ")}</button>
-                {rfq.requestOpen !== false && draft && (
+                <div className="project-overflow-submenu">
+                  <button type="button" role="menuitem" aria-haspopup="menu">Add to</button>
+                  <div className="project-overflow-submenu-panel" role="menu">
+                    {customTabs.map((tab) => <button type="button" role="menuitemcheckbox" aria-checked={!!isFiled?.(tab.key)} disabled={busy} key={tab.key} onClick={() => { setMenuOpen(false); onToggleTab?.(tab.key); }}>{isFiled?.(tab.key) ? "✓ " : ""}{tab.label}</button>)}
+                    <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onCreateTab?.(); }}>+ Add tab</button>
+                  </div>
+                </div>
+                {rfq.requestOpen !== false && (draft || submitted) && !archived && (
                   <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onEditQuote?.(); }}>{isZh ? "编辑报价" : "Edit quote"}</button>
                 )}
-                {rfq.requestOpen !== false && submitted && (
-                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onViewRequest?.(); }}>{isZh ? "管理报价" : "Manage quote"}</button>
-                )}
+                <button type="button" role="menuitem" disabled={busy} onClick={() => { setMenuOpen(false); (archived ? onRestore : onArchive)?.(); }}>{archived ? "Restore RFQ" : draft || submitted ? "Archive quote" : "Archive RFQ"}</button>
               </div>
             )}
           </div>

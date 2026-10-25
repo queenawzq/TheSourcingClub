@@ -20,6 +20,7 @@ import { getRfqDocumentPresentation } from "../../lib/domain/documents.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { loadRequestTagMetadata, requestTags } from "./request-tags.js";
+import useFactoryRfqOrganization from "./useFactoryRfqOrganization.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -101,6 +102,7 @@ function toCard(rfq, quote, images = [], tagMetadata = {}) {
 }
 
 export default function LiveFactoryRfqs({ org }) {
+  const organization = useFactoryRfqOrganization(org.id);
   const { navigate } = useRouter();
   const [tabs, setTabs] = useState(null);
   const [error, setError] = useState(null);
@@ -148,12 +150,14 @@ export default function LiveFactoryRfqs({ org }) {
   }, [org.id]);
 
   if (error) return <main className="rfqs-page factory-rfqs-page"><p className="composer-error" role="alert">{error.message}</p></main>;
-  if (!tabs) return null;
+  if (organization.error && !organization.settings) return <p role="alert">{organization.error.message}</p>;
+  if (!tabs || !organization.settings) return null;
 
   return (
     <FactoryRfqsPage
       language="en"
       rfqsByTab={tabs}
+      organization={organization}
       onBrowseRfqs={() => navigate("/browse")}
       // A draft opens the form. Everything else opens the request, which reads
       // back what was sent or what happened to it — for a sent quote that is
