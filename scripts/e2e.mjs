@@ -1516,7 +1516,9 @@ async function main() {
     // A new quote starts with no sample rows; the vendor adds each stage.
     for (let row = 0; row < 2; row += 1) {
       if (await page.locator(`[data-quote-field="sample.${row}.stage"]`).count()) continue;
-      await page.locator(".factory-add-stage").click();
+      // "+ Add material cost" shares the class, so find this one by its words.
+      await page.evaluate(() => [...document.querySelectorAll(".factory-add-stage")]
+        .find((button) => /add sample stage/i.test(button.textContent))?.click());
     }
     await setQuoteField("sample.0.stage", "Fit sample");
     await setQuoteField("sample.0.cost", "$95");
