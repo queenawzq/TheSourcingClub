@@ -468,7 +468,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
               <strong>{creditBalance.toLocaleString()} credits</strong>
               <p>500 credits = $50 value. Credits are used when a quote is sent.</p>
             </div>
-            <div className="factory-credit-billing-action">
+            <div className="factory-credit-billing-action live-credit-actions">
               <button className="secondary-btn compact-btn" type="button" onClick={() => { setNotice(null); setInviteOpen(true); }}>Invite a factory</button>
               <CreditPurchaseButton orgId={org.id} orgName={org.name} isOwner={isOwner} onPurchased={reloadCredits} onNotice={setNotice} />
             </div>
