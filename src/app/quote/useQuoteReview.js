@@ -9,9 +9,10 @@ import { useCallback, useEffect, useState } from "react";
 import { getColourSplits, getQuestions, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
 import { listQuotesForRfq } from "../../lib/domain/quote.js";
 import { listRfqDocuments } from "../../lib/domain/documents.js";
-import { listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
+import { listTermsByKind } from "../../lib/domain/taxonomy.js";
 import { formatRange } from "../../lib/money.js";
 import { describeQuote } from "./quote-view.js";
+import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 
 const MONTH = new Intl.DateTimeFormat("en", { month: "long", year: "numeric", timeZone: "UTC" });
 
@@ -34,8 +35,8 @@ export function describeRequest(rfq, { colours = [], sourcingTerms = [] } = {}) 
       : "",
     samples: rfq.sample_notes?.trim() || (rfq.requires_sample ? "Sample required" : ""),
     targetDate: rfq.target_delivery_month ? `Delivery by ${MONTH.format(new Date(rfq.target_delivery_month))}` : "",
-    sourcing: sourcing ? termLabel(sourcing) : "",
-    sourcingDetails: rfq.additional_details?.trim() || sourcing?.extra?.note || "",
+    sourcing: sourcingChoiceLabel(sourcing),
+    sourcingDetails: rfq.sourcing_details?.trim() || sourcing?.extra?.note || "",
     materials: rfq.material_notes ?? "",
   };
 }

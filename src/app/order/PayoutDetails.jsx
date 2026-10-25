@@ -216,11 +216,12 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     : fundedEarnings.filter((row) => row.order?.orgs?.name === client);
   const summaryCurrency = visibleEarnings[0]?.currency || "USD";
   const sumEarnings = (rows) => rows.reduce((sum, row) => sum + Number(factoryAmount(row) || 0), 0);
+  const payoutProcessingCents = sumEarnings(visibleEarnings.filter((row) => row.state === "confirmed" && row.release_requested_at));
   const earningsSummary = [
     ["total earnings", sumEarnings(visibleEarnings)],
     ["completed", sumEarnings(visibleEarnings.filter((row) => row.state === "released"))],
     ["pending approval", sumEarnings(visibleEarnings.filter((row) => row.state === "confirmed" && !row.release_requested_at))],
-    ["payout processing", sumEarnings(visibleEarnings.filter((row) => row.state === "confirmed" && row.release_requested_at))],
+    ["payout processing", payoutProcessingCents],
   ];
   const payoutTransactions = client === "All clients" ? (stripeBalance?.payouts ?? []) : [];
   const transactions = [
@@ -394,6 +395,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             org={org}
             isOwner={isOwner}
             onBalanceChange={setStripeBalance}
+            displayCurrency={summaryCurrency}
+            displayPending={payoutProcessingCents}
             manualAccount={account}
             manualForm={form}
             manualFields={FIELDS}

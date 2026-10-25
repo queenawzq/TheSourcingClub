@@ -16,8 +16,11 @@
 import React, { useEffect, useState } from "react";
 import { FactoryRfqsPage } from "../../factory-prototype/main.jsx";
 import { listFactoryRfqs } from "../../lib/domain/rfq.js";
-import { formatMoney, formatRange } from "../../lib/money.js";
+import { getRfqDocumentPresentation } from "../../lib/domain/documents.js";
+import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import { loadRequestTagMetadata, requestTags } from "./request-tags.js";
+import useFactoryRfqOrganization from "./useFactoryRfqOrganization.js";
 
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -59,7 +62,7 @@ function dueLabel(deadline, now = new Date()) {
 }
 
 /** One request, in the shape the designed card reads. */
-function toCard(rfq, quote) {
+function toCard(rfq, quote, images = [], tagMetadata = {}) {
   const statusKey = quote?.status ?? "invited";
   // Only cards still waiting on the vendor count down. A submitted card keeps
   // its label: the design routes its button on the words "Quote submitted".
@@ -76,17 +79,14 @@ function toCard(rfq, quote) {
   return {
     id: rfq.id,
     quoteStatus: statusKey,
+    requestOpen: rfq.status === "open",
     initials: initialsOf(rfq.orgs?.name),
     title: rfq.title || "Untitled request",
     brand: rfq.orgs?.name ?? "A brand",
     location: rfq.published_at ? `Posted ${DAY.format(new Date(rfq.published_at))}` : "",
     trust: "",
-    tags: [
-      rfq.quantity_total ? `${rfq.quantity_total.toLocaleString()} units` : null,
-      formatRange(rfq.target_unit_price_min_cents, rfq.target_unit_price_max_cents, rfq.currency),
-      rfq.requires_sample ? "Sample before bulk" : null,
-    ].filter((tag) => tag && tag !== "—"),
-    images: [],
+    tags: requestTags(rfq, tagMetadata),
+    images,
     facts: [
       ["Quantity", rfq.quantity_total ? `${rfq.quantity_total.toLocaleString()} units` : "—"],
       ["Samples", rfq.requires_sample ? "Sample required" : "No sample"],
@@ -102,6 +102,7 @@ function toCard(rfq, quote) {
 }
 
 export default function LiveFactoryRfqs({ org }) {
+  const organization = useFactoryRfqOrganization(org.id);
   const { navigate } = useRouter();
   const [tabs, setTabs] = useState(null);
   const [error, setError] = useState(null);
@@ -109,21 +110,38 @@ export default function LiveFactoryRfqs({ org }) {
   useEffect(() => {
     let cancelled = false;
     listFactoryRfqs(org.id)
-      .then(({ quotes, invitations }) => {
+      .then(async ({ quotes, invitations }) => {
+        const requestIds = [...new Set([
+          ...quotes.map((quote) => quote.rfq_id),
+          ...invitations.map((invitation) => invitation.rfq_id),
+        ].filter(Boolean))];
+        const requests = [
+          ...quotes.map((quote) => quote.rfqs),
+          ...invitations.map((invitation) => invitation.rfqs),
+        ].filter(Boolean);
+        const [presentations, tagMetadata] = await Promise.all([
+          Promise.all(requestIds.map(async (rfqId) => [
+            rfqId,
+            await getRfqDocumentPresentation(rfqId).catch(() => ({ files: [], images: [] })),
+          ])).then((entries) => new Map(entries)),
+          loadRequestTagMetadata([...new Map(requests.map((rfq) => [rfq.id, rfq])).values()]),
+        ]);
         if (cancelled) return;
         const closedRfq = (rfq) => rfq.status === "awarded" || rfq.status === "cancelled";
         const quotedRfqIds = new Set(quotes.map((quote) => quote.rfq_id));
         const byTab = { active: [], drafts: [], invited: [], closed: [] };
 
         for (const quote of quotes) {
-          const card = toCard(quote.rfqs, quote);
+          const card = toCard(quote.rfqs, quote, presentations.get(quote.rfq_id)?.images ?? [], tagMetadata.get(quote.rfq_id));
           if (closedRfq(quote.rfqs) || ["accepted", "declined", "withdrawn"].includes(quote.status)) byTab.closed.push(card);
           else if (quote.status === "draft") byTab.drafts.push(card);
           else byTab.active.push(card);
         }
         for (const invitation of invitations) {
           if (quotedRfqIds.has(invitation.rfq_id) || !invitation.rfqs) continue;
-          (closedRfq(invitation.rfqs) ? byTab.closed : byTab.invited).push(toCard(invitation.rfqs, null));
+          (closedRfq(invitation.rfqs) ? byTab.closed : byTab.invited).push(
+            toCard(invitation.rfqs, null, presentations.get(invitation.rfq_id)?.images ?? [], tagMetadata.get(invitation.rfq_id)),
+          );
         }
         setTabs(byTab);
       })
@@ -132,12 +150,14 @@ export default function LiveFactoryRfqs({ org }) {
   }, [org.id]);
 
   if (error) return <main className="rfqs-page factory-rfqs-page"><p className="composer-error" role="alert">{error.message}</p></main>;
-  if (!tabs) return null;
+  if (organization.error && !organization.settings) return <p role="alert">{organization.error.message}</p>;
+  if (!tabs || !organization.settings) return null;
 
   return (
     <FactoryRfqsPage
       language="en"
       rfqsByTab={tabs}
+      organization={organization}
       onBrowseRfqs={() => navigate("/browse")}
       // A draft opens the form. Everything else opens the request, which reads
       // back what was sent or what happened to it — for a sent quote that is

@@ -188,6 +188,14 @@ function SignIn() {
       window.location.assign("/admin.html");
       return;
     }
+    // Demo buttons switch personas, so the URL left behind can belong to the
+    // previous persona (for example, a brand-only RFQ edit page). Always start
+    // a non-admin demo account at its own dashboard instead of preserving an
+    // incompatible deep link and showing "Not your side of the marketplace".
+    if (signedIn) {
+      window.location.assign("/app.html");
+      return;
+    }
     setBusy(false);
   }
 
