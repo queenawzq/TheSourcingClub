@@ -775,6 +775,7 @@ const factoryMainZhText = {
   "Open capacity window *": "可接单时间窗口 *",
   "Payment terms": "付款条款",
   "Shipping / incoterms": "运输 / 贸易条款",
+  "Shipping / incoterms *": "运输 / 贸易条款 *",
   "Quote valid until": "报价有效期至",
   "Material sourcing and component costs": "材料采购和辅料成本",
   "Specify what is included in your quote and what the brand must provide.": "说明报价中包含哪些项目，以及品牌需要提供什么。",
@@ -4717,16 +4718,27 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
   );
 }
 
-export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote, rfqsByTab }) {
+export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQuote, rfqsByTab, organization }) {
+  const [localOrganization, setLocalOrganization] = useState({});
+  const settings = organization?.settings ?? localOrganization;
+  const saveOrganization = async (patch) => {
+    if (organization) return organization.save(patch);
+    setLocalOrganization((old) => ({ ...old, ...patch }));
+    return true;
+  };
+  const [archiveTarget, setArchiveTarget] = useState(null);
   const [activeTab, setActiveTab] = useState("active");
   // Live, the counts are counts of real rows; the drawn ones are an example.
   const countFor = (key, drawn) => (rfqsByTab ? (rfqsByTab[key] ?? []).length : drawn);
-  const [rfqTabs, setRfqTabs] = useState([
+  const defaultRfqTabs = [
     { key: "active", label: `Active RFQs (${countFor("active", 4)})`, locked: true },
     { key: "drafts", label: `Drafts (${countFor("drafts", 3)})`, locked: true },
     { key: "invited", label: `Invited (${countFor("invited", 2)})`, locked: true },
     { key: "closed", label: `Closed (${countFor("closed", 6)})`, locked: true }
-  ]);
+  ];
+  const archived = new Set(settings.archived ?? []);
+  const rawTabs = settings.tabs ?? defaultRfqTabs;
+  const rfqTabs = rawTabs.map((tab) => ({ ...tab, label: tab.label.replace(/ \(\d+\)$/, "") }));
   const [isAddingTab, setIsAddingTab] = useState(false);
   const [newTabName, setNewTabName] = useState("");
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
@@ -4737,7 +4749,14 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
     invited: factoryInvitedRfqs,
     closed: factoryClosedRfqs
   };
-  const activeRfqs = rfqDataByTab[activeTab] || (rfqsByTab ? [] : factoryRfqs);
+  const allRfqs = [...new Map(Object.values(rfqDataByTab).flat().map((row) => [row.id ?? row.title, row])).values()];
+  const idFor = (row) => row.id ?? row.title;
+  const rowsFor = (key) => key === "closed"
+    ? allRfqs.filter((row) => archived.has(idFor(row)) || rfqDataByTab.closed?.includes(row))
+    : Object.hasOwn(rfqDataByTab, key)
+      ? rfqDataByTab[key].filter((row) => !archived.has(idFor(row)))
+      : allRfqs.filter((row) => !archived.has(idFor(row)) && settings.membership?.[key]?.includes(idFor(row)));
+  const activeRfqs = rowsFor(activeTab);
 
   function openManageTabs() {
     setDraftTabs(rfqTabs);
@@ -4745,12 +4764,12 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
     setManageTabsOpen(true);
   }
 
-  function addCustomTab(event) {
+  async function addCustomTab(event) {
     event.preventDefault();
     const trimmedName = newTabName.trim();
     if (!trimmedName || rfqTabs.some((tab) => tab.label === trimmedName)) return;
     const nextTab = { key: `custom-${trimmedName}`, label: trimmedName, locked: false };
-    setRfqTabs((tabs) => [...tabs, nextTab]);
+    if (!await saveOrganization({ tabs: [...rfqTabs, nextTab] })) return;
     setActiveTab(nextTab.key);
     setNewTabName("");
     setIsAddingTab(false);
@@ -4774,19 +4793,19 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
     });
   }
 
-  function saveManagedTabs() {
+  async function saveManagedTabs() {
     const cleanedTabs = [];
     const seenKeys = new Set();
     draftTabs.forEach((tab) => {
       const label = tab.label.trim();
       if (!label) return;
-      const key = tab.locked ? tab.key : `custom-${label}`;
+      const key = tab.key;
       if (seenKeys.has(key)) return;
       seenKeys.add(key);
       cleanedTabs.push({ key, label, locked: tab.locked });
     });
     const nextTabs = cleanedTabs.length ? cleanedTabs : rfqTabs;
-    setRfqTabs(nextTabs);
+    if (!await saveOrganization({ tabs: nextTabs })) return;
     if (!nextTabs.some((tab) => tab.key === activeTab)) {
       setActiveTab(nextTabs[0]?.key || "active");
     }
@@ -4824,7 +4843,7 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
 
         <nav className="rfqs-tabs projects-tabs" aria-label="RFQ status">
           <div className="project-tabs-scroll">
-            {rfqTabs.map((tab) => (
+            {rfqTabs.map((item) => { const tab = { ...item, label: `${item.label} (${rowsFor(item.key).length})` }; return (
               !tab.locked ? (
                 <div className={activeTab === tab.key ? "project-custom-tab active" : "project-custom-tab"} key={tab.key}>
                   <button
@@ -4847,7 +4866,7 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
                   {tab.label}
                 </button>
               )
-            ))}
+            ); })}
             {isAddingTab ? (
               <form className="project-tab-add-form" onSubmit={addCustomTab}>
                 <input
@@ -4916,6 +4935,7 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
         )}
 
         <section className="rfq-list" aria-label="Factory RFQs">
+          {organization?.error && <p role="alert" className="composer-error">{organization.error.message}</p>}
           {activeRfqs.map((rfq) => (
             <FactoryRfqCard
               rfq={rfq}
@@ -4923,6 +4943,17 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
               key={rfq.id ?? rfq.title}
               onViewRequest={() => onViewRequest?.(rfq)}
               onEditQuote={() => onEditQuote?.(rfq)}
+              customTabs={rfqTabs.filter((tab) => !tab.locked)}
+              onCreateTab={() => setIsAddingTab(true)}
+              isFiled={(key) => settings.membership?.[key]?.includes(idFor(rfq))}
+              onToggleTab={(key) => {
+                const members = settings.membership?.[key] ?? [];
+                saveOrganization({ membership: { ...settings.membership, [key]: members.includes(idFor(rfq)) ? members.filter((id) => id !== idFor(rfq)) : [...members, idFor(rfq)] } });
+              }}
+              archived={archived.has(idFor(rfq))}
+              busy={organization?.busy}
+              onArchive={() => setArchiveTarget(rfq)}
+              onRestore={() => saveOrganization({ archived: [...archived].filter((id) => id !== idFor(rfq)) })}
             />
           ))}
           {rfqsByTab && activeRfqs.length === 0 && (
@@ -4931,6 +4962,24 @@ export function FactoryRfqsPage({ language, onBrowseRfqs, onViewRequest, onEditQ
             </p>
           )}
         </section>
+        {archiveTarget && createPortal(
+          <div className="brand-profile-modal-layer quote-action-dialog-layer">
+            <button className="brand-profile-modal-scrim" aria-label="Close" onClick={() => setArchiveTarget(null)} />
+            <section className="brand-profile-modal" role="dialog" aria-modal="true" aria-labelledby="archive-factory-rfq-title">
+              <header className="brand-profile-modal-header">
+                <h1 id="archive-factory-rfq-title">Archive “{archiveTarget.title}”?</h1>
+                <p>This moves it to your Closed tab. The brand’s request stays open, and any submitted quote remains visible to the brand. You can restore it later.</p>
+              </header>
+              {organization?.error && <p role="alert">{organization.error.message}</p>}
+              <footer className="brand-profile-modal-actions">
+                <button className="secondary-btn" onClick={() => setArchiveTarget(null)}>Keep RFQ</button>
+                <button className="primary-btn" disabled={organization?.busy} onClick={async () => {
+                  if (await saveOrganization({ archived: [...new Set([...archived, idFor(archiveTarget)])] })) setArchiveTarget(null);
+                }}>Archive</button>
+              </footer>
+            </section>
+          </div>, document.body
+        )}
       </div>
     </main>
   );
@@ -5689,7 +5738,23 @@ function FactoryScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, language
   );
 }
 
-function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
+function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote, customTabs = [], onCreateTab, isFiled, onToggleTab, archived, busy, onArchive, onRestore }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const dismiss = (event) => {
+      if (event.type === "keydown" ? event.key === "Escape" : !menuRef.current?.contains(event.target)) setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", dismiss);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", dismiss);
+    };
+  }, [menuOpen]);
+  const draft = rfq.quoteStatus === "draft" || (!rfq.id && rfq.status === "Draft");
+  const submitted = rfq.quoteStatus === "submitted" || (!rfq.id && rfq.status === "Quote submitted");
   const isZh = language === "zh";
   const tx = (value) => (isZh ? translateFactoryMainText(value) : value);
   // Nothing verifies a brand's payment before an order exists, so a live card
@@ -5718,15 +5783,32 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote }) {
           </div>
         </div>
         <div className="factory-request-card-actions factory-rfq-card-actions shared-card-actions">
-          {rfq.status && <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{tx(rfq.status)}</span>}
+          {rfq.status && <span className={`tag rfq-status shared-card-status ${rfq.statusTone}`}>{archived ? "Archived" : tx(rfq.status)}</span>}
           <button
             className="primary-btn"
             type="button"
-            onClick={rfq.status === "Quote submitted" ? onViewRequest : onEditQuote}
+            onClick={archived || rfq.status === "Quote submitted" ? onViewRequest : onEditQuote}
           >
             {tx("View RFQ")}
           </button>
-          <button className="rfq-more" type="button" aria-label={isZh ? `${getTranslatedProjectTitle(rfq.title)} 的更多操作` : `More options for ${rfq.title}`}>...</button>
+          <div className="project-overflow" ref={menuRef}>
+            <button className="rfq-more" type="button" aria-label={isZh ? `${getTranslatedProjectTitle(rfq.title)} 的更多操作` : `More options for ${rfq.title}`} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
+            {menuOpen && (
+              <div className="project-overflow-menu rfq-overflow-menu" role="menu">
+                <div className="project-overflow-submenu">
+                  <button type="button" role="menuitem" aria-haspopup="menu">Add to</button>
+                  <div className="project-overflow-submenu-panel" role="menu">
+                    {customTabs.map((tab) => <button type="button" role="menuitemcheckbox" aria-checked={!!isFiled?.(tab.key)} disabled={busy} key={tab.key} onClick={() => { setMenuOpen(false); onToggleTab?.(tab.key); }}>{isFiled?.(tab.key) ? "✓ " : ""}{tab.label}</button>)}
+                    <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onCreateTab?.(); }}>+ Add tab</button>
+                  </div>
+                </div>
+                {rfq.requestOpen !== false && (draft || submitted) && !archived && (
+                  <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); onEditQuote?.(); }}>{isZh ? "编辑报价" : "Edit quote"}</button>
+                )}
+                <button type="button" role="menuitem" disabled={busy} onClick={() => { setMenuOpen(false); (archived ? onRestore : onArchive)?.(); }}>{archived ? "Restore RFQ" : draft || submitted ? "Archive quote" : "Archive RFQ"}</button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -5929,11 +6011,9 @@ export function FactoryProjectsPage({
   const [manageTabsOpen, setManageTabsOpen] = useState(false);
   const [draftTabs, setDraftTabs] = useState(projectTabs);
   const orderRows = live?.projects ?? [];
-  // "Archived" joins the strip only while the company has archived something.
-  const stripTabs = tabStore ? withArchivedTab(projectTabs, orderRows, tabStore.archived) : projectTabs;
+  const stripTabs = withArchivedTab(projectTabs);
 
-  // A tab a teammate deleted, or this person just did, falls back to Active;
-  // an archive emptied by Unarchive falls back to Closed, where the order went.
+  // A deleted custom tab falls back to Active. Archived remains even when empty.
   useEffect(() => {
     if (live?.loading || !tabStore || stripTabs.some((tab) => tab.key === activeTab)) return;
     setActiveTab(activeTab === "archived" ? "closed" : "active");
@@ -6203,7 +6283,7 @@ export function FactoryProjectsPage({
                 : activeTab === "closed"
                 ? "Nothing closed yet."
                 : activeTab === "archived"
-                ? "No archived orders."
+                ? "No cancelled orders."
                 : activeTab !== "active"
                 ? "No orders in this tab yet. Add one from an order's ··· menu."
                 : "No production orders yet. One appears here when a brand awards you a quote."}
@@ -6945,6 +7025,8 @@ export function CreditPurchaseModal({
   paymentElement = null,
   description,
   continueLabel,
+  customMinimumCredits,
+  customRateCents,
   className = "",
   layerClassName = "",
 }) {
@@ -6953,6 +7035,31 @@ export function CreditPurchaseModal({
   const live = Boolean(onContinue);
   const options = packs === undefined ? factoryCreditPackages : packs ?? [];
   const [picked, setPicked] = useState(null);
+  const [customCredits, setCustomCredits] = useState("");
+  const [customActive, setCustomActive] = useState(false);
+  const customMinimum = Number(customMinimumCredits);
+  const customRate = Number(customRateCents);
+  const customEnabled = live && Number.isInteger(customMinimum) && customMinimum > 0 && Number.isFinite(customRate) && customRate > 0;
+  const customAmount = Number(customCredits);
+  const customValid = customEnabled
+    && /^\d+$/.test(customCredits)
+    && Number.isSafeInteger(customAmount)
+    && customAmount >= customMinimum;
+  const customPrice = customValid
+    ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((customAmount * customRate) / 100)
+    : "—";
+
+  const selectCustomAmount = (value) => {
+    setCustomCredits(value);
+    setCustomActive(true);
+    const amount = Number(value);
+    const valid = /^\d+$/.test(value) && Number.isSafeInteger(amount) && amount >= customMinimum;
+    setPicked(valid ? {
+      credits: amount,
+      label: `${amount.toLocaleString("en-US")} credits`,
+      value: new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((amount * customRate) / 100),
+    } : null);
+  };
   return (
     <div className={`factory-update-modal-layer ${layerClassName}`.trim()} role="presentation">
       <div className={`factory-update-modal factory-credit-purchase-modal ${className}`.trim()} role="dialog" aria-modal="true" aria-labelledby="factory-credit-purchase-title">
@@ -6973,12 +7080,38 @@ export function CreditPurchaseModal({
                 className={live && picked?.label === pack.label ? "selected" : undefined}
                 role={live ? "radio" : undefined}
                 aria-checked={live ? picked?.label === pack.label : undefined}
-                onClick={live ? () => setPicked(pack) : undefined}
+                onClick={live ? () => { setCustomActive(false); setPicked(pack); } : undefined}
               >
                 <span>{isZh ? pack.label.replace(/credits/g, "额度") : pack.label}</span>
                 <strong>{pack.value}</strong>
               </button>
             ))}
+            {customEnabled ? (
+              <div className={`tsc-credit-custom-option${customActive ? " selected" : ""}`}>
+                <div className="tsc-credit-custom-heading">
+                  <label htmlFor="tsc-custom-credit-amount">Custom amount</label>
+                  <strong aria-live="polite">{customPrice}</strong>
+                </div>
+                <div className="tsc-credit-custom-input-wrap">
+                  <input
+                    id="tsc-custom-credit-amount"
+                    type="number"
+                    min={customMinimum}
+                    step="25"
+                    inputMode="numeric"
+                    value={customCredits}
+                    placeholder={`Minimum ${customMinimum}`}
+                    aria-describedby="tsc-custom-credit-help"
+                    onFocus={() => selectCustomAmount(customCredits)}
+                    onChange={(event) => selectCustomAmount(event.target.value)}
+                  />
+                  <span>credits</span>
+                </div>
+                <small id="tsc-custom-credit-help">
+                  Minimum {customMinimum.toLocaleString("en-US")} credits · {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format((customMinimum * customRate) / 100)} minimum
+                </small>
+              </div>
+            ) : null}
           </div>
         )}
 
@@ -9101,6 +9234,27 @@ function getTranslatedProjectSummary(project) {
   return translatedSummaries[project.title] || project.specialty;
 }
 
+function FactoryRequestRequirements({ project }) {
+  const groups = [
+    ["Certifications needed", project.certifications],
+    ["Services needed", project.services],
+  ].filter(([, items]) => items?.length);
+
+  if (!groups.length) return null;
+  return (
+    <div className="factory-request-requirements">
+      {groups.map(([label, items]) => (
+        <div className="factory-request-requirement-row" key={label}>
+          <span>{label}</span>
+          <div className="tag-row compact-tags">
+            {items.map((item) => <span className="tag garment-tag" key={item}>{item}</span>)}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function FactoryProjectDetail({
   project,
   companyType = "factory",
@@ -9121,20 +9275,6 @@ export function FactoryProjectDetail({
   saved,
   onToggleSave,
 }) {
-  const isZh = language === "zh";
-  const translatedTitle = getTranslatedProjectTitle(project.title);
-  const requestImages = project.images || [];
-  const [primaryImage, ...supportImages] = requestImages;
-  const hasGallery = requestImages.length >= 3;
-  // A live request need not carry every fact — a deadline is optional. An empty
-  // tile reads as a missing value, so the row is dropped rather than drawn blank.
-  const requestFacts = [
-    ["Unit target", project.budget],
-    ["Quantity", project.quantity],
-    ["Samples", project.samples],
-    ["Quote due", project.quoteDue]
-  ].filter(([, value]) => value);
-
   return (
     <main className="factory-detail-page factory-rfq-detail-page">
       <header className="factory-detail-header">
@@ -9145,81 +9285,12 @@ export function FactoryProjectDetail({
 
       <div className="factory-detail-layout">
         <section className="factory-detail-main">
-          <article className={project.featured ? "factory-request-card featured factory-detail-hero-card" : "factory-request-card factory-detail-hero-card"}>
-            <div className="factory-request-card-top">
-              <div className="factory-request-title">
-                <div className="factory-avatar">{project.initials}</div>
-                <div>
-                  <h1 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h1>
-                  <p data-no-translate>
-                    {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : `${project.brand} · ${project.location} · ${project.posted}`}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {isZh && (
-              <div className="brand-brief-translation-meta factory-detail-translation-meta">
-                <span>由英文自动翻译</span>
-                <button type="button">查看英文原文</button>
-              </div>
-            )}
-
-            <div className="factory-request-card-body">
-              <aside className="factory-request-brief">
-                <div className="factory-request-facts">
-                  {requestFacts.map(([label, value]) => (
-                    <div key={label}>
-                      <span>{label}</span>
-                      <strong>{value}</strong>
-                    </div>
-                  ))}
-                </div>
-                {isZh ? (
-                  <TranslatedProjectSummary project={project} />
-                ) : (
-                  <p data-no-translate>{project.specialty}</p>
-                )}
-                {(project.paymentVerified ?? true) && (
-                  <div className="factory-request-trust">
-                    <span className="factory-request-trust-icon" aria-hidden="true">$</span>
-                    <strong>Payment verified</strong>
-                    <span>{project.trust}</span>
-                  </div>
-                )}
-                {project.tags?.length > 0 && (
-                <div className="factory-request-tags">
-                  <span className="marketplace-tag-label">Request tags</span>
-                  <div className="tag-row compact-tags">
-                    {project.tags.map((tag) => (
-                      <span className="tag garment-tag" key={tag}>{tag}</span>
-                    ))}
-                  </div>
-                </div>
-                )}
-              </aside>
-
-              <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${project.brand} request references`}>
-                {primaryImage ? (
-                  <figure className="factory-request-visual-main">
-                    <img src={primaryImage.src} alt={`${project.title} ${primaryImage.label}`} />
-                    <figcaption>{primaryImage.label}</figcaption>
-                  </figure>
-                ) : (
-                  <div className="factory-request-visual-placeholder">
-                    <strong>No reference image uploaded</strong>
-                    <span>Review the written brief, request tags, and attached tech pack in details.</span>
-                  </div>
-                )}
-                {hasGallery && supportImages.slice(0, 2).map((image) => (
-                  <figure key={image.label}>
-                    <img src={image.src} alt={`${project.title} ${image.label}`} />
-                    <figcaption>{image.label}</figcaption>
-                  </figure>
-                ))}
-              </div>
-            </div>
-          </article>
+          <FactoryQuoteRequestCard
+            project={project}
+            companyType={companyType}
+            language={language}
+            attachments={attachments}
+          />
 
           {(brief === undefined || brief) && (
             <DetailCard title="Project brief">
@@ -9249,6 +9320,8 @@ export function FactoryProjectDetail({
               {[
                 ["Main material", materials?.mainMaterial ?? "Organic cotton poplin, mid-weight"],
                 ["Quality preference", materials?.quality ?? "GOTS preferred; brand can confirm certification path"],
+                ["Services requested", materials?.services],
+                ["Sourcing responsibility", materials?.sourcingResponsibility],
               ].filter(([, value]) => value).map(([label, value]) => (
                 <ProfileDetailPair label={label} value={value} key={label} />
               ))}
@@ -9270,27 +9343,18 @@ export function FactoryProjectDetail({
               </div>
             </section>
             )}
+            {materials?.sourcingDetails && (
+              <section className="factory-request-sourcing-details">
+                <h3>Material sourcing details</h3>
+                <p>{materials.sourcingDetails}</p>
+              </section>
+            )}
           </DetailCard>
           )}
 
-          {(attachments ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"]).length > 0 && (
-            <DetailCard title="Brand attachments">
-              <div className="factory-card-header-row">
-                <p>Review these before quoting. Files open in the brand request workspace.</p>
-                {!attachments && <button className="text-link" type="button">Download files</button>}
-              </div>
-              <div className="factory-attachment-row">
-                {(attachments ?? [
-                  { name: "Tech pack v3.pdf" },
-                  { name: "Measurement chart" },
-                  { name: "Reference photos" },
-                ]).map((file) => (
-                  <button type="button" key={file.name ?? file} onClick={file.onOpen}>
-                    {file.name ?? file}
-                    <img src="/assets/prototype-icons/download.svg" alt="" />
-                  </button>
-                ))}
-              </div>
+          {materials?.additionalDetails && (
+            <DetailCard title="Additional details">
+              <p className="factory-request-additional-details">{materials.additionalDetails}</p>
             </DetailCard>
           )}
 
@@ -9780,9 +9844,14 @@ function FactoryPostedUpdateCard({ update }) {
               {(item.photos?.length > 0 || item.extraFiles > 0) && (
                 <div className="factory-posted-file-row">
                   {item.photos?.map((photo) => (
-                    <div className="factory-posted-file" key={photo.id}>
-                      {photo.url ? <img src={photo.url} alt="" /> : null}
-                      <span>{photo.label}</span>
+                    <div className="factory-posted-file update-attachment-card" key={photo.id}>
+                      <button className="update-attachment-preview" type="button" onClick={photo.onPreview} aria-label={`Preview ${photo.label}`}>
+                        {photo.url ? <img src={photo.url} alt="" /> : null}
+                      </button>
+                      <button className="update-attachment-name" type="button" onClick={photo.onPreview} title={photo.label}>{photo.label}</button>
+                      <button className="update-attachment-download" type="button" onClick={photo.onDownload} aria-label={`Download ${photo.label}`} title="Download">
+                        <img src="/assets/prototype-icons/download.svg" alt="" />
+                      </button>
                     </div>
                   ))}
                   {item.extraFiles > 0 && (
@@ -10208,7 +10277,7 @@ export function FactoryReviewTotal({
   );
 }
 
-function FactoryQuoteRequestCard({ project, companyType = "factory", language }) {
+function FactoryQuoteRequestCard({ project, companyType = "factory", language, attachments }) {
   const isZh = language === "zh";
   const translatedTitle = getTranslatedProjectTitle(project.title);
   const requestImages = project.images || [];
@@ -10222,7 +10291,12 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
     ["Quantity", project.quantity],
     ["Samples", project.samples],
     ["Quote due", project.quoteDue]
-  ];
+  ].filter(([, value]) => value);
+  const requestFiles = attachments?.map((file) => file.name ?? file)
+    ?? project.files
+    ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"];
+  const downloadFiles = project.onDownloadFiles
+    ?? (attachments?.length ? () => attachments.forEach((file) => file.onOpen?.()) : undefined);
 
   return (
     <article className="factory-submit-card factory-submit-project-card factory-request-card">
@@ -10262,14 +10336,17 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
               <span>{project.trust}</span>
             </div>
           )}
-          <div className="factory-request-tags">
-            <span className="marketplace-tag-label">Request tags</span>
-            <div className="tag-row compact-tags factory-submit-tags">
-              {project.tags.map((tag) => (
-                <span className="tag garment-tag" key={tag}>{tag}</span>
-              ))}
+          {project.tags?.length > 0 && (
+            <div className="factory-request-tags">
+              <span className="marketplace-tag-label">Request tags</span>
+              <div className="tag-row compact-tags factory-submit-tags">
+                {project.tags.map((tag) => (
+                  <span className="tag garment-tag" key={tag}>{tag}</span>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
+          <FactoryRequestRequirements project={project} />
         </aside>
 
         <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${project.brand} request references`}>
@@ -10296,11 +10373,11 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
       {/* Live mounts pass project.files. The prototype passes none and keeps
           the design's example list; a real request with no attachments shows
           no attachment row rather than three files that do not exist. */}
-      {(project.files ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"]).length > 0 && (
+      {requestFiles.length > 0 && (
         <div className="factory-submit-attachments">
           <span>Brand attachments</span>
-          <strong>{(project.files ?? ["Tech pack v3.pdf", "Measurement chart", "Reference photos"]).join(" · ")}</strong>
-          <button className="text-link" type="button">Download files</button>
+          <strong>{requestFiles.join(" · ")}</strong>
+          <button className="text-link" type="button" onClick={downloadFiles}>Download files</button>
         </div>
       )}
     </article>
@@ -10308,6 +10385,10 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language })
 }
 
 function FactoryQuoteSections({ companyType = "factory", language = "en", readOnly = false, values }) {
+  const [sampleIds, setSampleIds] = useState(() => values
+    ? Object.keys(values).filter((key) => /^sample\.\d+\.stage$/.test(key)).map((key) => Number(key.split(".")[1])).sort((a, b) => a - b)
+    : [0, 1]);
+  const nextSampleId = useRef(Math.max(-1, ...sampleIds) + 1);
   const isZh = language === "zh";
   const reviewEnglish = isZh && readOnly;
   // `readOnly` is the read-back and the review step; anything else is the form
@@ -10389,12 +10470,30 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
             placeholder="e.g. 30/70, paid in full, or Net 30"
             {...reviewFieldProps}
           />
-          <QuoteField name="incoterms" label="Shipping / incoterms" value={values?.incoterms ?? "EXW quoted; shipping TBD"} {...reviewFieldProps} />
+          <QuoteField name="incoterms" label="Shipping / incoterms *" value={values?.incoterms ?? "EXW quoted; shipping TBD"} {...reviewFieldProps} />
           <QuoteDateField name="validUntil" label="Quote valid until" value={values?.validUntil ?? "Aug 1, 2026"} {...reviewFieldProps} />
         </div>
       </SubmitSection>
 
       <SubmitSection title="Material sourcing and cost breakdown" description="Show who supplies each material, what it costs, and whether it is included in the unit price.">
+        {values?.brandSourcing && Object.values(values.brandSourcing).some(Boolean) && (
+          <section className="factory-brand-sourcing-request">
+            <h3>Brand sourcing requirements</h3>
+            <div className="factory-brand-sourcing-grid">
+              {[
+                ["Requested material", values.brandSourcing.material],
+                ["Services requested", values.brandSourcing.services],
+                ["Sourcing responsibility", values.brandSourcing.responsibility],
+                ["What the brand needs sourced", values.brandSourcing.details],
+              ].filter(([, value]) => value).map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <p data-no-translate>{value}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
         {!values && (
         <section className="factory-sourcing-brand-provided">
           <div>
@@ -10417,8 +10516,9 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
             <p>List each material or component separately. Costs marked not included are added on top of the quoted unit price.</p>
           </div>
         </div>
-        <div className="factory-material-cost-rows">
-          {materialCosts.map((item) => (
+        {materialCosts.length > 0 && (
+          <div className="factory-material-cost-rows">
+            {materialCosts.map((item) => (
             <MaterialCostRow
               item={item}
               readOnly={readOnly}
@@ -10429,8 +10529,9 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
               onTreatmentChange={(included) => updateMaterialCost(item.id, { included })}
               key={item.id}
             />
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
         <div className="factory-material-cost-summary">
           <QuoteField
             label="Materials included in unit price"
@@ -10449,10 +10550,17 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
 
       <SubmitSection title="Sample plan" description="Break out sample stages so the brand can compare quotes clearly.">
         <div className="factory-submit-sample-rows">
-          <SamplePlanRow index={0} stage={values?.["sample.0.stage"] ?? (values ? "" : "Fit sample")} cost={values?.["sample.0.cost"] ?? (values ? "" : "$95")} timing={values?.["sample.0.timing"] ?? (values ? "" : "10 days")} includes={values?.["sample.0.includes"] ?? (values ? "" : "1 revision round")} readOnly={readOnly} reviewEnglish={reviewEnglish} />
-          <SamplePlanRow index={1} stage={values?.["sample.1.stage"] ?? (values ? "" : "PP sample")} cost={values?.["sample.1.cost"] ?? (values ? "" : "$165")} timing={values?.["sample.1.timing"] ?? (values ? "" : "11 days")} includes={values?.["sample.1.includes"] ?? (values ? "" : "1 revision round")} readOnly={readOnly} reviewEnglish={reviewEnglish} />
+          {sampleIds.map((index) => (
+            <SamplePlanRow key={index} index={index}
+              stage={values?.[`sample.${index}.stage`] ?? (!values && index < 2 ? ["Fit sample", "PP sample"][index] : "")}
+              cost={values?.[`sample.${index}.cost`] ?? (!values && index < 2 ? ["$95", "$165"][index] : "")}
+              timing={values?.[`sample.${index}.timing`] ?? (!values && index < 2 ? ["10 days", "11 days"][index] : "")}
+              includes={values?.[`sample.${index}.includes`] ?? (!values && index < 2 ? "1 revision round" : "")}
+              readOnly={readOnly} reviewEnglish={reviewEnglish}
+              onRemove={() => setSampleIds((ids) => ids.filter((id) => id !== index))} />
+          ))}
         </div>
-        {!readOnly && <button className="factory-add-stage" type="button">+ Add sample stage</button>}
+        {!readOnly && <button className="factory-add-stage" type="button" onClick={() => { const id = nextSampleId.current++; setSampleIds((ids) => [...ids, id]); }}>+ Add sample stage</button>}
       </SubmitSection>
 
       {/* Prototype-only examples remain available for the design preview. A
@@ -10482,6 +10590,12 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
       )}
 
       <SubmitSection title="Additional details and questions" description="Add supporting files or questions regarding the quote.">
+        {values?.brandAdditionalDetails && (
+          <section className="factory-brand-additional-details">
+            <span>Brand additional details</span>
+            <p data-no-translate>{values.brandAdditionalDetails}</p>
+          </section>
+        )}
         <QuoteTextarea name="factoryNotes" editable={reviewEnglish || canType} value={values?.factoryNotes ?? (values ? "" : (isZh && !readOnly
           ? (companyType === "trading"
               ? "技术包确认后，合作工厂即可开始试身样。生产窗口已确认至 8 月 30 日。"
@@ -10748,7 +10862,7 @@ function QuoteTextarea({ value, label, editable = false, name }) {
   );
 }
 
-function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, reviewEnglish = false, index }) {
+function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, reviewEnglish = false, index, onRemove }) {
   const reviewFieldProps = reviewEnglish
     ? { valueNoTranslate: true, editable: true }
     : !readOnly ? { editable: true } : {};
@@ -10762,7 +10876,7 @@ function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, review
       <QuoteField name={at("cost")} label="Cost" value={cost} {...reviewFieldProps} />
       <QuoteField name={at("timing")} label="Timing" value={timing} placeholder="e.g. 7–10 days" {...reviewFieldProps} />
       <QuoteField name={at("includes")} label="Includes" value={includes} {...reviewFieldProps} />
-      {!readOnly && <CloseIconButton label={`Remove ${stage}`} />}
+      {!readOnly && <CloseIconButton label={`Remove ${stage || "sample stage"}`} onClick={onRemove} />}
     </div>
   );
 }

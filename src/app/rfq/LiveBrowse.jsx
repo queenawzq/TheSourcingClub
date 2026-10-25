@@ -14,8 +14,10 @@
 import React, { useEffect, useState } from "react";
 import { FactoryBrowsePage } from "../../factory-prototype/main.jsx";
 import { listOpenRfqs, matchScoresForRfq } from "../../lib/domain/rfq.js";
+import { getRfqDocumentPresentation } from "../../lib/domain/documents.js";
 import { formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import { loadRequestTagMetadata, requestTags } from "./request-tags.js";
 
 const initialsOf = (name) =>
   (name ?? "")
@@ -50,19 +52,30 @@ export default function LiveBrowse({ org, profile }) {
   const { navigate } = useRouter();
   const [rfqs, setRfqs] = useState(null);
   const [matchScores, setMatchScores] = useState(new Map());
+  const [requestDocuments, setRequestDocuments] = useState(new Map());
+  const [tagMetadata, setTagMetadata] = useState(new Map());
   const [error, setError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const rows = await listOpenRfqs();
-      const scores = await Promise.all(rows.map(async (rfq) => {
-        const result = await matchScoresForRfq(rfq.id, [org.id]);
-        return [rfq.id, result.get(org.id) ?? null];
-      }));
+      const [scores, documents, metadata] = await Promise.all([
+        Promise.all(rows.map(async (rfq) => {
+          const result = await matchScoresForRfq(rfq.id, [org.id]);
+          return [rfq.id, result.get(org.id) ?? null];
+        })),
+        Promise.all(rows.map(async (rfq) => [
+          rfq.id,
+          await getRfqDocumentPresentation(rfq.id).catch(() => ({ files: [], images: [] })),
+        ])),
+        loadRequestTagMetadata(rows),
+      ]);
       if (!cancelled) {
         setRfqs(rows);
         setMatchScores(new Map(scores));
+        setRequestDocuments(new Map(documents));
+        setTagMetadata(metadata);
       }
     })().catch((failure) => {
       if (!cancelled) setError(failure);
@@ -88,9 +101,9 @@ export default function LiveBrowse({ org, profile }) {
       quantity: rfq.quantity_total ? `${rfq.quantity_total} units` : "",
       samples: rfq.requires_sample ? "Sample required" : "No sample",
       specialty: rfq.brief ?? rfq.material_notes ?? "",
-      tags: [],
+      tags: requestTags(rfq, tagMetadata.get(rfq.id)),
       capacity: [],
-      images: [],
+      images: requestDocuments.get(rfq.id)?.images ?? [],
       fitTone: fit.tone,
       trust: "",
       insight: [],

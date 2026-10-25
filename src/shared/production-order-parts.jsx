@@ -53,14 +53,12 @@ export function rowsForTab(rows, tabKey, membership = null, archived = null) {
 }
 
 /**
- * The tab strip as drawn, plus "Archived" at the end while the company has
- * archived something. It is not one of the company's saved tabs, so it never
+ * The tab strip as drawn, plus a permanent "Cancelled" tab (stored as archived). It is not one of
+ * the company's saved tabs, so it never
  * reaches "Manage tabs" and cannot be renamed or moved.
  */
-export function withArchivedTab(tabs, rows, archived) {
-  return rowsForTab(rows, "archived", null, archived).length
-    ? [...tabs, { key: "archived", label: "Archived", locked: true }]
-    : tabs;
+export function withArchivedTab(tabs) {
+  return [...tabs.filter((tab) => tab.key !== "archived"), { key: "archived", label: "Cancelled", locked: true }];
 }
 
 /**
@@ -180,8 +178,12 @@ export function ProjectStepRail({ steps }) {
   const progressPercent = visible.length <= 1 ? 0 : (doneCount / (visible.length - 1)) * 100;
 
   return (
-    <div className="project-progress" style={{ "--project-progress": `${Math.min(progressPercent, 100)}%` }}>
-      <div className="project-progress-line" aria-hidden="true" />
+    <div className="project-progress" style={{
+      "--project-progress": `${Math.min(progressPercent, 100)}%`,
+      "--project-step-count": Math.max(visible.length, 1),
+      "--project-rail-inset": `${50 / Math.max(visible.length, 1)}%`,
+    }}>
+      {visible.length > 1 && <div className="project-progress-line" aria-hidden="true" />}
       {visible.map((step, index) => (
         <div
           className={step.done ? "project-progress-step complete" : step.current ? "project-progress-step current" : "project-progress-step"}

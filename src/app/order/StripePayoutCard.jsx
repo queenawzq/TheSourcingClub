@@ -84,6 +84,8 @@ export default function StripePayoutCard({
   org,
   isOwner,
   onBalanceChange,
+  displayCurrency,
+  displayPending,
   manualAccount,
   manualForm,
   manualFields,
@@ -177,9 +179,9 @@ export default function StripePayoutCard({
   }, [org.id, isOwner, load, manualAccount]);
 
   const supported = PAYOUT_COUNTRIES.has(country);
-  const currency = balanceCurrency(balance);
+  const currency = displayCurrency || balanceCurrency(balance);
   const available = amountIn(balance?.available, currency);
-  const pending = amountIn(balance?.pending, currency);
+  const pending = displayPending ?? amountIn(balance?.pending, currency);
   const connectedMethods = balance?.methods ?? [];
   async function go(action, extra) {
     setBusy(true);
@@ -324,10 +326,7 @@ export default function StripePayoutCard({
         </div>
         <div className="live-payout-card-action">
           {isOwner ? account?.transfers_active ? (
-            <>
-              <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("manage")}>Manage payout method</button>
-              <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("withdraw")}>Open Stripe payouts</button>
-            </>
+            <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("manage")}>Manage payout method</button>
           ) : account ? (
             <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={() => go("onboard")}>
               {busy ? "Opening Stripe…" : "Finish setup"}
@@ -484,21 +483,6 @@ export default function StripePayoutCard({
         </PayoutModal>
       ) : null}
 
-      {modal === "withdraw" ? (
-        <PayoutModal
-          title="Stripe payouts"
-          eyebrow="Payments"
-          onClose={closeModal}
-          actions={<><button className="secondary-btn" type="button" onClick={closeModal}>Cancel</button><button className="primary-btn" type="button" disabled={busy} onClick={() => go("dashboard")}>{busy ? "Opening Stripe…" : "Open Stripe payouts"}</button></>}
-        >
-          <div className="payout-balance-block"><span>Available balance</span><strong>{formatMoney(available, currency)}</strong>{pending > 0 ? <p>{formatMoney(pending, currency)} pending release from Stripe</p> : null}</div>
-          <div className="payout-method-preview"><div className="payout-method-icon" aria-hidden="true">S</div><div><span>Payout method</span><strong>Stripe payout account · {countryName(account.country)}</strong></div></div>
-          {/* No payout schedule is set on the account, so Stripe pays out on
-              its own automatic schedule; there is no amount to choose here. */}
-          <div className="payout-info-callout"><span aria-hidden="true">i</span><p>Stripe sends your available balance to your bank automatically, on its regular payout schedule. You don’t need to withdraw it. Stripe lists each payout and when it should arrive.</p></div>
-          <p className="payout-security-copy">{STRIPE_TAB_NOTE}</p>
-        </PayoutModal>
-      ) : null}
     </>
   );
 }
