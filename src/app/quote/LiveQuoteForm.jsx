@@ -31,13 +31,15 @@ import {
   submitQuote,
 } from "../../lib/domain/quote.js";
 import { getQuestions, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
-import { listTermsByKind } from "../../lib/domain/taxonomy.js";
+import { downloadDocuments, getRfqDocumentPresentation } from "../../lib/domain/documents.js";
+import { listLinks, listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatRange, toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { matchFit } from "../rfq/match-fit.js";
+import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 
-const KINDS = ["payment_term", "incoterm"];
+const KINDS = ["payment_term", "incoterm", "sourcing_responsibility", "certification", "service"];
 
 const firstNumber = (text) => {
   const match = String(text ?? "").match(/\d[\d,]*(?:\.\d+)?/);
@@ -137,6 +139,9 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   const [terms, setTerms] = useState({});
   const [questions, setQuestions] = useState([]);
   const [matchScore, setMatchScore] = useState(null);
+  const [requestDocuments, setRequestDocuments] = useState({ files: [], images: [] });
+  const [certificationTags, setCertificationTags] = useState([]);
+  const [serviceTags, setServiceTags] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [draftState, setDraftState] = useState(null);
@@ -145,16 +150,29 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
 
   const load = useCallback(async () => {
     try {
-      const [request, vocab, asked, scores] = await Promise.all([
+      const [request, vocab, asked, scores, documents, linkedTermIds] = await Promise.all([
         getRfq(rfqId),
         listTermsByKind(kinds),
         getQuestions(rfqId),
         matchScoresForRfq(rfqId, [org.id]).catch(() => new Map()),
+        getRfqDocumentPresentation(rfqId).catch(() => ({ files: [], images: [] })),
+        listLinks("rfq", rfqId),
       ]);
       setRfq(request);
       setTerms(vocab);
       setQuestions(asked ?? []);
       setMatchScore(scores.get(org.id) ?? null);
+      setRequestDocuments(documents);
+      setCertificationTags(
+        (vocab.certification ?? [])
+          .filter((term) => linkedTermIds.includes(term.id))
+          .map((term) => termLabel(term)),
+      );
+      setServiceTags(
+        (vocab.service ?? [])
+          .filter((term) => linkedTermIds.includes(term.id))
+          .map((term) => termLabel(term)),
+      );
 
       // A draft is started only when this vendor has no quote here at all.
       // Anything else — sent, decided, withdrawn — is not editable, and the
@@ -218,7 +236,10 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
 
     // Each designed sample stage becomes a row; the quote total is computed
     // from them rather than typed.
-    const stages = [0, 1]
+    const stages = Object.keys(values)
+      .filter((key) => /^sample\.\d+\.stage$/.test(key))
+      .map((key) => Number(key.split(".")[1]))
+      .sort((a, b) => a - b)
       .map((index) => ({
         stage: values[`sample.${index}.stage`]?.trim(),
         cost_cents: (() => {
@@ -231,7 +252,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         sort: index,
       }))
       .filter((row) => row.stage && row.cost_cents != null);
-    if (stages.length) await setSampleLines(quote.id, stages);
+    await setSampleLines(quote.id, stages);
 
     await setMaterialLines(quote.id, (values.materialCosts ?? []).map((line) => ({
       material: line.material,
@@ -284,8 +305,18 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   if (!rfq || !quote) return null;
 
   const money = (cents) => (cents == null ? "" : `$${(cents / 100).toFixed(2)}`);
-  const line = (index) => lines[index];
   const fit = matchFit(matchScore);
+  const selectedSourcing = (terms.sourcing_responsibility ?? []).find(
+    (term) => term.id === rfq.sourcing_responsibility_term_id,
+  );
+
+  async function downloadRequestFiles() {
+    try {
+      await downloadDocuments(requestDocuments.files);
+    } catch (failure) {
+      setError(failure);
+    }
+  }
 
   return (
     <FactorySubmitQuote
@@ -296,8 +327,12 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         brand: rfq.orgs?.name ?? "",
         quantity: rfq.quantity_total ? `${rfq.quantity_total} units` : "",
         specialty: rfq.brief ?? "",
-        images: [],
+        images: requestDocuments.images,
         tags: [],
+        certifications: certificationTags,
+        services: serviceTags,
+        files: requestDocuments.files.map((file) => file.file_name),
+        onDownloadFiles: downloadRequestFiles,
         capacity: fit ? [fit.label] : [],
         initials: (rfq.orgs?.name ?? "??").slice(0, 2).toUpperCase(),
         budget: formatRange(
@@ -308,16 +343,21 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         samples: rfq.requires_sample ? "Sample required" : "No sample",
         quoteDue: "",
         fitTone: fit?.tone ?? "",
-        // Absent, the card prints "undefined" beside the brand name and the
-        // design's three example attachments.
+        // Absent, the card prints "undefined" beside the brand name.
         location: "",
         posted: "",
-        files: [],
         paymentVerified: false,
         trust: "",
       }}
       values={{
         brandQuestions: questions.map((question) => question.prompt),
+        brandSourcing: {
+          material: rfq.material_notes ?? "",
+          responsibility: sourcingChoiceLabel(selectedSourcing),
+          details: rfq.sourcing_details ?? "",
+          services: serviceTags.join(", "),
+        },
+        brandAdditionalDetails: rfq.additional_details ?? "",
         materialCosts: materialLines.map((line) => ({
           id: line.id,
           material: line.material,
@@ -342,14 +382,12 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
           : "",
         incoterms: quote.shipping_notes ?? "",
         validUntil: quote.valid_until ?? "",
-        "sample.0.stage": line(0)?.stage ?? "",
-        "sample.0.cost": line(0) ? money(line(0).cost_cents) : "",
-        "sample.0.timing": formatDayRange(line(0)?.timing_days, line(0)?.timing_max_days),
-        "sample.0.includes": line(0)?.includes ?? "",
-        "sample.1.stage": line(1)?.stage ?? "",
-        "sample.1.cost": line(1) ? money(line(1).cost_cents) : "",
-        "sample.1.timing": formatDayRange(line(1)?.timing_days, line(1)?.timing_max_days),
-        "sample.1.includes": line(1)?.includes ?? "",
+        ...Object.fromEntries(lines.flatMap((line, index) => [
+          [`sample.${index}.stage`, line.stage ?? ""],
+          [`sample.${index}.cost`, money(line.cost_cents)],
+          [`sample.${index}.timing`, formatDayRange(line.timing_days, line.timing_max_days)],
+          [`sample.${index}.includes`, line.includes ?? ""],
+        ])),
       }}
       onBack={() => navigate(requestPath)}
       onReviewTotal={saveAndReview}

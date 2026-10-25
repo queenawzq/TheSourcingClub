@@ -283,10 +283,10 @@ async function creditsRoute(body) {
 }
 
 /**
- * Start buying a pack: an owner only. Returns { purchaseId, clientSecret,
+ * Start buying a credit amount: an owner only. Returns { purchaseId, clientSecret,
  * credits, amountCents, currency, savedCards } for confirming the card.
  */
-export const buyCredits = (orgId, packCredits) => creditsRoute({ action: "start", orgId, credits: packCredits });
+export const buyCredits = (orgId, credits) => creditsRoute({ action: "start", orgId, credits });
 
 /**
  * Read the purchase back from Stripe now and record it. Returns

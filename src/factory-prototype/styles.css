@@ -5723,6 +5723,7 @@ body:has(.factory-onboarding-page) {
 
 .factory-request-tags .marketplace-tag-label {
   margin-bottom: 0;
+  font-weight: 700;
 }
 
 .factory-request-tags .tag-row.compact-tags {
@@ -5733,6 +5734,40 @@ body:has(.factory-onboarding-page) {
   border-color: #d7e0ea;
   background: #ecf1f6;
   color: #0b1220;
+  font-weight: 600;
+}
+
+.factory-request-requirements {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid #d7e0ea;
+}
+
+.factory-request-requirement-row {
+  display: grid;
+  gap: 5px;
+}
+
+.factory-request-requirement-row > span {
+  color: #526b94;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.factory-request-requirement-row .tag-row {
+  gap: 6px;
+  margin-top: 0;
+}
+
+.factory-request-requirement-row .tag {
+  border-color: #c7d7eb;
+  background: #f4f7fb;
+  color: #0b1220;
+  font-weight: 600;
 }
 
 .factory-detail-page {
@@ -6002,6 +6037,20 @@ body:has(.factory-onboarding-page) {
   line-height: 20px;
 }
 
+.factory-request-sourcing-details {
+  margin-top: 20px;
+}
+
+.factory-request-sourcing-details h3 {
+  margin: 0 0 8px;
+}
+
+.factory-request-sourcing-details p,
+.factory-request-additional-details {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
 .quote-form-sourcing {
   margin-top: 4px;
   background: #fff;
@@ -6015,6 +6064,76 @@ body:has(.factory-onboarding-page) {
   border: 1px solid #dbe3ed;
   border-radius: 8px;
   background: #f3f7fc;
+}
+
+.factory-brand-sourcing-request {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 16px 18px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f3f6fa;
+}
+
+.factory-brand-sourcing-request h3,
+.factory-brand-sourcing-request p {
+  margin: 0;
+}
+
+.factory-brand-sourcing-request h3 {
+  color: #0b1223;
+  font-size: 15px;
+  line-height: 21px;
+}
+
+.factory-brand-sourcing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+}
+
+.factory-brand-sourcing-grid div:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
+.factory-brand-sourcing-grid span {
+  color: #576f96;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.factory-submit-section .factory-brand-sourcing-grid p {
+  margin-top: 4px;
+  color: #0b1223;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: pre-wrap;
+}
+
+.factory-brand-additional-details {
+  padding: 14px 16px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f3f6fa;
+}
+
+.factory-brand-additional-details span {
+  color: #576f96;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.factory-submit-section .factory-brand-additional-details p {
+  margin: 4px 0 0;
+  color: #0b1223;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: pre-wrap;
 }
 
 .factory-sourcing-brand-provided span {
@@ -6056,7 +6175,8 @@ body:has(.factory-onboarding-page) {
   align-items: end;
   justify-content: space-between;
   gap: 16px;
-  margin-top: 4px;
+  margin-top: 16px;
+  margin-bottom: 8px;
 }
 
 .factory-material-cost-heading h3,
@@ -6070,8 +6190,8 @@ body:has(.factory-onboarding-page) {
   line-height: 21px;
 }
 
-.factory-material-cost-heading p {
-  margin-top: 3px;
+.factory-submit-section .factory-material-cost-heading p {
+  margin-top: 8px;
   color: #5c749c;
   font-size: 12px;
   font-weight: 500;
@@ -6947,7 +7067,8 @@ body:has(.factory-onboarding-page) {
   background: #fff;
 }
 
-.factory-posted-file > img:first-child {
+.factory-posted-file > img:first-child,
+.factory-posted-file .update-attachment-preview img {
   width: 60px;
   height: 60px;
   object-fit: cover;

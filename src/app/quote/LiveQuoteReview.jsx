@@ -16,6 +16,7 @@
 import React, { useEffect, useState } from "react";
 import { FactoryReviewTotal } from "../../factory-prototype/main.jsx";
 import { getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
+import { getRfqDocumentPresentation } from "../../lib/domain/documents.js";
 import {
   formatCapacityWindow,
   formatDayRange,
@@ -29,9 +30,11 @@ import {
 } from "../../lib/domain/quote.js";
 import { creditBalance, quoteCreditCost } from "../../lib/domain/credits.js";
 import { CreditPurchaseDialog } from "../order/CreditPurchase.jsx";
+import { listLinks, listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { matchFit } from "../rfq/match-fit.js";
+import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 import { dateFrom } from "../../lib/dates.js";
 
@@ -57,17 +60,26 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
     let cancelled = false;
     (async () => {
       try {
-        const [rfq, quote, cost, balance, scores] = await Promise.all([
+        const [rfq, quote, cost, balance, scores, terms, documents, linkedTermIds] = await Promise.all([
           getRfq(rfqId),
           getMyQuote(rfqId, org.id),
           quoteCreditCost(),
           creditBalance(org.id),
           matchScoresForRfq(rfqId, [org.id]).catch(() => new Map()),
+          listTermsByKind(["sourcing_responsibility", "certification", "service"]),
+          getRfqDocumentPresentation(rfqId).catch(() => ({ files: [], images: [] })),
+          listLinks("rfq", rfqId),
         ]);
         const [lines, materialLines] = quote?.id
           ? await Promise.all([getSampleLines(quote.id), getMaterialLines(quote.id)])
           : [[], []];
-        if (!cancelled) setState({ rfq, quote, cost, balance, lines: lines ?? [], materialLines: materialLines ?? [], matchScore: scores.get(org.id) ?? null });
+        const certifications = (terms.certification ?? [])
+          .filter((term) => linkedTermIds.includes(term.id))
+          .map((term) => termLabel(term));
+        const services = (terms.service ?? [])
+          .filter((term) => linkedTermIds.includes(term.id))
+          .map((term) => termLabel(term));
+        if (!cancelled) setState({ rfq, quote, cost, balance, lines: lines ?? [], materialLines: materialLines ?? [], matchScore: scores.get(org.id) ?? null, terms, documents, certifications, services });
       } catch (failure) {
         if (!cancelled) setError(failure);
       }
@@ -78,8 +90,11 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
   if (error && !state) return <p className="composer-error" role="alert">{error.message}</p>;
   if (!state) return null;
 
-  const { rfq, quote, cost, balance, lines, materialLines, matchScore } = state;
+  const { rfq, quote, cost, balance, lines, materialLines, matchScore, terms, documents, certifications, services } = state;
   const fit = matchFit(matchScore);
+  const selectedSourcing = (terms.sourcing_responsibility ?? []).find(
+    (term) => term.id === rfq.sourcing_responsibility_term_id,
+  );
 
   // A vendor who has already sent this quote belongs on the confirmation, not
   // on a page offering to charge them again.
@@ -128,6 +143,13 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
       error={error?.message ?? null}
       quoteValues={{
         brandQuestions: [],
+        brandSourcing: {
+          material: rfq.material_notes ?? "",
+          responsibility: sourcingChoiceLabel(selectedSourcing),
+          details: rfq.sourcing_details ?? "",
+          services: services.join(", "),
+        },
+        brandAdditionalDetails: rfq.additional_details ?? "",
         materialCosts: materialLines.map((line) => ({
           id: line.id,
           material: line.material,
@@ -171,11 +193,13 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
         samples: rfq.requires_sample ? "Sample required" : "No sample",
         quoteDue: rfq.quote_deadline ? DAY.format(new Date(rfq.quote_deadline)) : "",
         location: "",
-        images: [],
+        images: documents.images,
         tags: [],
+        certifications,
+        services,
         capacity: fit ? [fit.label] : [],
         fitTone: fit?.tone ?? "",
-        files: [],
+        files: documents.files.map((file) => file.file_name),
         paymentVerified: false,
         trust: "",
         posted: "",

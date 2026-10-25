@@ -1,12 +1,11 @@
 /**
  * A request as a factory reads it, on Queena's designed screens.
  *
- * There are two of them, and which one is right depends on whether this vendor
- * has quoted yet:
+ * The request summary is shared across both states so the brand requirements
+ * and attachments never move when a factory starts a quote:
  *
- *   * no quote  → `FactoryProjectDetail`, the design's "RFQ details" — the
- *     request, the brand behind it, how well it matches, and the primary
- *     action that matters: Send quote.
+ *   * no quote  → `FactoryProjectDetail`, with the shared request card plus
+ *     the brand, match details, and the primary action: Send quote.
  *   * a draft or a submitted quote → `FactoryReadOnlyRfqPage`, which reads
  *     back what was sent.
  *
@@ -46,8 +45,10 @@ import {
   withdrawQuote,
 } from "../../lib/domain/quote.js";
 import { quoteCreditCost } from "../../lib/domain/credits.js";
-import { listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
+import { getRfqDocumentPresentation, urlFor } from "../../lib/domain/documents.js";
 import { openRfqThread } from "../../lib/domain/message.js";
+import { listLinks, listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
+import { sourcingChoiceLabel } from "./resume-fields.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import QuoteActionDialog, { reviseCopy } from "../quote/QuoteActionDialog.jsx";
@@ -103,7 +104,10 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const [myQuote, setMyQuote] = useState(null);
   const [sampleLines, setSampleLines] = useState([]);
   const [materialLines, setMaterialLines] = useState([]);
-  const [extras, setExtras] = useState({ match: null, brand: null, lastView: null, files: [], saved: false });
+  const [sourcingResponsibility, setSourcingResponsibility] = useState("");
+  const [certificationTags, setCertificationTags] = useState([]);
+  const [serviceTags, setServiceTags] = useState([]);
+  const [extras, setExtras] = useState({ match: null, brand: null, lastView: null, files: [], images: [], saved: false });
   const [error, setError] = useState(null);
   const [loaded, setLoaded] = useState(false);
   // "revise" or "withdraw" while the vendor is being asked; a sent quote is
@@ -117,13 +121,33 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     let cancelled = false;
     // The latest quote, withdrawn included: a withdrawal is final, and this is
     // the page that has to say so.
-    Promise.all([getRfq(rfqId), getQuestions(rfqId), org?.id ? getLatestQuote(rfqId, org.id) : null])
-      .then(([request, asked, quote]) => {
+    Promise.all([
+      getRfq(rfqId),
+      getQuestions(rfqId),
+      org?.id ? getLatestQuote(rfqId, org.id) : null,
+      listTermsByKind(["sourcing_responsibility", "certification", "service"]),
+      listLinks("rfq", rfqId),
+    ])
+      .then(([request, asked, quote, terms, linkedTermIds]) => {
         if (cancelled) return;
         setLoaded(true);
         setRfq(request);
         setQuestions(asked ?? []);
         setMyQuote(quote ?? null);
+        const selected = terms.sourcing_responsibility?.find(
+          (term) => term.id === request?.sourcing_responsibility_term_id,
+        );
+        setSourcingResponsibility(sourcingChoiceLabel(selected));
+        setCertificationTags(
+          (terms.certification ?? [])
+            .filter((term) => linkedTermIds.includes(term.id))
+            .map((term) => termLabel(term)),
+        );
+        setServiceTags(
+          (terms.service ?? [])
+            .filter((term) => linkedTermIds.includes(term.id))
+            .map((term) => termLabel(term)),
+        );
       })
       .catch((failure) => !cancelled && setError(failure));
     return () => { cancelled = true; };
@@ -143,18 +167,19 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
       matchScoresForRfq(rfq.id, [org.id]).catch(() => new Map()),
       rfq.brand_org_id ? brandSummary(rfq.brand_org_id).catch(() => null) : null,
       lastBrandView(rfq.id),
-      listRfqDocuments(rfq.id).catch(() => []),
+      getRfqDocumentPresentation(rfq.id).catch(() => ({ files: [], images: [] })),
       isRequestSaved(org.id, rfq.id).catch(() => false),
       // Its club orders: the summary predates orders and returns none.
       rfq.brand_org_id ? brandProfileForFactory(rfq.brand_org_id).catch(() => null) : null,
     ])
-      .then(([scores, summary, viewed, files, savedAlready, profile]) => {
+      .then(([scores, summary, viewed, documents, savedAlready, profile]) => {
         if (cancelled) return;
         setExtras({
           match: scores.get(org.id) ?? null,
           brand: summary && { ...summary, club_order_count: summary.club_order_count ?? profile?.club_order_count ?? null },
           lastView: viewed,
-          files: files ?? [],
+          files: documents.files ?? [],
+          images: documents.images ?? [],
           saved: Boolean(savedAlready),
         });
       });
@@ -232,8 +257,29 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     paymentVerified: extras.brand ? Boolean(extras.brand.payment_verified) : false,
     trust: extras.brand?.trust_band ?? "",
     tags: [],
+    certifications: certificationTags,
+    services: serviceTags,
     capacity: fit ? [fit.label] : [],
-    images: [],
+    images: extras.images,
+    files: extras.files.map((file) => file.file_name),
+    onDownloadFiles: extras.files.length > 0 ? async () => {
+      const downloads = await Promise.all(
+        extras.files.map(async (file) => ({
+          name: file.file_name,
+          href: await urlFor(file),
+        })),
+      );
+      downloads.filter(({ href }) => href).forEach(({ href, name }) => {
+        const link = document.createElement("a");
+        link.href = href;
+        link.download = name;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      });
+    } : undefined,
     fitTone: fit?.tone ?? "",
     insight: [],
   };
@@ -265,7 +311,11 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           }}
           materials={{
             mainMaterial: rfq.material_notes ?? "",
-            quality: "",
+            quality: certificationTags.join(", "),
+            services: serviceTags.join(", "),
+            sourcingResponsibility,
+            sourcingDetails: rfq.sourcing_details ?? "",
+            additionalDetails: rfq.additional_details ?? "",
             factorySources: "",
             brandProvides: "",
             confirmInQuote: "",
@@ -386,11 +436,18 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         key={`materials-${materialLines.length}`}
         companyType={isTrading ? "trading" : "factory"}
         language="en"
-        project={{ ...project, files: [] }}
+        project={project}
         // This vendor's own quote, read back: the terms it sent and the
         // sample plan it priced, not the design's example.
         quote={{
           brandQuestions: project.questions,
+          brandSourcing: {
+            material: rfq.material_notes ?? "",
+            responsibility: sourcingResponsibility,
+            details: rfq.sourcing_details ?? "",
+            services: serviceTags.join(", "),
+          },
+          brandAdditionalDetails: rfq.additional_details ?? "",
           materialCosts: materialLines.map((line) => ({
             id: line.id,
             material: line.material,

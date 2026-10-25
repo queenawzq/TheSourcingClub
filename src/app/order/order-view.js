@@ -60,7 +60,7 @@ const PHOTO = /^image\//;
  * The step's latest update, shaped for the designed update card, or null.
  * `urls` maps document id → signed URL, minted by the caller.
  */
-export function latestUpdateFor(milestoneId, updates, { urls = {}, onViewAll } = {}) {
+export function latestUpdateFor(milestoneId, updates, { urls = {}, onViewAll, onOpenFile, onDownloadFile } = {}) {
   const mine = updates.filter((update) => update.milestone_id === milestoneId);
   if (!mine.length) return null;
   const latest = mine[0];
@@ -72,7 +72,11 @@ export function latestUpdateFor(milestoneId, updates, { urls = {}, onViewAll } =
       author: update.orgs?.name ?? "",
       when: updateTime(update.created_at),
       body: update.body,
-      photos: photos.map((doc) => ({ id: doc.id, url: urls[doc.id] ?? null, label: doc.file_name })),
+      photos: photos.map((doc) => ({
+        id: doc.id, url: urls[doc.id] ?? null, label: doc.file_name,
+        onPreview: onOpenFile ? () => onOpenFile(doc) : undefined,
+        onDownload: onDownloadFile ? () => onDownloadFile(doc) : undefined,
+      })),
       extraFiles: documents.length - photos.length,
     };
   };
