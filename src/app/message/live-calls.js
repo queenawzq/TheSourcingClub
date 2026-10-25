@@ -36,8 +36,12 @@ const CLOSED_STATUS = {
     call.proposer_org_id === orgId ? `Declined by ${other.name}` : "You declined",
   countered: (call, other, orgId) =>
     call.proposer_org_id === orgId ? `${other.name} proposed another time` : "You proposed another time",
-  cancelled: (call, other, orgId) =>
-    call.cancelled_by_org_id === orgId ? "Cancelled" : `Cancelled by ${other.name}`,
+  // An invite nobody answered was withdrawn by its proposer, not cancelled:
+  // only accepting (or answering) sets responded_at.
+  cancelled: (call, other, orgId) => {
+    const word = call.responded_at ? "Cancelled" : "Withdrawn";
+    return call.cancelled_by_org_id === orgId ? word : `${word} by ${other.name}`;
+  },
   expired: () => "No answer before the time",
   past: () => "Ended",
 };

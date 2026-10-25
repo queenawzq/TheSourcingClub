@@ -258,14 +258,15 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   }, [messagesByThread, screenRound, user.id]);
 
   // Open the conversation that was asked for — an order's own thread, say —
-  // or the newest one, the way the design does. Once: a conversation that
-  // appears later (someone writes) must not pull the reader away from the one
-  // they are reading.
+  // or the newest one, the way the design does. Once, and the same one the
+  // designed screen shows, which it picks only when it mounts. Picking the
+  // newest again on every new arrival opened a conversation that had just
+  // appeared, behind the one on screen, and marked it read: it arrived with
+  // no unread badge, and the one being read stopped updating.
   const opened = useRef(null);
   useEffect(() => {
-    if (!threads?.length) return;
+    if (opened.current || !threads?.length || (orderId && !resolvedThreadId)) return;
     const target = resolvedThreadId ?? threads[0].id;
-    if (opened.current === target) return;
     opened.current = target;
     loadThread(target);
     // eslint-disable-next-line react-hooks/exhaustive-deps
