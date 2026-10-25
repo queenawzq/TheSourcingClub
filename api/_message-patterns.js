@@ -26,6 +26,11 @@ const EMAIL_SPELLED = new RegExp(
   "i",
 );
 
+// A domain read out: "tscmill dot com", "tscmill [dot] com", "tscmill点com".
+// A shorter list than TLD, because "polka dot co-ord" is a sentence, and
+// "the dot com bubble" is not anyone's site.
+const DOMAIN_SPELLED = /\b(?!(?:the|a|an|polka)\b)[a-z0-9-]{2,}\s*(?:[\[(]\s*dot\s*[\])]|\s+dot\s+|点)\s*(?:com|net|org|cn|io|hk|tw|uk|biz|xyz)\b/i;
+
 const URL = /\bhttps?:\/\/[^\s]+|\bwww\.[a-z0-9-]+\.[a-z]{2,}[^\s]*/gi;
 const BARE_DOMAIN = new RegExp(String.raw`\b((?:[a-z0-9-]+\.)+(?:${TLD}))(?=$|[\s/:?#),.!])`, "gi");
 
@@ -49,7 +54,7 @@ const APPS = [
 // Short or everyday names ("line", "signal", "qq", "tg", "vx") count only
 // with an id right after them.
 const SHORT_APP_IDS = [
-  ["QQ", /\bqq\s*(?:号|号码|id|no\.?|number)?\s*[:：]?\s*\d{5,}/i],
+  ["QQ", /\bq\s?q\s*(?:号|号码|id|no\.?|number)?\s*[:：]?\s*\d{5,}/i],
   ["WeChat", /\b(?:vx|v信|wx)\s*(?:号|id)?\s*[:：]?\s*[a-z0-9_-]{5,}/i],
   ["Line", /\bline\s*id\s*[:：]?\s*[a-z0-9_.-]{4,}/i],
   ["Telegram", /\btg\s*[:：@]\s*[a-z0-9_]{4,}/i],
@@ -71,14 +76,23 @@ const ID_AFTER = String.raw`\s*(?:(?:id|number|account|handle)\b|no\.|号)|\s+(?
 // Phone numbers. "+" then digits is always a phone. Without "+", groups split
 // by spaces, dots, dashes or brackets, at least 9 digits, with one group of 4+
 // and none shorter than 3 (so dates like 2026-10-12 are not phones), and not
-// followed by a unit (so "1500 2500 3000 units" is not either). A Chinese
-// mobile is 11 digits starting 13–19. Seven or more Chinese numerals in a row
-// are a number read out.
+// followed by a unit (so "1500 2500 3000 units" is not either); a UK mobile
+// splits 5+6 ("07700 900123"). A Chinese mobile is 11 digits starting 13–19.
+// Seven or more Chinese numerals in a row, spaces or not, are a number read out.
+//
+// One unbroken run of digits is a phone only in a phone's shape, since order
+// numbers, barcodes, POs and fabric codes are runs of digits too: a trunk 0
+// and 9–10 more (07700900123), a North American number with or without its 1
+// (2125550187), or 44 / 86 and a number. A run that reads as a date
+// (2026102501, an invoice) is not one.
 const PHONE_PLUS = /\+\s?\(?\d[\d\s().-]{5,}\d/g;
-const PHONE_GROUPED = /(?<![\d.,/:-])\(?\d{2,5}\)?(?:[ .-]\(?\d{3,5}\)?){1,3}(?![\d.,/:%-])/g;
+const PHONE_GROUPED = /(?<![\d.,/:-])\(?\d{2,5}\)?(?:[ .-]\(?\d{3,6}\)?){1,3}(?![\d.,/:%-])/g;
+const PHONE_RUN = /(?<![\d.,/:#$¥€£a-z_-])\d{10,13}(?![\d%]|[.,]\d)/gi;
+const PHONE_SHAPE = /^(?:0\d{9,10}|1?[2-9]\d{2}[2-9]\d{6}|44\d{10}|861[3-9]\d{9})$/;
+const DATE_LIKE = /^(?:19|20)\d{2}(?:0[1-9]|1[0-2])/;
 const UNIT_AFTER = /^\s*(?:units?|pcs|pieces?|pc|sets?|pairs?|件|个|套|条|gsm|g|kg|cm|mm|m|yards?|yds?|meters?|metres?|%|usd|rmb|cny|dollars?|元)\b/i;
 const CN_MOBILE = /(?<!\d)1[3-9]\d{9}(?!\d)/;
-const CN_NUMERALS = /[零〇一二三四五六七八九两幺]{7,}/;
+const CN_NUMERALS = /[零〇一二三四五六七八九两幺](?:\s*[零〇一二三四五六七八九两幺]){6,}/;
 
 const digitsIn = (value) => value.replace(/\D/g, "");
 
@@ -92,6 +106,13 @@ function phoneIn(text) {
     if (digits.length < 9) continue;
     if (!groups.some((group) => group.length >= 4)) continue;
     if (groups.slice(1).some((group) => group.length < 3)) continue;
+    // "2024 2025 2026" is a list of seasons.
+    if (groups.every((group) => /^(?:19|20)\d{2}$/.test(group))) continue;
+    if (UNIT_AFTER.test(text.slice(match.index + match[0].length))) continue;
+    return true;
+  }
+  for (const match of text.matchAll(PHONE_RUN)) {
+    if (!PHONE_SHAPE.test(match[0]) || DATE_LIKE.test(match[0])) continue;
     if (UNIT_AFTER.test(text.slice(match.index + match[0].length))) continue;
     return true;
   }
@@ -105,6 +126,13 @@ function emailIn(text) {
   return EMAIL_SPELLED.test(text);
 }
 
+// "j o h n @ g m a i l . c o m", "1 3 8 1 2 3 4 5 6 7 8": one character at a
+// time, so that no pattern sees a word. Joining every run of three or more
+// single characters reads them as typed; "S M L XL" becomes "SML XL", which
+// nothing matches.
+const SPACED_OUT = /(?<!\S)\S(?:[ \t]\S(?!\S)){2,}/g;
+const squeeze = (text) => text.replace(SPACED_OUT, (run) => run.replace(/[ \t]/g, ""));
+
 function linkIn(text) {
   for (const match of text.matchAll(URL)) {
     const host = match[0].replace(/^https?:\/\//i, "").split(/[/?#:]/)[0];
@@ -113,7 +141,7 @@ function linkIn(text) {
   for (const match of text.matchAll(BARE_DOMAIN)) {
     if (!OWN_DOMAINS.test(match[1])) return true;
   }
-  return false;
+  return DOMAIN_SPELLED.test(text);
 }
 
 function appIn(text, { nameAlone = false } = {}) {
@@ -134,7 +162,12 @@ function appIn(text, { nameAlone = false } = {}) {
 }
 
 /** What, if anything, in one piece of text is a way to reach someone off the platform. */
-function scan(text, { fileName = false } = {}) {
+function scan(text, options = {}) {
+  const squeezed = squeeze(text);
+  return scanAsTyped(text, options) ?? (squeezed !== text ? scanAsTyped(squeezed, options) : null);
+}
+
+function scanAsTyped(text, { fileName = false } = {}) {
   if (emailIn(text)) return "an email address";
   if (linkIn(text)) return "a link";
   const app = appIn(text, { nameAlone: fileName });
