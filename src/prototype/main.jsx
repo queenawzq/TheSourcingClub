@@ -1,3 +1,4 @@
+import FactoryMatch from "../app/matching/FactoryMatch.jsx";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
@@ -4448,6 +4449,7 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
   return (
     <article className={`factory-card selected home-recommended-invite-card${factory.name.length > 18 ? " home-recommended-long-name" : ""}`}>
       <div className="invite-factory-content">
+        {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
         <div className="invite-factory-top">
           <a
             className="marketplace-factory-title marketplace-factory-profile-link"
@@ -5496,6 +5498,7 @@ export function BrandProfileCompletionPage({ onBack, onAddPayment, live = null }
   return (
     <main className="factory-profile-page factory-profile-completion-page brand-profile-completion-page">
       <div className="factory-profile-shell">
+        {live?.matchingPanel}
         <button className="text-link factory-profile-completion-back" type="button" onClick={onBack}>‹ Back to profile</button>
 
         <section className="factory-profile-completion-hero">
@@ -6739,6 +6742,7 @@ function DirectoryFactoryCard({ factory, onQuote, live = null }) {
   if (live) {
     return (
       <article className="directory-factory-card">
+        {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
         <div className="directory-factory-intro">
           <div className="factory-avatar">{factory.logoUrl ? <img src={factory.logoUrl} alt="" /> : factory.initials}</div>
           <div>
@@ -7063,6 +7067,7 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote, live
 
   return (
     <article className={`marketplace-factory-card${factory.featured ? " featured" : ""}${["Tirupur Natural Studio", "Hangzhou Denim Lab"].includes(factory.name) ? " marketplace-tight-wrapped-name" : ""}${live ? " live-factory-card" : ""}`}>
+      {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
       <div className="marketplace-factory-top">
         {live ? (
           <a

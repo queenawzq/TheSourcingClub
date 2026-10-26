@@ -48,7 +48,8 @@ function toRecommendedCard(vendor, navigate) {
     name,
     location: vendor.location ?? "Location not given",
     trust: vendor.verification_status === "verified" ? (vendor.trust_tier ?? "basic") : "",
-    match: "",
+    match: vendor.matching ? `${Math.round(vendor.matching.score)}%${vendor.matching.status === "needs_confirmation" ? " provisional" : ""}` : "",
+    matching: vendor.matching,
     rating: "",
     orders: "",
     stats: [

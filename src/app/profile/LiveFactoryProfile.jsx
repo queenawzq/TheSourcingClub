@@ -1,3 +1,5 @@
+import MatchingProfile from "../matching/MatchingProfile.jsx";
+import EvidenceReview from "../matching/EvidenceReview.jsx";
 /**
  * The vendor's own profile, on Queena's designed pages, with the vendor's real
  * records behind them: what onboarding saved, its capacity, documents and
@@ -152,13 +154,14 @@ function fileDialogs(org, parts, reload) {
 }
 
 /** The completion page, on either kind of vendor's checks. */
-function Completion({ view, verified, editors, isTrading }) {
+function Completion({ view, verified, editors, isTrading, org }) {
   const { navigate } = useRouter();
   const who = isTrading ? "your company" : "the factory";
   return (
     <FactoryProfileCompletionPage
       onBack={() => navigate("/profile")}
       live={{
+        matchingPanel: <MatchingProfile org={org} subjectType="factory_profile" />,
         percent: view.status.percent,
         intro: verified
           ? `You can receive matching RFQs now. Complete the items below to improve trust signals and help brands understand ${who} faster.`
@@ -193,7 +196,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
   const view = isTrading ? tradingProfileView(parts) : factoryProfileView(parts);
   const editors = isTrading ? TRADING_EDITORS : SAVED_EDITORS;
 
-  if (page === "completion") return <Completion view={view} verified={verified} editors={editors} isTrading={isTrading} />;
+  if (page === "completion") return <Completion org={org} view={view} verified={verified} editors={editors} isTrading={isTrading} />;
 
   const dialogs = {
     editors,
@@ -214,6 +217,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
         key={editor ?? "profile"}
         onViewCompletion={() => navigate("/profile/completion")}
         live={{
+          matchingPanel: <><MatchingProfile org={org} subjectType="factory_profile" /><EvidenceReview org={org} /></>,
           ...view,
           ...dialogs,
           form: tradingProfileEditForm(parts),
@@ -230,6 +234,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
       key={editor ?? "profile"}
       onViewCompletion={() => navigate("/profile/completion")}
       live={{
+          matchingPanel: <><MatchingProfile org={org} subjectType="factory_profile" /><EvidenceReview org={org} /></>,
         ...view,
         ...dialogs,
         form: factoryProfileEditForm(parts),

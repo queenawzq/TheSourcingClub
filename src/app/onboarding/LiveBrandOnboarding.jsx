@@ -1,3 +1,4 @@
+import MatchingProfile from "../matching/MatchingProfile.jsx";
 /**
  * Brand onboarding, on Queena's designed screen.
  *
@@ -340,6 +341,8 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
   }
 
   return (
+    <>
+    {step === REVIEW_STEP && <MatchingProfile org={org} subjectType="brand_profile" />}
     <BrandOnboarding
       step={step}
       isReviewEdit={reviewEditStep !== null}
@@ -390,5 +393,6 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
         },
       })}
     />
+    </>
   );
 }

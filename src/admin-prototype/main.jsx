@@ -319,7 +319,7 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate,
   );
 }
 
-function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, onOpenQuote }) {
+function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, onOpenQuote, matchingPanel = null }) {
   const [verificationTab, setVerificationTab] = useState("Active");
   const [rfqTab, setRfqTab] = useState("All");
   const [quoteTab, setQuoteTab] = useState("All");
@@ -364,6 +364,7 @@ function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, on
 
   return (
     <main className="rfqs-page admin-page admin-queue-page">
+      {kind === "Verification" && matchingPanel}
       <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>{copy[0]}</h1><p>{copy[1]}</p></div></header>
       <div className="admin-filter-bar">
         <label className="admin-search"><SearchIcon /><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder={`Search ${copy[0].toLowerCase()}`} /></label>
@@ -1728,7 +1729,7 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUna
   );
 }
 
-function App({ testEmailsIntro, testEmailsUnavailable } = {}) {
+function App({ testEmailsIntro, testEmailsUnavailable, matchingPanel = null } = {}) {
   // Everything below reads through the data seam. admin-prototype.html serves
   // the constants in this file; admin.html serves the marketplace. The
   // components in between never learn which.
@@ -1951,7 +1952,7 @@ function App({ testEmailsIntro, testEmailsUnavailable } = {}) {
           ? <main className="admin-page"><div className="admin-empty-state"><strong>Loading the marketplace…</strong></div></main>
           : <>
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} />}
-      {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
+      {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}

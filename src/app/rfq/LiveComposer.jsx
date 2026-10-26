@@ -1,3 +1,6 @@
+import MatchingProfile, { useMatchingEnabled } from "../matching/MatchingProfile.jsx";
+import FactoryMatch from "../matching/FactoryMatch.jsx";
+import { assessFactories, compareMatches } from "../../lib/domain/matching.js";
 /**
  * The request composer, on Queena's designed flow.
  *
@@ -179,11 +182,15 @@ export default function LiveComposer({ org, rfqId }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [vendors, setVendors] = useState([]);
+  const [excludedVendors,setExcludedVendors] = useState([]);
   const [selectedVendors, setSelectedVendors] = useState([]);
   // The design's own toggle, ticked by default exactly as it is drawn.
   const [openToAll, setOpenToAll] = useState(true);
   // Who the request actually went to, for the success card's copy.
   const [invited, setInvited] = useState([]);
+  const matchingV2 = useMatchingEnabled();
+  const [matchingDirty, setMatchingDirty] = useState(false);
+  const [matchingAcknowledged, setMatchingAcknowledged] = useState(false);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [saveState, setSaveState] = useState("saved");
@@ -450,6 +457,7 @@ export default function LiveComposer({ org, rfqId }) {
     setError(null);
     try {
       await persistReview();
+      setMatchingAcknowledged(false);
       setSaveState("saved");
     } catch (failure) {
       setSaveState("dirty");
@@ -472,7 +480,9 @@ export default function LiveComposer({ org, rfqId }) {
     setError(null);
 
     try {
+      if (matchingV2 && matchingDirty) throw new Error("Save your matching information before choosing vendors.");
       await persistReview();
+      setMatchingAcknowledged(false);
       setSaveState("saved");
 
       const rows = unwrap(
@@ -484,7 +494,8 @@ export default function LiveComposer({ org, rfqId }) {
       );
       // The design ranks this list by fit. match_score_rfq() answers per
       // pair, so score the vendors actually being shown and sort by it.
-      const scores = await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
+      const assessments = matchingV2 ? await assessFactories("rfq", draftId, (rows ?? []).map(row=>row.org_id)) : new Map();
+      const scores = matchingV2 ? new Map([...assessments].map(([id,m])=>[id,m?.score ?? null])) : await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
       const vendorTerms = await listTermsByKind(["make", "product_category", "specialty", "service", "core_service"]);
       const vendorIds = (rows ?? []).map((row) => row.org_id);
       const links = vendorIds.length ? unwrap(await supabase.from("taxonomy_links")
@@ -499,20 +510,22 @@ export default function LiveComposer({ org, rfqId }) {
         })];
       }));
       const firstId = reorder?.factoryOrgId ?? requestedVendor;
-      const first = firstId && (rows ?? []).find((row) => row.org_id === firstId);
+      const first = firstId && (rows ?? []).find((row) => row.org_id === firstId && (!matchingV2 || assessments.get(row.org_id)?.status !== "excluded"));
       if (firstId && !preselected.current) {
         preselected.current = true;
         if (first) {
           setSelectedVendors((current) => (current.includes(first.orgs?.name) ? current : [...current, first.orgs?.name]));
         }
       }
+      setExcludedVendors(matchingV2 ? (rows ?? []).filter(row=>assessments.get(row.org_id)?.status === "excluded").map(row=>({...row,matching:assessments.get(row.org_id)})) : []);
       setVendors(
         (rows ?? [])
-          .map((row) => ({ ...row, cardSummary: summaries.get(row.org_id), matchPercent: scores.get(row.org_id) ?? null }))
-          .sort((a, b) => (b.matchPercent ?? -1) - (a.matchPercent ?? -1))
+          .filter(row=>!matchingV2 || (assessments.get(row.org_id) && assessments.get(row.org_id).status!=="excluded"))
+          .map((row) => ({ ...row, matching: assessments.get(row.org_id), cardSummary: summaries.get(row.org_id), matchPercent: scores.get(row.org_id) ?? null }))
+          .sort((a, b) => matchingV2 ? compareMatches(a.matching,b.matching) : (b.matchPercent ?? -1) - (a.matchPercent ?? -1))
           // A reorder's own factory (or the vendor the request was started
           // from) heads the list, ticked, above the ranking.
-          .sort((a, b) => Number(b.org_id === firstId) - Number(a.org_id === firstId)),
+          .sort((a, b) => matchingV2 ? 0 : Number(b.org_id === firstId) - Number(a.org_id === firstId)),
       );
       setStep("invite");
     } catch (failure) {
@@ -533,12 +546,13 @@ export default function LiveComposer({ org, rfqId }) {
       // Publish first, then invite. An invitation to a draft is refused by
       // RLS — reasonably, since a draft is the brand's private working copy
       // and nobody outside it may be pointed at one.
+      if (matchingV2 && vendors.some(v=>selectedVendors.includes(v.orgs?.name) && v.matching?.status!=="qualified") && !matchingAcknowledged) throw new Error("Acknowledge unresolved matching requirements before inviting.");
       await publishRfq(draftId, openToAll ? "open_to_all" : "invited_only");
 
       const chosen = vendors
         .filter((vendor) => selectedVendors.includes(vendor.orgs?.name))
         .map((vendor) => vendor.org_id);
-      if (chosen.length) await setInvitations(draftId, chosen);
+      if (chosen.length) await setInvitations(draftId, chosen, matchingV2 && matchingAcknowledged);
       setInvited(selectedVendors.filter((name) => vendors.some((vendor) => vendor.orgs?.name === name)));
       // The design's "Quote request sent" step, rather than dropping the brand
       // on the request page with no word that anything was sent.
@@ -622,7 +636,7 @@ export default function LiveComposer({ org, rfqId }) {
       trust: vendor.verification_status === "verified" ? (vendor.trust_tier ?? "basic") : "",
       // Scored against this request by match_score_rfq(); blank when the
       // vendor's profile has too little in it to score.
-      fit: vendor.matchPercent === null ? "" : `${vendor.matchPercent}%`,
+      fit: vendor.matchPercent === null ? "" : `${Math.round(vendor.matchPercent)}%${vendor.matching?.status === "needs_confirmation" ? " provisional" : ""}`,
       // Nothing records a rating or a vendor's order count a brand may read;
       // "" tells the card to leave both out rather than print an example.
       rating: "",
@@ -665,11 +679,15 @@ export default function LiveComposer({ org, rfqId }) {
         onBack={() => setStep("review")}
         onNext={publish}
       >
+        {matchingV2 && <section className="matching-panel"><h2>Factory match details</h2>{vendors.map(v=><div key={v.org_id}><h3>{v.orgs?.name}</h3><FactoryMatch match={v.matching} name={v.orgs?.name} /></div>)}
+          {vendors.some(v=>selectedVendors.includes(v.orgs?.name) && v.matching?.status!=="qualified") && <label><input type="checkbox" checked={matchingAcknowledged} onChange={e=>{setMatchingAcknowledged(e.target.checked);setError(null);}} />I understand the selected factories have unresolved requirements and will confirm them before proceeding.</label>}
+          {excludedVendors.length>0 && <details><summary>{excludedVendors.length} {excludedVendors.length===1?"factory excluded":"factories excluded"} by must-have requirements</summary>{excludedVendors.map(v=><div key={v.org_id}><h3>{v.orgs?.name}</h3><FactoryMatch match={v.matching} name={v.orgs?.name} /></div>)}</details>}
+        </section>}
         <InviteScreen
           vendors={shaped}
           filters={requestFilters(values)}
           selectedFactories={selectedVendors}
-          setSelectedFactories={setSelectedVendors}
+          setSelectedFactories={(next)=>{setMatchingAcknowledged(false);setSelectedVendors(next);}}
           openToAll={openToAll}
           onOpenToAllChange={setOpenToAll}
         />
@@ -702,6 +720,7 @@ export default function LiveComposer({ org, rfqId }) {
           Reordering {reorder.title} with {reorder.factoryName}. Check the details, then invite.
         </p>
       )}
+      {draftId && <MatchingProfile org={org} subjectType="rfq" subjectId={draftId} onDirty={()=>setMatchingDirty(true)} onSaved={({selected,terms: matchingTerms})=>{setMatchingDirty(false);setValues(current=>({...current,category:(matchingTerms.product_category??[]).filter(t=>selected.includes(t.id)).map(t=>termLabel(t)).join(", "),certifications:(matchingTerms.certification??[]).filter(t=>selected.includes(t.id)).map(t=>termLabel(t)).join(", ")}));}} />}
       <ReviewScreen
         brief={freeText}
         values={values}

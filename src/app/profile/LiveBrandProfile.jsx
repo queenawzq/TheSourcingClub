@@ -1,3 +1,4 @@
+import MatchingProfile from "../matching/MatchingProfile.jsx";
 /**
  * The brand's own profile, on Queena's designed `BrandProfileScreen`, with the
  * brand's real records behind it: what onboarding saved (the profile, its
@@ -161,6 +162,7 @@ export default function LiveBrandProfile({ org, page = "profile", editor = null 
       <BrandProfileCompletionPage
         onBack={() => navigate("/profile")}
         live={{
+          matchingPanel: <MatchingProfile org={org} subjectType="brand_profile" />,
           ...view,
           checks: view.checks.map((check) => ({
             ...check,
@@ -177,6 +179,7 @@ export default function LiveBrandProfile({ org, page = "profile", editor = null 
 
   return (
     <main className="factory-profile-page brand-profile-page">
+      <MatchingProfile org={org} subjectType="brand_profile" />
       <BrandProfileScreen
         // A fresh page per dialog link, so following one from the completion
         // page opens it even if the profile was already showing.

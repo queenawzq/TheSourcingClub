@@ -1,3 +1,4 @@
+import MatchingProfile from "../matching/MatchingProfile.jsx";
 /**
  * Factory and trading-company onboarding, on Queena's designed screen.
  *
@@ -543,6 +544,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   }
 
   return (
+    <>
+    {step === REVIEW_STEP && <MatchingProfile org={org} subjectType="factory_profile" />}
     <FactoryOnboarding
       companyType={companyType}
       language={language}
@@ -600,5 +603,6 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         },
       })}
     />
+    </>
   );
 }

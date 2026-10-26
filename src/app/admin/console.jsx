@@ -1,3 +1,4 @@
+import EvidenceReview from "../matching/EvidenceReview.jsx";
 /**
  * The admin operations workspace, on live data.
  *
@@ -124,6 +125,7 @@ function AdminConsole() {
     <DataProvider adapter={adapter}>
       {/* The design's card says "any email"; live, say which ones it sends. */}
       <App
+        matchingPanel={<EvidenceReview staff />}
         testEmailsIntro="Send yourself a sample of the marketplace's emails (onboarding, review decisions and a notification), filled with sample data."
         testEmailsUnavailable={reservedEmailNotice(user?.email)}
       />

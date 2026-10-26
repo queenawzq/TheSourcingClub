@@ -464,3 +464,7 @@ Before making or accepting a screen change:
 7. Check placement: same kind of element in the same flow should sit in the same position.
 8. Check data provenance: remove unexplained text that does not come from RFQ, quote, contract, or payment data.
 9. List any intentional exception in the handoff.
+
+## Matching explanations and evidence
+
+Matching panels use the existing white Card surface, 8px corners, border token and Satoshi body text. Section headings use heading3; explanations use body2. Inputs and action buttons are 42px high. Multi-line review notes use body1 with a minimum height of 84px. Long taxonomy lists use native disclosure controls with the selected labels in the summary. Score disclosures use the existing fit thresholds and show qualification text separately; provisional percentages must say “provisional”. Evidence coverage includes explicitly labelled self-reported data and must not be presented as company verification. These rules apply consistently to profiles, completion screens, RFQ requirements, directories and staff evidence review.

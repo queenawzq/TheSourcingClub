@@ -1,3 +1,5 @@
+import FactoryMatch from "../matching/FactoryMatch.jsx";
+import { matchingEnabled, assessFactories } from "../../lib/domain/matching.js";
 /**
  * A vendor's profile as a brand sees it, on the designed
  * `BrandFactoryProfileScreen`, with the vendor's real profile behind it.
@@ -33,10 +35,13 @@ function Frame({ children }) {
 export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from = null, onBack = null, onRequestQuote = null }) {
   const { navigate } = useRouter();
   const { saveFor, error: saveError } = useSavedVendors(org, user);
+  const [assessment, setAssessment] = useState(null);
   const [state, setState] = useState({ parts: undefined, thread: null, error: null });
 
   useEffect(() => {
     let cancelled = false;
+    setAssessment(null);
+    matchingEnabled().then(async enabled=>{if(enabled){const matches=await assessFactories("brand_profile",org.id,[vendorOrgId]); if(!cancelled)setAssessment(matches.get(vendorOrgId));}}).catch(()=>{});
     setState({ parts: undefined, thread: null, error: null });
     Promise.all([loadVendorProfileForBrand(vendorOrgId), listThreads(org.id)]).then(
       ([parts, threads]) => {
@@ -79,6 +84,7 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
 
   return (
     <Frame>
+      {assessment && <FactoryMatch match={assessment} name={state.parts.orgName} />}
       <BrandFactoryProfileScreen
         live={{
           ...brandFactoryView(state.parts),
