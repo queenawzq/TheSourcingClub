@@ -21,7 +21,7 @@
  *      quietly did nothing can still type.
  */
 
-const MODEL = process.env.OPENROUTER_MODEL ?? "anthropic/claude-opus-5";
+const MODEL = process.env.OPENROUTER_MODEL ?? "anthropic/claude-haiku-5.5";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
 // Under Vercel's Hobby ceiling (10s), deliberately. Above it the platform
 // kills the function before this abort fires, so the caller gets a 504 rather
