@@ -15,7 +15,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
-import { createMeeting, sdkSignature, zoomConfigured } from "./_zoom.js";
+import { createMeeting, joinUrlMismatch, sdkSignature, zoomConfigured } from "./_zoom.js";
 
 function json(response, status, body) {
   response.status(status).json(body);
@@ -96,6 +96,13 @@ export default async function handler(request, response) {
     }
   }
   if (!meeting) return json(response, 503, { error: "the meeting is still being opened. Try again in a moment." });
+
+  // A join link to another meeting id means Zoom handed back the host's
+  // Personal Meeting ID, which the Meeting SDK will say does not exist. The
+  // join goes ahead (the app falls back to "Open in Zoom app"); this line is
+  // so the next one shows in the logs.
+  const pmi = joinUrlMismatch(meeting);
+  if (pmi) console.error("call-join zoom pmi", { call: call.call_id, meetingNumber: meeting.meetingNumber, joinUrlId: pmi });
 
   // "Ana Silva · Atelier Minho"; once when a person is named after the company.
   const userName = [...new Set([call.user_name, call.org_name].filter(Boolean))].join(" · ") || "Guest";

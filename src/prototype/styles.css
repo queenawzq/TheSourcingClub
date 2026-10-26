@@ -4363,7 +4363,8 @@ textarea.question-field::placeholder {
 
 /* On the RFQ review step the surrounding card already provides the surface.
    Keep uploaded files as chips instead of placing them inside a second panel. */
-.review-brief-stack .attachment-tray {
+.review-brief-stack .attachment-tray,
+.attachment-tray.contract-attachment-tray {
   min-height: 0;
   margin-top: 12px;
   padding: 0;
@@ -4401,6 +4402,19 @@ textarea.question-field::placeholder {
   display: block;
   width: 20px;
   height: 20px;
+}
+
+.attachment-chip .contract-attachment-name {
+  width: auto;
+  height: auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
 }
 
 .muted-field {
@@ -9953,11 +9967,16 @@ select {
 
 /* Keep Browse card identity spacing consistent with and without a badge. */
 .marketplace-factory-card .marketplace-factory-title .factory-name-row {
-  min-height: 32px;
+  min-height: 26px;
+}
+
+.marketplace-factory-card .marketplace-factory-title .factory-name-row .trust-icon {
+  /* Preserve the 32px badge without adding space below the title. */
+  margin: -3px 0;
 }
 
 .marketplace-factory-card .marketplace-factory-title p {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .marketplace-vendor-type {
@@ -10236,14 +10255,18 @@ select {
 }
 
 /* Two complete tag rows on browse cards; full lists remain on profiles. */
-.marketplace-factory-card > .marketplace-tag-section .tag-row {
+.marketplace-factory-card > .marketplace-tag-section .tag-row,
+.invite-vendor-tags .tag-row {
   max-height: 64px;
   gap: 8px;
   overflow: hidden;
 }
 
-.marketplace-factory-card > .marketplace-tag-section .tag {
+.marketplace-factory-card > .marketplace-tag-section .tag,
+.invite-vendor-tags .tag {
   box-sizing: border-box;
+  /* Override .factory-card span spacing: two 28px rows + 8px gap = 64px. */
+  margin: 0;
   display: block;
   height: 28px;
   min-height: 28px;
@@ -12095,7 +12118,8 @@ body:has(.brand-onboarding-page) {
   background: #fff;
 }
 
-.brand-onboarding-upload-row.is-dragging {
+.brand-onboarding-upload-row.is-dragging,
+.contract-upload-zone.is-dragging {
   border-color: #155dfc;
   background: #eef4ff;
   color: #174df2;
@@ -17618,7 +17642,7 @@ button.sort-button {
   flex: 1 1 auto;
   width: 100%;
   min-width: 0;
-  transform: translateY(2px);
+  transform: none;
 }
 
 .home-recommended-invite-card .invite-factory-top .marketplace-factory-title p {
@@ -17694,17 +17718,18 @@ button.sort-button {
 
 .home-recommended-invite-card .invite-factory-top .factory-name-row {
   display: flex;
-  min-height: 28px;
-  align-items: flex-start;
+  min-height: var(--card-title-line);
+  align-items: center;
   gap: 2px;
 }
 
 .home-recommended-invite-card .invite-factory-top .factory-name-row .trust-icon {
   display: block;
-  flex: 0 0 32px;
-  width: 32px;
-  height: 32px;
-  margin: -4px 0 0;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  /* Center dashboard badges without enlarging the title line. */
+  margin: calc((var(--card-title-line) - 24px) / 2) 0;
 }
 
 @media (min-width: 1401px) {

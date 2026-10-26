@@ -16,6 +16,7 @@
  * term it needs than a quote is stored against one nobody chose.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { quoteTextPatch, quoteTextValues } from "./quote-text-fields.js";
 import { FactorySubmitQuote } from "../../factory-prototype/main.jsx";
 import {
   createDraftQuote,
@@ -30,7 +31,7 @@ import {
   setSampleLines,
   submitQuote,
 } from "../../lib/domain/quote.js";
-import { getQuestions, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
+import { brandSummary, getQuestions, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
 import { downloadDocuments, getRfqDocumentPresentation } from "../../lib/domain/documents.js";
 import { listLinks, listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatRange, toCents } from "../../lib/money.js";
@@ -158,7 +159,8 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         getRfqDocumentPresentation(rfqId).catch(() => ({ files: [], images: [] })),
         listLinks("rfq", rfqId),
       ]);
-      setRfq(request);
+      const brand = request.brand_org_id ? await brandSummary(request.brand_org_id).catch(() => null) : null;
+      setRfq({ ...request, paymentVerified: Boolean(brand?.payment_verified) });
       setTerms(vocab);
       setQuestions(asked ?? []);
       setMatchScore(scores.get(org.id) ?? null);
@@ -211,6 +213,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     const depositPct = depositPctFrom(payment?.slug);
 
     await saveQuote(quote.id, {
+      ...quoteTextPatch(values),
       unit_price_cents: unit.min == null ? null : toCents(unit.min),
       unit_price_max_cents: unit.max == null ? null : toCents(unit.max),
       production_quantity: firstNumber(values.quantity),
@@ -346,10 +349,11 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         // Absent, the card prints "undefined" beside the brand name.
         location: "",
         posted: "",
-        paymentVerified: false,
+        paymentVerified: rfq.paymentVerified,
         trust: "",
       }}
       values={{
+        ...quoteTextValues(quote),
         brandQuestions: questions.map((question) => question.prompt),
         brandSourcing: {
           material: rfq.material_notes ?? "",

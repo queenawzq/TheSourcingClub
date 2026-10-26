@@ -34,7 +34,8 @@ import {
 } from "../../lib/domain/milestone.js";
 import { brandSummary } from "../../lib/domain/rfq.js";
 import { requestRelease } from "../../lib/domain/stripe.js";
-import { downloadDocument, listRfqDocuments, urlFor } from "../../lib/domain/documents.js";
+import { downloadDocument, urlFor } from "../../lib/domain/documents.js";
+import { getContractAttachments } from "../../lib/domain/contract-attachments.js";
 import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -289,7 +290,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     if (!order) return;
     let cancelled = false;
     (async () => {
-      const files = order.rfq_id ? await listRfqDocuments(order.rfq_id).catch(() => []) : [];
+      const files = order.quote_id ? await getContractAttachments(order.quote_id).catch(() => []) : [];
       const place = isFactory
         ? locationLine(await brandSummary(order.brand_org_id).catch(() => null))
         : locationLine(order.factory?.factory_profiles);

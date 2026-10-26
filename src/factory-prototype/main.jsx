@@ -794,6 +794,8 @@ const factoryMainZhText = {
   "Cost": "费用",
   "Timing": "时间",
   "Includes": "包含",
+  "Included in sample price": "样品价格包含",
+  "Price includes": "价格包含",
   "+ Add sample stage": "+ 添加样品阶段",
   "Brand questions and factory notes": "品牌问题和工厂备注",
   "Factory response": "工厂回复",
@@ -9271,10 +9273,10 @@ function getTranslatedProjectSummary(project) {
   return translatedSummaries[project.title] || project.specialty;
 }
 
-function FactoryRequestRequirements({ project }) {
+function FactoryRequestRequirements({ project, showServices = true }) {
   const groups = [
     ["Certifications needed", project.certifications],
-    ["Services needed", project.services],
+    ["Services needed", showServices ? project.services : []],
   ].filter(([, items]) => items?.length);
 
   if (!groups.length) return null;
@@ -9323,19 +9325,13 @@ export function FactoryProjectDetail({
       <div className="factory-detail-layout">
         <section className="factory-detail-main">
           <FactoryQuoteRequestCard
-            project={project}
+            project={brief ? { ...project, specialty: brief } : project}
             companyType={companyType}
             language={language}
             attachments={attachments}
+            showFit={false}
+            showServices={false}
           />
-
-          {(brief === undefined || brief) && (
-            <DetailCard title="Project brief">
-              {brief
-                ? <p className="factory-detail-brief" data-no-translate>{brief}</p>
-                : <BrandBrief language={language} />}
-            </DetailCard>
-          )}
 
           <DetailCard title="Quote-ready details">
             <div className="factory-detail-grid">
@@ -10130,7 +10126,7 @@ export function FactorySubmitQuote({
   };
 
   return (
-    <main className="factory-detail-page factory-submit-page" ref={cardRef}>
+    <main className="factory-detail-page factory-submit-page factory-prepare-quote-page" ref={cardRef}>
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header">
           <button className="text-link" type="button" onClick={onBack}>{backLabel}</button>
@@ -10150,7 +10146,7 @@ export function FactorySubmitQuote({
 
         <div className="factory-submit-layout">
           <section className="factory-submit-main">
-            <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} />
+            <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} showServices={false} />
             <FactoryQuoteSections companyType={companyType} language={language} values={values} />
           </section>
 
@@ -10260,7 +10256,7 @@ export function FactoryReviewTotal({
 
         <div className="factory-review-layout">
           <section className="factory-review-main">
-            <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} />
+            <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} showServices={false} />
             <FactoryQuoteSections companyType={companyType} language={language} readOnly values={quoteValues} />
           </section>
 
@@ -10314,7 +10310,7 @@ export function FactoryReviewTotal({
   );
 }
 
-function FactoryQuoteRequestCard({ project, companyType = "factory", language, attachments }) {
+function FactoryQuoteRequestCard({ project, companyType = "factory", language, attachments, showFit = true, showServices = false }) {
   const isZh = language === "zh";
   const translatedTitle = getTranslatedProjectTitle(project.title);
   const requestImages = project.images || [];
@@ -10345,9 +10341,11 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language, a
             <p data-no-translate>{isZh ? getTranslatedListMeta([project.brand, project.location, project.posted].filter(Boolean).join(" · ")) : [project.brand, project.location, project.posted].filter(Boolean).join(" · ")}</p>
           </div>
         </div>
-        <div className="factory-request-card-actions">
-          {fitLabel && <span className={`factory-project-fit ${project.fitTone}`}>{fitLabel}</span>}
-        </div>
+        {showFit && fitLabel && (
+          <div className="factory-request-card-actions">
+            <span className={`factory-project-fit ${project.fitTone}`}>{fitLabel}</span>
+          </div>
+        )}
       </header>
 
       <div className="factory-request-card-body">
@@ -10383,7 +10381,7 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language, a
               </div>
             </div>
           )}
-          <FactoryRequestRequirements project={project} />
+          <FactoryRequestRequirements project={project} showServices={showServices} />
         </aside>
 
         <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${project.brand} request references`}>
@@ -10603,13 +10601,13 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
       {/* Prototype-only examples remain available for the design preview. A
           live RFQ shows this section only when the brand actually asked at
           least one question, so example copy can never be mistaken for data. */}
-      {(!values || values.brandQuestions?.length > 0) && (
+      {(!values || values.brandQuestions?.length > 0 || values.factoryResponse) && (
         <SubmitSection
           title={companyType === "trading" ? "Brand questions and company notes" : "Brand questions and factory notes"}
           description={
             values?.brandQuestions?.length
               ? `Brand asks: ${values.brandQuestions.join(" ")}`
-              : "Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM, trim, MOQ, or certification details do you need before final cost?"
+              : values ? "" : "Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM, trim, MOQ, or certification details do you need before final cost?"
           }
           descriptionNoTranslate
         >
@@ -10878,6 +10876,10 @@ function QuoteField({ label, value, helper, valueNoTranslate = false, editable =
         data-placeholder={editable ? (placeholder ?? `Enter ${label.replace(/\s*\*$/, "").toLowerCase()}`) : undefined}
         contentEditable={editable || undefined}
         suppressContentEditableWarning={editable || undefined}
+        onInput={editable ? (event) => {
+          // Browsers leave a <br> after clearing contentEditable, preventing :empty placeholders.
+          if (!event.currentTarget.textContent.trim()) event.currentTarget.replaceChildren();
+        } : undefined}
       >{value}</strong>
       <small>{helper}</small>
     </label>
@@ -10912,7 +10914,13 @@ function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, review
       <QuoteField name={at("stage")} label="Stage" value={stage} {...reviewFieldProps} />
       <QuoteField name={at("cost")} label="Cost" value={cost} {...reviewFieldProps} />
       <QuoteField name={at("timing")} label="Timing" value={timing} placeholder="e.g. 7–10 days" {...reviewFieldProps} />
-      <QuoteField name={at("includes")} label="Includes" value={includes} {...reviewFieldProps} />
+      <QuoteField
+        name={at("includes")}
+        label="Price includes"
+        value={includes}
+        placeholder="e.g. 1 revision"
+        {...reviewFieldProps}
+      />
       {!readOnly && <CloseIconButton label={`Remove ${stage || "sample stage"}`} onClick={onRemove} />}
     </div>
   );

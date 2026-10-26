@@ -5568,6 +5568,11 @@ body:has(.factory-onboarding-page) {
   line-height: 18px;
 }
 
+.factory-submit-project-card .factory-request-brief > p {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .factory-request-brief > p {
   margin: 0;
   padding-left: 10px;
@@ -5742,7 +5747,6 @@ body:has(.factory-onboarding-page) {
   gap: 8px;
   margin-top: 8px;
   padding-top: 10px;
-  border-top: 1px solid #d7e0ea;
 }
 
 .factory-request-requirement-row {
@@ -7957,6 +7961,7 @@ body:has(.factory-onboarding-page) {
 
 .factory-submit-sample-row .factory-quote-field {
   min-height: 64px;
+  align-self: stretch;
 }
 
 .factory-submit-sample-row button {

@@ -1229,21 +1229,15 @@ function OrderRedirect({ navigate, orderId }) {
   return null;
 }
 
-function NotForThisSide({ isFactory }) {
+function NotForThisSide() {
   const { navigate } = useRouter();
-  return (
-    <main className="home-page shell-body">
-      <h1>Not your side of the marketplace</h1>
-      <p className="shell-note">
-        {isFactory
-          ? "Requests are written by brands. You will find open requests to quote on under Browse, once that lands."
-          : "This page belongs to factories."}
-      </p>
-      <p className="shell-note">
-        <button type="button" className="quiet-btn" onClick={() => navigate("/")}>← Back</button>
-      </p>
-    </main>
-  );
+  // A previous account's deep link can survive sign-in or an org switch.
+  // Keep the role guard, but replace the stale history entry with this
+  // account's dashboard so Back cannot bounce into the same dead end.
+  useEffect(() => {
+    navigate("/", { replace: true });
+  }, [navigate]);
+  return null;
 }
 
 

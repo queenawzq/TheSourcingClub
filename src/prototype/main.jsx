@@ -4512,7 +4512,7 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
             </button>
             <div className="marketplace-samples invite-samples" aria-label={`${factory.name} sample products`} onScroll={(event) => updateSampleScroll(event.currentTarget)}>
               {sampleProducts.map((product) => (
-                <figure className="marketplace-sample invite-sample" key={product.name}>
+                <figure className="marketplace-sample invite-sample" key={product.id ?? product.name}>
                   <img src={product.image} alt={`${factory.name} ${product.name}`} />
                   <figcaption><strong>{product.name}</strong></figcaption>
                 </figure>
@@ -9600,7 +9600,7 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
               onScroll={(event) => updateSampleScroll(event.currentTarget)}
             >
               {factory.products.map((product) => (
-                <figure className="marketplace-sample invite-sample" key={product.name}>
+                <figure className="marketplace-sample invite-sample" key={product.id ?? product.name}>
                   <img src={product.image} alt={`${factory.name} ${product.name}`} />
                   <figcaption>
                     <strong>{product.name}</strong>
@@ -9623,6 +9623,16 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
             </button>
           </div>
           )}
+        </div>
+        <div className="marketplace-tag-section invite-vendor-tags">
+          {factory.categories?.length > 0 && <div>
+            <span className="marketplace-tag-label">Makes</span>
+            <div className="tag-row compact-tags">{factory.categories.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}</div>
+          </div>}
+          {factory.capabilities?.length > 0 && <div>
+            <span className="marketplace-tag-label">Specializes in</span>
+            <div className="tag-row compact-tags">{factory.capabilities.map((tag) => <span className="tag blue-tag" key={tag}>{tag}</span>)}</div>
+          </div>}
         </div>
       </div>
     </article>
@@ -10261,7 +10271,22 @@ export function ContractScreen({
   onDeliveryTermChange,
   attachments = null,
   onOpenAttachment,
+  onAddAttachments,
+  onRemoveAttachment,
+  attachmentsBusy = false,
+  attachmentAccept,
 }) {
+  const attachmentInput = useRef(null);
+  const attachmentDragDepth = useRef(0);
+  const [attachmentsDragging, setAttachmentsDragging] = useState(false);
+  const clearAttachmentDrag = () => {
+    attachmentDragDepth.current = 0;
+    setAttachmentsDragging(false);
+  };
+  const addContractFiles = (fileList) => {
+    const files = Array.from(fileList ?? []);
+    if (!attachmentsBusy && files.length) onAddAttachments?.(files);
+  };
   const isReorder = Boolean(reorderProject);
   const deliveryTerms = [
     ["DDP", "Factory delivers to final destination, including duties"],
@@ -10381,20 +10406,63 @@ export function ContractScreen({
           />
         </section>
         {attachments ? (
-        attachments.length > 0 && (
         <section className="contract-section">
           <div className="contract-section-header">
             <h3>Attachments</h3>
           </div>
-          <div className="attachment-tray">
+          {onAddAttachments && <>
+            <button className={`upload-zone contract-upload-zone${attachmentsDragging && !attachmentsBusy ? " is-dragging" : ""}`}
+              type="button" disabled={attachmentsBusy}
+              onClick={() => attachmentInput.current?.click()}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!attachmentsBusy) {
+                  attachmentDragDepth.current += 1;
+                  setAttachmentsDragging(true);
+                }
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                event.dataTransfer.dropEffect = attachmentsBusy ? "none" : "copy";
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                attachmentDragDepth.current = Math.max(0, attachmentDragDepth.current - 1);
+                if (!attachmentDragDepth.current) setAttachmentsDragging(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                clearAttachmentDrag();
+                addContractFiles(event.dataTransfer.files);
+              }}
+              onDragEnd={clearAttachmentDrag}>
+              + Add tech pack, sketches, sample references, or color breakdown
+            </button>
+            <input ref={attachmentInput} type="file" multiple hidden disabled={attachmentsBusy} accept={attachmentAccept}
+              aria-label="Add contract attachments"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                addContractFiles(files);
+              }} />
+          </>}
+          {attachments.length > 0 && <div className="attachment-tray contract-attachment-tray" aria-live="polite">
             {attachments.map((file) => (
-              <button className="attachment-chip" type="button" key={file.id} onClick={() => onOpenAttachment?.(file)}>
-                {file.file_name}
-              </button>
+              <div className="attachment-chip" key={file.id}>
+                <button className="contract-attachment-name" type="button" title={file.file_name} onClick={() => onOpenAttachment?.(file)}>{file.file_name}</button>
+                {onRemoveAttachment && (
+                  <button type="button" disabled={attachmentsBusy} onClick={() => onRemoveAttachment(file)} aria-label={`Remove ${file.file_name} from this contract`} title="Remove from this contract">
+                    <img src="/assets/prototype-icons/close.svg" alt="" />
+                  </button>
+                )}
+              </div>
             ))}
-          </div>
+          </div>}
         </section>
-        )
         ) : (
         <section className="contract-section">
           <div className="contract-section-header">

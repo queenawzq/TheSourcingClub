@@ -31,7 +31,6 @@ import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel } from "
 import { linkedLabels, mentionsLabel, monthLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
-import { vendorSummary } from "../browse/vendor-summary.js";
 
 const KINDS = ["product_category", "certification", "region", "service", "sourcing_responsibility"];
 
@@ -175,6 +174,8 @@ export function requestFilters(values) {
 export default function LiveComposer({ org, rfqId }) {
   const { navigate } = useRouter();
   const [step, setStep] = useState(rfqId ? "review" : "describe");
+  const [resumeLoaded, setResumeLoaded] = useState(false);
+  const inviteEntryHandled = useRef(false);
   const [draftId, setDraftId] = useState(rfqId ?? null);
   const [freeText, setFreeText] = useState("");
   const [values, setValues] = useState({});
@@ -261,9 +262,17 @@ export default function LiveComposer({ org, rfqId }) {
             setOpenToAll(false);
           }
         }
+        setResumeLoaded(true);
       })
       .catch(setError);
   }, [rfqId, kinds]);
+
+  useEffect(() => {
+    if (!resumeLoaded || inviteEntryHandled.current || !window.location.pathname.endsWith("/invite")) return;
+    inviteEntryHandled.current = true;
+    // Returning from quotes only loads vendors; it must not rewrite the brief.
+    toInvite({ skipSave: true });
+  }, [resumeLoaded]);
 
   // The category, certifications and regions are matched against the term
   // labels, which load on their own and may arrive after a resumed draft does.
@@ -473,7 +482,7 @@ export default function LiveComposer({ org, rfqId }) {
    * "Open to all vendors" toggle. Publishing before it would mean deciding
    * visibility for the brand and then asking them about it.
    */
-  async function toInvite() {
+  async function toInvite({ skipSave = false } = {}) {
     if (busy || saveState === "saving" || !draftId) return;
     setBusy(true);
     setSaveState("saving");
@@ -481,15 +490,17 @@ export default function LiveComposer({ org, rfqId }) {
 
     try {
       if (matchingV2 && matchingDirty) throw new Error("Save your matching information before choosing vendors.");
-      await persistReview();
+      if (!skipSave) await persistReview();
       setMatchingAcknowledged(false);
       setSaveState("saved");
 
       const rows = unwrap(
         await supabase
           .from("factory_profiles")
-          .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, orgs (id, name)")
-          .not("published_at", "is", null),
+          .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, orgs!inner (id, name)")
+          .not("published_at", "is", null)
+          .eq("verification_status", "verified")
+          .eq("orgs.is_demo", false),
         "load vendors",
       );
       // The design ranks this list by fit. match_score_rfq() answers per
@@ -500,14 +511,20 @@ export default function LiveComposer({ org, rfqId }) {
       const vendorIds = (rows ?? []).map((row) => row.org_id);
       const links = vendorIds.length ? unwrap(await supabase.from("taxonomy_links")
         .select("subject_id, term_id").eq("subject_type", "factory_profile").in("subject_id", vendorIds), "load vendor specialties") : [];
-      const summaries = new Map((rows ?? []).map((row) => {
+      const images = vendorIds.length ? unwrap(await supabase.from("documents")
+        .select("id, org_id, storage_path, file_name, title").in("org_id", vendorIds)
+        .eq("kind", "product_image").eq("bucket", "org-public").order("created_at"), "load vendor sample images") : [];
+      const cardDetails = new Map((rows ?? []).map((row) => {
         const selected = new Set(links.filter((link) => link.subject_id === row.org_id).map((link) => link.term_id));
         const labels = (kind) => (vendorTerms[kind] ?? []).filter((term) => selected.has(term.id)).map((term) => termLabel(term));
-        return [row.org_id, vendorSummary({
-          makes: labels("make").length ? labels("make") : labels("product_category"),
-          specialties: [...labels("specialty"), ...labels(row.vendor_kind === "trading_company" ? "core_service" : "service")],
-          intro: row.intro,
-        })];
+        return [row.org_id, {
+          categories: labels("make").length ? labels("make") : labels("product_category"),
+          capabilities: [...new Set([...labels("specialty"), ...labels(row.vendor_kind === "trading_company" ? "core_service" : "service")])],
+          products: images.filter((image) => image.org_id === row.org_id).map((image) => ({
+            id: image.id, name: image.title || image.file_name,
+            image: supabase.storage.from("org-public").getPublicUrl(image.storage_path).data.publicUrl,
+          })),
+        }];
       }));
       const firstId = reorder?.factoryOrgId ?? requestedVendor;
       const first = firstId && (rows ?? []).find((row) => row.org_id === firstId && (!matchingV2 || assessments.get(row.org_id)?.status !== "excluded"));
@@ -521,7 +538,7 @@ export default function LiveComposer({ org, rfqId }) {
       setVendors(
         (rows ?? [])
           .filter(row=>!matchingV2 || (assessments.get(row.org_id) && assessments.get(row.org_id).status!=="excluded"))
-          .map((row) => ({ ...row, matching: assessments.get(row.org_id), cardSummary: summaries.get(row.org_id), matchPercent: scores.get(row.org_id) ?? null }))
+          .map((row) => ({ ...row, ...cardDetails.get(row.org_id), matching: assessments.get(row.org_id), matchPercent: scores.get(row.org_id) ?? null }))
           .sort((a, b) => matchingV2 ? compareMatches(a.matching,b.matching) : (b.matchPercent ?? -1) - (a.matchPercent ?? -1))
           // A reorder's own factory (or the vendor the request was started
           // from) heads the list, ticked, above the ranking.
@@ -657,12 +674,12 @@ export default function LiveComposer({ org, rfqId }) {
         ["Location", vendor.location ?? "—"],
         ["Status", vendor.verification_status === "verified" ? "Verified" : "Unverified"],
       ],
-      products: [],
-      categories: [],
-      capabilities: [],
-      notes: vendor.cardSummary ? [vendor.cardSummary] : [],
+      products: vendor.products ?? [],
+      categories: vendor.categories ?? [],
+      capabilities: vendor.capabilities ?? [],
+      notes: vendor.intro ? [vendor.intro] : [],
       // No intro, no note box (QA, Oct 5: an empty box under the stats).
-      note: vendor.cardSummary || null,
+      note: vendor.intro || null,
       profileHref: `/app.html/factories/${vendor.org_id}?from=invite`,
       onOpenProfile: () => {
         setProfileOf(vendor.org_id);

@@ -440,6 +440,9 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         // This vendor's own quote, read back: the terms it sent and the
         // sample plan it priced, not the design's example.
         quote={{
+          sourcingIncludes: myQuote.sourcing_includes ?? "",
+          factoryResponse: myQuote.factory_response ?? "",
+          factoryNotes: myQuote.factory_notes ?? "",
           brandQuestions: project.questions,
           brandSourcing: {
             material: rfq.material_notes ?? "",
