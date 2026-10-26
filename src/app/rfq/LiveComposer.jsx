@@ -171,6 +171,8 @@ export function requestFilters(values) {
 export default function LiveComposer({ org, rfqId }) {
   const { navigate } = useRouter();
   const [step, setStep] = useState(rfqId ? "review" : "describe");
+  const [resumeLoaded, setResumeLoaded] = useState(false);
+  const inviteEntryHandled = useRef(false);
   const [draftId, setDraftId] = useState(rfqId ?? null);
   const [freeText, setFreeText] = useState("");
   const [values, setValues] = useState({});
@@ -253,9 +255,17 @@ export default function LiveComposer({ org, rfqId }) {
             setOpenToAll(false);
           }
         }
+        setResumeLoaded(true);
       })
       .catch(setError);
   }, [rfqId, kinds]);
+
+  useEffect(() => {
+    if (!resumeLoaded || inviteEntryHandled.current || !window.location.pathname.endsWith("/invite")) return;
+    inviteEntryHandled.current = true;
+    // Returning from quotes only loads vendors; it must not rewrite the brief.
+    toInvite({ skipSave: true });
+  }, [resumeLoaded]);
 
   // The category, certifications and regions are matched against the term
   // labels, which load on their own and may arrive after a resumed draft does.
@@ -464,14 +474,14 @@ export default function LiveComposer({ org, rfqId }) {
    * "Open to all vendors" toggle. Publishing before it would mean deciding
    * visibility for the brand and then asking them about it.
    */
-  async function toInvite() {
+  async function toInvite({ skipSave = false } = {}) {
     if (busy || saveState === "saving" || !draftId) return;
     setBusy(true);
     setSaveState("saving");
     setError(null);
 
     try {
-      await persistReview();
+      if (!skipSave) await persistReview();
       setSaveState("saved");
 
       const rows = unwrap(

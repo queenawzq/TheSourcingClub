@@ -46,7 +46,7 @@ export default function LiveQuotes({ rfqId }) {
 
   if (!state.quotes.length) {
     return (
-      <FlowShell screen="quotes" canBack={false}>
+      <FlowShell screen="quotes" canBack onBack={() => navigate(`/rfqs/${rfqId}/invite`)} primaryLabel="">
         <p className="projects-empty" data-testid="quotes-empty">
           No quotes yet. Vendors you invited will appear here as they reply.
         </p>
@@ -113,7 +113,7 @@ export default function LiveQuotes({ rfqId }) {
   });
 
   return (
-    <FlowShell screen="quotes" canBack onBack={() => navigate("/rfqs")} primaryLabel="">
+    <FlowShell screen="quotes" canBack onBack={() => navigate(`/rfqs/${rfqId}/invite`)} primaryLabel="">
       <QuotesScreen
         quotes={shaped}
         selectedQuote={selected}

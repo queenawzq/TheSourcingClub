@@ -17622,7 +17622,7 @@ button.sort-button {
   flex: 1 1 auto;
   width: 100%;
   min-width: 0;
-  transform: translateY(2px);
+  transform: none;
 }
 
 .home-recommended-invite-card .invite-factory-top .marketplace-factory-title p {
@@ -17698,17 +17698,17 @@ button.sort-button {
 
 .home-recommended-invite-card .invite-factory-top .factory-name-row {
   display: flex;
-  min-height: 28px;
-  align-items: flex-start;
+  min-height: var(--card-title-line);
+  align-items: center;
   gap: 2px;
 }
 
 .home-recommended-invite-card .invite-factory-top .factory-name-row .trust-icon {
   display: block;
-  flex: 0 0 32px;
-  width: 32px;
-  height: 32px;
-  margin: -4px 0 0;
+  flex: 0 0 var(--card-title-line);
+  width: var(--card-title-line);
+  height: var(--card-title-line);
+  margin: 0;
 }
 
 @media (min-width: 1401px) {
