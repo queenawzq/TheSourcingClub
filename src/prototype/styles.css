@@ -9953,11 +9953,16 @@ select {
 
 /* Keep Browse card identity spacing consistent with and without a badge. */
 .marketplace-factory-card .marketplace-factory-title .factory-name-row {
-  min-height: 32px;
+  min-height: 26px;
+}
+
+.marketplace-factory-card .marketplace-factory-title .factory-name-row .trust-icon {
+  /* Preserve the 32px badge without adding space below the title. */
+  margin: -3px 0;
 }
 
 .marketplace-factory-card .marketplace-factory-title p {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .marketplace-vendor-type {
@@ -17705,10 +17710,11 @@ button.sort-button {
 
 .home-recommended-invite-card .invite-factory-top .factory-name-row .trust-icon {
   display: block;
-  flex: 0 0 var(--card-title-line);
-  width: var(--card-title-line);
-  height: var(--card-title-line);
-  margin: 0;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  /* Keep the full-size badge centered without enlarging the title line. */
+  margin: calc((var(--card-title-line) - 32px) / 2) 0;
 }
 
 @media (min-width: 1401px) {
