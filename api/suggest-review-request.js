@@ -29,15 +29,27 @@ const fromChecks = (gaps, why) => ({
   notice: `${why} This note was built from the checks instead: edit it before sending.`,
 });
 
-async function isAdmin(authorization) {
+/**
+ * The company the note is for, read as the caller. The database refuses
+ * anyone who is not staff (42501) before it looks the company up, and says
+ * when there is no such company (P0002), so this is the access check as well
+ * as the read. A draft was written for any id at all, a made-up one included.
+ */
+async function companyFor(authorization, orgId) {
   const { supabaseUrl, anonKey } = supabaseServerEnv();
-  if (!supabaseUrl || !anonKey || !authorization?.startsWith("Bearer ")) return false;
+  if (!supabaseUrl || !anonKey) return { status: 503, error: "review help is not set up on this site" };
+  if (!/^Bearer\s+\S/.test(String(authorization ?? ""))) return { status: 401, error: "sign in is required" };
+  if (!orgId) return { status: 400, error: "say which company the note is for" };
   const caller = createClient(supabaseUrl, anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
     global: { headers: { Authorization: authorization } },
   });
-  const { data, error } = await caller.rpc("is_platform_admin");
-  return !error && Boolean(data);
+  const { data, error } = await caller.rpc("admin_review_assist_input", { target_org: orgId });
+  if (error && /^PGRST30/.test(error.code ?? "")) return { status: 401, error: "your sign-in has expired: sign in again" };
+  if (error?.code === "42501") return { status: 403, error: "platform staff access is required" };
+  if (error?.code === "P0002" || error?.code === "22P02") return { status: 404, error: "that company was not found" };
+  if (error || !data) return { status: 500, error: "that company could not be read" };
+  return { company: data.company ?? {} };
 }
 
 function promptFor({ companyName, entityType, gaps }) {
@@ -80,11 +92,6 @@ export default async function handler(request, response) {
     response.status(405).json(soft("method not allowed"));
     return;
   }
-  if (!(await isAdmin(request.headers.authorization))) {
-    response.status(403).json(soft("platform staff access is required"));
-    return;
-  }
-
   // A body that is not JSON is the caller's mistake, not the server's.
   let body;
   try {
@@ -94,6 +101,11 @@ export default async function handler(request, response) {
   }
   if (!body || typeof body !== "object") {
     response.status(400).json(soft("the request body must be a JSON object"));
+    return;
+  }
+  const found = await companyFor(request.headers.authorization, body.orgId);
+  if (!found.company) {
+    response.status(found.status).json(soft(found.error));
     return;
   }
   const gaps = Array.isArray(body.gaps)
@@ -127,7 +139,7 @@ export default async function handler(request, response) {
         messages: [{
           role: "user",
           content: promptFor({
-            companyName: String(body.companyName ?? "").slice(0, 200),
+            companyName: String(found.company.name ?? "").slice(0, 200),
             entityType: String(body.entityType ?? "").slice(0, 80),
             gaps,
           }),

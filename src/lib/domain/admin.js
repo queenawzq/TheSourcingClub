@@ -211,7 +211,7 @@ export async function decideReview(orgId, decision, note = null, risk = null, ti
  * that records or sends anything. Without the model the note is built from
  * the incomplete checks, and `notice` says so and why.
  */
-export async function suggestReviewRequest({ companyName, entityType, gaps }) {
+export async function suggestReviewRequest({ orgId, companyName, entityType, gaps }) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     const response = await fetch("/api/suggest-review-request", {
@@ -220,7 +220,7 @@ export async function suggestReviewRequest({ companyName, entityType, gaps }) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session?.access_token ?? ""}`,
       },
-      body: JSON.stringify({ companyName, entityType, gaps }),
+      body: JSON.stringify({ orgId, companyName, entityType, gaps }),
     });
     const result = await response.json();
     return {

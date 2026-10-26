@@ -21,6 +21,7 @@ import { isConfigured } from "../../lib/supabase.js";
 import { isPlatformAdmin } from "../../lib/domain/admin.js";
 import { DataProvider } from "../../lib/data/DataProvider.jsx";
 import { createAdminAdapter } from "./live-admin-adapter.js";
+import { thresholdProblem } from "./review-thresholds.js";
 import ErrorBoundary from "../../lib/ErrorBoundary.jsx";
 import App from "../../admin-prototype/main.jsx";
 import { reservedEmailNotice } from "../../shared/reserved-email.mjs";
@@ -129,6 +130,7 @@ function AdminConsole() {
         // Staff have no org, so nothing can notify them; the design's bell
         // and its count of 5 had nothing behind them.
         showNotifications={false}
+        validateThresholds={thresholdProblem}
       />
     </DataProvider>
   );

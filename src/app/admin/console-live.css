@@ -137,3 +137,31 @@
 .admin-threshold-form > .admin-test-email-status {
   grid-column: 1 / -1;
 }
+
+/* Live only: the review page fits a phone. Its grid's one implicit column
+   (and the layout's 1fr below 1120px) grew to the widest thing in it, so a
+   long company name pushed the page to 438px in a 375px screen and cut off
+   the status badge and "View full submission". */
+.admin-review-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 1120px) {
+  .admin-review-layout { grid-template-columns: minmax(0, 1fr); }
+  .admin-review-side { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .admin-review-header { flex-wrap: wrap; }
+  .admin-review-header > * { min-width: 0; }
+  .admin-entity-identity.large h1 {
+    font-size: 24px;
+    line-height: 30px;
+    overflow-wrap: anywhere;
+  }
+  .admin-review-shell .admin-panel > header,
+  .admin-review-shell .factory-dashboard-panel > header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+}
