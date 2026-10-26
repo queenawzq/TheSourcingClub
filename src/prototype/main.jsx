@@ -10271,6 +10271,17 @@ export function ContractScreen({
   attachmentsBusy = false,
   attachmentAccept,
 }) {
+  const attachmentInput = useRef(null);
+  const attachmentDragDepth = useRef(0);
+  const [attachmentsDragging, setAttachmentsDragging] = useState(false);
+  const clearAttachmentDrag = () => {
+    attachmentDragDepth.current = 0;
+    setAttachmentsDragging(false);
+  };
+  const addContractFiles = (fileList) => {
+    const files = Array.from(fileList ?? []);
+    if (!attachmentsBusy && files.length) onAddAttachments?.(files);
+  };
   const isReorder = Boolean(reorderProject);
   const deliveryTerms = [
     ["DDP", "Factory delivers to final destination, including duties"],
@@ -10395,16 +10406,44 @@ export function ContractScreen({
             <h3>Attachments</h3>
           </div>
           {onAddAttachments && <>
-            <button className="upload-zone" type="button" disabled={attachmentsBusy}
-              onClick={(event) => event.currentTarget.nextElementSibling?.click()}>
-              + Add contract attachments
+            <button className={`brand-onboarding-upload-row${attachmentsDragging && !attachmentsBusy ? " is-dragging" : ""}`}
+              type="button" disabled={attachmentsBusy}
+              onClick={() => attachmentInput.current?.click()}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (!attachmentsBusy) {
+                  attachmentDragDepth.current += 1;
+                  setAttachmentsDragging(true);
+                }
+              }}
+              onDragOver={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                event.dataTransfer.dropEffect = attachmentsBusy ? "none" : "copy";
+              }}
+              onDragLeave={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                attachmentDragDepth.current = Math.max(0, attachmentDragDepth.current - 1);
+                if (!attachmentDragDepth.current) setAttachmentsDragging(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                clearAttachmentDrag();
+                addContractFiles(event.dataTransfer.files);
+              }}
+              onDragEnd={clearAttachmentDrag}>
+              <img src="/assets/prototype-icons/upload.svg" alt="" />
+              <strong>Click or drag files to upload</strong>
             </button>
-            <input type="file" multiple hidden disabled={attachmentsBusy} accept={attachmentAccept}
+            <input ref={attachmentInput} type="file" multiple hidden disabled={attachmentsBusy} accept={attachmentAccept}
               aria-label="Add contract attachments"
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
                 event.target.value = "";
-                if (files.length) onAddAttachments(files);
+                addContractFiles(files);
               }} />
           </>}
           <div className="attachment-tray">
