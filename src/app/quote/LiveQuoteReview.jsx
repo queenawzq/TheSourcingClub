@@ -16,7 +16,7 @@
 import React, { useEffect, useState } from "react";
 import { quoteTextValues } from "./quote-text-fields.js";
 import { FactoryReviewTotal } from "../../factory-prototype/main.jsx";
-import { getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
+import { brandSummary, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
 import { getRfqDocumentPresentation } from "../../lib/domain/documents.js";
 import {
   formatCapacityWindow,
@@ -71,6 +71,8 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
           getRfqDocumentPresentation(rfqId).catch(() => ({ files: [], images: [] })),
           listLinks("rfq", rfqId),
         ]);
+        const brand = rfq.brand_org_id ? await brandSummary(rfq.brand_org_id).catch(() => null) : null;
+        rfq.paymentVerified = Boolean(brand?.payment_verified);
         const [lines, materialLines] = quote?.id
           ? await Promise.all([getSampleLines(quote.id), getMaterialLines(quote.id)])
           : [[], []];
@@ -202,7 +204,7 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
         capacity: fit ? [fit.label] : [],
         fitTone: fit?.tone ?? "",
         files: documents.files.map((file) => file.file_name),
-        paymentVerified: false,
+        paymentVerified: rfq.paymentVerified,
         trust: "",
         posted: "",
       }}
