@@ -15,7 +15,7 @@ const QUOTE_COLUMNS = `
   bulk_lead_time_days, bulk_lead_time_max_days,
   capacity_window_start, capacity_window_end, capacity_window_units,
   payment_term_id, deposit_pct, balance_pct,
-  incoterm_id, shipping_notes, valid_until, factory_notes,
+  incoterm_id, shipping_notes, valid_until, factory_notes, sourcing_includes, factory_response,
   submitted_at, decided_at, created_at, updated_at
 `;
 

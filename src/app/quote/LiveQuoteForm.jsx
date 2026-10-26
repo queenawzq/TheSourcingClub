@@ -16,6 +16,7 @@
  * term it needs than a quote is stored against one nobody chose.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { quoteTextPatch, quoteTextValues } from "./quote-text-fields.js";
 import { FactorySubmitQuote } from "../../factory-prototype/main.jsx";
 import {
   createDraftQuote,
@@ -211,6 +212,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     const depositPct = depositPctFrom(payment?.slug);
 
     await saveQuote(quote.id, {
+      ...quoteTextPatch(values),
       unit_price_cents: unit.min == null ? null : toCents(unit.min),
       unit_price_max_cents: unit.max == null ? null : toCents(unit.max),
       production_quantity: firstNumber(values.quantity),
@@ -350,6 +352,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         trust: "",
       }}
       values={{
+        ...quoteTextValues(quote),
         brandQuestions: questions.map((question) => question.prompt),
         brandSourcing: {
           material: rfq.material_notes ?? "",

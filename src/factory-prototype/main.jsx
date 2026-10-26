@@ -10597,13 +10597,13 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
       {/* Prototype-only examples remain available for the design preview. A
           live RFQ shows this section only when the brand actually asked at
           least one question, so example copy can never be mistaken for data. */}
-      {(!values || values.brandQuestions?.length > 0) && (
+      {(!values || values.brandQuestions?.length > 0 || values.factoryResponse) && (
         <SubmitSection
           title={companyType === "trading" ? "Brand questions and company notes" : "Brand questions and factory notes"}
           description={
             values?.brandQuestions?.length
               ? `Brand asks: ${values.brandQuestions.join(" ")}`
-              : "Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM, trim, MOQ, or certification details do you need before final cost?"
+              : values ? "" : "Brand asks: Can you quote fit sample and PP sample separately? Can you support 3 colors at 100 units each? What fabric GSM, trim, MOQ, or certification details do you need before final cost?"
           }
           descriptionNoTranslate
         >

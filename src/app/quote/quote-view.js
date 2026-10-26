@@ -100,7 +100,11 @@ export function describeQuote(quote, { incoterms = [] } = {}) {
     capacityWindow: formatCapacityWindow(quote),
     samplePlan: samplePlanOf(quote),
     validUntil: validUntilOf(quote),
-    notes: quote.factory_notes ?? "",
+    notes: [
+      quote.sourcing_includes ? `Factory includes: ${quote.sourcing_includes}` : "",
+      quote.factory_response ? `Factory response: ${quote.factory_response}` : "",
+      quote.factory_notes ?? "",
+    ].filter(Boolean).join("\n\n"),
     materialCosts: (quote.materialLines ?? []).map((line) => ({
       material: line.material ?? "",
       costPerUnit: line.cost_cents == null ? null : Number(line.cost_cents) / 100,
