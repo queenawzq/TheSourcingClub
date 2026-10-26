@@ -9268,10 +9268,10 @@ function getTranslatedProjectSummary(project) {
   return translatedSummaries[project.title] || project.specialty;
 }
 
-function FactoryRequestRequirements({ project }) {
+function FactoryRequestRequirements({ project, showServices = true }) {
   const groups = [
     ["Certifications needed", project.certifications],
-    ["Services needed", project.services],
+    ["Services needed", showServices ? project.services : []],
   ].filter(([, items]) => items?.length);
 
   if (!groups.length) return null;
@@ -9324,6 +9324,8 @@ export function FactoryProjectDetail({
             companyType={companyType}
             language={language}
             attachments={attachments}
+            showFit={false}
+            showServices={false}
           />
 
           {(brief === undefined || brief) && (
@@ -10311,7 +10313,7 @@ export function FactoryReviewTotal({
   );
 }
 
-function FactoryQuoteRequestCard({ project, companyType = "factory", language, attachments }) {
+function FactoryQuoteRequestCard({ project, companyType = "factory", language, attachments, showFit = true, showServices = true }) {
   const isZh = language === "zh";
   const translatedTitle = getTranslatedProjectTitle(project.title);
   const requestImages = project.images || [];
@@ -10342,9 +10344,11 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language, a
             <p data-no-translate>{isZh ? getTranslatedListMeta([project.brand, project.location, project.posted].filter(Boolean).join(" · ")) : [project.brand, project.location, project.posted].filter(Boolean).join(" · ")}</p>
           </div>
         </div>
-        <div className="factory-request-card-actions">
-          {fitLabel && <span className={`factory-project-fit ${project.fitTone}`}>{fitLabel}</span>}
-        </div>
+        {showFit && fitLabel && (
+          <div className="factory-request-card-actions">
+            <span className={`factory-project-fit ${project.fitTone}`}>{fitLabel}</span>
+          </div>
+        )}
       </header>
 
       <div className="factory-request-card-body">
@@ -10380,7 +10384,7 @@ function FactoryQuoteRequestCard({ project, companyType = "factory", language, a
               </div>
             </div>
           )}
-          <FactoryRequestRequirements project={project} />
+          <FactoryRequestRequirements project={project} showServices={showServices} />
         </aside>
 
         <div className={hasGallery ? "factory-request-visuals has-gallery" : "factory-request-visuals"} aria-label={`${project.brand} request references`}>

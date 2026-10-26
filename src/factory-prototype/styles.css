@@ -5568,6 +5568,14 @@ body:has(.factory-onboarding-page) {
   line-height: 18px;
 }
 
+.factory-rfq-detail-page .factory-submit-project-card .factory-request-brief > p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
 .factory-request-brief > p {
   margin: 0;
   padding-left: 10px;

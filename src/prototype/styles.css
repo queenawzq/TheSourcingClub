@@ -10246,6 +10246,8 @@ select {
 .marketplace-factory-card > .marketplace-tag-section .tag,
 .invite-vendor-tags .tag {
   box-sizing: border-box;
+  /* Override .factory-card span spacing: two 28px rows + 8px gap = 64px. */
+  margin: 0;
   display: block;
   height: 28px;
   min-height: 28px;
