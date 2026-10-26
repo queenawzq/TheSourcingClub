@@ -27,6 +27,8 @@ import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, 
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
+import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
+import { earningsSummaryFor, factoryAmount } from "./payment-summary.mjs";
 import "./order.css";
 import "./payout.css";
 
@@ -62,7 +64,6 @@ const PAYOUT_STATUS = {
  * paid, fee included, as received; the factory is paid the step's amount.
  * A bank wire from the old site records what actually arrived.
  */
-const factoryAmount = (row) => (row.charged_cents ? row.amount_cents : row.amount_received_cents ?? row.amount_cents);
 
 const blankPayout = (row) => ({
   bank_name: row?.bank_name ?? "",
@@ -169,7 +170,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       paymentRows = unwrap(
         await supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, release_requested_at, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title)")
           .in("order_id", orders.map((order) => order.id))
           .order("created_at", { ascending: false }),
         "load your earnings",
@@ -204,22 +205,32 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // once the brand's money has cleared and TSC is holding or releasing it.
   const fundedEarnings = (earnings ?? []).filter((row) => ["confirmed", "released"].includes(row.state));
   const clients = useMemo(
-    () => ["All clients", ...new Set(fundedEarnings.map((row) => row.order?.orgs?.name).filter(Boolean))],
-    [fundedEarnings],
+    () => [...new Map((earnings ?? []).filter((row) => row.order?.brand_org_id)
+      .map((row) => [row.order.brand_org_id, { id: row.order.brand_org_id, name: row.order.orgs?.name || "Brand" }])).values()],
+    [earnings],
   );
   const visibleEarnings = client === "All clients"
     ? fundedEarnings
-    : fundedEarnings.filter((row) => row.order?.orgs?.name === client);
+    : fundedEarnings.filter((row) => row.order?.brand_org_id === client);
   const summaryCurrency = visibleEarnings[0]?.currency || "USD";
-  const sumEarnings = (rows) => rows.reduce((sum, row) => sum + Number(factoryAmount(row) || 0), 0);
-  const payoutProcessingCents = sumEarnings(visibleEarnings.filter((row) => row.state === "confirmed" && row.release_requested_at));
+  const bankCurrency = stripeBalance?.available?.find((row) => row.amount > 0)?.currency
+    || stripeBalance?.available?.[0]?.currency || summaryCurrency;
+  const summary = earningsSummaryFor(earnings ?? [], stripeBalance, client);
   const earningsSummary = [
-    ["total earnings", sumEarnings(visibleEarnings)],
-    ["completed", sumEarnings(visibleEarnings.filter((row) => row.state === "released"))],
-    ["pending approval", sumEarnings(visibleEarnings.filter((row) => row.state === "confirmed" && !row.release_requested_at))],
-    ["payout processing", payoutProcessingCents],
+    ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
+    ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
+    ["Pending", summary.pending, PENDING_HELP],
+    ["Paid out", summary.paid, "Withdrawals paid out to your bank account, shown in the withdrawal currency. For each client, withdrawals use the oldest available earnings first. Withdrawals still processing are not included."],
   ];
-  const payoutTransactions = client === "All clients" ? (stripeBalance?.payouts ?? []) : [];
+  const paymentById = new Map((earnings ?? []).map((row) => [row.id, row]));
+  const hasUnallocatedHistory = stripeBalance?.payouts?.some((row) => row.paid
+    && row.allocations.reduce((sum, part) => sum + part.amount, 0) < row.amount);
+  const payoutTransactions = (stripeBalance?.payouts ?? []).flatMap((row) => {
+    if (client === "All clients") return [row];
+    const amount = row.allocations.filter((part) => paymentById.get(part.paymentId)?.order?.brand_org_id === client)
+      .reduce((sum, part) => sum + part.amount, 0);
+    return amount > 0 ? [{ ...row, amount }] : [];
+  });
   const transactions = [
     ...visibleEarnings.map((row) => ({
       id: `earning-${row.id}`,
@@ -228,10 +239,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       title: row.order_milestones?.title || row.order?.order_number || "Order payment",
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
       status: row.state === "released"
-        ? "Completed"
+        ? "Credited to balance"
         : row.release_requested_at
-          ? "Payout processing"
-          : "Pending approval",
+          ? "Pending"
+          : "Awaiting approval",
       amount: factoryAmount(row),
       currency: row.currency,
       available: row.state === "released",
@@ -367,32 +378,15 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
                     onClick={() => { setTab(key); setClient("All clients"); }} key={key}>{label}</button>
           ))}
         </div>
-        {tab === "earnings" ? (
-          <label>
-            <span>Filter by client</span>
-            <select value={clients.includes(client) ? client : "All clients"} onChange={(event) => setClient(event.target.value)}>
-              {clients.map((name) => <option value={name} key={name}>{name}</option>)}
-            </select>
-          </label>
-        ) : <span className="live-payments-control-spacer" />}
+
       </div>
 
       {tab === "earnings" && (
         <>
-          <div className="project-summary-strip billing-payment-strip factory-earnings-summary" aria-label="Earnings summary">
-            {earningsSummary.map(([label, amount], index) => (
-              <div className={`metric${index === 0 ? " highlight" : ""}`} key={label}>
-                <strong>{formatMoney(amount, summaryCurrency)}</strong>
-                <span>{label}</span>
-              </div>
-            ))}
-          </div>
           <StripePayoutCard
             org={org}
             isOwner={isOwner}
             onBalanceChange={setStripeBalance}
-            displayCurrency={summaryCurrency}
-            displayPending={payoutProcessingCents}
             manualAccount={account}
             manualForm={form}
             manualFields={FIELDS}
@@ -402,6 +396,24 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             manualBusy={busy}
             manualSaved={saved}
           />
+          <label className="payments-client-filter">
+            <span>Filter by client</span>
+            <select aria-label="Filter by client" value={client} onChange={(event) => setClient(event.target.value)}>
+              <option value="All clients">All clients</option>
+              {clients.map(({ id, name }) => <option value={id} key={id}>{name}</option>)}
+            </select>
+          </label>
+          <div className="project-summary-strip billing-payment-strip factory-earnings-summary" aria-label="Earnings summary">
+            {earningsSummary.map(([label, amounts, help], index) => (
+              <div className={`metric${index === 0 ? " highlight" : ""}`} key={label}>
+                <strong>{amounts === null ? "—" : (amounts.length ? amounts : [{ amount: 0, currency: label === "Paid out" ? bankCurrency : summaryCurrency }])
+                  .map(({ amount, currency }) => <span className="payment-currency-value" key={currency}>{formatMoney(amount, currency)}</span>)}</strong>
+                <span className="payment-metric-label">{label} <PaymentHelp label={label}>{help}</PaymentHelp></span>
+              </div>
+            ))}
+          </div>
+          {hasUnallocatedHistory ? <p className="payment-allocation-note">Older withdrawals without a client link appear only under All clients.</p> : null}
+
           <section className="payout-transactions-section" aria-labelledby="transactions-heading">
             <div className="payout-transactions-header">
               <div>

@@ -16,6 +16,18 @@
 .live-payout-balance { min-width: 0; }
 .live-payout-balance strong { margin-top: 5px; font-size: 30px; line-height: 38px; }
 .live-payout-card-action { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.payments-client-filter { display: grid; gap: 6px; width: min(100%, 280px); }
+.payments-client-filter > span { color: var(--text-muted); font-size: 12px; }
+.payments-client-filter select { min-height: 42px; padding: 0 12px; border: 1px solid var(--border); border-radius: var(--card-radius, 8px); background: white; color: var(--text); font: inherit; font-size: 14px; }
+.payment-metric-label { display: inline-flex !important; align-items: center; justify-content: center; gap: 3px; }
+.live-payout-balance .payment-metric-label { justify-content: flex-start; }
+.payment-currency-value { display: block; }
+.factory-earnings-summary .metric strong .payment-currency-value { margin: 0; color: inherit; font: inherit; }
+.payment-help { display: inline-flex; flex: 0 0 12px; align-items: center; justify-content: center; width: 12px; height: 12px; margin: 0; padding: 0; border: 1px solid var(--text-muted); border-radius: 50%; background: transparent; color: var(--text-muted); font: 700 8px/1 Satoshi, sans-serif; cursor: help; vertical-align: middle; }
+.payment-help:focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; }
+.payment-help-tooltip { position: fixed; z-index: 10000; box-sizing: border-box; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--text); color: white; font: 500 13px/19px Satoshi, sans-serif; box-shadow: 0 4px 16px rgb(0 0 0 / 15%); text-align: left; }
+.live-payout-balance .payment-provider-note { font-size: 11px; }
+.payment-allocation-note { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 18px; }
 .live-stripe-error { color: var(--danger) !important; }
 .live-payout-method-card .live-payment-notice { color: #157347; }
 
@@ -53,6 +65,7 @@
 .payout-transaction-details strong, .payout-transaction-details div > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .payout-transaction-details strong { color: var(--text); font-size: 14px; }
 .payout-transaction-details div > span { color: var(--text-muted); font-size: 12px; }
+.payout-transaction-details div > span { overflow: visible; text-overflow: clip; white-space: normal; }
 .payout-transaction-type { flex: 0 0 auto; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; }
 .payout-transaction-type.earning { background: #eaf7ef; color: #167847; }
 .payout-transaction-type.withdrawal { background: #eef3fa; color: #4d6282; }

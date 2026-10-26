@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
+import { holdPayouts } from "./_stripe-payouts.js";
 
 /**
  * Payments held by TSC, through Stripe Connect: the parts every payment route
@@ -371,6 +372,10 @@ export async function releasePayment({ stripe, db, paymentId }) {
   if (!account?.transfers_active) {
     return { released: false, reason: "the factory cannot be paid through Stripe yet" };
   }
+
+  // A transfer credits earnings, never an automatic withdrawal to the bank.
+  // Configure existing accounts before any money can reach them.
+  await holdPayouts(stripe, account.stripe_account_id);
 
   // Never pay twice. The webhook, the brand's page, the factory's refresh and
   // staff's Retry can all get here at the same moment; the database lets one
