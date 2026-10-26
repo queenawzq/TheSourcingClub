@@ -794,6 +794,7 @@ const factoryMainZhText = {
   "Cost": "费用",
   "Timing": "时间",
   "Includes": "包含",
+  "Included in sample price": "样品价格包含",
   "+ Add sample stage": "+ 添加样品阶段",
   "Brand questions and factory notes": "品牌问题和工厂备注",
   "Factory response": "工厂回复",
@@ -9320,21 +9321,13 @@ export function FactoryProjectDetail({
       <div className="factory-detail-layout">
         <section className="factory-detail-main">
           <FactoryQuoteRequestCard
-            project={project}
+            project={brief ? { ...project, specialty: brief } : project}
             companyType={companyType}
             language={language}
             attachments={attachments}
             showFit={false}
             showServices={false}
           />
-
-          {(brief === undefined || brief) && (
-            <DetailCard title="Project brief">
-              {brief
-                ? <p className="factory-detail-brief" data-no-translate>{brief}</p>
-                : <BrandBrief language={language} />}
-            </DetailCard>
-          )}
 
           <DetailCard title="Quote-ready details">
             <div className="factory-detail-grid">
@@ -10129,7 +10122,7 @@ export function FactorySubmitQuote({
   };
 
   return (
-    <main className="factory-detail-page factory-submit-page" ref={cardRef}>
+    <main className="factory-detail-page factory-submit-page factory-prepare-quote-page" ref={cardRef}>
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header">
           <button className="text-link" type="button" onClick={onBack}>{backLabel}</button>
@@ -10149,7 +10142,7 @@ export function FactorySubmitQuote({
 
         <div className="factory-submit-layout">
           <section className="factory-submit-main">
-            <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} />
+            <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} showServices={false} />
             <FactoryQuoteSections companyType={companyType} language={language} values={values} />
           </section>
 
@@ -10259,7 +10252,7 @@ export function FactoryReviewTotal({
 
         <div className="factory-review-layout">
           <section className="factory-review-main">
-            <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} />
+            <FactoryQuoteRequestCard project={project} companyType={companyType} language={language} showServices={false} />
             <FactoryQuoteSections companyType={companyType} language={language} readOnly values={quoteValues} />
           </section>
 
@@ -10313,7 +10306,7 @@ export function FactoryReviewTotal({
   );
 }
 
-function FactoryQuoteRequestCard({ project, companyType = "factory", language, attachments, showFit = true, showServices = true }) {
+function FactoryQuoteRequestCard({ project, companyType = "factory", language, attachments, showFit = true, showServices = false }) {
   const isZh = language === "zh";
   const translatedTitle = getTranslatedProjectTitle(project.title);
   const requestImages = project.images || [];
@@ -10879,6 +10872,10 @@ function QuoteField({ label, value, helper, valueNoTranslate = false, editable =
         data-placeholder={editable ? (placeholder ?? `Enter ${label.replace(/\s*\*$/, "").toLowerCase()}`) : undefined}
         contentEditable={editable || undefined}
         suppressContentEditableWarning={editable || undefined}
+        onInput={editable ? (event) => {
+          // Browsers leave a <br> after clearing contentEditable, preventing :empty placeholders.
+          if (!event.currentTarget.textContent.trim()) event.currentTarget.replaceChildren();
+        } : undefined}
       >{value}</strong>
       <small>{helper}</small>
     </label>
@@ -10913,7 +10910,14 @@ function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, review
       <QuoteField name={at("stage")} label="Stage" value={stage} {...reviewFieldProps} />
       <QuoteField name={at("cost")} label="Cost" value={cost} {...reviewFieldProps} />
       <QuoteField name={at("timing")} label="Timing" value={timing} placeholder="e.g. 7–10 days" {...reviewFieldProps} />
-      <QuoteField name={at("includes")} label="Includes" value={includes} {...reviewFieldProps} />
+      <QuoteField
+        name={at("includes")}
+        label="Included in sample price"
+        value={includes}
+        placeholder="e.g. 1 sample + 1 revision"
+        helper={!readOnly ? "Specify samples, revisions, materials and shipping covered; note any extra charges." : undefined}
+        {...reviewFieldProps}
+      />
       {!readOnly && <CloseIconButton label={`Remove ${stage || "sample stage"}`} onClick={onRemove} />}
     </div>
   );
