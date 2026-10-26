@@ -39,32 +39,55 @@ async function accessToken(env = process.env) {
 }
 
 /**
- * A scheduled meeting for a call. Anyone with the signature may join before a
- * host (nobody hosts: both sides are participants), and there is no waiting
- * room, since TSC has already decided who is in the call.
+ * What Zoom is asked for: a scheduled meeting for a call. Anyone with the
+ * signature may join before a host (nobody hosts: both sides are
+ * participants), and there is no waiting room, since TSC has already decided
+ * who is in the call.
+ *
+ * `use_pmi: false` is not a default to leave out. Zoom documents no default
+ * for it, and left out it appears to follow the host user's own "Use PMI when
+ * scheduling" setting: production's meetings came back as the host's Personal
+ * Meeting ID (join_url /j/<PMI>?…&omn=<id>, Oct 26), the Meeting SDK said
+ * "Meeting does not exist" for the id, and every call would have shared one
+ * personal room.
  */
-export async function createMeeting({ topic, startsAt, durationMinutes }, env = process.env) {
+export function meetingRequestBody({ topic, startsAt, durationMinutes }) {
+  return {
+    topic: String(topic).slice(0, 200),
+    type: 2,
+    start_time: new Date(startsAt).toISOString().replace(/\.\d{3}Z$/, "Z"),
+    timezone: "UTC",
+    duration: durationMinutes,
+    settings: {
+      use_pmi: false,
+      join_before_host: true,
+      jbh_time: 0,
+      waiting_room: false,
+      host_video: true,
+      participant_video: true,
+      mute_upon_entry: false,
+      approval_type: 2,
+      auto_recording: "none",
+    },
+  };
+}
+
+/**
+ * The meeting id in a join link's path when it is not the meeting's own id,
+ * else null. A link to another id is a Personal Meeting ID standing in for the
+ * meeting, which the Meeting SDK cannot join by the meeting's id.
+ */
+export function joinUrlMismatch({ meetingNumber, joinUrl }) {
+  const pathId = /\/j\/(\d+)/.exec(String(joinUrl ?? ""))?.[1];
+  return pathId && pathId !== String(meetingNumber) ? pathId : null;
+}
+
+export async function createMeeting(details, env = process.env) {
   const token = await accessToken(env);
   const response = await fetch("https://api.zoom.us/v2/users/me/meetings", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      topic: String(topic).slice(0, 200),
-      type: 2,
-      start_time: new Date(startsAt).toISOString().replace(/\.\d{3}Z$/, "Z"),
-      timezone: "UTC",
-      duration: durationMinutes,
-      settings: {
-        join_before_host: true,
-        jbh_time: 0,
-        waiting_room: false,
-        host_video: true,
-        participant_video: true,
-        mute_upon_entry: false,
-        approval_type: 2,
-        auto_recording: "none",
-      },
-    }),
+    body: JSON.stringify(meetingRequestBody(details)),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok || !body.id) {
