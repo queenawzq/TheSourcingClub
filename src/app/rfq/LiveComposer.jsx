@@ -477,8 +477,10 @@ export default function LiveComposer({ org, rfqId }) {
       const rows = unwrap(
         await supabase
           .from("factory_profiles")
-          .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, orgs (id, name)")
-          .not("published_at", "is", null),
+          .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, orgs!inner (id, name)")
+          .not("published_at", "is", null)
+          .eq("verification_status", "verified")
+          .eq("orgs.is_demo", false),
         "load vendors",
       );
       // The design ranks this list by fit. match_score_rfq() answers per

@@ -178,7 +178,7 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
   }));
 }
 
-const VENDOR_COLUMNS = "org_id, legal_name, website_url, location, country_code, nearest_port, founded_year, employee_count, intro, moq, typical_lead_days, sample_lead_days, verification_status, trust_tier, published_at, equipment_notes, vendor_kind, languages_supported, typical_order_value_band, partner_factory_count, supported_incoterms, typical_payment_terms, orgs (name)";
+const VENDOR_COLUMNS = "org_id, legal_name, website_url, location, country_code, nearest_port, founded_year, employee_count, intro, moq, typical_lead_days, sample_lead_days, verification_status, trust_tier, published_at, equipment_notes, vendor_kind, languages_supported, typical_order_value_band, partner_factory_count, supported_incoterms, typical_payment_terms, orgs!inner (name)";
 
 /** Rows grouped by one of their columns. */
 const groupBy = (rows, key) => rows.reduce((grouped, row) => {
@@ -198,7 +198,10 @@ const groupBy = (rows, key) => rows.reduce((grouped, row) => {
  */
 export async function loadVendorDirectory(brandOrg) {
   const [profiles, terms, brandTerms, threads] = await Promise.all([
-    supabase.from("factory_profiles").select(VENDOR_COLUMNS).not("published_at", "is", null)
+    supabase.from("factory_profiles").select(VENDOR_COLUMNS)
+      .not("published_at", "is", null)
+      .eq("verification_status", "verified")
+      .eq("orgs.is_demo", false)
       .then((result) => unwrap(result, "load vendors")),
     listTermsByKind(KINDS),
     getSelectedTerms("brand_profile", brandOrg.id),
