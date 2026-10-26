@@ -17,7 +17,7 @@ import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { ATTACHMENT_ACCEPT, attachmentRefusal, urlFor } from "../../lib/domain/documents.js";
 import { awaitingScreen, fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
-import { acceptCall, browserTimeZone, callState, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
+import { acceptCall, browserTimeZone, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
@@ -398,7 +398,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
 
   // "Join call" on a dashboard opens this page with ?join=<call>: once the
   // page and its calls are drawn, that call is joined as if pressed here,
-  // if it is on now.
+  // once it is confirmed, even before its scheduled start.
   const joinOnOpen = useRef(new URLSearchParams(window.location.search).get("join"));
   useEffect(() => {
     const id = joinOnOpen.current;
@@ -406,7 +406,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     joinOnOpen.current = null;
     window.history.replaceState(window.history.state, "", window.location.pathname);
     const call = calls.find((candidate) => candidate.id === id);
-    if (call && callState(call, org.id) === "live") callHandlers.join(call);
+    if (call && canJoinCall(call)) callHandlers.join(call);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads, calls]);
 

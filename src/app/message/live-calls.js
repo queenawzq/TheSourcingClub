@@ -16,7 +16,7 @@ import {
   theirTime,
   theirZoneFor,
   whenIn,
-  JOIN_OPENS_MINUTES,
+  canJoinCall,
 } from "../../lib/domain/calls.js";
 
 const OPEN = new Set(["invite", "waiting", "upcoming", "live"]);
@@ -79,7 +79,7 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
     status = "Confirmed";
     tone = "confirmed";
     actions = [
-      { label: "Join call", primary: true, disabled: true },
+      { label: "Join call", primary: true, onClick: () => handlers.join(call), disabled: busy },
       ...calendar,
       { label: "Cancel call", onClick: () => handlers.cancel(call), disabled: busy },
     ];
@@ -107,7 +107,7 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
       status,
       tone,
       actions,
-      note: notes[call.id]?.text ?? (state === "upcoming" ? `Join opens ${JOIN_OPENS_MINUTES} minutes before the call.` : null),
+      note: notes[call.id]?.text ?? null,
       noteIsError: Boolean(notes[call.id]?.error),
     },
   };
@@ -132,8 +132,8 @@ export function dashboardCalls(calls, { orgId, ownZone, zones = {}, open, now = 
         time: whenIn(start, ownZone),
         counterpartTime: theirTime(start, other.name, theirZoneFor(call, orgId, zones[call.thread_id])) || other.name,
         description: call.agenda ?? "",
-        action: state === "invite" ? "Review invite" : state === "live" ? "Join call" : "Open",
-        onAction: () => open(call, { join: state === "live" }),
+        action: state === "invite" ? "Review invite" : "Join call",
+        onAction: () => open(call, { join: canJoinCall(call, now) }),
       };
     });
 }

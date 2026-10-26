@@ -236,7 +236,7 @@ export function googleCalendarUrl(call, otherName, link = callLink(call)) {
 /**
  * Ask the server for what the Meeting SDK needs to join (api/call-join.js).
  * Resolves { ok: true, join } or { ok: false, message } — never throws, so the
- * card can say why ("opens 10 minutes before", "video isn't set up yet").
+ * card can say why ("this call has ended", "video isn't set up yet").
  */
 export async function joinCall(callId) {
   try {
