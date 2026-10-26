@@ -4,6 +4,7 @@ import { supabase } from "../../lib/supabase.js";
 import { formatMoney } from "../../lib/money.js";
 import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
+import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
 const names = new Intl.DisplayNames(["en"], { type: "region" });
@@ -84,8 +85,6 @@ export default function StripePayoutCard({
   org,
   isOwner,
   onBalanceChange,
-  displayCurrency,
-  displayPending,
   manualAccount,
   manualForm,
   manualFields,
@@ -105,6 +104,8 @@ export default function StripePayoutCard({
   const [error, setError] = useState(null);
   const [modal, setModal] = useState(null);
   const [methodMenu, setMethodMenu] = useState(null);
+  const [withdrawal, setWithdrawal] = useState(null);
+  const [withdrawn, setWithdrawn] = useState(false);
   const handledInitialAction = useRef(false);
 
   useEffect(() => {
@@ -132,7 +133,7 @@ export default function StripePayoutCard({
     setAccount(saved);
     setCountry((current) => current || saved?.country || manualCountry || profile?.country_code || "");
     if (saved?.transfers_active && isOwner) {
-      const nextBalance = await connectAction(org.id, "balance").catch(() => null);
+      const nextBalance = await connectAction(org.id, "balance");
       setBalance(nextBalance);
       onBalanceChange?.(nextBalance);
     } else {
@@ -179,10 +180,29 @@ export default function StripePayoutCard({
   }, [org.id, isOwner, load, manualAccount]);
 
   const supported = PAYOUT_COUNTRIES.has(country);
-  const currency = displayCurrency || balanceCurrency(balance);
+  const currency = balanceCurrency(balance);
   const available = amountIn(balance?.available, currency);
-  const pending = displayPending ?? amountIn(balance?.pending, currency);
+  const pending = amountIn(balance?.pending, currency);
   const connectedMethods = balance?.methods ?? [];
+  async function withdraw() {
+    if (busy || !withdrawal) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await connectAction(org.id, "withdraw", withdrawal);
+      setWithdrawal(null);
+      setModal(null);
+      setWithdrawn(true);
+      // Never leave an already-withdrawn amount available if refreshing fails.
+      setBalance(null);
+      onBalanceChange?.(null);
+      await load();
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setBusy(false);
+    }
+  }
   async function go(action, extra) {
     setBusy(true);
     setError(null);
@@ -304,13 +324,17 @@ export default function StripePayoutCard({
         <div className="live-payout-balance">
           {/* Paid by bank, the factory has no balance anywhere: TSC sends each
               released payment, so the card says how it is paid instead. */}
-          <span>{!account && manualAccount ? "Payouts" : "Available balance"}</span>
+          <span className="payment-metric-label">{!account && manualAccount ? "Payouts" : "Available balance"}
+            <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp>
+          </span>
           <strong>{balance ? formatMoney(available, currency) : !account && manualAccount ? "By bank transfer" : "—"}</strong>
           <p>{balance
-            ? `${formatMoney(pending, currency)} pending`
+            ? pending > 0
+              ? <>{formatMoney(pending, currency)} pending <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></>
+              : "Earnings stay in your balance until you withdraw them."
             // Only an owner reads the balance; for anyone else it is not "in progress".
             : account?.transfers_active
-              ? isOwner ? "Stripe could not show your balance right now. Try again shortly." : "Payouts go to your company's Stripe account."
+              ? isOwner ? "We could not show your balance right now. Try again shortly." : "Only a company owner can view the withdrawable balance."
               : account?.details_submitted
                 ? "Payout verification in progress"
                 : account
@@ -322,11 +346,20 @@ export default function StripePayoutCard({
                       ? "Your bank details are incomplete. Add the bank and the account name so TSC can pay you."
                       : isOwner ? "Add a payout method to receive earnings" : "No payout method yet."}</p>
           {manualSaved ? <p className="live-payment-notice">Payout method saved.</p> : null}
+          {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
+          {balance ? <p className="payment-provider-note">Payments securely processed by Stripe.</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </div>
         <div className="live-payout-card-action">
           {isOwner ? account?.transfers_active ? (
+            <>
+            <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled={busy || !balance || available <= 0 || !account.payouts_enabled} onClick={() => {
+              setError(null);
+              setWithdrawal({ amount: available, currency: currency.toLowerCase(), requestId: crypto.randomUUID() });
+              setModal("withdraw");
+            }}>Withdraw to bank</button>
             <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("manage")}>Manage payout method</button>
+            </>
           ) : account ? (
             <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={() => go("onboard")}>
               {busy ? "Opening Stripe…" : "Finish setup"}
@@ -339,6 +372,16 @@ export default function StripePayoutCard({
           : <p className="payout-owner-only">Only an owner of your company can set up or change payouts.</p>}
         </div>
       </section> : null}
+
+      {modal === "withdraw" && withdrawal ? (
+        <PayoutModal title="Withdraw to bank" onClose={closeModal} actions={<>
+          <button className="secondary-btn" type="button" disabled={busy} onClick={closeModal}>Cancel</button>
+          <button className="primary-btn" type="button" disabled={busy} onClick={withdraw}>{busy ? "Withdrawing…" : `Withdraw ${formatMoney(withdrawal.amount, withdrawal.currency)}`}</button>
+        </>}>
+          <p>Send {formatMoney(withdrawal.amount, withdrawal.currency)} to your default payout account. Bank processing time depends on your bank and country.</p>
+          {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
+        </PayoutModal>
+      ) : null}
 
       {modal === "manage" ? (
         <PayoutModal

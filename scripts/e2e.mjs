@@ -2691,17 +2691,18 @@ async function main() {
     check(/Shanghai/.test(brandCallCard), "with the factory's time in the zone it proposed in (Shanghai)");
     await record(page, "Brand dashboard: Scheduled calls");
 
-    // Left open across the Join window: the card turns to "Join call" as the
-    // window opens, not a poll or a reload later. The call is moved (as the
-    // server, which the text check lets through) so its window opens in 12 s.
+    // A confirmed call can be joined at any time before it ends (692c450), so
+    // the dashboard offers Join call before the start too. The call is moved
+    // (as the server, which the text check lets through) to start in ten
+    // minutes and 12 s, so the steps below find it "Starting soon".
     const opensAt = Date.now() + 12000;
     await db.from("calls").update({ starts_at: new Date(opensAt + 10 * 60000).toISOString() }).eq("id", accepted?.id);
     const joinButton = () => page.evaluate(() => [...document.querySelectorAll(".home-upcoming-call-card button")].map((node) => node.textContent.trim()));
     await page.waitForTimeout(4000);
-    check((await joinButton()).includes("Open"), "before the window opens, the open dashboard says Open");
+    check((await joinButton()).includes("Join call"), "before the start, the open dashboard offers Join call");
     await page.waitForTimeout(Math.max(opensAt + 3000 - Date.now(), 0));
-    check((await joinButton()).includes("Join call"), "and within 3 s of the window opening it says Join call, with no reload");
-    await record(page, "Brand dashboard: Join call", "the window opened while the page was open");
+    check((await joinButton()).includes("Join call"), "and still does once the call is starting soon, with no reload");
+    await record(page, "Brand dashboard: Join call", "a confirmed call is joinable before it starts");
 
     await signOutFully(page);
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory dashboard with a call", "factory");

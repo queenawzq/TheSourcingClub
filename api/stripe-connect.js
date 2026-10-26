@@ -1,4 +1,6 @@
 import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { holdPayouts, withdrawBalance } from "./_stripe-payouts.js";
+import { payoutAllocationFor } from "./_payout-allocation.js";
 
 /**
  * A factory's payouts through Stripe: an Express account, onboarded on
@@ -29,7 +31,7 @@ export default async function handler(request, response) {
   const caller = callerClient(request);
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
-  const { orgId, action, country } = jsonBody(request);
+  const { orgId, action, country, amount, currency, requestId } = jsonBody(request);
   const [owner, orgRead, { data: auth }] = await Promise.all([
     caller.rpc("is_org_owner", { target_org: orgId }),
     caller.from("orgs").select("id, name, type").eq("id", orgId).maybeSingle(),
@@ -68,6 +70,7 @@ export default async function handler(request, response) {
           capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
           business_profile: { name: org.name },
           metadata: { org_id: orgId },
+          settings: { payouts: { schedule: { interval: "manual" } } },
         });
         await saveConnectAccount(db, orgId, account);
         accountId = account.id;
@@ -84,6 +87,16 @@ export default async function handler(request, response) {
 
     if (!existing) return reply(response, 404, { error: "payouts through Stripe are not set up yet" });
 
+    if (action === "withdraw") {
+      if (!existing.payouts_enabled) return reply(response, 422, { error: "Finish payout verification before withdrawing." });
+      const payout = await withdrawBalance(stripe, existing.stripe_account_id, { amount, currency, requestId });
+      return reply(response, 200, { payout: { id: payout.id, amount: payout.amount, currency: payout.currency, status: payout.status } });
+    }
+
+    // Also applies to accounts created before manual withdrawals were added.
+    // Refuse the operation if Stripe cannot disable automatic bank payouts.
+    await holdPayouts(stripe, existing.stripe_account_id);
+
     if (action === "refresh") {
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       const saved = await saveConnectAccount(db, orgId, account);
@@ -92,22 +105,16 @@ export default async function handler(request, response) {
     }
 
     if (action === "balance") {
-      const [balance, payouts, externalAccounts] = await Promise.all([
+      const [balance, allocation, externalAccounts] = await Promise.all([
         stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
-        stripe.payouts.list({ limit: 25 }, { stripeAccount: existing.stripe_account_id }),
+        payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
         stripe.accounts.listExternalAccounts(existing.stripe_account_id, { limit: 10 }),
       ]);
       return reply(response, 200, {
         available: balance.available.map(({ amount, currency }) => ({ amount, currency })),
         pending: balance.pending.map(({ amount, currency }) => ({ amount, currency })),
-        payouts: payouts.data.map(({ id, amount, currency, status, created, arrival_date: arrivalDate }) => ({
-          id,
-          amount,
-          currency,
-          status,
-          created,
-          arrival_date: arrivalDate,
-        })),
+        payouts: allocation.payouts,
+        pendingEarnings: allocation.pending,
         methods: externalAccounts.data.map((method) => ({
           id: method.id,
           type: method.object === "card" ? "card" : "bank_account",

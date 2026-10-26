@@ -236,7 +236,7 @@ export function googleCalendarUrl(call, otherName, link = callLink(call)) {
 /**
  * Ask the server for what the Meeting SDK needs to join (api/call-join.js).
  * Resolves { ok: true, join } or { ok: false, message } — never throws, so the
- * card can say why ("opens 10 minutes before", "video isn't set up yet").
+ * card can say why ("this call has ended", "video isn't set up yet").
  */
 export async function joinCall(callId) {
   try {
@@ -244,12 +244,6 @@ export async function joinCall(callId) {
     if (response.status === 401) return { ok: false, message: SIGN_IN_ENDED };
     const body = await response.json().catch(() => ({}));
     if (!response.ok) {
-      // Opened early by this device's clock (fetchApi has now corrected it
-      // from the server's answer): say when it does open.
-      if (response.status === 409 && body.opensAt) {
-        const at = new Date(body.opensAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-        return { ok: false, message: `The call opens at ${at}, 10 minutes before it starts. Join turns on then.` };
-      }
       const text = body.error ? body.error[0].toUpperCase() + body.error.slice(1) : "The call could not be opened.";
       return { ok: false, message: /[.!?]$/.test(text) ? text : `${text}.` };
     }

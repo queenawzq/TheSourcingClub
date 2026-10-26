@@ -2,8 +2,8 @@
  * Join a call's video meeting.
  *
  * The caller must be signed in, belong to one of the two companies in the
- * call's conversation, and the call must be accepted and on now: from 10
- * minutes before the start to 30 minutes after the end (call_join_context).
+ * call's conversation, and the call must be accepted and not expired. Joining
+ * is allowed any time before the start, until 30 minutes after the end.
  * The first Join creates the Zoom meeting in TSC's account; a Join arriving
  * while that is happening waits for it rather than making a second meeting
  * (claim_call_meeting). The meeting's number and passcode live in
@@ -54,10 +54,7 @@ export default async function handler(request, response) {
   if (call.status !== "accepted") return json(response, 409, { error: "this call is not confirmed" });
 
   const now = Date.now();
-  if (now < new Date(call.opens_at).getTime()) {
-    return json(response, 409, { error: "the call opens 10 minutes before it starts", opensAt: call.opens_at });
-  }
-  if (now > new Date(call.closes_at).getTime()) return json(response, 409, { error: "this call has ended" });
+  if (now >= new Date(call.closes_at).getTime()) return json(response, 409, { error: "this call has ended" });
 
   if (!zoomConfigured()) {
     return json(response, 503, { error: "video isn't set up on this site yet, so the call can't be joined here. It is still confirmed for both sides" });
