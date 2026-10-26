@@ -9173,7 +9173,7 @@ select {
 .sample-file.update-attachment-card,
 .factory-posted-file.update-attachment-card {
   box-sizing: border-box;
-  width: 180px;
+  width: 140px;
   max-width: 100%;
   flex: 0 0 auto;
   grid-template-columns: minmax(0, 1fr) 28px;
@@ -9189,7 +9189,7 @@ select {
 .factory-posted-file.update-attachment-card .update-attachment-preview img {
   width: 100%;
   height: 110px;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .update-attachment-card .update-attachment-name {

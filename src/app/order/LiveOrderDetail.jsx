@@ -19,7 +19,7 @@
  * (migration 20261023000300). The factory is paid the step amount and keeps
  * reading the summary.
  */
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
 import { StepUpdatesModal } from "../../shared/StepUpdatesModal.jsx";
@@ -57,15 +57,12 @@ import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
 
 /**
- * Whether the brand can approve this step now. The factory's update is what
- * the brand approves from: there is no separate "send for approval" on the
- * designed screens, so an open step is approvable once the factory has posted
- * on it (approve_milestone checks the same). A step sent for approval the old
- * way still is.
+ * Whether the step is open for brand approval. Comments are optional;
+ * actionFor and the database still enforce payment and owner requirements.
  */
-const approvable = (milestone, posted) =>
+const approvable = (milestone) =>
   milestone.kind !== "payment_only"
-  && (milestone.state === "submitted" || (milestone.state === "active" && posted));
+  && ["submitted", "active"].includes(milestone.state);
 
 /**
  * What this step is waiting for, and from whom.
@@ -160,7 +157,7 @@ function statusLine(milestone, { isFactory, isOwner, orgName, posted }) {
   }
   if (approvable(milestone, posted)) {
     const held = payment?.state === "confirmed" ? ` · ${money}` : "";
-    if (isFactory) return `Posted, awaiting the brand's approval${held}`;
+    if (isFactory) return `${posted ? "Posted, awaiting the brand's approval" : "In progress"}${held}`;
     if (milestone.kind === "approval_and_payment" && !isOwner) return `Ready for an owner's approval${held}`;
     return `Ready for your approval${held}`;
   }
@@ -196,7 +193,7 @@ function dueBadge(milestone, today = new Date()) {
  * brand's funding. Reminding the other side about your own move is noise.
  */
 const waitingOnOther = (milestone, isFactory, posted) => (isFactory
-  ? approvable(milestone, posted) || ["due", "failed"].includes(milestone.payment?.state)
+  ? (approvable(milestone) && (posted || milestone.state === "submitted")) || ["due", "failed"].includes(milestone.payment?.state)
   : milestone.state === "active" && !posted);
 
 /** Brands nudge factories only when the current work is genuinely close. */
@@ -256,9 +253,11 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   // The step whose updates are open in the pop-up. Its address is the step's
   // own (/orders/:id/milestones/:mid), so a notification or a reload opens it.
   const [openStepId, setOpenStepId] = useState(step);
+  const loadVersion = useRef(0);
   useEffect(() => { setOpenStepId(step); }, [step]);
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
     try {
       const [row, steps, posted, events, charged] = await Promise.all([
         getOrder(orderId),
@@ -267,17 +266,57 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         orderActivity(orderId),
         isFactory ? null : brandCharges(orderId).catch(() => null),
       ]);
+      if (version !== loadVersion.current) return;
       setCharges(charged);
       setOrder(row);
       setMilestones(steps ?? []);
       setUpdates(posted ?? []);
       setActivity(events ?? []);
     } catch (failure) {
-      setError(failure);
+      if (version === loadVersion.current) setError(failure);
     }
   }, [orderId, isFactory]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+    return () => { loadVersion.current += 1; };
+  }, [load]);
+
+  // Both parties see new comments and attached files without leaving the
+  // timeline. Refetch the joined data rather than rendering a partial event.
+  useEffect(() => {
+    let active = true;
+    let timer;
+    const refresh = () => {
+      if (!active) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => { if (active) load(); }, 200);
+    };
+    const visibleRefresh = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    const channel = supabase
+      .channel(`order-comments:${orderId}:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", {
+        event: "*", schema: "public", table: "milestone_updates", filter: `order_id=eq.${orderId}`,
+      }, refresh)
+      .subscribe((status) => { if (status === "SUBSCRIBED") refresh(); });
+    // Covers a dropped socket or missed event without refreshing the page or
+    // clearing a comment draft. Hidden tabs do not poll.
+    const poll = setInterval(visibleRefresh, 15000);
+    window.addEventListener("focus", visibleRefresh);
+    window.addEventListener("online", visibleRefresh);
+    document.addEventListener("visibilitychange", visibleRefresh);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      clearInterval(poll);
+      window.removeEventListener("focus", visibleRefresh);
+      window.removeEventListener("online", visibleRefresh);
+      document.removeEventListener("visibilitychange", visibleRefresh);
+      supabase.removeChannel(channel);
+    };
+  }, [orderId, load]);
 
   // Cancelling has no design: the banner, the dialog and the side panel's
   // "Cancel order" are live only (CancelNotice, CancelOrderDialog).
