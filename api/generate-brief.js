@@ -167,6 +167,10 @@ export default async function handler(request, response) {
       // invention. A tool call is the model's own structured channel.
       body: JSON.stringify({
         model: MODEL,
+        // Brief extraction does not need a separate reasoning pass. Prefer
+        // the provider with the lowest time to first token, not lowest price.
+        reasoning: { enabled: false },
+        provider: { sort: "latency" },
         messages: [{ role: "user", content: prompt }],
         max_tokens: 2000,
         tools: [
