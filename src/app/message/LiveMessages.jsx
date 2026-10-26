@@ -215,7 +215,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     setDialog((current) => (current?.threadId === threadId ? current : null));
     activeThreadRef.current = threadId;
     try {
-      const rows = await listMessages(threadId);
+      const rows = await listMessages(threadId, org.id);
       setMessagesByThread((current) => ({ ...current, [threadId]: rows ?? [] }));
       setError(null);
       await markRead(threadId);
@@ -223,7 +223,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     } catch (failure) {
       setError(failure);
     }
-  }, [reload]);
+  }, [reload, org.id]);
 
   /**
    * Your own messages the screen has not decided: ask it again, on a back-off,
@@ -247,7 +247,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       setUnscreened((current) => new Set([...current, ...due.map((message) => message.id)]));
       if (await rescreenStale(due, user.id, { olderThanMs: 0 })) {
         for (const threadId of new Set(due.map((message) => message.thread_id))) {
-          const rows = await listMessages(threadId).catch(() => null);
+          const rows = await listMessages(threadId, org.id).catch(() => null);
           if (rows) setMessagesByThread((current) => ({ ...current, [threadId]: rows }));
         }
         reloadRef.current();

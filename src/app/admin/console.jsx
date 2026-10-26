@@ -126,6 +126,9 @@ function AdminConsole() {
       <App
         testEmailsIntro="Send yourself a sample of the marketplace's emails (onboarding, review decisions and a notification), filled with sample data."
         testEmailsUnavailable={reservedEmailNotice(user?.email)}
+        // Staff have no org, so nothing can notify them; the design's bell
+        // and its count of 5 had nothing behind them.
+        showNotifications={false}
       />
     </DataProvider>
   );

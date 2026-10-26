@@ -277,14 +277,14 @@ function RfqActivityCards({ rfqRows, quoteRows, onOpenRfq }) {
   );
 }
 
-function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate, onOpenRfq }) {
+function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate, onOpenRfq, showNotifications = true }) {
   const pending = profiles.filter((profile) => !["Approved", "Declined"].includes(profile.status));
   return (
     <main className="factory-dashboard-page admin-page">
       <div className="factory-dashboard-shell admin-shell">
         <header className="factory-dashboard-header admin-header">
           <div><span className="admin-eyebrow">Operations workspace</span><h1>Admin overview</h1><p>Monitor marketplace activity and review the profiles waiting for a decision.</p></div>
-          <button className="activity-icon-btn" type="button" aria-label="Open notifications"><img src="/assets/prototype-icons/notification.svg" alt="" /><b>5</b></button>
+          {showNotifications && <button className="activity-icon-btn" type="button" aria-label="Open notifications"><img src="/assets/prototype-icons/notification.svg" alt="" /><b>5</b></button>}
         </header>
 
         <div className="factory-dashboard-metrics admin-metrics">
@@ -1728,7 +1728,7 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUna
   );
 }
 
-function App({ testEmailsIntro, testEmailsUnavailable } = {}) {
+function App({ testEmailsIntro, testEmailsUnavailable, showNotifications } = {}) {
   // Everything below reads through the data seam. admin-prototype.html serves
   // the constants in this file; admin.html serves the marketplace. The
   // components in between never learn which.
@@ -1950,7 +1950,7 @@ function App({ testEmailsIntro, testEmailsUnavailable } = {}) {
         : loading
           ? <main className="admin-page"><div className="admin-empty-state"><strong>Loading the marketplace…</strong></div></main>
           : <>
-      {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} />}
+      {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
       {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} />}

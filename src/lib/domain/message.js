@@ -85,7 +85,14 @@ export async function openRfqThread(rfqId, factoryOrgId) {
   );
 }
 
-export async function listMessages(threadId) {
+/**
+ * One conversation as the reader's company may see it: what was delivered,
+ * and its own messages in every state. `messages_read` also lets platform
+ * staff read everything, so a staff member who belongs to a company would
+ * otherwise be shown the other side's held and rejected messages here.
+ */
+export async function listMessages(threadId, orgId) {
+  if (!orgId) throw new Error("listMessages needs the reader's company");
   const rows = unwrap(
     await supabase
       .from("messages")
@@ -97,6 +104,7 @@ export async function listMessages(threadId) {
         documents (id, bucket, storage_path, file_name, mime_type, size_bytes)
       `)
       .eq("thread_id", threadId)
+      .or(`delivery.eq.delivered,sender_org_id.eq.${orgId}`)
       .order("created_at"),
     "load the messages",
   );
