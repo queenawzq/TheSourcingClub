@@ -795,6 +795,7 @@ const factoryMainZhText = {
   "Timing": "时间",
   "Includes": "包含",
   "Included in sample price": "样品价格包含",
+  "Price includes": "价格包含",
   "+ Add sample stage": "+ 添加样品阶段",
   "Brand questions and factory notes": "品牌问题和工厂备注",
   "Factory response": "工厂回复",
@@ -10912,9 +10913,9 @@ function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, review
       <QuoteField name={at("timing")} label="Timing" value={timing} placeholder="e.g. 7–10 days" {...reviewFieldProps} />
       <QuoteField
         name={at("includes")}
-        label="Included in sample price"
+        label="Price includes"
         value={includes}
-        placeholder="e.g. 1 sample + 1 revision"
+        placeholder="e.g. 1 revision"
         {...reviewFieldProps}
       />
       {!readOnly && <CloseIconButton label={`Remove ${stage || "sample stage"}`} onClick={onRemove} />}

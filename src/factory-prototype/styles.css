@@ -7961,6 +7961,7 @@ body:has(.factory-onboarding-page) {
 
 .factory-submit-sample-row .factory-quote-field {
   min-height: 64px;
+  align-self: stretch;
 }
 
 .factory-submit-sample-row button {
