@@ -23,6 +23,7 @@ import {
   theirTime,
   theirZoneFor,
 } from "../src/shared/call-time.mjs";
+import { joinUrlMismatch, meetingRequestBody } from "../api/_zoom.js";
 
 let failures = 0;
 let checks = 0;
@@ -84,6 +85,18 @@ check(theirZoneFor(confirmed, FACTORY, "America/Chicago") === "America/Chicago",
 check(theirZoneFor({ ...confirmed, proposer_time_zone: null }, BRAND, savedZone) === savedZone,
   "a call proposed with no zone falls back to the saved one");
 check(theirZoneFor(null, BRAND, savedZone) === savedZone, "no call (a new proposal) uses the saved zone");
+
+// Zoom makes a meeting its own id only when asked: left out, use_pmi takes the
+// host user's setting, and production's calls came back as one Personal
+// Meeting ID the Meeting SDK could not join ("Meeting does not exist").
+const zoomBody = meetingRequestBody({ topic: "Fit review", startsAt: at(60), durationMinutes: 30 });
+check(zoomBody.settings.use_pmi === false, "a call's Zoom meeting is asked for with use_pmi: false");
+check(zoomBody.type === 2 && zoomBody.start_time === "2026-10-23T23:49:50Z", "as a scheduled meeting at the call's start, in UTC");
+check(joinUrlMismatch({ meetingNumber: "84598714022", joinUrl: "https://us06web.zoom.us/j/7320690524?pwd=x&omn=84598714022" }) === "7320690524",
+  "a join link to a Personal Meeting ID is noticed");
+check(joinUrlMismatch({ meetingNumber: "84598714022", joinUrl: "https://us06web.zoom.us/j/84598714022?pwd=x" }) === null,
+  "a join link to the meeting itself is not");
+check(joinUrlMismatch({ meetingNumber: "1", joinUrl: "" }) === null, "nor is a meeting with no link");
 
 if (failures) {
   console.log(`check:calls: ${failures} of ${checks} checks failed`);
