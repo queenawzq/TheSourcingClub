@@ -10915,7 +10915,6 @@ function SamplePlanRow({ stage, cost, timing, includes, readOnly = false, review
         label="Included in sample price"
         value={includes}
         placeholder="e.g. 1 sample + 1 revision"
-        helper={!readOnly ? "Specify samples, revisions, materials and shipping covered; note any extra charges." : undefined}
         {...reviewFieldProps}
       />
       {!readOnly && <CloseIconButton label={`Remove ${stage || "sample stage"}`} onClick={onRemove} />}
