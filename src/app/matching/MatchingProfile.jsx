@@ -8,8 +8,8 @@ import {
   saveMatchingProfile,
 } from "../../lib/domain/matching.js";
 import "./matching.css";
-export function useMatchingEnabled() {
-  const [enabled, setEnabled] = useState(false);
+export function useMatchingStatus() {
+  const [enabled, setEnabled] = useState(null);
   useEffect(() => {
     let live = true;
     matchingEnabled().then((x) => live && setEnabled(x));
@@ -19,6 +19,10 @@ export function useMatchingEnabled() {
   }, []);
   return enabled;
 }
+export function useMatchingEnabled() {
+  return useMatchingStatus() === true;
+}
+
 const TITLES = {
   product_category: "Product categories",
   fabric: "Fabrics",

@@ -99,6 +99,7 @@ select is(public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-00000
 select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000004","role":"authenticated"}',true);
 set local role authenticated;
 select lives_ok($$select public.review_matching_evidence('certificate','f9900000-0000-0000-0000-000000000001','verified')$$,'staff can approve complete certificate metadata');
+select lives_ok($$select public.review_document('d9900000-0000-0000-0000-000000000002','verified')$$,'legacy certificate document review remains functional');
 reset role;
 select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000001","role":"authenticated"}',true);
 select is((public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-000000000001','b9900000-0000-0000-0000-000000000002')->'factors'->0->>'weight')::numeric,35.00,'all specified no-deadline factors use 35% product');

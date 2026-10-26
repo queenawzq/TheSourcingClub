@@ -152,8 +152,10 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
   const [rows, brandTerms] = await Promise.all([
     supabase
       .from("factory_profiles")
-      .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, published_at, orgs (name)")
+      .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, published_at, orgs!inner (name)")
       .not("published_at", "is", null)
+      .eq("verification_status", "verified")
+      .eq("orgs.is_demo", false)
       .then((result) => unwrap(result, "load recommended vendors")),
     getSelectedTerms("brand_profile", brandOrgId),
   ]);

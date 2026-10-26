@@ -1,4 +1,4 @@
-import MatchingProfile, { useMatchingEnabled } from "../matching/MatchingProfile.jsx";
+import MatchingProfile, { useMatchingStatus } from "../matching/MatchingProfile.jsx";
 import FactoryMatch from "../matching/FactoryMatch.jsx";
 import { assessFactories, compareMatches } from "../../lib/domain/matching.js";
 /**
@@ -189,7 +189,8 @@ export default function LiveComposer({ org, rfqId }) {
   const [openToAll, setOpenToAll] = useState(true);
   // Who the request actually went to, for the success card's copy.
   const [invited, setInvited] = useState([]);
-  const matchingV2 = useMatchingEnabled();
+  const matchingStatus = useMatchingStatus();
+  const matchingV2 = matchingStatus === true;
   const [matchingDirty, setMatchingDirty] = useState(false);
   const [matchingAcknowledged, setMatchingAcknowledged] = useState(false);
   const [files, setFiles] = useState([]);
@@ -268,11 +269,11 @@ export default function LiveComposer({ org, rfqId }) {
   }, [rfqId, kinds]);
 
   useEffect(() => {
-    if (!resumeLoaded || inviteEntryHandled.current || !window.location.pathname.endsWith("/invite")) return;
+    if (!resumeLoaded || matchingStatus === null || inviteEntryHandled.current || !window.location.pathname.endsWith("/invite")) return;
     inviteEntryHandled.current = true;
     // Returning from quotes only loads vendors; it must not rewrite the brief.
     toInvite({ skipSave: true });
-  }, [resumeLoaded]);
+  }, [resumeLoaded, matchingStatus]);
 
   // The category, certifications and regions are matched against the term
   // labels, which load on their own and may arrive after a resumed draft does.
@@ -483,6 +484,7 @@ export default function LiveComposer({ org, rfqId }) {
    * visibility for the brand and then asking them about it.
    */
   async function toInvite({ skipSave = false } = {}) {
+    if (matchingStatus === null) return;
     if (busy || saveState === "saving" || !draftId) return;
     setBusy(true);
     setSaveState("saving");
@@ -725,7 +727,7 @@ export default function LiveComposer({ org, rfqId }) {
       busy={busy}
       onBack={() => setStep("describe")}
       onNext={toInvite}
-      primaryDisabled={saveState === "saving"}
+      primaryDisabled={saveState === "saving" || matchingStatus === null}
       secondaryAction={{
         label: saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save changes",
         onClick: saveReview,

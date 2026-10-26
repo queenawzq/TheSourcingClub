@@ -517,3 +517,64 @@ revoke all on function public.invalidate_matching_file() from public,anon,authen
 create trigger matching_storage_changed before update or delete on storage.objects for each row execute function public.invalidate_matching_file();
 create trigger matching_document_file_changed before update of bucket,storage_path on public.documents for each row
  when(old.bucket is distinct from new.bucket or old.storage_path is distinct from new.storage_path) execute function public.invalidate_matching_file();
+
+-- Preserve legacy document review while disambiguating its certificate join.
+create or replace function public.review_document(
+  document_id uuid,
+  decision    public.verification_status,
+  note        text default null
+)
+returns public.documents
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  reviewed public.documents;
+begin
+  if not public.is_platform_admin() then
+    raise exception 'only platform admins may review documents'
+      using errcode = '42501';
+  end if;
+
+  if decision not in ('verified', 'rejected', 'pending') then
+    raise exception 'review decision must be verified, rejected or pending'
+      using errcode = '22023';
+  end if;
+
+  update public.documents
+     set status = decision,
+         reviewed_by = auth.uid(),
+         reviewed_at = now(),
+         review_note = note
+   where id = document_id
+  returning * into reviewed;
+
+  if not found then
+    raise exception 'document not found' using errcode = 'P0002';
+  end if;
+
+  -- A verified business registration verifies the org itself. This is the
+  -- gate that decides whether a factory may quote on open RFQs.
+  if reviewed.kind = 'business_registration' then
+    update public.factory_profiles
+       set verification_status = decision
+     where org_id = reviewed.org_id;
+
+    update public.brand_profiles
+       set verification_status = decision
+     where org_id = reviewed.org_id;
+  end if;
+
+  if reviewed.kind = 'certificate' then
+    update public.factory_certifications c
+       set status = decision
+     where c.document_id = reviewed.id;
+  end if;
+
+  return reviewed;
+end;
+$$;
+
+create index matching_capability_document_idx on public.factory_capability_evidence(document_id);
+create index matching_certificate_document_idx on public.factory_certifications(document_id);
