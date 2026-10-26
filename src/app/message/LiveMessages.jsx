@@ -20,6 +20,7 @@ import { awaitingScreen, fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads,
 import { acceptCall, browserTimeZone, callState, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
+import { serverNow } from "../../lib/server-clock.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
@@ -406,7 +407,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     joinOnOpen.current = null;
     window.history.replaceState(window.history.state, "", window.location.pathname);
     const call = calls.find((candidate) => candidate.id === id);
-    if (call && callState(call, org.id) === "live") callHandlers.join(call);
+    if (call && callState(call, org.id, serverNow()) === "live") callHandlers.join(call);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads, calls]);
 

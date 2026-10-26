@@ -89,6 +89,9 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
     actions = [
       { label: "Join call", primary: true, onClick: () => handlers.join(call), disabled: busy },
       ...calendar,
+      // cancel_call allows it until the start, so someone who can't make it
+      // in the last ten minutes says so here, not in a message.
+      ...(start.getTime() > now ? [{ label: "Cancel call", onClick: () => handlers.cancel(call), disabled: busy }] : []),
     ];
   } else {
     status = CLOSED_STATUS[state]?.(call, other, orgId) ?? state;

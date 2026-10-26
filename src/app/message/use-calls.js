@@ -10,6 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
+import { serverNow, syncServerClock } from "../../lib/server-clock.js";
 import { callState, counterpartyTimeZone, listCalls, nextCallChange } from "../../lib/domain/calls.js";
 
 export function useDashboardCalls(orgId) {
@@ -26,9 +27,9 @@ export function useDashboardCalls(orgId) {
       const rows = await listCalls(orgId);
       if (latest.current !== run) return;
       setCalls(rows);
-      setNow(Date.now());
+      setNow(serverNow());
       const threads = [...new Set(rows
-        .filter((call) => ["invite", "upcoming", "live"].includes(callState(call, orgId)))
+        .filter((call) => ["invite", "upcoming", "live"].includes(callState(call, orgId, serverNow())))
         .map((call) => call.thread_id))];
       // Asked again on every load: the other side may have moved time zone.
       const found = await Promise.all(threads.map((id) => counterpartyTimeZone(id)));
@@ -70,20 +71,29 @@ const LONGEST_WAIT = 60 * 60000;
  * at once.
  */
 export function useCallClock(calls) {
-  const [now, setNow] = useState(() => Date.now());
+  const [now, setNow] = useState(() => serverNow());
+
+  // The server's clock decides when Join opens, so learn it once a confirmed
+  // call is within the hour (server-clock.js).
+  const soon = calls.some((call) => call.status === "accepted"
+    && Math.abs(new Date(call.starts_at).getTime() - Date.now()) < LONGEST_WAIT);
+  useEffect(() => {
+    if (!soon) return;
+    syncServerClock()?.then(() => setNow(serverNow()));
+  }, [soon]);
 
   useEffect(() => {
-    const next = nextCallChange(calls, Date.now());
+    const next = nextCallChange(calls, serverNow());
     if (next === null) return undefined;
     // A little after the moment, so the state has changed when it is read.
-    const wait = Math.min(Math.max(next - Date.now(), 0) + 250, LONGEST_WAIT);
-    const timer = setTimeout(() => setNow(Date.now()), wait);
+    const wait = Math.min(Math.max(next - serverNow(), 0) + 250, LONGEST_WAIT);
+    const timer = setTimeout(() => setNow(serverNow()), wait);
     return () => clearTimeout(timer);
   }, [calls, now]);
 
   useEffect(() => {
     const read = () => {
-      if (document.visibilityState === "visible") setNow(Date.now());
+      if (document.visibilityState === "visible") setNow(serverNow());
     };
     document.addEventListener("visibilitychange", read);
     window.addEventListener("focus", read);
