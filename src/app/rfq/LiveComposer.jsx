@@ -28,6 +28,7 @@ import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel } from "
 import { linkedLabels, mentionsLabel, monthLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
+import { vendorSummary } from "../browse/vendor-summary.js";
 
 const KINDS = ["product_category", "certification", "region", "service", "sourcing_responsibility"];
 
@@ -484,6 +485,19 @@ export default function LiveComposer({ org, rfqId }) {
       // The design ranks this list by fit. match_score_rfq() answers per
       // pair, so score the vendors actually being shown and sort by it.
       const scores = await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
+      const vendorTerms = await listTermsByKind(["make", "product_category", "specialty", "service", "core_service"]);
+      const vendorIds = (rows ?? []).map((row) => row.org_id);
+      const links = vendorIds.length ? unwrap(await supabase.from("taxonomy_links")
+        .select("subject_id, term_id").eq("subject_type", "factory_profile").in("subject_id", vendorIds), "load vendor specialties") : [];
+      const summaries = new Map((rows ?? []).map((row) => {
+        const selected = new Set(links.filter((link) => link.subject_id === row.org_id).map((link) => link.term_id));
+        const labels = (kind) => (vendorTerms[kind] ?? []).filter((term) => selected.has(term.id)).map((term) => termLabel(term));
+        return [row.org_id, vendorSummary({
+          makes: labels("make").length ? labels("make") : labels("product_category"),
+          specialties: [...labels("specialty"), ...labels(row.vendor_kind === "trading_company" ? "core_service" : "service")],
+          intro: row.intro,
+        })];
+      }));
       const firstId = reorder?.factoryOrgId ?? requestedVendor;
       const first = firstId && (rows ?? []).find((row) => row.org_id === firstId);
       if (firstId && !preselected.current) {
@@ -494,7 +508,7 @@ export default function LiveComposer({ org, rfqId }) {
       }
       setVendors(
         (rows ?? [])
-          .map((row) => ({ ...row, matchPercent: scores.get(row.org_id) ?? null }))
+          .map((row) => ({ ...row, cardSummary: summaries.get(row.org_id), matchPercent: scores.get(row.org_id) ?? null }))
           .sort((a, b) => (b.matchPercent ?? -1) - (a.matchPercent ?? -1))
           // A reorder's own factory (or the vendor the request was started
           // from) heads the list, ticked, above the ranking.
@@ -632,9 +646,9 @@ export default function LiveComposer({ org, rfqId }) {
       products: [],
       categories: [],
       capabilities: [],
-      notes: vendor.intro ? [vendor.intro] : [],
+      notes: vendor.cardSummary ? [vendor.cardSummary] : [],
       // No intro, no note box (QA, Oct 5: an empty box under the stats).
-      note: vendor.intro || null,
+      note: vendor.cardSummary || null,
       profileHref: `/app.html/factories/${vendor.org_id}?from=invite`,
       onOpenProfile: () => {
         setProfileOf(vendor.org_id);

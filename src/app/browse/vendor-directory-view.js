@@ -13,6 +13,7 @@ import { availableRange, capacityWindow, minutesPerPieceFor, monthKey, monthlyUn
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { brandFactoryView } from "../profile/brand-factory-view.js";
 import { chipLabels } from "../profile/factory-profile-view.js";
+import { vendorSummary } from "./vendor-summary.js";
 
 const NOT_GIVEN = "—";
 const count = (value) => Number(value).toLocaleString("en");
@@ -108,6 +109,7 @@ export function vendorCard(parts, now = new Date()) {
   const certifications = parts.certifications.map((cert) => cert.name);
   const makes = isTrading ? labels("product_category") : section("Makes");
   const capabilities = isTrading ? labels("core_service") : section("Capabilities");
+  const summary = vendorSummary({ makes, specialties: capabilities, intro: profile?.intro });
 
   const stats = isTrading
     ? [
@@ -139,7 +141,7 @@ export function vendorCard(parts, now = new Date()) {
     location: view.location,
     specialty: isTrading ? "Trading company" : (labels("production_type").slice(0, 2).join(", ") || ""),
     stats,
-    notes: profile?.intro ? [profile.intro] : [],
+    notes: summary ? [summary] : [],
     products: parts.samples.map((sample) => ({ name: sample.title, image: sample.src })),
     categories: makes,
     capabilities,
@@ -155,7 +157,7 @@ export function vendorCard(parts, now = new Date()) {
       nextOpen ? `Open ${shortMonth(nextOpen)}` : null,
       units ? `Capacity ${count(units)} units` : null,
     ].filter(Boolean),
-    insight: profile?.intro ? [profile.intro] : [],
+    insight: summary ? [summary] : [],
     facts: {
       termIds: new Set(Object.values(selected ?? {}).flat()),
       certificationIds: new Set(parts.certifications.map((cert) => cert.termId)),
