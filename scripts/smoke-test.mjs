@@ -1753,6 +1753,7 @@ console.log("\ndaily notifications and dates in the reader's zone");
     { kind: "rfq_matched", body: "Demo Brand is looking for a factory. Quotes close Nov 20.", data: { quote_deadline: deadline } },
     { kind: "call_proposed", body: "Fit review", data: { starts_at: deadline, duration_minutes: 30 } },
     { kind: "message", body: "A message", data: {} },
+    { kind: "message", body: "Trims by Friday.", data: { message_text: { en: "Trims by Friday.", zh: "辅料周五前确认。" } } },
     { kind: "rfq_invited", body: "Quotes close Nov 20.", data: null },
   ];
   const zones = [undefined, "UTC", "Asia/Shanghai", "America/New_York", "Not/AZone"];
@@ -1760,6 +1761,13 @@ console.log("\ndaily notifications and dates in the reader's zone");
     notificationBody(n, { timeZone, withZone }) === emailBody(n, { timeZone, withZone }))))
     ? ok("an email words its dates as the bell does")
     : fail("the email's date wording differs from the bell's");
+  const translated = samples.find((n) => n.data?.message_text);
+  notificationBody(translated) === "Trims by Friday."
+    && notificationBody(translated, { locale: "zh" }) === "辅料周五前确认。"
+    && emailBody(translated, { locale: "zh" }) === "辅料周五前确认。"
+    && emailBody(translated, { locale: "en" }) === "Trims by Friday."
+    ? ok("a message reaches the bell and the email in the reader's language")
+    : fail("the message notification's language", { bell: notificationBody(translated), zhEmail: emailBody(translated, { locale: "zh" }) });
   const { notificationTitle } = await import("../src/shared/notification-text.mjs");
   const { notificationTitle: emailTitle } = await import("./generate-notification-email.mjs");
   const titles = [
