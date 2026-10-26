@@ -4403,6 +4403,15 @@ textarea.question-field::placeholder {
   height: 20px;
 }
 
+.attachment-chip .contract-attachment-name {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
 .muted-field {
   background: var(--bg-page);
 }

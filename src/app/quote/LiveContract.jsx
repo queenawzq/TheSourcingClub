@@ -8,10 +8,11 @@
  * Awarding is owner-only in the database; a member is told so here rather
  * than refused after clicking.
  */
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ContractScreen, FlowShell } from "../../prototype/main.jsx";
 import { awardQuote, orderForQuote } from "../../lib/domain/quote.js";
-import { urlFor } from "../../lib/domain/documents.js";
+import { ATTACHMENT_ACCEPT, uploadDocument, urlFor } from "../../lib/domain/documents.js";
+import { getContractAttachments, saveContractAttachments } from "../../lib/domain/contract-attachments.js";
 import { openRfqThread } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
 import { useQuoteReview } from "./useQuoteReview.js";
@@ -23,6 +24,18 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [agreedIncotermId, setAgreedIncotermId] = useState("");
+  const [attachmentState, setAttachmentState] = useState(null);
+  const [savingAttachments, setSavingAttachments] = useState(false);
+  const attachmentLock = useRef(false);
+  const files = attachmentState?.quoteId === quoteId ? attachmentState.files : null;
+
+  useEffect(() => {
+    let active = true;
+    getContractAttachments(quoteId).then((loaded) => {
+      if (active) setAttachmentState({ quoteId, files: loaded });
+    }).catch((failure) => { if (active) setError(failure); });
+    return () => { active = false; };
+  }, [quoteId]);
 
   if (loadError) return <FlowShell screen="contract" canBack={false} primaryLabel=""><p className="composer-error" role="alert">{loadError.message}</p></FlowShell>;
   if (!state) return null;
@@ -44,7 +57,7 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
           : null;
 
   async function award() {
-    if (busy || blocked) return;
+    if (busy || blocked || attachmentLock.current || files === null) return;
     // A quote matched to no incoterm leaves nothing selected; "" is not a
     // uuid, and Postgres would refuse it with a raw cast error.
     if (!selectedIncotermId) {
@@ -80,14 +93,42 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
     }
   }
 
+  async function changeAttachments(uploads = [], removedId = null) {
+    if (busy || blocked || attachmentLock.current || files === null) return;
+    attachmentLock.current = true;
+    setSavingAttachments(true);
+    setError(null);
+    try {
+      // Unlink from this selection only. Never delete the source document.
+      let next = files.filter((file) => file.id !== removedId);
+      if (removedId) {
+        await saveContractAttachments(quoteId, next);
+        setAttachmentState({ quoteId, files: next });
+      }
+      for (const file of uploads) {
+        const uploaded = await uploadDocument({
+          orgId: state.rfq.brand_org_id, kind: "contract", scopeId: quoteId, file,
+        });
+        next = [...next, uploaded];
+        await saveContractAttachments(quoteId, next);
+        setAttachmentState({ quoteId, files: next });
+      }
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      attachmentLock.current = false;
+      setSavingAttachments(false);
+    }
+  }
+
   return (
     <FlowShell
       screen="contract"
       canBack
       onBack={back}
       onNext={award}
-      busy={busy}
-      primaryLabel={blocked ? "" : busy ? "Creating production steps…" : "Create production steps"}
+      busy={busy || savingAttachments}
+      primaryLabel={blocked || files === null ? "" : busy ? "Creating production steps…" : "Create production steps"}
       rail={found ? {
         vendor: {
           initials: found.view.initials,
@@ -108,8 +149,12 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
           }))}
           deliveryTermId={selectedIncotermId}
           onDeliveryTermChange={setAgreedIncotermId}
-          attachments={state.files}
+          attachments={files ?? []}
           onOpenAttachment={open}
+          onAddAttachments={(uploads) => changeAttachments(uploads)}
+          onRemoveAttachment={(file) => changeAttachments([], file.id)}
+          attachmentAccept={ATTACHMENT_ACCEPT}
+          attachmentsBusy={busy || savingAttachments || files === null || Boolean(blocked)}
         />
       )}
       {error && <p className="composer-error" role="alert">{error.message}</p>}

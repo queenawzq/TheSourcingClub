@@ -10266,6 +10266,10 @@ export function ContractScreen({
   onDeliveryTermChange,
   attachments = null,
   onOpenAttachment,
+  onAddAttachments,
+  onRemoveAttachment,
+  attachmentsBusy = false,
+  attachmentAccept,
 }) {
   const isReorder = Boolean(reorderProject);
   const deliveryTerms = [
@@ -10386,20 +10390,36 @@ export function ContractScreen({
           />
         </section>
         {attachments ? (
-        attachments.length > 0 && (
         <section className="contract-section">
           <div className="contract-section-header">
             <h3>Attachments</h3>
           </div>
+          {onAddAttachments && <>
+            <button className="upload-zone" type="button" disabled={attachmentsBusy}
+              onClick={(event) => event.currentTarget.nextElementSibling?.click()}>
+              + Add contract attachments
+            </button>
+            <input type="file" multiple hidden disabled={attachmentsBusy} accept={attachmentAccept}
+              aria-label="Add contract attachments"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                event.target.value = "";
+                if (files.length) onAddAttachments(files);
+              }} />
+          </>}
           <div className="attachment-tray">
             {attachments.map((file) => (
-              <button className="attachment-chip" type="button" key={file.id} onClick={() => onOpenAttachment?.(file)}>
-                {file.file_name}
-              </button>
+              <div className="attachment-chip" key={file.id}>
+                <button className="contract-attachment-name" type="button" onClick={() => onOpenAttachment?.(file)}>{file.file_name}</button>
+                {onRemoveAttachment && (
+                  <button type="button" disabled={attachmentsBusy} onClick={() => onRemoveAttachment(file)} aria-label={`Remove ${file.file_name} from this contract`} title="Remove from this contract">
+                    <img src="/assets/prototype-icons/close.svg" alt="" />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </section>
-        )
         ) : (
         <section className="contract-section">
           <div className="contract-section-header">
