@@ -4403,10 +4403,14 @@ textarea.question-field::placeholder {
   height: 20px;
 }
 
-.attachment-chip .contract-attachment-name {
+.brand-uploaded-file .contract-attachment-name {
   width: auto;
   height: auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
   border-radius: 0;
+  background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
@@ -12053,7 +12057,8 @@ body:has(.brand-onboarding-page) {
   gap: 8px;
 }
 
-.brand-asset-card .brand-uploaded-file {
+.brand-asset-card .brand-uploaded-file,
+.contract-uploaded-files .brand-uploaded-file {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -12065,7 +12070,8 @@ body:has(.brand-onboarding-page) {
   background: #f8fafc;
 }
 
-.brand-asset-card .brand-uploaded-file > div {
+.brand-asset-card .brand-uploaded-file > div,
+.contract-uploaded-files .brand-uploaded-file > div {
   min-width: 0;
   display: grid;
   gap: 2px;

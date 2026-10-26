@@ -10446,18 +10446,22 @@ export function ContractScreen({
                 addContractFiles(files);
               }} />
           </>}
-          <div className="attachment-tray">
+          {attachments.length > 0 && <div className="brand-uploaded-files contract-uploaded-files" aria-live="polite">
             {attachments.map((file) => (
-              <div className="attachment-chip" key={file.id}>
-                <button className="contract-attachment-name" type="button" onClick={() => onOpenAttachment?.(file)}>{file.file_name}</button>
+              <div className="brand-uploaded-file" key={file.id}>
+                <div>
+                  <button className="contract-attachment-name" type="button" title={file.file_name} onClick={() => onOpenAttachment?.(file)}><span>{file.file_name}</span></button>
+                  <small>Uploaded</small>
+                </div>
                 {onRemoveAttachment && (
                   <button type="button" disabled={attachmentsBusy} onClick={() => onRemoveAttachment(file)} aria-label={`Remove ${file.file_name} from this contract`} title="Remove from this contract">
-                    <img src="/assets/prototype-icons/close.svg" alt="" />
+                    <img src="/assets/prototype-icons/trash.svg" alt="" />
+                    Remove
                   </button>
                 )}
               </div>
             ))}
-          </div>
+          </div>}
         </section>
         ) : (
         <section className="contract-section">
