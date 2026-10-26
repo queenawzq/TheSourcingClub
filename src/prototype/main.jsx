@@ -10406,7 +10406,7 @@ export function ContractScreen({
             <h3>Attachments</h3>
           </div>
           {onAddAttachments && <>
-            <button className={`brand-onboarding-upload-row${attachmentsDragging && !attachmentsBusy ? " is-dragging" : ""}`}
+            <button className={`upload-zone contract-upload-zone${attachmentsDragging && !attachmentsBusy ? " is-dragging" : ""}`}
               type="button" disabled={attachmentsBusy}
               onClick={() => attachmentInput.current?.click()}
               onDragEnter={(event) => {
@@ -10435,8 +10435,7 @@ export function ContractScreen({
                 addContractFiles(event.dataTransfer.files);
               }}
               onDragEnd={clearAttachmentDrag}>
-              <img src="/assets/prototype-icons/upload.svg" alt="" />
-              <strong>Click or drag files to upload</strong>
+              + Add tech pack, sketches, sample references, or color breakdown
             </button>
             <input ref={attachmentInput} type="file" multiple hidden disabled={attachmentsBusy} accept={attachmentAccept}
               aria-label="Add contract attachments"
@@ -10446,17 +10445,13 @@ export function ContractScreen({
                 addContractFiles(files);
               }} />
           </>}
-          {attachments.length > 0 && <div className="brand-uploaded-files contract-uploaded-files" aria-live="polite">
+          {attachments.length > 0 && <div className="attachment-tray contract-attachment-tray" aria-live="polite">
             {attachments.map((file) => (
-              <div className="brand-uploaded-file" key={file.id}>
-                <div>
-                  <button className="contract-attachment-name" type="button" title={file.file_name} onClick={() => onOpenAttachment?.(file)}><span>{file.file_name}</span></button>
-                  <small>Uploaded</small>
-                </div>
+              <div className="attachment-chip" key={file.id}>
+                <button className="contract-attachment-name" type="button" title={file.file_name} onClick={() => onOpenAttachment?.(file)}>{file.file_name}</button>
                 {onRemoveAttachment && (
                   <button type="button" disabled={attachmentsBusy} onClick={() => onRemoveAttachment(file)} aria-label={`Remove ${file.file_name} from this contract`} title="Remove from this contract">
-                    <img src="/assets/prototype-icons/trash.svg" alt="" />
-                    Remove
+                    <img src="/assets/prototype-icons/close.svg" alt="" />
                   </button>
                 )}
               </div>

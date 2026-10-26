@@ -4363,7 +4363,8 @@ textarea.question-field::placeholder {
 
 /* On the RFQ review step the surrounding card already provides the surface.
    Keep uploaded files as chips instead of placing them inside a second panel. */
-.review-brief-stack .attachment-tray {
+.review-brief-stack .attachment-tray,
+.attachment-tray.contract-attachment-tray {
   min-height: 0;
   margin-top: 12px;
   padding: 0;
@@ -4403,7 +4404,7 @@ textarea.question-field::placeholder {
   height: 20px;
 }
 
-.brand-uploaded-file .contract-attachment-name {
+.attachment-chip .contract-attachment-name {
   width: auto;
   height: auto;
   min-width: 0;
@@ -12057,8 +12058,7 @@ body:has(.brand-onboarding-page) {
   gap: 8px;
 }
 
-.brand-asset-card .brand-uploaded-file,
-.contract-uploaded-files .brand-uploaded-file {
+.brand-asset-card .brand-uploaded-file {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -12070,8 +12070,7 @@ body:has(.brand-onboarding-page) {
   background: #f8fafc;
 }
 
-.brand-asset-card .brand-uploaded-file > div,
-.contract-uploaded-files .brand-uploaded-file > div {
+.brand-asset-card .brand-uploaded-file > div {
   min-width: 0;
   display: grid;
   gap: 2px;
@@ -12119,7 +12118,8 @@ body:has(.brand-onboarding-page) {
   background: #fff;
 }
 
-.brand-onboarding-upload-row.is-dragging {
+.brand-onboarding-upload-row.is-dragging,
+.contract-upload-zone.is-dragging {
   border-color: #155dfc;
   background: #eef4ff;
   color: #174df2;
