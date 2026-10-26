@@ -10236,13 +10236,15 @@ select {
 }
 
 /* Two complete tag rows on browse cards; full lists remain on profiles. */
-.marketplace-factory-card > .marketplace-tag-section .tag-row {
+.marketplace-factory-card > .marketplace-tag-section .tag-row,
+.invite-vendor-tags .tag-row {
   max-height: 64px;
   gap: 8px;
   overflow: hidden;
 }
 
-.marketplace-factory-card > .marketplace-tag-section .tag {
+.marketplace-factory-card > .marketplace-tag-section .tag,
+.invite-vendor-tags .tag {
   box-sizing: border-box;
   display: block;
   height: 28px;

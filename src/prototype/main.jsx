@@ -4510,7 +4510,7 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
             </button>
             <div className="marketplace-samples invite-samples" aria-label={`${factory.name} sample products`} onScroll={(event) => updateSampleScroll(event.currentTarget)}>
               {sampleProducts.map((product) => (
-                <figure className="marketplace-sample invite-sample" key={product.name}>
+                <figure className="marketplace-sample invite-sample" key={product.id ?? product.name}>
                   <img src={product.image} alt={`${factory.name} ${product.name}`} />
                   <figcaption><strong>{product.name}</strong></figcaption>
                 </figure>
@@ -9595,7 +9595,7 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
               onScroll={(event) => updateSampleScroll(event.currentTarget)}
             >
               {factory.products.map((product) => (
-                <figure className="marketplace-sample invite-sample" key={product.name}>
+                <figure className="marketplace-sample invite-sample" key={product.id ?? product.name}>
                   <img src={product.image} alt={`${factory.name} ${product.name}`} />
                   <figcaption>
                     <strong>{product.name}</strong>
@@ -9618,6 +9618,16 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
             </button>
           </div>
           )}
+        </div>
+        <div className="marketplace-tag-section invite-vendor-tags">
+          {factory.categories?.length > 0 && <div>
+            <span className="marketplace-tag-label">Makes</span>
+            <div className="tag-row compact-tags">{factory.categories.map((tag) => <span className="tag garment-tag" key={tag}>{tag}</span>)}</div>
+          </div>}
+          {factory.capabilities?.length > 0 && <div>
+            <span className="marketplace-tag-label">Specializes in</span>
+            <div className="tag-row compact-tags">{factory.capabilities.map((tag) => <span className="tag blue-tag" key={tag}>{tag}</span>)}</div>
+          </div>}
         </div>
       </div>
     </article>
