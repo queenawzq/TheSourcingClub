@@ -636,3 +636,33 @@ body {
   white-space: pre-line;
   text-align: left;
 }
+
+/* Live only: the unread count on a nav item (Conversations), in the design's
+   unread-badge style (.message-thread-card b). */
+.side-nav nav button .nav-badge {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.side-nav.collapsed nav button .nav-badge {
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 10px;
+  transform: none;
+}

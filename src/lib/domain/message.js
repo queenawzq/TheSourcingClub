@@ -124,11 +124,16 @@ export function fileOnlyBody(files) {
 /** When a message reached the thread: its delivery, or its writing if it has not. */
 export const sentAt = (message) => message.delivered_at ?? message.created_at;
 
+/** Fired on window when this tab marks a conversation read (use-unread.js). */
+export const MESSAGES_READ = "tsc:messages-read";
+
 export async function markRead(threadId) {
-  return unwrap(
+  const result = unwrap(
     await supabase.rpc("mark_thread_read", { target_thread: threadId }),
     "mark this conversation read",
   );
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(MESSAGES_READ));
+  return result;
 }
 
 /**

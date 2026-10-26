@@ -205,21 +205,28 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   useEffect(() => { reload(); }, [reload]);
 
   /**
-   * Load one conversation, and mark it read.
+   * Load one conversation, and mark it read once the person has read it.
    *
    * Unread is derived per user from message_reads, so opening a thread is the
-   * only thing that clears it — there is no counter to decrement.
+   * only thing that clears it — there is no counter to decrement. A thread
+   * the person chose, or arrived at by its own link, is read. The one the
+   * page opens by itself (the newest) is only shown: it counts as read when
+   * the person acts in it (`readThreadRef`, and the listener below), or its
+   * unread badge vanished before anyone had looked.
    */
-  const loadThread = useCallback(async (threadId) => {
+  const readThreadRef = useRef(null);
+  const loadThread = useCallback(async (threadId, { read = true } = {}) => {
     if (!threadId) return;
     setActiveId(threadId);
     setDialog((current) => (current?.threadId === threadId ? current : null));
     activeThreadRef.current = threadId;
+    if (read) readThreadRef.current = threadId;
+    else if (readThreadRef.current !== threadId) readThreadRef.current = null;
     try {
       const rows = await listMessages(threadId, org.id);
       setMessagesByThread((current) => ({ ...current, [threadId]: rows ?? [] }));
       setError(null);
-      await markRead(threadId);
+      if (readThreadRef.current === threadId) await markRead(threadId);
       reload();
     } catch (failure) {
       setError(failure);
@@ -269,9 +276,28 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     if (opened.current || !threads?.length || (orderId && !resolvedThreadId)) return;
     const target = resolvedThreadId ?? threads[0].id;
     opened.current = target;
-    loadThread(target);
+    loadThread(target, { read: Boolean(resolvedThreadId) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads?.length, resolvedThreadId]);
+
+  // The conversation the page opened by itself is read once the person acts
+  // in it: a click, a key, a wheel or a touch inside the open conversation.
+  // Not a scroll event: the page scrolls the timeline to the end on its own.
+  useEffect(() => {
+    const acted = (event) => {
+      const active = activeThreadRef.current;
+      if (!active || readThreadRef.current === active) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest(".message-workspace, .message-thread-card.active")) return;
+      readThreadRef.current = active;
+      markRead(active).then(() => reloadRef.current()).catch(() => {});
+    };
+    const kinds = ["pointerdown", "keydown", "wheel", "touchmove"];
+    for (const kind of kinds) document.addEventListener(kind, acted, { capture: true, passive: true });
+    return () => {
+      for (const kind of kinds) document.removeEventListener(kind, acted, { capture: true });
+    };
+  }, []);
 
   /**
    * Live: a message delivered to this company (or one of its own changing
@@ -293,7 +319,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       .channel(`messages:${org.id}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
         const moved = payload.new?.thread_id ?? payload.old?.thread_id;
-        if (moved && moved === activeThreadRef.current) loadThreadRef.current(moved);
+        if (moved && moved === activeThreadRef.current) loadThreadRef.current(moved, { read: readThreadRef.current === moved });
         else {
           clearTimeout(listTimer);
           listTimer = setTimeout(() => reloadRef.current(), 300);
@@ -700,7 +726,17 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         }}
         threads={shaped}
         initialThreadId={resolvedThreadId}
-        onSelectThread={loadThread}
+        // The design reports its starting thread when it mounts, which is
+        // the one this page opened by itself: shown, not yet read. Any other
+        // thread reported was picked by the person.
+        onSelectThread={(id) => {
+          // (Its mount effect runs before this page's own, so the thread
+          // it would open is worked out here rather than read from `opened`.)
+          const auto = !resolvedThreadId && opened.current !== "picked"
+            && id === (opened.current ?? threads?.[0]?.id);
+          opened.current = auto ? id : "picked";
+          return loadThread(id, { read: !auto || readThreadRef.current === id });
+        }}
         onSend={send}
         canAttach
         attachAccept={ATTACHMENT_ACCEPT}

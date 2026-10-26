@@ -126,6 +126,25 @@
   animation-fill-mode: backwards;
 }
 
+/* Live only: while the animation runs (240 ms on a phone, or for as long as a
+   background tab leaves it unstarted) the page still has a transform, so the
+   closed drawer still sits beside it and the page could still be dragged
+   sideways to it: 550 px wide in a 375 px phone. Clip the page's sideways
+   overflow: a fixed drawer placed by the viewport escapes the clip, so it is
+   only ever cut off in those moments. And a closed drawer is hidden, so its
+   buttons leave the tab order (made visible at once on opening; hidden only
+   after the slide out). */
+@media (max-width: 1220px) {
+  .app-shell > .messages-page {
+    overflow-x: clip;
+  }
+
+  .message-side-panel:not(.open) {
+    visibility: hidden;
+    transition: transform 180ms ease, visibility 0s linear 180ms;
+  }
+}
+
 /* Live only: the phone drawer centres its content, which is right for the
    design's one call; a conversation with several is taller than the drawer,
    and centred content that overflows loses its top (no scroll reaches it). */

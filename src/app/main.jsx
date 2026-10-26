@@ -65,6 +65,7 @@ import LiveBrandPaymentDetail from "./payments/LiveBrandPaymentDetail.jsx";
 import LiveBrandProfile from "./profile/LiveBrandProfile.jsx";
 import LiveFactoryBrandProfile from "./profile/LiveFactoryBrandProfile.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
+import { useUnreadMessages } from "./message/use-unread.js";
 import "./shell.css";
 
 // Lazy: only someone following a Terms or Privacy link needs it.
@@ -688,7 +689,10 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
   }, []);
 
   const paths = isFactory ? FACTORY_NAV_PATHS : BRAND_NAV_PATHS;
-  const items = (isFactory ? factoryNavItems : brandNavItems).filter((item) => paths[item.label]);
+  const unread = useUnreadMessages(activeOrg.id);
+  const items = (isFactory ? factoryNavItems : brandNavItems)
+    .filter((item) => paths[item.label])
+    .map((item) => (item.label === "Conversations" && unread ? { ...item, badge: unread } : item));
   const accountType = isFactory
     ? (profile?.vendor_kind === "trading_company" ? "Vendor account" : "Factory account")
     : "Brand account";
