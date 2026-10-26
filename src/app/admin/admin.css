@@ -13,7 +13,7 @@
 
 .admin-intro { margin: 0 0 8px; color: var(--text-muted); max-width: 64ch; font-size: 14px; }
 .admin-sub   { display: block; color: var(--text-muted); font-size: 12px; }
-.admin-error { color: var(--danger); font-size: 13px; font-weight: 500; }
+.admin-error { color: var(--danger) !important; font-size: 13px; font-weight: 500; } /* see console-live.css */
 
 .admin-scroll {
   overflow-x: auto;
