@@ -93,6 +93,21 @@ const BILLING_CARD_OPTIONS = {
   },
 };
 
+/**
+ * The tab in the address (`?tab=credits`), so a reload or a shared link opens
+ * the same tab: it stayed /payout, which opens Earnings. Replaced, not pushed:
+ * Back leaves the page rather than stepping through its tabs. The one-time
+ * notices (`invite`, `billing`) are dropped so they do not show again.
+ */
+function showTabInAddress(key) {
+  const url = new URL(window.location.href);
+  if (key === "earnings") url.searchParams.delete("tab");
+  else url.searchParams.set("tab", key);
+  url.searchParams.delete("invite");
+  url.searchParams.delete("billing");
+  window.history.replaceState(window.history.state, "", url);
+}
+
 export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const [tab, setTab] = useState(() => {
     const asked = new URLSearchParams(window.location.search).get("tab");
@@ -364,7 +379,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Payment activity type">
           {[["earnings", "Earnings"], ["billing", "Billing"], ["credits", "Credits"]].map(([key, label]) => (
             <button className={tab === key ? "active" : ""} type="button" role="tab" aria-selected={tab === key}
-                    onClick={() => { setTab(key); setClient("All clients"); }} key={key}>{label}</button>
+                    onClick={() => { setTab(key); setClient("All clients"); showTabInAddress(key); }} key={key}>{label}</button>
           ))}
         </div>
         {tab === "earnings" ? (

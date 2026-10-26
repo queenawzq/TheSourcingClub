@@ -253,6 +253,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   // The step whose updates are open in the pop-up. Its address is the step's
   // own (/orders/:id/milestones/:mid), so a notification or a reload opens it.
   const [openStepId, setOpenStepId] = useState(step);
+  // A step whose "Add update" was asked for from its pop-up (factory only).
+  const [addUpdateFor, setAddUpdateFor] = useState(null);
   const loadVersion = useRef(0);
   useEffect(() => { setOpenStepId(step); }, [step]);
 
@@ -546,6 +548,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     <CancelNotice order={order} isFactory={isFactory} counterparty={other} title={header.title} store={cancel} />
   );
 
+  const openRow = isFactory && openMilestone ? shaped.find((row) => row.id === openMilestone.id) : null;
   const stepPopup = openMilestone && (
     <StepUpdatesModal
       step={openMilestone}
@@ -553,6 +556,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       urlFor={urlFor}
       onOpenFile={(document) => openFile({ document })}
       onClose={() => showStep(null)}
+      // The factory posts from here too, on a step its row lets it post on.
+      onAddUpdate={openRow?.canComment ? () => { showStep(null); setAddUpdateFor(openRow.id); } : undefined}
     />
   );
 
@@ -591,6 +596,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           orderId, milestoneId: milestone.id, orgId: org.id, body, files,
         }))}
         dialog={{ busy, error: dialogError, onClose: () => setDialogError(null) }}
+        updateStepId={addUpdateFor}
+        onUpdateStepOpened={() => setAddUpdateFor(null)}
         notice={pending
           ? `${other ?? "The brand"} is setting the production steps. Nothing starts until they confirm them, and you are told of every change. If something doesn't work for you, message them.`
           : undefined}

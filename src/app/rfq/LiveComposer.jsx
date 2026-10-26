@@ -510,7 +510,8 @@ export default function LiveComposer({ org, rfqId }) {
           categories: labels("make").length ? labels("make") : labels("product_category"),
           capabilities: [...new Set([...labels("specialty"), ...labels(row.vendor_kind === "trading_company" ? "core_service" : "service")])],
           products: images.filter((image) => image.org_id === row.org_id).map((image) => ({
-            id: image.id, name: image.title || image.file_name,
+            // Captioned by the vendor's title only, never the file name.
+            id: image.id, name: image.title ?? "",
             image: supabase.storage.from("org-public").getPublicUrl(image.storage_path).data.publicUrl,
           })),
         }];

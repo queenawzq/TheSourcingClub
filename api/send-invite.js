@@ -53,6 +53,12 @@ export default async function handler(request, response) {
     .insert({ referrer_org_id: orgId, email, message })
     .select("id, email, refused_at")
     .single();
+  // A token the database refuses (expired, or not ours) is a sign-in problem,
+  // not a refusal of the invite: its raw "JWT expired" reached the screen.
+  if (inviteError && /^PGRST30/.test(inviteError.code ?? "")) {
+    response.status(401).json({ error: "your sign-in has expired: sign in again" });
+    return;
+  }
   if (inviteError) {
     const status = inviteError.code === "42501" ? 403 : inviteError.code === "54000" ? 429 : 400;
     response.status(status).json({ error: inviteError.message });
