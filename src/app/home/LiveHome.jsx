@@ -45,6 +45,8 @@ import { useActivity } from "./use-activity.jsx";
 function toRecommendedCard(vendor, navigate) {
   const name = vendor.orgs?.name ?? "Vendor";
   return {
+    // The card's key: two vendors can share a name.
+    id: vendor.org_id,
     initials: initialsOf(name),
     name,
     location: vendor.location ?? "Location not given",

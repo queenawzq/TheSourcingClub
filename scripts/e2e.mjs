@@ -3249,6 +3249,16 @@ async function main() {
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
     console.log("\nINVITE ONLY");
+    // Two companies with one name: the invite step selected by name, so
+    // ticking one invited both (production, 2026-10-26). A published,
+    // verified twin of this run's factory is listed beside it.
+    const { data: originalFactory } = await db.from("orgs").select("id").eq("name", factoryName).single();
+    const { data: twinFactory } = await db.from("orgs")
+      .insert({ type: "factory", name: factoryName, slug: `atelier-e2e-twin-${stamp}` }).select("id").single();
+    await db.from("factory_profiles").insert({
+      org_id: twinFactory.id, country_code: "PT", moq: 150, location: "Braga, Portugal",
+      published_at: new Date().toISOString(), verification_status: "verified",
+    });
     await signOutFully(page);
     await signIn(page, brandEmail, "Brand again");
     await page.goto(`${APP}/rfqs/new`);
@@ -3270,8 +3280,14 @@ async function main() {
     await page.waitForTimeout(600);
     await record(page, "Invite-only chosen", "publishing this without inviting anyone used to strand it");
 
-    await page.locator(".invite-selection-factory-card").first().click();
+    // Tick this run's factory: the first of the two cards with its name.
+    const twinCount = await page.evaluate((name) => [...document.querySelectorAll(".invite-selection-factory-card h3")].filter((h) => h.textContent === name).length, factoryName);
+    check(twinCount === 2, `both companies named "${factoryName}" are listed (${twinCount})`);
+    await page.evaluate((name) => [...document.querySelectorAll(".invite-selection-factory-card")]
+      .find((card) => card.querySelector("h3")?.textContent === name)?.click(), factoryName);
     await page.waitForTimeout(600);
+    check(await page.evaluate((name) => [...document.querySelectorAll(".invite-selection-factory-card.selected h3")].filter((h) => h.textContent === name).length, factoryName) === 1,
+      "ticking one of two same-named vendors ticks only that one");
     await record(page, "Choose who sees it", "ranked by fit against this request, same score the factory sees");
     const toggleOff = await page.evaluate(
       () => document.querySelector('input[name="open-to-all"]')?.checked === false,
@@ -3280,8 +3296,8 @@ async function main() {
 
     // A vendor's name opens its profile in place, and coming back keeps the
     // vendors already chosen.
-    const chosenName = await page.evaluate(() => document.querySelector(".invite-selection-factory-card h3")?.textContent);
-    await page.locator(".invite-selection-factory-card a.marketplace-factory-profile-link").first().click();
+    const chosenName = await page.evaluate(() => document.querySelector(".invite-selection-factory-card.selected h3")?.textContent);
+    await page.locator(".invite-selection-factory-card.selected a.marketplace-factory-profile-link").first().click();
     await waitFor(page, ".brand-factory-public-profile .factory-profile-hero", 20000);
     await record(page, "A vendor's profile, from the invite step", "the brand's designed view of the vendor, real data");
     const brandViewText = await page.locator(".brand-factory-public-profile").innerText();
@@ -3311,6 +3327,12 @@ async function main() {
     const { count: inviteCount } = await db.from("rfq_invitations")
       .select("*", { count: "exact", head: true }).eq("rfq_id", privateRfq.id);
     check(inviteCount === 1, `one factory was invited (${inviteCount})`);
+    const { data: invitedRows } = await db.from("rfq_invitations").select("factory_org_id").eq("rfq_id", privateRfq.id);
+    const invitedIds = (invitedRows ?? []).map((row) => row.factory_org_id);
+    check(invitedIds.length === 1 && [originalFactory.id, twinFactory.id].includes(invitedIds[0]),
+      "and only one of the two same-named companies: the invite goes by company, not by name");
+    // Gone again: the steps below find this run's factory by its name.
+    await db.from("orgs").delete().eq("id", twinFactory.id);
 
     // ================= BROWSE VENDORS =================
     // The brand's sidebar item, on the designed marketplace: every published
