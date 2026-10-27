@@ -23,7 +23,9 @@ const APPEARANCE = {
     colorBorder: "#d7e0ea",
     colorDanger: "#b33416",
     borderRadius: "8px",
-    buttonBorderRadius: "34px",
+    // Our buttons are pills (--button-radius: 34px); Stripe refuses a radius
+    // over 24px and drops the setting, so its maximum is the nearest pill.
+    buttonBorderRadius: "24px",
     formBorderRadius: "8px",
   },
 };
