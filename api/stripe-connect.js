@@ -1,13 +1,16 @@
 import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
-import { holdPayouts, withdrawBalance } from "./_stripe-payouts.js";
+import { holdPayouts, payoutSession, withdrawBalance } from "./_stripe-payouts.js";
 import { payoutAllocationFor } from "./_payout-allocation.js";
 
 /**
- * A factory's payouts through Stripe: an Express account, onboarded on
- * Stripe's own pages (identity, business and bank details, and Stripe's
- * Connected Account Agreement), with its own Express dashboard.
+ * A factory's payouts through Stripe: an Express account, onboarded and
+ * managed in Stripe's embedded forms on TSC's own page (identity, business
+ * and bank details, and Stripe's Connected Account Agreement).
  *
- *   onboard    create the account once, then a link to Stripe's onboarding
+ *   session    create the account once, then a session for the embedded
+ *              onboarding and account management forms. The session can edit
+ *              the company's identity and bank details, hence owners only
+ *   onboard    the same, as a link to Stripe's hosted onboarding (older flow)
  *   refresh    read the account back after onboarding and save its status;
  *              pays out anything already owed once transfers are on
  *   dashboard  a one-time link to the factory's Express dashboard
@@ -47,7 +50,7 @@ export default async function handler(request, response) {
   try {
     const { data: existing } = await db.from("stripe_connect_accounts").select("*").eq("org_id", orgId).maybeSingle();
 
-    if (action === "onboard") {
+    if (action === "onboard" || action === "session") {
       let accountId = existing?.stripe_account_id;
       if (!accountId) {
         const code = String(country ?? "").toUpperCase();
@@ -75,6 +78,7 @@ export default async function handler(request, response) {
         await saveConnectAccount(db, orgId, account);
         accountId = account.id;
       }
+      if (action === "session") return reply(response, 200, { clientSecret: await payoutSession(stripe, accountId) });
       const origin = appOrigin(request);
       const link = await stripe.accountLinks.create({
         account: accountId,

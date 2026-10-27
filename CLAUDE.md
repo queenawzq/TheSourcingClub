@@ -112,7 +112,8 @@ screens below — each held back for a stated reason, not a backlog entry:
   made on the old site): a read-only status card. Due and failed payments go
   to the designed Fund screen.
 - **The factory's "Get paid with Stripe" card** (`StripePayoutCard`, on
-  Queena's `PayoutDetails`). No design draws payout setup.
+  Queena's `PayoutDetails`). No design draws payout setup; Stripe's embedded
+  forms open in its dialogs (see **Payments**).
 - **`AdminMessages`.** No designed queue for messages held for review, and a
   decision is a required step: the other side sees nothing until staff
   release a held message.
@@ -281,6 +282,7 @@ The brand pays TSC by card through Stripe (card only since 2026-10-19; payments 
 - **Keys:** `VITE_STRIPE_PUBLISHABLE_KEY` is the only `VITE_` one; `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET` stay server-only. `.env.local` locally (with `stripe listen --forward-to …/api/stripe-webhook --forward-connect-to …`), Vercel Preview/Development with test keys, Production with TSC's own. `api/_stripe.js` refuses an `sk_live_` key anywhere but a production deploy.
 - **Where Stripe can pay out:** a US platform's Connect transfers reach the US, Canada, the UK, Switzerland and the EEA only (`src/shared/stripe-payout-countries.mjs`). A factory elsewhere (mainland China, Hong Kong…) is still charged through Stripe, and staff pay it by bank to its `factory_payout_accounts` details, then "Mark paid out by bank" (`release_payment_to_factory`).
 - **Express outside the US needs `card_payments` + `transfers`.** `transfers` alone is refused under the full agreement, and the recipient agreement cannot take cross-border transfers.
+- **A factory sets up and changes its payout account on TSC's page**, in Stripe's embedded forms (Connect embedded components: Account onboarding, and Account management with `external_account_collection`), never on Stripe's own pages. `api/stripe-connect.js` `session` creates the Express account once and an Account Session for the two forms; owners only, since the session can edit the company's identity and bank details. **Stripe still asks the person to confirm who they are in a small Stripe pop-up** (an SMS code): that is required for Express accounts and cannot be turned off without TSC taking over KYC and negative-balance liability (`controller.requirement_collection: application`), which was declined (2026-10-27). Closing a form reads the account back (`refresh`). One Connect instance per company per page (`src/lib/stripe-connect-embed.js`), logged out only on sign-out. The hosted `onboard` link and the Express `dashboard` link remain on the server for links already sent; nothing in the app opens them.
 - **Never let Stripe replay an old failure.** Stripe answers a reused idempotency key with its first answer for 24 hours, errors included. Do not key a create that can fail for a reason that will change (Connect not enabled, a capability not active yet): guard with our own row instead, or put a changing value in the key (a payout is claimed first, `claim_payment_release`, and its key carries the claim's time), and list existing transfers before paying.
 
 ### Conversations (Phase 4)
