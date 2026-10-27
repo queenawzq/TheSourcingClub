@@ -20,8 +20,15 @@ import { awaitingScreen, fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads,
 import { acceptCall, browserTimeZone, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
+import { zoomViewSize } from "../../shared/zoom-view.mjs";
 import { serverNow } from "../../lib/server-clock.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
+
+/** A call's full-screen Zoom page, which comes back to this conversation. */
+function callPageUrl(call) {
+  const back = `/app.html/messages/${call.thread_id}`;
+  return `/call.html?call=${encodeURIComponent(call.id)}&back=${encodeURIComponent(back)}`;
+}
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -404,6 +411,12 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     cancel: (call) => setConfirmCall({ call, mode: call.status === "proposed" ? "withdraw" : "cancel" }),
     counter: (call) => setDialog({ threadId: call.thread_id, counterOf: call, key: call.id, busy: false, error: null }),
     join: async (call) => {
+      // Phones and tablets join on Zoom's own full-screen page (call.html):
+      // Zoom supports the view drawn in this panel on desktop browsers only.
+      if (window.matchMedia?.("(hover: none) and (pointer: coarse)").matches) {
+        window.location.assign(callPageUrl(call));
+        return;
+      }
       setCallBusy(call.id);
       setCallNotes((current) => ({ ...current, [call.id]: null }));
       const answer = await joinCall(call.id);
@@ -442,15 +455,12 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   useEffect(() => {
     // Once per join: a failure updates `video` too, which must not retry.
     if (!video?.join || video.attempted || !zoomRoot.current) return undefined;
-    // Zoom's meeting view is never narrower than about 360px: on a phone it
-    // would be cut off, so the call opens in Zoom's app straight away.
+    // Zoom's meeting view is never narrower than about 360px: in a window
+    // that narrow it would be cut off, so the call opens on Zoom's own
+    // full-screen page instead, as on a phone.
     if (zoomRoot.current.clientWidth < 360) {
-      setVideo((current) => current && {
-        ...current,
-        attempted: true,
-        failed: true,
-        text: "On a screen this narrow, the call opens in the Zoom app.",
-      });
+      setVideo((current) => current && { ...current, attempted: true });
+      window.location.assign(callPageUrl(video.call));
       return undefined;
     }
     setVideo((current) => current && { ...current, attempted: true });
@@ -460,16 +470,27 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         const ZoomMtgEmbedded = await loadZoomEmbedded();
         const client = ZoomMtgEmbedded.createClient();
         zoomClient.current = client;
-        // Zoom draws its view at a fixed size: the panel's width, 16:9, in
-        // speaker view (its default, "ribbon", is a small floating window).
-        const width = Math.floor(zoomRoot.current.clientWidth);
+        // Zoom draws its view at a fixed size, in speaker view (its default,
+        // "ribbon", is a small floating window): the panel's width, 16:9, but
+        // no taller than the room under the conversation's header, or its
+        // toolbar is cut off (zoom-view.mjs). Below 900px the page scrolls
+        // instead of the conversation, so the window is the room there.
+        const root = zoomRoot.current;
+        const workspace = root.closest(".message-workspace");
+        const panel = root.closest(".video-call-panel");
+        const header = workspace?.querySelector(".message-room-header");
+        const room = Math.min(workspace?.clientHeight ?? window.innerHeight, window.innerHeight);
+        const { width, height } = zoomViewSize({
+          panelWidth: root.clientWidth,
+          availableHeight: room - (header?.offsetHeight ?? 0) - ((panel?.offsetHeight ?? 0) - root.offsetHeight),
+        });
         await client.init({
           zoomAppRoot: zoomRoot.current,
           language: "en-US",
           patchJsMedia: true,
           leaveOnPageUnload: true,
           customize: {
-            video: { defaultViewType: "speaker", isResizable: false, viewSizes: { default: { width, height: Math.round((width * 9) / 16) } } },
+            video: { defaultViewType: "speaker", isResizable: false, viewSizes: { default: { width, height } } },
           },
         });
         await client.join({

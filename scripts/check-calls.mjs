@@ -25,6 +25,7 @@ import {
   theirZoneFor,
 } from "../src/shared/call-time.mjs";
 import { joinUrlMismatch, meetingRequestBody } from "../api/_zoom.js";
+import { ZOOM_VIEW_CHROME, ZOOM_VIEW_MIN_WIDTH, zoomViewSize } from "../src/shared/zoom-view.mjs";
 
 let failures = 0;
 let checks = 0;
@@ -108,6 +109,17 @@ check(joinUrlMismatch({ meetingNumber: "84598714022", joinUrl: "https://us06web.
 check(joinUrlMismatch({ meetingNumber: "84598714022", joinUrl: "https://us06web.zoom.us/j/84598714022?pwd=x" }) === null,
   "a join link to the meeting itself is not");
 check(joinUrlMismatch({ meetingNumber: "1", joinUrl: "" }) === null, "nor is a meeting with no link");
+
+// Zoom's view fits the room under the conversation's header, toolbar and all.
+// Sized from the panel's width alone, a 1920 x 822 window drew it 707px tall
+// in 536px of room, and its mic, camera and leave buttons were out of reach.
+const wideShort = zoomViewSize({ panelWidth: 886, availableHeight: 536 });
+check(wideShort.height + ZOOM_VIEW_CHROME <= 536, "a wide, short window draws Zoom's toolbar inside the room it has");
+check(wideShort.width < 886 && Math.abs(wideShort.height - (wideShort.width * 9) / 16) < 1, "by narrowing the view, still 16:9");
+const tall = zoomViewSize({ panelWidth: 700, availableHeight: 1200 });
+check(tall.width === 700 && tall.height === 394, "with room to spare the view is the panel's width");
+check(zoomViewSize({ panelWidth: 500, availableHeight: 200 }).width === ZOOM_VIEW_MIN_WIDTH,
+  "never narrower than Zoom's toolbar needs, however short the window");
 
 if (failures) {
   console.log(`check:calls: ${failures} of ${checks} checks failed`);
