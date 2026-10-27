@@ -331,7 +331,10 @@ export default function StripePayoutCard({
               : "Earnings stay in your balance until you withdraw them."
             // Only an owner reads the balance; for anyone else it is not "in progress".
             : account?.transfers_active
-              ? isOwner ? "We could not show your balance right now. Try again shortly." : "Only a company owner can view the withdrawable balance."
+              // Closing a Stripe form reads the account back before the
+              // balance, so the account is connected a moment before its
+              // balance arrives: that is loading, not a failure.
+              ? isOwner ? busy ? "Checking your balance…" : "We could not show your balance right now. Try again shortly." : "Only a company owner can view the withdrawable balance."
               : account?.details_submitted
                 ? "Payout verification in progress"
                 : account
