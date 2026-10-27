@@ -34,11 +34,13 @@ export function PrototypeSideNav({
               className={item.label === active ? "active" : ""}
               type="button"
               onClick={() => onNav?.(item.label)}
-              aria-label={item.ariaLabel || item.label}
+              aria-label={item.badge ? `${item.ariaLabel || item.label}, ${item.badge} unread` : (item.ariaLabel || item.label)}
               title={collapsed ? item.label : undefined}
             >
               <img className="nav-icon" src={`/assets/prototype-icons/${item.icon}.svg`} alt="" />
               <span className="nav-label">{item.label}</span>
+              {/* Live only: an unread count (the prototypes pass none). */}
+              {item.badge ? <b className="nav-badge" aria-hidden="true">{item.badge > 99 ? "99+" : item.badge}</b> : null}
             </button>
           </React.Fragment>
         ))}

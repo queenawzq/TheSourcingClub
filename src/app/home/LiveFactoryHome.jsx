@@ -27,6 +27,7 @@ import { toProjectCard } from "../live-adapter.js";
 import { browserTimeZone } from "../../lib/domain/calls.js";
 import { dashboardCalls, inviteAttention } from "../message/live-calls.js";
 import { useDashboardCalls } from "../message/use-calls.js";
+import { useMessagesChanged } from "../message/use-unread.js";
 import { useActivity } from "./use-activity.jsx";
 
 const MONTH = new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" });
@@ -176,6 +177,13 @@ export default function LiveFactoryHome({ org, profile }) {
     return () => { cancelled = true; };
   }, [org.id, reload]);
 
+  // "N unread messages" moves while the dashboard is open, as the bell does.
+  useMessagesChanged(org.id, () => {
+    dashboardSnapshot(org.id)
+      .then((snapshot) => setState((current) => (current ? { ...current, snapshot } : current)))
+      .catch(() => {});
+  });
+
   if (error) return <main className="factory-dashboard-page"><p className="home-load-error" role="alert">{error.message}</p></main>;
   if (!state) return null;
 
@@ -226,7 +234,7 @@ export default function LiveFactoryHome({ org, profile }) {
     attention.push({
       type: "Sample",
       tone: "warning",
-      title: `${snapshot.steps_awaiting_you} production step${snapshot.steps_awaiting_you === 1 ? "" : "s"} need an update`,
+      title: n(snapshot.steps_awaiting_you) === 1 ? "1 production step needs an update" : `${n(snapshot.steps_awaiting_you)} production steps need an update`,
       meta: "Post an update so the brand can review and approve.",
       action: "Update",
       onAction: () => navigate("/orders"),

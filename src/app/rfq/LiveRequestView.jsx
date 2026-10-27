@@ -334,22 +334,26 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
             label: fit?.label ?? "",
             tone: fit?.tone ?? "",
           }}
-          brand={extras.brand ? {
-            initials: (extras.brand.name ?? "??").slice(0, 2).toUpperCase(),
-            name: extras.brand.name ?? "",
+          // Always an object: with none (the summary still loading, or failed
+          // to load) the design draws its own "Maison Rue" and its facts.
+          // The name is the request's own; the facts wait for the summary.
+          brand={{
+            initials: (extras.brand?.name ?? rfq.orgs?.name ?? "").slice(0, 2).toUpperCase(),
+            name: extras.brand?.name ?? rfq.orgs?.name ?? "",
             // The brand's name opens its profile.
             profileHref: `/app.html/brands/${rfq.brand_org_id}?from=request`,
             onOpenProfile: () => navigate(`/brands/${rfq.brand_org_id}?from=request`),
-            location: extras.brand.hq_location ?? "",
-            verified: extras.brand.verified ? "Yes" : "Not yet",
-            clubOrders: String(extras.brand.club_order_count ?? 0),
-            avgResponse: extras.brand.avg_response_hours
-              ? `${Math.round(Number(extras.brand.avg_response_hours))} hours`
-              : "No replies yet",
+            location: extras.brand?.hq_location ?? "",
+            verified: !extras.brand ? "" : extras.brand.verified ? "Yes" : "Not yet",
+            clubOrders: !extras.brand ? "" : String(extras.brand.club_order_count ?? 0),
+            avgResponse: !extras.brand ? ""
+              : extras.brand.avg_response_hours
+                ? `${Math.round(Number(extras.brand.avg_response_hours))} hours`
+                : "No replies yet",
             // Whether the brand has funded a step through TSC before; nothing
             // else about its payments is checked, so nothing else is claimed.
-            paymentStatus: extras.brand.payment_verified ? "Paid through TSC" : "No payments yet",
-          } : null}
+            paymentStatus: !extras.brand ? "" : extras.brand.payment_verified ? "Paid through TSC" : "No payments yet",
+          }}
           // No "N quotes received" line: RLS shows a vendor only its own
           // quotes, so the count read 0 on every request.
           activity={[

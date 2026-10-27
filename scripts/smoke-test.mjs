@@ -1753,6 +1753,7 @@ console.log("\ndaily notifications and dates in the reader's zone");
     { kind: "rfq_matched", body: "Demo Brand is looking for a factory. Quotes close Nov 20.", data: { quote_deadline: deadline } },
     { kind: "call_proposed", body: "Fit review", data: { starts_at: deadline, duration_minutes: 30 } },
     { kind: "message", body: "A message", data: {} },
+    { kind: "message", body: "Trims by Friday.", data: { message_text: { en: "Trims by Friday.", zh: "辅料周五前确认。" } } },
     { kind: "rfq_invited", body: "Quotes close Nov 20.", data: null },
   ];
   const zones = [undefined, "UTC", "Asia/Shanghai", "America/New_York", "Not/AZone"];
@@ -1760,6 +1761,13 @@ console.log("\ndaily notifications and dates in the reader's zone");
     notificationBody(n, { timeZone, withZone }) === emailBody(n, { timeZone, withZone }))))
     ? ok("an email words its dates as the bell does")
     : fail("the email's date wording differs from the bell's");
+  const translated = samples.find((n) => n.data?.message_text);
+  notificationBody(translated) === "Trims by Friday."
+    && notificationBody(translated, { locale: "zh" }) === "辅料周五前确认。"
+    && emailBody(translated, { locale: "zh" }) === "辅料周五前确认。"
+    && emailBody(translated, { locale: "en" }) === "Trims by Friday."
+    ? ok("a message reaches the bell and the email in the reader's language")
+    : fail("the message notification's language", { bell: notificationBody(translated), zhEmail: emailBody(translated, { locale: "zh" }) });
   const { notificationTitle } = await import("../src/shared/notification-text.mjs");
   const { notificationTitle: emailTitle } = await import("./generate-notification-email.mjs");
   const titles = [
@@ -2238,10 +2246,17 @@ console.log("\nadmin — AI help for reviewers, and clearing test data");
     { label: "Business registration", result: "Missing", detail: "No business registration document has been uploaded." },
     { label: "Duplicate company signal", result: "Review", detail: `Shares a legal name or website domain with: Rival Mill ${stamp}.` },
   ];
-  const noModelNote = await staffRouteAs("suggest-review-request", staff.client, { body: { companyName: "Assist Mill", gaps } });
+  const noModelNote = await staffRouteAs("suggest-review-request", staff.client, { body: { orgId: mill.id, companyName: "Assist Mill", gaps } });
   const refusedNote = await upstreamAnswers(401, () => staffRouteAs("suggest-review-request", staff.client, {
-    body: { companyName: "Assist Mill", gaps }, env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
+    body: { orgId: mill.id, companyName: "Assist Mill", gaps }, env: { OPENROUTER_API_KEY: "smoke-not-a-key" },
   }));
+  const unknownNote = await staffRouteAs("suggest-review-request", staff.client, {
+    body: { orgId: "00000000-0000-4000-8000-000000000000", companyName: "Nobody", gaps },
+  });
+  const brandNote = await staffRouteAs("suggest-review-request", brand.client, { body: { orgId: mill.id, gaps } });
+  unknownNote.status === 404 && !unknownNote.message && brandNote.status === 403
+    ? ok("\"Suggest with AI\" refuses a company that does not exist, and anyone but staff")
+    : fail("the request note for an unknown company", { unknownNote, brandNote: brandNote.status });
   noModelNote.message?.includes("No business registration document") && /not set up on this site/.test(noModelNote.notice)
     && /refused this site's key/.test(refusedNote.notice) && refusedNote.message
     && ![noModelNote.message, refusedNote.message].some((message) => message.includes(`Rival Mill ${stamp}`))

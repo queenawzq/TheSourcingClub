@@ -2198,6 +2198,13 @@ async function main() {
         `it was translated for the brand: "${sent.body_translated.slice(0, 60)}"`);
       check(sent.body_translated !== sent.body,
         "the translation is not simply a copy of the original");
+      // The bell (and so the "messaged you" email) in the brand's language
+      // too: it carried the factory's Chinese.
+      const { data: notice } = await db.from("notifications").select("body, data")
+        .eq("kind", "message").eq("subject_id", runThread.id).neq("org_id", sent.sender_org_id)
+        .order("created_at", { ascending: false }).limit(1).maybeSingle();
+      check(notice?.body === sent.body_translated.trim().slice(0, 160) && notice?.data?.message_text?.zh === sent.body.trim().slice(0, 160),
+        `the brand's bell says it in English, keeping the Chinese for a Chinese email ("${notice?.body?.slice(0, 40)}")`);
     } else {
       check(true, "no translation was produced, and the message went anyway — as it must");
     }
@@ -2208,9 +2215,9 @@ async function main() {
     await signIn(page, brandEmail, "Brand reading");
 
     // Unread is derived per user from message_reads, so "unread" means this
-    // user has no read stamp on this thread yet. Asserted before opening,
-    // because the designed screen selects the newest conversation on arrival —
-    // which is what clears it.
+    // user has no read stamp on this thread yet. Asserted before opening:
+    // the designed screen shows the newest conversation on arrival, and the
+    // brand's click on it is what clears it.
     const { data: brandUser } = await db
       .from("user_profiles").select("id").eq("email", brandEmail).single();
     const { count: readBefore } = await db
@@ -2684,17 +2691,18 @@ async function main() {
     check(/Shanghai/.test(brandCallCard), "with the factory's time in the zone it proposed in (Shanghai)");
     await record(page, "Brand dashboard: Scheduled calls");
 
-    // Left open across the Join window: the card turns to "Join call" as the
-    // window opens, not a poll or a reload later. The call is moved (as the
-    // server, which the text check lets through) so its window opens in 12 s.
+    // A confirmed call can be joined at any time before it ends (692c450), so
+    // the dashboard offers Join call before the start too. The call is moved
+    // (as the server, which the text check lets through) to start in ten
+    // minutes and 12 s, so the steps below find it "Starting soon".
     const opensAt = Date.now() + 12000;
     await db.from("calls").update({ starts_at: new Date(opensAt + 10 * 60000).toISOString() }).eq("id", accepted?.id);
     const joinButton = () => page.evaluate(() => [...document.querySelectorAll(".home-upcoming-call-card button")].map((node) => node.textContent.trim()));
     await page.waitForTimeout(4000);
-    check((await joinButton()).includes("Open"), "before the window opens, the open dashboard says Open");
+    check((await joinButton()).includes("Join call"), "before the start, the open dashboard offers Join call");
     await page.waitForTimeout(Math.max(opensAt + 3000 - Date.now(), 0));
-    check((await joinButton()).includes("Join call"), "and within 3 s of the window opening it says Join call, with no reload");
-    await record(page, "Brand dashboard: Join call", "the window opened while the page was open");
+    check((await joinButton()).includes("Join call"), "and still does once the call is starting soon, with no reload");
+    await record(page, "Brand dashboard: Join call", "a confirmed call is joinable before it starts");
 
     await signOutFully(page);
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory dashboard with a call", "factory");
@@ -2704,6 +2712,32 @@ async function main() {
     check(await page.evaluate(() => [...document.querySelectorAll(".factory-upcoming-call-card button")].some((node) => node.textContent.trim() === "Join call")),
       "with Join call, since its window is open");
     await record(page, "Factory dashboard: Scheduled calls");
+
+    // In the window's last ten minutes the call can still be cancelled:
+    // cancel_call allows it until the start, and the card offered only Join.
+    await page.goto(`${APP}/messages/${runThread.id}`);
+    await waitFor(page, ".message-side-panel .call-card-status.confirmed", 25000);
+    const soonPanel = await page.locator(".message-side-panel").innerText();
+    check(/Starting soon/.test(soonPanel), "the conversation's call card says Starting soon");
+    check(await page.evaluate(() => [...document.querySelectorAll(".message-side-panel button")].some((node) => node.textContent.trim() === "Cancel call")),
+      "and still offers Cancel call");
+    await record(page, "Starting soon: Cancel call", "cancellable until the start");
+
+    // On a phone, the closed calls drawer must not widen the page: it sat
+    // beside the page while its entrance animation ran (550 px in 375).
+    await page.setViewportSize(375, 812);
+    await page.goto(`${APP}/messages/${runThread.id}`);
+    await waitFor(page, ".message-workspace", 25000);
+    const phoneWidth = await page.evaluate(() => {
+      window.scrollTo(400, 0);
+      const result = { scroll: document.documentElement.scrollWidth, client: document.documentElement.clientWidth, x: window.scrollX };
+      window.scrollTo(0, 0);
+      return result;
+    });
+    check(phoneWidth.scroll <= phoneWidth.client && phoneWidth.x === 0,
+      `Conversations fits a 375 px phone, with the calls drawer closed (${phoneWidth.scroll} in ${phoneWidth.client})`);
+    await record(page, "Conversations at 375", "no sideways scroll");
+    await page.setViewportSize(1440, 1100);
 
     // ================= EMAILS =================
     // The company's switches decide what is emailed. Read back from Mailpit,
@@ -3163,6 +3197,19 @@ async function main() {
       await adjust("Remove credits", 600, "Removing more than there is");
       const tooMuch = await page.locator(".admin-review-modal .admin-error").innerText().catch(() => "");
       check(/you cannot remove 600/i.test(tooMuch), `removing more than the balance is refused ("${tooMuch}")`);
+      // Red, in this dialog: it sits inside the design's .factory-profile-card,
+      // whose paragraph rule outranked .admin-error and drew it grey.
+      const refusalColour = await page.evaluate(() => {
+        const note = document.querySelector(".admin-review-modal .admin-error");
+        const probe = document.createElement("span");
+        probe.style.color = "var(--danger)";
+        note?.parentElement?.append(probe);
+        const danger = probe.isConnected ? getComputedStyle(probe).color : null;
+        probe.remove();
+        return note ? { shown: getComputedStyle(note).color, danger, body: getComputedStyle(document.body).color } : null;
+      });
+      check(Boolean(refusalColour) && refusalColour.shown === refusalColour.danger && refusalColour.danger !== refusalColour.body,
+        `the Adjust credits refusal is red (${refusalColour?.shown} vs ${refusalColour?.danger})`);
       await record(page, "Adjust refused", "a balance never goes below zero");
       // The refusal is about that attempt only: switching to Add, or changing
       // the amount, must not leave it under a form it no longer describes.
@@ -3203,6 +3250,16 @@ async function main() {
     // ================= INVITE ONLY =================
     // The path that used to publish a request nobody could see.
     console.log("\nINVITE ONLY");
+    // Two companies with one name: the invite step selected by name, so
+    // ticking one invited both (production, 2026-10-26). A published,
+    // verified twin of this run's factory is listed beside it.
+    const { data: originalFactory } = await db.from("orgs").select("id").eq("name", factoryName).single();
+    const { data: twinFactory } = await db.from("orgs")
+      .insert({ type: "factory", name: factoryName, slug: `atelier-e2e-twin-${stamp}` }).select("id").single();
+    await db.from("factory_profiles").insert({
+      org_id: twinFactory.id, country_code: "PT", moq: 150, location: "Braga, Portugal",
+      published_at: new Date().toISOString(), verification_status: "verified",
+    });
     await signOutFully(page);
     await signIn(page, brandEmail, "Brand again");
     await page.goto(`${APP}/rfqs/new`);
@@ -3224,8 +3281,14 @@ async function main() {
     await page.waitForTimeout(600);
     await record(page, "Invite-only chosen", "publishing this without inviting anyone used to strand it");
 
-    await page.locator(".invite-selection-factory-card").first().click();
+    // Tick this run's factory: the first of the two cards with its name.
+    const twinCount = await page.evaluate((name) => [...document.querySelectorAll(".invite-selection-factory-card h3")].filter((h) => h.textContent === name).length, factoryName);
+    check(twinCount === 2, `both companies named "${factoryName}" are listed (${twinCount})`);
+    await page.evaluate((name) => [...document.querySelectorAll(".invite-selection-factory-card")]
+      .find((card) => card.querySelector("h3")?.textContent === name)?.click(), factoryName);
     await page.waitForTimeout(600);
+    check(await page.evaluate((name) => [...document.querySelectorAll(".invite-selection-factory-card.selected h3")].filter((h) => h.textContent === name).length, factoryName) === 1,
+      "ticking one of two same-named vendors ticks only that one");
     await record(page, "Choose who sees it", "ranked by fit against this request, same score the factory sees");
     const toggleOff = await page.evaluate(
       () => document.querySelector('input[name="open-to-all"]')?.checked === false,
@@ -3234,8 +3297,8 @@ async function main() {
 
     // A vendor's name opens its profile in place, and coming back keeps the
     // vendors already chosen.
-    const chosenName = await page.evaluate(() => document.querySelector(".invite-selection-factory-card h3")?.textContent);
-    await page.locator(".invite-selection-factory-card a.marketplace-factory-profile-link").first().click();
+    const chosenName = await page.evaluate(() => document.querySelector(".invite-selection-factory-card.selected h3")?.textContent);
+    await page.locator(".invite-selection-factory-card.selected a.marketplace-factory-profile-link").first().click();
     await waitFor(page, ".brand-factory-public-profile .factory-profile-hero", 20000);
     await record(page, "A vendor's profile, from the invite step", "the brand's designed view of the vendor, real data");
     const brandViewText = await page.locator(".brand-factory-public-profile").innerText();
@@ -3265,6 +3328,12 @@ async function main() {
     const { count: inviteCount } = await db.from("rfq_invitations")
       .select("*", { count: "exact", head: true }).eq("rfq_id", privateRfq.id);
     check(inviteCount === 1, `one factory was invited (${inviteCount})`);
+    const { data: invitedRows } = await db.from("rfq_invitations").select("factory_org_id").eq("rfq_id", privateRfq.id);
+    const invitedIds = (invitedRows ?? []).map((row) => row.factory_org_id);
+    check(invitedIds.length === 1 && [originalFactory.id, twinFactory.id].includes(invitedIds[0]),
+      "and only one of the two same-named companies: the invite goes by company, not by name");
+    // Gone again: the steps below find this run's factory by its name.
+    await db.from("orgs").delete().eq("id", twinFactory.id);
 
     // ================= BROWSE VENDORS =================
     // The brand's sidebar item, on the designed marketplace: every published

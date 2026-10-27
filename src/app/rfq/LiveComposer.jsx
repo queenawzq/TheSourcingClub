@@ -510,7 +510,8 @@ export default function LiveComposer({ org, rfqId }) {
           categories: labels("make").length ? labels("make") : labels("product_category"),
           capabilities: [...new Set([...labels("specialty"), ...labels(row.vendor_kind === "trading_company" ? "core_service" : "service")])],
           products: images.filter((image) => image.org_id === row.org_id).map((image) => ({
-            id: image.id, name: image.title || image.file_name,
+            // Captioned by the vendor's title only, never the file name.
+            id: image.id, name: image.title ?? "",
             image: supabase.storage.from("org-public").getPublicUrl(image.storage_path).data.publicUrl,
           })),
         }];
@@ -520,7 +521,7 @@ export default function LiveComposer({ org, rfqId }) {
       if (firstId && !preselected.current) {
         preselected.current = true;
         if (first) {
-          setSelectedVendors((current) => (current.includes(first.orgs?.name) ? current : [...current, first.orgs?.name]));
+          setSelectedVendors((current) => (current.includes(first.org_id) ? current : [...current, first.org_id]));
         }
       }
       setVendors(
@@ -552,11 +553,13 @@ export default function LiveComposer({ org, rfqId }) {
       // and nobody outside it may be pointed at one.
       await publishRfq(draftId, openToAll ? "open_to_all" : "invited_only");
 
+      // By company id: two companies can share a name, and selecting by name
+      // invited both when one was ticked.
       const chosen = vendors
-        .filter((vendor) => selectedVendors.includes(vendor.orgs?.name))
+        .filter((vendor) => selectedVendors.includes(vendor.org_id))
         .map((vendor) => vendor.org_id);
       if (chosen.length) await setInvitations(draftId, chosen);
-      setInvited(selectedVendors.filter((name) => vendors.some((vendor) => vendor.orgs?.name === name)));
+      setInvited(chosen);
       // The design's "Quote request sent" step, rather than dropping the brand
       // on the request page with no word that anything was sent.
       setStep("success");
@@ -622,8 +625,8 @@ export default function LiveComposer({ org, rfqId }) {
         onBack={close}
         // Already requesting: "Request quote" ticks this vendor and goes back.
         onRequestQuote={() => {
-          const name = vendor?.orgs?.name;
-          if (name) setSelectedVendors((current) => (current.includes(name) ? current : [...current, name]));
+          const id = vendor?.org_id;
+          if (id) setSelectedVendors((current) => (current.includes(id) ? current : [...current, id]));
           close();
         }}
       />
@@ -632,6 +635,8 @@ export default function LiveComposer({ org, rfqId }) {
 
   if (step === "invite") {
     const shaped = vendors.map((vendor) => ({
+      // What the invite step selects by (the design falls back to the name).
+      id: vendor.org_id,
       initials: (vendor.orgs?.name ?? "?").slice(0, 2).toUpperCase(),
       name: vendor.orgs?.name ?? "Vendor",
       location: vendor.location ?? "Location not given",

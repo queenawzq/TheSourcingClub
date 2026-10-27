@@ -22,7 +22,7 @@ const PHOTO = /^image\//;
  * `{ id, author, when, body, documents: [{ id, file_name, mime_type }] }`.
  * `urlFor(document)` mints a signed URL; `onOpenFile(document)` opens a file.
  */
-export function StepUpdatesModal({ step, updates, urlFor, onOpenFile, onClose }) {
+export function StepUpdatesModal({ step, updates, urlFor, onOpenFile, onClose, onAddUpdate }) {
   const [urls, setUrls] = useState({});
 
   // Signed URLs for every photo in the history, minted when it opens.
@@ -53,7 +53,9 @@ export function StepUpdatesModal({ step, updates, urlFor, onOpenFile, onClose })
           <span>
             {updates.length
               ? `${updates.length} ${updates.length === 1 ? "update" : "updates"} on this step, newest first.`
-              : "Nothing has been posted on this step yet."}
+              : onAddUpdate
+                ? "Nothing has been posted on this step yet. Add the first update for the brand."
+                : "Nothing has been posted on this step yet."}
           </span>
         </header>
         <div className="step-updates-list">
@@ -85,8 +87,12 @@ export function StepUpdatesModal({ step, updates, urlFor, onOpenFile, onClose })
             );
           })}
         </div>
+        {/* `onAddUpdate`: the factory, on a step open for updates. A "due
+            soon" reminder lands here, and the step's own "Add update" sat
+            behind the pop-up. */}
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>Close</button>
+          {onAddUpdate && <button className="primary-btn" type="button" onClick={onAddUpdate}>Add update</button>}
         </footer>
       </section>
     </div>

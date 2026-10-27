@@ -44,10 +44,14 @@ export function notificationPath(notification, { isFactory }) {
 }
 
 /** Same answers as notificationBody() in src/shared/notification-text.mjs. */
-export function notificationBody(notification, { timeZone, withZone = false } = {}) {
+export function notificationBody(notification, { timeZone, withZone = false, locale = "en" } = {}) {
   const body = String(notification?.body ?? "");
   const data = notification?.data ?? {};
   const moment = (iso) => formatMoment(iso, timeZone, withZone);
+
+  // A message in the reader's language: `body` is the English the bell
+  // shows, data.message_text both languages when it was translated.
+  if (data.message_text?.[locale]) return String(data.message_text[locale]);
 
   if (data.quote_deadline && /Quotes close [^.]*\./.test(body)) {
     const when = moment(data.quote_deadline);
@@ -224,7 +228,7 @@ export function notificationEmail(row, env) {
   const cta = path ? t.cta : t.ctaFallback;
   // Dates in the recipient's saved zone, named; UTC, named, when unknown.
   const title = notificationTitle(row, { timeZone: row.time_zone || "UTC" }).trim() || t.lead(company);
-  const body = notificationBody(row, { timeZone: row.time_zone || "UTC", withZone: true }).trim();
+  const body = notificationBody(row, { timeZone: row.time_zone || "UTC", withZone: true, locale }).trim();
   const why = t.why(company, setting);
 
   const text = [

@@ -1150,6 +1150,25 @@ export function FlowShell({
   );
 }
 
+/**
+ * A drawn pill or label that acts as a button: announced as one, reachable
+ * with Tab, and pressed with Enter or Space as well as a click. The quote
+ * card's "Message", "Review quote" and "Choose quote" are a <span> and a
+ * <strong> whose styling is keyed on those elements, so they keep them.
+ */
+function asButton(onActivate) {
+  return {
+    role: "button",
+    tabIndex: 0,
+    onClick: onActivate,
+    onKeyDown: (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      onActivate(event);
+    },
+  };
+}
+
 function App() {
   const query = new URLSearchParams(window.location.search);
   const requestedScreen = query.get("screen");
@@ -4291,7 +4310,7 @@ export function HomeScreen({
               </header>
               <div className="home-recommended-factory-grid">
                 {recommended.slice(0, 3).map((factory) => (
-                  <HomeRecommendedFactoryCard factory={factory} goTo={goTo} key={factory.name} />
+                  <HomeRecommendedFactoryCard factory={factory} goTo={goTo} key={factory.id ?? factory.name} />
                 ))}
               </div>
             </section>
@@ -4351,7 +4370,7 @@ export function HomeScreen({
               {recommended.length ? (
                 <div className="home-dashboard-vendor-grid">
                   {recommended.slice(0, 2).map((factory) => (
-                    <HomeRecommendedFactoryCard factory={factory} goTo={goTo} key={factory.name} />
+                    <HomeRecommendedFactoryCard factory={factory} goTo={goTo} key={factory.id ?? factory.name} />
                   ))}
                 </div>
               ) : (
@@ -4511,8 +4530,8 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
             <div className="marketplace-samples invite-samples" aria-label={`${factory.name} sample products`} onScroll={(event) => updateSampleScroll(event.currentTarget)}>
               {sampleProducts.map((product) => (
                 <figure className="marketplace-sample invite-sample" key={product.id ?? product.name}>
-                  <img src={product.image} alt={`${factory.name} ${product.name}`} />
-                  <figcaption><strong>{product.name}</strong></figcaption>
+                  <img src={product.image} alt={product.name ? `${factory.name} ${product.name}` : `${factory.name} sample product`} />
+                  {product.name && <figcaption><strong>{product.name}</strong></figcaption>}
                 </figure>
               ))}
             </div>
@@ -7172,11 +7191,13 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote, live
             onScroll={(event) => updateSampleScroll(event.currentTarget)}
           >
             {factory.products.map((product) => (
-              <figure className={product.factory ? "marketplace-sample factory-media" : "marketplace-sample"} key={product.name}>
-                <img src={product.image} alt={`${factory.name} ${product.name}`} />
-                <figcaption>
-                  <strong>{product.name}</strong>
-                </figcaption>
+              <figure className={product.factory ? "marketplace-sample factory-media" : "marketplace-sample"} key={product.id ?? product.name}>
+                <img src={product.image} alt={product.name ? `${factory.name} ${product.name}` : `${factory.name} sample product`} />
+                {product.name && (
+                  <figcaption>
+                    <strong>{product.name}</strong>
+                  </figcaption>
+                )}
               </figure>
             ))}
           </div>
@@ -9477,9 +9498,9 @@ export function InviteScreen({
           {inviteVendors.map((factory) => (
             <InviteFactoryCard
               factory={factory}
-              isSelected={selectedFactories.includes(factory.name)}
-              key={factory.name}
-              onToggle={() => toggle(factory.name)}
+              isSelected={selectedFactories.includes(factory.id ?? factory.name)}
+              key={factory.id ?? factory.name}
+              onToggle={() => toggle(factory.id ?? factory.name)}
             />
           ))}
         </div>
@@ -9596,10 +9617,12 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
             >
               {factory.products.map((product) => (
                 <figure className="marketplace-sample invite-sample" key={product.id ?? product.name}>
-                  <img src={product.image} alt={`${factory.name} ${product.name}`} />
-                  <figcaption>
-                    <strong>{product.name}</strong>
-                  </figcaption>
+                  <img src={product.image} alt={product.name ? `${factory.name} ${product.name}` : `${factory.name} sample product`} />
+                  {product.name && (
+                    <figcaption>
+                      <strong>{product.name}</strong>
+                    </figcaption>
+                  )}
                 </figure>
               ))}
             </div>
@@ -9654,7 +9677,7 @@ export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false
         <div className="success-copy">
           <h2>Your quote request is live</h2>
           <p>
-            {sentTo ?? <>We sent the brief to {vendorCount} selected vendors.</>} They can review the request,
+            {sentTo ?? <>We sent the brief to {vendorCount} selected {vendorCount === 1 ? "vendor" : "vendors"}.</>} They can review the request,
             ask questions, and submit quotes before the deadline.
           </p>
         </div>
@@ -9778,7 +9801,10 @@ export function QuotesScreen({
 }) {
   const quoteList = liveQuotes ?? factories;
   const isLive = Boolean(liveQuotes);
-  const selectedQuoteFactories = quoteList.filter((factory) => selectedQuotesForCompare.includes(factory.name));
+  // Live quotes carry an id; two vendors can share a name. The prototype's
+  // have none, so it keeps selecting by name.
+  const quoteKey = (factory) => factory.id ?? factory.name;
+  const selectedQuoteFactories = quoteList.filter((factory) => selectedQuotesForCompare.includes(quoteKey(factory)));
 
   function toggleCompareQuote(factoryName) {
     setSelectedQuotesForCompare((current) =>
@@ -9806,17 +9832,17 @@ export function QuotesScreen({
       <div className="quote-list">
         {quoteList.map((factory) => (
           <button
-            key={factory.name}
+            key={quoteKey(factory)}
             type="button"
-            className={selectedQuote === factory.name ? "factory-card quote-card selected" : "factory-card quote-card"}
-            onClick={() => setSelectedQuote(factory.name)}
+            className={selectedQuote === quoteKey(factory) ? "factory-card quote-card selected" : "factory-card quote-card"}
+            onClick={() => setSelectedQuote(quoteKey(factory))}
           >
             <span
-              className={selectedQuotesForCompare.includes(factory.name) ? "check-box checked quote-compare-check" : "check-box quote-compare-check"}
+              className={selectedQuotesForCompare.includes(quoteKey(factory)) ? "check-box checked quote-compare-check" : "check-box quote-compare-check"}
               aria-hidden="true"
               onClick={(event) => {
                 event.stopPropagation();
-                toggleCompareQuote(factory.name);
+                toggleCompareQuote(quoteKey(factory));
               }}
             />
             <div className="quote-factory-content">
@@ -9836,20 +9862,20 @@ export function QuotesScreen({
                 <div className="factory-actions quote-actions">
                   <span
                     className="save-pill button-like-action"
-                    onClick={(event) => {
+                    {...asButton((event) => {
                       event.stopPropagation();
                       if (onMessage) {
                         onMessage(factory);
                         return;
                       }
                       goTo("messages");
-                    }}
+                    })}
                   >
                     Message
                   </span>
                   <span
                     className="save-pill button-like-action"
-                    onClick={(event) => {
+                    {...asButton((event) => {
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
                       if (onReview) {
@@ -9857,14 +9883,14 @@ export function QuotesScreen({
                         return;
                       }
                       goTo("quoteDetail");
-                    }}
+                    })}
                   >
                     Review quote
                   </span>
                   <strong
                     className="button-like-action"
                     data-testid="choose-quote"
-                    onClick={(event) => {
+                    {...asButton((event) => {
                       event.stopPropagation();
                       setSelectedQuote(factory.name);
                       setSelectedReorderProject(null);
@@ -9877,7 +9903,7 @@ export function QuotesScreen({
                         return;
                       }
                       goTo("contract");
-                    }}
+                    })}
                   >
                     {isLive && busy ? "Awarding…" : "Choose quote"}
                   </strong>
@@ -9963,7 +9989,7 @@ export function QuotesScreen({
                   {selectedQuoteFactories.map((factory) => {
                     const details = getQuoteComparisonDetails(factory);
                     return (
-                      <tr key={factory.name}>
+                      <tr key={quoteKey(factory)}>
                         <td>
                           <strong>{factory.name}</strong>
                           <span>{factory.location}</span>
@@ -10115,18 +10141,18 @@ export function QuoteDetailScreen({
                 </div>
               </div>
               <div className="factory-actions quote-actions">
-                <span className="save-pill button-like-action" onClick={() => onMessage?.()}>Message</span>
+                <span className="save-pill button-like-action" {...asButton(() => onMessage?.())}>Message</span>
                 <strong
                   className="button-like-action"
                   data-testid="choose-quote-detail"
-                  onClick={() => {
+                  {...asButton(() => {
                     if (onChoose) {
                       onChoose();
                       return;
                     }
                     setSelectedReorderProject?.(null);
                     goTo("contract");
-                  }}
+                  })}
                 >
                   Choose quote
                 </strong>

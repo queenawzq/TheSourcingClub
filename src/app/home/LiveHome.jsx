@@ -33,6 +33,7 @@ import { loadRecommendedVendors } from "../profile/load-profile.js";
 import { browserTimeZone } from "../../lib/domain/calls.js";
 import { dashboardCalls, inviteAttention } from "../message/live-calls.js";
 import { useDashboardCalls } from "../message/use-calls.js";
+import { useMessagesChanged } from "../message/use-unread.js";
 import { useActivity } from "./use-activity.jsx";
 
 /**
@@ -44,6 +45,8 @@ import { useActivity } from "./use-activity.jsx";
 function toRecommendedCard(vendor, navigate) {
   const name = vendor.orgs?.name ?? "Vendor";
   return {
+    // The card's key: two vendors can share a name.
+    id: vendor.org_id,
     initials: initialsOf(name),
     name,
     location: vendor.location ?? "Location not given",
@@ -106,7 +109,7 @@ function attentionFrom(snapshot, isFactory, goTo, dueCents = null) {
     items.push({
       type: "Step",
       tone: "warning",
-      title: `${snapshot.steps_awaiting_you} step${snapshot.steps_awaiting_you === 1 ? "" : "s"} need you`,
+      title: n(snapshot.steps_awaiting_you) === 1 ? "1 step needs you" : `${n(snapshot.steps_awaiting_you)} steps need you`,
       meta: "Approve or comment so the other side can carry on.",
       facts: [],
       action: "Review steps",
@@ -200,6 +203,13 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
       .catch((failure) => !cancelled && setError(failure));
     return () => { cancelled = true; };
   }, [org.id, isFactory]);
+
+  // "N unread messages" moves while the dashboard is open, as the bell does.
+  useMessagesChanged(org.id, () => {
+    dashboardSnapshot(org.id)
+      .then((snapshot) => setState((current) => ({ ...current, snapshot })))
+      .catch(() => {});
+  });
 
   const { snapshot, dueCents, rfqs, projects, savings } = state;
   const ownZone = browserTimeZone() ?? "UTC";

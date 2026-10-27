@@ -54,14 +54,15 @@ function Row({ row, onDecide, busy }) {
         <span className="admin-sub">{stuck ? "the check never answered" : METHOD[row.method] ?? row.method ?? ""}</span>
       </td>
       <td>{when(row.sent_at)}</td>
-      <td>
+      {/* The note and both buttons in one cell, stacked: as two columns the
+          table outgrew a laptop screen and Reject sat past its edge. */}
+      <td className="admin-decision">
         {/* One box for both buttons: a reject shows the sender this note,
             a release keeps it for staff and shows it to nobody else. */}
         <input type="text" placeholder="Required to reject; the sender sees it"
                aria-label="Note: the sender is shown it if you reject; if you release, only staff see it"
                value={note} onChange={(event) => setNote(event.target.value)} />
-      </td>
-      <td className="admin-actions">
+        <div className="admin-actions">
         <button type="button" className="admin-approve" disabled={busy}
                 data-testid="release-message"
                 onClick={() => onDecide(row, "release", note)}>
@@ -73,6 +74,7 @@ function Row({ row, onDecide, busy }) {
                 onClick={() => onDecide(row, "reject", note)}>
           Reject
         </button>
+        </div>
       </td>
     </tr>
   );
@@ -95,6 +97,21 @@ export default function AdminMessages() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  // Staff cannot be notified (they have no org), so nothing tells this page a
+  // message was held. It reads the queue again every 30 seconds, and when the
+  // tab comes back into view.
+  useEffect(() => {
+    const again = () => document.visibilityState === "visible" && load();
+    const timer = setInterval(again, 30000);
+    window.addEventListener("focus", again);
+    document.addEventListener("visibilitychange", again);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", again);
+      document.removeEventListener("visibilitychange", again);
+    };
+  }, [load]);
 
   async function decide(row, decision, note) {
     setBusyId(row.message_id);
@@ -156,8 +173,7 @@ export default function AdminMessages() {
                 <th>Message</th>
                 <th>Why held</th>
                 <th>Sent</th>
-                <th>Note</th>
-                <th />
+                <th>Decision</th>
               </tr>
             </thead>
             <tbody>
