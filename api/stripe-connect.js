@@ -134,7 +134,8 @@ export default async function handler(request, response) {
           // in its currency.
           default: Boolean(method.default_for_currency) && method.currency === account.default_currency,
           payoutsFor: method.default_for_currency && method.currency !== account.default_currency ? method.currency : null,
-        })),
+        // The default first, as Stripe lists it (Payments and Settings both read this order).
+        })).sort((a, b) => Number(b.default) - Number(a.default)),
       });
     }
 
