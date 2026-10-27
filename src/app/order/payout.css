@@ -157,6 +157,12 @@
 /* Stripe's embedded payout forms: wider than a plain dialog, since Stripe
    lays out its own two-column fields, and as tall as they need. */
 .brand-profile-modal.payout-modal.tsc-connect-modal { width: min(760px, calc(100vw - 40px)); }
+/* Stripe places its dropdowns (Industry, say) inside its frame by the space
+   it can see in the browser window. A dialog that scrolls on its own clips
+   them where Stripe cannot see, so here the page layer scrolls instead and
+   the window is the only edge. */
+.brand-profile-modal-layer.tsc-connect-layer { place-items: start center; overflow-y: auto; }
+.brand-profile-modal.payout-modal.tsc-connect-modal { max-height: none; overflow: visible; }
 .tsc-connect-embed { display: grid; gap: 12px; min-height: 120px; }
 .tsc-connect-status { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 20px; }
 .tsc-connect-status.error { color: var(--danger); }

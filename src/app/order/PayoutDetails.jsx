@@ -227,10 +227,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const visibleEarnings = client === "All clients"
     ? fundedEarnings
     : fundedEarnings.filter((row) => row.order?.brand_org_id === client);
-  const summaryCurrency = visibleEarnings[0]?.currency || "USD";
-  const bankCurrency = stripeBalance?.available?.find((row) => row.amount > 0)?.currency
-    || stripeBalance?.available?.[0]?.currency || summaryCurrency;
+  // Earnings are the orders' amounts, in the order's currency; Paid out is
+  // what reached the bank, in the currency Stripe paid it in. Neither is
+  // converted into the other, so an empty figure is a zero in the earnings'
+  // currency, and a strip holding two currencies says why.
+  const summaryCurrency = (visibleEarnings[0]?.currency || "USD").toUpperCase();
   const summary = earningsSummaryFor(earnings ?? [], stripeBalance, client);
+  const paidInOtherCurrency = summary.paid?.some((row) => row.currency !== summaryCurrency);
   const earningsSummary = [
     ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
     ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
@@ -421,12 +424,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
           <div className="project-summary-strip billing-payment-strip factory-earnings-summary" aria-label="Earnings summary">
             {earningsSummary.map(([label, amounts, help], index) => (
               <div className={`metric${index === 0 ? " highlight" : ""}`} key={label}>
-                <strong>{amounts === null ? "—" : (amounts.length ? amounts : [{ amount: 0, currency: label === "Paid out" ? bankCurrency : summaryCurrency }])
+                <strong>{amounts === null ? "—" : (amounts.length ? amounts : [{ amount: 0, currency: summaryCurrency }])
                   .map(({ amount, currency }) => <span className="payment-currency-value" key={currency}>{formatMoney(amount, currency)}</span>)}</strong>
                 <span className="payment-metric-label">{label} <PaymentHelp label={label}>{help}</PaymentHelp></span>
               </div>
             ))}
           </div>
+          {paidInOtherCurrency ? <p className="payment-allocation-note">Earnings are in each order's currency ({summaryCurrency}). Paid out is in the currency your bank received, so the two are not converted or added together.</p> : null}
           {hasUnallocatedHistory ? <p className="payment-allocation-note">Older withdrawals without a client link appear only under All clients.</p> : null}
 
           <section className="payout-transactions-section" aria-labelledby="transactions-heading">
