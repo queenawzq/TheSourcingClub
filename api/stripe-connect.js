@@ -109,12 +109,14 @@ export default async function handler(request, response) {
     }
 
     if (action === "balance") {
-      const [balance, allocation, externalAccounts] = await Promise.all([
+      const [balance, allocation, externalAccounts, account] = await Promise.all([
         stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
         payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
         stripe.accounts.listExternalAccounts(existing.stripe_account_id, { limit: 10 }),
+        stripe.accounts.retrieve(existing.stripe_account_id),
       ]);
       return reply(response, 200, {
+        defaultCurrency: account.default_currency,
         available: balance.available.map(({ amount, currency }) => ({ amount, currency })),
         pending: balance.pending.map(({ amount, currency }) => ({ amount, currency })),
         payouts: allocation.payouts,
@@ -126,8 +128,14 @@ export default async function handler(request, response) {
           last4: method.last4,
           currency: method.currency,
           country: method.country,
-          default: Boolean(method.default_for_currency),
-        })),
+          // default_for_currency is true for one account per currency, so a
+          // EUR account and a USD one are both "default". The default is the
+          // one in the account's own currency; the other only takes payouts
+          // in its currency.
+          default: Boolean(method.default_for_currency) && method.currency === account.default_currency,
+          payoutsFor: method.default_for_currency && method.currency !== account.default_currency ? method.currency : null,
+        // The default first, as Stripe lists it (Payments and Settings both read this order).
+        })).sort((a, b) => Number(b.default) - Number(a.default)),
       });
     }
 

@@ -152,7 +152,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           const balance = await connectAction(org.id, "balance").catch(() => null);
           const connected = balance?.methods ?? [];
           setPayoutMethods(connected.length ? connected.map((method) => ({
-            label: method.default ? "Default" : method.type === "card" ? "Payout card" : "Bank account",
+            label: method.default ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Payout card" : "Bank account",
             name: `${method.type === "card" ? "Payout card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`,
             note: [method.name, method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
           })) : [{ label: "Connected", name: "Payout account", note: "Managed securely through your connected payout account." }]);

@@ -39,12 +39,12 @@ function OperationsContact() {
 /**
  * The currency the balance is shown in. A connected account is credited in its
  * own currency (a UK factory in GBP, a German one in EUR), so reading USD alone
- * shows $0 and disables Withdraw. Prefer money in the default payout account's
- * currency, then any currency holding money, then the default's, then USD.
+ * shows $0 and disables Withdraw. Prefer money in the account's default
+ * currency, then any currency holding money, then the default, then USD.
  */
 function balanceCurrency(balance) {
   const available = balance?.available ?? [];
-  const preferred = balance?.methods?.find((method) => method.default)?.currency?.toUpperCase();
+  const preferred = balance?.defaultCurrency?.toUpperCase();
   const funded = available.filter((row) => row.amount > 0);
   const row = funded.find((entry) => entry.currency?.toUpperCase() === preferred) ?? funded[0]
     ?? available.find((entry) => entry.currency?.toUpperCase() === preferred);
@@ -67,7 +67,7 @@ export function PayoutModal({ children, title, eyebrow, onClose, actions, wide =
   }, [onClose]);
 
   return createPortal(
-    <div className="brand-profile-modal-layer payout-modal-layer">
+    <div className={`brand-profile-modal-layer payout-modal-layer${wide ? " tsc-connect-layer" : ""}`}>
       <button className="brand-profile-modal-scrim" type="button" aria-label="Close" onClick={onClose} />
       <section className={`brand-profile-modal payout-modal${wide ? " tsc-connect-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby="payout-modal-title">
         <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={onClose}>×</button>
@@ -402,7 +402,8 @@ export default function StripePayoutCard({
                   <strong>{method.type === "card" ? "Payout card" : "Bank account"}{method.last4 ? ` ending in ${method.last4}` : ""}</strong>
                   <span>{[method.name, method.currency?.toUpperCase(), method.country && countryName(method.country)].filter(Boolean).join(" · ")}</span>
                 </div>
-                {method.default ? <span className="payout-method-default">Default</span> : null}
+                {method.default ? <span className="payout-method-default">Default</span>
+                  : method.payoutsFor ? <span className="payout-method-default">For {method.payoutsFor.toUpperCase()} payouts</span> : null}
                 <div className="payout-method-menu">
                   <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${method.type === "card" ? "payout card" : "bank account"}`} aria-expanded={methodMenu === method.id} disabled={busy} onClick={() => setMethodMenu((open) => open === method.id ? null : method.id)}>...</button>
                   {methodMenu === method.id ? (
