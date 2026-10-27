@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { holdPayouts, withdrawBalance } from "../api/_stripe-payouts.js";
+import { holdPayouts, payoutSession, withdrawBalance } from "../api/_stripe-payouts.js";
 
 const request = { amount: 100, currency: "usd", requestId: "b1f9fd8c-76bd-43a7-ad48-502ebed382b3" };
 test("holding earnings disables automatic payouts without making a withdrawal", async () => {
@@ -27,4 +27,19 @@ test("invalid withdrawals and failure to disable autopayouts never move money", 
     await assert.rejects(withdrawBalance({}, "acct_factory", { ...request, ...invalid }), /valid available balance/);
   }
   await assert.rejects(withdrawBalance({ accounts: { update: async () => { throw Error("Stripe unavailable"); } } }, "acct_factory", request), /Stripe unavailable/);
+});
+test("the embedded payout session holds earnings and lets the factory add its own bank account", async () => {
+  const calls = [];
+  const stripe = {
+    accounts: { update: async (...args) => calls.push(["hold", ...args]) },
+    accountSessions: { create: async (...args) => { calls.push(["session", ...args]); return { client_secret: "acct_session_secret" }; } },
+  };
+  assert.equal(await payoutSession(stripe, "acct_factory"), "acct_session_secret");
+  assert.equal(calls[0][0], "hold");
+  const payoutForm = { enabled: true, features: { external_account_collection: true } };
+  assert.deepEqual(calls[1], ["session", {
+    account: "acct_factory",
+    components: { account_onboarding: payoutForm, account_management: payoutForm },
+  }]);
+  await assert.rejects(payoutSession({ accounts: { update: async () => { throw Error("Stripe unavailable"); } } }, "acct_factory"), /Stripe unavailable/);
 });

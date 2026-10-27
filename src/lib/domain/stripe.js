@@ -80,8 +80,17 @@ export async function removeSavedCard(orgId, paymentMethodId) {
   await call("stripe-cards", { orgId, action: "remove", paymentMethodId });
 }
 
-/** onboard | refresh | dashboard, for a factory owner's own company. */
+/** session | onboard | refresh | dashboard | balance | withdraw, for a factory owner's own company. */
 export const connectAction = (orgId, action, extra = {}) => call("stripe-connect", { orgId, action, ...extra });
+
+/**
+ * A client secret for Stripe's embedded payout forms. Creates the company's
+ * Stripe account first if it has none, in the country given.
+ */
+export async function connectSession(orgId, country) {
+  const { clientSecret } = await connectAction(orgId, "session", country ? { country } : {});
+  return clientSecret;
+}
 
 /** The company's Stripe payout account, if it has started one. */
 export async function connectAccountFor(orgId) {
