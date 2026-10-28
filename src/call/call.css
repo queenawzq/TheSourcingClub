@@ -1,0 +1,70 @@
+/*
+ * call.html before Zoom's own meeting page covers it, and if it cannot: one
+ * line of status and the ways on. Zoom's page brings its own styles, which is
+ * why this is a page of its own and not a screen in app.html.
+ */
+@font-face {
+  font-family: "Satoshi";
+  src: url("/assets/fonts/Satoshi-Medium.otf") format("opentype");
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Satoshi";
+  src: url("/assets/fonts/Satoshi-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-display: swap;
+}
+
+.call-page {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 18px;
+  min-height: 100vh;
+  margin: 0;
+  padding: 24px 16px;
+  box-sizing: border-box;
+  background: #0b1020;
+  color: #fff;
+  font: 500 16px/1.45 "Satoshi", system-ui, sans-serif;
+  text-align: center;
+}
+
+body:has(> .call-page) {
+  margin: 0;
+  background: #0b1020;
+}
+
+.call-page-status {
+  max-width: 340px;
+  margin: 0;
+}
+
+.call-page-actions {
+  display: grid;
+  gap: 10px;
+  width: min(100%, 320px);
+}
+
+.call-page-actions a {
+  display: block;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  color: #fff;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.call-page-actions a.primary {
+  border-color: #2458ff;
+  background: #2458ff;
+}
+
+/* Zoom draws its pre-join card 392px wide, so on a 375px phone the Join
+   button and the terms line under it are cut off at both edges. */
+#zmmtg-root .preview-meeting-info {
+  max-width: calc(100vw - 32px);
+}

@@ -173,6 +173,23 @@
   background: #0b1020;
 }
 
+/* Kept within the height under the header, Zoom's view can be narrower than
+   the panel (zoom-view.mjs): it sits in the middle. And the conversation,
+   which clips what overflows, scrolls while a call is drawn, so the timeline
+   and the message box under the call stay reachable. */
+.video-call-panel .video-call-zoom:not(:empty) {
+  display: flex;
+  justify-content: center;
+}
+
+.message-workspace:has(.video-call-zoom:not(:empty)) {
+  overflow-y: auto;
+}
+
+.message-workspace:has(.video-call-zoom:not(:empty)) > .message-timeline {
+  min-height: 160px;
+}
+
 /* The design stacks the panel in a column at 900px and under: Zoom's view is
    simply the last item there (wrapping a column would start a second one). */
 @media (max-width: 900px) {
