@@ -120,6 +120,11 @@ screens below — each held back for a stated reason, not a backlog entry:
 - **`AdminPayments`.** No designed payments board, and some payments only a
   person can move: staff have no org and cannot be notified (see **Payments**).
 - The brand's own **`RfqDetail`** — no designed counterpart yet.
+- **The matching panels** (`src/app/matching/`: the factory's matching
+  profile, the composer's "Factory match details", staff evidence review).
+  No design draws them yet, and they show only while matching v2 is on (off
+  everywhere; see **Matching v2**). Replace them with Queena's design before
+  turning it on in production.
 
 A step's full history opens in **`StepUpdatesModal`** (`src/shared/`), over
 the order, at the step's own address (`/orders/:id/milestones/:mid`). The
@@ -284,6 +289,30 @@ The brand pays TSC by card through Stripe (card only since 2026-10-19; payments 
 - **Express outside the US needs `card_payments` + `transfers`.** `transfers` alone is refused under the full agreement, and the recipient agreement cannot take cross-border transfers.
 - **A factory sets up and changes its payout account on TSC's page**, in Stripe's embedded forms (Connect embedded components: Account onboarding, and Account management with `external_account_collection`), never on Stripe's own pages. `api/stripe-connect.js` `session` creates the Express account once and an Account Session for the two forms; owners only, since the session can edit the company's identity and bank details. **Stripe still asks the person to confirm who they are in a small Stripe pop-up** (an SMS code): that is required for Express accounts and cannot be turned off without TSC taking over KYC and negative-balance liability (`controller.requirement_collection: application`), which was declined (2026-10-27). Closing a form reads the account back (`refresh`). One Connect instance per company per page (`src/lib/stripe-connect-embed.js`), logged out only on sign-out. The hosted `onboard` link and the Express `dashboard` link remain on the server for links already sent; nothing in the app opens them.
 - **Never let Stripe replay an old failure.** Stripe answers a reused idempotency key with its first answer for 24 hours, errors included. Do not key a create that can fail for a reason that will change (Connect not enabled, a capability not active yet): guard with our own row instead, or put a changing value in the key (a payout is claimed first, `claim_payment_release`, and its key carries the claim's time), and list existing transfers before paying.
+
+### Matching v2 (explainable matching)
+
+`matching_settings.enabled` is a single global flag and is **off**; while it
+is off, every screen and RPC behaves as before. `match_score` and
+`match_score_rfq` keep their signatures: they were renamed to `*_legacy` and
+recreated to call `factory_match_v2()` when the flag is on and the legacy
+function when it is off. Things that will bite:
+
+- **An invitation to a factory that is not fully qualified needs
+  `matching_acknowledged`.** `guard_matching_invitation` refuses it otherwise,
+  and an excluded factory cannot be invited at all. The composer checks this
+  *before* publishing, by org id, because a request published with nobody
+  invited is a dead end.
+- **Evidence review is not company verification.** Approving a capability or
+  certificate never changes `verification_status` and never issues credits.
+  A factory cannot set a status: the guard resets it, and a replaced, moved or
+  deleted file (`storage.objects`, `documents`) sends the review back to
+  pending. Reads and metadata updates do not.
+- **Name `unnest` aliases in validations.** In `select 1 from unnest(x) id
+  where not exists(select … from taxonomy_terms t where t.id=id)`, the inner
+  `id` is `t.id`, so the check passes everything. Write `unnest(x)
+  sel(term_id)` and compare `sel.term_id`, and avoid alias names that match a
+  PL/pgSQL variable.
 
 ### Conversations (Phase 4)
 

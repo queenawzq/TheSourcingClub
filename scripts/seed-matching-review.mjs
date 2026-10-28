@@ -1,6 +1,9 @@
-/** Isolated local matching fixtures. Never accepts a hosted Supabase URL. */
+/**
+ * Isolated local matching fixtures. Never accepts a hosted Supabase URL.
+ * Turns matching v2 on for that local database. Prints the two env lines a
+ * dev server needs rather than writing .env.local, which holds other keys.
+ */
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 const workdir = process.env.MATCHING_SUPABASE_WORKDIR;
 if (!workdir)
@@ -242,14 +245,11 @@ const link = check(
     email: users.brand.email,
   }),
 );
-writeFileSync(
-  ".env.local",
-  `VITE_SUPABASE_URL=${stack.API_URL}\nVITE_SUPABASE_ANON_KEY=${key}\n`,
-);
 console.log(
   JSON.stringify(
     {
       url: stack.API_URL,
+      env: `VITE_SUPABASE_URL=${stack.API_URL}\nVITE_SUPABASE_ANON_KEY=${key}`,
       brandEmail: users.brand.email,
       localTestCode: link.properties.email_otp,
       ids,

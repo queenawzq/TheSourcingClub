@@ -48,13 +48,15 @@
   margin: 8px 0;
 }
 .matching-panel button {
-  min-height: 42px;
-  padding: 0 16px;
+  min-height: var(--button-height);
+  padding: var(--button-padding);
   border: 1px solid var(--border, #d7e0ea);
-  border-radius: 8px;
+  border-radius: var(--button-radius);
   background: var(--surface, #fff);
   color: inherit;
   font: inherit;
+  font-size: var(--button-font-size);
+  line-height: var(--button-line);
   cursor: pointer;
 }
 .matching-summary {
