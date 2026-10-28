@@ -58,8 +58,8 @@ begin
  if exists(select 1 from unnest(new.colour_quantities) q where q<=0 or q is null) or
    (cardinality(new.colour_quantities)>0 and (new.quantity is null or (select sum(q) from unnest(new.colour_quantities) q)<>new.quantity)) then
    raise exception 'colour quantities must be positive and sum to the style quantity' using errcode='22023'; end if;
- if exists(select 1 from unnest(new.required_term_ids) id where not exists(select 1 from public.taxonomy_links l join public.taxonomy_terms t on t.id=l.term_id
-   where l.subject_type=new.subject_type and l.subject_id=new.subject_id and l.term_id=id and t.kind in ('fabric','technique','certification'))) then
+ if exists(select 1 from unnest(new.required_term_ids) req(term_id) where not exists(select 1 from public.taxonomy_links l join public.taxonomy_terms t on t.id=l.term_id
+   where l.subject_type=new.subject_type and l.subject_id=new.subject_id and l.term_id=req.term_id and t.kind in ('fabric','technique','certification'))) then
    raise exception 'mandatory terms must be selected requirements' using errcode='22023'; end if;
  if exists(select 1 from unnest(new.preferred_countries||new.accepted_countries) code where code !~ '^[A-Z]{2}$') then
    raise exception 'choose ISO country codes' using errcode='22023'; end if;
@@ -73,7 +73,7 @@ alter table public.factory_certifications add column non_expiring boolean not nu
 
 create table public.factory_capability_evidence (
  id uuid primary key default gen_random_uuid(), org_id uuid not null references public.factory_profiles(org_id) on delete cascade,
- term_id uuid not null references public.taxonomy_terms(id), document_id uuid not null references public.documents(id),
+ term_id uuid not null references public.taxonomy_terms(id), document_id uuid not null references public.documents(id) on delete cascade,
  status public.verification_status not null default 'pending', reviewed_by uuid references auth.users(id), reviewed_at timestamptz,
  review_note text, created_at timestamptz not null default now(), unique(org_id,term_id)
 );
@@ -120,7 +120,7 @@ begin
    if new.document_id is not null and not exists(select 1 from public.documents d where d.id=new.document_id and d.org_id=new.org_id and d.bucket='org-private' and d.kind='certificate') then
      raise exception 'certificate must belong to this factory' using errcode='42501'; end if;
    if new.non_expiring and new.expires_at is not null then raise exception 'choose an expiry date or non-expiring' using errcode='22023'; end if;
-   if exists(select 1 from unnest(new.scope_term_ids) id where not exists(select 1 from public.taxonomy_terms t where t.id=id and t.kind in ('product_category','fabric','technique'))) then raise exception 'invalid certificate scope' using errcode='22023'; end if;
+   if exists(select 1 from unnest(new.scope_term_ids) scope(term_id) where not exists(select 1 from public.taxonomy_terms t where t.id=scope.term_id and t.kind in ('product_category','fabric','technique'))) then raise exception 'invalid certificate scope' using errcode='22023'; end if;
    changed:=tg_op='INSERT';
    if tg_op='UPDATE' then
      if new.org_id<>old.org_id or new.id<>old.id then raise exception 'cannot reassign certificate' using errcode='42501'; end if;
@@ -210,7 +210,7 @@ begin
  end if;
  end_date:=coalesce(bulk_date,sample_date,current_date);
  required_ids:=coalesce(req.required_term_ids,'{}');
- if exists(select 1 from unnest(required_ids) id where not exists(select 1 from public.taxonomy_links l where l.subject_type=factory_match_v2.subject_type and l.subject_id=factory_match_v2.subject_id and l.term_id=id)) then missing:=missing||jsonb_build_array('Review mandatory requirements after editing the request'); end if;
+ if exists(select 1 from unnest(required_ids) required_term(term_id) where not exists(select 1 from public.taxonomy_links l where l.subject_type=factory_match_v2.subject_type and l.subject_id=factory_match_v2.subject_id and l.term_id=required_term.term_id)) then missing:=missing||jsonb_build_array('Review mandatory requirements after editing the request'); end if;
 
  foreach v_kind in array array['product_category','fabric','technique'] loop
    select coalesce(array_agg(l.term_id),'{}') into group_ids from public.taxonomy_links l join public.taxonomy_terms t on t.id=l.term_id
@@ -401,7 +401,7 @@ begin
  if subject_type='rfq' then select r.brand_org_id into owner_org from public.rfqs r where r.id=subject_id;
  else owner_org:=subject_id; end if;
  if owner_org is null or not public.is_org_member(owner_org) then raise exception 'only the owning company can edit matching information' using errcode='42501'; end if;
- if cardinality(selections)>200 or exists(select 1 from unnest(selections) id where not exists(select 1 from public.taxonomy_terms t where t.id=id and t.kind in ('product_category','fabric','technique','development_service','certification') and (t.org_id is null or t.org_id=owner_org))) then
+ if cardinality(selections)>200 or exists(select 1 from unnest(selections) sel(term_id) where not exists(select 1 from public.taxonomy_terms t where t.id=sel.term_id and t.kind in ('product_category','fabric','technique','development_service','certification') and (t.org_id is null or t.org_id=owner_org))) then
    raise exception 'choose valid matching terms' using errcode='22023'; end if;
  if subject_type='factory_profile' and not exists(select 1 from public.factory_profiles f where f.org_id=owner_org) then raise exception 'factory profile required' using errcode='22023'; end if;
  delete from public.taxonomy_links l using public.taxonomy_terms t where l.term_id=t.id and l.subject_type=save_matching_profile.subject_type and l.subject_id=save_matching_profile.subject_id
@@ -514,7 +514,12 @@ begin
  if tg_op='DELETE' then return old; else return new; end if;
 end $$;
 revoke all on function public.invalidate_matching_file() from public,anon,authenticated;
-create trigger matching_storage_changed before update or delete on storage.objects for each row execute function public.invalidate_matching_file();
+-- Only a replaced, moved or deleted file invalidates a review. Storage also
+-- updates a row for metadata and access times, which change nothing reviewed.
+create trigger matching_storage_changed before update of bucket_id,name,version on storage.objects for each row
+ when(old.bucket_id is distinct from new.bucket_id or old.name is distinct from new.name or old.version is distinct from new.version)
+ execute function public.invalidate_matching_file();
+create trigger matching_storage_deleted before delete on storage.objects for each row execute function public.invalidate_matching_file();
 create trigger matching_document_file_changed before update of bucket,storage_path on public.documents for each row
  when(old.bucket is distinct from new.bucket or old.storage_path is distinct from new.storage_path) execute function public.invalidate_matching_file();
 

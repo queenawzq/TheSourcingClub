@@ -174,10 +174,40 @@ set local role authenticated;
 select lives_ok($$select public.review_matching_evidence('capability','e9900000-0000-0000-0000-000000000001','verified')$$,'staff can review resubmitted capability');
 reset role;
 insert into storage.objects(bucket_id,name) values('org-private','b9900000-0000-0000-0000-000000000002/capability_evidence/p99.pdf');
-update storage.objects set metadata='{"size":100}' where bucket_id='org-private' and name='b9900000-0000-0000-0000-000000000002/capability_evidence/p99.pdf';
+update storage.objects set metadata='{"size":100}',last_accessed_at=now() where bucket_id='org-private' and name='b9900000-0000-0000-0000-000000000002/capability_evidence/p99.pdf';
+select is((select status::text from public.factory_capability_evidence where id='e9900000-0000-0000-0000-000000000001'),'verified','reading the file or changing its metadata keeps the approval');
+update storage.objects set version=gen_random_uuid()::text where bucket_id='org-private' and name='b9900000-0000-0000-0000-000000000002/capability_evidence/p99.pdf';
 select is((select status::text from public.factory_capability_evidence where id='e9900000-0000-0000-0000-000000000001'),'pending','direct Storage replacement invalidates capability approval');
 select ok(exists(select 1 from public.matching_evidence_history where evidence_id='e9900000-0000-0000-0000-000000000001' and decision='pending'),'approval invalidation has audit history');
 select is((select count(*)::integer from public.credit_ledger where org_id='b9900000-0000-0000-0000-000000000002'),0,'file replacement grants no company credits');
+
+-- Each validation compares the term it is given, not a column with itself.
+insert into public.taxonomy_terms(id,kind,slug,label_en,org_id) values
+ ('c9900000-0000-0000-0000-000000000004','product_category','pgtap99-other-custom','P99 Other custom','b9900000-0000-0000-0000-000000000003');
+select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select throws_ok($$update public.matching_requirements set required_term_ids=array[gen_random_uuid()] where subject_id='b9900000-0000-0000-0000-000000000001'$$,'22023',null,'a required term must be one of the request''s own selections');
+select throws_ok($$update public.matching_requirements set required_term_ids=array['c9900000-0000-0000-0000-000000000001'::uuid] where subject_id='b9900000-0000-0000-0000-000000000001'$$,'22023',null,'a product category cannot be a mandatory requirement');
+select throws_ok($$select public.save_matching_profile('brand_profile','b9900000-0000-0000-0000-000000000001',array[gen_random_uuid()],'{}')$$,'22023',null,'saving a profile refuses an unknown term');
+select throws_ok($$select public.save_matching_profile('brand_profile','b9900000-0000-0000-0000-000000000001',array['c9900000-0000-0000-0000-000000000004'::uuid],'{}')$$,'22023',null,'saving a profile refuses another company''s custom term');
+reset role;
+select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000002","role":"authenticated"}',true);
+set local role authenticated;
+select throws_ok($$update public.factory_certifications set scope_term_ids=array[gen_random_uuid()] where id='f9900000-0000-0000-0000-000000000001'$$,'22023',null,'a certificate scope must be real product, fabric or technique terms');
+reset role;
+select set_config('request.jwt.claims','',true);
+
+-- Deleting an evidence file takes its evidence row with it.
+insert into public.documents(id,org_id,kind,bucket,storage_path,file_name) values
+ ('d9900000-0000-0000-0000-000000000003','b9900000-0000-0000-0000-000000000002','capability_evidence','org-private','b9900000-0000-0000-0000-000000000002/capability_evidence/p99-two.pdf','p99-two.pdf');
+insert into public.factory_capability_evidence(id,org_id,term_id,document_id)
+select 'e9900000-0000-0000-0000-000000000002','b9900000-0000-0000-0000-000000000002',t.id,'d9900000-0000-0000-0000-000000000003'
+from public.taxonomy_terms t where t.kind='fabric' and t.org_id is null order by t.slug limit 1;
+delete from public.documents where id='d9900000-0000-0000-0000-000000000003';
+select ok(not exists(select 1 from public.factory_capability_evidence where id='e9900000-0000-0000-0000-000000000002'),'deleting the file removes its evidence');
+
+-- A company with evidence on file can still be deleted.
+select lives_ok($$delete from public.orgs where id='b9900000-0000-0000-0000-000000000002'$$,'a factory with evidence and certificates can be deleted');
 
 select * from finish();
 rollback;
