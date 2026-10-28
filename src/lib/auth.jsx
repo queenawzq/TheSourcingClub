@@ -20,6 +20,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isConfigured, setKeepSignedIn, isThisTabsSession } from "./supabase.js";
 import { createOrg, listMyOrgs } from "./domain/org.js";
+import { logoutStripeConnect } from "./stripe-connect-embed.js";
 
 /** Mirrors `minimum_password_length` in supabase/config.toml and the design's copy. */
 export const MIN_PASSWORD_LENGTH = 8;
@@ -465,6 +466,7 @@ export function AuthProvider({ children }) {
         setOrgs([]);
         setActiveOrgId(null);
         window.localStorage.removeItem("tscActiveOrg");
+        logoutStripeConnect();
         // supabase-js owns the stored token, and nothing else may clear it.
         //
         // Deleting the keys here first looked like it closed a gap — the login

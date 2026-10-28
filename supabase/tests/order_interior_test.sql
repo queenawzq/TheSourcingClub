@@ -130,11 +130,11 @@ select throws_ok(
   'a step that has not opened yet takes no comment'
 );
 
--- The brand approves from the factory's update; its own comment is not one.
+-- Comments do not gate approval, but funding still does.
 select throws_ok(
   $$select public.approve_milestone((select first_step from p10), null)$$,
   '22023', NULL,
-  'with only the brand''s own comment on it, an open step has nothing to approve yet'
+  'an unfunded paying step cannot be approved even by the brand owner'
 );
 
 reset role;
@@ -338,12 +338,15 @@ select public.record_payment_funded(
   (select id from public.order_payments where milestone_id = (select first_step from p10)),
   'ch_pgtap10', 'card', 'Visa ···4242', null);
 
+-- Remove the fixture comments: approval must not require either side to post.
+delete from public.milestone_updates where milestone_id = (select first_step from p10);
+
 set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 
 select lives_ok(
   $$select public.approve_milestone((select first_step from p10), 'Collar confirmed, go ahead.')$$,
-  'the brand owner approves an open step from the factory''s update'
+  'the brand owner approves a funded open step without any comments'
 );
 
 reset role;
@@ -353,7 +356,7 @@ select is(
      from public.order_milestones m join public.order_payments p on p.milestone_id = m.id
     where m.id = (select first_step from p10)),
   'complete/confirmed',
-  'the step is approved from the update, exactly as after "send for approval", and its held money is owed to the factory'
+  'approval without comments completes the step and requests release of its held payment'
 );
 
 select * from finish();

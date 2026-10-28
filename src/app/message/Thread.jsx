@@ -86,12 +86,12 @@ export default function Thread({ org, threadId, preferred = "en", compact = fals
   const endRef = useRef(null);
 
   const load = useCallback(async () => {
-    const rows = await listMessages(threadId);
+    const rows = await listMessages(threadId, org.id);
     setMessages(rows);
     // Reading it is what marks it read. The prototype's unread badge is never
     // decremented anywhere, so it sits there forever once it appears.
     await markRead(threadId).catch(() => {});
-  }, [threadId]);
+  }, [threadId, org.id]);
 
   useEffect(() => { load().catch(setError); }, [load]);
 

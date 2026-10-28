@@ -1,8 +1,12 @@
 /* The console's error line (Test emails, AI suggestions, Test data, a
    refused staff action). Its rule lived only in admin.css, which the
    hand-built boards import on app.html and admin.html never loads, so every
-   error here read as grey body text. */
-.admin-error { color: var(--danger); font-size: 13px; font-weight: 500; }
+   error here read as grey body text.
+   The colour is !important because the design's cards colour their own
+   paragraphs (`.factory-profile-card p`, `.admin-decision-card p`, …) with
+   selectors that outrank a single class, and an error must read as one
+   wherever it is drawn: the Adjust credits refusal was grey. */
+.admin-error { color: var(--danger) !important; font-size: 13px; font-weight: 500; }
 
 /* Live only: the overview's cards link to the boards that act on them. */
 .admin-metric-link {
@@ -132,4 +136,32 @@
 .admin-threshold-form > .admin-error,
 .admin-threshold-form > .admin-test-email-status {
   grid-column: 1 / -1;
+}
+
+/* Live only: the review page fits a phone. Its grid's one implicit column
+   (and the layout's 1fr below 1120px) grew to the widest thing in it, so a
+   long company name pushed the page to 438px in a 375px screen and cut off
+   the status badge and "View full submission". */
+.admin-review-shell {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 1120px) {
+  .admin-review-layout { grid-template-columns: minmax(0, 1fr); }
+  .admin-review-side { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .admin-review-header { flex-wrap: wrap; }
+  .admin-review-header > * { min-width: 0; }
+  .admin-entity-identity.large h1 {
+    font-size: 24px;
+    line-height: 30px;
+    overflow-wrap: anywhere;
+  }
+  .admin-review-shell .admin-panel > header,
+  .admin-review-shell .factory-dashboard-panel > header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
 }

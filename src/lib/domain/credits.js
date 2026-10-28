@@ -14,7 +14,7 @@
  * the pack in the database and Stripe charges it; the credits are written
  * only once Stripe says the card was charged.
  */
-import { supabase, unwrap } from "../supabase.js";
+import { fetchApi, SIGN_IN_ENDED, supabase, unwrap } from "../supabase.js";
 import { formatMoney } from "../money.js";
 import { dateFrom } from "../dates.js";
 
@@ -81,12 +81,10 @@ const sentence = (text) => text ? text.charAt(0).toUpperCase() + text.slice(1).r
 export async function sendInvite(orgId, email, message = null) {
   const address = String(email ?? "").trim().toLowerCase();
   if (!address.includes("@")) throw new Error("Enter their email address.");
-  const { data: { session } } = await supabase.auth.getSession();
-  const response = await fetch("/api/send-invite", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
-    body: JSON.stringify({ orgId, email: address, message }),
-  });
+  // fetchApi hands a 401 to the auth layer, which signs out a session that
+  // has ended elsewhere; until it does, the screen says so in words.
+  const response = await fetchApi("/api/send-invite", { orgId, email: address, message });
+  if (response.status === 401) throw new Error(SIGN_IN_ENDED);
   const result = await response.json().catch(() => ({}));
   if (!response.ok || result.error) throw new Error(sentence(result.error) || "The invite could not be sent.");
   return result;

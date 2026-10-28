@@ -18,12 +18,14 @@ import {
   JOIN_CLOSES_AFTER_END_MINUTES,
   JOIN_OPENS_MINUTES,
   callState,
+  canJoinCall,
   nextCallChange,
   startOf,
   theirTime,
   theirZoneFor,
 } from "../src/shared/call-time.mjs";
 import { joinUrlMismatch, meetingRequestBody } from "../api/_zoom.js";
+import { ZOOM_VIEW_CHROME, ZOOM_VIEW_MIN_WIDTH, zoomViewSize } from "../src/shared/zoom-view.mjs";
 
 let failures = 0;
 let checks = 0;
@@ -48,6 +50,14 @@ const confirmed = {
 };
 const opens = startOf(confirmed).getTime() - JOIN_OPENS_MINUTES * MINUTE;
 const closes = startOf(confirmed).getTime() + (30 + JOIN_CLOSES_AFTER_END_MINUTES) * MINUTE;
+
+check(canJoinCall(confirmed, now - 7 * 24 * 60 * MINUTE), "a confirmed call can be joined even a week before its start");
+check(canJoinCall(confirmed, now), "a confirmed call can be joined more than ten minutes early");
+check(!canJoinCall({ ...confirmed, status: "proposed" }, now), "an unaccepted invitation cannot be joined");
+check(!canJoinCall({ ...confirmed, status: "cancelled" }, now), "a cancelled call cannot be joined early");
+check(!canJoinCall(confirmed, closes), "an expired call cannot be joined");
+const joinHandler = readFileSync(new URL("../api/call-join.js", import.meta.url), "utf8");
+check(!joinHandler.includes("call.opens_at"), "the server no longer blocks joins before the scheduled opening time");
 
 check(callState(confirmed, BRAND, now) === "upcoming", "a confirmed call before its window is upcoming");
 check(callState(confirmed, BRAND, opens) === "live", "and is live the moment its window opens");
@@ -91,12 +101,25 @@ check(theirZoneFor(null, BRAND, savedZone) === savedZone, "no call (a new propos
 // Meeting ID the Meeting SDK could not join ("Meeting does not exist").
 const zoomBody = meetingRequestBody({ topic: "Fit review", startsAt: at(60), durationMinutes: 30 });
 check(zoomBody.settings.use_pmi === false, "a call's Zoom meeting is asked for with use_pmi: false");
+check(zoomBody.settings.join_before_host === true && zoomBody.settings.jbh_time === 0,
+  "Zoom permits joining any time before the host, without a ten-minute restriction");
 check(zoomBody.type === 2 && zoomBody.start_time === "2026-10-23T23:49:50Z", "as a scheduled meeting at the call's start, in UTC");
 check(joinUrlMismatch({ meetingNumber: "84598714022", joinUrl: "https://us06web.zoom.us/j/7320690524?pwd=x&omn=84598714022" }) === "7320690524",
   "a join link to a Personal Meeting ID is noticed");
 check(joinUrlMismatch({ meetingNumber: "84598714022", joinUrl: "https://us06web.zoom.us/j/84598714022?pwd=x" }) === null,
   "a join link to the meeting itself is not");
 check(joinUrlMismatch({ meetingNumber: "1", joinUrl: "" }) === null, "nor is a meeting with no link");
+
+// Zoom's view fits the room under the conversation's header, toolbar and all.
+// Sized from the panel's width alone, a 1920 x 822 window drew it 707px tall
+// in 536px of room, and its mic, camera and leave buttons were out of reach.
+const wideShort = zoomViewSize({ panelWidth: 886, availableHeight: 536 });
+check(wideShort.height + ZOOM_VIEW_CHROME <= 536, "a wide, short window draws Zoom's toolbar inside the room it has");
+check(wideShort.width < 886 && Math.abs(wideShort.height - (wideShort.width * 9) / 16) < 1, "by narrowing the view, still 16:9");
+const tall = zoomViewSize({ panelWidth: 700, availableHeight: 1200 });
+check(tall.width === 700 && tall.height === 394, "with room to spare the view is the panel's width");
+check(zoomViewSize({ panelWidth: 500, availableHeight: 200 }).width === ZOOM_VIEW_MIN_WIDTH,
+  "never narrower than Zoom's toolbar needs, however short the window");
 
 if (failures) {
   console.log(`check:calls: ${failures} of ${checks} checks failed`);

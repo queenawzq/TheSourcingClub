@@ -17,10 +17,18 @@ import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { ATTACHMENT_ACCEPT, attachmentRefusal, urlFor } from "../../lib/domain/documents.js";
 import { awaitingScreen, fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
-import { acceptCall, browserTimeZone, callState, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
+import { acceptCall, browserTimeZone, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
+import { zoomViewSize } from "../../shared/zoom-view.mjs";
+import { serverNow } from "../../lib/server-clock.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
+
+/** A call's full-screen Zoom page, which comes back to this conversation. */
+function callPageUrl(call) {
+  const back = `/app.html/messages/${call.thread_id}`;
+  return `/call.html?call=${encodeURIComponent(call.id)}&back=${encodeURIComponent(back)}`;
+}
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -204,26 +212,33 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   useEffect(() => { reload(); }, [reload]);
 
   /**
-   * Load one conversation, and mark it read.
+   * Load one conversation, and mark it read once the person has read it.
    *
    * Unread is derived per user from message_reads, so opening a thread is the
-   * only thing that clears it — there is no counter to decrement.
+   * only thing that clears it — there is no counter to decrement. A thread
+   * the person chose, or arrived at by its own link, is read. The one the
+   * page opens by itself (the newest) is only shown: it counts as read when
+   * the person acts in it (`readThreadRef`, and the listener below), or its
+   * unread badge vanished before anyone had looked.
    */
-  const loadThread = useCallback(async (threadId) => {
+  const readThreadRef = useRef(null);
+  const loadThread = useCallback(async (threadId, { read = true } = {}) => {
     if (!threadId) return;
     setActiveId(threadId);
     setDialog((current) => (current?.threadId === threadId ? current : null));
     activeThreadRef.current = threadId;
+    if (read) readThreadRef.current = threadId;
+    else if (readThreadRef.current !== threadId) readThreadRef.current = null;
     try {
-      const rows = await listMessages(threadId);
+      const rows = await listMessages(threadId, org.id);
       setMessagesByThread((current) => ({ ...current, [threadId]: rows ?? [] }));
       setError(null);
-      await markRead(threadId);
+      if (readThreadRef.current === threadId) await markRead(threadId);
       reload();
     } catch (failure) {
       setError(failure);
     }
-  }, [reload]);
+  }, [reload, org.id]);
 
   /**
    * Your own messages the screen has not decided: ask it again, on a back-off,
@@ -247,7 +262,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       setUnscreened((current) => new Set([...current, ...due.map((message) => message.id)]));
       if (await rescreenStale(due, user.id, { olderThanMs: 0 })) {
         for (const threadId of new Set(due.map((message) => message.thread_id))) {
-          const rows = await listMessages(threadId).catch(() => null);
+          const rows = await listMessages(threadId, org.id).catch(() => null);
           if (rows) setMessagesByThread((current) => ({ ...current, [threadId]: rows }));
         }
         reloadRef.current();
@@ -268,9 +283,28 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     if (opened.current || !threads?.length || (orderId && !resolvedThreadId)) return;
     const target = resolvedThreadId ?? threads[0].id;
     opened.current = target;
-    loadThread(target);
+    loadThread(target, { read: Boolean(resolvedThreadId) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads?.length, resolvedThreadId]);
+
+  // The conversation the page opened by itself is read once the person acts
+  // in it: a click, a key, a wheel or a touch inside the open conversation.
+  // Not a scroll event: the page scrolls the timeline to the end on its own.
+  useEffect(() => {
+    const acted = (event) => {
+      const active = activeThreadRef.current;
+      if (!active || readThreadRef.current === active) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target?.closest(".message-workspace, .message-thread-card.active")) return;
+      readThreadRef.current = active;
+      markRead(active).then(() => reloadRef.current()).catch(() => {});
+    };
+    const kinds = ["pointerdown", "keydown", "wheel", "touchmove"];
+    for (const kind of kinds) document.addEventListener(kind, acted, { capture: true, passive: true });
+    return () => {
+      for (const kind of kinds) document.removeEventListener(kind, acted, { capture: true });
+    };
+  }, []);
 
   /**
    * Live: a message delivered to this company (or one of its own changing
@@ -292,7 +326,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       .channel(`messages:${org.id}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, (payload) => {
         const moved = payload.new?.thread_id ?? payload.old?.thread_id;
-        if (moved && moved === activeThreadRef.current) loadThreadRef.current(moved);
+        if (moved && moved === activeThreadRef.current) loadThreadRef.current(moved, { read: readThreadRef.current === moved });
         else {
           clearTimeout(listTimer);
           listTimer = setTimeout(() => reloadRef.current(), 300);
@@ -377,6 +411,12 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     cancel: (call) => setConfirmCall({ call, mode: call.status === "proposed" ? "withdraw" : "cancel" }),
     counter: (call) => setDialog({ threadId: call.thread_id, counterOf: call, key: call.id, busy: false, error: null }),
     join: async (call) => {
+      // Phones and tablets join on Zoom's own full-screen page (call.html):
+      // Zoom supports the view drawn in this panel on desktop browsers only.
+      if (window.matchMedia?.("(hover: none) and (pointer: coarse)").matches) {
+        window.location.assign(callPageUrl(call));
+        return;
+      }
       setCallBusy(call.id);
       setCallNotes((current) => ({ ...current, [call.id]: null }));
       const answer = await joinCall(call.id);
@@ -398,7 +438,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
 
   // "Join call" on a dashboard opens this page with ?join=<call>: once the
   // page and its calls are drawn, that call is joined as if pressed here,
-  // if it is on now.
+  // once it is confirmed, even before its scheduled start.
   const joinOnOpen = useRef(new URLSearchParams(window.location.search).get("join"));
   useEffect(() => {
     const id = joinOnOpen.current;
@@ -406,7 +446,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     joinOnOpen.current = null;
     window.history.replaceState(window.history.state, "", window.location.pathname);
     const call = calls.find((candidate) => candidate.id === id);
-    if (call && callState(call, org.id) === "live") callHandlers.join(call);
+    if (call && canJoinCall(call, serverNow())) callHandlers.join(call);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads, calls]);
 
@@ -415,15 +455,12 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   useEffect(() => {
     // Once per join: a failure updates `video` too, which must not retry.
     if (!video?.join || video.attempted || !zoomRoot.current) return undefined;
-    // Zoom's meeting view is never narrower than about 360px: on a phone it
-    // would be cut off, so the call opens in Zoom's app straight away.
+    // Zoom's meeting view is never narrower than about 360px: in a window
+    // that narrow it would be cut off, so the call opens on Zoom's own
+    // full-screen page instead, as on a phone.
     if (zoomRoot.current.clientWidth < 360) {
-      setVideo((current) => current && {
-        ...current,
-        attempted: true,
-        failed: true,
-        text: "On a screen this narrow, the call opens in the Zoom app.",
-      });
+      setVideo((current) => current && { ...current, attempted: true });
+      window.location.assign(callPageUrl(video.call));
       return undefined;
     }
     setVideo((current) => current && { ...current, attempted: true });
@@ -433,16 +470,27 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         const ZoomMtgEmbedded = await loadZoomEmbedded();
         const client = ZoomMtgEmbedded.createClient();
         zoomClient.current = client;
-        // Zoom draws its view at a fixed size: the panel's width, 16:9, in
-        // speaker view (its default, "ribbon", is a small floating window).
-        const width = Math.floor(zoomRoot.current.clientWidth);
+        // Zoom draws its view at a fixed size, in speaker view (its default,
+        // "ribbon", is a small floating window): the panel's width, 16:9, but
+        // no taller than the room under the conversation's header, or its
+        // toolbar is cut off (zoom-view.mjs). Below 900px the page scrolls
+        // instead of the conversation, so the window is the room there.
+        const root = zoomRoot.current;
+        const workspace = root.closest(".message-workspace");
+        const panel = root.closest(".video-call-panel");
+        const header = workspace?.querySelector(".message-room-header");
+        const room = Math.min(workspace?.clientHeight ?? window.innerHeight, window.innerHeight);
+        const { width, height } = zoomViewSize({
+          panelWidth: root.clientWidth,
+          availableHeight: room - (header?.offsetHeight ?? 0) - ((panel?.offsetHeight ?? 0) - root.offsetHeight),
+        });
         await client.init({
           zoomAppRoot: zoomRoot.current,
           language: "en-US",
           patchJsMedia: true,
           leaveOnPageUnload: true,
           customize: {
-            video: { defaultViewType: "speaker", isResizable: false, viewSizes: { default: { width, height: Math.round((width * 9) / 16) } } },
+            video: { defaultViewType: "speaker", isResizable: false, viewSizes: { default: { width, height } } },
           },
         });
         await client.join({
@@ -453,6 +501,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           userName: video.join.userName,
         });
         setVideo((current) => current && { ...current, joined: true, text: "You're in the call. The other side joins from this conversation." });
+        // At its narrowest the view can still be taller than a short window
+        // (1366 x 768 ends 10px below it): bring the toolbar into sight.
+        zoomRoot.current?.scrollIntoView({ block: "nearest" });
       } catch (failure) {
         // Zoom's own error box would sit over the page with a Retry that
         // fails the same way: take Zoom's view away and offer its app.
@@ -699,7 +750,17 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         }}
         threads={shaped}
         initialThreadId={resolvedThreadId}
-        onSelectThread={loadThread}
+        // The design reports its starting thread when it mounts, which is
+        // the one this page opened by itself: shown, not yet read. Any other
+        // thread reported was picked by the person.
+        onSelectThread={(id) => {
+          // (Its mount effect runs before this page's own, so the thread
+          // it would open is worked out here rather than read from `opened`.)
+          const auto = !resolvedThreadId && opened.current !== "picked"
+            && id === (opened.current ?? threads?.[0]?.id);
+          opened.current = auto ? id : "picked";
+          return loadThread(id, { read: !auto || readThreadRef.current === id });
+        }}
         onSend={send}
         canAttach
         attachAccept={ATTACHMENT_ACCEPT}

@@ -154,6 +154,8 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
       .from("factory_profiles")
       .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, published_at, orgs!inner (name)")
       .not("published_at", "is", null)
+      // Recommended means verified: an unverified vendor can be found and
+      // read (Browse), but cannot quote, so it is not put forward here.
       .eq("verification_status", "verified")
       .eq("orgs.is_demo", false)
       .then((result) => unwrap(result, "load recommended vendors")),
@@ -176,8 +178,11 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
 
   return Promise.all(chosen.map(async (row) => {
     const samples = await listDocuments(row.org_id, "product_image");
+    // Captioned by the title the vendor gave a photo, never its file name:
+    // a phone's "133331.jpg" read as "133331" on the brand's dashboard.
     const products = await Promise.all([...samples].reverse().map(async (doc) => ({
-      name: doc.title || titleFromFileName(doc.file_name),
+      id: doc.id,
+      name: doc.title ?? "",
       image: await urlFor(doc, 3600),
     })));
     return { ...row, products, matching: matches.get(row.org_id) };
@@ -272,6 +277,9 @@ export async function loadVendorDirectory(brandOrg) {
       registrationDoc: null,
       logoUrl: logo ? publicUrl(logo.storage_path) : null,
       samples: own.filter((doc) => doc.kind === "product_image").map((doc) => ({
+        id: doc.id,
+        // The directory card's caption: only a title the vendor gave.
+        label: doc.title ?? "",
         title: doc.title || titleFromFileName(doc.file_name),
         caption: doc.caption ?? "",
         src: publicUrl(doc.storage_path),

@@ -8,6 +8,7 @@
  * work that needs it belongs in api/, which is not bundled.
  */
 import { createClient } from "@supabase/supabase-js";
+import { noteServerDate } from "./server-clock.js";
 import { createSessionStorage } from "./session-storage.mjs";
 
 // A PR preview with its own Supabase branch connects to that branch; every
@@ -106,11 +107,13 @@ export const supabase = isConfigured
  */
 export async function fetchApi(path, body) {
   const { data } = await supabase.auth.getSession();
+  const sentAt = Date.now();
   const response = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${data?.session?.access_token ?? ""}` },
     body: JSON.stringify(body),
   });
+  noteServerDate(response, sentAt);
   if (response.status === 401) await supabase.auth.getUser().catch(() => {});
   return response;
 }

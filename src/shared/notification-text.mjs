@@ -17,10 +17,14 @@
  * @param notification  { kind, body, data }
  * @param options       { timeZone?: IANA zone (default: the runtime's), withZone?: add "GMT+8" }
  */
-export function notificationBody(notification, { timeZone, withZone = false } = {}) {
+export function notificationBody(notification, { timeZone, withZone = false, locale = "en" } = {}) {
   const body = String(notification?.body ?? "");
   const data = notification?.data ?? {};
   const moment = (iso) => formatMoment(iso, timeZone, withZone);
+
+  // A message in the reader's language: `body` is the English the bell
+  // shows, data.message_text both languages when it was translated.
+  if (data.message_text?.[locale]) return String(data.message_text[locale]);
 
   if (data.quote_deadline && /Quotes close [^.]*\./.test(body)) {
     const when = moment(data.quote_deadline);

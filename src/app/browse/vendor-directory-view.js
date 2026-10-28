@@ -141,7 +141,7 @@ export function vendorCard(parts, now = new Date()) {
     specialty: isTrading ? "Trading company" : (labels("production_type").slice(0, 2).join(", ") || ""),
     stats,
     notes: profile?.intro ? [profile.intro] : [],
-    products: parts.samples.map((sample) => ({ name: sample.title, image: sample.src })),
+    products: parts.samples.map((sample) => ({ id: sample.id, name: sample.label ?? sample.title, image: sample.src })),
     categories: makes,
     capabilities,
     // The directory card's tag rows, written the way the design writes them.

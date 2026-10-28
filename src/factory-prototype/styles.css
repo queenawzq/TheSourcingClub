@@ -2632,7 +2632,7 @@ body:has(.factory-onboarding-page) {
 
 .factory-project-dashboard-progress .project-progress {
   position: relative;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(var(--project-step-count), 1fr);
   gap: 0;
   width: 100%;
   margin: 0;
@@ -2642,8 +2642,8 @@ body:has(.factory-onboarding-page) {
 .factory-project-dashboard-progress .project-progress-line {
   position: absolute;
   top: 21px;
-  right: 10%;
-  left: 10%;
+  right: var(--project-rail-inset);
+  left: var(--project-rail-inset);
   height: 2px;
   border-radius: 999px;
   background: linear-gradient(90deg, #1a4df2 0 var(--project-progress), #d7e0ea var(--project-progress) 100%);
@@ -10720,7 +10720,7 @@ button.sort-button {
 }
 
 .factory-project-dashboard-row > .factory-project-dashboard-progress .project-progress {
-  grid-template-columns: repeat(5, 1fr) !important;
+  grid-template-columns: repeat(var(--project-step-count), 1fr) !important;
   gap: 0 !important;
   min-height: var(--production-card-detail-row-height) !important;
   width: 100% !important;

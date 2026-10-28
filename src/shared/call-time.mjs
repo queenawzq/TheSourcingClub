@@ -115,6 +115,11 @@ export const JOIN_CLOSES_AFTER_END_MINUTES = 30;
 export const startOf = (call) => new Date(call.starts_at);
 export const endOf = (call) => new Date(startOf(call).getTime() + call.duration_minutes * 60000);
 
+/** Confirmed participants may join at any time before the call expires. */
+export function canJoinCall(call, now = Date.now()) {
+  return call?.status === "accepted" && now < endOf(call).getTime() + JOIN_CLOSES_AFTER_END_MINUTES * 60000;
+}
+
 /**
  * Where a call stands for this company: "invite" (theirs, waiting on us),
  * "waiting" (ours, waiting on them), "upcoming", "live", or "past" — plus the

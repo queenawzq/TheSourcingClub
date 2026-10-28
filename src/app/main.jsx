@@ -65,6 +65,7 @@ import LiveBrandPaymentDetail from "./payments/LiveBrandPaymentDetail.jsx";
 import LiveBrandProfile from "./profile/LiveBrandProfile.jsx";
 import LiveFactoryBrandProfile from "./profile/LiveFactoryBrandProfile.jsx";
 import ErrorBoundary from "../lib/ErrorBoundary.jsx";
+import { useUnreadMessages } from "./message/use-unread.js";
 import "./shell.css";
 
 // Lazy: only someone following a Terms or Privacy link needs it.
@@ -117,6 +118,20 @@ function SetupNeeded() {
  * "forgot password" link starts. Reset is a mode rather than a page because
  * the link lands back on app.html and there is nothing else for it to land on.
  */
+/**
+ * Sign out into the right portal. The sign-in screen picks its portal from
+ * `?portal=` alone, so signing out from a vendor's page
+ * (`/app.html/quote?from=browse`) showed the brand's sign-in. The path stays,
+ * so signing in again returns to the same page.
+ */
+function signOutInto(kind, signOut) {
+  const url = new URL(window.location.href);
+  if (kind === "factory") url.searchParams.set("portal", "factory");
+  else url.searchParams.delete("portal");
+  window.history.replaceState(window.history.state, "", url);
+  return signOut();
+}
+
 function portalFromUrl() {
   const portal = new URLSearchParams(window.location.search).get("portal");
   return portal === "factory" || portal === "vendor" ? "factory" : "brand";
@@ -451,7 +466,8 @@ function SetNewPassword({ onDone }) {
 }
 
 function ChooseOrgType() {
-  const { user, refreshOrgs, signOut } = useAuth();
+  const { user, refreshOrgs, signOut: endSession } = useAuth();
+  const signOut = () => signOutInto(user?.user_metadata?.account_type ?? portalFromUrl(), endSession);
   // What the signup form already asked. The portal it was filled in decides
   // the side, so someone who signed up here is not asked either question
   // again: their company is created from those answers, and this card shows
@@ -688,7 +704,10 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
   }, []);
 
   const paths = isFactory ? FACTORY_NAV_PATHS : BRAND_NAV_PATHS;
-  const items = (isFactory ? factoryNavItems : brandNavItems).filter((item) => paths[item.label]);
+  const unread = useUnreadMessages(activeOrg.id);
+  const items = (isFactory ? factoryNavItems : brandNavItems)
+    .filter((item) => paths[item.label])
+    .map((item) => (item.label === "Conversations" && unread ? { ...item, badge: unread } : item));
   const accountType = isFactory
     ? (profile?.vendor_kind === "trading_company" ? "Vendor account" : "Factory account")
     : "Brand account";
@@ -731,8 +750,9 @@ function DesignFrame({ activeOrg, orgs, selectOrg, profile, isFactory, onSignOut
 }
 
 function Shell() {
-  const { activeOrg, orgs, selectOrg, signOut, user } = useAuth();
+  const { activeOrg, orgs, selectOrg, signOut: endSession, user } = useAuth();
   const isFactory = activeOrg.type === "factory";
+  const signOut = () => signOutInto(activeOrg.type, endSession);
 
   const [profile, setProfile] = useState(undefined);
   const [profileError, setProfileError] = useState(null);
@@ -1246,13 +1266,27 @@ function NotForThisSide() {
  * behind the org gate — requiring one locked the only people who can use it
  * out of it. Checked here, above everything except being signed in.
  */
-function AdminGate({ children }) {
+function AdminGate({ children, noOrg = false }) {
   const { path } = useRouter();
   const [admin, setAdmin] = useState(null);
 
   useEffect(() => {
     isPlatformAdmin().then(setAdmin);
   }, []);
+
+  // Staff with no company work in the console. They were offered "Which side
+  // are you on?" here and could create a company, which would then leak into
+  // current_org_ids() and every `or is_platform_admin()` branch (create_org
+  // refuses them too). Asked before that screen mounts, since it can create
+  // a company from the signup details by itself.
+  const staffWithoutOrg = noOrg && !path.startsWith("/admin") && admin === true;
+  useEffect(() => {
+    if (staffWithoutOrg) window.location.replace("/admin.html");
+  }, [staffWithoutOrg]);
+  if (noOrg && !path.startsWith("/admin")) {
+    if (admin === null) return <Loading label="Checking your access…" />;
+    if (admin) return <Loading label="Opening the admin console…" />;
+  }
 
   if (!path.startsWith("/admin")) return children;
   if (admin === null) return <Loading label="Checking your access…" />;
@@ -1345,7 +1379,7 @@ function App() {
     );
   }
   // Reachable before an org exists, and deliberately so.
-  if (status === "no-org") return <AdminGate><ChooseOrgType /></AdminGate>;
+  if (status === "no-org") return <AdminGate noOrg><ChooseOrgType /></AdminGate>;
   if (status === "error") {
     return (
       <div className="gate">

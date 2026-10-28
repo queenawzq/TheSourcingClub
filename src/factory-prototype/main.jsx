@@ -770,6 +770,7 @@ const factoryMainZhText = {
   "You can fill this in Chinese. We'll create an English version for you to review before sending.": "可用中文填写，提交前会生成英文版本供你确认。",
   "You can fill this page in Chinese. We'll create an English version for you to review before sending.": "本页可用中文填写，提交前会生成英文版本供你确认。",
   "Unit price": "单价",
+  "Unit price *": "单价 *",
   "Exact production quantity *": "准确生产数量 *",
   "Bulk lead time *": "大货交期 *",
   "Open capacity window *": "可接单时间窗口 *",
@@ -777,6 +778,7 @@ const factoryMainZhText = {
   "Shipping / incoterms": "运输 / 贸易条款",
   "Shipping / incoterms *": "运输 / 贸易条款 *",
   "Quote valid until": "报价有效期至",
+  "Quote valid until *": "报价有效期至 *",
   "Material sourcing and component costs": "材料采购和辅料成本",
   "Specify what is included in your quote and what the brand must provide.": "说明报价中包含哪些项目，以及品牌需要提供什么。",
   "Factory includes": "工厂报价包含",
@@ -9546,9 +9548,20 @@ export function FactoryProjectProgressDetail({
   // cancellation is proposed (or once the order is cancelled), and a quiet
   // "Cancel order" under Message.
   banner = null,
-  onCancelOrder = null
+  onCancelOrder = null,
+  // Live only: open "Add update" for this step from outside the timeline
+  // (the step's pop-up, reached from a "due soon" reminder), then report it.
+  updateStepId = null,
+  onUpdateStepOpened
 }) {
   const [updateMilestone, setUpdateMilestone] = useState(null);
+  useEffect(() => {
+    if (!updateStepId || !liveMilestones) return;
+    const target = liveMilestones.find((milestone) => milestone.id === updateStepId);
+    if (target) setUpdateMilestone(target);
+    onUpdateStepOpened?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [updateStepId]);
   const [localDetailTab, setLocalDetailTab] = useState("overview");
   const activeDetailTab = tab ?? localDetailTab;
   const setActiveDetailTab = onTabChange ?? setLocalDetailTab;
@@ -10486,7 +10499,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
     <>
       <SubmitSection title="Quote terms" description="Enter exact commercial terms for this request.">
         <div className="factory-submit-field-grid">
-          <QuoteField name="unitPrice" label="Unit price" value={values?.unitPrice ?? "$18.40 / unit"} placeholder="e.g. $12–$15 / unit" {...reviewFieldProps} />
+          <QuoteField name="unitPrice" label="Unit price *" value={values?.unitPrice ?? "$18.40 / unit"} placeholder="e.g. $12–$15 / unit" {...reviewFieldProps} />
           <QuoteField name="quantity" label="Exact production quantity *" value={values?.quantity ?? "300 units"} {...reviewFieldProps} />
           <QuoteField name="leadTime" label="Bulk lead time *" value={values?.leadTime ?? "28 days after PP approval"} placeholder="e.g. 30–35 days" {...reviewFieldProps} />
           {/* The capacity window is the vendor's own, and a live mount passes
@@ -10506,7 +10519,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
             {...reviewFieldProps}
           />
           <QuoteField name="incoterms" label="Shipping / incoterms *" value={values?.incoterms ?? "EXW quoted; shipping TBD"} {...reviewFieldProps} />
-          <QuoteDateField name="validUntil" label="Quote valid until" value={values?.validUntil ?? "Aug 1, 2026"} {...reviewFieldProps} />
+          <QuoteDateField name="validUntil" label="Quote valid until *" value={values?.validUntil ?? "Aug 1, 2026"} {...reviewFieldProps} />
         </div>
       </SubmitSection>
 

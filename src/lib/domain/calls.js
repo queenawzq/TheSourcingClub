@@ -236,7 +236,7 @@ export function googleCalendarUrl(call, otherName, link = callLink(call)) {
 /**
  * Ask the server for what the Meeting SDK needs to join (api/call-join.js).
  * Resolves { ok: true, join } or { ok: false, message } — never throws, so the
- * card can say why ("opens 10 minutes before", "video isn't set up yet").
+ * card can say why ("this call has ended", "video isn't set up yet").
  */
 export async function joinCall(callId) {
   try {
@@ -262,17 +262,37 @@ export const ZOOM_SDK_VERSION = "6.5.0";
 let zoomLoading = null;
 
 export function loadZoomEmbedded() {
-  if (window.ZoomMtgEmbedded) return Promise.resolve(window.ZoomMtgEmbedded);
+  return loadZoom("ZoomMtgEmbedded", [
+    "react.min.js",
+    "react-dom.min.js",
+    "redux.min.js",
+    "redux-thunk.min.js",
+    "lodash.min.js",
+  ], `zoom-meeting-embedded-${ZOOM_SDK_VERSION}.min.js`);
+}
+
+/**
+ * Zoom's Client View, for phones and tablets (call.html): Zoom supports its
+ * Component View on desktop browsers only, and draws it wider than a phone
+ * (367px asked for 343, Oct 27). Client View is Zoom's own full-screen
+ * meeting page, and needs react-redux besides.
+ */
+export function loadZoomClient() {
+  return loadZoom("ZoomMtg", [
+    "react.min.js",
+    "react-dom.min.js",
+    "redux.min.js",
+    "redux-thunk.min.js",
+    "react-redux.min.js",
+    "lodash.min.js",
+  ], `zoom-meeting-${ZOOM_SDK_VERSION}.min.js`);
+}
+
+function loadZoom(name, vendor, sdk) {
+  if (window[name]) return Promise.resolve(window[name]);
   if (zoomLoading) return zoomLoading;
   const base = `https://source.zoom.us/${ZOOM_SDK_VERSION}/lib/vendor`;
-  const scripts = [
-    `${base}/react.min.js`,
-    `${base}/react-dom.min.js`,
-    `${base}/redux.min.js`,
-    `${base}/redux-thunk.min.js`,
-    `${base}/lodash.min.js`,
-    `https://source.zoom.us/zoom-meeting-embedded-${ZOOM_SDK_VERSION}.min.js`,
-  ];
+  const scripts = [...vendor.map((file) => `${base}/${file}`), `https://source.zoom.us/${sdk}`];
   const load = (src) => new Promise((resolve, reject) => {
     const script = document.createElement("script");
     script.src = src;
@@ -283,7 +303,7 @@ export function loadZoomEmbedded() {
   });
   zoomLoading = scripts
     .reduce((chain, src) => chain.then(() => load(src)), Promise.resolve())
-    .then(() => window.ZoomMtgEmbedded)
+    .then(() => window[name])
     .catch((failure) => {
       zoomLoading = null;
       throw failure;

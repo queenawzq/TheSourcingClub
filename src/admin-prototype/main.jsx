@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PrototypeSideNav, ProfileChipSection, ProfileDetailPair } from "../shared/ProfileShell.jsx";
 import { useActions, useAdminMetrics, useAdminQuotes, useAdminRfqs, useAdminUsers, useVerificationQueue, useViewer } from "../lib/data/DataProvider.jsx";
@@ -277,14 +277,14 @@ function RfqActivityCards({ rfqRows, quoteRows, onOpenRfq }) {
   );
 }
 
-function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate, onOpenRfq }) {
+function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate, onOpenRfq, showNotifications = true }) {
   const pending = profiles.filter((profile) => !["Approved", "Declined"].includes(profile.status));
   return (
     <main className="factory-dashboard-page admin-page">
       <div className="factory-dashboard-shell admin-shell">
         <header className="factory-dashboard-header admin-header">
           <div><span className="admin-eyebrow">Operations workspace</span><h1>Admin overview</h1><p>Monitor marketplace activity and review the profiles waiting for a decision.</p></div>
-          <button className="activity-icon-btn" type="button" aria-label="Open notifications"><img src="/assets/prototype-icons/notification.svg" alt="" /><b>5</b></button>
+          {showNotifications && <button className="activity-icon-btn" type="button" aria-label="Open notifications"><img src="/assets/prototype-icons/notification.svg" alt="" /><b>5</b></button>}
         </header>
 
         <div className="factory-dashboard-metrics admin-metrics">
@@ -1010,7 +1010,7 @@ function CreditsCard({ orgId, refreshKey }) {
   );
 }
 
-function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest }) {
+function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, deciding = false }) {
   const [requestOpen, setRequestOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   // Both modals had a textarea whose value was dropped on the floor: the
@@ -1048,6 +1048,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
     setRequestSuggestionNotice("");
     try {
       const result = await onSuggestRequest?.({
+        orgId: profile.id,
         companyName: profile.name,
         entityType: profile.entityType,
         gaps: requestGaps,
@@ -1171,7 +1172,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                   ))}
                 </fieldset>
               )}
-              <button className="primary-btn" type="button" onClick={() => onDecision(profile.id, "Approved", null, isVendor ? approvalTier : null)}>
+              <button className="primary-btn" type="button" disabled={deciding} onClick={() => onDecision(profile.id, "Approved", null, isVendor ? approvalTier : null)}>
                 {isVendor ? `Approve as ${approvalTier[0].toUpperCase()}${approvalTier.slice(1)}` : "Approve profile"}
               </button>
               <button className="secondary-btn" type="button" onClick={() => setRequestOpen(true)}>Request more information</button>
@@ -1637,7 +1638,7 @@ function DailyJobsPanel() {
   );
 }
 
-function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUnavailable }) {
+function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUnavailable, validateThresholds }) {
   const initialThresholds = { autoClear: "95", manualMin: "80", manualMax: "94", moreInformation: "80", authority: "TSC operations" };
   const email = user?.email ?? account?.email ?? "operations@thesourcingclub.com";
   const name = account?.name ?? user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? "TSC Operations";
@@ -1650,11 +1651,16 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUna
   const [thresholds, setThresholds] = useState(initialThresholds);
   const [draft, setDraft] = useState(initialThresholds);
   const [isEditing, setIsEditing] = useState(false);
+  // Live only: why the numbers were refused (validateThresholds).
+  const [thresholdError, setThresholdError] = useState(null);
   const updateDraft = (field, value) => setDraft((current) => ({ ...current, [field]: value }));
-  const startEditing = () => { setDraft(thresholds); setIsEditing(true); };
-  const cancelEditing = () => { setDraft(thresholds); setIsEditing(false); };
+  const startEditing = () => { setDraft(thresholds); setThresholdError(null); setIsEditing(true); };
+  const cancelEditing = () => { setDraft(thresholds); setThresholdError(null); setIsEditing(false); };
   const saveThresholds = (event) => {
     event.preventDefault();
+    const problem = validateThresholds?.(draft) ?? null;
+    setThresholdError(problem);
+    if (problem) return;
     setThresholds(draft);
     setIsEditing(false);
   };
@@ -1708,6 +1714,7 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUna
                 <option>Marketplace admin</option>
               </select>
             </label>
+            {thresholdError && <p className="admin-error" role="alert">{thresholdError}</p>}
             <div className="admin-settings-actions">
               <button className="secondary-btn" type="button" onClick={cancelEditing}>Cancel</button>
               <button className="primary-btn" type="submit">Save changes</button>
@@ -1729,7 +1736,7 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUna
   );
 }
 
-function App({ testEmailsIntro, testEmailsUnavailable, matchingPanel = null } = {}) {
+function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, validateThresholds, matchingPanel = null } = {}) {
   // Everything below reads through the data seam. admin-prototype.html serves
   // the constants in this file; admin.html serves the marketplace. The
   // components in between never learn which.
@@ -1883,7 +1890,14 @@ function App({ testEmailsIntro, testEmailsUnavailable, matchingPanel = null } = 
     setScreen("Quote detail");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
+  // One decision at a time: a double click on "Approve" recorded it twice
+  // and told the company twice.
+  const [deciding, setDeciding] = useState(false);
+  const decidingRef = useRef(false);
   const decide = async (id, status, note = null, tier = null) => {
+    if (decidingRef.current) return;
+    decidingRef.current = true;
+    setDeciding(true);
     const tone = status === "Approved" ? "success" : status === "Declined" ? "neutral" : "danger";
     let result;
     try {
@@ -1892,6 +1906,9 @@ function App({ testEmailsIntro, testEmailsUnavailable, matchingPanel = null } = 
       setToast(error.message || "That decision could not be recorded");
       window.setTimeout(() => setToast(""), 4000);
       return;
+    } finally {
+      decidingRef.current = false;
+      setDeciding(false);
     }
     // The mock action mutates its own array; the live one has written to the
     // database. Either way the queue is re-read rather than patched locally,
@@ -1951,13 +1968,13 @@ function App({ testEmailsIntro, testEmailsUnavailable, matchingPanel = null } = 
         : loading
           ? <main className="admin-page"><div className="admin-empty-state"><strong>Loading the marketplace…</strong></div></main>
           : <>
-      {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} />}
+      {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
-      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} />}
+      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} deciding={deciding} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate(quoteBack)} detail={shownDetail} backLabel={quoteBack} />}
-      {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} testEmailsUnavailable={testEmailsUnavailable} />}
+      {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} testEmailsUnavailable={testEmailsUnavailable} validateThresholds={validateThresholds} />}
             </>}
       {toast && <div className="app-toast admin-toast" role="status">{toast}</div>}
     </div>
