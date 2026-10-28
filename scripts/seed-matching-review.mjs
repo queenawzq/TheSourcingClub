@@ -5,6 +5,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
+import { DEMO_PASSWORD } from "../src/shared/demo-logins.mjs";
 const workdir = process.env.MATCHING_SUPABASE_WORKDIR;
 if (!workdir)
   throw new Error(
@@ -43,15 +44,22 @@ const existing = check(
 ).users;
 for (const role of ["brand", "qualified", "staff"]) {
   const email = `matching-review-${role}@example.com`;
-  users[role] =
-    existing.find((x) => x.email === email) ??
-    check(
-      await service.auth.admin.createUser({
-        email,
-        email_confirm: true,
-        user_metadata: { name: `Matching review ${role}` },
-      }),
-    ).user;
+  // The demo seed's password, so each login signs in on the ordinary form.
+  const found = existing.find((x) => x.email === email);
+  users[role] = found
+    ? check(
+        await service.auth.admin.updateUserById(found.id, {
+          password: DEMO_PASSWORD,
+        }),
+      ).user
+    : check(
+        await service.auth.admin.createUser({
+          email,
+          password: DEMO_PASSWORD,
+          email_confirm: true,
+          user_metadata: { name: `Matching review ${role}` },
+        }),
+      ).user;
 }
 check(
   await service.from("platform_admins").upsert({
