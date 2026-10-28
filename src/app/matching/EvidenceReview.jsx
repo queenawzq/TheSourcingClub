@@ -1,7 +1,13 @@
 import { getSelectedTerms } from "../../lib/domain/profile.js";
 import React, { useEffect, useState } from "react";
 import { supabase, unwrap } from "../../lib/supabase.js";
-import { uploadDocument, urlFor } from "../../lib/domain/documents.js";
+import {
+  ATTACHMENT_ACCEPT,
+  attachmentRefusal,
+  deleteDocument,
+  uploadDocument,
+  urlFor,
+} from "../../lib/domain/documents.js";
 import { listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { MATCH_KINDS } from "../../lib/domain/matching.js";
 import { useMatchingEnabled } from "./MatchingProfile.jsx";
@@ -23,6 +29,10 @@ export default function EvidenceReview({ org = null, staff = false }) {
     [busy, setBusy] = useState(false),
     [term, setTerm] = useState("");
   const [orgNames, setOrgNames] = useState({});
+  // Each item's file, by document id: its name says which file is current.
+  const [files, setFiles] = useState({});
+  // The certificate whose details were just saved, for its "Saved." line.
+  const [savedCert, setSavedCert] = useState(null);
   const [reviewNotes, setReviewNotes] = useState({});
   // The factory's own: staff's latest decision on each item, with its note.
   const [decisions, setDecisions] = useState({});
@@ -69,6 +79,19 @@ export default function EvidenceReview({ org = null, staff = false }) {
       ),
     );
     setDecisions(Object.fromEntries(notes.flat().map((n) => [n.evidence_id, n])));
+    const documentIds = [
+      ...unwrap(cap, "load capability evidence"),
+      ...unwrap(cert, "load certificate evidence"),
+    ]
+      .map((r) => r.document_id)
+      .filter(Boolean);
+    if (documentIds.length) {
+      const docs = unwrap(
+        await supabase.from("documents").select("id,file_name,storage_path,bucket,kind,org_id").in("id", documentIds),
+        "load evidence files",
+      );
+      setFiles(Object.fromEntries(docs.map((d) => [d.id, d])));
+    }
     if (staff) {
       const ids = [
         ...new Set(
@@ -116,15 +139,34 @@ export default function EvidenceReview({ org = null, staff = false }) {
       setBusy(false);
     }
   }
+  // The tab opens on the click itself: one opened after an await is a
+  // pop-up the browser blocks.
   async function view(id) {
-    const d = unwrap(
-      await supabase.from("documents").select("*").eq("id", id).single(),
-      "load private evidence",
-    );
-    window.open(await urlFor(d), "_blank", "noopener,noreferrer");
+    const tab = window.open("", "_blank");
+    setError(null);
+    try {
+      const d =
+        files[id] ??
+        unwrap(await supabase.from("documents").select("*").eq("id", id).single(), "load private evidence");
+      const url = await urlFor(d);
+      if (tab) {
+        tab.opener = null;
+        tab.location.href = url;
+      } else window.location.assign(url);
+    } catch (e) {
+      tab?.close();
+      setError(e);
+    }
   }
-  async function upload(file) {
+  async function upload(input) {
+    const file = input.files[0];
+    // Cleared, so choosing the same file again (after fixing it) still uploads.
+    input.value = "";
     if (!file || !term) return;
+    const refusal = attachmentRefusal(file);
+    if (refusal) return setError(new Error(refusal));
+    // A new file for a capability replaces the one before it.
+    const previous = (rows ?? []).find((r) => r.type === "capability" && r.term_id === term);
     await action(async () => {
       const d = await uploadDocument({
         orgId: org.id,
@@ -140,6 +182,10 @@ export default function EvidenceReview({ org = null, staff = false }) {
           ),
         "attach capability evidence",
       );
+      // Nothing points at the old file now; left, it would sit in storage
+      // unreviewed and unreachable.
+      const old = previous && files[previous.document_id];
+      if (old) await deleteDocument(old).catch((e) => console.error("remove replaced evidence", e));
     });
   }
   const options = Object.values(terms).flat();
@@ -182,12 +228,17 @@ export default function EvidenceReview({ org = null, staff = false }) {
             <input
               type="file"
               aria-label="Upload supporting evidence"
+              accept={ATTACHMENT_ACCEPT}
               disabled={busy || !term}
-              onChange={(e) => upload(e.target.files[0])}
+              onChange={(e) => upload(e.currentTarget)}
             />
             <strong>{busy ? "Uploading…" : "Upload supporting evidence"}</strong>
             <span className="matching-small">
-              {term ? "PDF, PNG or JPG" : "Choose a capability first"}
+              {term
+                ? "A PDF, photo, Excel sheet or ZIP, up to 50 MB. A new file replaces the one before."
+                : offered.length
+                  ? "Choose a capability first"
+                  : "Save what you make in your matching profile first"}
             </span>
           </label>
         </div>
@@ -207,13 +258,15 @@ export default function EvidenceReview({ org = null, staff = false }) {
                     <span className="matching-small">
                       {r.type === "certificate" ? "Certificate" : "Capability evidence"}
                       {staff ? ` · ${orgNames[r.org_id] ?? "Company"}` : ""}
+                      {" · "}
+                      {r.document_id ? files[r.document_id]?.file_name ?? "File" : "No file attached"}
                     </span>
                   </div>
                   <span className={`matching-pill ${tone}`}>
                     {label.charAt(0).toUpperCase() + label.slice(1)}
                   </span>
                   {r.document_id && (
-                    <button type="button" className="matching-btn" onClick={() => action(() => view(r.document_id))}>
+                    <button type="button" className="matching-btn" onClick={() => view(r.document_id)}>
                       View file
                     </button>
                   )}
@@ -246,16 +299,20 @@ export default function EvidenceReview({ org = null, staff = false }) {
                     row={r}
                     terms={terms}
                     busy={busy}
+                    saved={savedCert === r.id}
+                    onEdit={() => savedCert === r.id && setSavedCert(null)}
                     onSave={(patch) =>
-                      action(async () =>
+                      action(async () => {
+                        setSavedCert(null);
                         unwrap(
                           await supabase
                             .from("factory_certifications")
                             .update(patch)
                             .eq("id", r.id),
                           "save certificate details",
-                        ),
-                      )
+                        );
+                        setSavedCert(r.id);
+                      })
                     }
                   />
                 )}
@@ -282,7 +339,11 @@ export default function EvidenceReview({ org = null, staff = false }) {
                           key={decision}
                           className={`matching-btn${decision === "verified" ? " is-primary" : ""}`}
                           // Rejecting or asking for more needs a note: it is all the factory is told.
-                          disabled={busy || (decision !== "verified" && !reviewNotes[r.id]?.trim())}
+                          // Approving needs a file: there is nothing else to have checked.
+                          disabled={
+                            busy ||
+                            (decision === "verified" ? !r.document_id : !reviewNotes[r.id]?.trim())
+                          }
                           onClick={() =>
                             action(async () => {
                               unwrap(
@@ -321,9 +382,15 @@ export default function EvidenceReview({ org = null, staff = false }) {
     </section>
   );
 }
-function CertificateScope({ row, terms, busy, onSave }) {
+function CertificateScope({ row, terms, busy, saved, onEdit, onSave }) {
   const [d, setD] = useState(row);
   useEffect(() => setD(row), [row]);
+  // An edit after a save takes the "Saved." away until it is saved again.
+  const edit = (fn) => {
+    onEdit();
+    setD(fn);
+  };
+  const expired = !d.non_expiring && d.expires_at && d.expires_at < new Date().toLocaleDateString("en-CA");
   const scopeTerms = ["product_category", "fabric", "technique"].flatMap((k) => terms[k] ?? []);
   const complete =
     (d.non_expiring || d.expires_at) && d.facility_country && d.facility_name?.trim() &&
@@ -339,14 +406,14 @@ function CertificateScope({ row, terms, busy, onSave }) {
           <span className="matching-label">Facility name on the certificate</span>
           <input
             value={d.facility_name ?? ""}
-            onChange={(e) => setD((cur) => ({ ...cur, facility_name: e.target.value }))}
+            onChange={(e) => edit((cur) => ({ ...cur, facility_name: e.target.value }))}
           />
         </label>
         <label className="matching-field">
           <span className="matching-label">Facility country</span>
           <select
             value={d.facility_country ?? ""}
-            onChange={(e) => setD((cur) => ({ ...cur, facility_country: e.target.value || null }))}
+            onChange={(e) => edit((cur) => ({ ...cur, facility_country: e.target.value || null }))}
           >
             <option value="">Choose a country</option>
             {(terms.country ?? [])
@@ -362,7 +429,7 @@ function CertificateScope({ row, terms, busy, onSave }) {
             type="date"
             disabled={d.non_expiring}
             value={d.expires_at ?? ""}
-            onInput={(e) => setD((cur) => ({ ...cur, expires_at: e.currentTarget.value || null }))}
+            onInput={(e) => edit((cur) => ({ ...cur, expires_at: e.currentTarget.value || null }))}
           />
         </label>
       </div>
@@ -371,7 +438,7 @@ function CertificateScope({ row, terms, busy, onSave }) {
           type="checkbox"
           checked={d.non_expiring}
           onChange={(e) =>
-            setD((cur) => ({ ...cur, non_expiring: e.target.checked, expires_at: e.target.checked ? null : cur.expires_at }))
+            edit((cur) => ({ ...cur, non_expiring: e.target.checked, expires_at: e.target.checked ? null : cur.expires_at }))
           }
         />
         This certificate does not expire
@@ -380,7 +447,7 @@ function CertificateScope({ row, terms, busy, onSave }) {
         <input
           type="checkbox"
           checked={d.scope_all_products}
-          onChange={(e) => setD((cur) => ({ ...cur, scope_all_products: e.target.checked }))}
+          onChange={(e) => edit((cur) => ({ ...cur, scope_all_products: e.target.checked }))}
         />
         It covers everything this facility makes
       </label>
@@ -394,7 +461,7 @@ function CertificateScope({ row, terms, busy, onSave }) {
                 key={t.id}
                 aria-pressed={d.scope_term_ids.includes(t.id)}
                 onClick={() =>
-                  setD((cur) => ({ ...cur,
+                  edit((cur) => ({ ...cur,
                     scope_term_ids: cur.scope_term_ids.includes(t.id)
                       ? cur.scope_term_ids.filter((x) => x !== t.id)
                       : [...cur.scope_term_ids, t.id],
@@ -407,7 +474,13 @@ function CertificateScope({ row, terms, busy, onSave }) {
           </div>
         </>
       )}
+      {expired && (
+        <p className="matching-callout is-warning" role="status">
+          This date has passed, so brands see the certificate as expired. Upload the renewed certificate under Verification.
+        </p>
+      )}
       <div className="matching-actions">
+        {saved && <p className="matching-saved" role="status">Saved. TSC will check the details.</p>}
         {!complete && (
           <p className="matching-small">TSC needs the facility, its country, the validity and what it covers.</p>
         )}

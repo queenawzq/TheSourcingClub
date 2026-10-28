@@ -74,6 +74,13 @@ const CONSTRAINT_MESSAGES = {
     "The shipping allowance can't be negative.",
   matching_requirements_check: "Choose what the bulk deadline means.",
 };
+// The same for what the validation trigger and Postgres itself raise.
+const RAISED_MESSAGES = [
+  [/colour quantities must be positive and sum/, "Units per colour must add up to the units per style."],
+  [/mandatory terms must be selected requirements/, "Each must-have has to be one of the options you picked. Pick it again, then save."],
+  [/invalid input syntax for type integer/, "Enter whole numbers only."],
+  [/out of range for type integer/, "One of the numbers is too large."],
+];
 export async function saveMatchingProfile(
   subjectType,
   subjectId,
@@ -88,6 +95,8 @@ export async function saveMatchingProfile(
   });
   const constraint = result.error?.message?.match(/check constraint "([^"]+)"/)?.[1];
   if (CONSTRAINT_MESSAGES[constraint]) throw new Error(CONSTRAINT_MESSAGES[constraint]);
+  const raised = RAISED_MESSAGES.find(([pattern]) => pattern.test(result.error?.message ?? ""));
+  if (raised) throw new Error(raised[1]);
   return unwrap(result, "save matching information");
 }
 export async function inviteMatchedFactories(rfqId, ids, acknowledged) {

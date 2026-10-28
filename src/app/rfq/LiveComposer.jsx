@@ -1,5 +1,5 @@
 import MatchingProfile, { useMatchingStatus } from "../matching/MatchingProfile.jsx";
-import FactoryMatch from "../matching/FactoryMatch.jsx";
+import FactoryMatch, { plainReason } from "../matching/FactoryMatch.jsx";
 import { assessFactories, compareMatches } from "../../lib/domain/matching.js";
 /**
  * The request composer, on Queena's designed flow.
@@ -193,6 +193,10 @@ export default function LiveComposer({ org, rfqId }) {
   const matchingV2 = matchingStatus === true;
   const [matchingDirty, setMatchingDirty] = useState(false);
   const [matchingAcknowledged, setMatchingAcknowledged] = useState(false);
+  // The matching panel's save, run with the brief's; and a count of brief
+  // saves, which tells the panel to pick up the categories the brief wrote.
+  const matchingSave = useRef(null);
+  const [briefSaves, setBriefSaves] = useState(0);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [saveState, setSaveState] = useState("saved");
@@ -467,12 +471,26 @@ export default function LiveComposer({ org, rfqId }) {
     setError(null);
     try {
       await persistReview();
+      setBriefSaves((n) => n + 1);
+      await saveMatching();
       setMatchingAcknowledged(false);
       setSaveState("saved");
     } catch (failure) {
       setSaveState("dirty");
       setError(failure);
     }
+  }
+
+  /**
+   * Save the matching panel with the brief, so "Save changes" and "Invite
+   * vendors" never leave it behind. A refusal is shown under the panel, and
+   * the page goes there: the buttons sit far above it.
+   */
+  async function saveMatching() {
+    if (!matchingV2 || !matchingDirty) return;
+    if (await matchingSave.current?.()) return;
+    document.querySelector(".matching-panel .matching-actions")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    throw new Error("Your matching requirements couldn't be saved. The reason is beside their save button.");
   }
 
   /**
@@ -491,8 +509,9 @@ export default function LiveComposer({ org, rfqId }) {
     setError(null);
 
     try {
-      if (matchingV2 && matchingDirty) throw new Error("Save your matching requirements before choosing vendors.");
       if (!skipSave) await persistReview();
+      setBriefSaves((n) => n + 1);
+      await saveMatching();
       setMatchingAcknowledged(false);
       setSaveState("saved");
 
@@ -571,7 +590,13 @@ export default function LiveComposer({ org, rfqId }) {
       // and nobody outside it may be pointed at one.
       // Checked before publishing: the database refuses an unacknowledged
       // invitation, and a request published with nobody invited is a dead end.
-      if (matchingV2 && vendors.some(v=>selectedVendors.includes(v.org_id) && v.matching?.status!=="qualified") && !matchingAcknowledged) throw new Error("Acknowledge unresolved matching requirements before inviting.");
+      if (matchingV2 && vendors.some(v=>selectedVendors.includes(v.org_id) && v.matching?.status!=="qualified") && !matchingAcknowledged) {
+        // The box is under the list, far below the button that was pressed.
+        const box = document.querySelector(".matching-acknowledge input");
+        box?.scrollIntoView({ behavior: "smooth", block: "center" });
+        box?.focus({ preventScroll: true });
+        throw new Error("Tick the box above to confirm you'll check what these factories haven't confirmed yet.");
+      }
       await publishRfq(draftId, openToAll ? "open_to_all" : "invited_only");
 
       // By company id: two companies can share a name, and selecting by name
@@ -718,7 +743,7 @@ export default function LiveComposer({ org, rfqId }) {
             <section className="matching-panel" aria-label="Matching for this request">
               {startedFrom && (
                 <p className="matching-callout is-warning" role="status">
-                  {startedFrom.orgs?.name} can't be invited to this request: {startedFrom.matching?.failed?.join("; ")}.
+                  {startedFrom.orgs?.name} can't be invited to this request: {startedFrom.matching?.failed?.map(plainReason).join("; ")}.
                   {" "}Go back to change the request if you want to include it.
                 </p>
               )}
@@ -809,7 +834,13 @@ export default function LiveComposer({ org, rfqId }) {
         serviceOptions={(terms.service ?? []).map((term) => termLabel(term))}
       />
       {/* After the brief it qualifies: who the request goes to, and what is a must-have. */}
-      {draftId && <MatchingProfile org={org} subjectType="rfq" subjectId={draftId} onDirty={()=>setMatchingDirty(true)} onSaved={({selected,terms: matchingTerms})=>{setMatchingDirty(false);setValues(current=>({...current,category:(matchingTerms.product_category??[]).filter(t=>selected.includes(t.id)).map(t=>termLabel(t)).join(", "),certifications:(matchingTerms.certification??[]).filter(t=>selected.includes(t.id)).map(t=>termLabel(t)).join(", ")}));}} />}
+      {draftId && <MatchingProfile org={org} subjectType="rfq" subjectId={draftId} saveRef={matchingSave} refreshKey={briefSaves} onDirty={()=>setMatchingDirty(true)} onSaved={({selected,terms: matchingTerms,changed})=>{setMatchingDirty(false);
+        // Only what was changed in the panel is written back to the brief; the
+        // brief's own wording ("Womenswear / poplin shirts") stays otherwise.
+        const words=(kind)=>(matchingTerms[kind]??[]).filter(t=>selected.includes(t.id)).map(t=>termLabel(t)).join(", ");
+        setValues(current=>({...current,
+          ...(changed.includes("product_category") && {category:words("product_category")}),
+          ...(changed.includes("certification") && {certifications:words("certification")})}));}} />}
       {error && <p className="composer-error" role="alert">{error.message}</p>}
     </FlowShell>
   );

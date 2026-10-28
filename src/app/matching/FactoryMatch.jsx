@@ -23,7 +23,22 @@ const PLAIN = {
   "Review mandatory requirements after editing the request":
     "Check the must-haves: the request changed after they were set",
 };
-const plain = (reason) => PLAIN[reason] ?? reason;
+// Two reasons are built from the taxonomy kind's own name ("Required
+// product_category is not offered").
+const KIND_WORDS = {
+  product_category: ["Doesn't make the product category you need", "Confirm which products the factory makes"],
+  fabric: ["Doesn't work with a fabric you marked as a must-have", "Confirm which fabrics the factory works with"],
+  technique: ["Doesn't offer a technique you marked as a must-have", "Confirm which techniques the factory offers"],
+  development_service: ["Doesn't offer the development support you need", "Confirm the factory's development support"],
+};
+export const plainReason = (reason) => {
+  if (PLAIN[reason]) return PLAIN[reason];
+  const required = reason.match(/^Required (\w+) is not offered$/);
+  if (required && KIND_WORDS[required[1]]) return KIND_WORDS[required[1]][0];
+  const confirm = reason.match(/^Confirm factory (\w+) capability$/);
+  if (confirm && KIND_WORDS[confirm[1]]) return KIND_WORDS[confirm[1]][1];
+  return reason;
+};
 
 export default function FactoryMatch({ match, name = "Factory", open = false }) {
   if (!match) return null;
@@ -47,13 +62,13 @@ export default function FactoryMatch({ match, name = "Factory", open = false }) 
         {match.failed.length > 0 && (
           <section className="is-bad">
             <h4>Not eligible because</h4>
-            <ul>{match.failed.map((x) => <li key={x}>{plain(x)}</li>)}</ul>
+            <ul>{match.failed.map((x) => <li key={x}>{plainReason(x)}</li>)}</ul>
           </section>
         )}
         {match.missing.length > 0 && (
           <section>
             <h4>To confirm with the factory</h4>
-            <ul>{match.missing.map((x) => <li key={x}>{plain(x)}</li>)}</ul>
+            <ul>{match.missing.map((x) => <li key={x}>{plainReason(x)}</li>)}</ul>
           </section>
         )}
         {match.status !== "excluded" && (

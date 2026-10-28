@@ -276,6 +276,11 @@
   accent-color: #1a4df2;
 }
 
+.matching-check.is-disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 /* Buttons: the v2 Button from its tokens. */
 .matching-btn {
   box-sizing: border-box;
