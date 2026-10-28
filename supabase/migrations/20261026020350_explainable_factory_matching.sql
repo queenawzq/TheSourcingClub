@@ -80,7 +80,8 @@ create table public.factory_capability_evidence (
 create table public.matching_evidence_history (
  id uuid primary key default gen_random_uuid(), org_id uuid not null references public.orgs(id) on delete cascade,
  evidence_id uuid not null, evidence_type text not null, decision text not null, reviewer uuid references auth.users(id),
- note text, created_at timestamptz not null default now()
+ -- clock_timestamp: one transaction can write several rows, and their order is the history.
+ note text, created_at timestamptz not null default clock_timestamp()
 );
 alter table public.factory_capability_evidence enable row level security;
 alter table public.matching_evidence_history enable row level security;
@@ -139,20 +140,31 @@ create trigger matching_certificate_guard before insert or update on public.fact
 
 create function public.review_matching_evidence(evidence_type text,evidence_id uuid,decision public.verification_status,note text default null)
 returns void language plpgsql security definer set search_path=public,pg_temp as $$
-declare target_org uuid;
+declare target_org uuid; target_term uuid; label text;
 begin
  if not public.is_platform_admin() then raise exception 'only staff may review evidence' using errcode='42501'; end if;
  if decision not in ('verified','rejected','pending') then raise exception 'invalid review decision' using errcode='22023'; end if;
+ -- A factory told only "rejected" or "needs information" has nothing to act on.
+ if decision in ('rejected','pending') and coalesce(btrim(note),'')='' then
+   raise exception 'add a note telling the factory what to change' using errcode='22023'; end if;
  if evidence_type='capability' then
-   update public.factory_capability_evidence e set status=decision,reviewed_by=auth.uid(),reviewed_at=now(),review_note=note where e.id=evidence_id returning org_id into target_org;
+   update public.factory_capability_evidence e set status=decision,reviewed_by=auth.uid(),reviewed_at=now(),review_note=note where e.id=evidence_id returning org_id,term_id into target_org,target_term;
  elsif evidence_type='certificate' then
    if decision='verified' and not exists(select 1 from public.factory_certifications c join public.documents d on d.id=c.document_id
      where c.id=evidence_id and (c.non_expiring or c.expires_at>=current_date) and c.facility_country is not null and nullif(btrim(c.facility_name),'') is not null
        and (c.scope_all_products or cardinality(c.scope_term_ids)>0)) then raise exception 'complete certificate validity, facility and scope before approval' using errcode='22023'; end if;
-   update public.factory_certifications c set status=decision where c.id=evidence_id returning org_id into target_org;
+   update public.factory_certifications c set status=decision where c.id=evidence_id returning org_id,term_id into target_org,target_term;
  else raise exception 'invalid evidence type' using errcode='22023'; end if;
  if target_org is null then raise exception 'evidence not found' using errcode='P0002'; end if;
  insert into public.matching_evidence_history(org_id,evidence_id,evidence_type,decision,reviewer,note) values(target_org,evidence_id,evidence_type,decision::text,auth.uid(),note);
+ -- What the factory sees, in the same transaction; it opens the profile, where the evidence is.
+ label:=coalesce((select t.label_en from public.taxonomy_terms t where t.id=target_term),'Your')||case when evidence_type='certificate' then ' certificate' else ' evidence' end;
+ insert into public.notifications(org_id,kind,subject_type,subject_id,title,body)
+ values(target_org,
+   case decision when 'verified' then 'matching_evidence_approved' when 'rejected' then 'matching_evidence_rejected' else 'matching_evidence_needs_information' end,
+   'org',target_org,
+   case decision when 'verified' then label||' was approved' when 'rejected' then label||' was not accepted' else 'We need more information about '||label end,
+   nullif(btrim(note),''));
 end $$;
 revoke all on function public.review_matching_evidence(text,uuid,public.verification_status,text) from public,anon;
 grant execute on function public.review_matching_evidence(text,uuid,public.verification_status,text) to authenticated;
@@ -173,7 +185,7 @@ declare
  f public.factory_profiles; facts public.factory_matching_facts; req public.matching_requirements; r public.rfqs;
  required_ids uuid[]; offered_ids uuid[]; group_ids uuid[]; wanted uuid; cert public.factory_certifications;
  factors jsonb:='[]'; checks jsonb:='[]'; missing jsonb:='[]'; failed jsonb:='[]'; evidence jsonb:='[]';
- v_kind text; key text; n integer; matched integer; known integer; groups integer:=0;
+ v_kind text; key text; n integer; matched integer; known integer; groups integer:=0; problem text;
  product numeric:=0; product_known numeric:=0; order_share numeric:=0; order_known numeric:=0;
  development numeric:=0; development_known numeric:=0; region_share numeric:=0; region_known numeric:=0; cert_share numeric:=0; cert_known numeric:=0;
  timeline numeric:=0; timeline_known numeric:=0; weights integer[]; shares numeric[]; covers numeric[]; applies boolean[];
@@ -311,16 +323,26 @@ begin
    select * into cert from public.factory_certifications c where c.org_id=factory_org and c.term_id=wanted;
    if not found then
      missing:=missing||jsonb_build_array('Confirm requested certification');
-   elsif cert.status='rejected' or (cert.expires_at is not null and cert.expires_at<end_date) or
-     (cert.facility_country is not null and cert.facility_country<>f.country_code) or
-     (nullif(btrim(cert.facility_name),'') is not null and lower(btrim(cert.facility_name))<>lower(btrim(coalesce(f.legal_name,(select o.name from public.orgs o where o.id=factory_org))))) or
-     (not cert.scope_all_products and cardinality(cert.scope_term_ids)>0 and exists(select 1 from public.taxonomy_links l join public.taxonomy_terms t on t.id=l.term_id where l.subject_type=factory_match_v2.subject_type and l.subject_id=factory_match_v2.subject_id and t.kind in ('product_category','fabric') and not l.term_id=any(cert.scope_term_ids))) then
+     continue;
+   end if;
+   -- One reason per refusal, so the brand and the factory can each see what to fix.
+   problem:=case
+     when cert.status='rejected' then 'was rejected by TSC'
+     when cert.expires_at is not null and cert.expires_at<end_date then 'expires before the order is due'
+     when cert.facility_country is not null and cert.facility_country<>f.country_code then 'is for a facility in another country'
+     when not cert.scope_all_products and cardinality(cert.scope_term_ids)>0 and exists(select 1 from public.taxonomy_links l join public.taxonomy_terms t on t.id=l.term_id where l.subject_type=factory_match_v2.subject_type and l.subject_id=factory_match_v2.subject_id and t.kind in ('product_category','fabric') and not l.term_id=any(cert.scope_term_ids)) then 'does not cover this product or fabric'
+   end;
+   if problem is not null then
      known:=known+1;
-     if wanted=any(required_ids) then failed:=failed||jsonb_build_array('Mandatory certificate is rejected, expired or for another facility'); end if;
+     if wanted=any(required_ids) then failed:=failed||jsonb_build_array(coalesce((select t.label_en from public.taxonomy_terms t where t.id=wanted),'Required')||' certificate '||problem); end if;
    elsif cert.status='verified' and cert.document_id is not null and (cert.non_expiring or cert.expires_at>=end_date) and cert.facility_country=f.country_code and nullif(btrim(cert.facility_name),'') is not null and
      (cert.scope_all_products or not exists(select 1 from public.taxonomy_links l join public.taxonomy_terms t on t.id=l.term_id
        where l.subject_type=factory_match_v2.subject_type and l.subject_id=factory_match_v2.subject_id and t.kind in ('product_category','fabric') and not l.term_id=any(cert.scope_term_ids))) and
      (cert.scope_all_products or cardinality(cert.scope_term_ids)>0) then matched:=matched+1; known:=known+1;
+   -- A free-text facility name is a question for staff, not a refusal: an
+   -- approved certificate was checked against the company by a person.
+   elsif nullif(btrim(cert.facility_name),'') is not null and lower(btrim(cert.facility_name))<>lower(btrim(coalesce(f.legal_name,(select o.name from public.orgs o where o.id=factory_org)))) then
+     missing:=missing||jsonb_build_array('Confirm the facility named on the certificate');
    else missing:=missing||jsonb_build_array('Confirm certificate validity, review and applicable scope');
    end if;
  end loop;
@@ -489,6 +511,8 @@ revoke select on public.factory_capability_evidence from authenticated;
 grant select(id,org_id,term_id,document_id,status,reviewed_at,created_at) on public.factory_capability_evidence to authenticated;
 create function public.audit_matching_evidence() returns trigger language plpgsql security definer set search_path=public,pg_temp as $$
 begin
+ -- Staff decisions are written by review_matching_evidence, with the reviewer's note.
+ if public.is_platform_admin() then return new; end if;
  if tg_op='INSERT' or to_jsonb(new) is distinct from to_jsonb(old) then
    insert into public.matching_evidence_history(org_id,evidence_id,evidence_type,decision,reviewer,note)
    values(new.org_id,new.id,case when tg_table_name='factory_certifications' then 'certificate' else 'capability' end,new.status::text,auth.uid(),case when public.is_platform_admin() then 'Staff evidence update' else 'Claim submitted or updated; affected approval invalidated' end);
@@ -583,3 +607,21 @@ $$;
 
 create index matching_capability_document_idx on public.factory_capability_evidence(document_id);
 create index matching_certificate_document_idx on public.factory_certifications(document_id);
+
+-- The factory (and staff) read staff's latest decision on its evidence, note included.
+-- review_note and the history stay unreadable to brands, which read evidence
+-- status only. A newer row from the factory itself (a replaced file) hides the
+-- old note: the review it answered no longer applies.
+create function public.matching_evidence_notes(target_org uuid)
+returns table(evidence_type text,evidence_id uuid,decision text,note text,decided_at timestamptz)
+language plpgsql stable security definer set search_path=public,pg_temp as $$
+#variable_conflict use_column
+begin
+ if not (public.is_platform_admin() or public.is_org_member(target_org)) then raise exception 'only the company and staff may read its review notes' using errcode='42501'; end if;
+ return query select x.evidence_type,x.evidence_id,x.decision,x.note,x.created_at from (
+   select distinct on (h.evidence_id) h.evidence_type,h.evidence_id,h.decision,h.note,h.created_at,h.reviewer
+   from public.matching_evidence_history h where h.org_id=target_org order by h.evidence_id,h.created_at desc) x
+ where exists(select 1 from public.platform_admins p where p.user_id=x.reviewer);
+end $$;
+revoke all on function public.matching_evidence_notes(uuid) from public,anon;
+grant execute on function public.matching_evidence_notes(uuid) to authenticated;

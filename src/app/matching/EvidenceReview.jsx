@@ -6,6 +6,14 @@ import { listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { MATCH_KINDS } from "../../lib/domain/matching.js";
 import { useMatchingEnabled } from "./MatchingProfile.jsx";
 import "./matching.css";
+// What each state means to the person reading it. "pending" with a note from
+// staff is a request for more information, not a file waiting in the queue.
+function statusLabel(row, decision) {
+  if (row.status === "verified") return "approved";
+  if (row.status === "rejected") return "not accepted";
+  if (decision?.decision === "pending" && decision.note) return "needs information";
+  return "waiting for review";
+}
 export default function EvidenceReview({ org = null, staff = false }) {
   const enabled = useMatchingEnabled(),
     [rows, setRows] = useState(null),
@@ -16,6 +24,8 @@ export default function EvidenceReview({ org = null, staff = false }) {
     [term, setTerm] = useState("");
   const [orgNames, setOrgNames] = useState({});
   const [reviewNotes, setReviewNotes] = useState({});
+  // The factory's own: staff's latest decision on each item, with its note.
+  const [decisions, setDecisions] = useState({});
   async function load() {
     const byKind = await listTermsByKind([...MATCH_KINDS, "country"]);
     setTerms(byKind);
@@ -36,6 +46,27 @@ export default function EvidenceReview({ org = null, staff = false }) {
       b = b.eq("org_id", org.id);
     }
     const [cap, cert] = await Promise.all([a, b]);
+    // Staff's latest decision on each item, with its note: one company for
+    // the factory, every company in the queue for staff.
+    const orgIds = org
+      ? [org.id]
+      : [
+          ...new Set(
+            [
+              ...unwrap(cap, "load capability evidence"),
+              ...unwrap(cert, "load certificate evidence"),
+            ].map((r) => r.org_id),
+          ),
+        ];
+    const notes = await Promise.all(
+      orgIds.map(async (id) =>
+        unwrap(
+          await supabase.rpc("matching_evidence_notes", { target_org: id }),
+          "load review notes",
+        ),
+      ),
+    );
+    setDecisions(Object.fromEntries(notes.flat().map((n) => [n.evidence_id, n])));
     if (staff) {
       const ids = [
         ...new Set(
@@ -157,9 +188,14 @@ export default function EvidenceReview({ org = null, staff = false }) {
         <article key={`${r.type}-${r.id}`}>
           <h3>
             {options.find((t) => t.id === r.term_id)?.label_en ?? "Capability"}{" "}
-            · {r.status}
+            · {statusLabel(r, decisions[r.id])}
             {staff ? ` · ${orgNames[r.org_id] ?? "Company"}` : ""}
           </h3>
+          {decisions[r.id]?.note && r.status !== "verified" && (
+            <p role="status">
+              {staff ? "Sent to the factory" : "TSC"}: {decisions[r.id].note}
+            </p>
+          )}
           {r.document_id && (
             <button
               type="button"
@@ -204,7 +240,8 @@ export default function EvidenceReview({ org = null, staff = false }) {
                 <button
                   type="button"
                   key={decision}
-                  disabled={busy}
+                  // Rejecting or asking for more needs a note: it is all the factory is told.
+                  disabled={busy || (decision !== "verified" && !reviewNotes[r.id]?.trim())}
                   onClick={() =>
                     action(async () =>
                       unwrap(

@@ -7556,6 +7556,8 @@ export function FactoryOnboarding({
   // { title, intro, icon, reward, cta, onCta }. Without onCta the card has no
   // button. Absent, the designed "You're all set" card shows.
   completion = null,
+  // Live only: a panel drawn after the step's content (matching, on review).
+  extra = null,
 }) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
@@ -7640,6 +7642,7 @@ export function FactoryOnboarding({
           onDeleteDocument={onDeleteDocument}
           termsAcceptance={termsAcceptance}
         />
+        {extra}
 
         {error && <p className="factory-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
 

@@ -40,6 +40,12 @@
   border-radius: 8px;
   font: inherit;
 }
+.matching-panel select[multiple] {
+  min-height: 132px;
+  padding: 4px;
+  /* The product stylesheet draws a dropdown arrow on every select; a list has none. */
+  background-image: none;
+}
 .matching-choice {
   display: flex;
   flex-wrap: wrap;

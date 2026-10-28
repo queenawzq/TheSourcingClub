@@ -84,10 +84,10 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
 
   return (
     <Frame>
-      {assessment && <FactoryMatch match={assessment} name={state.parts.orgName} />}
       <BrandFactoryProfileScreen
         live={{
           ...brandFactoryView(state.parts),
+          matchPanel: assessment ? <FactoryMatch match={assessment} name={state.parts.orgName} /> : null,
           back: { label: backLabel, onClick: back },
           // Only where the brand can save (the composer's invite step has no user).
           save: user ? saveFor(vendorOrgId) : null,

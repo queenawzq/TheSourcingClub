@@ -3133,6 +3133,8 @@ export function BrandOnboarding({
   onDeleteDocument,
   termsAcceptance = null,
   completionPending = false,
+  // Live only: a panel drawn after the step's content (matching, on review).
+  extra = null,
   // The published terms and their full page. Absent, the designed copy shows.
   terms,
   fullTerms,
@@ -3217,6 +3219,7 @@ export function BrandOnboarding({
           onDeleteDocument={onDeleteDocument}
           termsAcceptance={termsAcceptance}
         />
+        {extra}
 
         {error && <p className="brand-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
 
@@ -4974,6 +4977,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
             {view.onRequestQuote && <button className="primary-btn" type="button" onClick={view.onRequestQuote}>Request quote</button>}
           </div>
         </section>
+        {live?.matchPanel}
 
         <div className="factory-profile-layout">
           <section className="factory-profile-main">

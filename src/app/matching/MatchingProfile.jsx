@@ -61,21 +61,52 @@ export default function MatchingProfile({
         .maybeSingle()
         .then((x) => unwrap(x, "load matching details")),
     ])
-      .then(
-        ([terms, selected, details]) =>
-          live &&
-          setState({
-            terms,
-            selected: Object.values(selected).flat(),
-            details: {
-              required_term_ids: [],
-              preferred_countries: [],
-              accepted_countries: [],
-              colour_quantities: [],
-              ...details,
-            },
-          }),
-      )
+      .then(async ([terms, selected, details]) => {
+        let picked = Object.values(selected).flat();
+        let start = details;
+        let fromProfile = false;
+        // A request with nothing saved yet starts from the brand's own
+        // preferences: its fabrics, techniques, services, certificates and
+        // countries. Product categories, quantities and dates are the
+        // request's own.
+        if (subjectType === "rfq" && !details) {
+          const [profileTerms, profile] = await Promise.all([
+            getSelectedTerms("brand_profile", org.id),
+            supabase
+              .from("matching_requirements")
+              .select("required_term_ids,preferred_countries,accepted_countries,location_required")
+              .match({ subject_type: "brand_profile", subject_id: org.id })
+              .maybeSingle()
+              .then((x) => unwrap(x, "load brand matching preferences")),
+          ]);
+          const carried = ["fabric", "technique", "development_service", "certification"]
+            .flatMap((k) => profileTerms[k] ?? [])
+            .filter((id) => !picked.includes(id));
+          if (carried.length || profile) {
+            picked = [...picked, ...carried];
+            start = profile && {
+              ...profile,
+              required_term_ids: (profile.required_term_ids ?? []).filter((id) => picked.includes(id)),
+            };
+            fromProfile = true;
+          }
+        }
+        if (!live) return;
+        setState({
+          terms,
+          selected: picked,
+          fromProfile,
+          details: {
+            required_term_ids: [],
+            preferred_countries: [],
+            accepted_countries: [],
+            colour_quantities: [],
+            ...start,
+          },
+        });
+        // Not saved yet, so the composer asks for a save before inviting.
+        if (fromProfile) onDirty();
+      })
       .catch((e) => live && setError(e));
     return () => {
       live = false;
@@ -195,6 +226,12 @@ export default function MatchingProfile({
       </p>
       {state && (
         <>
+          {state.fromProfile && !saved && (
+            <p role="status">
+              Filled in from your brand profile's preferences. Change anything
+              for this request, then save.
+            </p>
+          )}
           {factory &&
             ["moq_per_colour", "usual_order_min", "usual_order_max"].some(
               (k) => state.details[k] == null,

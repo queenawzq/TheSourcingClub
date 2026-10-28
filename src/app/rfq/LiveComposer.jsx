@@ -538,6 +538,9 @@ export default function LiveComposer({ org, rfqId }) {
         }
       }
       setExcludedVendors(matchingV2 ? (rows ?? []).filter(row=>assessments.get(row.org_id)?.status === "excluded").map(row=>({...row,matching:assessments.get(row.org_id)})) : []);
+      // A factory ticked on an earlier pass that this version of the request
+      // rules out is no longer a choice, so it is no longer counted as one.
+      if (matchingV2) setSelectedVendors((current) => current.filter((id) => assessments.get(id)?.status !== "excluded"));
       setVendors(
         (rows ?? [])
           .filter(row=>!matchingV2 || (assessments.get(row.org_id) && assessments.get(row.org_id).status!=="excluded"))
@@ -705,7 +708,10 @@ export default function LiveComposer({ org, rfqId }) {
         onBack={() => setStep("review")}
         onNext={publish}
       >
-        {matchingV2 && <section className="matching-panel"><h2>Factory match details</h2>{vendors.map(v=><div key={v.org_id}><h3>{v.orgs?.name}</h3><FactoryMatch match={v.matching} name={v.orgs?.name} /></div>)}
+        {matchingV2 && <section className="matching-panel"><h2>Factory match details</h2>
+          {/* The factory the brand started from, when this request's must-haves rule it out. */}
+          {excludedVendors.filter(v=>v.org_id===(reorder?.factoryOrgId ?? requestedVendor)).map(v=><p role="status" key={v.org_id}>{v.orgs?.name} can't be invited to this request: {v.matching?.failed?.join("; ")}. Go back to change the request if you want to include it.</p>)}
+{vendors.map(v=><div key={v.org_id}><h3>{v.orgs?.name}</h3><FactoryMatch match={v.matching} name={v.orgs?.name} /></div>)}
           {vendors.some(v=>selectedVendors.includes(v.org_id) && v.matching?.status!=="qualified") && <label><input type="checkbox" checked={matchingAcknowledged} onChange={e=>{setMatchingAcknowledged(e.target.checked);setError(null);}} />I understand the selected factories have unresolved requirements and will confirm them before proceeding.</label>}
           {excludedVendors.length>0 && <details><summary>{excludedVendors.length} {excludedVendors.length===1?"factory excluded":"factories excluded"} by must-have requirements</summary>{excludedVendors.map(v=><div key={v.org_id}><h3>{v.orgs?.name}</h3><FactoryMatch match={v.matching} name={v.orgs?.name} /></div>)}</details>}
         </section>}

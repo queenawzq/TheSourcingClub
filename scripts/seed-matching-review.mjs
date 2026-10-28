@@ -1,26 +1,52 @@
 /**
- * Isolated local matching fixtures. Never accepts a hosted Supabase URL.
- * Turns matching v2 on for that local database. Prints the two env lines a
- * dev server needs rather than writing .env.local, which holds other keys.
+ * Matching fixtures: a brand, three factories (qualified, provisional,
+ * excluded), staff and a draft request. Turns matching v2 on for that
+ * database. Prints the two env lines a dev server needs rather than writing
+ * .env.local, which holds other keys.
+ *
+ *   MATCHING_SUPABASE_WORKDIR=$PWD node scripts/seed-matching-review.mjs
+ *   SUPABASE_URL=… SUPABASE_SERVICE_KEY=… node scripts/seed-matching-review.mjs --remote
+ *
+ * --remote is for a test database (the qa branch the PR previews use) and
+ * refuses the production project outright, as seed-demo.mjs does.
  */
 import { execFileSync } from "node:child_process";
 import { createClient } from "@supabase/supabase-js";
 import { DEMO_PASSWORD } from "../src/shared/demo-logins.mjs";
-const workdir = process.env.MATCHING_SUPABASE_WORKDIR;
-if (!workdir)
-  throw new Error(
-    "Set MATCHING_SUPABASE_WORKDIR to an isolated local Supabase project.",
+const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
+const remote = process.argv.includes("--remote");
+let stack;
+if (remote) {
+  stack = {
+    API_URL: process.env.SUPABASE_URL,
+    SECRET_KEY: process.env.SUPABASE_SERVICE_KEY,
+    PUBLISHABLE_KEY: process.env.SUPABASE_ANON_KEY,
+  };
+  if (!stack.API_URL || !stack.SECRET_KEY)
+    throw new Error("--remote needs SUPABASE_URL and SUPABASE_SERVICE_KEY for a test database.");
+  // A JWT-style key names its project; sb_secret_ keys don't, so the URL check always applies.
+  let keyRef = null;
+  try {
+    keyRef = JSON.parse(Buffer.from(stack.SECRET_KEY.split(".")[1], "base64url").toString()).ref ?? null;
+  } catch {}
+  if (stack.API_URL.includes(PRODUCTION_REF) || keyRef === PRODUCTION_REF)
+    throw new Error("Refusing to seed: that is the production database.");
+} else {
+  const workdir = process.env.MATCHING_SUPABASE_WORKDIR;
+  if (!workdir)
+    throw new Error(
+      "Set MATCHING_SUPABASE_WORKDIR to an isolated local Supabase project, or pass --remote for a test database.",
+    );
+  stack = JSON.parse(
+    execFileSync(
+      "./node_modules/.bin/supabase",
+      ["status", "--workdir", workdir, "-o", "json"],
+      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+    ),
   );
-const stack = JSON.parse(
-  execFileSync(
-    "./node_modules/.bin/supabase",
-    ["status", "--workdir", workdir, "-o", "json"],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-  ),
-);
-const url = new URL(stack.API_URL);
-if (!["127.0.0.1", "localhost"].includes(url.hostname))
-  throw new Error("Local fixtures cannot run on a hosted database.");
+  if (!["127.0.0.1", "localhost"].includes(new URL(stack.API_URL).hostname))
+    throw new Error("Without --remote this only seeds a local stack.");
+}
 const key = stack.PUBLISHABLE_KEY ?? stack.ANON_KEY;
 const service = createClient(
   stack.API_URL,
@@ -247,19 +273,12 @@ check(
     .update({ enabled: true })
     .eq("id", true),
 );
-const link = check(
-  await service.auth.admin.generateLink({
-    type: "magiclink",
-    email: users.brand.email,
-  }),
-);
 console.log(
   JSON.stringify(
     {
       url: stack.API_URL,
       env: `VITE_SUPABASE_URL=${stack.API_URL}\nVITE_SUPABASE_ANON_KEY=${key}`,
-      brandEmail: users.brand.email,
-      localTestCode: link.properties.email_otp,
+      logins: Object.values(users).map((u) => u.email),
       ids,
     },
     null,

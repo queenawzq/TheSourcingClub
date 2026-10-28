@@ -124,10 +124,12 @@ update public.factory_certifications set expires_at=current_date+1 where id='f99
 select is(public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-000000000001','b9900000-0000-0000-0000-000000000002')->>'status','excluded','certificate must remain valid through delivery');
 update public.factory_certifications set expires_at=current_date+120,scope_all_products=false,scope_term_ids=array['c9900000-0000-0000-0000-000000000002'::uuid] where id='f9900000-0000-0000-0000-000000000001';
 select is(public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-000000000001','b9900000-0000-0000-0000-000000000002')->>'status','excluded','known certificate scope mismatch fails mandatory requirement');
+select ok(public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-000000000001','b9900000-0000-0000-0000-000000000002')->'failed' ? 'P99 GOTS certificate does not cover this product or fabric','the refusal names the certificate and the reason');
 update public.factory_certifications set scope_all_products=true,scope_term_ids='{}',facility_country='CN' where id='f9900000-0000-0000-0000-000000000001';
 select is(public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-000000000001','b9900000-0000-0000-0000-000000000002')->>'status','excluded','certificate for another facility cannot qualify');
 update public.factory_certifications set facility_country='PT',facility_name='Another Facility' where id='f9900000-0000-0000-0000-000000000001';
-select is(public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-000000000001','b9900000-0000-0000-0000-000000000002')->>'status','excluded','certificate facility name must match the production company');
+select is(public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-000000000001','b9900000-0000-0000-0000-000000000002')->>'status','needs_confirmation','an unreviewed facility-name mismatch asks for confirmation, never excludes');
+select ok(public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-000000000001','b9900000-0000-0000-0000-000000000002')->'missing' ? 'Confirm the facility named on the certificate','the facility name is what is asked about');
 update public.factory_certifications set facility_name='P99 Factory',facility_country=null,expires_at=null where id='f9900000-0000-0000-0000-000000000001';
 select is(public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-000000000001','b9900000-0000-0000-0000-000000000002')->>'status','needs_confirmation','legacy certificate without validity and facility is unknown');
 -- Request scoring and API enforcement use the identical engine.
@@ -180,6 +182,36 @@ update storage.objects set version=gen_random_uuid()::text where bucket_id='org-
 select is((select status::text from public.factory_capability_evidence where id='e9900000-0000-0000-0000-000000000001'),'pending','direct Storage replacement invalidates capability approval');
 select ok(exists(select 1 from public.matching_evidence_history where evidence_id='e9900000-0000-0000-0000-000000000001' and decision='pending'),'approval invalidation has audit history');
 select is((select count(*)::integer from public.credit_ledger where org_id='b9900000-0000-0000-0000-000000000002'),0,'file replacement grants no company credits');
+
+-- A staff-approved certificate is not excluded over its free-text facility name.
+update public.factory_certifications set facility_name='P99 Factory Unit 2',facility_country='PT',expires_at=current_date+400,non_expiring=false,scope_all_products=true,scope_term_ids='{}' where id='f9900000-0000-0000-0000-000000000001';
+select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000004","role":"authenticated"}',true);
+set local role authenticated;
+select lives_ok($$select public.review_matching_evidence('certificate','f9900000-0000-0000-0000-000000000001','verified')$$,'staff approve a certificate naming a unit of the company');
+reset role;
+select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select isnt(public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-000000000001','b9900000-0000-0000-0000-000000000002')->>'status','excluded','an approved certificate is not excluded over its facility name');
+reset role;
+-- Rejecting or asking for more needs a note, which the factory is sent and can read.
+select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000004","role":"authenticated"}',true);
+set local role authenticated;
+select throws_ok($$select public.review_matching_evidence('certificate','f9900000-0000-0000-0000-000000000001','rejected')$$,'22023',null,'rejecting without a note is refused');
+select throws_ok($$select public.review_matching_evidence('capability','e9900000-0000-0000-0000-000000000001','pending','  ')$$,'22023',null,'asking for more information without a note is refused');
+select lives_ok($$select public.review_matching_evidence('certificate','f9900000-0000-0000-0000-000000000001','rejected','The scope page is missing.')$$,'staff reject with a note');
+reset role;
+select ok(exists(select 1 from public.notifications where org_id='b9900000-0000-0000-0000-000000000002' and kind='matching_evidence_rejected' and body='The scope page is missing.' and subject_type='org'),'the factory is told, with the note');
+select is((select count(*)::integer from public.matching_evidence_history where evidence_id='f9900000-0000-0000-0000-000000000001' and note='Staff evidence update'),0,'a staff decision is logged once, by the review itself');
+select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000001","role":"authenticated"}',true);
+set local role authenticated;
+select ok(public.factory_match_v2('brand_profile','b9900000-0000-0000-0000-000000000001','b9900000-0000-0000-0000-000000000002')->'failed' ? 'P99 GOTS certificate was rejected by TSC','a rejected certificate is named as the reason');
+select throws_ok($$select * from public.matching_evidence_notes('b9900000-0000-0000-0000-000000000002')$$,'42501',null,'a brand cannot read a factory''s review notes');
+reset role;
+select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000002","role":"authenticated"}',true);
+set local role authenticated;
+select is((select n.note from public.matching_evidence_notes('b9900000-0000-0000-0000-000000000002') n where n.evidence_id='f9900000-0000-0000-0000-000000000001'),'The scope page is missing.','the factory reads staff''s note on its own evidence');
+reset role;
+select set_config('request.jwt.claims','',true);
 
 -- Each validation compares the term it is given, not a column with itself.
 insert into public.taxonomy_terms(id,kind,slug,label_en,org_id) values

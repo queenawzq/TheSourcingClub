@@ -544,9 +544,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   }
 
   return (
-    <>
-    {step === REVIEW_STEP && <MatchingProfile org={org} subjectType="factory_profile" />}
     <FactoryOnboarding
+      extra={step === REVIEW_STEP ? <MatchingProfile org={org} subjectType="factory_profile" /> : null}
       companyType={companyType}
       language={language}
       step={step}
@@ -603,6 +602,5 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         },
       })}
     />
-    </>
   );
 }

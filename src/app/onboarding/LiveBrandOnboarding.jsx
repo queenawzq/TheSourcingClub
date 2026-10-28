@@ -341,9 +341,8 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
   }
 
   return (
-    <>
-    {step === REVIEW_STEP && <MatchingProfile org={org} subjectType="brand_profile" />}
     <BrandOnboarding
+      extra={step === REVIEW_STEP ? <MatchingProfile org={org} subjectType="brand_profile" /> : null}
       step={step}
       isReviewEdit={reviewEditStep !== null}
       onBack={() => {
@@ -393,6 +392,5 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
         },
       })}
     />
-    </>
   );
 }

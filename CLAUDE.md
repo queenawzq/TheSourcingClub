@@ -308,6 +308,15 @@ function when it is off. Things that will bite:
   A factory cannot set a status: the guard resets it, and a replaced, moved or
   deleted file (`storage.objects`, `documents`) sends the review back to
   pending. Reads and metadata updates do not.
+- **Every staff decision on evidence tells the factory.** Rejecting or asking
+  for more information needs a note (the database refuses one without); the
+  factory gets a bell notice with it, and reads its notes through
+  `matching_evidence_notes()`, never `review_note` or the history, which a
+  brand must not see. A replaced file hides the old note.
+- **A certificate's facility name never excludes.** It is free text, so a
+  mismatch on an unreviewed certificate asks for confirmation, and an approved
+  one is trusted: staff checked it. Rejected, expired, another country and
+  scope that misses the product do exclude, each named in `failed`.
 - **Name `unnest` aliases in validations.** In `select 1 from unnest(x) id
   where not exists(select … from taxonomy_terms t where t.id=id)`, the inner
   `id` is `t.id`, so the check passes everything. Write `unnest(x)
