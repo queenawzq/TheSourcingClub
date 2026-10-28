@@ -545,7 +545,7 @@ export default function LiveComposer({ org, rfqId }) {
           .sort((a, b) => matchingV2 ? compareMatches(a.matching,b.matching) : (b.matchPercent ?? -1) - (a.matchPercent ?? -1))
           // A reorder's own factory (or the vendor the request was started
           // from) heads the list, ticked, above the ranking.
-          .sort((a, b) => matchingV2 ? 0 : Number(b.org_id === firstId) - Number(a.org_id === firstId)),
+          .sort((a, b) => Number(b.org_id === firstId) - Number(a.org_id === firstId)),
       );
       setStep("invite");
     } catch (failure) {
@@ -566,7 +566,9 @@ export default function LiveComposer({ org, rfqId }) {
       // Publish first, then invite. An invitation to a draft is refused by
       // RLS — reasonably, since a draft is the brand's private working copy
       // and nobody outside it may be pointed at one.
-      if (matchingV2 && vendors.some(v=>selectedVendors.includes(v.orgs?.name) && v.matching?.status!=="qualified") && !matchingAcknowledged) throw new Error("Acknowledge unresolved matching requirements before inviting.");
+      // Checked before publishing: the database refuses an unacknowledged
+      // invitation, and a request published with nobody invited is a dead end.
+      if (matchingV2 && vendors.some(v=>selectedVendors.includes(v.org_id) && v.matching?.status!=="qualified") && !matchingAcknowledged) throw new Error("Acknowledge unresolved matching requirements before inviting.");
       await publishRfq(draftId, openToAll ? "open_to_all" : "invited_only");
 
       // By company id: two companies can share a name, and selecting by name
@@ -704,7 +706,7 @@ export default function LiveComposer({ org, rfqId }) {
         onNext={publish}
       >
         {matchingV2 && <section className="matching-panel"><h2>Factory match details</h2>{vendors.map(v=><div key={v.org_id}><h3>{v.orgs?.name}</h3><FactoryMatch match={v.matching} name={v.orgs?.name} /></div>)}
-          {vendors.some(v=>selectedVendors.includes(v.orgs?.name) && v.matching?.status!=="qualified") && <label><input type="checkbox" checked={matchingAcknowledged} onChange={e=>{setMatchingAcknowledged(e.target.checked);setError(null);}} />I understand the selected factories have unresolved requirements and will confirm them before proceeding.</label>}
+          {vendors.some(v=>selectedVendors.includes(v.org_id) && v.matching?.status!=="qualified") && <label><input type="checkbox" checked={matchingAcknowledged} onChange={e=>{setMatchingAcknowledged(e.target.checked);setError(null);}} />I understand the selected factories have unresolved requirements and will confirm them before proceeding.</label>}
           {excludedVendors.length>0 && <details><summary>{excludedVendors.length} {excludedVendors.length===1?"factory excluded":"factories excluded"} by must-have requirements</summary>{excludedVendors.map(v=><div key={v.org_id}><h3>{v.orgs?.name}</h3><FactoryMatch match={v.matching} name={v.orgs?.name} /></div>)}</details>}
         </section>}
         <InviteScreen
