@@ -207,7 +207,7 @@ npm run seed:demo     # demo companies with fixed logins; run again to reset the
 
 Put the local URL and publishable key in `.env.local` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; `app.html` shows a setup message rather than crashing when they are absent.
 
-**Demo data.** `npm run seed:demo` (`scripts/seed-demo.mjs`) fills the database with demo companies, requests, quotes and orders behind fixed logins, all with the password `demo password 8`: `demo-brand@example.com`, `demo-factory@example.com`, `demo-factory-two@example.com` (a competing quote), `demo-factory-new@example.com` (waiting for verification), `demo-brand-new@example.com` (a brand with nothing yet, so its dashboard recommends factories), `demo-trading@example.com` (a trading company), `demo-lakeside@example.net` (a factory on another email domain: inviting it shows "already has an account", since every other login shares `example.com` and the guard refuses a company's own domain first) and `demo-admin@example.com` (platform admin, `/admin.html`). Each run deletes the demo companies and every order one of them is part of, then builds them again, so running it again is the reset. It only targets a local stack unless given `--remote` with `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` for a test database, and it refuses the production project. A PR that adds a state a tester needs to see adds it here. **A scenario that needs an account of its own** (a role or company state none of the logins has) adds the login to `src/shared/demo-logins.mjs` and its setup to the seed; the seed stops if a listed login has no setup. That list is also what the test sites' one-click sign-in shows: on test builds only (the dev server, PR previews and the qa site: `__DEMO_SIGN_IN__` in `vite.config.js`), the sign-in screens offer a button per login (`src/shared/DemoSignIn.jsx`). A production build leaves that code and the list out, and the buttons hide themselves when connected to the production database.
+**Demo data.** `npm run seed:demo` (`scripts/seed-demo.mjs`) fills the database with demo companies, requests, quotes and orders behind fixed logins, all with the password `demo password 8`: `demo-brand@example.com`, `demo-brand-member@example.com` (Demo Brand, Approve samples only), `demo-factory@example.com`, `demo-factory-member@example.com` (Demo Factory, Add update only), `demo-factory-two@example.com` (a competing quote), `demo-factory-new@example.com` (waiting for verification), `demo-brand-new@example.com` (a brand with nothing yet, so its dashboard recommends factories), `demo-trading@example.com` (a trading company), `demo-lakeside@example.net` (a factory on another email domain: inviting it shows "already has an account", since every other login shares `example.com` and the guard refuses a company's own domain first) and `demo-admin@example.com` (platform admin, `/admin.html`). Each run deletes the demo companies and every order one of them is part of, then builds them again, so running it again is the reset. It only targets a local stack unless given `--remote` with `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` for a test database, and it refuses the production project. A PR that adds a state a tester needs to see adds it here. **A scenario that needs an account of its own** (a role or company state none of the logins has) adds the login to `src/shared/demo-logins.mjs` and its setup to the seed; the seed stops if a listed login has no setup. That list is also what the test sites' one-click sign-in shows: on test builds only (the dev server, PR previews and the qa site: `__DEMO_SIGN_IN__` in `vite.config.js`), the sign-in screens offer a button per login (`src/shared/DemoSignIn.jsx`). A production build leaves that code and the list out, and the buttons hide themselves when connected to the production database.
 
 **PR previews get their own database.** Supabase branching (GitHub integration, "Supabase changes only") creates a database branch when a PR that changes `supabase/` is opened, runs its migrations and `seed.sql`, and writes the branch's details into Vercel for that PR's preview. It deletes the branch when the PR is merged or closed. It writes its own variable names, so on a Vercel **preview** build only:
 - `vite.config.js` bakes `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` into `__PREVIEW_SUPABASE__`, which `src/lib/supabase.js` prefers;
@@ -554,6 +554,61 @@ hand-written line.
 - The factory's Payments → Credits tab (`/payout?tab=credits`) reads the
   ledger through `creditHistory()`, with invites still waiting shown as
   Pending.
+
+### Team & roles: per-member permissions
+
+`20261028000100`. The permission keys are the design's own (Settings →
+Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
+`primaryContact`, `settingsAccess`; factory `rfqFlow` (RFQ flow),
+`addUpdate`, `primaryContact`, `settingsAccess`. Stored as
+`org_members.permissions`.
+
+- **An owner holds every authority and cannot be restricted.** Its row
+  stores only `primaryContact`, which names a person rather than granting
+  anything, and has one holder per company (a trigger moves it).
+  `has_org_permission()` (and `can()` in `src/lib/domain/org.js`, the same
+  rule for screens) is the one answer everywhere.
+- **Enforced in the database, not the screens.** Each RPC calls
+  `require_org_permission()` before acting; the tables a client writes
+  directly (quotes and their lines, requests and their parts, a request's
+  taxonomy links and matching requirements) carry a guard trigger. It
+  raises only for a MEMBER lacking the permission, so each function's own
+  party check keeps deciding strangers, with its own error code.
+- **What each covers:** Quote flow = writing, cancelling and awarding a
+  request, contract files and setting the production steps (brand), quote
+  drafts, send, revise, withdraw (factory). Approve samples = approving and
+  disputing a step; a PAID step needs Release funds too. Release funds =
+  funding a step. Add update = the factory's step updates (a brand's comment
+  is not one). Settings access = invites, the email switches, cards,
+  credits, the company's contact details. **Where a factory is paid out
+  stays owner-only** (payout accounts, the Stripe Connect session).
+  Messages, calls, cancelling an order and order tabs stay open to every
+  member.
+- **A row written with no permissions keeps what a member could do before**
+  (brand: Quote flow + Approve; factory: RFQ flow + Add update), so old
+  fixtures and the seed's direct inserts behave as they did. A test that
+  needs a member WITHOUT a permission writes `permissions` explicitly.
+- **`org_members` is written only through functions** (`set_member_access`,
+  `set_member_role`, `remove_member`; `create_org` and `accept_invitation`
+  insert). The old owner UPDATE policy let an owner rewrite `user_id`.
+  The last owner can never be demoted, removed or leave (owner rows locked
+  first, so two owners cannot demote each other at once).
+- **Invitations stay a plain insert** (column grants), so the live site
+  keeps inviting while a deploy runs. A guard forces `member`, stamps
+  `invited_by`, takes no permission the inviter lacks (no inviting your own
+  second address with more), refuses team members, staff addresses and more
+  than 20 a day per PERSON. `api/send-team-invite.js` inserts with the
+  caller's token, then emails (`teamInviteEmail`); Resend extends the
+  expiry, and the idempotency key carries it, so Resend never replays.
+- **`org_members` is in the Realtime publication.** `AuthProvider` listens
+  to the person's own rows: a permission change reaches open screens, and a
+  removal shows "You no longer have access to …".
+- **Invitations are read through `my_invitation_companies()`.** A plain
+  select also returned an owner's own outgoing invitations, and the invited
+  company's name was unreadable to someone not in it yet. Signing up with an
+  invited address no longer creates a company of its own.
+- **Contact details live in `org_contact_details`, never `orgs`**: the other
+  side of an order can read `orgs`.
 
 ### Mock data leaking into the live app
 

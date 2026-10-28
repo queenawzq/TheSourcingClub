@@ -2484,10 +2484,26 @@ export function SettingsScreen({
   permissionsNote = "",
   onInvite,
   onRemove,
+  // Live only. Team members carry what this viewer may change on them
+  // (lockedPermissions, removable, removeLabel, roleActionLabel); invites
+  // carry canResend/canRevoke. The prototype passes none of these.
+  onPermissionChange,
+  onRoleChange,
+  onResend,
+  onRevoke,
+  onSave,
+  canInvite = true,
+  grantablePermissions,
+  accountLocked = false,
+  saveNote = "",
   busy = false,
   error = null,
 }) {
   const isFactory = accountType === "factory";
+  // Live reads the drawer's and the account card's fields on submit; the
+  // prototype's controls are never read back.
+  const inviteDrawerRef = useRef(null);
+  const accountCardRef = useRef(null);
   const [activeSection, setActiveSection] = useState("account");
   const [inviteEmail, setInviteEmail] = useState("");
   const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
@@ -2588,10 +2604,24 @@ export function SettingsScreen({
   };
   const removeMember = (memberEmail) => {
     if (isLive) {
-      onRemove?.(memberEmail);
+      onRemove?.(team.find((member) => member.email === memberEmail));
       return;
     }
     setTeam((current) => current.filter((member) => member.email !== memberEmail));
+  };
+  const readAccount = () => {
+    const field = (name) => accountCardRef.current?.querySelector(`[name="${name}"]`)?.value ?? "";
+    return { email: field("accountEmail"), phone: field("accountPhone"), location: field("accountLocation") };
+  };
+  const readInvite = () => {
+    const drawer = inviteDrawerRef.current;
+    return {
+      email: inviteEmail.trim(),
+      name: drawer?.querySelector('[name="inviteName"]')?.value.trim() ?? "",
+      title: drawer?.querySelector('[name="inviteTitle"]')?.value ?? "",
+      permissions: Array.from(drawer?.querySelectorAll("input[data-permission]:checked:not(:disabled)") ?? [])
+        .map((input) => input.dataset.permission),
+    };
   };
 
   const settingsNav = [
@@ -2633,10 +2663,18 @@ export function SettingsScreen({
             <p>{isFactory ? (companyType === "trading" ? "Trading company account" : "Factory account") : "Brand account"}</p>
             <h2>Account settings</h2>
           </div>
-          <button className="primary-btn" type="button">Save changes</button>
+          <button
+            className="primary-btn"
+            type="button"
+            disabled={isLive && (busy || !onSave) ? true : undefined}
+            onClick={isLive && onSave ? () => onSave(readAccount()) : undefined}
+          >
+            Save changes
+          </button>
         </header>
+        {saveNote ? <p className="tsc-team-save-note" role="status">{saveNote}</p> : null}
 
-        <section className="settings-section" id="settings-account">
+        <section className="settings-section" id="settings-account" ref={accountCardRef}>
               <div className="settings-section-header">
                 <h3>Basic information</h3>
                 <p>{isFactory ? "Edit the details brands use for orders, calls, and account verification." : "Edit the details other teams use for orders, calls, and account verification."}</p>
@@ -2644,19 +2682,19 @@ export function SettingsScreen({
               <div className="settings-form-grid">
                 <label>
                   <span>Account name</span>
-                  <input defaultValue={account.name} />
+                  <input defaultValue={account.name} readOnly={isLive ? true : undefined} title={isLive ? "To rename your company, contact support: it is the name we verified." : undefined} />
                 </label>
                 <label>
                   <span>Email</span>
-                  <input defaultValue={account.email} type="email" />
+                  <input defaultValue={account.email} type="email" name={isLive ? "accountEmail" : undefined} readOnly={isLive && accountLocked ? true : undefined} />
                 </label>
                 <label>
                   <span>Phone</span>
-                  <input defaultValue={account.phone} />
+                  <input defaultValue={account.phone} name={isLive ? "accountPhone" : undefined} readOnly={isLive && accountLocked ? true : undefined} />
                 </label>
                 <label>
                   <span>Location</span>
-                  <input defaultValue={account.location} />
+                  <input defaultValue={account.location} name={isLive ? "accountLocation" : undefined} readOnly={isLive && accountLocked ? true : undefined} />
                 </label>
               </div>
             </section>
@@ -2863,7 +2901,9 @@ export function SettingsScreen({
                 <p>{isFactory ? "Control who can quote RFQs, post updates, and act as the primary contact." : "Assign quote flow, sample approvals, fund release, and the primary vendor contact."}</p>
                 {permissionsNote ? <p>{permissionsNote}</p> : null}
               </div>
-              <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
+              {canInvite ? (
+                <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
+              ) : null}
             </div>
 
             <div className="settings-access-tabs" role="tablist" aria-label="Stakeholder list">
@@ -2904,14 +2944,22 @@ export function SettingsScreen({
                     <div>
                       <strong>{member.name}</strong>
                       <small>{member.role} - {member.email}</small>
+                      {isLive && member.roleActionLabel ? (
+                        <button className="tsc-team-role-btn" type="button" disabled={busy} onClick={() => onRoleChange?.(member)}>
+                          {member.roleActionLabel}
+                        </button>
+                      ) : null}
                     </div>
                     {activePermissionLabels.map((permission) => (
                       <label className="settings-check" key={permission.key}>
                         <input
                           type="checkbox"
+                          aria-label={isLive ? `${permission.label} for ${member.name}` : undefined}
                           checked={member.permissions.includes(permission.key)}
-                          disabled={Boolean(permissionsNote)}
-                          onChange={() => togglePermission(member.email, permission.key)}
+                          disabled={isLive ? busy || (member.lockedPermissions ?? []).includes(permission.key) : Boolean(permissionsNote)}
+                          onChange={(event) => (isLive
+                            ? onPermissionChange?.(member, permission.key, event.target.checked)
+                            : togglePermission(member.email, permission.key))}
                         />
                         <span>{permission.label}</span>
                       </label>
@@ -2919,8 +2967,8 @@ export function SettingsScreen({
                     <button
                       className="settings-remove-member-btn"
                       type="button"
-                      aria-label={`Remove ${member.name}`}
-                      disabled={isFactory ? member.role === "Owner" : undefined}
+                      aria-label={isLive && member.removeLabel ? member.removeLabel : `Remove ${member.name}`}
+                      disabled={isLive ? busy || !member.removable : isFactory ? member.role === "Owner" : undefined}
                       onClick={() => removeMember(member.email)}
                     >
                       <img src="/assets/prototype-icons/trash.svg" alt="" />
@@ -2942,11 +2990,20 @@ export function SettingsScreen({
                   </div>
                 )}
                 {pendingInvites.map((invite) => (
-                  <div className="settings-invited-row" role="row" key={invite.email}>
+                  <div className="settings-invited-row" role="row" key={invite.id ?? invite.email}>
                     <strong>{invite.email}</strong>
                     <span>{invite.role}</span>
                     <small>{invite.sent}</small>
-                    <button className="secondary-btn compact-btn" type="button">Resend</button>
+                    {isLive ? (
+                      <span className="tsc-team-invite-actions">
+                        <button className="secondary-btn compact-btn" type="button" disabled={busy || !invite.canResend} onClick={() => onResend?.(invite)}>Resend</button>
+                        {invite.canRevoke ? (
+                          <button className="tsc-team-revoke-btn" type="button" disabled={busy} aria-label={`Withdraw the invitation to ${invite.email}`} onClick={() => onRevoke?.(invite)}>Withdraw</button>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <button className="secondary-btn compact-btn" type="button">Resend</button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -2956,7 +3013,7 @@ export function SettingsScreen({
         {isInvitePanelOpen && createPortal((
           <div className="settings-drawer-layer" role="presentation">
             <button className="settings-drawer-scrim" type="button" aria-label="Close invite panel" onClick={() => setIsInvitePanelOpen(false)} />
-            <aside className="settings-drawer" aria-label="Invite stakeholder">
+            <aside className="settings-drawer" aria-label="Invite stakeholder" ref={inviteDrawerRef}>
               <header>
                 <div>
                   <h3>Invite member</h3>
@@ -2969,7 +3026,7 @@ export function SettingsScreen({
               <div className="settings-drawer-form">
                 <label>
                   <span>Name</span>
-                  <input placeholder="Full name" />
+                  <input placeholder="Full name" name={isLive ? "inviteName" : undefined} />
                 </label>
                 <label>
                   <span>Email</span>
@@ -2978,14 +3035,14 @@ export function SettingsScreen({
                 <label>
                   <span>Role</span>
                   {isFactory ? (
-                    <select defaultValue="Stakeholder">
+                    <select defaultValue="Stakeholder" name={isLive ? "inviteTitle" : undefined}>
                       <option value="Stakeholder">Stakeholder</option>
                       <option value="Production lead">Production lead</option>
                       <option value="Finance">Finance</option>
                       <option value="Viewer">Viewer</option>
                     </select>
                   ) : (
-                    <select defaultValue="Stakeholder">
+                    <select defaultValue="Stakeholder" name={isLive ? "inviteTitle" : undefined}>
                       <option>Stakeholder</option>
                       <option>Founder</option>
                       <option>Production lead</option>
@@ -2998,7 +3055,13 @@ export function SettingsScreen({
                   <legend>Authority</legend>
                   {activePermissionLabels.map((permission) => (
                     <label key={permission.key}>
-                      <input type="checkbox" defaultChecked={permission.key === (isFactory ? "addUpdate" : "approve")} />
+                      <input
+                        type="checkbox"
+                        defaultChecked={permission.key === (isFactory ? "addUpdate" : "approve")}
+                        data-permission={isLive ? permission.key : undefined}
+                        aria-label={isLive ? permission.label : undefined}
+                        disabled={isLive && grantablePermissions && !grantablePermissions.includes(permission.key) ? true : undefined}
+                      />
                       <span>
                         <strong>{permission.label}</strong>
                         {permission.detail && <small>{permission.detail}</small>}
@@ -3018,7 +3081,8 @@ export function SettingsScreen({
                   onClick={async () => {
                     if (isLive) {
                       if (!inviteEmail.includes("@")) return;
-                      await onInvite?.(inviteEmail.trim());
+                      // Live keeps the drawer open when the invitation is refused.
+                      if ((await onInvite?.(readInvite())) === false) return;
                     }
                     setInviteEmail("");
                     setIsInvitePanelOpen(false);

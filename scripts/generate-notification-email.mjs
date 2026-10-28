@@ -291,3 +291,64 @@ export function inviteEmail(invite, env) {
   const html = emailHtml({ locale: "en", title, eyebrow: t.eyebrow, greeting: "Hello,", body, url, cta: t.cta, why, questions }, env);
   return { subject: title, html, text };
 }
+
+// The design's permission names (Settings → Roles & access), as the invitee
+// will see them on their own Settings page.
+const permissionLabels = {
+  rfqFlow: { brand: "Quote flow", factory: "RFQ flow" },
+  approve: { brand: "Approve samples" },
+  releaseFunds: { brand: "Release funds" },
+  addUpdate: { factory: "Add update" },
+  settingsAccess: { brand: "Settings access", factory: "Settings access" },
+};
+const permissionLabelsZh = {
+  rfqFlow: "询价与报价", addUpdate: "发布进度", settingsAccess: "设置权限",
+};
+
+/**
+ * Joining a teammate's company (api/send-team-invite). Not the invite one
+ * company sends another (inviteEmail above): this one adds a person to an
+ * existing company, with the permissions the inviter chose. It names them,
+ * because they are what the person will be able to do.
+ *
+ * @param invite  { companyName, kind, inviterName, inviteeName, title, permissions[], email, expiresAt }
+ * @param env     { appUrl, logoUrl, supportEmail, companyAddress }
+ */
+export function teamInviteEmail(invite, env) {
+  const kind = invite.kind === "factory" ? "factory" : "brand";
+  const company = String(invite.companyName ?? "").trim() || "A company";
+  const inviter = String(invite.inviterName ?? "").trim();
+  // A person named like their company would read "Acme invited you to join Acme".
+  const title = inviter && inviter.toLowerCase() !== company.toLowerCase()
+    ? `${inviter} invited you to join ${company} on The Sourcing Club`
+    : `You're invited to join ${company} on The Sourcing Club`;
+  const labels = (invite.permissions ?? []).map((key) => permissionLabels[key]?.[kind]).filter(Boolean);
+  const can = labels.length
+    ? `You'll be able to use: ${labels.join(", ")}.`
+    : "You'll be able to read the company's requests, orders and messages. An owner can give you more in Settings.";
+  const role = String(invite.title ?? "").trim();
+  // A date the invitation runs to, in UTC like every server-written day.
+  const expires = invite.expiresAt
+    ? new Date(invite.expiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" })
+    : null;
+  const zh = kind === "factory"
+    ? `${inviter || company} 邀请你加入 ${company} 的 The Sourcing Club 团队。你的权限：${
+        (invite.permissions ?? []).map((key) => permissionLabelsZh[key]).filter(Boolean).join("、") || "查看询价、订单和消息"
+      }。请用此邮箱 (${invite.email}) 注册或登录后接受邀请。`
+    : null;
+  const body = [
+    `${company} works with ${kind === "factory" ? "brands" : "factories"} on The Sourcing Club${role ? `, and has added you as ${role}` : ""}. ${can}`,
+    `Sign up or log in with this address (${invite.email}) and accept the invitation.${expires ? ` It is open until ${expires}.` : ""}`,
+    zh,
+  ].filter(Boolean).join("\n\n");
+  const url = `${env.appUrl}/app.html${kind === "factory" ? "?portal=factory" : ""}`;
+  const cta = "Accept the invitation";
+  const why = `You received this because someone at ${company} entered this address. If you weren't expecting it, you can ignore it: you will not be added unless you accept.`;
+  const questions = "Questions? Reply to this email, or contact";
+  const name = String(invite.inviteeName ?? "").trim();
+  const greeting = name ? `Hello ${name},` : "Hello,";
+
+  const text = [title, "", greeting, "", body, "", `${cta}: ${url}`, "", why, `${questions} ${env.supportEmail}.`].join("\n");
+  const html = emailHtml({ locale: "en", title, eyebrow: "Team invitation", greeting, body, url, cta, why, questions }, env);
+  return { subject: title, html, text };
+}

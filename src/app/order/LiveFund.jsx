@@ -35,6 +35,7 @@ import { getPayment, listPayments } from "../../lib/domain/payment.js";
 import { STRIPE_PUBLISHABLE_KEY, startCheckout, syncPayment, withCardAdvice } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
 import { useAuth } from "../../lib/auth.jsx";
+import { can } from "../../lib/domain/org.js";
 import { useRouter } from "../../lib/router.jsx";
 import { initials, locationLine } from "./order-view.js";
 import "./fund.css";
@@ -68,7 +69,8 @@ export const FUNDABLE = new Set(["due", "failed"]);
 export default function LiveFund({ orderId, paymentId, fallback }) {
   const { navigate } = useRouter();
   const { activeOrg } = useAuth();
-  const isOwner = activeOrg?.role === "owner";
+  // Release funds pays (begin_payment_checkout); the same rule here.
+  const isOwner = can(activeOrg, "releaseFunds");
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
 
@@ -149,7 +151,7 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
           <button type="button" className="quiet-btn" onClick={back}>← Back to the order</button>
           <h1>{payment.order_milestones?.title ?? "Payment"}</h1>
           <p className="muted" data-testid="fund-owner-only">
-            Only an owner of {activeOrg?.name || "your company"} can pay for a step. Ask an owner to fund it from this order.
+            Only someone with Release funds at {activeOrg?.name || "your company"} can pay for a step. Ask them to fund it from this order, or ask an owner for the permission in Settings.
           </p>
         </div>
       </main>

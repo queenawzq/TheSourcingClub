@@ -38,12 +38,13 @@ insert into public.orgs (id, type, name, slug) values
   ('d0000000-0000-0000-0000-0000000000f2', 'factory', 'P2 Factory 2', 'pgtap2-factory-2'),
   ('d0000000-0000-0000-0000-0000000000f3', 'factory', 'P2 Factory 3', 'pgtap2-factory-3');
 
-insert into public.org_members (org_id, user_id, role) values
-  ('d0000000-0000-0000-0000-00000000000b', 'c0000000-0000-0000-0000-000000000001', 'owner'),
-  ('d0000000-0000-0000-0000-00000000000b', 'c0000000-0000-0000-0000-000000000002', 'member'),
-  ('d0000000-0000-0000-0000-0000000000f1', 'c0000000-0000-0000-0000-000000000003', 'owner'),
-  ('d0000000-0000-0000-0000-0000000000f2', 'c0000000-0000-0000-0000-000000000004', 'owner'),
-  ('d0000000-0000-0000-0000-0000000000f3', 'c0000000-0000-0000-0000-000000000005', 'owner');
+insert into public.org_members (org_id, user_id, role, permissions) values
+  ('d0000000-0000-0000-0000-00000000000b', 'c0000000-0000-0000-0000-000000000001', 'owner', null),
+  -- Approve samples only: choosing a quote is Quote flow.
+  ('d0000000-0000-0000-0000-00000000000b', 'c0000000-0000-0000-0000-000000000002', 'member', '{approve}'),
+  ('d0000000-0000-0000-0000-0000000000f1', 'c0000000-0000-0000-0000-000000000003', 'owner', null),
+  ('d0000000-0000-0000-0000-0000000000f2', 'c0000000-0000-0000-0000-000000000004', 'owner', null),
+  ('d0000000-0000-0000-0000-0000000000f3', 'c0000000-0000-0000-0000-000000000005', 'owner', null);
 
 insert into public.brand_profiles (org_id, hq_location) values
   ('d0000000-0000-0000-0000-00000000000b', 'New York, USA');
@@ -305,7 +306,7 @@ select throws_ok(
   $$select public.award_quote('f0000000-0000-0000-0000-0000000000f1')$$,
   '42501',
   null,
-  'a non-owner brand member CANNOT award a quote'
+  'a brand member without Quote flow CANNOT award a quote'
 );
 
 reset role;

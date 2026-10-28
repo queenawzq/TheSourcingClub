@@ -195,7 +195,8 @@ set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000002","r
 set local role authenticated;
 select throws_ok(
   $$select public.begin_payment_checkout(pg_temp.p18_pay('order_a', 'Fit sample'))$$,
-  '42501', 'only a brand owner can pay for a step', 'a brand member cannot start paying');
+  '42501', 'You need the Release funds permission at P18 Brand to do this. An owner can give it to you in Settings.',
+  'a brand member without Release funds cannot start paying');
 reset role;
 
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000003","role":"authenticated"}';

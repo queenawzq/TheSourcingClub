@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { getOrder } from "../../lib/domain/order.js";
+import { can } from "../../lib/domain/org.js";
 import { chargedCents, getPayment } from "../../lib/domain/payment.js";
 import { useAuth } from "../../lib/auth.jsx";
 import { formatMoney } from "../../lib/money.js";
@@ -128,9 +129,9 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
   // only an owner may use (begin_payment_checkout), and only on an active
   // order. A member is told who can, rather than sent to a refusal.
   const payable = (payment.state === "due" || payment.state === "failed") && order.status === "active";
-  const canPay = payable && activeOrg?.role === "owner";
+  const canPay = payable && can(activeOrg, "releaseFunds");
   const ownerOnly = payable && !canPay
-    ? `Only an owner of ${activeOrg?.name || "your company"} can pay for a step.`
+    ? `Only someone with Release funds at ${activeOrg?.name || "your company"} can pay for a step.`
     : null;
   return (
     <main className="billing-page-shell brand-payment-detail-page">

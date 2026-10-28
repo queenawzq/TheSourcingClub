@@ -19,7 +19,9 @@ function totalLine(draft, order) {
   return draft.balances ? text : `${text}: these have to match before you can save or continue`;
 }
 
-export function BrandSchedule({ order, milestones, reload, vendor, onBack, onFund, banner = null, dialog = null }) {
+// `locked`: why this person may read the steps but not save or confirm them
+// (Quote flow sets them); empty for someone who may.
+export function BrandSchedule({ order, milestones, reload, vendor, onBack, onFund, banner = null, dialog = null, locked = "" }) {
   const draft = useScheduleDraft({ order, milestones, reload, onFund });
 
   return (
@@ -27,16 +29,16 @@ export function BrandSchedule({ order, milestones, reload, vendor, onBack, onFun
       screen="milestones"
       onBack={onBack}
       onNext={draft.confirm}
-      primaryDisabled={!draft.canConfirm}
+      primaryDisabled={Boolean(locked) || !draft.canConfirm}
       busy={draft.busy}
       centerText={totalLine(draft, order)}
-      centerAction={{ label: "Save changes", onClick: draft.save, disabled: !draft.canSave }}
+      centerAction={{ label: "Save changes", onClick: draft.save, disabled: Boolean(locked) || !draft.canSave }}
       rail={{ vendor }}
     >
       {/* Live only: an open proposal to cancel sits above the steps. */}
       {banner}
       <MilestonesScreen live={draft} />
-      <p className="muted production-schedule-helper" data-testid="schedule-hint">{draft.hint}</p>
+      <p className="muted production-schedule-helper" data-testid="schedule-hint">{locked || draft.hint}</p>
       {draft.error && <p className="composer-error" role="alert">{draft.error.message}</p>}
       {dialog}
     </FlowShell>

@@ -65,7 +65,7 @@ export default function LiveRfqs({ org, user, isOwner, goTo }) {
               <p>
                 {isOwner
                   ? "The request closes to new quotes. Quotes already sent on it are declined, and every vendor you invited or who quoted is told."
-                  : "Only an owner of your company can close a request, because it closes every vendor's quote on it."}
+                  : `Only someone with Quote flow at ${org?.name || "your company"} can close a request. An owner can give it to you in Settings.`}
               </p>
             </header>
             {error && <p className="composer-error" role="alert">{error.message}</p>}

@@ -12,14 +12,14 @@ export default async function handler(request, response) {
 
   const { orgId } = jsonBody(request);
   const [owner, orgRead, { data: auth }] = await Promise.all([
-    caller.rpc("is_org_owner", { target_org: orgId }),
+    caller.rpc("has_org_permission", { target_org: orgId, perm: "settingsAccess" }),
     caller.from("orgs").select("id, name").eq("id", orgId).maybeSingle(),
     caller.auth.getUser(),
   ]);
   if (tokenRefused(owner) || tokenRefused(orgRead)) return reply(response, 401, { error: "sign in is required" });
   const { data: isOwner } = owner;
   const { data: org } = orgRead;
-  if (!isOwner || !org) return reply(response, 403, { error: "only a company owner can manage billing methods" });
+  if (!isOwner || !org) return reply(response, 403, { error: "only someone with Settings access at the company can manage billing methods" });
 
   try {
     let { data: saved } = await db.from("stripe_customers").select("stripe_customer_id").eq("org_id", orgId).maybeSingle();

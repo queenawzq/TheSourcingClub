@@ -62,14 +62,9 @@ function Waiting({ error }) {
   );
 }
 
-/** "duplicate key" from the one-pending-invitation-per-address index, said plainly. */
+/** An invitation, emailed (api/send-team-invite); a refusal is already a sentence. */
 async function invite(org, email) {
-  try {
-    await inviteMember(org.id, email);
-  } catch (error) {
-    if (/duplicate|already exists|unique/i.test(error.message ?? "")) throw new Error(`${email.trim()} has already been invited.`);
-    throw error;
-  }
+  await inviteMember(org.id, email);
 }
 
 /**
@@ -104,10 +99,10 @@ function dialogParts(org, parts, reload) {
         role: member.role === "owner" ? "Owner" : "Member",
       })),
       invitations: parts.invitations,
-      // Only owners may invite or withdraw an invitation (RLS).
-      canInvite: parts.isOwner,
+      // Settings access invites and withdraws (RLS and the invitation guard).
+      canInvite: parts.canInvite,
       onInvite: after((email) => invite(org, email)),
-      onRevoke: parts.isOwner ? after((invitation) => revokeInvitation(invitation.id)) : null,
+      onRevoke: parts.canInvite ? after((invitation) => revokeInvitation(invitation.id)) : null,
     },
     files: {
       banner: media(

@@ -17,6 +17,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { BillingScreen } from "../../prototype/main.jsx";
 import { listOrders } from "../../lib/domain/order.js";
+import { can } from "../../lib/domain/org.js";
 import { listPaymentsForOrders } from "../../lib/domain/payment.js";
 import { listDiscountCodes, savingsFor } from "../../lib/domain/credits.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -85,7 +86,7 @@ export default function LiveBrandPayments({ org }) {
             // A due payment has no transaction to show yet: it opens the Fund
             // screen, for an owner. A member cannot pay, so its row opens the
             // transaction page, which says who can.
-            const path = row.state === "due" && org.role === "owner"
+            const path = row.state === "due" && can(org, "releaseFunds")
               ? `/orders/${row.orderId}/payments/${row.id}`
               : `/payments/${row.orderId}/${row.id}`;
             return { ...row, href: `/app.html${path}`, onOpen: () => navigate(path) };

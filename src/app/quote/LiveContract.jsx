@@ -18,7 +18,7 @@ import { useRouter } from "../../lib/router.jsx";
 import { useQuoteReview } from "./useQuoteReview.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 
-export default function LiveContract({ rfqId, quoteId, isOwner }) {
+export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
   const { navigate } = useRouter();
   const { state, error: loadError } = useQuoteReview(rfqId);
   const [busy, setBusy] = useState(false);
@@ -53,7 +53,7 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
       : found.raw.status !== "submitted"
         ? `This quote was ${found.raw.status}.`
         : !isOwner
-          ? "Only an owner of your company can choose a quote, because choosing creates the production order."
+          ? `Only someone with Quote flow at ${orgName || "your company"} can choose a quote. An owner can give it to you in Settings.`
           : null;
 
   async function award() {

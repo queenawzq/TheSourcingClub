@@ -21,6 +21,7 @@ import {
   useStripe,
 } from "@stripe/react-stripe-js";
 import { supabase, unwrap } from "../../lib/supabase.js";
+import { can } from "../../lib/domain/org.js";
 import { formatMoney } from "../../lib/money.js";
 import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
@@ -110,6 +111,8 @@ function showTabInAddress(key) {
 }
 
 export default function PayoutDetails({ org, isFactory, isOwner = false }) {
+  // Payouts stay with owners; cards and credits are Settings access.
+  const canSettings = can(org, "settingsAccess");
   const [tab, setTab] = useState(() => {
     const asked = new URLSearchParams(window.location.search).get("tab");
     return ["billing", "credits"].includes(asked) ? asked : "earnings";
@@ -472,10 +475,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
           <section className="billing-method-empty">
             <div>
               <strong>Billing methods</strong>
-              <p>{isOwner ? "Save a card to use when you buy credits." : "Only an owner of your company can add or remove billing methods."}</p>
+              <p>{canSettings ? "Save a card to use when you buy credits." : "Only someone with Settings access at your company can add or remove billing methods."}</p>
               {billingSaved ? <span className="live-payment-notice">Payment method added.</span> : null}
             </div>
-            {isOwner ? <button className="primary-btn compact-btn" type="button" disabled={billingBusy || !STRIPE_PUBLISHABLE_KEY} onClick={addBillingMethod}>{billingBusy ? "Opening…" : "+ Add payment method"}</button> : null}
+            {canSettings ? <button className="primary-btn compact-btn" type="button" disabled={billingBusy || !STRIPE_PUBLISHABLE_KEY} onClick={addBillingMethod}>{billingBusy ? "Opening…" : "+ Add payment method"}</button> : null}
           </section>
           {cardsError ? <p className="projects-empty projects-error" role="alert">{cardsError.message}</p>
             : !STRIPE_PUBLISHABLE_KEY ? <p className="projects-empty">Card payments are not set up on this site yet.</p>
@@ -486,7 +489,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
                   <article className="billing-history-row" key={card.id}>
                     <div><strong>{cardBrand(card.brand)} ending in {card.last4}</strong><span>{cardExpiry(card)}</span></div>
                     <span className="billing-status">Saved</span>
-                    {isOwner ? <button className="secondary-btn compact-btn" type="button" disabled={cardBusy} onClick={() => setRemovingCard(card)}>Remove</button> : <span />}
+                    {canSettings ? <button className="secondary-btn compact-btn" type="button" disabled={cardBusy} onClick={() => setRemovingCard(card)}>Remove</button> : <span />}
                   </article>
                 ))}
               </div>
@@ -504,7 +507,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             </div>
             <div className="factory-credit-billing-action live-credit-actions">
               <button className="secondary-btn compact-btn" type="button" onClick={() => { setNotice(null); setInviteOpen(true); }}>Invite a factory</button>
-              <CreditPurchaseButton orgId={org.id} orgName={org.name} isOwner={isOwner} onPurchased={reloadCredits} onNotice={setNotice} />
+              <CreditPurchaseButton orgId={org.id} orgName={org.name} isOwner={canSettings} onPurchased={reloadCredits} onNotice={setNotice} />
             </div>
           </section>
           {notice ? <p className="live-payment-notice" role="status">{notice}</p> : null}
