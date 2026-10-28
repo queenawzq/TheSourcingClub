@@ -501,6 +501,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           userName: video.join.userName,
         });
         setVideo((current) => current && { ...current, joined: true, text: "You're in the call. The other side joins from this conversation." });
+        // At its narrowest the view can still be taller than a short window
+        // (1366 x 768 ends 10px below it): bring the toolbar into sight.
+        zoomRoot.current?.scrollIntoView({ block: "nearest" });
       } catch (failure) {
         // Zoom's own error box would sit over the page with a Retry that
         // fails the same way: take Zoom's view away and offer its app.
