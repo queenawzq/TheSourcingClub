@@ -26,20 +26,22 @@ export default function EvidenceReview({ org = null, staff = false }) {
   const [reviewNotes, setReviewNotes] = useState({});
   // The factory's own: staff's latest decision on each item, with its note.
   const [decisions, setDecisions] = useState({});
+  // The capabilities the factory offers, read again whenever the picker opens:
+  // one saved in the matching profile beside this panel is offered at once.
+  async function refreshOffered() {
+    setSelected(Object.values(await getSelectedTerms("factory_profile", org.id)).flat());
+  }
   async function load() {
     const byKind = await listTermsByKind([...MATCH_KINDS, "country"]);
     setTerms(byKind);
-    if (org)
-      setSelected(
-        Object.values(await getSelectedTerms("factory_profile", org.id)).flat(),
-      );
+    if (org) await refreshOffered();
     let a = supabase
       .from("factory_capability_evidence")
-      .select("id,org_id,term_id,document_id,status,reviewed_at");
+      .select("id,org_id,term_id,document_id,status,reviewed_at,created_at");
     let b = supabase
       .from("factory_certifications")
       .select(
-        "id,org_id,term_id,document_id,status,expires_at,non_expiring,facility_country,facility_name,scope_term_ids,scope_all_products",
+        "id,org_id,term_id,document_id,status,expires_at,non_expiring,facility_country,facility_name,scope_term_ids,scope_all_products,created_at",
       );
     if (org) {
       a = a.eq("org_id", org.id);
@@ -84,16 +86,20 @@ export default function EvidenceReview({ org = null, staff = false }) {
         setOrgNames(Object.fromEntries(names.map((o) => [o.id, o.name])));
       }
     }
-    setRows([
-      ...unwrap(cap, "load capability evidence").map((r) => ({
-        ...r,
-        type: "capability",
-      })),
-      ...unwrap(cert, "load certificate evidence").map((r) => ({
-        ...r,
-        type: "certificate",
-      })),
-    ]);
+    // What still needs someone first, settled items last; a stable order
+    // so a decision does not shuffle the list under the reader.
+    const rank = { pending: 0, rejected: 1, verified: 2 };
+    setRows(
+      [
+        ...unwrap(cap, "load capability evidence").map((r) => ({ ...r, type: "capability" })),
+        ...unwrap(cert, "load certificate evidence").map((r) => ({ ...r, type: "certificate" })),
+      ].sort(
+        (a, b) =>
+          (rank[a.status] ?? 0) - (rank[b.status] ?? 0) ||
+          String(a.org_id).localeCompare(String(b.org_id)) ||
+          String(a.created_at ?? a.id).localeCompare(String(b.created_at ?? b.id)),
+      ),
+    );
   }
   useEffect(() => {
     if (enabled) load().catch(setError);
@@ -138,144 +144,177 @@ export default function EvidenceReview({ org = null, staff = false }) {
   }
   const options = Object.values(terms).flat();
   if (!enabled) return null;
+  const termName = (id) => termLabel(options.find((t) => t.id === id) ?? { label_en: "Capability" });
+  const offered = options.filter(
+    (t) =>
+      selected.includes(t.id) &&
+      ["product_category", "fabric", "technique", "development_service"].includes(t.kind),
+  );
+  const countryName = (code) =>
+    termLabel((terms.country ?? []).find((t) => t.extra?.code === code) ?? { label_en: code });
   return (
     <section className="matching-panel" aria-label="Matching evidence review">
-      <h2>
-        {staff
-          ? "Matching evidence review"
-          : "Supporting evidence and certificate scope"}
-      </h2>
-      <p>
-        Company verification is separate. Files remain private to the company
-        and TSC staff. Replacing evidence or editing certificate scope requires
-        a new evidence review.
-      </p>
+      <header className="matching-head">
+        <h2>{staff ? "Matching evidence" : "Supporting evidence"}</h2>
+        <p>
+          {staff
+            ? "Files factories sent to support a capability or a certificate. A decision here changes the factory's matches, never its company verification. Rejecting or asking for more needs a note: it is all the factory is told."
+            : "Show brands a capability is real by uploading proof, such as sample photos or a test report. Files stay private to your company and TSC. Approval here is separate from your company verification."}
+        </p>
+      </header>
       {!staff && (
-        <>
-          <label>
-            Offered capability
-            <select value={term} onChange={(e) => setTerm(e.target.value)}>
+        <div className="matching-fields">
+          <label className="matching-field">
+            <span className="matching-label">Capability</span>
+            <select
+              value={term}
+              onFocus={() => refreshOffered().catch(setError)}
+              onPointerDown={() => refreshOffered().catch(setError)}
+              onChange={(e) => setTerm(e.target.value)}
+            >
               <option value="">Choose a capability</option>
-              {options
-                .filter(
-                  (t) =>
-                    selected.includes(t.id) &&
-                    [
-                      "product_category",
-                      "fabric",
-                      "technique",
-                      "development_service",
-                    ].includes(t.kind),
-                )
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {termLabel(t)}
-                  </option>
-                ))}
+              {offered.map((t) => (
+                <option key={t.id} value={t.id}>{termLabel(t)}</option>
+              ))}
             </select>
           </label>
-          <label>
-            Upload supporting evidence
+          <label className={`matching-upload${busy || !term ? " is-disabled" : ""}`}>
             <input
               type="file"
+              aria-label="Upload supporting evidence"
               disabled={busy || !term}
               onChange={(e) => upload(e.target.files[0])}
             />
+            <strong>{busy ? "Uploading…" : "Upload supporting evidence"}</strong>
+            <span className="matching-small">
+              {term ? "PDF, PNG or JPG" : "Choose a capability first"}
+            </span>
           </label>
-        </>
+        </div>
       )}
-      {(rows ?? []).map((r) => (
-        <article key={`${r.type}-${r.id}`}>
-          <h3>
-            {options.find((t) => t.id === r.term_id)?.label_en ?? "Capability"}{" "}
-            · {statusLabel(r, decisions[r.id])}
-            {staff ? ` · ${orgNames[r.org_id] ?? "Company"}` : ""}
-          </h3>
-          {decisions[r.id]?.note && r.status !== "verified" && (
-            <p role="status">
-              {staff ? "Sent to the factory" : "TSC"}: {decisions[r.id].note}
-            </p>
-          )}
-          {r.document_id && (
-            <button
-              type="button"
-              onClick={() => action(() => view(r.document_id))}
-            >
-              View private evidence
-            </button>
-          )}
-          {r.type === "certificate" && !staff && (
-            <CertificateScope
-              row={r}
-              terms={terms}
-              busy={busy}
-              onSave={(patch) =>
-                action(async () =>
-                  unwrap(
-                    await supabase
-                      .from("factory_certifications")
-                      .update(patch)
-                      .eq("id", r.id),
-                    "save certificate scope",
-                  ),
-                )
-              }
-            />
-          )}
-          {staff && (
-            <>
-              <label>
-                Review note
-                <textarea
-                  value={reviewNotes[r.id] ?? ""}
-                  onChange={(e) =>
-                    setReviewNotes((notes) => ({
-                      ...notes,
-                      [r.id]: e.target.value,
-                    }))
-                  }
-                />
-              </label>
-              {["verified", "rejected", "pending"].map((decision) => (
-                <button
-                  type="button"
-                  key={decision}
-                  // Rejecting or asking for more needs a note: it is all the factory is told.
-                  disabled={busy || (decision !== "verified" && !reviewNotes[r.id]?.trim())}
-                  onClick={() =>
-                    action(async () =>
-                      unwrap(
-                        await supabase.rpc("review_matching_evidence", {
-                          evidence_type: r.type,
-                          evidence_id: r.id,
-                          decision,
-                          note: reviewNotes[r.id]?.trim() || null,
-                        }),
-                        "review matching evidence",
-                      ),
-                    )
-                  }
-                >
-                  {decision === "verified"
-                    ? "Approve"
-                    : decision === "rejected"
-                      ? "Reject"
-                      : "Needs information"}
-                </button>
-              ))}
-              <p>
-                {r.type === "certificate"
-                  ? `Facility: ${r.facility_name ?? "missing"} (${r.facility_country ?? "missing"}); validity: ${r.non_expiring ? "non-expiring" : (r.expires_at ?? "missing")}; scope: ${r.scope_all_products ? "all products" : (r.scope_term_ids ?? []).map((id) => options.find((t) => t.id === id)?.label_en ?? id).join(", ") || "missing"}`
-                  : "Review this file against the claimed capability."}
-              </p>
-            </>
-          )}
-        </article>
-      ))}
+      {(rows ?? []).length > 0 && (
+        <ul className="matching-list">
+          {(rows ?? []).map((r) => {
+            const label = statusLabel(r, decisions[r.id]);
+            const tone =
+              label === "approved" ? "is-good" : label === "not accepted" ? "is-bad" : label === "needs information" ? "is-warn" : "";
+            const note = r.status !== "verified" ? decisions[r.id]?.note : null;
+            return (
+              <li className="matching-item" key={`${r.type}-${r.id}`}>
+                <div className="matching-item-head">
+                  <div className="matching-item-title">
+                    <strong>{termName(r.term_id)}</strong>
+                    <span className="matching-small">
+                      {r.type === "certificate" ? "Certificate" : "Capability evidence"}
+                      {staff ? ` · ${orgNames[r.org_id] ?? "Company"}` : ""}
+                    </span>
+                  </div>
+                  <span className={`matching-pill ${tone}`}>
+                    {label.charAt(0).toUpperCase() + label.slice(1)}
+                  </span>
+                  {r.document_id && (
+                    <button type="button" className="matching-btn" onClick={() => action(() => view(r.document_id))}>
+                      View file
+                    </button>
+                  )}
+                </div>
+                {note && (
+                  <p className="matching-note">
+                    <strong>{staff ? "Sent to the factory" : "Note from TSC"}</strong>
+                    {note}
+                  </p>
+                )}
+                {r.type === "certificate" && staff && (
+                  <dl className="matching-facts">
+                    <div><dt>Facility</dt><dd>{r.facility_name || "Not given"}</dd></div>
+                    <div><dt>Country</dt><dd>{r.facility_country ? countryName(r.facility_country) : "Not given"}</dd></div>
+                    <div><dt>Valid until</dt><dd>{r.non_expiring ? "Does not expire" : r.expires_at || "Not given"}</dd></div>
+                    <div>
+                      <dt>Covers</dt>
+                      <dd>
+                        {r.scope_all_products
+                          ? "All products"
+                          : r.scope_term_ids?.length
+                            ? r.scope_term_ids.map(termName).join(", ")
+                            : "Not given"}
+                      </dd>
+                    </div>
+                  </dl>
+                )}
+                {r.type === "certificate" && !staff && (
+                  <CertificateScope
+                    row={r}
+                    terms={terms}
+                    busy={busy}
+                    onSave={(patch) =>
+                      action(async () =>
+                        unwrap(
+                          await supabase
+                            .from("factory_certifications")
+                            .update(patch)
+                            .eq("id", r.id),
+                          "save certificate details",
+                        ),
+                      )
+                    }
+                  />
+                )}
+                {staff && (
+                  <>
+                    <label className="matching-field">
+                      <span className="matching-label">Note to the factory</span>
+                      <textarea
+                        placeholder="Needed to reject or ask for more information. Say what to change."
+                        value={reviewNotes[r.id] ?? ""}
+                        onChange={(e) =>
+                          setReviewNotes((notes) => ({ ...notes, [r.id]: e.target.value }))
+                        }
+                      />
+                    </label>
+                    <div className="matching-actions">
+                      {[
+                        ["rejected", "Reject"],
+                        ["pending", "Ask for more information"],
+                        ["verified", "Approve"],
+                      ].map(([decision, text]) => (
+                        <button
+                          type="button"
+                          key={decision}
+                          className={`matching-btn${decision === "verified" ? " is-primary" : ""}`}
+                          // Rejecting or asking for more needs a note: it is all the factory is told.
+                          disabled={busy || (decision !== "verified" && !reviewNotes[r.id]?.trim())}
+                          onClick={() =>
+                            action(async () => {
+                              unwrap(
+                                await supabase.rpc("review_matching_evidence", {
+                                  evidence_type: r.type,
+                                  evidence_id: r.id,
+                                  decision,
+                                  note: reviewNotes[r.id]?.trim() || null,
+                                }),
+                                "review matching evidence",
+                              );
+                              // Sent: the box is for the next note, not a draft of this one.
+                              setReviewNotes((notes) => ({ ...notes, [r.id]: "" }));
+                            })
+                          }
+                        >
+                          {text}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
       {rows?.length === 0 && (
-        <p>
-          No evidence submitted yet. Existing certificate claims can be managed
-          in the profile’s Verification section.
+        <p className="matching-hint">
+          {staff
+            ? "Nothing to review."
+            : "No evidence yet. Certificates you add under Verification appear here too, to set their facility and scope."}
         </p>
       )}
       {error && <p role="alert">{error.message}</p>}
@@ -285,106 +324,111 @@ export default function EvidenceReview({ org = null, staff = false }) {
 function CertificateScope({ row, terms, busy, onSave }) {
   const [d, setD] = useState(row);
   useEffect(() => setD(row), [row]);
+  const scopeTerms = ["product_category", "fabric", "technique"].flatMap((k) => terms[k] ?? []);
+  const complete =
+    (d.non_expiring || d.expires_at) && d.facility_country && d.facility_name?.trim() &&
+    (d.scope_all_products || d.scope_term_ids.length > 0);
   return (
-    <div>
+    <div className="matching-section">
+      <h3>Certificate details</h3>
+      <p className="matching-hint">
+        TSC checks these against the file before approving. Changing them sends the certificate back for review.
+      </p>
       <div className="matching-fields">
-        <label>
-          Expiry date
+        <label className="matching-field">
+          <span className="matching-label">Facility name on the certificate</span>
+          <input
+            value={d.facility_name ?? ""}
+            onChange={(e) => setD((cur) => ({ ...cur, facility_name: e.target.value }))}
+          />
+        </label>
+        <label className="matching-field">
+          <span className="matching-label">Facility country</span>
+          <select
+            value={d.facility_country ?? ""}
+            onChange={(e) => setD((cur) => ({ ...cur, facility_country: e.target.value || null }))}
+          >
+            <option value="">Choose a country</option>
+            {(terms.country ?? [])
+              .filter((t) => t.extra?.code)
+              .map((t) => (
+                <option key={t.id} value={t.extra.code}>{termLabel(t)}</option>
+              ))}
+          </select>
+        </label>
+        <label className="matching-field">
+          <span className="matching-label">Valid until</span>
           <input
             type="date"
             disabled={d.non_expiring}
             value={d.expires_at ?? ""}
-            onInput={(e) =>
-              setD({ ...d, expires_at: e.currentTarget.value || null })
-            }
+            onInput={(e) => setD((cur) => ({ ...cur, expires_at: e.currentTarget.value || null }))}
           />
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={d.non_expiring}
-            onChange={(e) =>
-              setD({
-                ...d,
-                non_expiring: e.target.checked,
-                expires_at: e.target.checked ? null : d.expires_at,
-              })
-            }
-          />
-          Explicitly non-expiring
-        </label>
-        <label>
-          Facility name on certificate
-          <input
-            value={d.facility_name ?? ""}
-            onChange={(e) => setD({ ...d, facility_name: e.target.value })}
-          />
-        </label>
-        <label>
-          Facility country
-          <select
-            value={d.facility_country ?? ""}
-            onChange={(e) =>
-              setD({ ...d, facility_country: e.target.value || null })
-            }
-          >
-            <option value="">Confirm facility country</option>
-            {(terms.country ?? [])
-              .filter((t) => t.extra?.code)
-              .map((t) => (
-                <option key={t.id} value={t.extra.code}>
-                  {termLabel(t)}
-                </option>
-              ))}
-          </select>
         </label>
       </div>
-      <label>
+      <label className="matching-check">
+        <input
+          type="checkbox"
+          checked={d.non_expiring}
+          onChange={(e) =>
+            setD((cur) => ({ ...cur, non_expiring: e.target.checked, expires_at: e.target.checked ? null : cur.expires_at }))
+          }
+        />
+        This certificate does not expire
+      </label>
+      <label className="matching-check">
         <input
           type="checkbox"
           checked={d.scope_all_products}
-          onChange={(e) => setD({ ...d, scope_all_products: e.target.checked })}
+          onChange={(e) => setD((cur) => ({ ...cur, scope_all_products: e.target.checked }))}
         />
-        Certificate covers all this facility’s products/materials
+        It covers everything this facility makes
       </label>
-      <fieldset>
-        <legend>Specific scope (when not all products)</legend>
-        {["product_category", "fabric", "technique"]
-          .flatMap((k) => terms[k] ?? [])
-          .map((t) => (
-            <label className="matching-choice" key={t.id}>
-              <input
-                type="checkbox"
-                checked={d.scope_term_ids.includes(t.id)}
-                onChange={(e) =>
-                  setD({
-                    ...d,
-                    scope_term_ids: e.target.checked
-                      ? [...d.scope_term_ids, t.id]
-                      : d.scope_term_ids.filter((x) => x !== t.id),
-                  })
+      {!d.scope_all_products && (
+        <>
+          <span className="matching-label">What it covers</span>
+          <div className="matching-chips">
+            {scopeTerms.map((t) => (
+              <button
+                type="button"
+                key={t.id}
+                aria-pressed={d.scope_term_ids.includes(t.id)}
+                onClick={() =>
+                  setD((cur) => ({ ...cur,
+                    scope_term_ids: cur.scope_term_ids.includes(t.id)
+                      ? cur.scope_term_ids.filter((x) => x !== t.id)
+                      : [...cur.scope_term_ids, t.id],
+                  }))
                 }
-              />
-              {termLabel(t)}
-            </label>
-          ))}
-      </fieldset>
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() =>
-          onSave({
-            expires_at: d.expires_at,
-            non_expiring: d.non_expiring,
-            facility_country: d.facility_country,
-            facility_name: d.facility_name,
-            scope_term_ids: d.scope_term_ids,
-            scope_all_products: d.scope_all_products,
-          })
-        }
-      >
-        Save certificate scope
-      </button>
+              >
+                {termLabel(t)}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="matching-actions">
+        {!complete && (
+          <p className="matching-small">TSC needs the facility, its country, the validity and what it covers.</p>
+        )}
+        <button
+          type="button"
+          className="matching-btn"
+          disabled={busy}
+          onClick={() =>
+            onSave({
+              expires_at: d.expires_at,
+              non_expiring: d.non_expiring,
+              facility_country: d.facility_country,
+              facility_name: d.facility_name,
+              scope_term_ids: d.scope_term_ids,
+              scope_all_products: d.scope_all_products,
+            })
+          }
+        >
+          Save certificate details
+        </button>
+      </div>
     </div>
   );
 }

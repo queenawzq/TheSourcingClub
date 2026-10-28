@@ -467,4 +467,11 @@ Before making or accepting a screen change:
 
 ## Matching explanations and evidence
 
-Matching panels use the existing white Card surface, 8px corners, border token and Satoshi body text. Section headings use heading3; explanations use body2. Inputs and action buttons are 42px high. Multi-line review notes use body1 with a minimum height of 84px. Long taxonomy lists use native disclosure controls with the selected labels in the summary. Score disclosures use the existing fit thresholds and show qualification text separately; provisional percentages must say “provisional”. Evidence coverage includes explicitly labelled self-reported data and must not be presented as company verification. These rules apply consistently to profiles, completion screens, RFQ requirements, directories and staff evidence review.
+Matching panels (`src/app/matching/`) are built from the components above, not local values, and every class is prefixed `matching-`:
+
+- Card: white, 8px, `#D7E0EA` stroke, `--card-padding`. Inside a designed card or onboarding step the host draws the card. Card title `heading3`, intro `textInstruction`, section titles `heading5`, field labels `label1`, notes `body2`.
+- Buttons are the v2 Button from the button tokens (34px); inputs and selects 42px; review notes `body1` with an 84px minimum.
+- Taxonomy and country choices are the onboarding chip group's selectable chips (34px, 8px, soft-blue selected). A must-have is the selected chip with a primary stroke and a check. Long groups sit in native disclosures with the selected labels in the summary.
+- Match state is a status pill: a qualified match takes the fit tier for its score (`strong`, `good`, `potential`); needs-confirmation is the potential tier and its percentage says "provisional"; not eligible is the tradeoff tier. The card's own "match" metric carries the percentage; the pill opens "Why this match": reasons first, then the points.
+- Evidence status is a pill: approved (verified trust tier), needs information (potential), not accepted (tradeoff), waiting for review (basic). Staff's note sits under it as "Note from TSC".
+- Uploads use the Upload component. Evidence and certificate review never read as company verification, and self-reported data is labelled.

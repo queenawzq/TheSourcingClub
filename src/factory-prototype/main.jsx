@@ -2976,7 +2976,6 @@ export function TradingCompanyProfilePage({ language = "en", onViewCompletion, l
   return (
     <main className={`factory-profile-page trading-company-profile-page ${isOwnerView ? "is-owner-view" : "is-public-view"}`}>
       <div className="factory-profile-shell">
-        {isOwnerView && live?.matchingPanel}
         <ProfileOwnerBar
           ariaLabel={text("Trading company profile view", "贸易公司资料视图")}
           isOwnerView={isOwnerView}
@@ -3072,6 +3071,7 @@ export function TradingCompanyProfilePage({ language = "en", onViewCompletion, l
                 </div>
               )}
             </section>
+            {isOwnerView && live?.matchingPanel}
           </section>
 
           <aside className="factory-profile-side">
@@ -3220,7 +3220,6 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
   return (
     <main className={`factory-profile-page ${isOwnerView ? "is-owner-view" : "is-public-view"}`}>
       <div className="factory-profile-shell">
-        {isOwnerView && live?.matchingPanel}
         <ProfileOwnerBar
           ariaLabel="Profile view mode"
           isOwnerView={isOwnerView}
@@ -3406,6 +3405,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
                 ))}
               </div>
             </section>
+            {isOwnerView && live?.matchingPanel}
           </section>
 
           <aside className="factory-profile-side">
@@ -3532,7 +3532,6 @@ export function FactoryProfileCompletionPage({ onBack, live = null }) {
   return (
     <main className="factory-profile-page factory-profile-completion-page">
       <div className="factory-profile-shell">
-        {live?.matchingPanel}
         <button className="text-link factory-profile-completion-back" type="button" onClick={onBack}>‹ Back to profile</button>
 
         <section className="factory-profile-completion-hero">
@@ -3603,6 +3602,7 @@ export function FactoryProfileCompletionPage({ onBack, live = null }) {
             </section>
           </aside>
         </section>
+        {live?.matchingPanel}
       </div>
     </main>
   );

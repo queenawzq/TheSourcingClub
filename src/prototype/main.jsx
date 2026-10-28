@@ -4977,10 +4977,10 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
             {view.onRequestQuote && <button className="primary-btn" type="button" onClick={view.onRequestQuote}>Request quote</button>}
           </div>
         </section>
-        {live?.matchPanel}
 
         <div className="factory-profile-layout">
           <section className="factory-profile-main">
+            {live?.matchPanel}
             <ProfilePerformanceCard
               eyebrow="Factory performance"
               primary={view.performance.primary}
@@ -5407,6 +5407,7 @@ export function BrandProfileScreen({ onViewCompletion, live = null }) {
                 </div>
               ) : <p>{view.projectsEmpty?.[projectTab]}</p>}
             </section>
+            {isOwnerView && live?.matchingPanel}
           </main>
 
           <aside className="factory-profile-side">
@@ -5521,7 +5522,6 @@ export function BrandProfileCompletionPage({ onBack, onAddPayment, live = null }
   return (
     <main className="factory-profile-page factory-profile-completion-page brand-profile-completion-page">
       <div className="factory-profile-shell">
-        {live?.matchingPanel}
         <button className="text-link factory-profile-completion-back" type="button" onClick={onBack}>‹ Back to profile</button>
 
         <section className="factory-profile-completion-hero">
@@ -5591,6 +5591,7 @@ export function BrandProfileCompletionPage({ onBack, onAddPayment, live = null }
             </section>
           </aside>
         </section>
+        {live?.matchingPanel}
       </div>
     </main>
   );
@@ -9545,6 +9546,7 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
         }}
       />
       <div className="invite-factory-content">
+        {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
         <div className="invite-factory-top">
           <a
             className="marketplace-factory-title marketplace-factory-profile-link"

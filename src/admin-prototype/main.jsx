@@ -364,8 +364,8 @@ function QueuePage({ kind, profiles, rfqRows, quoteRows, onReview, onOpenRfq, on
 
   return (
     <main className="rfqs-page admin-page admin-queue-page">
-      {kind === "Verification" && matchingPanel}
       <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>{copy[0]}</h1><p>{copy[1]}</p></div></header>
+      {kind === "Verification" && matchingPanel}
       <div className="admin-filter-bar">
         <label className="admin-search"><SearchIcon /><input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder={`Search ${copy[0].toLowerCase()}`} /></label>
         {kind === "Verification" ? (

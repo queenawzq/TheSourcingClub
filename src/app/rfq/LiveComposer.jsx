@@ -491,7 +491,7 @@ export default function LiveComposer({ org, rfqId }) {
     setError(null);
 
     try {
-      if (matchingV2 && matchingDirty) throw new Error("Save your matching information before choosing vendors.");
+      if (matchingV2 && matchingDirty) throw new Error("Save your matching requirements before choosing vendors.");
       if (!skipSave) await persistReview();
       setMatchingAcknowledged(false);
       setSaveState("saved");
@@ -665,6 +665,7 @@ export default function LiveComposer({ org, rfqId }) {
       trust: vendor.verification_status === "verified" ? (vendor.trust_tier ?? "basic") : "",
       // Scored against this request by match_score_rfq(); blank when the
       // vendor's profile has too little in it to score.
+      matching: vendor.matching,
       fit: vendor.matchPercent === null ? "" : `${Math.round(vendor.matchPercent)}%${vendor.matching?.status === "needs_confirmation" ? " provisional" : ""}`,
       // Nothing records a rating or a vendor's order count a brand may read;
       // "" tells the card to leave both out rather than print an example.
@@ -708,13 +709,40 @@ export default function LiveComposer({ org, rfqId }) {
         onBack={() => setStep("review")}
         onNext={publish}
       >
-        {matchingV2 && <section className="matching-panel"><h2>Factory match details</h2>
-          {/* The factory the brand started from, when this request's must-haves rule it out. */}
-          {excludedVendors.filter(v=>v.org_id===(reorder?.factoryOrgId ?? requestedVendor)).map(v=><p role="status" key={v.org_id}>{v.orgs?.name} can't be invited to this request: {v.matching?.failed?.join("; ")}. Go back to change the request if you want to include it.</p>)}
-{vendors.map(v=><div key={v.org_id}><h3>{v.orgs?.name}</h3><FactoryMatch match={v.matching} name={v.orgs?.name} /></div>)}
-          {vendors.some(v=>selectedVendors.includes(v.org_id) && v.matching?.status!=="qualified") && <label><input type="checkbox" checked={matchingAcknowledged} onChange={e=>{setMatchingAcknowledged(e.target.checked);setError(null);}} />I understand the selected factories have unresolved requirements and will confirm them before proceeding.</label>}
-          {excludedVendors.length>0 && <details><summary>{excludedVendors.length} {excludedVendors.length===1?"factory excluded":"factories excluded"} by must-have requirements</summary>{excludedVendors.map(v=><div key={v.org_id}><h3>{v.orgs?.name}</h3><FactoryMatch match={v.matching} name={v.orgs?.name} /></div>)}</details>}
-        </section>}
+        {matchingV2 && (() => {
+          // Each invite card carries its own match explanation; this panel holds
+          // only what applies to the whole selection.
+          const startedFrom = excludedVendors.find((v) => v.org_id === (reorder?.factoryOrgId ?? requestedVendor));
+          if (!startedFrom && !excludedVendors.length) return null;
+          return (
+            <section className="matching-panel" aria-label="Matching for this request">
+              {startedFrom && (
+                <p className="matching-callout is-warning" role="status">
+                  {startedFrom.orgs?.name} can't be invited to this request: {startedFrom.matching?.failed?.join("; ")}.
+                  {" "}Go back to change the request if you want to include it.
+                </p>
+              )}
+              {excludedVendors.length > 0 && (
+                <details className="matching-group">
+                  <summary>
+                    <span className="matching-label">
+                      {excludedVendors.length} {excludedVendors.length === 1 ? "factory doesn't" : "factories don't"} meet your must-haves
+                    </span>
+                    <span className="matching-small">Not shown below</span>
+                  </summary>
+                  <div className="matching-group-body">
+                    {excludedVendors.map((v) => (
+                      <div key={v.org_id}>
+                        <strong>{v.orgs?.name}</strong>
+                        <FactoryMatch match={v.matching} name={v.orgs?.name} />
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </section>
+          );
+        })()}
         <InviteScreen
           vendors={shaped}
           filters={requestFilters(values)}
@@ -723,6 +751,23 @@ export default function LiveComposer({ org, rfqId }) {
           openToAll={openToAll}
           onOpenToAllChange={setOpenToAll}
         />
+        {matchingV2 && (() => {
+          // Beside the invite button: what the brand agrees to by sending.
+          const unresolved = vendors.filter((v) => selectedVendors.includes(v.org_id) && v.matching?.status !== "qualified");
+          if (!unresolved.length) return null;
+          return (
+            <label className="matching-check matching-callout matching-acknowledge">
+              <input
+                type="checkbox"
+                checked={matchingAcknowledged}
+                onChange={(e) => { setMatchingAcknowledged(e.target.checked); setError(null); }}
+              />
+              {unresolved.length === 1
+                ? `${unresolved[0].orgs?.name} has details still to confirm. I'll confirm them with the factory before going ahead.`
+                : `${unresolved.length} selected factories have details still to confirm. I'll confirm them with each factory before going ahead.`}
+            </label>
+          );
+        })()}
         {reorder && !vendors.some((vendor) => vendor.org_id === reorder.factoryOrgId) && (
           <p className="composer-note" data-testid="reorder-unlisted">
             {reorder.factoryName} is not listed on TSC right now, so it cannot be invited. Open the request to all vendors or choose another.
@@ -752,7 +797,6 @@ export default function LiveComposer({ org, rfqId }) {
           Reordering {reorder.title} with {reorder.factoryName}. Check the details, then invite.
         </p>
       )}
-      {draftId && <MatchingProfile org={org} subjectType="rfq" subjectId={draftId} onDirty={()=>setMatchingDirty(true)} onSaved={({selected,terms: matchingTerms})=>{setMatchingDirty(false);setValues(current=>({...current,category:(matchingTerms.product_category??[]).filter(t=>selected.includes(t.id)).map(t=>termLabel(t)).join(", "),certifications:(matchingTerms.certification??[]).filter(t=>selected.includes(t.id)).map(t=>termLabel(t)).join(", ")}));}} />}
       <ReviewScreen
         brief={freeText}
         values={values}
@@ -764,6 +808,8 @@ export default function LiveComposer({ org, rfqId }) {
         uploading={uploading}
         serviceOptions={(terms.service ?? []).map((term) => termLabel(term))}
       />
+      {/* After the brief it qualifies: who the request goes to, and what is a must-have. */}
+      {draftId && <MatchingProfile org={org} subjectType="rfq" subjectId={draftId} onDirty={()=>setMatchingDirty(true)} onSaved={({selected,terms: matchingTerms})=>{setMatchingDirty(false);setValues(current=>({...current,category:(matchingTerms.product_category??[]).filter(t=>selected.includes(t.id)).map(t=>termLabel(t)).join(", "),certifications:(matchingTerms.certification??[]).filter(t=>selected.includes(t.id)).map(t=>termLabel(t)).join(", ")}));}} />}
       {error && <p className="composer-error" role="alert">{error.message}</p>}
     </FlowShell>
   );

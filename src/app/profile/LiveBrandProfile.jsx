@@ -179,7 +179,6 @@ export default function LiveBrandProfile({ org, page = "profile", editor = null 
 
   return (
     <main className="factory-profile-page brand-profile-page">
-      <MatchingProfile org={org} subjectType="brand_profile" />
       <BrandProfileScreen
         // A fresh page per dialog link, so following one from the completion
         // page opens it even if the profile was already showing.
@@ -187,6 +186,7 @@ export default function LiveBrandProfile({ org, page = "profile", editor = null 
         onViewCompletion={() => navigate("/profile/completion")}
         live={{
           ...brandProfileView(parts),
+          matchingPanel: <MatchingProfile org={org} subjectType="brand_profile" />,
           editors: BRAND_EDITORS,
           initialEditor: BRAND_EDITORS.includes(editor) ? editor : null,
           // Leave a dialog's own address once it closes, so a refresh shows

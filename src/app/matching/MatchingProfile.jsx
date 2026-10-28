@@ -113,8 +113,13 @@ export default function MatchingProfile({
     };
   }, [enabled, org.id, subjectType, subjectId, factory]);
   if (!enabled) return null;
+  // A patch, or a function of the current details: two quick clicks must
+  // not both start from the same render.
   const change = (patch) => {
-    setState((s) => ({ ...s, details: { ...s.details, ...patch } }));
+    setState((s) => ({
+      ...s,
+      details: { ...s.details, ...(typeof patch === "function" ? patch(s.details) : patch) },
+    }));
     setSaved(false);
     onDirty();
   };
@@ -192,8 +197,8 @@ export default function MatchingProfile({
     }
   }
   const field = (key, label, type = "number") => (
-    <label key={key}>
-      {label}
+    <label className="matching-field" key={key}>
+      <span className="matching-label">{label}</span>
       <input
         type={type}
         min={type === "number" ? 0 : undefined}
@@ -209,200 +214,243 @@ export default function MatchingProfile({
       />
     </label>
   );
+  // Chips, the onboarding chip group's selectable buttons.
+  const chips = (items, isOn, onToggle, labelFor, required = false) => (
+    <div className={`matching-chips${required ? " is-required" : ""}`}>
+      {items.map((item) => (
+        <button
+          type="button"
+          key={item.key}
+          aria-pressed={isOn(item)}
+          onClick={() => onToggle(item)}
+        >
+          {labelFor(item)}
+        </button>
+      ))}
+    </div>
+  );
+  const required = state?.details.required_term_ids ?? [];
+  const toggleRequired = (id) =>
+    change((d) => {
+      const current = d.required_term_ids ?? [];
+      return {
+        required_term_ids: current.includes(id)
+          ? current.filter((x) => x !== id)
+          : [...current, id],
+      };
+    });
+  // A country is preferred or accepted, never both.
+  const toggleCountry = (list, code) => {
+    const other = list === "preferred_countries" ? "accepted_countries" : "preferred_countries";
+    change((d) => {
+      const current = d[list] ?? [];
+      return {
+        [list]: current.includes(code) ? current.filter((x) => x !== code) : [...current, code],
+        [other]: (d[other] ?? []).filter((x) => x !== code),
+      };
+    });
+  };
+  const countries = (state?.terms.country ?? [])
+    .filter((t) => t.extra?.code)
+    .map((t) => ({ key: t.extra.code, term: t }));
+  const asItems = (terms) => terms.map((t) => ({ key: t.id, term: t }));
+  const factsMissing =
+    factory &&
+    state &&
+    ["moq_per_colour", "usual_order_min", "usual_order_max"].some(
+      (k) => state.details[k] == null || state.details[k] === "",
+    );
   return (
     <section
       className="matching-panel"
       aria-label={factory ? "Factory matching profile" : "Matching preferences"}
     >
-      <h2>
-        {factory
-          ? "Complete your matching profile"
-          : "Matching preferences and requirements"}
-      </h2>
-      <p>
-        {factory
-          ? "Missing information is shown to brands as Needs confirmation. Company verification and quoting access are unchanged. Capabilities are self-reported unless TSC reviews supporting evidence."
-          : "Product categories are required. Mark any other must-haves below; unmarked selections are preferences. Each request represents one style."}
-      </p>
+      <header className="matching-head">
+        <h2>
+          {factory
+            ? "Matching profile"
+            : subjectType === "rfq"
+              ? "Matching requirements for this request"
+              : "Matching preferences"}
+        </h2>
+        <p>
+          {factory
+            ? "What you make and the order sizes you usually take. Brands see anything missing as “Needs confirmation”; it never affects your company verification or your quoting."
+            : "Choose what you need. Mark any must-haves: factories without them are left out of your matches. Everything else is a preference that improves the ranking."}
+        </p>
+      </header>
       {state && (
         <>
           {state.fromProfile && !saved && (
-            <p role="status">
-              Filled in from your brand profile's preferences. Change anything
+            <p className="matching-callout" role="status">
+              Filled in from your brand profile’s preferences. Change anything
               for this request, then save.
             </p>
           )}
-          {factory &&
-            ["moq_per_colour", "usual_order_min", "usual_order_max"].some(
-              (k) => state.details[k] == null,
-            ) && (
-              <p role="status">
-                Complete your per-colour minimum and usual order-size range to
-                improve match readiness.
-              </p>
-            )}
-          {MATCH_KINDS.filter((k) => !factory || k !== "certification").map(
-            (kind) => (
-              <details key={kind}>
-                <summary>
-                  {TITLES[kind]} ·{" "}
-                  {(state.terms[kind] ?? [])
-                    .filter((t) => state.selected.includes(t.id))
-                    .map((t) => termLabel(t))
-                    .join(", ") || "Not specified"}
-                </summary>
-                <fieldset>
-                  <legend>{TITLES[kind]}</legend>
-                  {(state.terms[kind] ?? []).map((t) => (
-                    <div className="matching-choice" key={t.id}>
-                      <label>
-                        <input
-                          type="checkbox"
-                          checked={state.selected.includes(t.id)}
-                          onChange={() => toggle(t.id)}
-                        />
-                        {termLabel(t)}
-                      </label>
-                      {!factory &&
-                        ["fabric", "technique", "certification"].includes(
-                          kind,
-                        ) &&
-                        state.selected.includes(t.id) && (
-                          <label>
-                            <input
-                              type="checkbox"
-                              checked={state.details.required_term_ids.includes(
-                                t.id,
-                              )}
-                              onChange={(e) =>
-                                change({
-                                  required_term_ids: e.target.checked
-                                    ? [...state.details.required_term_ids, t.id]
-                                    : state.details.required_term_ids.filter(
-                                        (x) => x !== t.id,
-                                      ),
-                                })
-                              }
-                            />
-                            Required
-                          </label>
-                        )}
-                    </div>
-                  ))}
-                </fieldset>
-              </details>
-            ),
+          {factsMissing && (
+            <p className="matching-callout is-warning" role="status">
+              Add your MOQ per colour and usual order sizes so brands can see
+              you as a full match.
+            </p>
           )}
+          <div className="matching-section">
+            <h3>{factory ? "What you make" : "What you need"}</h3>
+            {MATCH_KINDS.filter((k) => !factory || k !== "certification").map(
+              (kind) => {
+                const options = state.terms[kind] ?? [];
+                const picked = options.filter((t) => state.selected.includes(t.id));
+                const canRequire =
+                  !factory && ["fabric", "technique", "certification"].includes(kind);
+                return (
+                  <details className="matching-group" key={kind}>
+                    <summary>
+                      <span className="matching-label">{TITLES[kind]}</span>
+                      <span className="matching-small">
+                        {picked
+                          .map((t) => `${termLabel(t)}${required.includes(t.id) ? " (must-have)" : ""}`)
+                          .join(", ") || "Not specified"}
+                      </span>
+                    </summary>
+                    <div className="matching-group-body">
+                      {chips(
+                        asItems(options),
+                        (item) => state.selected.includes(item.key),
+                        (item) => toggle(item.key),
+                        (item) => termLabel(item.term),
+                      )}
+                      {canRequire && picked.length > 0 && (
+                        <>
+                          <span className="matching-label">Must-haves</span>
+                          {chips(
+                            asItems(picked),
+                            (item) => required.includes(item.key),
+                            (item) => toggleRequired(item.key),
+                            (item) => termLabel(item.term),
+                            true,
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </details>
+                );
+              },
+            )}
+          </div>
           {factory ? (
-            <div className="matching-fields">
-              {field("moq_per_colour", "MOQ per colour (units)")}
-              {field("usual_order_min", "Usual order minimum (units/style)")}
-              {field("usual_order_max", "Usual order maximum (units/style)")}
+            <div className="matching-section">
+              <h3>Order sizes</h3>
+              <div className="matching-fields">
+                {field("moq_per_colour", "MOQ per colour (units)")}
+                {field("usual_order_min", "Usual order minimum (units per style)")}
+                {field("usual_order_max", "Usual order maximum (units per style)")}
+              </div>
             </div>
           ) : (
             <>
               {subjectType === "brand_profile" && (
-                <div className="matching-fields">
-                  {field("quantity", "Expected units per style")}
-                  <label>
-                    Units per colour (comma separated)
-                    <input
-                      value={(state.details.colour_quantities ?? []).join(", ")}
-                      onChange={(e) =>
-                        change({
-                          colour_quantities: e.target.value
-                            .split(",")
-                            .map((x) => Number(x.trim()))
-                            .filter((x) => x > 0),
-                        })
-                      }
-                    />
-                  </label>
+                <div className="matching-section">
+                  <h3>Typical order</h3>
+                  <div className="matching-fields">
+                    {field("quantity", "Units per style")}
+                    <label className="matching-field">
+                      <span className="matching-label">Units per colour</span>
+                      <input
+                        placeholder="e.g. 150, 150"
+                        value={(state.details.colour_quantities ?? []).join(", ")}
+                        onChange={(e) =>
+                          change({
+                            colour_quantities: e.target.value
+                              .split(",")
+                              .map((x) => Number(x.trim()))
+                              .filter((x) => x > 0),
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
                 </div>
               )}
-              {["preferred_countries", "accepted_countries"].map((k) => (
-                <label key={k}>
-                  {k === "preferred_countries"
-                    ? "Preferred manufacturing countries"
-                    : "Also accepted countries"}
-                  <select
-                    multiple
-                    value={state.details[k]}
-                    onChange={(e) =>
-                      change({
-                        [k]: [...e.target.selectedOptions].map((x) => x.value),
-                      })
-                    }
-                  >
-                    {(state.terms.country ?? [])
-                      .filter((t) => t.extra?.code)
-                      .map((t) => (
-                        <option key={t.id} value={t.extra.code}>
-                          {termLabel(t)}
-                        </option>
-                      ))}
-                  </select>
-                </label>
-              ))}
-              <label className="matching-choice">
-                <input
-                  type="checkbox"
-                  checked={!!state.details.location_required}
-                  onChange={(e) =>
-                    change({ location_required: e.target.checked })
-                  }
-                />
-                Only these manufacturing countries are allowed
-              </label>
-              <div className="matching-fields">
-                {field("sample_deadline", "Sample deadline", "date")}
-                {field("bulk_deadline", "Bulk deadline", "date")}
-                <label>
-                  Bulk deadline means
-                  <select
-                    value={state.details.bulk_deadline_type ?? ""}
-                    onChange={(e) =>
-                      change({ bulk_deadline_type: e.target.value })
-                    }
-                  >
-                    <option value="">
-                      Choose when a bulk deadline is given
-                    </option>
-                    <option value="ready_to_ship">Ready to ship</option>
-                    <option value="delivered">Delivered</option>
-                  </select>
-                </label>
-                {field(
-                  "shipping_days",
-                  "Shipping allowance (days, for delivered deadlines)",
-                )}
-              </div>
-              {subjectType === "brand_profile" && (
-                <label className="matching-choice">
+              <div className="matching-section">
+                <h3>Where it is made</h3>
+                {[
+                  ["preferred_countries", "Preferred countries"],
+                  ["accepted_countries", "Also acceptable"],
+                ].map(([list, title]) => (
+                  <details className="matching-group" key={list}>
+                    <summary>
+                      <span className="matching-label">{title}</span>
+                      <span className="matching-small">
+                        {countries
+                          .filter((item) => (state.details[list] ?? []).includes(item.key))
+                          .map((item) => termLabel(item.term))
+                          .join(", ") || "Any"}
+                      </span>
+                    </summary>
+                    <div className="matching-group-body">
+                      {chips(
+                        countries,
+                        (item) => (state.details[list] ?? []).includes(item.key),
+                        (item) => toggleCountry(list, item.key),
+                        (item) => termLabel(item.term),
+                      )}
+                    </div>
+                  </details>
+                ))}
+                <label className="matching-check">
                   <input
                     type="checkbox"
-                    checked={!!state.details.requires_sample}
-                    onChange={(e) =>
-                      change({ requires_sample: e.target.checked })
-                    }
+                    checked={!!state.details.location_required}
+                    onChange={(e) => change({ location_required: e.target.checked })}
                   />
-                  Sampling needed before bulk
+                  Only these countries are allowed
                 </label>
-              )}
-              <p>
-                Dates are assessed against factory lead times and estimated
-                availability. A delivered deadline needs a shipping allowance.
-              </p>
+              </div>
+              <div className="matching-section">
+                <h3>Timing</h3>
+                <div className="matching-fields">
+                  {field("sample_deadline", "Sample deadline", "date")}
+                  {field("bulk_deadline", "Bulk deadline", "date")}
+                  <label className="matching-field">
+                    <span className="matching-label">Bulk deadline means</span>
+                    <select
+                      value={state.details.bulk_deadline_type ?? ""}
+                      onChange={(e) => change({ bulk_deadline_type: e.target.value })}
+                    >
+                      <option value="">Choose one</option>
+                      <option value="ready_to_ship">Ready to ship</option>
+                      <option value="delivered">Delivered</option>
+                    </select>
+                  </label>
+                  {field("shipping_days", "Shipping allowance (days)")}
+                </div>
+                {subjectType === "brand_profile" && (
+                  <label className="matching-check">
+                    <input
+                      type="checkbox"
+                      checked={!!state.details.requires_sample}
+                      onChange={(e) => change({ requires_sample: e.target.checked })}
+                    />
+                    Sampling needed before bulk
+                  </label>
+                )}
+                <p className="matching-hint">
+                  Dates are checked against each factory’s lead times and open
+                  capacity. A delivered deadline needs a shipping allowance.
+                </p>
+              </div>
             </>
           )}
-          <button type="button" disabled={busy} onClick={save}>
-            {busy ? "Saving…" : "Save matching information"}
-          </button>
-          {saved && <p role="status">Matching information saved.</p>}
+          <div className="matching-actions">
+            {saved && !error && <p className="matching-saved" role="status">Saved.</p>}
+            {error && <p role="alert">{error.message}</p>}
+            <button type="button" className="matching-btn is-primary" disabled={busy} onClick={save}>
+              {busy ? "Saving…" : factory ? "Save matching profile" : "Save matching preferences"}
+            </button>
+          </div>
         </>
       )}
-      {!state && !error && <p>Loading matching information…</p>}
-      {error && <p role="alert">{error.message}</p>}
+      {!state && !error && <p className="matching-hint">Loading matching information…</p>}
+      {!state && error && <p role="alert">{error.message}</p>}
     </section>
   );
 }

@@ -87,7 +87,12 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
       <BrandFactoryProfileScreen
         live={{
           ...brandFactoryView(state.parts),
-          matchPanel: assessment ? <FactoryMatch match={assessment} name={state.parts.orgName} /> : null,
+          matchPanel: assessment ? (
+            <section className="matching-panel matching-in-column" aria-label="How this factory matches">
+              <header className="matching-head"><h2>How it matches your needs</h2></header>
+              <FactoryMatch match={assessment} name={state.parts.orgName} open />
+            </section>
+          ) : null,
           back: { label: backLabel, onClick: back },
           // Only where the brand can save (the composer's invite step has no user).
           save: user ? saveFor(vendorOrgId) : null,
