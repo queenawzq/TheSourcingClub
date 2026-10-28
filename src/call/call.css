@@ -62,3 +62,9 @@ body:has(> .call-page) {
   border-color: #2458ff;
   background: #2458ff;
 }
+
+/* Zoom draws its pre-join card 392px wide, so on a 375px phone the Join
+   button and the terms line under it are cut off at both edges. */
+#zmmtg-root .preview-meeting-info {
+  max-width: calc(100vw - 32px);
+}
