@@ -56,21 +56,39 @@ export function matchLabel(m) {
       ? "Not eligible"
       : "Needs confirmation";
 }
+// The database's check constraints, in the words the form uses. Postgres
+// names the constraint, never the field, so its own message means nothing
+// to the person who typed the number.
+const CONSTRAINT_MESSAGES = {
+  factory_matching_facts_check:
+    "The usual order minimum can't be more than the usual order maximum.",
+  factory_matching_facts_usual_order_min_check:
+    "The usual order minimum must be more than zero.",
+  factory_matching_facts_usual_order_max_check:
+    "The usual order maximum must be more than zero.",
+  factory_matching_facts_moq_per_colour_check:
+    "MOQ per colour can't be negative.",
+  matching_requirements_quantity_check:
+    "Expected units per style must be more than zero.",
+  matching_requirements_shipping_days_check:
+    "The shipping allowance can't be negative.",
+  matching_requirements_check: "Choose what the bulk deadline means.",
+};
 export async function saveMatchingProfile(
   subjectType,
   subjectId,
   selections,
   details,
 ) {
-  return unwrap(
-    await supabase.rpc("save_matching_profile", {
-      subject_type: subjectType,
-      subject_id: subjectId,
-      selections,
-      details,
-    }),
-    "save matching information",
-  );
+  const result = await supabase.rpc("save_matching_profile", {
+    subject_type: subjectType,
+    subject_id: subjectId,
+    selections,
+    details,
+  });
+  const constraint = result.error?.message?.match(/check constraint "([^"]+)"/)?.[1];
+  if (CONSTRAINT_MESSAGES[constraint]) throw new Error(CONSTRAINT_MESSAGES[constraint]);
+  return unwrap(result, "save matching information");
 }
 export async function inviteMatchedFactories(rfqId, ids, acknowledged) {
   // Normal invitation insertion retains existing RLS, credit and notification rules.

@@ -340,7 +340,7 @@ function CertificateScope({ row, terms, busy, onSave }) {
             expires_at: d.expires_at,
             non_expiring: d.non_expiring,
             facility_country: d.facility_country,
-            facility_name,
+            facility_name: d.facility_name,
             scope_term_ids: d.scope_term_ids,
             scope_all_products: d.scope_all_products,
           })
