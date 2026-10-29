@@ -25,7 +25,8 @@ import { formatMoney } from "../../lib/money.js";
 import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
-import StripePayoutCard, { PayoutModal, payoutRemovalError } from "./StripePayoutCard.jsx";
+import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
+import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 import { earningStatus, earningsSummaryFor, factoryAmount } from "./payment-summary.mjs";
@@ -68,15 +69,6 @@ const PAYOUT_STATUS = {
  * paid, fee included, as received; the factory is paid the step's amount.
  * A bank wire from the old site records what actually arrived.
  */
-
-const blankPayout = (row) => ({
-  bank_name: row?.bank_name ?? "",
-  account_name: row?.account_name ?? "",
-  account_number_last4: row?.account_number_last4 ?? "",
-  swift: row?.swift ?? "",
-  iban: row?.iban ?? "",
-  instructions: row?.instructions ?? "",
-});
 
 let billingStripePromise = null;
 const billingStripe = () => {
@@ -129,12 +121,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   });
   const [client, setClient] = useState("All clients");
   const [transactionType, setTransactionType] = useState("all");
-  const [account, setAccount] = useState(null);
-  const [form, setForm] = useState(null);
+  // The bank accounts staff pay where Stripe cannot (use-manual-payouts.js).
+  const payouts = useManualPayouts(org.id);
   const [earnings, setEarnings] = useState(null);
   const [credits, setCredits] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
   const [error, setError] = useState(null);
   const [stripeBalance, setStripeBalance] = useState(null);
   const [billingSecret, setBillingSecret] = useState(null);
@@ -165,13 +155,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
 
   const load = useCallback(async () => {
     setError(null);
-    const [accountResult, ordersResult] = await Promise.all([
-      supabase
-        .from("factory_payout_accounts")
-        .select("id, bank_name, account_name, account_number_last4, swift, iban, bank_country, instructions")
-        .eq("org_id", org.id)
-        .eq("is_primary", true)
-        .maybeSingle(),
+    const [, ordersResult] = await Promise.all([
+      payouts.load(),
       supabase
         .from("production_orders")
         .select("id, order_number, brand_org_id, orgs!production_orders_brand_org_id_fkey (name)")
@@ -180,7 +165,6 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       loadCredits(),
     ]);
 
-    const payout = unwrap(accountResult, "load your payout account");
     const orders = unwrap(ordersResult, "load your payment orders");
     const orderById = new Map(orders.map((order) => [order.id, order]));
 
@@ -196,10 +180,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       );
     }
 
-    setAccount(payout);
-    setForm(blankPayout(payout));
     setEarnings(paymentRows.map((payment) => ({ ...payment, order: orderById.get(payment.order_id) })));
-  }, [org.id, loadCredits]);
+  }, [org.id, loadCredits, payouts.load]);
 
   useEffect(() => {
     let cancelled = false;
@@ -285,7 +267,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     return <section className="billing-history-page"><h1>Payments</h1><p className="projects-empty">Factory payment tools are not available on a brand account.</p></section>;
   }
 
-  if (error && (!earnings || !credits || !form)) {
+  if (error && (!earnings || !credits || !payouts.accounts)) {
     return (
       <section className="billing-history-page live-payments-page">
         <header className="billing-history-header"><div><h1>Payments</h1></div></header>
@@ -294,65 +276,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     );
   }
 
-  if (!earnings || !credits || !form) {
+  if (!earnings || !credits || !payouts.accounts) {
     return (
       <section className="billing-history-page live-payments-page">
         <div className="spinner" aria-hidden="true" />
         <p>Loading payments…</p>
       </section>
     );
-  }
-
-  const set = (key) => (event) => {
-    setSaved(false);
-    setForm((current) => ({ ...current, [key]: event.target.value }));
-  };
-
-  // The set-up dialog sends the country it asked for; null for a country it
-  // does not list, which the factory names in the instructions instead.
-  async function saveAccount(details = {}) {
-    if (!form.bank_name.trim() || !form.account_name.trim()) {
-      setError(new Error("Add the bank and the account name so TSC can pay you."));
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const payload = {
-        org_id: org.id,
-        is_primary: true,
-        ...Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim() || null])),
-        bank_country: "bank_country" in details ? details.bank_country : account?.bank_country ?? null,
-      };
-      const result = account?.id
-        ? await supabase.from("factory_payout_accounts").update(payload).eq("id", account.id).select().single()
-        : await supabase.from("factory_payout_accounts").insert(payload).select().single();
-      const updated = unwrap(result, "save your payout account");
-      setAccount(updated);
-      setForm(blankPayout(updated));
-      setSaved(true);
-    } catch (failure) {
-      setError(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteAccount() {
-    if (!account?.id) return;
-    setBusy(true);
-    setError(null);
-    try {
-      unwrap(await supabase.from("factory_payout_accounts").delete().eq("id", account.id), "remove your payout account");
-      setAccount(null);
-      setForm(blankPayout());
-      setSaved(false);
-    } catch (failure) {
-      // Refused while TSC owes a bank payout to this account: said with the amount.
-      throw payoutRemovalError(failure);
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function addBillingMethod() {
@@ -405,16 +335,19 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             org={org}
             isOwner={isOwner}
             onBalanceChange={setStripeBalance}
-            manualAccount={account}
-            manualForm={form}
+            manualAccount={payouts.primary}
+            manualAccounts={payouts.accounts ?? []}
+            manualEditingId={payouts.editingId}
+            onStartManual={payouts.startEdit}
+            onMakePrimaryManual={payouts.makePrimary}
+            manualForm={payouts.form}
             manualFields={FIELDS}
-            onManualFieldChange={set}
-            onSaveManual={saveAccount}
-            onDeleteManual={deleteAccount}
-            manualBusy={busy}
-            manualSaved={saved}
-            manualOwed={(earnings ?? []).filter((row) => row.state === "confirmed" && row.release_requested_at)
-              .map((row) => ({ amount: factoryAmount(row), currency: row.currency }))}
+            onManualFieldChange={payouts.setField}
+            onSaveManual={payouts.save}
+            onDeleteManual={payouts.remove}
+            manualBusy={payouts.busy}
+            manualSaved={payouts.saved}
+            manualOwed={payouts.owed}
           />
           <label className="payments-client-filter">
             <span>Filter by client</span>

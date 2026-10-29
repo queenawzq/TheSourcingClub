@@ -7,14 +7,16 @@
 --
 -- What this protects: an owner cannot remove the bank account TSC is about
 -- to pay by bank, and can once that payment is sent; a factory Stripe pays
--- is not held back by it; server code is never refused.
+-- is not held back by it; server code is never refused. With several
+-- accounts, the one TSC pays cannot be removed until another is chosen, and
+-- only the company's owner chooses (set_primary_payout_account).
 -- ============================================================================
 
 begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(6);
+select plan(10);
 
 -- Fixtures without their triggers (state guards, fee, notifications): this
 -- suite is about the delete guard alone.
@@ -115,6 +117,46 @@ select lives_ok(
   $$ delete from public.factory_payout_accounts where id = '29c00000-0000-0000-0000-0000000000f3' $$,
   'server code can still remove it'
 );
+
+-- Two bank accounts: the one TSC pays (A) and a second one (B).
+reset role;
+select set_config('request.jwt.claims', null, true);
+insert into public.factory_payout_accounts (id, org_id, is_primary, bank_name, account_name) values
+  ('29c00000-0000-0000-0000-0000000000a1', '29b00000-0000-0000-0000-0000000000f1', true,  'P29 Bank A', 'P29 Bank Mill Ltd'),
+  ('29c00000-0000-0000-0000-0000000000a2', '29b00000-0000-0000-0000-0000000000f1', false, 'P29 Bank B', 'P29 Bank Mill Ltd');
+
+select set_config('request.jwt.claims', json_build_object('sub', '29a00000-0000-0000-0000-000000000001', 'role', 'authenticated')::text, true);
+set local role authenticated;
+select throws_ok(
+  $$ delete from public.factory_payout_accounts where id = '29c00000-0000-0000-0000-0000000000a1' $$,
+  'P0001',
+  'this is the account TSC pays: choose another account for TSC to pay before removing it',
+  'the account TSC pays cannot be removed while another exists'
+);
+select lives_ok(
+  $$ select public.set_primary_payout_account('29c00000-0000-0000-0000-0000000000a2') $$,
+  'the owner chooses the second account for TSC to pay'
+);
+reset role;
+
+-- Someone who owns another company cannot move it back.
+select set_config('request.jwt.claims', json_build_object('sub', '29a00000-0000-0000-0000-000000000002', 'role', 'authenticated')::text, true);
+set local role authenticated;
+select throws_ok(
+  $$ select public.set_primary_payout_account('29c00000-0000-0000-0000-0000000000a1') $$,
+  'P0002',
+  'that bank account does not exist',
+  'nobody outside the company chooses which account TSC pays: its accounts are not even visible to them'
+);
+reset role;
+
+select set_config('request.jwt.claims', json_build_object('sub', '29a00000-0000-0000-0000-000000000001', 'role', 'authenticated')::text, true);
+set local role authenticated;
+select lives_ok(
+  $$ delete from public.factory_payout_accounts where id = '29c00000-0000-0000-0000-0000000000a1' $$,
+  'and the first account, no longer the one TSC pays, can then be removed'
+);
+reset role;
 
 select * from finish();
 rollback;
