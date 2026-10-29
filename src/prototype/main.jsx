@@ -1,3 +1,4 @@
+import FactoryMatch from "../app/matching/FactoryMatch.jsx";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
@@ -5,7 +6,7 @@ import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
 import { archiveActionFor, cancelActionFor, filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab, withArchivedTab } from "../shared/production-order-parts.jsx";
-import { clock, dateIn, dayLabel, theirTime, whenIn, zonedTime, zoneLabel } from "../shared/call-time.mjs";
+import { clock, dateIn, dayLabel, sameClock, theirTime, whenIn, zonedTime, zoneLabel } from "../shared/call-time.mjs";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
@@ -2157,10 +2158,12 @@ function MessageBubble({ message, showTranslation, onToggleTranslation, ownName,
   );
 }
 
-// Live passes `live`: the call's title and where joining stands (`text`),
-// the element Zoom draws into (`mountRef`), the meeting's Zoom-app link and
-// `onLeave`. The design's camera / microphone / share buttons are Zoom's own
-// inside the meeting, so live shows only "Open in Zoom app" and "Leave call".
+// Live passes `live`: the call's title and where it stands (`text`). The
+// meeting runs in a window of its own, so live offers "Show call window"
+// (`onShow`), the window's link when the browser blocked it (`openUrl`), the
+// meeting's Zoom-app link (`joinUrl`, which leaves the window first through
+// `onOpenApp`) and `onLeave`. The design's camera / microphone / share
+// buttons are Zoom's own inside the meeting.
 function VideoCallPanel({ thread, mode, setMode, live }) {
   const inCall = mode === "active";
 
@@ -2173,10 +2176,12 @@ function VideoCallPanel({ thread, mode, setMode, live }) {
           <p>{live ? live.text : inCall ? "Video preview · screen share available · call notes stay in this thread" : "Start a prototype call room. This is not connected to a live video provider yet."}</p>
         </div>
       </div>
-      {live && !live.failed && <div className="video-call-zoom" ref={live.mountRef} />}
+      {live?.mountRef && !live.failed && <div className="video-call-zoom" ref={live.mountRef} />}
       {live ? (
         <div className="video-call-controls">
-          {live.joinUrl && <a className={`${live.failed ? "primary-btn" : "secondary-btn"} compact-btn`} href={live.joinUrl} target="_blank" rel="noopener noreferrer">Open in Zoom app</a>}
+          {live.openUrl && <a className="primary-btn compact-btn" href={live.openUrl} target="_blank" rel="opener" onClick={live.onOpenLink}>Open the call</a>}
+          {live.onShow && <button className="secondary-btn compact-btn" type="button" onClick={live.onShow}>Show call window</button>}
+          {live.joinUrl && <a className={`${live.failed ? "primary-btn" : "secondary-btn"} compact-btn`} href={live.joinUrl} target="_blank" rel="noopener noreferrer" onClick={live.onOpenApp}>Open in Zoom app</a>}
           <button className={live.failed ? "" : "danger"} type="button" onClick={live.onLeave}>{live.failed ? "Close" : "Leave call"}</button>
         </div>
       ) : (
@@ -2293,7 +2298,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
     liveStart = liveDay && liveMinutes !== null ? zonedTime(viewMonth.year, viewMonth.month, liveDay, liveMinutes, timezone) : null;
     selectedDateLabel = liveDay ? dayLabel(zonedTime(viewMonth.year, viewMonth.month, liveDay, 12 * 60, timezone), timezone) : "Pick a date";
     brandTime = liveStart ? whenIn(liveStart, timezone) : "";
-    factoryTime = liveStart ? theirTime(liveStart, live.otherName, live.otherZone) : "";
+    factoryTime = liveStart ? theirTime(liveStart, live.otherName, live.otherZone, timezone) : "";
     scheduleNote = live.otherZone
       ? `Your time: ${zoneLabel(timezone)} · ${live.otherName}: ${zoneLabel(live.otherZone)} time`
       : `Your time: ${zoneLabel(timezone)}`;
@@ -2372,7 +2377,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
                     {live && liveSlots.map((slot) => (
                       <button className={slot.minutes === liveMinutes ? "selected" : ""} type="button" onClick={() => setLiveMinutes(slot.minutes)} key={slot.minutes}>
                         <strong>{clock(slot.at, timezone)} {zoneLabel(timezone)}</strong>
-                        {live.otherZone && <span>{otherClock(slot.at)}</span>}
+                        {live.otherZone && !sameClock(slot.at, live.otherZone, timezone) && <span>{otherClock(slot.at)}</span>}
                       </button>
                     ))}
                     {!live && availableTimes.map((utcMinutes) => (
@@ -3132,6 +3137,8 @@ export function BrandOnboarding({
   onDeleteDocument,
   termsAcceptance = null,
   completionPending = false,
+  // Live only: a panel drawn after the step's content (matching, on review).
+  extra = null,
   // The published terms and their full page. Absent, the designed copy shows.
   terms,
   fullTerms,
@@ -3216,6 +3223,7 @@ export function BrandOnboarding({
           onDeleteDocument={onDeleteDocument}
           termsAcceptance={termsAcceptance}
         />
+        {extra}
 
         {error && <p className="brand-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
 
@@ -4467,6 +4475,7 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
   return (
     <article className={`factory-card selected home-recommended-invite-card${factory.name.length > 18 ? " home-recommended-long-name" : ""}`}>
       <div className="invite-factory-content">
+        {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
         <div className="invite-factory-top">
           <a
             className="marketplace-factory-title marketplace-factory-profile-link"
@@ -4975,6 +4984,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
 
         <div className="factory-profile-layout">
           <section className="factory-profile-main">
+            {live?.matchPanel}
             <ProfilePerformanceCard
               eyebrow="Factory performance"
               primary={view.performance.primary}
@@ -5401,6 +5411,7 @@ export function BrandProfileScreen({ onViewCompletion, live = null }) {
                 </div>
               ) : <p>{view.projectsEmpty?.[projectTab]}</p>}
             </section>
+            {isOwnerView && live?.matchingPanel}
           </main>
 
           <aside className="factory-profile-side">
@@ -5584,6 +5595,7 @@ export function BrandProfileCompletionPage({ onBack, onAddPayment, live = null }
             </section>
           </aside>
         </section>
+        {live?.matchingPanel}
       </div>
     </main>
   );
@@ -6758,6 +6770,7 @@ function DirectoryFactoryCard({ factory, onQuote, live = null }) {
   if (live) {
     return (
       <article className="directory-factory-card">
+        {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
         <div className="directory-factory-intro">
           <div className="factory-avatar">{factory.logoUrl ? <img src={factory.logoUrl} alt="" /> : factory.initials}</div>
           <div>
@@ -7082,6 +7095,7 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote, live
 
   return (
     <article className={`marketplace-factory-card${factory.featured ? " featured" : ""}${["Tirupur Natural Studio", "Hangzhou Denim Lab"].includes(factory.name) ? " marketplace-tight-wrapped-name" : ""}${live ? " live-factory-card" : ""}`}>
+      {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
       <div className="marketplace-factory-top">
         {live ? (
           <a
@@ -9536,6 +9550,7 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
         }}
       />
       <div className="invite-factory-content">
+        {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
         <div className="invite-factory-top">
           <a
             className="marketplace-factory-title marketplace-factory-profile-link"

@@ -120,6 +120,11 @@ screens below — each held back for a stated reason, not a backlog entry:
 - **`AdminPayments`.** No designed payments board, and some payments only a
   person can move: staff have no org and cannot be notified (see **Payments**).
 - The brand's own **`RfqDetail`** — no designed counterpart yet.
+- **The matching panels** (`src/app/matching/`: the factory's matching
+  profile, the composer's "Factory match details", staff evidence review).
+  No design draws them yet, and they show only while matching v2 is on (off
+  everywhere; see **Matching v2**). Replace them with Queena's design before
+  turning it on in production.
 
 A step's full history opens in **`StepUpdatesModal`** (`src/shared/`), over
 the order, at the step's own address (`/orders/:id/milestones/:mid`). The
@@ -287,6 +292,39 @@ The brand pays TSC by card through Stripe (card only since 2026-10-19; payments 
 - **A factory sets up and changes its payout account on TSC's page**, in Stripe's embedded forms (Connect embedded components: Account onboarding, and Account management with `external_account_collection`), never on Stripe's own pages. `api/stripe-connect.js` `session` creates the Express account once and an Account Session for the two forms; owners only, since the session can edit the company's identity and bank details. **Stripe still asks the person to confirm who they are in a small Stripe pop-up** (an SMS code): that is required for Express accounts and cannot be turned off without TSC taking over KYC and negative-balance liability (`controller.requirement_collection: application`), which was declined (2026-10-27). Closing a form reads the account back (`refresh`). One Connect instance per company per page (`src/lib/stripe-connect-embed.js`), logged out only on sign-out. The hosted `onboard` link and the Express `dashboard` link remain on the server for links already sent; nothing in the app opens them.
 - **Never let Stripe replay an old failure.** Stripe answers a reused idempotency key with its first answer for 24 hours, errors included. Do not key a create that can fail for a reason that will change (Connect not enabled, a capability not active yet): guard with our own row instead, or put a changing value in the key (a payout is claimed first, `claim_payment_release`, and its key carries the claim's time), and list existing transfers before paying.
 
+### Matching v2 (explainable matching)
+
+`matching_settings.enabled` is a single global flag and is **off**; while it
+is off, every screen and RPC behaves as before. `match_score` and
+`match_score_rfq` keep their signatures: they were renamed to `*_legacy` and
+recreated to call `factory_match_v2()` when the flag is on and the legacy
+function when it is off. Things that will bite:
+
+- **An invitation to a factory that is not fully qualified needs
+  `matching_acknowledged`.** `guard_matching_invitation` refuses it otherwise,
+  and an excluded factory cannot be invited at all. The composer checks this
+  *before* publishing, by org id, because a request published with nobody
+  invited is a dead end.
+- **Evidence review is not company verification.** Approving a capability or
+  certificate never changes `verification_status` and never issues credits.
+  A factory cannot set a status: the guard resets it, and a replaced, moved or
+  deleted file (`storage.objects`, `documents`) sends the review back to
+  pending. Reads and metadata updates do not.
+- **Every staff decision on evidence tells the factory.** Rejecting or asking
+  for more information needs a note (the database refuses one without); the
+  factory gets a bell notice with it, and reads its notes through
+  `matching_evidence_notes()`, never `review_note` or the history, which a
+  brand must not see. A replaced file hides the old note.
+- **A certificate's facility name never excludes.** It is free text, so a
+  mismatch on an unreviewed certificate asks for confirmation, and an approved
+  one is trusted: staff checked it. Rejected, expired, another country and
+  scope that misses the product do exclude, each named in `failed`.
+- **Name `unnest` aliases in validations.** In `select 1 from unnest(x) id
+  where not exists(select … from taxonomy_terms t where t.id=id)`, the inner
+  `id` is `t.id`, so the check passes everything. Write `unnest(x)
+  sel(term_id)` and compare `sel.term_id`, and avoid alias names that match a
+  PL/pgSQL variable.
+
 ### Conversations (Phase 4)
 
 A thread belongs to the **request or order it is about**, never to a pair of companies. That is what makes visibility free: `can_see_rfq()` and `is_order_party()` already answer who may read it, so there is no fourth set of rules to keep in step. One thread per order; one per `(rfq, factory)`, because asking four factories is four conversations.
@@ -299,7 +337,7 @@ A thread belongs to the **request or order it is about**, never to a pair of com
   - **Hiding is done in `messages_read`:** the recipient reads only `delivered` rows, and the sender's company reads its own in every state. So the thread summary, the dashboard's unread figure and the order activity hide a held message without each having to know. Attachments follow their message through `can_read_message()`, in both the `documents` and the `storage.objects` policies.
   - **Staff decide on `/app.html/admin/messages`** (`AdminMessages.jsx`, hand-built like `AdminPayments`: no design has a moderation queue). The admin overview counts them in a live-only fifth card, read from `admin_message_queue()` rather than `admin_overview_metrics`. The sender's own held or rejected message is drawn by the designed bubble with an optional `status` (`LiveMessages.jsx`); the prototypes pass none.
   - **Delivery is the event, not the insert.** The bump, the notification and unread (`delivered_at`) happen when a message is delivered, so a released message arrives as new. What the screen found lives in staff-only `message_screenings`; the sender sees only `review_note` on a rejected message, plus a notification.
-- **The screen is live and never waits.** Send draws the message and empties the box at once (`LiveMessages.jsx` keeps it as "outgoing" until the row exists), and the button is free for the next one. Each draft and its chosen files belong to one conversation. `messages` is in the `supabase_realtime` publication (`20261013000600`); the page listens for any change and re-reads the conversation it moved in through the normal query. Realtime applies `messages_read` per subscriber, so the other side hears of a message only once it is delivered. "Attach file", search, the Unread filter and opening a file are live through optional props on `MessagesScreen` (`canAttach`, attachments as `{ name, onOpen }`); the prototype passes none. A file can go on its own: the body then says which file was sent (`fileOnlyBody`). Your own bubbles show what you typed, the translation one click away. **Test it as two people at once** (two origins: 127.0.0.1 and localhost keep separate sign-ins); `scripts/e2e.mjs` "A LIVE CONVERSATION" writes from a second signed-in client while the page stays open.
+- **The screen is live and never waits.** Send draws the message and empties the box at once (`LiveMessages.jsx` keeps it as "outgoing" until the row exists), and the button is free for the next one. Each draft and its chosen files belong to one conversation. `messages` is in the `supabase_realtime` publication (`20261013000600`); the page listens for any change and re-reads the conversation it moved in through the normal query. Realtime applies `messages_read` per subscriber, so the other side hears of a message only once it is delivered. "Attach file", search, the Unread filter and opening a file are live through optional props on `MessagesScreen` (`canAttach`, attachments as `{ name, onOpen }`); the prototype passes none. A file can go on its own: the body then says which file was sent (`fileOnlyBody`). Your own bubbles show what you typed, the translation one click away. The other side's show in the reader's language (`readerLanguage`: the language this company last wrote in the conversation, else the browser's, else English), with the original one click away, and no toggle on words already in that language. **Test it as two people at once** (two origins: 127.0.0.1 and localhost keep separate sign-ins); `scripts/e2e.mjs` "A LIVE CONVERSATION" writes from a second signed-in client while the page stays open.
 - **Translation is stored, not computed on read.** `body` is what was typed and is never overwritten; `body_translated` is the other language. Translation **must never block a send** — any failure stores the message untranslated and the reader sees the original. This is the opposite of the taxonomy rule (`label_en`/`label_zh` are hand-written, never machine-translated) and deliberately so: a mistranslated *category* silently corrupts matching, while a mistranslated sentence is visibly a sentence and the person can ask.
 - **Unread is derived per user** from `message_reads.last_read_at`, not stored on the thread, and counts only what the other company wrote: a teammate's message is not waiting on you (20261024000110). The prototype's thread-level integer is never decremented anywhere in either app.
 - Attachments are `documents` with `message_id` and kind `message_attachment`, and need the same three parts as milestone photos: the private bucket, a `documents` policy for the counterparty, and a matching `storage.objects` policy keyed on the thread in the path.
@@ -318,6 +356,7 @@ A call belongs to a conversation (`calls.thread_id`), so `is_thread_party()` alr
 - **Times are UTC; zones are people's.** `user_profiles.time_zone` is saved from the browser on sign-in (`set_my_time_zone`, checked against `pg_timezone_names`); `thread_counterparty_time_zone()` gives the other company's most recently seen zone and nothing else. Words for times come from `src/shared/call-time.mjs` (shared with the prototype and the seed), never from the design's fixed offsets.
 - **A call's words are checked for contact details, and the database insists** (`20261024000201`). Title, description and a decline or cancel reason reach the other side, so `api/screen-call-text.js` runs the message patterns on them first and records what it passed (`call_text_checks`, server only); a trigger on `calls` refuses a signed-in person's words the server did not pass in the last 10 minutes. Refused, not held: no staff review behind it, so patterns only, no model. `src/lib/domain/calls.js` checks before every call function; a script or test calling the RPCs as a person records its words first (`checkCallText` in the seed, `record_call_text_check` in pgTAP). The server's own writes are not checked.
 - **Calendar entries point at the conversation, not at Zoom** (`.ics` built in the browser, folded per RFC 5545, and a Google Calendar link): people join on TSC.
+- **The meeting runs in a window of its own** (`src/app/message/call-window.js`). On a computer, "Join call" (conversation or dashboard) opens `call.html?popup=1` in a popup, in the click, since a browser blocks one opened later; a blocked window is said in words, with a link to open it. On a phone or tablet the call takes the page (`call.html`), and Leave comes back to the conversation. The window and the conversation talk over a `BroadcastChannel`: it says when it joined and when it left (Zoom's Leave lands on `left=1`, a disconnect, or the window closing), and the conversation's Leave and "Open in Zoom app" make it leave first, so nobody is in the meeting twice. After "Open in Zoom app" the panel stays ("in the Zoom app", with Close): the page cannot hear the app's meeting end. The Component View drawn inside the conversation was removed (2026-10-29): it put the meeting and the conversation in each other's way, and the page never heard that the person had left.
 - **The Zoom meeting is TSC's and the browser never sees its details.** `call_meetings` has no grants; the server creates the meeting at the first Join (`claim_call_meeting` lets one request create it while a second waits) and records it with `record_call_meeting`. The Meeting SDK can only join meetings in its own account without Zoom's review, which is why TSC's account owns every meeting.
 
 ### Admin operations (Phase 6)
