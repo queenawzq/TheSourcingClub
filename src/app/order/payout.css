@@ -73,7 +73,7 @@
 .payout-amount-positive { color: #16834f; }
 .payout-amount-negative { color: var(--text); }
 .payout-amount-pending { color: var(--text); }
-.payout-status-completed, .payout-status-paid, .payout-status-funded { background: #edf7f1; color: #167847 !important; }
+.payout-status-completed, .payout-status-paid, .payout-status-funded, .payout-status-paid-by-bank-transfer { background: #edf7f1; color: #167847 !important; }
 .payout-status-failed, .payout-status-canceled { background: #fff0ed; color: #b93824 !important; }
 .payout-status-processing, .payout-status-payment-processing, .payout-status-sent { background: #eaf2ff; color: var(--blue) !important; }
 .brand-transaction-view { display: flex; align-items: center; justify-self: end; gap: 12px; color: var(--text); text-decoration: none; }

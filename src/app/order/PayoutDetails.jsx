@@ -28,7 +28,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
-import { earningsSummaryFor, factoryAmount } from "./payment-summary.mjs";
+import { earningStatus, earningsSummaryFor, factoryAmount } from "./payment-summary.mjs";
 import "./order.css";
 import "./payout.css";
 
@@ -46,7 +46,11 @@ const dateLabel = (value) => value
   ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
   : "Date pending";
 
-const stripeDateLabel = (value) => dateLabel(value ? value * 1000 : null);
+// Stripe's arrival_date is a day (midnight UTC), not an instant: read in the
+// Americas as an instant it is the day before.
+const stripeDateLabel = (value) => value
+  ? new Date(value * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
+  : "Date pending";
 
 const cardBrand = (brand) => (brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : "Card");
 const cardExpiry = (card) => (card.expMonth && card.expYear ? `Expires ${String(card.expMonth).padStart(2, "0")}/${card.expYear}` : "");
@@ -256,14 +260,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       date: row.released_at || row.confirmed_at || row.sent_at || row.due_at || row.created_at,
       title: row.order_milestones?.title || row.order?.order_number || "Order payment",
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
-      status: row.state === "released"
-        ? "Credited to balance"
-        : row.release_requested_at
-          ? "Pending"
-          : "Awaiting approval",
+      status: earningStatus(row, stripeBalance),
       amount: factoryAmount(row),
       currency: row.currency,
-      available: row.state === "released",
+      available: earningStatus(row, stripeBalance) === "Credited to balance",
     })),
     ...payoutTransactions.map((row) => ({
       id: `payout-${row.id}`,

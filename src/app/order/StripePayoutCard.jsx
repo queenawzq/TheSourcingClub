@@ -45,12 +45,24 @@ function OperationsContact() {
 function balanceCurrency(balance) {
   const available = balance?.available ?? [];
   const preferred = balance?.defaultCurrency?.toUpperCase();
-  const funded = available.filter((row) => row.amount > 0);
+  // Money still on its way counts too: a first earning is pending for days,
+  // and choosing by available money alone showed it in another currency as 0.
+  const funded = [...available, ...(balance?.pending ?? [])].filter((row) => row.amount > 0);
   const row = funded.find((entry) => entry.currency?.toUpperCase() === preferred) ?? funded[0]
     ?? available.find((entry) => entry.currency?.toUpperCase() === preferred);
   return row?.currency?.toUpperCase() ?? preferred ?? "USD";
 }
 const amountIn = (rows, currency) => rows?.find((row) => row.currency?.toUpperCase() === currency)?.amount ?? 0;
+
+/** When the earliest earning still pending at Stripe can be withdrawn, in the reader's words. */
+function availableFrom(balance) {
+  const first = Math.min(...(balance?.pendingEarnings ?? []).map((row) => Number(row.available_on)).filter(Boolean));
+  return Number.isFinite(first)
+    // Stripe's available_on is a day (midnight UTC), not an instant: read in
+    // New York as an instant it is the day before.
+    ? new Date(first * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+    : null;
+}
 
 export function PayoutModal({ children, title, eyebrow, onClose, actions, wide = false }) {
   useEffect(() => {
@@ -185,6 +197,10 @@ export default function StripePayoutCard({
   const currency = balanceCurrency(balance);
   const available = amountIn(balance?.available, currency);
   const pending = amountIn(balance?.pending, currency);
+  // Nothing to withdraw yet, but money on its way: that is the balance to
+  // show, with the day it can be withdrawn, rather than a bare 0.00.
+  const arriving = Boolean(balance) && available <= 0 && pending > 0;
+  const arrivesOn = availableFrom(balance);
   const connectedMethods = balance?.methods ?? [];
   async function withdraw() {
     if (busy || !withdrawal) return;
@@ -321,12 +337,17 @@ export default function StripePayoutCard({
         <div className="live-payout-balance">
           {/* Paid by bank, the factory has no balance anywhere: TSC sends each
               released payment, so the card says how it is paid instead. */}
-          <span className="payment-metric-label">{!account && manualAccount ? "Payouts" : "Available balance"}
-            <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp>
+          <span className="payment-metric-label">{!account && manualAccount ? "Payouts" : arriving ? "Balance on its way" : "Available balance"}
+            {arriving
+              ? <PaymentHelp label="Balance on its way">{PENDING_HELP}</PaymentHelp>
+              : <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp>}
           </span>
-          <strong>{balance ? formatMoney(available, currency) : !account && manualAccount ? "By bank transfer" : "—"}</strong>
+          <strong data-testid="payout-balance">{balance ? formatMoney(arriving ? pending : available, currency) : !account && manualAccount ? "By bank transfer" : "—"}</strong>
           <p>{balance
-            ? pending > 0
+            ? arriving
+              // Orders are in USD; Stripe credits an account in its own currency.
+              ? `Stripe is processing your earnings. You can withdraw them ${arrivesOn ? `from ${arrivesOn}` : "once processing finishes"}.${currency !== "USD" ? ` Stripe converts them to ${currency}, your account's currency.` : ""}`
+              : pending > 0
               ? <>{formatMoney(pending, currency)} pending <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></>
               : "Earnings stay in your balance until you withdraw them."
             // Only an owner reads the balance; for anyone else it is not "in progress".

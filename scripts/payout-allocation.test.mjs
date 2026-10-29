@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { allocatePayouts, payoutAllocationFor } from "../api/_payout-allocation.js";
-import { earningsSummaryFor } from "../src/app/order/payment-summary.mjs";
+import { earningStatus, earningsSummaryFor } from "../src/app/order/payment-summary.mjs";
 
 const payments = ["a", "b", "c"].map((id) => ({ id, stripe_transfer_id: `tr_${id}` }));
 const credit = (id, amount, at, extra = {}) => ({ id: `txn_${id}`, currency: "usd", type: "payment", net: amount,
@@ -79,4 +79,18 @@ test("client summaries include only their allocated paid withdrawals; account ba
   assert.deepEqual(earningsSummaryFor(rows, balance, "brand-b").paid, []);
   assert.deepEqual(earningsSummaryFor(rows, balance, "All clients").paid, [{ currency: "EUR", amount: 200 }]);
   assert.equal(earningsSummaryFor(rows, null, "brand-a").paid, null);
+});
+test("a card payment TSC paid out by bank counts as paid out, and never as a balance", () => {
+  const rows = [
+    { id: "bank", state: "released", amount_cents: 6500, charged_cents: 6955, stripe_transfer_id: null, currency: "USD", order: { brand_org_id: "brand-a" } },
+  ];
+  assert.deepEqual(earningsSummaryFor(rows, null, "All clients").paid, [{ currency: "USD", amount: 6500 }]);
+  assert.equal(earningStatus(rows[0], null), "Paid by bank transfer");
+});
+test("an earning Stripe is still processing is pending, not credited to the balance", () => {
+  const row = { id: "a", state: "released", stripe_transfer_id: "tr_a" };
+  assert.equal(earningStatus(row, { pendingEarnings: [{ paymentId: "a", available_on: 10 }] }), "Pending");
+  assert.equal(earningStatus(row, { pendingEarnings: [] }), "Credited to balance");
+  assert.equal(earningStatus({ state: "confirmed", release_requested_at: "x" }, null), "Pending");
+  assert.equal(earningStatus({ state: "confirmed" }, null), "Awaiting approval");
 });
