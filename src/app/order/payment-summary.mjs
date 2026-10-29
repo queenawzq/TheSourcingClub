@@ -17,7 +17,9 @@ export function earningsSummaryFor(earnings, balance, client) {
   const funded = earnings.filter((row) => ["confirmed", "released"].includes(row.state) && selected(row));
   const amounts = (rows) => currencyTotals(rows.map((row) => ({ amount: factoryAmount(row), currency: row.currency })));
   const pendingIds = new Set(balance?.pendingEarnings?.map((row) => row.paymentId));
-  const bankPaid = earnings.filter((row) => row.state === "released" && !row.stripe_transfer_id && !row.charged_cents && selected(row));
+  // Paid out with no Stripe transfer: TSC sent it by bank (where Stripe cannot
+  // pay out), whether the brand paid by card or by an old bank wire.
+  const bankPaid = earnings.filter((row) => row.state === "released" && !row.stripe_transfer_id && selected(row));
   const paid = balance?.payouts?.filter((row) => row.paid) || [];
   const paidAmounts = paid.flatMap((row) => all
     ? [{ amount: row.amount, currency: row.currency }]
@@ -32,4 +34,15 @@ export function earningsSummaryFor(earnings, balance, client) {
       ...paidAmounts, ...bankPaid.map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
     ]),
   };
+}
+
+/**
+ * Where one earning stands, in the factory's words. Released through Stripe
+ * is in the balance only once Stripe has processed it; released by bank went
+ * to the factory's bank, never to a balance.
+ */
+export function earningStatus(row, balance) {
+  if (row.state !== "released") return row.release_requested_at ? "Pending" : "Awaiting approval";
+  if (!row.stripe_transfer_id) return "Paid by bank transfer";
+  return balance?.pendingEarnings?.some((pending) => pending.paymentId === row.id) ? "Pending" : "Credited to balance";
 }

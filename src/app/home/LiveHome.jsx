@@ -76,20 +76,30 @@ function toRecommendedCard(vendor, navigate) {
  * then someone waiting on a reply. Nothing is invented — a count of zero
  * produces no card at all.
  */
-function attentionFrom(snapshot, isFactory, goTo, dueCents = null) {
+function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null) {
   if (!snapshot) return null;
   const items = [];
   const n = (value) => Number(value) || 0;
 
-  if (!isFactory && n(snapshot.payments_due_cents) > 0) {
+  // The figure, the words and the button all come from the same payments
+  // (due or failed, the fee included, as the Fund screen charges them). With
+  // none readable there is nothing to show, never "$0.00 due".
+  if (!isFactory && n(snapshot.payments_due_cents) > 0 && owed.length) {
+    const one = owed.length === 1 ? owed[0] : null;
+    const failed = owed.filter((payment) => payment.state === "failed").length;
     items.push({
       type: "Payment",
       tone: "danger",
-      title: `${formatMoney(dueCents ?? snapshot.payments_due_cents)} due`,
-      meta: "A production step is waiting on this payment before it can start.",
+      title: `${formatMoney(owed.reduce((total, payment) => total + chargedCents(payment), 0), owed[0].currency)} due`,
+      meta: one
+        ? failed
+          ? "This payment did not go through. Pay again so the production step can start."
+          : "A production step is waiting on this payment before it can start."
+        : `${owed.length} production steps are waiting on payment${failed ? `, and ${failed === 1 ? "one" : failed} did not go through` : ""}.`,
       facts: [],
-      action: "View orders",
-      onClick: () => goTo("projects"),
+      // One payment opens its Fund screen; several open Payments, which lists each.
+      action: one ? "Fund milestone" : "View payments",
+      onClick: () => navigate(one ? `/orders/${one.order_id}/payments/${one.id}` : "/payments"),
     });
   }
 
@@ -144,9 +154,16 @@ function attentionFrom(snapshot, isFactory, goTo, dueCents = null) {
   return items;
 }
 
+/** The brand's payments that are due or failed: what the payment card is about. */
+async function owedPayments(orgId, orders, isFactory, snapshot) {
+  if (isFactory || !(Number(snapshot?.payments_due_cents) > 0)) return [];
+  const own = (orders ?? []).filter((order) => order.brand_org_id === orgId).map((order) => order.id);
+  return (await listPaymentsForOrders(own)).filter((payment) => payment.state === "due" || payment.state === "failed");
+}
+
 export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProject }) {
   const { navigate } = useRouter();
-  const [state, setState] = useState({ snapshot: null, dueCents: null, rfqs: [], projects: [], savings: null, loaded: false });
+  const [state, setState] = useState({ snapshot: null, owed: [], rfqs: [], projects: [], savings: null, loaded: false });
   const [error, setError] = useState(null);
   // The bell is the Activity drawer's, so it counts unread activity, not
   // unread messages (those have their own card in "Needs your attention").
@@ -170,11 +187,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         // The snapshot owes step amounts; the brand pays each with the
         // service fee on top, as its Payments page and the Fund screen say.
         // Same payments as payments_due_cents: due or failed.
-        const dueCents = !isFactory && Number(snapshot?.payments_due_cents) > 0
-          ? (await listPaymentsForOrders((orders ?? []).filter((order) => order.brand_org_id === org.id).map((order) => order.id)))
-            .filter((payment) => payment.state === "due" || payment.state === "failed")
-            .reduce((total, payment) => total + chargedCents(payment), 0)
-          : null;
+        const owed = await owedPayments(org.id, orders, isFactory, snapshot);
         if (cancelled) return;
         const messagesByRfq = new Map();
         for (const thread of threads ?? []) {
@@ -186,7 +199,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         }
         setState({
           snapshot,
-          dueCents,
+          owed,
           // Open requests first: the design's "Active quotes" panel is about
           // what is still being quoted, not the archive.
           rfqs: (rfqs ?? [])
@@ -211,14 +224,32 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
       .catch(() => {});
   });
 
-  const { snapshot, dueCents, rfqs, projects, savings } = state;
+  // Paid in another tab (or on the Fund screen and back): the payment card
+  // is read again when the dashboard is looked at, so it never asks for money
+  // already paid.
+  useEffect(() => {
+    if (isFactory) return undefined;
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
+      Promise.all([dashboardSnapshot(org.id), listOrders(org.id)])
+        .then(async ([snapshot, orders]) => {
+          const next = await owedPayments(org.id, orders, isFactory, snapshot);
+          setState((current) => ({ ...current, snapshot, owed: next }));
+        })
+        .catch(() => {});
+    };
+    document.addEventListener("visibilitychange", refresh);
+    return () => document.removeEventListener("visibilitychange", refresh);
+  }, [org.id, isFactory]);
+
+  const { snapshot, owed, rfqs, projects, savings } = state;
   const ownZone = browserTimeZone() ?? "UTC";
   // "Join call" opens the conversation and joins there (LiveMessages reads ?join).
   const openCall = (call, { join = false } = {}) => navigate(`/messages/${call.thread_id}${join ? `?join=${call.id}` : ""}`);
   // A call invite waiting on the brand comes first: it has a time on it.
   const attention = [
     ...inviteAttention(calls, { orgId: org.id, ownZone, open: openCall, now }),
-    ...(attentionFrom(snapshot, isFactory, goTo, dueCents) ?? []),
+    ...(attentionFrom(snapshot, isFactory, goTo, owed, navigate) ?? []),
   ];
   const callCards = dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall, now });
   const isNewcomer = state.loaded && !rfqs.length && !projects.length;
