@@ -464,3 +464,14 @@ Before making or accepting a screen change:
 7. Check placement: same kind of element in the same flow should sit in the same position.
 8. Check data provenance: remove unexplained text that does not come from RFQ, quote, contract, or payment data.
 9. List any intentional exception in the handoff.
+
+## Matching explanations and evidence
+
+Matching panels (`src/app/matching/`) are built from the components above, not local values, and every class is prefixed `matching-`:
+
+- Card: white, 8px, `#D7E0EA` stroke, `--card-padding`. Inside a designed card or onboarding step the host draws the card. Card title `heading3`, intro `textInstruction`, section titles `heading5`, field labels `label1`, notes `body2`.
+- Buttons are the v2 Button from the button tokens (34px); inputs and selects 42px; review notes `body1` with an 84px minimum.
+- Taxonomy and country choices are the onboarding chip group's selectable chips (34px, 8px, soft-blue selected). A must-have is the selected chip with a primary stroke and a check. Long groups sit in native disclosures with the selected labels in the summary.
+- Match state is a status pill: a qualified match takes the fit tier for its score (`strong`, `good`, `potential`); needs-confirmation is the potential tier and its percentage says "provisional"; not eligible is the tradeoff tier. The card's own "match" metric carries the percentage; the pill opens "Why this match": reasons first, then the points.
+- Evidence status is a pill: approved (verified trust tier), needs information (potential), not accepted (tradeoff), waiting for review (basic). Staff's note sits under it as "Note from TSC".
+- Uploads use the Upload component. Evidence and certificate review never read as company verification, and self-reported data is labelled.

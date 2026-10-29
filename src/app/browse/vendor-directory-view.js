@@ -130,6 +130,7 @@ export function vendorCard(parts, now = new Date()) {
 
   return {
     id: parts.orgId,
+    matching: parts.matching,
     name: view.name,
     initials: view.initials,
     logoUrl: view.logoUrl,

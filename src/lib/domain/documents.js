@@ -19,6 +19,7 @@ import { PRIVATE_BUCKET_LIMIT_MB, PRIVATE_BUCKET_TYPES } from "../../shared/priv
  * being permanently public".
  */
 const PRIVATE_KINDS = new Set([
+  "capability_evidence",
   "business_registration",
   "certificate",
   "tech_pack",

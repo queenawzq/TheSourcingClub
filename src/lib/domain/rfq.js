@@ -266,7 +266,7 @@ export async function getInvitations(rfqId) {
   );
 }
 
-export async function setInvitations(rfqId, factoryOrgIds) {
+export async function setInvitations(rfqId, factoryOrgIds, matchingAcknowledged = false) {
   const existing = await getInvitations(rfqId);
   const current = existing.map((row) => row.factory_org_id);
 
@@ -287,7 +287,7 @@ export async function setInvitations(rfqId, factoryOrgIds) {
     unwrap(
       await supabase
         .from("rfq_invitations")
-        .insert(toAdd.map((id) => ({ rfq_id: rfqId, factory_org_id: id }))),
+        .insert(toAdd.map((id) => ({ rfq_id: rfqId, factory_org_id: id, ...(matchingAcknowledged ? { matching_acknowledged: true } : {}) }))),
       "invite factories",
     );
   }
