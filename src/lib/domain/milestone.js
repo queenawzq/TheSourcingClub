@@ -202,13 +202,20 @@ export async function initiateDispute({ orderId, milestoneId, orgId, reason, fil
 }
 
 export async function approveMilestone(milestoneId, note) {
-  return unwrap(
-    await supabase.rpc("approve_milestone", {
-      target_milestone: milestoneId,
-      note: note || null,
-    }),
-    "approve this step",
-  );
+  const result = await supabase.rpc("approve_milestone", {
+    target_milestone: milestoneId,
+    note: note || null,
+  });
+  // The step's own rules ("Demo Factory has not posted an update on…",
+  // "fund … first") are written for the brand, so they are shown as they are.
+  if (result.error?.code === "22023") {
+    const { message } = result.error;
+    const refused = new Error(message.charAt(0).toUpperCase() + message.slice(1));
+    refused.cause = result.error;
+    refused.code = result.error.code;
+    throw refused;
+  }
+  return unwrap(result, "approve this step");
 }
 
 /* ------------------------------------------------------------------------ */
