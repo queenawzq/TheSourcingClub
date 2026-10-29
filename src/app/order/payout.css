@@ -245,3 +245,26 @@
 .billing-card-field > input::placeholder {
   color: #8391a8;
 }
+
+/* The balance before Stripe answers: grey blocks the size of the amount and
+   its line, so the card keeps its shape when the number arrives. */
+.payout-balance-placeholder { display: inline-block; vertical-align: middle; width: 140px; max-width: 100%; height: 30px; border-radius: 6px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+/* Two 18px lines, like the sentence that replaces them; padding and a flex
+   gap, since block margins would collapse into each other and the card. */
+.live-payout-balance .payout-balance-placeholder-lines { display: flex; flex-direction: column; gap: 6px; padding: 3px 0; }
+.payout-balance-placeholder-lines span { display: block; height: 12px; border-radius: 4px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-balance-placeholder-lines span:first-child { width: min(100%, 360px); }
+.payout-balance-placeholder-lines span:last-child { width: min(70%, 240px); }
+/* The sentence under a Stripe balance runs to two lines (three on a narrow
+   desktop, four when the card stacks); its space is kept from the start, so it never pushes the page. */
+.live-stripe-payout-card .payout-balance-line { min-height: 36px; box-sizing: border-box; }
+@media (max-width: 900px) {
+  .live-stripe-payout-card .payout-balance-line { min-height: 54px; }
+}
+@media (max-width: 760px) {
+  .live-stripe-payout-card .payout-balance-line { min-height: 72px; }
+}
+@keyframes payout-balance-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) {
+  .payout-balance-placeholder, .payout-balance-placeholder-lines span { animation: none; }
+}
