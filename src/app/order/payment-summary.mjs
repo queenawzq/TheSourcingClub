@@ -40,9 +40,22 @@ export function earningsSummaryFor(earnings, balance, client) {
  * Where one earning stands, in the factory's words. Released through Stripe
  * is in the balance only once Stripe has processed it; released by bank went
  * to the factory's bank, never to a balance.
+ *
+ * `balance` is Stripe's answer: undefined while it is still being read (the
+ * list draws before it arrives, and said "Credited to balance" for two
+ * seconds before "Pending"), null when it cannot be read (not an owner,
+ * Stripe unreachable), when only "sent to Stripe" is known to be true.
  */
 export function earningStatus(row, balance) {
   if (row.state !== "released") return row.release_requested_at ? "Pending" : "Awaiting approval";
   if (!row.stripe_transfer_id) return "Paid by bank transfer";
-  return balance?.pendingEarnings?.some((pending) => pending.paymentId === row.id) ? "Pending" : "Credited to balance";
+  if (balance === undefined) return "Checking…";
+  if (balance === null) return "Sent to your Stripe account";
+  return balance.pendingEarnings?.some((pending) => pending.paymentId === row.id) ? "Pending" : "Credited to balance";
+}
+
+/** When Stripe makes an earning still pending withdrawable: its day, read as a day. */
+export function availableOn(row, balance) {
+  const day = balance?.pendingEarnings?.find((pending) => pending.paymentId === row.id)?.available_on;
+  return day ? new Date(day * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : null;
 }

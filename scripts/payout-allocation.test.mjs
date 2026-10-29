@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { allocatePayouts, payoutAllocationFor } from "../api/_payout-allocation.js";
-import { earningStatus, earningsSummaryFor } from "../src/app/order/payment-summary.mjs";
+import { availableOn, earningStatus, earningsSummaryFor } from "../src/app/order/payment-summary.mjs";
 
 const payments = ["a", "b", "c"].map((id) => ({ id, stripe_transfer_id: `tr_${id}` }));
 const credit = (id, amount, at, extra = {}) => ({ id: `txn_${id}`, currency: "usd", type: "payment", net: amount,
@@ -93,4 +93,12 @@ test("an earning Stripe is still processing is pending, not credited to the bala
   assert.equal(earningStatus(row, { pendingEarnings: [] }), "Credited to balance");
   assert.equal(earningStatus({ state: "confirmed", release_requested_at: "x" }, null), "Pending");
   assert.equal(earningStatus({ state: "confirmed" }, null), "Awaiting approval");
+});
+test("until Stripe's balance arrives an earning sent to Stripe is checking, and never claimed to be in the balance", () => {
+  const row = { id: "a", state: "released", stripe_transfer_id: "tr_a" };
+  assert.equal(earningStatus(row, undefined), "Checking…");
+  assert.equal(earningStatus(row, null), "Sent to your Stripe account");
+  // Stripe's available_on is midnight UTC: the same day everywhere.
+  assert.equal(availableOn(row, { pendingEarnings: [{ paymentId: "a", available_on: Date.UTC(2026, 10, 2) / 1000 }] }), "Nov 2");
+  assert.equal(availableOn(row, { pendingEarnings: [] }), null);
 });

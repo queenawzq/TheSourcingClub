@@ -29,7 +29,7 @@ import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
-import { earningStatus, earningsSummaryFor, factoryAmount } from "./payment-summary.mjs";
+import { availableOn, earningStatus, earningsSummaryFor, factoryAmount } from "./payment-summary.mjs";
 import "./order.css";
 import "./payout.css";
 
@@ -126,7 +126,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const [earnings, setEarnings] = useState(null);
   const [credits, setCredits] = useState(null);
   const [error, setError] = useState(null);
-  const [stripeBalance, setStripeBalance] = useState(null);
+  // undefined until the payout card has asked Stripe; null when it cannot.
+  const [stripeBalance, setStripeBalance] = useState(undefined);
   const [billingSecret, setBillingSecret] = useState(null);
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingSaved, setBillingSaved] = useState(new URLSearchParams(window.location.search).get("billing") === "saved");
@@ -242,6 +243,12 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       date: row.released_at || row.confirmed_at || row.sent_at || row.due_at || row.created_at,
       title: row.order_milestones?.title || row.order?.order_number || "Order payment",
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
+      // A brand pays the step plus TSC's fee; the factory earns the step. The
+      // brand's total is TSC's arrangement with the brand, so it is not shown.
+      note: [
+        availableOn(row, stripeBalance) ? `Available to withdraw from ${availableOn(row, stripeBalance)}.` : null,
+        row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
+      ].filter(Boolean).join(" "),
       status: earningStatus(row, stripeBalance),
       amount: factoryAmount(row),
       currency: row.currency,
@@ -388,7 +395,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
                     <time dateTime={row.date || undefined}>{dateLabel(row.date)}</time>
                     <div className="payout-transaction-details">
                       <span className={`payout-transaction-type ${row.type}`}>{row.type === "earning" ? "Earning" : "Withdrawal"}</span>
-                      <div><strong>{row.title}</strong><span>{row.meta}</span></div>
+                      <div><strong>{row.title}</strong><span>{row.meta}</span>{row.note ? <span>{row.note}</span> : null}</div>
                     </div>
                     <span className={`billing-status payout-status-${row.status.toLowerCase().replaceAll(" ", "-")}`}>{row.status}</span>
                     <strong className={row.amount < 0 ? "payout-amount-negative" : row.available ? "payout-amount-positive" : "payout-amount-pending"}>

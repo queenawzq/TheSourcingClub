@@ -274,6 +274,8 @@ export default function StripePayoutCard({
     })().catch((failure) => {
       setError(failure);
       setAccount((current) => (current === undefined ? null : current));
+      // The balance could not be read: say so, rather than "checking" forever.
+      onBalanceChange?.(null);
     });
   }, [org.id, isOwner, load, manualAccount]);
 
@@ -297,10 +299,11 @@ export default function StripePayoutCard({
       setWithdrawn(true);
       // Never leave an already-withdrawn amount available if refreshing fails.
       setBalance(null);
-      onBalanceChange?.(null);
+      onBalanceChange?.(undefined);
       await load();
     } catch (failure) {
       setError(failure);
+      onBalanceChange?.(null);
     } finally {
       setBusy(false);
     }
