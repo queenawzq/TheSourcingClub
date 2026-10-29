@@ -178,7 +178,7 @@
   .billing-method-empty > button { width: 100%; }
   .live-payout-method-card { grid-template-columns: minmax(0, 1fr); padding: 18px; }
   .live-payout-card-action { justify-self: stretch; }
-  .live-payout-card-action button { width: 100%; }
+  .live-payout-card-action button, .live-payout-card-action .payout-button-placeholder { width: 100%; }
   .live-payout-card-action > .payout-owner-only { max-width: none; text-align: left; }
   .payout-transactions-header { align-items: flex-start; flex-direction: column; }
   .brand-transaction-filters { display: grid; grid-template-columns: 1fr; }
@@ -264,7 +264,19 @@
 @media (max-width: 760px) {
   .live-stripe-payout-card .payout-balance-line { min-height: 72px; }
 }
+/* The rest of the page while it loads, the same grey: a bar the size of each
+   figure, and rows the height of the rows they stand in for. */
+.payout-label-placeholder { display: block; width: 110px; height: 12px; margin: 6px 0 8px; border-radius: 4px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-note-placeholder { display: inline-block; vertical-align: middle; width: 180px; height: 10px; border-radius: 4px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-button-placeholder { display: block; width: 150px; height: 34px; border-radius: 8px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-figure-placeholder { display: inline-block; vertical-align: middle; width: 96px; max-width: 100%; height: 18px; margin: 2px 0; border-radius: 5px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.factory-credit-billing-card .payout-credit-placeholder { display: inline-block; vertical-align: middle; width: 120px; height: 22px; border-radius: 5px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-row-placeholder span { display: block; height: 12px; border-radius: 4px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-row-placeholder span:nth-child(odd) { width: 70%; }
+.payout-row-placeholder span:last-child { justify-self: end; width: 64px; }
+.billing-history-row.payout-row-placeholder { min-height: 76px; box-sizing: border-box; }
 @keyframes payout-balance-pulse { 50% { opacity: 0.55; } }
 @media (prefers-reduced-motion: reduce) {
-  .payout-balance-placeholder, .payout-balance-placeholder-lines span { animation: none; }
+  .payout-balance-placeholder, .payout-balance-placeholder-lines span,
+  .payout-label-placeholder, .payout-note-placeholder, .payout-button-placeholder, .payout-figure-placeholder, .payout-credit-placeholder, .payout-row-placeholder span { animation: none; }
 }
