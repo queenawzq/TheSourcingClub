@@ -20,7 +20,7 @@ import { awaitingScreen, fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads,
 import { acceptCall, browserTimeZone, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, listCalls, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
-import { callPageUrl, currentCallWindow, joinsInPage, leaveCallWindow, openCallWindow, openedFromLink, showCallWindow, watchCallWindow } from "./call-window.js";
+import { callPageUrl, currentCallWindow, joinsInPage, leaveCallWindow, openCallWindow, openedFromLink, openedInZoomApp, showCallWindow, watchCallWindow } from "./call-window.js";
 import { serverNow } from "../../lib/server-clock.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
 
@@ -600,19 +600,23 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         calls={callCards}
         video={video && video.call.thread_id === activeId ? {
           title: video.call.title,
-          text: video.blocked
-            ? "Your browser blocked the call's window. Open it from the link below."
-            : video.joined
-              ? "You're in the call, in its own window."
-              : "The call is opening in its own window…",
+          text: video.inApp
+            ? "You're in the call in the Zoom app."
+            : video.blocked
+              ? "Your browser blocked the call's window. Open it from the link below."
+              : video.joined
+                ? "You're in the call, in its own window."
+                : "The call is opening in its own window…",
           // A blocked window opens from a link: a click on a link is allowed.
           openUrl: video.blocked ? callPageUrl(video.call, { popup: true }) : null,
           onOpenLink: openedFromLink,
-          onShow: video.blocked ? null : showCallWindow,
+          onShow: video.blocked || video.inApp ? null : showCallWindow,
           // The Zoom app instead: leave the window first, or the person is in
-          // the meeting twice.
+          // the meeting twice. The panel stays, with Close (the design's
+          // `failed` shape), since the page cannot hear the app's meeting end.
           joinUrl: video.joinUrl,
-          onOpenApp: leaveCallWindow,
+          onOpenApp: openedInZoomApp,
+          failed: Boolean(video.inApp),
           onLeave: leaveCallWindow,
         } : null}
         scheduling={{

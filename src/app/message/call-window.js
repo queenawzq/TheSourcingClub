@@ -56,7 +56,7 @@ function listen() {
       if (current?.call.id !== data.callId) return;
       current = { ...current, joined: true, joinUrl: data.joinUrl ?? current.joinUrl };
       notify();
-    } else if (data.type === "left" && current?.call.id === data.callId) {
+    } else if (data.type === "left" && current?.call.id === data.callId && !current.inApp) {
       end();
     }
   };
@@ -98,9 +98,7 @@ export function showCallWindow() {
   if (current?.handle && !current.handle.closed) current.handle.focus();
 }
 
-/** Leaves the meeting in the window and closes it. */
-export function leaveCallWindow() {
-  if (!current) return;
+function closeWindow() {
   listen();
   channel?.postMessage({ type: "leave", callId: current.call.id });
   try {
@@ -108,7 +106,27 @@ export function leaveCallWindow() {
   } catch {
     // Already gone.
   }
+}
+
+/** Leaves the meeting in the window and closes it. */
+export function leaveCallWindow() {
+  if (!current) return;
+  closeWindow();
   end();
+}
+
+/**
+ * The person went on in the Zoom app: the window leaves the meeting and
+ * closes, so they are in it once, but the call is still on. The page cannot
+ * hear when the app's meeting ends, so it stays "in the app" until closed.
+ */
+export function openedInZoomApp() {
+  if (!current) return;
+  closeWindow();
+  clearInterval(closedTimer);
+  closedTimer = null;
+  current = { ...current, handle: null, blocked: false, inApp: true };
+  notify();
 }
 
 /** The call open in a window now, or null; `listener` hears every change. */

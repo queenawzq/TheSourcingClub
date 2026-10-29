@@ -122,8 +122,9 @@ const callPage = readFileSync(new URL("../src/call/main.js", import.meta.url), "
 check(/left=1/.test(callPage) && /pagehide/.test(callPage) && /onMeetingStatus/.test(callPage),
   "the call window tells the conversation it left: Zoom's Leave, a disconnect, or the window closing");
 const conversation = readFileSync(new URL("../src/app/message/LiveMessages.jsx", import.meta.url), "utf8");
+const callWindow = readFileSync(new URL("../src/app/message/call-window.js", import.meta.url), "utf8");
 check(!/ZoomMtgEmbedded|loadZoomEmbedded/.test(conversation), "the conversation no longer joins the meeting itself");
-check(/onOpenApp: leaveCallWindow/.test(conversation), "opening the Zoom app leaves the call's window first");
+check(/onOpenApp: openedInZoomApp/.test(conversation) && /export function openedInZoomApp\(\) \{\s*if \(!current\) return;\s*closeWindow\(\);/.test(callWindow), "opening the Zoom app leaves the call's window first, and keeps the panel");
 const dashboardCards = readFileSync(new URL("../src/app/message/live-calls.js", import.meta.url), "utf8");
 check(/openCallWindow\(call\)/.test(dashboardCards), "the dashboard's Join call opens the window in the click");
 
