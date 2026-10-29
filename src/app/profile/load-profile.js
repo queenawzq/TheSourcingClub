@@ -1,3 +1,4 @@
+import { matchingEnabled, assessFactories, compareMatches } from "../../lib/domain/matching.js";
 /**
  * Loading profile records: a vendor's, for its own page and for the brand's
  * view of it; a brand's, for its own page and for the vendor's view of it.
@@ -151,11 +152,12 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
   const [rows, brandTerms] = await Promise.all([
     supabase
       .from("factory_profiles")
-      .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, published_at, orgs (name)")
+      .select("org_id, location, moq, typical_lead_days, verification_status, trust_tier, intro, vendor_kind, published_at, orgs!inner (name)")
       .not("published_at", "is", null)
       // Recommended means verified: an unverified vendor can be found and
       // read (Browse), but cannot quote, so it is not put forward here.
       .eq("verification_status", "verified")
+      .eq("orgs.is_demo", false)
       .then((result) => unwrap(result, "load recommended vendors")),
     getSelectedTerms("brand_profile", brandOrgId),
   ]);
@@ -169,7 +171,10 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
       .in("subject_id", rows.map((row) => row.org_id)),
     "load recommended vendors",
   );
-  const chosen = rankVendors(rows, links, brandTerms).slice(0, limit);
+  const enabled = await matchingEnabled();
+  const matches = enabled ? await assessFactories("brand_profile", brandOrgId, rows.map(r=>r.org_id)) : new Map();
+  const ranked = enabled ? rows.filter(r=>matches.get(r.org_id) && matches.get(r.org_id).status!=="excluded").sort((a,b)=>compareMatches(matches.get(a.org_id),matches.get(b.org_id))) : rankVendors(rows, links, brandTerms);
+  const chosen = ranked.slice(0, limit);
 
   return Promise.all(chosen.map(async (row) => {
     const samples = await listDocuments(row.org_id, "product_image");
@@ -180,7 +185,7 @@ export async function loadRecommendedVendors(brandOrgId, limit = 3) {
       name: doc.title ?? "",
       image: await urlFor(doc, 3600),
     })));
-    return { ...row, products };
+    return { ...row, products, matching: matches.get(row.org_id) };
   }));
 }
 
@@ -284,7 +289,10 @@ export async function loadVendorDirectory(brandOrg) {
     };
   });
 
-  const order = rankVendors(profiles, links, brandTerms).map((row) => row.org_id);
+  const enabled = await matchingEnabled();
+  const matches = enabled ? await assessFactories("brand_profile", brandOrg.id, ids) : new Map();
+  for (const part of parts) part.matching = matches.get(part.orgId);
+  const order = (enabled ? [...profiles].sort((a,b)=>compareMatches(matches.get(a.org_id),matches.get(b.org_id))) : rankVendors(profiles, links, brandTerms)).map((row) => row.org_id);
   return {
     vendors: order.map((id) => parts.find((part) => part.orgId === id)),
     terms,

@@ -1,3 +1,5 @@
+import FactoryMatch from "../matching/FactoryMatch.jsx";
+import { matchingEnabled, assessFactories } from "../../lib/domain/matching.js";
 /**
  * A vendor's profile as a brand sees it, on the designed
  * `BrandFactoryProfileScreen`, with the vendor's real profile behind it.
@@ -33,10 +35,13 @@ function Frame({ children }) {
 export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from = null, onBack = null, onRequestQuote = null }) {
   const { navigate } = useRouter();
   const { saveFor, error: saveError } = useSavedVendors(org, user);
+  const [assessment, setAssessment] = useState(null);
   const [state, setState] = useState({ parts: undefined, thread: null, error: null });
 
   useEffect(() => {
     let cancelled = false;
+    setAssessment(null);
+    matchingEnabled().then(async enabled=>{if(enabled){const matches=await assessFactories("brand_profile",org.id,[vendorOrgId]); if(!cancelled)setAssessment(matches.get(vendorOrgId));}}).catch(()=>{});
     setState({ parts: undefined, thread: null, error: null });
     Promise.all([loadVendorProfileForBrand(vendorOrgId), listThreads(org.id)]).then(
       ([parts, threads]) => {
@@ -82,6 +87,12 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
       <BrandFactoryProfileScreen
         live={{
           ...brandFactoryView(state.parts),
+          matchPanel: assessment ? (
+            <section className="matching-panel matching-in-column" aria-label="How this factory matches">
+              <header className="matching-head"><h2>How it matches your needs</h2></header>
+              <FactoryMatch match={assessment} name={state.parts.orgName} open />
+            </section>
+          ) : null,
           back: { label: backLabel, onClick: back },
           // Only where the brand can save (the composer's invite step has no user).
           save: user ? saveFor(vendorOrgId) : null,
