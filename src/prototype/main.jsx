@@ -5,7 +5,7 @@ import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
 import { archiveActionFor, cancelActionFor, filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab, withArchivedTab } from "../shared/production-order-parts.jsx";
-import { clock, dateIn, dayLabel, theirTime, whenIn, zonedTime, zoneLabel } from "../shared/call-time.mjs";
+import { clock, dateIn, dayLabel, sameClock, theirTime, whenIn, zonedTime, zoneLabel } from "../shared/call-time.mjs";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
@@ -2293,7 +2293,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
     liveStart = liveDay && liveMinutes !== null ? zonedTime(viewMonth.year, viewMonth.month, liveDay, liveMinutes, timezone) : null;
     selectedDateLabel = liveDay ? dayLabel(zonedTime(viewMonth.year, viewMonth.month, liveDay, 12 * 60, timezone), timezone) : "Pick a date";
     brandTime = liveStart ? whenIn(liveStart, timezone) : "";
-    factoryTime = liveStart ? theirTime(liveStart, live.otherName, live.otherZone) : "";
+    factoryTime = liveStart ? theirTime(liveStart, live.otherName, live.otherZone, timezone) : "";
     scheduleNote = live.otherZone
       ? `Your time: ${zoneLabel(timezone)} · ${live.otherName}: ${zoneLabel(live.otherZone)} time`
       : `Your time: ${zoneLabel(timezone)}`;
@@ -2372,7 +2372,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
                     {live && liveSlots.map((slot) => (
                       <button className={slot.minutes === liveMinutes ? "selected" : ""} type="button" onClick={() => setLiveMinutes(slot.minutes)} key={slot.minutes}>
                         <strong>{clock(slot.at, timezone)} {zoneLabel(timezone)}</strong>
-                        {live.otherZone && <span>{otherClock(slot.at)}</span>}
+                        {live.otherZone && !sameClock(slot.at, live.otherZone, timezone) && <span>{otherClock(slot.at)}</span>}
                       </button>
                     ))}
                     {!live && availableTimes.map((utcMinutes) => (

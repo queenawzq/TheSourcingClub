@@ -100,9 +100,20 @@ export function whenIn(date, zone) {
   return `${dayLabel(date, zone)} · ${clock(date, zone)}${zone ? ` ${zoneLabel(zone)}` : ""}`;
 }
 
-/** "Atelier Minho: Tue, Oct 14 · 3:00 PM Lisbon", or "" when their zone is unknown. */
-export function theirTime(date, name, zone) {
-  return zone ? `${name}: ${whenIn(date, zone)}` : "";
+/**
+ * "Atelier Minho's time: Tue, Oct 14 · 3:00 PM Lisbon", or "" when their
+ * zone is unknown, or when it reads the same day and hour as the reader's
+ * own (`ownZone`): a second line repeating the first says nothing.
+ */
+export function theirTime(date, name, zone, ownZone) {
+  if (!zone) return "";
+  if (ownZone !== undefined && sameClock(date, zone, ownZone)) return "";
+  return `${name}'s time: ${whenIn(date, zone)}`;
+}
+
+/** Whether a moment reads as the same day and hour in two zones. */
+export function sameClock(date, zone, otherZone) {
+  return dayLabel(date, zone) === dayLabel(date, otherZone) && clock(date, zone) === clock(date, otherZone);
 }
 
 // ---------------------------------------------------------------------------

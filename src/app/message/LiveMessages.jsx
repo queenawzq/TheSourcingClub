@@ -16,7 +16,7 @@ import { MessagesScreen } from "../../prototype/main.jsx";
 import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { ATTACHMENT_ACCEPT, attachmentRefusal, urlFor } from "../../lib/domain/documents.js";
-import { awaitingScreen, fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
+import { awaitingScreen, fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, readerLanguage, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
 import { acceptCall, browserTimeZone, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
@@ -634,6 +634,8 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       documents: item.files.map((file) => ({ file_name: file.name })),
     }));
     const rows = [...(messagesByThread[thread.id] ?? []), ...outgoingRows];
+    // The language this reader reads this conversation in (readerLanguage).
+    const preferred = readerLanguage(messagesByThread[thread.id], org.id);
 
     return {
       id: thread.id,
@@ -645,7 +647,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       lastDate: dayLabel(thread.last_message_at),
       // The other side's last words in the reader's language, as in the
       // conversation itself; the reader's own as typed.
-      lastPreview: (thread.last_sender_org_id !== org.id && thread.last_body_translated_lang === "en"
+      lastPreview: (thread.last_sender_org_id !== org.id && thread.last_body_translated_lang === preferred
         ? thread.last_body_translated
         : thread.last_body) ?? "No messages yet.",
       unread: Number(thread.unread_count) || 0,
@@ -656,7 +658,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
         // click away. The other side's: the reader's language first.
         const view = mine
           ? { text: message.body, isTranslation: Boolean(message.body_translated), original: message.body_translated, originalLang: message.body_translated_lang }
-          : readable(message);
+          : readable(message, { preferred });
         const linked = (message.documents ?? []).filter((doc) => doc.file_name);
         const files = linked.length
           ? linked.map((doc) => ({ name: doc.file_name, uploading: !doc.storage_path, onOpen: doc.storage_path ? () => openAttachment(doc, setError) : undefined }))
@@ -675,10 +677,10 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           // away — the rule in CLAUDE.md. The designed bubble shows `body`
           // by default and `translation` when toggled, so the readable text
           // is the body and the toggle reveals what was actually typed.
-          // Whenever there is text in the other language, it is one click
-          // away, whichever way it goes: a factory reading a brand's English
-          // has the Chinese translation behind the toggle, as a brand reading
-          // a factory's Chinese has the original.
+          // The other side's words get a toggle only when they were written
+          // in another language than the reader's: an English reader of
+          // English has nothing to translate. The reader's own words always
+          // have the translation the other side reads one click away.
           ...(view.original
             ? {
               body: view.text,

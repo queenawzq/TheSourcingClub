@@ -90,6 +90,14 @@ const savedZone = "America/New_York";
 check(theirZoneFor(confirmed, BRAND, savedZone) === "Asia/Shanghai", "a call the other side proposed reads in the zone they proposed in");
 const line = theirTime(startOf(confirmed), "Ningbo Loomworks", theirZoneFor(confirmed, BRAND, savedZone));
 check(/Sat, Oct 24 · 7:00 AM Shanghai$/.test(line), `the brand's card says Ningbo's 7:00 AM Shanghai (${line})`);
+check(/^Ningbo Loomworks's time: /.test(line), `the other side's line says whose time it is (${line})`);
+// Both sides in Eastern time: a second line would repeat the first.
+check(theirTime(startOf(confirmed), "Ningbo Loomworks", "America/New_York", "America/New_York") === "",
+  "the other side's time is left out when it reads the same as the reader's");
+check(theirTime(startOf(confirmed), "Ningbo Loomworks", "America/Toronto", "America/New_York") === "",
+  "a different zone on the same clock is left out too");
+check(theirTime(startOf(confirmed), "Ningbo Loomworks", "Asia/Shanghai", "America/New_York") !== "",
+  "a zone on another clock is shown");
 check(theirZoneFor(confirmed, FACTORY, "America/Chicago") === "America/Chicago",
   "a call this company proposed reads the other side in their saved zone");
 check(theirZoneFor({ ...confirmed, proposer_time_zone: null }, BRAND, savedZone) === savedZone,
