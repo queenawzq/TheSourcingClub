@@ -159,10 +159,31 @@ export function PayoutModal({ children, title, eyebrow, onClose, actions, wide =
   );
 }
 
+/**
+ * The payout card before anything about the factory's payouts is known. An
+ * owner's has the two buttons' places, which stack under the balance on a
+ * phone.
+ */
+export function PayoutCardPlaceholder({ isOwner = false }) {
+  return (
+    <section className="live-payout-method-card live-stripe-payout-card payout-card-placeholder" data-testid="payout-card-placeholder">
+      <div className="live-payout-balance">
+        <span className="payout-label-placeholder" aria-hidden="true" />
+        <strong><span className="payout-balance-placeholder" role="status" aria-label="Loading payouts" /></strong>
+        <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
+        <p className="payment-provider-note" aria-hidden="true"><span className="payout-note-placeholder" /></p>
+      </div>
+      {isOwner ? <div className="live-payout-card-action" aria-hidden="true"><span className="payout-button-placeholder" /><span className="payout-button-placeholder" /></div> : null}
+    </section>
+  );
+}
+
 export default function StripePayoutCard({
   org,
   isOwner,
   onBalanceChange,
+  onBalanceStatus,
+  onAccountKnown,
   manualAccount,
   manualAccounts = manualAccount ? [manualAccount] : [],
   manualEditingId = null,
@@ -184,7 +205,8 @@ export default function StripePayoutCard({
   const [account, setAccount] = useState(undefined);
   const [balance, setBalance] = useState(null);
   // Where reading Stripe's balance stands: "loading", "slow" (still loading
-  // after SLOW_BALANCE_MS), "failed" or "ready". The card said "We could not
+  // after SLOW_BALANCE_MS), "failed", "ready", or "none" when it is not read
+  // (not an owner, no active Stripe account). The card said "We could not
   // show your balance" for the two seconds a normal read takes.
   const [balanceStatus, setBalanceStatus] = useState("loading");
   const [country, setCountry] = useState("");
@@ -243,6 +265,7 @@ export default function StripePayoutCard({
       return nextBalance;
     }
     setBalance(null);
+    setBalanceStatus("none");
     onBalanceChange?.(null);
     return null;
   }, [org.id, isOwner, onBalanceChange, manualCountry]);
@@ -354,6 +377,17 @@ export default function StripePayoutCard({
     }
   }
 
+  // The Payments page says the same under the figures that need Stripe.
+  useEffect(() => {
+    onBalanceStatus?.(balanceStatus);
+  }, [balanceStatus, onBalanceStatus]);
+
+  // Once the card knows how the factory is paid it has its final shape, and
+  // the page can draw the figures below it without the card moving them.
+  useEffect(() => {
+    if (account !== undefined) onAccountKnown?.();
+  }, [account, onAccountKnown]);
+
   // A read that is merely slow is not a failure: after a while, say so.
   useEffect(() => {
     if (balanceStatus !== "loading") return undefined;
@@ -390,7 +424,9 @@ export default function StripePayoutCard({
     }
   }, [account, initialAction, initialMethodId, manualAccount, manualAccounts, onStartManual]);
 
-  if (account === undefined) return null;
+  // The card's shape while the account is read, so it does not appear late
+  // and push the page down.
+  if (account === undefined) return renderCard ? <PayoutCardPlaceholder isOwner={isOwner} /> : null;
 
   const closeModal = () => {
     if (!busy && !manualBusy) {
@@ -563,7 +599,10 @@ export default function StripePayoutCard({
           {manualSaved ? <p className="live-payment-notice">Payout method saved.</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
-          {balance || balanceWaiting ? <p className="payment-provider-note">Payments securely processed by Stripe.</p> : null}
+          {/* The line's space is kept on every card, so the card is the
+              placeholder's height whichever way the factory is paid. */}
+          {balance || balanceWaiting ? <p className="payment-provider-note">Payments securely processed by Stripe.</p>
+            : <p className="payment-provider-note" aria-hidden="true">&nbsp;</p>}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </div>
         <div className="live-payout-card-action">

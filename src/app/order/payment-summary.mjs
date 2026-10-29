@@ -10,7 +10,23 @@ export function currencyTotals(rows) {
   return [...totals].map(([currency, amount]) => ({ currency, amount }));
 }
 
+/**
+ * Whether Stripe's answer changes this factory's figures: only once TSC has
+ * paid one of its earnings through Stripe. A bank-paid factory, or one paid
+ * nothing through Stripe yet, never waits for it.
+ */
+export const stripeRelevant = (earnings) => Boolean(earnings?.some((row) => row.state === "released" && row.stripe_transfer_id));
+
+/**
+ * The four figures over the Transactions list. Each is a list of amounts by
+ * currency when known, undefined while a source it needs has not answered
+ * (the page draws a placeholder), and null when it cannot be known (Stripe
+ * failed, or only an owner may read the balance). Never a partial figure:
+ * Pending and Paid out computed before Stripe answered showed one amount,
+ * then jumped to another.
+ */
 export function earningsSummaryFor(earnings, balance, client) {
+  if (!earnings) return { total: undefined, approval: undefined, pending: undefined, paid: undefined };
   const all = client === "All clients";
   const byId = new Map(earnings.map((row) => [row.id, row]));
   const selected = (row) => all || row?.order?.brand_org_id === client;
@@ -25,14 +41,15 @@ export function earningsSummaryFor(earnings, balance, client) {
     ? [{ amount: row.amount, currency: row.currency }]
     : row.allocations.filter((part) => selected(byId.get(part.paymentId)))
       .map((part) => ({ amount: part.amount, currency: row.currency })));
+  // Whether Stripe matters is the account's question, whichever client is selected.
+  const stripeFigure = (figure) => (!stripeRelevant(earnings) || balance ? figure() : balance);
   return {
     total: amounts(funded),
     approval: amounts(funded.filter((row) => row.state === "confirmed" && !row.release_requested_at)),
-    pending: !balance && funded.some((row) => row.state === "released" && row.stripe_transfer_id)
-      ? null : amounts(funded.filter((row) => row.state === "confirmed" && row.release_requested_at || pendingIds.has(row.id))),
-    paid: !balance && !bankPaid.length ? null : currencyTotals([
+    pending: stripeFigure(() => amounts(funded.filter((row) => row.state === "confirmed" && row.release_requested_at || pendingIds.has(row.id)))),
+    paid: stripeFigure(() => currencyTotals([
       ...paidAmounts, ...bankPaid.map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
-    ]),
+    ])),
   };
 }
 
