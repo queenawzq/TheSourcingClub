@@ -54,7 +54,6 @@ function balanceCurrency(balance) {
 }
 const SLOW_BALANCE_MS = 8000;
 const BALANCE_STATUS_TEXT = {
-  loading: "Checking your balance…",
   slow: "Stripe is taking longer than usual. Your balance will show here as soon as it answers.",
   failed: "We could not show your balance right now. Try again shortly.",
 };
@@ -306,6 +305,11 @@ export default function StripePayoutCard({
   // show, with the day it can be withdrawn, rather than a bare 0.00.
   const arriving = Boolean(balance) && available <= 0 && pending > 0;
   const arrivesOn = availableFrom(balance);
+  // A Stripe-paid owner whose balance is on its way from Stripe: the card
+  // keeps its shape (a placeholder) until it arrives; a slow answer still
+  // says so, and a failure says it failed.
+  const balanceWaiting = !balance && isOwner && Boolean(account?.transfers_active)
+    && (balanceStatus === "loading" || balanceStatus === "slow");
   const connectedMethods = balance?.methods ?? [];
   async function withdraw() {
     if (busy || !withdrawal) return;
@@ -527,8 +531,14 @@ export default function StripePayoutCard({
               ? <PaymentHelp label="Balance on its way">{PENDING_HELP}</PaymentHelp>
               : <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp>}
           </span>
-          <strong data-testid="payout-balance">{balance ? formatMoney(arriving ? pending : available, currency) : !account && manualAccount ? "By bank transfer" : "—"}</strong>
-          <p>{balance
+          <strong data-testid="payout-balance">{balance ? formatMoney(arriving ? pending : available, currency)
+            // A placeholder the size of the amount, so the card does not
+            // jump when Stripe answers (a sentence said "checking" before).
+            : balanceWaiting ? <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />
+            : !account && manualAccount ? "By bank transfer" : "—"}</strong>
+          {balanceStatus === "loading" && balanceWaiting ? (
+            <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
+          ) : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
             ? arriving
               // Orders are in USD; Stripe credits an account in its own currency.
               ? `Stripe is processing your earnings. You can withdraw them ${arrivesOn ? `from ${arrivesOn}` : "once processing finishes"}.${currency !== "USD" ? ` Stripe converts them to ${currency}, your account's currency.` : ""}`
@@ -539,7 +549,7 @@ export default function StripePayoutCard({
             : account?.transfers_active
               // The account is known a moment before its balance arrives:
               // that is loading, and only a real failure says it failed.
-              ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? BALANCE_STATUS_TEXT.loading : "Only a company owner can view the withdrawable balance."
+              ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : "Only a company owner can view the withdrawable balance."
               : account?.details_submitted
                 ? "Payout verification in progress"
                 : account
@@ -549,11 +559,11 @@ export default function StripePayoutCard({
                     ? <>Bank details on file{manualAccount.account_number_last4 ? ` (account ending in ${manualAccount.account_number_last4})` : ""}. TSC pays your released earnings to this account by bank transfer. <OperationsContact /></>
                     : manualAccount
                       ? "Your bank details are incomplete. Add the bank and the account name so TSC can pay you."
-                      : isOwner ? "Add a payout method to receive earnings" : "No payout method yet."}</p>
+                      : isOwner ? "Add a payout method to receive earnings" : "No payout method yet."}</p>}
           {manualSaved ? <p className="live-payment-notice">Payout method saved.</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
-          {balance ? <p className="payment-provider-note">Payments securely processed by Stripe.</p> : null}
+          {balance || balanceWaiting ? <p className="payment-provider-note">Payments securely processed by Stripe.</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </div>
         <div className="live-payout-card-action">
