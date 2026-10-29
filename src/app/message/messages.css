@@ -154,62 +154,9 @@
   }
 }
 
-/* Live only: Zoom's own meeting view, inside the designed video panel, on a
-   row of its own under the title and buttons (it is wider than the space
-   the design's row leaves). */
-.video-call-panel:has(> .video-call-zoom) {
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.video-call-panel .video-call-zoom {
-  order: 3;
-  flex: 1 0 100%;
-  width: 100%;
-  min-width: 0;
-  min-height: 360px;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #0b1020;
-}
-
-/* Kept within the height under the header, Zoom's view can be narrower than
-   the panel (zoom-view.mjs): it sits in the middle. And the conversation,
-   which clips what overflows, scrolls while a call is drawn, so the timeline
-   and the message box under the call stay reachable. */
-.video-call-panel .video-call-zoom:not(:empty) {
-  display: flex;
-  justify-content: center;
-}
-
-.message-workspace:has(.video-call-zoom:not(:empty)) {
-  overflow-y: auto;
-}
-
-.message-workspace:has(.video-call-zoom:not(:empty)) > .message-timeline {
-  min-height: 160px;
-}
-
-/* The design stacks the panel in a column at 900px and under: Zoom's view is
-   simply the last item there (wrapping a column would start a second one). */
-@media (max-width: 900px) {
-  .video-call-panel:has(> .video-call-zoom) {
-    flex-wrap: nowrap;
-  }
-
-  .video-call-panel .video-call-zoom {
-    flex: none;
-    align-self: stretch;
-  }
-}
-
 /* The avatar keeps its circle when the title wraps on a narrow screen. */
 .video-call-stage .message-avatar {
   flex-shrink: 0;
-}
-
-.video-call-panel .video-call-zoom:empty {
-  min-height: 0;
 }
 
 .video-call-panel .video-call-controls a.compact-btn {
@@ -218,10 +165,24 @@
   text-decoration: none;
 }
 
-/* Zoom's own "Fail to join" dialog, drawn on <body> after a join failed:
-   the panel already says so and offers the Zoom app. */
-body.tsc-zoom-failed .zoom-MuiDialog-root {
-  display: none !important;
+/* Live: up to three buttons beside the title (Show call window, Open in Zoom
+   app, Leave call). In the design's single row they squeezed the title to a
+   word a line, so the buttons wrap under it when there is no room, and keep
+   their words on one line. */
+.video-call-panel:has(.video-call-controls > :nth-child(2)) {
+  flex-wrap: wrap;
+}
+
+.video-call-panel:has(.video-call-controls > :nth-child(2)) .video-call-stage {
+  flex: 1 1 240px;
+}
+
+.video-call-panel .video-call-controls {
+  flex-wrap: wrap;
+}
+
+.video-call-panel .video-call-controls > * {
+  white-space: nowrap;
 }
 
 /*

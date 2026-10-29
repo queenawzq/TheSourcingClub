@@ -2157,10 +2157,12 @@ function MessageBubble({ message, showTranslation, onToggleTranslation, ownName,
   );
 }
 
-// Live passes `live`: the call's title and where joining stands (`text`),
-// the element Zoom draws into (`mountRef`), the meeting's Zoom-app link and
-// `onLeave`. The design's camera / microphone / share buttons are Zoom's own
-// inside the meeting, so live shows only "Open in Zoom app" and "Leave call".
+// Live passes `live`: the call's title and where it stands (`text`). The
+// meeting runs in a window of its own, so live offers "Show call window"
+// (`onShow`), the window's link when the browser blocked it (`openUrl`), the
+// meeting's Zoom-app link (`joinUrl`, which leaves the window first through
+// `onOpenApp`) and `onLeave`. The design's camera / microphone / share
+// buttons are Zoom's own inside the meeting.
 function VideoCallPanel({ thread, mode, setMode, live }) {
   const inCall = mode === "active";
 
@@ -2173,10 +2175,12 @@ function VideoCallPanel({ thread, mode, setMode, live }) {
           <p>{live ? live.text : inCall ? "Video preview · screen share available · call notes stay in this thread" : "Start a prototype call room. This is not connected to a live video provider yet."}</p>
         </div>
       </div>
-      {live && !live.failed && <div className="video-call-zoom" ref={live.mountRef} />}
+      {live?.mountRef && !live.failed && <div className="video-call-zoom" ref={live.mountRef} />}
       {live ? (
         <div className="video-call-controls">
-          {live.joinUrl && <a className={`${live.failed ? "primary-btn" : "secondary-btn"} compact-btn`} href={live.joinUrl} target="_blank" rel="noopener noreferrer">Open in Zoom app</a>}
+          {live.openUrl && <a className="primary-btn compact-btn" href={live.openUrl} target="_blank" rel="opener" onClick={live.onOpenLink}>Open the call</a>}
+          {live.onShow && <button className="secondary-btn compact-btn" type="button" onClick={live.onShow}>Show call window</button>}
+          {live.joinUrl && <a className={`${live.failed ? "primary-btn" : "secondary-btn"} compact-btn`} href={live.joinUrl} target="_blank" rel="noopener noreferrer" onClick={live.onOpenApp}>Open in Zoom app</a>}
           <button className={live.failed ? "" : "danger"} type="button" onClick={live.onLeave}>{live.failed ? "Close" : "Leave call"}</button>
         </div>
       ) : (

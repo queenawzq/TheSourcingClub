@@ -18,6 +18,7 @@ import {
   whenIn,
   canJoinCall,
 } from "../../lib/domain/calls.js";
+import { joinsInPage, openCallWindow } from "./call-window.js";
 
 const OPEN = new Set(["invite", "waiting", "upcoming", "live"]);
 
@@ -119,7 +120,7 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
 /**
  * The dashboard's "Scheduled calls": invites waiting on this company and
  * confirmed calls not yet over. Each opens its conversation; "Join call"
- * opens it and joins (`open(call, { join: true })`), so it does what it says.
+ * also opens the call's window (call-window.js), so it does what it says.
  */
 export function dashboardCalls(calls, { orgId, ownZone, zones = {}, open, now = Date.now() }) {
   return calls
@@ -138,7 +139,17 @@ export function dashboardCalls(calls, { orgId, ownZone, zones = {}, open, now = 
         counterpartTime: theirTime(start, other.name, theirZoneFor(call, orgId, zones[call.thread_id]), ownZone ?? null) || `With ${other.name}`,
         description: call.agenda ?? "",
         action: state === "invite" ? "Review invite" : "Join call",
-        onAction: () => open(call, { join: canJoinCall(call, now) }),
+        // The call's window opens in this click, or the browser blocks it;
+        // a phone joins on the conversation's own page instead.
+        onAction: () => {
+          const join = canJoinCall(call, now);
+          if (join && !joinsInPage()) {
+            openCallWindow(call);
+            open(call);
+            return;
+          }
+          open(call, { join });
+        },
       };
     });
 }

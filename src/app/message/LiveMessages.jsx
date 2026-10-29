@@ -17,18 +17,12 @@ import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { ATTACHMENT_ACCEPT, attachmentRefusal, urlFor } from "../../lib/domain/documents.js";
 import { awaitingScreen, fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, readerLanguage, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
-import { acceptCall, browserTimeZone, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, joinCall, listCalls, loadZoomEmbedded, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
+import { acceptCall, browserTimeZone, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, listCalls, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
-import { zoomViewSize } from "../../shared/zoom-view.mjs";
+import { callPageUrl, currentCallWindow, joinsInPage, leaveCallWindow, openCallWindow, openedFromLink, showCallWindow, watchCallWindow } from "./call-window.js";
 import { serverNow } from "../../lib/server-clock.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
-
-/** A call's full-screen Zoom page, which comes back to this conversation. */
-function callPageUrl(call) {
-  const back = `/app.html/messages/${call.thread_id}`;
-  return `/call.html?call=${encodeURIComponent(call.id)}&back=${encodeURIComponent(back)}`;
-}
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -143,11 +137,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const [callNotes, setCallNotes] = useState({});
   // Withdraw, cancel or decline waiting on "are you sure?": { call, mode }.
   const [confirmCall, setConfirmCall] = useState(null);
-  // The call being joined: { call, join, text } while the designed video
-  // panel is open; Zoom draws into zoomRoot.
-  const [video, setVideo] = useState(null);
-  const zoomRoot = useRef(null);
-  const zoomClient = useRef(null);
+  // The call open in its own window (call-window.js), or null. The designed
+  // video panel says so in that call's conversation.
+  const [video, setVideo] = useState(() => currentCallWindow());
 
   // The other side's time zone, asked again whenever a conversation opens
   // and whenever the calls reload rather than kept: it may have moved since.
@@ -410,22 +402,15 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     decline: (call) => setConfirmCall({ call, mode: "decline" }),
     cancel: (call) => setConfirmCall({ call, mode: call.status === "proposed" ? "withdraw" : "cancel" }),
     counter: (call) => setDialog({ threadId: call.thread_id, counterOf: call, key: call.id, busy: false, error: null }),
-    join: async (call) => {
-      // Phones and tablets join on Zoom's own full-screen page (call.html):
-      // Zoom supports the view drawn in this panel on desktop browsers only.
-      if (window.matchMedia?.("(hover: none) and (pointer: coarse)").matches) {
+    // In the click: a browser blocks a window opened any later. Phones and
+    // tablets join on the page itself, which comes back here on leaving.
+    join: (call) => {
+      setCallNotes((current) => ({ ...current, [call.id]: null }));
+      if (joinsInPage()) {
         window.location.assign(callPageUrl(call));
         return;
       }
-      setCallBusy(call.id);
-      setCallNotes((current) => ({ ...current, [call.id]: null }));
-      const answer = await joinCall(call.id);
-      setCallBusy(null);
-      if (!answer.ok) {
-        setCallNotes((current) => ({ ...current, [call.id]: { text: answer.message, error: true } }));
-        return;
-      }
-      setVideo({ call, join: answer.join, text: "Connecting to the call…" });
+      openCallWindow(call);
     },
   };
 
@@ -450,123 +435,12 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [threads, calls]);
 
-  // Once the panel is drawn, Zoom joins inside it. Leaving (or switching
-  // conversation, or leaving the page) ends the meeting for this person only.
-  useEffect(() => {
-    // Once per join: a failure updates `video` too, which must not retry.
-    if (!video?.join || video.attempted || !zoomRoot.current) return undefined;
-    // Zoom's meeting view is never narrower than about 360px: in a window
-    // that narrow it would be cut off, so the call opens on Zoom's own
-    // full-screen page instead, as on a phone.
-    if (zoomRoot.current.clientWidth < 360) {
-      setVideo((current) => current && { ...current, attempted: true });
-      window.location.assign(callPageUrl(video.call));
-      return undefined;
-    }
-    setVideo((current) => current && { ...current, attempted: true });
-    document.body.classList.remove("tsc-zoom-failed");
-    (async () => {
-      try {
-        const ZoomMtgEmbedded = await loadZoomEmbedded();
-        const client = ZoomMtgEmbedded.createClient();
-        zoomClient.current = client;
-        // Zoom draws its view at a fixed size, in speaker view (its default,
-        // "ribbon", is a small floating window): the panel's width, 16:9, but
-        // no taller than the room under the conversation's header, or its
-        // toolbar is cut off (zoom-view.mjs). Below 900px the page scrolls
-        // instead of the conversation, so the window is the room there.
-        const root = zoomRoot.current;
-        const workspace = root.closest(".message-workspace");
-        const panel = root.closest(".video-call-panel");
-        const header = workspace?.querySelector(".message-room-header");
-        const room = Math.min(workspace?.clientHeight ?? window.innerHeight, window.innerHeight);
-        const { width, height } = zoomViewSize({
-          panelWidth: root.clientWidth,
-          availableHeight: room - (header?.offsetHeight ?? 0) - ((panel?.offsetHeight ?? 0) - root.offsetHeight),
-        });
-        await client.init({
-          zoomAppRoot: zoomRoot.current,
-          language: "en-US",
-          patchJsMedia: true,
-          leaveOnPageUnload: true,
-          customize: {
-            video: { defaultViewType: "speaker", isResizable: false, viewSizes: { default: { width, height } } },
-          },
-        });
-        await client.join({
-          sdkKey: video.join.sdkKey,
-          signature: video.join.signature,
-          meetingNumber: video.join.meetingNumber,
-          password: video.join.passcode,
-          userName: video.join.userName,
-        });
-        setVideo((current) => current && { ...current, joined: true, text: "You're in the call. The other side joins from this conversation." });
-        // At its narrowest the view can still be taller than a short window
-        // (1366 x 768 ends 10px below it): bring the toolbar into sight.
-        zoomRoot.current?.scrollIntoView({ block: "nearest" });
-      } catch (failure) {
-        // Zoom's own error box would sit over the page with a Retry that
-        // fails the same way: take Zoom's view away and offer its app.
-        console.warn("zoom join", failure?.errorCode, failure?.reason ?? failure?.message);
-        try {
-          window.ZoomMtgEmbedded?.destroyClient();
-        } catch {
-          // Nothing to tidy.
-        }
-        // Zoom puts its error dialog on <body>, outside its own view, keeps
-        // drawing it after the client is gone, and its Retry fails the same
-        // way. Hidden until this panel closes (messages.css).
-        document.body.classList.add("tsc-zoom-failed");
-        zoomClient.current = null;
-        setVideo((current) => current && {
-          ...current,
-          failed: true,
-          text: "The video can't open inside this page right now. Join the same call in the Zoom app.",
-        });
-      }
-    })();
-    return undefined;
-  }, [video]);
-
-  // Opening another conversation leaves the call: its panel is this one's.
-  useEffect(() => {
-    if (video && video.call.thread_id !== activeId) leaveVideo();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeId]);
-
-  // Leaving the page (another screen of the app) leaves the call too:
-  // otherwise Zoom stays joined, with sound, behind a panel that is gone.
-  useEffect(() => () => {
-    const client = zoomClient.current;
-    zoomClient.current = null;
-    Promise.resolve()
-      .then(() => client?.leaveMeeting())
-      .catch(() => null)
-      .finally(() => {
-        try {
-          window.ZoomMtgEmbedded?.destroyClient();
-        } catch {
-          // Nothing to tidy.
-        }
-      });
-    document.body.classList.remove("tsc-zoom-failed");
-  }, []);
-
-  async function leaveVideo() {
-    try {
-      await zoomClient.current?.leaveMeeting();
-    } catch {
-      // Already out.
-    }
-    try {
-      window.ZoomMtgEmbedded?.destroyClient();
-    } catch {
-      // Nothing to tidy.
-    }
-    zoomClient.current = null;
-    document.body.classList.remove("tsc-zoom-failed");
-    setVideo(null);
-  }
+  // The call's window joining, leaving or closing: the panel follows it, and
+  // the calls are read again so the card says where the call stands.
+  useEffect(() => watchCallWindow((next) => {
+    setVideo(next);
+    if (!next) reloadCallsRef.current();
+  }), []);
 
   async function submitSchedule({ startsAt, timeZone, title, agenda }) {
     setDialog((current) => ({ ...current, busy: true, error: null }));
@@ -724,13 +598,22 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
     <>
       <MessagesScreen
         calls={callCards}
-        video={video ? {
+        video={video && video.call.thread_id === activeId ? {
           title: video.call.title,
-          text: video.text,
-          mountRef: zoomRoot,
-          failed: Boolean(video.failed),
-          joinUrl: video.join.joinUrl,
-          onLeave: leaveVideo,
+          text: video.blocked
+            ? "Your browser blocked the call's window. Open it from the link below."
+            : video.joined
+              ? "You're in the call, in its own window."
+              : "The call is opening in its own window…",
+          // A blocked window opens from a link: a click on a link is allowed.
+          openUrl: video.blocked ? callPageUrl(video.call, { popup: true }) : null,
+          onOpenLink: openedFromLink,
+          onShow: video.blocked ? null : showCallWindow,
+          // The Zoom app instead: leave the window first, or the person is in
+          // the meeting twice.
+          joinUrl: video.joinUrl,
+          onOpenApp: leaveCallWindow,
+          onLeave: leaveCallWindow,
         } : null}
         scheduling={{
           open: Boolean(dialog),
