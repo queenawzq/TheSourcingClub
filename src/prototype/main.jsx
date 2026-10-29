@@ -1,3 +1,4 @@
+import FactoryMatch from "../app/matching/FactoryMatch.jsx";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useOrders, useRfqs } from "../lib/data/DataProvider.jsx";
@@ -3136,6 +3137,8 @@ export function BrandOnboarding({
   onDeleteDocument,
   termsAcceptance = null,
   completionPending = false,
+  // Live only: a panel drawn after the step's content (matching, on review).
+  extra = null,
   // The published terms and their full page. Absent, the designed copy shows.
   terms,
   fullTerms,
@@ -3220,6 +3223,7 @@ export function BrandOnboarding({
           onDeleteDocument={onDeleteDocument}
           termsAcceptance={termsAcceptance}
         />
+        {extra}
 
         {error && <p className="brand-onboarding-save-error" role="alert">{error.message ?? String(error)}</p>}
 
@@ -4471,6 +4475,7 @@ function HomeRecommendedFactoryCard({ factory, goTo }) {
   return (
     <article className={`factory-card selected home-recommended-invite-card${factory.name.length > 18 ? " home-recommended-long-name" : ""}`}>
       <div className="invite-factory-content">
+        {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
         <div className="invite-factory-top">
           <a
             className="marketplace-factory-title marketplace-factory-profile-link"
@@ -4979,6 +4984,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
 
         <div className="factory-profile-layout">
           <section className="factory-profile-main">
+            {live?.matchPanel}
             <ProfilePerformanceCard
               eyebrow="Factory performance"
               primary={view.performance.primary}
@@ -5405,6 +5411,7 @@ export function BrandProfileScreen({ onViewCompletion, live = null }) {
                 </div>
               ) : <p>{view.projectsEmpty?.[projectTab]}</p>}
             </section>
+            {isOwnerView && live?.matchingPanel}
           </main>
 
           <aside className="factory-profile-side">
@@ -5588,6 +5595,7 @@ export function BrandProfileCompletionPage({ onBack, onAddPayment, live = null }
             </section>
           </aside>
         </section>
+        {live?.matchingPanel}
       </div>
     </main>
   );
@@ -6762,6 +6770,7 @@ function DirectoryFactoryCard({ factory, onQuote, live = null }) {
   if (live) {
     return (
       <article className="directory-factory-card">
+        {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
         <div className="directory-factory-intro">
           <div className="factory-avatar">{factory.logoUrl ? <img src={factory.logoUrl} alt="" /> : factory.initials}</div>
           <div>
@@ -7086,6 +7095,7 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote, live
 
   return (
     <article className={`marketplace-factory-card${factory.featured ? " featured" : ""}${["Tirupur Natural Studio", "Hangzhou Denim Lab"].includes(factory.name) ? " marketplace-tight-wrapped-name" : ""}${live ? " live-factory-card" : ""}`}>
+      {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
       <div className="marketplace-factory-top">
         {live ? (
           <a
@@ -9540,6 +9550,7 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
         }}
       />
       <div className="invite-factory-content">
+        {factory.matching && <FactoryMatch match={factory.matching} name={factory.name} />}
         <div className="invite-factory-top">
           <a
             className="marketplace-factory-title marketplace-factory-profile-link"

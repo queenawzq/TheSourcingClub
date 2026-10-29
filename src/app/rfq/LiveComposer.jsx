@@ -1,3 +1,6 @@
+import MatchingProfile, { useMatchingStatus } from "../matching/MatchingProfile.jsx";
+import FactoryMatch, { plainReason } from "../matching/FactoryMatch.jsx";
+import { assessFactories, compareMatches } from "../../lib/domain/matching.js";
 /**
  * The request composer, on Queena's designed flow.
  *
@@ -180,11 +183,20 @@ export default function LiveComposer({ org, rfqId }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [vendors, setVendors] = useState([]);
+  const [excludedVendors,setExcludedVendors] = useState([]);
   const [selectedVendors, setSelectedVendors] = useState([]);
   // The design's own toggle, ticked by default exactly as it is drawn.
   const [openToAll, setOpenToAll] = useState(true);
   // Who the request actually went to, for the success card's copy.
   const [invited, setInvited] = useState([]);
+  const matchingStatus = useMatchingStatus();
+  const matchingV2 = matchingStatus === true;
+  const [matchingDirty, setMatchingDirty] = useState(false);
+  const [matchingAcknowledged, setMatchingAcknowledged] = useState(false);
+  // The matching panel's save, run with the brief's; and a count of brief
+  // saves, which tells the panel to pick up the categories the brief wrote.
+  const matchingSave = useRef(null);
+  const [briefSaves, setBriefSaves] = useState(0);
   const [files, setFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [saveState, setSaveState] = useState("saved");
@@ -261,11 +273,11 @@ export default function LiveComposer({ org, rfqId }) {
   }, [rfqId, kinds]);
 
   useEffect(() => {
-    if (!resumeLoaded || inviteEntryHandled.current || !window.location.pathname.endsWith("/invite")) return;
+    if (!resumeLoaded || matchingStatus === null || inviteEntryHandled.current || !window.location.pathname.endsWith("/invite")) return;
     inviteEntryHandled.current = true;
     // Returning from quotes only loads vendors; it must not rewrite the brief.
     toInvite({ skipSave: true });
-  }, [resumeLoaded]);
+  }, [resumeLoaded, matchingStatus]);
 
   // The category, certifications and regions are matched against the term
   // labels, which load on their own and may arrive after a resumed draft does.
@@ -459,11 +471,26 @@ export default function LiveComposer({ org, rfqId }) {
     setError(null);
     try {
       await persistReview();
+      setBriefSaves((n) => n + 1);
+      await saveMatching();
+      setMatchingAcknowledged(false);
       setSaveState("saved");
     } catch (failure) {
       setSaveState("dirty");
       setError(failure);
     }
+  }
+
+  /**
+   * Save the matching panel with the brief, so "Save changes" and "Invite
+   * vendors" never leave it behind. A refusal is shown under the panel, and
+   * the page goes there: the buttons sit far above it.
+   */
+  async function saveMatching() {
+    if (!matchingV2 || !matchingDirty) return;
+    if (await matchingSave.current?.()) return;
+    document.querySelector(".matching-panel .matching-actions")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    throw new Error("Your matching requirements couldn't be saved. The reason is beside their save button.");
   }
 
   /**
@@ -475,6 +502,7 @@ export default function LiveComposer({ org, rfqId }) {
    * visibility for the brand and then asking them about it.
    */
   async function toInvite({ skipSave = false } = {}) {
+    if (matchingStatus === null) return;
     if (busy || saveState === "saving" || !draftId) return;
     setBusy(true);
     setSaveState("saving");
@@ -482,6 +510,9 @@ export default function LiveComposer({ org, rfqId }) {
 
     try {
       if (!skipSave) await persistReview();
+      setBriefSaves((n) => n + 1);
+      await saveMatching();
+      setMatchingAcknowledged(false);
       setSaveState("saved");
 
       const rows = unwrap(
@@ -495,7 +526,8 @@ export default function LiveComposer({ org, rfqId }) {
       );
       // The design ranks this list by fit. match_score_rfq() answers per
       // pair, so score the vendors actually being shown and sort by it.
-      const scores = await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
+      const assessments = matchingV2 ? await assessFactories("rfq", draftId, (rows ?? []).map(row=>row.org_id)) : new Map();
+      const scores = matchingV2 ? new Map([...assessments].map(([id,m])=>[id,m?.score ?? null])) : await matchScoresForRfq(draftId, (rows ?? []).map((row) => row.org_id));
       const vendorTerms = await listTermsByKind(["make", "product_category", "specialty", "service", "core_service"]);
       const vendorIds = (rows ?? []).map((row) => row.org_id);
       const links = vendorIds.length ? unwrap(await supabase.from("taxonomy_links")
@@ -517,17 +549,22 @@ export default function LiveComposer({ org, rfqId }) {
         }];
       }));
       const firstId = reorder?.factoryOrgId ?? requestedVendor;
-      const first = firstId && (rows ?? []).find((row) => row.org_id === firstId);
+      const first = firstId && (rows ?? []).find((row) => row.org_id === firstId && (!matchingV2 || assessments.get(row.org_id)?.status !== "excluded"));
       if (firstId && !preselected.current) {
         preselected.current = true;
         if (first) {
           setSelectedVendors((current) => (current.includes(first.org_id) ? current : [...current, first.org_id]));
         }
       }
+      setExcludedVendors(matchingV2 ? (rows ?? []).filter(row=>assessments.get(row.org_id)?.status === "excluded").map(row=>({...row,matching:assessments.get(row.org_id)})) : []);
+      // A factory ticked on an earlier pass that this version of the request
+      // rules out is no longer a choice, so it is no longer counted as one.
+      if (matchingV2) setSelectedVendors((current) => current.filter((id) => assessments.get(id)?.status !== "excluded"));
       setVendors(
         (rows ?? [])
-          .map((row) => ({ ...row, ...cardDetails.get(row.org_id), matchPercent: scores.get(row.org_id) ?? null }))
-          .sort((a, b) => (b.matchPercent ?? -1) - (a.matchPercent ?? -1))
+          .filter(row=>!matchingV2 || (assessments.get(row.org_id) && assessments.get(row.org_id).status!=="excluded"))
+          .map((row) => ({ ...row, ...cardDetails.get(row.org_id), matching: assessments.get(row.org_id), matchPercent: scores.get(row.org_id) ?? null }))
+          .sort((a, b) => matchingV2 ? compareMatches(a.matching,b.matching) : (b.matchPercent ?? -1) - (a.matchPercent ?? -1))
           // A reorder's own factory (or the vendor the request was started
           // from) heads the list, ticked, above the ranking.
           .sort((a, b) => Number(b.org_id === firstId) - Number(a.org_id === firstId)),
@@ -551,6 +588,15 @@ export default function LiveComposer({ org, rfqId }) {
       // Publish first, then invite. An invitation to a draft is refused by
       // RLS — reasonably, since a draft is the brand's private working copy
       // and nobody outside it may be pointed at one.
+      // Checked before publishing: the database refuses an unacknowledged
+      // invitation, and a request published with nobody invited is a dead end.
+      if (matchingV2 && vendors.some(v=>selectedVendors.includes(v.org_id) && v.matching?.status!=="qualified") && !matchingAcknowledged) {
+        // The box is under the list, far below the button that was pressed.
+        const box = document.querySelector(".matching-acknowledge input");
+        box?.scrollIntoView({ behavior: "smooth", block: "center" });
+        box?.focus({ preventScroll: true });
+        throw new Error("Tick the box above to confirm you'll check what these factories haven't confirmed yet.");
+      }
       await publishRfq(draftId, openToAll ? "open_to_all" : "invited_only");
 
       // By company id: two companies can share a name, and selecting by name
@@ -558,7 +604,7 @@ export default function LiveComposer({ org, rfqId }) {
       const chosen = vendors
         .filter((vendor) => selectedVendors.includes(vendor.org_id))
         .map((vendor) => vendor.org_id);
-      if (chosen.length) await setInvitations(draftId, chosen);
+      if (chosen.length) await setInvitations(draftId, chosen, matchingV2 && matchingAcknowledged);
       setInvited(chosen);
       // The design's "Quote request sent" step, rather than dropping the brand
       // on the request page with no word that anything was sent.
@@ -644,7 +690,8 @@ export default function LiveComposer({ org, rfqId }) {
       trust: vendor.verification_status === "verified" ? (vendor.trust_tier ?? "basic") : "",
       // Scored against this request by match_score_rfq(); blank when the
       // vendor's profile has too little in it to score.
-      fit: vendor.matchPercent === null ? "" : `${vendor.matchPercent}%`,
+      matching: vendor.matching,
+      fit: vendor.matchPercent === null ? "" : `${Math.round(vendor.matchPercent)}%${vendor.matching?.status === "needs_confirmation" ? " provisional" : ""}`,
       // Nothing records a rating or a vendor's order count a brand may read;
       // "" tells the card to leave both out rather than print an example.
       rating: "",
@@ -687,14 +734,65 @@ export default function LiveComposer({ org, rfqId }) {
         onBack={() => setStep("review")}
         onNext={publish}
       >
+        {matchingV2 && (() => {
+          // Each invite card carries its own match explanation; this panel holds
+          // only what applies to the whole selection.
+          const startedFrom = excludedVendors.find((v) => v.org_id === (reorder?.factoryOrgId ?? requestedVendor));
+          if (!startedFrom && !excludedVendors.length) return null;
+          return (
+            <section className="matching-panel" aria-label="Matching for this request">
+              {startedFrom && (
+                <p className="matching-callout is-warning" role="status">
+                  {startedFrom.orgs?.name} can't be invited to this request: {startedFrom.matching?.failed?.map(plainReason).join("; ")}.
+                  {" "}Go back to change the request if you want to include it.
+                </p>
+              )}
+              {excludedVendors.length > 0 && (
+                <details className="matching-group">
+                  <summary>
+                    <span className="matching-label">
+                      {excludedVendors.length} {excludedVendors.length === 1 ? "factory doesn't" : "factories don't"} meet your must-haves
+                    </span>
+                    <span className="matching-small">Not shown below</span>
+                  </summary>
+                  <div className="matching-group-body">
+                    {excludedVendors.map((v) => (
+                      <div key={v.org_id}>
+                        <strong>{v.orgs?.name}</strong>
+                        <FactoryMatch match={v.matching} name={v.orgs?.name} />
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </section>
+          );
+        })()}
         <InviteScreen
           vendors={shaped}
           filters={requestFilters(values)}
           selectedFactories={selectedVendors}
-          setSelectedFactories={setSelectedVendors}
+          setSelectedFactories={(next)=>{setMatchingAcknowledged(false);setSelectedVendors(next);}}
           openToAll={openToAll}
           onOpenToAllChange={setOpenToAll}
         />
+        {matchingV2 && (() => {
+          // Beside the invite button: what the brand agrees to by sending.
+          const unresolved = vendors.filter((v) => selectedVendors.includes(v.org_id) && v.matching?.status !== "qualified");
+          if (!unresolved.length) return null;
+          return (
+            <label className="matching-check matching-callout matching-acknowledge">
+              <input
+                type="checkbox"
+                checked={matchingAcknowledged}
+                onChange={(e) => { setMatchingAcknowledged(e.target.checked); setError(null); }}
+              />
+              {unresolved.length === 1
+                ? `${unresolved[0].orgs?.name} has details still to confirm. I'll confirm them with the factory before going ahead.`
+                : `${unresolved.length} selected factories have details still to confirm. I'll confirm them with each factory before going ahead.`}
+            </label>
+          );
+        })()}
         {reorder && !vendors.some((vendor) => vendor.org_id === reorder.factoryOrgId) && (
           <p className="composer-note" data-testid="reorder-unlisted">
             {reorder.factoryName} is not listed on TSC right now, so it cannot be invited. Open the request to all vendors or choose another.
@@ -712,7 +810,7 @@ export default function LiveComposer({ org, rfqId }) {
       busy={busy}
       onBack={() => setStep("describe")}
       onNext={toInvite}
-      primaryDisabled={saveState === "saving"}
+      primaryDisabled={saveState === "saving" || matchingStatus === null}
       secondaryAction={{
         label: saveState === "saving" ? "Saving…" : saveState === "saved" ? "Saved" : "Save changes",
         onClick: saveReview,
@@ -735,6 +833,14 @@ export default function LiveComposer({ org, rfqId }) {
         uploading={uploading}
         serviceOptions={(terms.service ?? []).map((term) => termLabel(term))}
       />
+      {/* After the brief it qualifies: who the request goes to, and what is a must-have. */}
+      {draftId && <MatchingProfile org={org} subjectType="rfq" subjectId={draftId} saveRef={matchingSave} refreshKey={briefSaves} onDirty={()=>setMatchingDirty(true)} onSaved={({selected,terms: matchingTerms,changed})=>{setMatchingDirty(false);
+        // Only what was changed in the panel is written back to the brief; the
+        // brief's own wording ("Womenswear / poplin shirts") stays otherwise.
+        const words=(kind)=>(matchingTerms[kind]??[]).filter(t=>selected.includes(t.id)).map(t=>termLabel(t)).join(", ");
+        setValues(current=>({...current,
+          ...(changed.includes("product_category") && {category:words("product_category")}),
+          ...(changed.includes("certification") && {certifications:words("certification")})}));}} />}
       {error && <p className="composer-error" role="alert">{error.message}</p>}
     </FlowShell>
   );
