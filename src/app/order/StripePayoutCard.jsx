@@ -52,6 +52,13 @@ function balanceCurrency(balance) {
     ?? available.find((entry) => entry.currency?.toUpperCase() === preferred);
   return row?.currency?.toUpperCase() ?? preferred ?? "USD";
 }
+const SLOW_BALANCE_MS = 8000;
+const BALANCE_STATUS_TEXT = {
+  loading: "Checking your balance…",
+  slow: "Stripe is taking longer than usual. Your balance will show here as soon as it answers.",
+  failed: "We could not show your balance right now. Try again shortly.",
+};
+
 const amountIn = (rows, currency) => rows?.find((row) => row.currency?.toUpperCase() === currency)?.amount ?? 0;
 
 /** When the earliest earning still pending at Stripe can be withdrawn, in the reader's words. */
@@ -177,6 +184,10 @@ export default function StripePayoutCard({
 }) {
   const [account, setAccount] = useState(undefined);
   const [balance, setBalance] = useState(null);
+  // Where reading Stripe's balance stands: "loading", "slow" (still loading
+  // after SLOW_BALANCE_MS), "failed" or "ready". The card said "We could not
+  // show your balance" for the two seconds a normal read takes.
+  const [balanceStatus, setBalanceStatus] = useState("loading");
   const [country, setCountry] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -197,6 +208,7 @@ export default function StripePayoutCard({
   const [removingManual, setRemovingManual] = useState(null);
   const [manualError, setManualError] = useState(null);
   const handledInitialAction = useRef(false);
+  const accountKnown = useRef(false);
 
   useEffect(() => {
     if (manualSaved) {
@@ -221,10 +233,13 @@ export default function StripePayoutCard({
       supabase.from("factory_profiles").select("country_code").eq("org_id", org.id).maybeSingle(),
     ]);
     setAccount(saved);
+    accountKnown.current = true;
     setCountry((current) => current || saved?.country || manualCountry || profile?.country_code || "");
     if (saved?.transfers_active && isOwner) {
+      setBalanceStatus("loading");
       const nextBalance = await connectAction(org.id, "balance");
       setBalance(nextBalance);
+      setBalanceStatus("ready");
       onBalanceChange?.(nextBalance);
       return nextBalance;
     }
@@ -272,9 +287,13 @@ export default function StripePayoutCard({
         }
       }
     })().catch((failure) => {
-      setError(failure);
+      // Once the account is known, a failure is the balance's, and the card
+      // says so in its own sentence: Stripe's raw message (which names our
+      // key, masked) is not for a factory. Before that, there is no sentence.
+      if (!accountKnown.current) setError(failure);
       setAccount((current) => (current === undefined ? null : current));
       // The balance could not be read: say so, rather than "checking" forever.
+      setBalanceStatus("failed");
       onBalanceChange?.(null);
     });
   }, [org.id, isOwner, load, manualAccount]);
@@ -303,6 +322,7 @@ export default function StripePayoutCard({
       await load();
     } catch (failure) {
       setError(failure);
+      setBalanceStatus("failed");
       onBalanceChange?.(null);
     } finally {
       setBusy(false);
@@ -324,10 +344,18 @@ export default function StripePayoutCard({
       setHandover(null);
     } catch (failure) {
       setError(failure);
+      setBalanceStatus("failed");
     } finally {
       setBusy(false);
     }
   }
+
+  // A read that is merely slow is not a failure: after a while, say so.
+  useEffect(() => {
+    if (balanceStatus !== "loading") return undefined;
+    const timer = setTimeout(() => setBalanceStatus((current) => (current === "loading" ? "slow" : current)), SLOW_BALANCE_MS);
+    return () => clearTimeout(timer);
+  }, [balanceStatus]);
 
   useEffect(() => {
     if (account === undefined || !initialAction || handledInitialAction.current) return;
@@ -509,10 +537,9 @@ export default function StripePayoutCard({
               : "Earnings stay in your balance until you withdraw them."
             // Only an owner reads the balance; for anyone else it is not "in progress".
             : account?.transfers_active
-              // Closing a Stripe form reads the account back before the
-              // balance, so the account is connected a moment before its
-              // balance arrives: that is loading, not a failure.
-              ? isOwner ? busy ? "Checking your balance…" : "We could not show your balance right now. Try again shortly." : "Only a company owner can view the withdrawable balance."
+              // The account is known a moment before its balance arrives:
+              // that is loading, and only a real failure says it failed.
+              ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? BALANCE_STATUS_TEXT.loading : "Only a company owner can view the withdrawable balance."
               : account?.details_submitted
                 ? "Payout verification in progress"
                 : account
