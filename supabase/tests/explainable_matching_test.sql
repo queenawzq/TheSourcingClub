@@ -238,6 +238,22 @@ from public.taxonomy_terms t where t.kind='fabric' and t.org_id is null order by
 delete from public.documents where id='d9900000-0000-0000-0000-000000000003';
 select ok(not exists(select 1 from public.factory_capability_evidence where id='e9900000-0000-0000-0000-000000000002'),'deleting the file removes its evidence');
 
+-- A certification claimed without a file has nothing to review: unverified, as before matching.
+reset role;
+select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000002","role":"authenticated"}',true);
+set local role authenticated;
+insert into public.factory_certifications(id,org_id,term_id)
+select 'f9900000-0000-0000-0000-000000000009','b9900000-0000-0000-0000-000000000002',id from public.taxonomy_terms
+ where kind='certification' and org_id is null and id<>'c9900000-0000-0000-0000-000000000003' order by slug limit 1;
+reset role;
+select is((select status::text from public.factory_certifications where id='f9900000-0000-0000-0000-000000000009'),'unverified','a certification claimed without a file stays unverified');
+select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000002","role":"authenticated"}',true);
+set local role authenticated;
+update public.factory_certifications set status='verified' where id='f9900000-0000-0000-0000-000000000009';
+reset role;
+select is((select status::text from public.factory_certifications where id='f9900000-0000-0000-0000-000000000009'),'unverified','a factory cannot verify its own claim');
+select set_config('request.jwt.claims','{"sub":"a9900000-0000-0000-0000-000000000004","role":"authenticated"}',true);
+set local role authenticated;
 -- A company with evidence on file can still be deleted.
 select lives_ok($$delete from public.orgs where id='b9900000-0000-0000-0000-000000000002'$$,'a factory with evidence and certificates can be deleted');
 
