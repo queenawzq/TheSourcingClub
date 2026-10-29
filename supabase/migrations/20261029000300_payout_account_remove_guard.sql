@@ -1,5 +1,15 @@
 -- ---------------------------------------------------------------------------
--- A bank-paid factory cannot remove the bank account TSC is about to pay.
+-- A bank-paid factory's bank accounts: which one TSC pays, and when the one
+-- TSC pays may be removed.
+--
+-- A factory may keep several (John, 2026-10-29); staff pay the is_primary
+-- one ("the one TSC pays", unique per company since 030).
+--
+-- 1. The one TSC pays cannot be removed while another exists: the factory
+--    chooses another first, or staff would have no account to pay.
+-- 2. It cannot be removed while TSC is about to pay it (below).
+-- 3. set_primary_payout_account() moves the mark in one call, so there is
+--    never none and never two.
 --
 -- Where Stripe cannot pay out (mainland China, Hong Kong…), staff pay each
 -- released earning by bank to the factory's primary factory_payout_accounts
@@ -34,6 +44,12 @@ begin
     return old;
   end if;
 
+  if exists (select 1 from public.factory_payout_accounts a
+              where a.org_id = old.org_id and a.id <> old.id) then
+    raise exception 'this is the account TSC pays: choose another account for TSC to pay before removing it'
+      using errcode = 'P0001', hint = 'payout_primary';
+  end if;
+
   if exists (select 1 from public.stripe_connect_accounts s
               where s.org_id = old.org_id and s.transfers_active) then
     return old;
@@ -63,3 +79,33 @@ revoke all on function public.guard_payout_account_delete() from public, anon, a
 create trigger factory_payout_accounts_remove_guard
   before delete on public.factory_payout_accounts
   for each row execute function public.guard_payout_account_delete();
+
+-- ---------------------------------------------------------------------------
+-- The factory chooses which of its bank accounts TSC pays. Runs as the
+-- caller, so RLS decides: only an owner may update these rows.
+-- ---------------------------------------------------------------------------
+create or replace function public.set_primary_payout_account(target uuid)
+returns void
+language plpgsql
+security invoker
+set search_path = public, pg_temp
+as $$
+declare
+  owner_org uuid;
+begin
+  select org_id into owner_org from public.factory_payout_accounts where id = target;
+  if owner_org is null then
+    raise exception 'that bank account does not exist' using errcode = 'P0002';
+  end if;
+  if not public.is_org_owner(owner_org) then
+    raise exception 'only an owner chooses the account TSC pays' using errcode = '42501';
+  end if;
+
+  update public.factory_payout_accounts set is_primary = false
+   where org_id = owner_org and is_primary and id <> target;
+  update public.factory_payout_accounts set is_primary = true where id = target;
+end;
+$$;
+
+revoke all on function public.set_primary_payout_account(uuid) from public, anon;
+grant execute on function public.set_primary_payout_account(uuid) to authenticated;

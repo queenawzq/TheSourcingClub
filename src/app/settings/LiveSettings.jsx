@@ -32,7 +32,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { SettingsScreen, factoryAccountPermissionLabels, settingsPermissionLabels } from "../../prototype/main.jsx";
 import { inviteMember, listMembers, listPendingInvitations } from "../../lib/domain/org.js";
-import { listPayoutAccounts } from "../../lib/domain/payment.js";
+import { useManualPayouts } from "../order/use-manual-payouts.js";
 import { connectAccountFor, connectAction, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { getBrandProfile, getFactoryProfile } from "../../lib/domain/profile.js";
 import { getNotificationEmails, setNotificationEmail } from "../../lib/domain/notification-preferences.js";
@@ -47,15 +47,6 @@ const PAYOUT_FIELDS = [
   ["swift", "SWIFT / BIC", "8 or 11 characters"],
   ["iban", "IBAN", "Only if your bank uses one"],
 ];
-
-const blankPayout = (row) => ({
-  bank_name: row?.bank_name ?? "",
-  account_name: row?.account_name ?? "",
-  account_number_last4: row?.account_number_last4 ?? "",
-  swift: row?.swift ?? "",
-  iban: row?.iban ?? "",
-  instructions: row?.instructions ?? "",
-});
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 
@@ -100,9 +91,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   const [profile, setProfile] = useState(null);
   const [invites, setInvites] = useState([]);
   const [payoutMethods, setPayoutMethods] = useState([]);
-  const [manualAccount, setManualAccount] = useState(null);
-  const [manualForm, setManualForm] = useState(blankPayout());
-  const [manualSaved, setManualSaved] = useState(false);
+  // The bank accounts staff pay where Stripe cannot (use-manual-payouts.js).
+  const payouts = useManualPayouts(org.id);
   const [payoutFlow, setPayoutFlow] = useState(null);
   const [billingSecret, setBillingSecret] = useState(null);
   const [billingBusy, setBillingBusy] = useState(false);
@@ -143,11 +133,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
       if (isFactory) {
         const [connectAccount, manualAccounts] = await Promise.all([
           connectAccountFor(org.id).catch(() => null),
-          listPayoutAccounts(org.id).catch(() => []),
+          payouts.load().catch(() => []),
         ]);
-        const primaryManualAccount = manualAccounts[0] ?? null;
-        setManualAccount(primaryManualAccount);
-        setManualForm(blankPayout(primaryManualAccount));
         if (connectAccount?.transfers_active) {
           const balance = await connectAction(org.id, "balance").catch(() => null);
           const connected = balance?.methods ?? [];
@@ -159,7 +146,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           })) : [{ label: "Connected", name: "Payout account", note: "Managed securely through your connected payout account." }]);
         } else {
           setPayoutMethods(manualAccounts.map((account) => ({
-            label: account.is_primary ? "Primary" : "Secondary",
+            id: account.id,
+            label: account.is_primary ? "Default" : "Bank account",
             name: `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}`,
             note: "Manual bank transfer",
           })));
@@ -168,7 +156,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     } catch (failure) {
       setError(failure);
     }
-  }, [org.id, isFactory, loadCards]);
+  }, [org.id, isFactory, loadCards, payouts.load]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -185,55 +173,11 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     }
   }
 
-  const setManualField = (key) => (event) => {
-    setManualSaved(false);
-    setManualForm((current) => ({ ...current, [key]: event.target.value }));
-  };
+  // Settings' list is built from the accounts, so it is read again after a change.
+  const savePayout = async (details) => { await payouts.save(details); await reload(); };
+  const removePayout = async (account) => { await payouts.remove(account); await reload(); };
+  const makePrimaryPayout = async (account) => { await payouts.makePrimary(account); await reload(); };
 
-  // The card passes the payout country it was set up for, which the form
-  // itself has no field for.
-  async function saveManualAccount(details = {}) {
-    setBusy(true);
-    setError(null);
-    try {
-      const payload = {
-        org_id: org.id,
-        is_primary: true,
-        ...Object.fromEntries(Object.entries(manualForm).map(([key, value]) => [key, value.trim() || null])),
-        bank_country: "bank_country" in details ? details.bank_country : manualAccount?.bank_country ?? null,
-      };
-      const result = manualAccount?.id
-        ? await supabase.from("factory_payout_accounts").update(payload).eq("id", manualAccount.id).select().single()
-        : await supabase.from("factory_payout_accounts").insert(payload).select().single();
-      const updated = unwrap(result, "save your payout account");
-      setManualAccount(updated);
-      setManualForm(blankPayout(updated));
-      setManualSaved(true);
-      await reload();
-    } catch (failure) {
-      setError(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteManualAccount() {
-    if (!manualAccount?.id) return;
-    setBusy(true);
-    setError(null);
-    try {
-      unwrap(await supabase.from("factory_payout_accounts").delete().eq("id", manualAccount.id), "remove your payout account");
-      setManualAccount(null);
-      setManualForm(blankPayout());
-      setManualSaved(false);
-      await reload();
-    } catch (failure) {
-      // Refused while TSC owes a bank payout to this account: said with the amount.
-      throw payoutRemovalError(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function removeCard(method) {
     setBillingBusy(true);
@@ -358,15 +302,20 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           renderCard={false}
           initialAction={payoutFlow.action}
           initialMethodId={payoutFlow.methodId}
-          onFlowClose={() => { setPayoutFlow(null); setManualSaved(false); }}
-          manualAccount={manualAccount}
-          manualForm={manualForm}
+          onFlowClose={() => { setPayoutFlow(null); payouts.clearSaved(); }}
+          manualAccount={payouts.primary}
+          manualAccounts={payouts.accounts ?? []}
+          manualEditingId={payouts.editingId}
+          onStartManual={payouts.startEdit}
+          onMakePrimaryManual={makePrimaryPayout}
+          manualForm={payouts.form}
           manualFields={PAYOUT_FIELDS}
-          onManualFieldChange={setManualField}
-          onSaveManual={saveManualAccount}
-          onDeleteManual={deleteManualAccount}
-          manualBusy={busy}
-          manualSaved={manualSaved}
+          onManualFieldChange={payouts.setField}
+          onSaveManual={savePayout}
+          onDeleteManual={removePayout}
+          manualBusy={payouts.busy}
+          manualSaved={payouts.saved}
+          manualOwed={payouts.owed}
         />
       ) : null}
       {billingSecret ? (
