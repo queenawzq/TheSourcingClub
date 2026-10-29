@@ -16,7 +16,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(28);
+select plan(35);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: an awarded order the brand has confirmed, so its first step is open
@@ -26,7 +26,8 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('ca000000-0000-0000-0000-000000000001', 'p10-brandowner@example.com', '{"name":"Brand Owner"}'),
   ('ca000000-0000-0000-0000-000000000002', 'p10-factory@example.com',    '{"name":"Factory Owner"}'),
   ('ca000000-0000-0000-0000-000000000003', 'p10-outsider@example.com',   '{"name":"Outsider"}'),
-  ('ca000000-0000-0000-0000-000000000004', 'p10-brandmember@example.com', '{"name":"Brand Member"}');
+  ('ca000000-0000-0000-0000-000000000004', 'p10-brandmember@example.com', '{"name":"Brand Member"}'),
+  ('ca000000-0000-0000-0000-000000000005', 'p10-twohats@example.com',     '{"name":"Two Hats"}');
 
 insert into public.orgs (id, type, name, slug) values
   ('da000000-0000-0000-0000-00000000000b', 'brand',   'P10 Brand',    'pgtap10-brand'),
@@ -37,7 +38,10 @@ insert into public.org_members (org_id, user_id, role) values
   ('da000000-0000-0000-0000-00000000000b', 'ca000000-0000-0000-0000-000000000001', 'owner'),
   ('da000000-0000-0000-0000-0000000000f1', 'ca000000-0000-0000-0000-000000000002', 'owner'),
   ('da000000-0000-0000-0000-00000000000c', 'ca000000-0000-0000-0000-000000000003', 'owner'),
-  ('da000000-0000-0000-0000-00000000000b', 'ca000000-0000-0000-0000-000000000004', 'member');
+  ('da000000-0000-0000-0000-00000000000b', 'ca000000-0000-0000-0000-000000000004', 'member'),
+  -- One person who is an owner of both the brand and the factory.
+  ('da000000-0000-0000-0000-00000000000b', 'ca000000-0000-0000-0000-000000000005', 'owner'),
+  ('da000000-0000-0000-0000-0000000000f1', 'ca000000-0000-0000-0000-000000000005', 'owner');
 
 insert into public.brand_profiles (org_id, hq_location) values
   ('da000000-0000-0000-0000-00000000000b', 'London, UK'),
@@ -130,11 +134,12 @@ select throws_ok(
   'a step that has not opened yet takes no comment'
 );
 
--- Comments do not gate approval, but funding still does.
+-- The brand approves from the factory's update; its own comment is not one.
+-- Asked before the funding, so the brand hears what it is waiting for.
 select throws_ok(
   $$select public.approve_milestone((select first_step from p10), null)$$,
-  '22023', NULL,
-  'an unfunded paying step cannot be approved even by the brand owner'
+  '22023', 'P10 Factory has not posted an update on "Fit sample" yet. You can approve it once they do',
+  'with only the brand''s own comment on it, an open step has nothing to approve yet'
 );
 
 reset role;
@@ -338,26 +343,132 @@ select public.record_payment_funded(
   (select id from public.order_payments where milestone_id = (select first_step from p10)),
   'ch_pgtap10', 'card', 'Visa ···4242', null);
 
--- Remove the fixture comments: approval must not require either side to post.
-delete from public.milestone_updates where milestone_id = (select first_step from p10);
+-- Funded, but the factory's update is set aside: the brand's own comment
+-- alone still approves nothing, and approving would pay the factory.
+create temporary table p10_factory_posts as
+select * from public.milestone_updates
+ where milestone_id = (select first_step from p10)
+   and author_org_id = 'da000000-0000-0000-0000-0000000000f1';
+delete from public.milestone_updates where id in (select id from p10_factory_posts);
+
+set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+select throws_ok(
+  $$select public.approve_milestone((select first_step from p10), null)$$,
+  '22023', NULL,
+  'a funded paying step with only the brand''s comment cannot be approved: nothing the factory did is in it'
+);
+
+reset role;
+
+-- Two hats: one person in both companies posts as the factory, then tries to
+-- approve as the brand. Their own post is not the factory's work for them.
+set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000005","role":"authenticated"}';
+set local role authenticated;
+
+select public.post_milestone_update((select first_step from p10), 'Looks fine to me.', '{}');
+
+select throws_ok(
+  $$select public.approve_milestone((select first_step from p10), null)$$,
+  '22023', NULL,
+  'a person in both companies cannot approve a step on the strength of their own post'
+);
+
+reset role;
+
+-- The factory's own update is back: now there is something to approve.
+insert into public.milestone_updates select * from p10_factory_posts;
 
 set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 
 select lives_ok(
   $$select public.approve_milestone((select first_step from p10), 'Collar confirmed, go ahead.')$$,
-  'the brand owner approves a funded open step without any comments'
+  'the brand owner approves a funded open step from the factory''s update'
 );
 
 reset role;
 
 select is(
-  (select m.state::text || '/' || p.state::text
+  (select m.state::text || '/' || p.state::text || '/' || (p.release_requested_at is not null)::text
      from public.order_milestones m join public.order_payments p on p.milestone_id = m.id
     where m.id = (select first_step from p10)),
-  'complete/confirmed',
-  'approval without comments completes the step and requests release of its held payment'
+  'complete/confirmed/true',
+  'the step is approved from the update and its held money is owed to the factory'
 );
+
+-- The deposit is a payment step: never approved, posts or not.
+set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+select throws_ok(
+  $$select public.approve_milestone(
+      (select id from public.order_milestones where order_id = (select order_id from p10) and kind = 'payment_only' order by sort limit 1), null)$$,
+  '22023', 'there is nothing to approve on a payment step',
+  'a payment step has nothing to approve'
+);
+
+reset role;
+
+-- Funding the deposit completes it and opens bulk production (update only).
+select public.record_payment_funded(
+  (select p.id from public.order_payments p join public.order_milestones m on m.id = p.milestone_id
+    where m.order_id = (select order_id from p10) and m.kind = 'payment_only' order by m.sort limit 1),
+  'ch_pgtap10b', 'card', 'Visa ···4242', null);
+
+create temporary table p10_later as
+select (select id from public.order_milestones where order_id = p10.order_id and kind = 'progress_only') as bulk_step,
+       (select id from public.order_milestones where order_id = p10.order_id and kind = 'approval_only') as qc_step
+from p10;
+grant select on p10_later to public;
+
+set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+select throws_ok(
+  $$select public.approve_milestone((select bulk_step from p10_later), null)$$,
+  '22023', NULL,
+  'an update-only step the factory has posted nothing on cannot be approved'
+);
+
+reset role;
+set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000002","role":"authenticated"}';
+set local role authenticated;
+select public.post_milestone_update((select bulk_step from p10_later), 'Cutting done, sewing started.', '{}');
+reset role;
+
+set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+select lives_ok(
+  $$select public.approve_milestone((select bulk_step from p10_later), null)$$,
+  'once the factory has posted, the brand completes the update-only step'
+);
+
+select throws_ok(
+  $$select public.approve_milestone((select qc_step from p10_later), null)$$,
+  '22023', NULL,
+  'an approval-only step the factory has posted nothing on cannot be approved'
+);
+
+reset role;
+
+-- A step sent for approval the old way was the factory's own act.
+set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000002","role":"authenticated"}';
+set local role authenticated;
+select public.submit_milestone((select qc_step from p10_later));
+reset role;
+
+set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+
+select lives_ok(
+  $$select public.approve_milestone((select qc_step from p10_later), null)$$,
+  'a step the factory sent for approval is approved without an update, as before'
+);
+
+reset role;
 
 select * from finish();
 rollback;
