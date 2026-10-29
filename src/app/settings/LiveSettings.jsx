@@ -37,7 +37,7 @@ import { connectAccountFor, connectAction, listSavedCards, removeSavedCard, star
 import { getBrandProfile, getFactoryProfile } from "../../lib/domain/profile.js";
 import { getNotificationEmails, setNotificationEmail } from "../../lib/domain/notification-preferences.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
-import StripePayoutCard from "../order/StripePayoutCard.jsx";
+import StripePayoutCard, { payoutRemovalError } from "../order/StripePayoutCard.jsx";
 import { BillingMethodFlow } from "../order/PayoutDetails.jsx";
 
 const PAYOUT_FIELDS = [
@@ -152,6 +152,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           const balance = await connectAction(org.id, "balance").catch(() => null);
           const connected = balance?.methods ?? [];
           setPayoutMethods(connected.length ? connected.map((method) => ({
+            id: method.id,
             label: method.default ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Payout card" : "Bank account",
             name: `${method.type === "card" ? "Payout card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`,
             note: [method.name, method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
@@ -227,8 +228,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
       setManualSaved(false);
       await reload();
     } catch (failure) {
-      setError(failure);
-      throw failure;
+      // Refused while TSC owes a bank payout to this account: said with the amount.
+      throw payoutRemovalError(failure);
     } finally {
       setBusy(false);
     }
@@ -307,7 +308,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
 
   if (!members) return error ? <p className="shell-note" role="alert">{error.message ?? String(error)}</p> : null;
 
-  const openPayoutFlow = (action) => setPayoutFlow({ action, id: Date.now() });
+  const openPayoutFlow = (action, methodId = null) => setPayoutFlow({ action, methodId, id: Date.now() });
   const isOwner = org.role === "owner";
 
   // The switch moves at once; a refused save puts it back and says why.
@@ -337,7 +338,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         onRemoveBillingMethod={isOwner ? removeCard : undefined}
         billingMethodNote={isOwner ? "" : `Only an owner of ${org.name || "your company"} can add or remove payment methods.`}
         onEditPaymentMethod={isFactory ? () => openPayoutFlow("edit") : undefined}
-        onDeletePaymentMethod={isFactory ? () => openPayoutFlow("remove") : undefined}
+        onDeletePaymentMethod={isFactory ? (method) => openPayoutFlow("remove", method?.id) : undefined}
         team={team}
         {...live}
         onInvite={invite}
@@ -356,6 +357,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           isOwner
           renderCard={false}
           initialAction={payoutFlow.action}
+          initialMethodId={payoutFlow.methodId}
           onFlowClose={() => { setPayoutFlow(null); setManualSaved(false); }}
           manualAccount={manualAccount}
           manualForm={manualForm}

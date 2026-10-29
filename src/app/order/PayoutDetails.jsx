@@ -25,7 +25,7 @@ import { formatMoney } from "../../lib/money.js";
 import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
-import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
+import StripePayoutCard, { PayoutModal, payoutRemovalError } from "./StripePayoutCard.jsx";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 import { earningStatus, earningsSummaryFor, factoryAmount } from "./payment-summary.mjs";
@@ -348,8 +348,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       setForm(blankPayout());
       setSaved(false);
     } catch (failure) {
-      setError(failure);
-      throw failure;
+      // Refused while TSC owes a bank payout to this account: said with the amount.
+      throw payoutRemovalError(failure);
     } finally {
       setBusy(false);
     }
@@ -413,6 +413,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             onDeleteManual={deleteAccount}
             manualBusy={busy}
             manualSaved={saved}
+            manualOwed={(earnings ?? []).filter((row) => row.state === "confirmed" && row.release_requested_at)
+              .map((row) => ({ amount: factoryAmount(row), currency: row.currency }))}
           />
           <label className="payments-client-filter">
             <span>Filter by client</span>

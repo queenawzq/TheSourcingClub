@@ -109,11 +109,12 @@ export default async function handler(request, response) {
     }
 
     if (action === "balance") {
-      const [balance, allocation, externalAccounts, account] = await Promise.all([
+      const [balance, allocation, externalAccounts, account, recentPayouts] = await Promise.all([
         stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
         payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
         stripe.accounts.listExternalAccounts(existing.stripe_account_id, { limit: 10 }),
         stripe.accounts.retrieve(existing.stripe_account_id),
+        stripe.payouts.list({ limit: 20 }, { stripeAccount: existing.stripe_account_id }),
       ]);
       return reply(response, 200, {
         defaultCurrency: account.default_currency,
@@ -121,6 +122,17 @@ export default async function handler(request, response) {
         pending: balance.pending.map(({ amount, currency }) => ({ amount, currency })),
         payouts: allocation.payouts,
         pendingEarnings: allocation.pending,
+        // Withdrawals not yet at the bank, and which account each is going to:
+        // that account cannot be removed until its money arrives.
+        payoutsOnTheirWay: recentPayouts.data
+          .filter((payout) => payout.status === "pending" || payout.status === "in_transit")
+          .map((payout) => ({
+            id: payout.id,
+            amount: payout.amount,
+            currency: payout.currency,
+            arrival_date: payout.arrival_date,
+            destination: typeof payout.destination === "string" ? payout.destination : payout.destination?.id ?? null,
+          })),
         methods: externalAccounts.data.map((method) => ({
           id: method.id,
           type: method.object === "card" ? "card" : "bank_account",
