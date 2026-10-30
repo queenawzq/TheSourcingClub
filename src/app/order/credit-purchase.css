@@ -122,3 +122,18 @@
   font-weight: 500;
   line-height: 18px;
 }
+
+/* The pack list while credit_packs() answers: rows the height of the packs
+   and of the custom amount, so the dialog does not grow when they arrive. */
+.tsc-credit-packs-placeholder span {
+  display: block;
+  min-height: 56px;
+  border-radius: 8px;
+  background: var(--border);
+  animation: tsc-credit-pack-pulse 1.4s ease-in-out infinite;
+}
+.tsc-credit-packs-placeholder .tsc-credit-custom-placeholder { min-height: 130px; }
+@keyframes tsc-credit-pack-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) {
+  .tsc-credit-packs-placeholder span { animation: none; }
+}
