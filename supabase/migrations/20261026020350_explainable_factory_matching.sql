@@ -130,7 +130,8 @@ begin
    end if;
    if changed then
      if tg_op='INSERT' and (coalesce(auth.role(),'')='service_role' or (auth.uid() is null and current_user='postgres')) then null;
-     else new.status:='pending'; end if;
+     -- A claim with no file has nothing to review, so it stays unverified, as before matching.
+     else new.status:=case when new.document_id is null then 'unverified'::public.verification_status else 'pending'::public.verification_status end; end if;
    elsif not public.is_platform_admin() and coalesce(auth.role(),'')<>'service_role' and current_user<>'postgres' then new.status:=old.status; end if;
  end if;
  return new;
