@@ -89,6 +89,41 @@ async function apiAs(page, route, body) {
   return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 
+/**
+ * A second person, signed in from somewhere else while the page stays open:
+ * an owner changing a teammate's permissions, a company inviting someone.
+ */
+async function clientAs(email) {
+  const client = createClient(
+    process.env.SUPABASE_URL ?? stack.API_URL,
+    process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY,
+    { auth: { persistSession: false } },
+  );
+  const { data, error } = await client.auth.signInWithPassword({ email, password: PASSWORD });
+  if (error) throw new Error(`${email} could not sign in: ${error.message}`);
+  return { client, token: data.session.access_token, userId: data.user.id };
+}
+
+/** An invitation sent the way Settings sends it, as that person. */
+async function inviteThrough(person, body) {
+  const response = await fetch(`${API}/api/send-team-invite`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${person.token}` },
+    body: JSON.stringify(body),
+  });
+  return { status: response.status, body: await response.json().catch(() => ({})) };
+}
+
+/** Polls the page until `test` holds; returns how long it took, or null. */
+async function within(page, test, timeout = 15000) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    if (await test().catch(() => false)) return Date.now() - started;
+    await page.waitForTimeout(200);
+  }
+  return null;
+}
+
 const FIXTURE = path.join(OUT, "..", "e2e-fixture-registration.pdf");
 
 /** Either side's dashboard: the brand's stack, or the factory's own page. */
@@ -1619,6 +1654,53 @@ async function main() {
     // ================= AWARD =================
     console.log("\nBRAND DECIDES");
     await signOutFully(page);
+
+    // ================= A TEAMMATE WITHOUT QUOTE FLOW =================
+    // A member is given only what an owner ticks. Without Quote flow the
+    // composer and the contract say which permission is missing, instead of a
+    // form the database would refuse.
+    console.log("\nA TEAMMATE WITHOUT QUOTE FLOW");
+    const brandOwner = await clientAs(brandEmail);
+    const teammateEmail = `teammate-${stamp}@example.com`;
+    const teammateInvite = await inviteThrough(brandOwner, {
+      orgId: brandOrg.id, email: teammateEmail, name: "Theo Teammate", title: "Production lead", permissions: ["approve"],
+    });
+    check(teammateInvite.status === 200 && Boolean(teammateInvite.body.id),
+      `the owner invites a teammate with Approve samples only (${teammateInvite.status} ${teammateInvite.body.error ?? ""})`);
+    await db.auth.admin.createUser({
+      email: teammateEmail, password: PASSWORD, email_confirm: true, user_metadata: { full_name: "Theo Teammate" },
+    });
+    const teammate = await clientAs(teammateEmail);
+    const { error: teammateJoinError } = await teammate.client.rpc("accept_invitation", { invitation_id: teammateInvite.body.id });
+    const { data: teammateRow } = await db.from("org_members")
+      .select("role, permissions, title").eq("org_id", brandOrg.id).eq("user_id", teammate.userId).maybeSingle();
+    check(!teammateJoinError && teammateRow?.role === "member"
+      && JSON.stringify(teammateRow?.permissions) === '["approve"]' && teammateRow?.title === "Production lead",
+      `they join as a member with exactly what was ticked, and the title (${JSON.stringify(teammateRow)}${teammateJoinError ? `, ${teammateJoinError.message}` : ""})`);
+
+    await signIn(page, teammateEmail, "Teammate");
+    await page.goto(`${APP}/rfqs/new`);
+    await waitFor(page, '[data-testid="needs-permission"]', 25000);
+    const composerRefusal = await page.locator('[data-testid="needs-permission"]').innerText();
+    check(composerRefusal.includes("Quote flow") && composerRefusal.includes(brandName),
+      `the composer says which permission is missing (${composerRefusal.trim()})`);
+    check(/not available to you/i.test(await page.locator("h1").first().innerText()),
+      "in place of the composer, not under it");
+    await record(page, "No Quote flow: the composer", "the missing permission, named");
+
+    const { data: openQuote } = await db.from("quotes").select("id")
+      .eq("rfq_id", publishedRfq.id).eq("factory_org_id", factoryOrg.id).eq("status", "submitted").single();
+    await page.goto(`${APP}/rfqs/${publishedRfq.id}/quotes/${openQuote.id}/contract`);
+    await waitFor(page, '[data-testid="contract-blocked"]', 25000);
+    const contractRefusal = await page.locator('[data-testid="contract-blocked"]').innerText();
+    check(/only someone with quote flow/i.test(contractRefusal) && contractRefusal.includes(brandName),
+      `the contract says who can choose a quote (${contractRefusal.trim()})`);
+    const awardButton = await eachText(page, ".bottom-bar .primary-btn");
+    check(!awardButton.some((label) => /create production steps/i.test(label)),
+      `and offers no "Create production steps" (${JSON.stringify(awardButton)})`);
+    await record(page, "No Quote flow: the contract", "the quote reads back; choosing it is not offered");
+    await signOutFully(page);
+
     await signIn(page, brandEmail, "Brand deciding");
 
     await page.goto(`${APP}/rfqs/${publishedRfq.id}/quotes`);
@@ -1977,6 +2059,52 @@ async function main() {
     await record(page, "The factory waits", "nothing is held yet, and the screen says so");
 
     await signOutFully(page);
+
+    // ================= A TEAMMATE AND THE MONEY =================
+    // The teammate's order page stays open while the owner, signed in
+    // elsewhere, gives and takes away Release funds, then removes them. The
+    // page follows each change without a reload (Realtime on org_members).
+    console.log("\nA TEAMMATE AND THE MONEY");
+    await signIn(page, teammateEmail, "Teammate on the order");
+    await page.goto(`${APP}/orders/${bornOrder.id}`);
+    await waitFor(page, '[data-testid="milestone-row"]', 25000);
+    const releaseSentence = `Only someone with Release funds at ${brandName}`;
+    const fundOffered = async () => (await eachText(page, '[data-testid="milestone-action"]'))
+      .some((label) => /^fund milestone$/i.test(label.trim()));
+    const sentenceShown = async () => (await page.locator("body").innerText()).includes(releaseSentence);
+    check(await within(page, sentenceShown) !== null && !(await fundOffered()),
+      "without Release funds the due step says who can pay it, and offers no Fund");
+    await record(page, "No Release funds", "the step says who can pay it");
+
+    const access = (permissions) => brandOwner.client.rpc("set_member_access", {
+      target_org: brandOrg.id, target_user: teammate.userId, new_permissions: permissions, new_title: "Production lead",
+    });
+    const { error: grantError } = await access(["approve", "releaseFunds"]);
+    const fundAfter = await within(page, fundOffered);
+    check(!grantError && fundAfter !== null,
+      `the owner gives Release funds and Fund appears on the open page, no reload (${fundAfter} ms${grantError ? `, ${grantError.message}` : ""})`);
+    await record(page, "Release funds given", "Fund milestone, live");
+
+    const { error: takeError } = await access(["approve"]);
+    const sentenceAfter = await within(page, async () => !(await fundOffered()) && (await sentenceShown()));
+    check(!takeError && sentenceAfter !== null,
+      `the owner takes it away and the sentence returns (${sentenceAfter} ms${takeError ? `, ${takeError.message}` : ""})`);
+
+    const { error: removeError } = await brandOwner.client.rpc("remove_member", {
+      target_org: brandOrg.id, target_user: teammate.userId,
+    });
+    const lostSentence = `no longer have access to ${brandName}`;
+    const lostAfter = await within(page, async () => (await page.locator("body").innerText()).includes(lostSentence));
+    check(!removeError && lostAfter !== null,
+      `removed while the page is open, they are told "You ${lostSentence}" (${lostAfter} ms${removeError ? `, ${removeError.message}` : ""})`);
+    await record(page, "Removed while open", "the page says so at once");
+    const { data: teammateGone } = await db.from("org_members").select("user_id")
+      .eq("org_id", brandOrg.id).eq("user_id", teammate.userId);
+    check((teammateGone ?? []).length === 0, "and the membership is gone");
+    const { data: teammateOrder } = await teammate.client.from("production_orders").select("id").eq("id", bornOrder.id);
+    check((teammateOrder ?? []).length === 0, "and the database no longer shows them the order");
+    await signOutFully(page);
+
     await signIn(page, brandEmail, "Brand funding");
 
     await page.goto(`${APP}/orders/${bornOrder.id}`);
@@ -3782,17 +3910,76 @@ async function main() {
     const colleagueEmail = `colleague-${stamp}@example.com`;
     await clickButton(page, "roles & access");
     await page.waitForTimeout(1000);
-    await clickButton(page, "invite member");
-    await waitFor(page, '[data-testid="send-invite"]', 15000);
-    await page.locator('input[placeholder="name@company.com"]').first().fill(colleagueEmail);
-    await page.waitForTimeout(400);
-    await page.locator('[data-testid="send-invite"]').click();
-    await page.waitForTimeout(3500);
+
+    // The last owner can neither leave nor be made a member: neither is offered.
+    const ownLeave = page.locator(`button[aria-label="Leave ${brandName}"]`);
+    check((await ownLeave.count()) === 1
+      && await page.evaluate((label) => document.querySelector(`button[aria-label="${label}"]`)?.disabled === true, `Leave ${brandName}`),
+      "the last owner's own Leave is drawn disabled");
+    check(!(await eachText(page, ".tsc-team-role-btn")).some((label) => /make member/i.test(label)),
+      'and no "Make member" is offered on the last owner');
+
+    // The drawer's name, title and permissions all reach the invitation.
+    const sendInvite = async (email, { name = "", title = null, extra = [] } = {}) => {
+      await clickButton(page, "invite member");
+      await waitFor(page, '[data-testid="send-invite"]', 15000);
+      await page.locator('input[placeholder="name@company.com"]').first().fill(email);
+      if (name) await fillNamed(page, "inviteName", name);
+      if (title) await selectNamed(page, "inviteTitle", title);
+      for (const key of extra) await page.locator(`.settings-drawer input[data-permission="${key}"]`).first().click();
+      await page.waitForTimeout(400);
+      await page.locator('[data-testid="send-invite"]').click();
+      await within(page, async () => (await page.locator('[data-testid="send-invite"]').count()) === 0, 15000);
+    };
+    await sendInvite(colleagueEmail, { name: "Cleo Colleague", title: "Finance", extra: ["releaseFunds"] });
 
     const { data: invited } = await db.from("org_invitations")
-      .select("id, status, role").eq("email", colleagueEmail).single();
+      .select("id, status, role, permissions, title, invited_name, emailed_at").eq("email", colleagueEmail).single();
     check(invited.status === "pending", "the invitation is stored and waiting");
-    await record(page, "Invited", "they see it the next time they sign in");
+    check(invited.invited_name === "Cleo Colleague" && invited.title === "Finance"
+      && [...invited.permissions].sort().join() === "approve,releaseFunds",
+      `with the name, title and permissions from the drawer (${invited.invited_name}, ${invited.title}, ${invited.permissions})`);
+    check(Boolean(invited.emailed_at), "and it was emailed");
+    const teamInviteMails = await (await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:${colleagueEmail}`)}`)).json().catch(() => ({}));
+    const teamInviteMail = (teamInviteMails.messages ?? [])[0];
+    check(Boolean(teamInviteMail) && teamInviteMail.Subject.includes(brandName),
+      `the email names the company (${teamInviteMail?.Subject ?? "no email"})`);
+
+    await clickButton(page, "invited");
+    await waitFor(page, ".settings-invited-row", 10000);
+    const invitedRow = async () => (await eachText(page, ".settings-invited-row")).find((text) => text.includes(colleagueEmail)) ?? "";
+    check((await invitedRow()).includes("Finance") && /sent today/i.test(await invitedRow()),
+      `the Invited list shows it with its title (${(await invitedRow()).replace(/\s+/g, " ")})`);
+    await record(page, "Invited", "name, title and permissions from the drawer; emailed");
+
+    // Resend minutes later is refused in words, not with a code.
+    const inviteRowList = page.locator(".settings-invited-row");
+    for (let index = 0; index < (await inviteRowList.count()); index += 1) {
+      if ((await inviteRowList.nth(index).innerText()).includes(colleagueEmail)) {
+        await page.locator(`.settings-invited-row:nth-of-type(${index + 1}) .tsc-team-invite-actions .secondary-btn`).click();
+      }
+    }
+    const resendSaid = await within(page, async () => /try again in 10 minutes/i.test(await page.locator(".tsc-team-notices").innerText()));
+    check(resendSaid !== null, "Resend within ten minutes is refused, and says when to try again");
+    await record(page, "Resend too soon", "said in words");
+    await clickButton(page, "ok").catch(() => {});
+
+    // Withdraw asks first, then the invitation can no longer be used.
+    const withdrawEmail = `withdrawn-${stamp}@example.com`;
+    await sendInvite(withdrawEmail);
+    await clickButton(page, "invited").catch(() => {});
+    await waitFor(page, `button[aria-label="Withdraw the invitation to ${withdrawEmail}"]`, 15000);
+    await page.locator(`button[aria-label="Withdraw the invitation to ${withdrawEmail}"]`).click();
+    await waitFor(page, '[data-testid="confirm-team-change"]', 10000);
+    const withdrawAsk = await page.locator(".tsc-team-confirm").innerText();
+    check(/withdraw this invitation/i.test(withdrawAsk) && withdrawAsk.includes(withdrawEmail),
+      "Withdraw asks first, naming the address");
+    await record(page, "Withdraw asks first");
+    await page.locator('[data-testid="confirm-team-change"]').click();
+    const withdrawnGone = await within(page, async () => (await page.locator(`button[aria-label="Withdraw the invitation to ${withdrawEmail}"]`).count()) === 0);
+    const { data: withdrawnRow } = await db.from("org_invitations").select("status").eq("email", withdrawEmail).single();
+    check(withdrawnGone !== null && withdrawnRow.status === "revoked",
+      `and once confirmed it leaves the list and is withdrawn (${withdrawnRow.status})`);
 
     await db.auth.admin.createUser({ email: colleagueEmail, password: PASSWORD, email_confirm: true });
 
@@ -3821,6 +4008,59 @@ async function main() {
     const colleagueHome = await page.locator(".home-stack").innerText();
     check(colleagueHome.includes(brandName),
       "and they land in that organisation, not one of their own");
+    const { data: colleagueRow } = await db.from("org_members").select("permissions, title, user_id")
+      .eq("org_id", brandOrg.id).eq("role", "member").single();
+    check([...colleagueRow.permissions].sort().join() === "approve,releaseFunds" && colleagueRow.title === "Finance",
+      `with the permissions and title they were invited with (${colleagueRow.permissions}, ${colleagueRow.title})`);
+
+    // Someone already in a company is invited to another: a banner over the
+    // workspace they are in, and Join switches them to it.
+    const factoryOwner = await clientAs(`e2e-factory-${stamp}@example.com`);
+    const crossInvite = await inviteThrough(factoryOwner, { orgId: factoryOrg.id, email: colleagueEmail, permissions: ["addUpdate"] });
+    check(crossInvite.status === 200, `a factory invites the same person (${crossInvite.status} ${crossInvite.body.error ?? ""})`);
+    await page.goto(APP);
+    await waitFor(page, '[data-testid="join-invited-company"]', 25000);
+    const bannerText = await page.locator(".tsc-team-notices").innerText();
+    check(bannerText.includes(factoryName) && (await page.locator(".home-stack").count()) === 1,
+      "the invitation is a banner over the brand they are in, naming the factory");
+    await record(page, "Invited while in a company", "Join or Not now, over the current workspace");
+    await page.locator('[data-testid="join-invited-company"]').click();
+    const switched = await within(page, async () => (await page.locator(".factory-dashboard-page").count()) > 0, 25000);
+    const { data: crossRow } = await db.from("org_members").select("permissions")
+      .eq("org_id", factoryOrg.id).eq("user_id", colleagueRow.user_id).maybeSingle();
+    check(switched !== null && JSON.stringify(crossRow?.permissions) === '["addUpdate"]',
+      `Join switches them to the factory, as a member with Add update (${JSON.stringify(crossRow?.permissions)})`);
+    await record(page, "Joined from the banner", "now in the factory's workspace");
+
+    // A factory member without RFQ flow is told so on the quote route.
+    await page.goto(`${APP}/browse/${publishedRfq.id}/quote`);
+    await waitFor(page, '[data-testid="needs-permission"]', 25000);
+    const quoteRefusal = await page.locator('[data-testid="needs-permission"]').innerText();
+    check(quoteRefusal.includes("RFQ flow") && quoteRefusal.includes(factoryName),
+      `a factory member without RFQ flow is told which permission the quote form needs (${quoteRefusal.trim()})`);
+    await record(page, "No RFQ flow: the quote form", "the missing permission, named");
+
+    // Anyone but the last owner may leave, after a confirmation.
+    await page.goto(`${APP}/team`);
+    await waitFor(page, ".settings-page, .settings-shell, .settings-nav", 25000);
+    await clickButton(page, "team & stakeholders");
+    await waitFor(page, `button[aria-label="Leave ${factoryName}"]`, 15000);
+    await page.locator(`button[aria-label="Leave ${factoryName}"]`).click();
+    await waitFor(page, '[data-testid="confirm-team-change"]', 10000);
+    check((await page.locator(".tsc-team-confirm").innerText()).includes(`Leave ${factoryName}?`),
+      "Leave asks first");
+    await record(page, "Leave asks first", "a member leaving the factory");
+    await page.locator('[data-testid="confirm-team-change"]').click();
+    const left = await within(page, async () => {
+      const { data } = await db.from("org_members").select("user_id").eq("org_id", factoryOrg.id).eq("user_id", colleagueRow.user_id);
+      return (data ?? []).length === 0;
+    });
+    check(left !== null, "and once confirmed they are no longer in the factory");
+    await page.goto(APP);
+    await waitFor(page, ".home-stack", 30000);
+    check((await page.locator(".home-stack").innerText()).includes(brandName),
+      "and they are back in the brand they still belong to");
+    await record(page, "Left", "back in the brand");
 
     // ================= WHEN IT BREAKS =================
     // The boundary is the only thing between a bug and a blank white page, so

@@ -97,16 +97,17 @@ function actionFor(milestone, { isFactory, canFund, canApprove, posted }) {
   }
   // Keep the next action visible on every upcoming step. The database still
   // owns sequencing, so a future CTA is disabled until that step opens rather
-  // than disappearing and leaving the schedule without a clear action.
+  // than disappearing and leaving the schedule without a clear action. Only
+  // to someone who will be able to press it once it opens.
   if (milestone.state === "pending") {
     if (milestone.kind === "payment_only" && payment?.state === "not_due") {
-      return { action: "Fund milestone", tone: "primary", kind: "fund", actionDisabled: true };
+      return canFund ? { action: "Fund milestone", tone: "primary", kind: "fund", actionDisabled: true } : none;
     }
     if (milestone.kind === "approval_and_payment") {
-      return { action: "Approve fund", tone: "primary", kind: "approve", actionDisabled: true };
+      return canApprove && canFund ? { action: "Approve fund", tone: "primary", kind: "approve", actionDisabled: true } : none;
     }
     if (milestone.kind === "approval_only") {
-      return { action: "Approve", tone: "primary", kind: "approve", actionDisabled: true };
+      return canApprove ? { action: "Approve", tone: "primary", kind: "approve", actionDisabled: true } : none;
     }
   }
   return none;
