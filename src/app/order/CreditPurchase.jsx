@@ -121,6 +121,18 @@ export function CreditPurchaseDialog({ orgId, onClose, onPurchased }) {
   );
 }
 
+// The three packs and the custom amount, as grey blocks of their own size.
+function CreditPacksPlaceholder() {
+  return (
+    <div className="factory-credit-purchase-options tsc-credit-packs-placeholder" role="status" aria-label="Loading credit packs">
+      <span />
+      <span />
+      <span />
+      <span className="tsc-credit-custom-placeholder" />
+    </div>
+  );
+}
+
 function CreditPurchaseFlow({ orgId, onClose, onDone }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -306,6 +318,9 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
       className="tsc-credit-buy-modal"
       layerClassName="factory-invite-modal-layer"
       packs={packs ?? []}
+      // Until the packs arrive, grey rows the size of the list, rather than
+      // an empty list that fills in.
+      paymentElement={paymentElement ?? (packs === null ? <CreditPacksPlaceholder /> : null)}
       busy={checkout ? busy || !stripe || !cardReady : busy || packs === null}
       error={problem}
       description={checkout
@@ -314,7 +329,6 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
       customMinimumCredits={50}
       customRateCents={10}
       continueLabel={checkout ? (busy ? "Paying…" : `Pay ${amount}`) : busy ? "Starting…" : undefined}
-      paymentElement={paymentElement}
       onContinue={checkout ? pay : choose}
       // Not while Stripe is charging the card: the answer would have nowhere
       // to land (the webhook still records it).
