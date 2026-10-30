@@ -73,7 +73,7 @@
 .payout-amount-positive { color: #16834f; }
 .payout-amount-negative { color: var(--text); }
 .payout-amount-pending { color: var(--text); }
-.payout-status-completed, .payout-status-paid, .payout-status-funded { background: #edf7f1; color: #167847 !important; }
+.payout-status-completed, .payout-status-paid, .payout-status-funded, .payout-status-paid-by-bank-transfer { background: #edf7f1; color: #167847 !important; }
 .payout-status-failed, .payout-status-canceled { background: #fff0ed; color: #b93824 !important; }
 .payout-status-processing, .payout-status-payment-processing, .payout-status-sent { background: #eaf2ff; color: var(--blue) !important; }
 .brand-transaction-view { display: flex; align-items: center; justify-self: end; gap: 12px; color: var(--text); text-decoration: none; }
@@ -178,7 +178,7 @@
   .billing-method-empty > button { width: 100%; }
   .live-payout-method-card { grid-template-columns: minmax(0, 1fr); padding: 18px; }
   .live-payout-card-action { justify-self: stretch; }
-  .live-payout-card-action button { width: 100%; }
+  .live-payout-card-action button, .live-payout-card-action .payout-button-placeholder { width: 100%; }
   .live-payout-card-action > .payout-owner-only { max-width: none; text-align: left; }
   .payout-transactions-header { align-items: flex-start; flex-direction: column; }
   .brand-transaction-filters { display: grid; grid-template-columns: 1fr; }
@@ -244,4 +244,39 @@
 
 .billing-card-field > input::placeholder {
   color: #8391a8;
+}
+
+/* The balance before Stripe answers: grey blocks the size of the amount and
+   its line, so the card keeps its shape when the number arrives. */
+.payout-balance-placeholder { display: inline-block; vertical-align: middle; width: 140px; max-width: 100%; height: 30px; border-radius: 6px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+/* Two 18px lines, like the sentence that replaces them; padding and a flex
+   gap, since block margins would collapse into each other and the card. */
+.live-payout-balance .payout-balance-placeholder-lines { display: flex; flex-direction: column; gap: 6px; padding: 3px 0; }
+.payout-balance-placeholder-lines span { display: block; height: 12px; border-radius: 4px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-balance-placeholder-lines span:first-child { width: min(100%, 360px); }
+.payout-balance-placeholder-lines span:last-child { width: min(70%, 240px); }
+/* The sentence under a Stripe balance runs to two lines (three on a narrow
+   desktop, four when the card stacks); its space is kept from the start, so it never pushes the page. */
+.live-stripe-payout-card .payout-balance-line { min-height: 36px; box-sizing: border-box; }
+@media (max-width: 900px) {
+  .live-stripe-payout-card .payout-balance-line { min-height: 54px; }
+}
+@media (max-width: 760px) {
+  .live-stripe-payout-card .payout-balance-line { min-height: 72px; }
+}
+/* The rest of the page while it loads, the same grey: a bar the size of each
+   figure, and rows the height of the rows they stand in for. */
+.payout-label-placeholder { display: block; width: 110px; height: 12px; margin: 6px 0 8px; border-radius: 4px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-note-placeholder { display: inline-block; vertical-align: middle; width: 180px; height: 10px; border-radius: 4px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-button-placeholder { display: block; width: 150px; height: 34px; border-radius: 8px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-figure-placeholder { display: inline-block; vertical-align: middle; width: 96px; max-width: 100%; height: 18px; margin: 2px 0; border-radius: 5px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.factory-credit-billing-card .payout-credit-placeholder { display: inline-block; vertical-align: middle; width: 120px; height: 22px; border-radius: 5px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-row-placeholder span { display: block; height: 12px; border-radius: 4px; background: var(--border); animation: payout-balance-pulse 1.4s ease-in-out infinite; }
+.payout-row-placeholder span:nth-child(odd) { width: 70%; }
+.payout-row-placeholder span:last-child { justify-self: end; width: 64px; }
+.billing-history-row.payout-row-placeholder { min-height: 76px; box-sizing: border-box; }
+@keyframes payout-balance-pulse { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) {
+  .payout-balance-placeholder, .payout-balance-placeholder-lines span,
+  .payout-label-placeholder, .payout-note-placeholder, .payout-button-placeholder, .payout-figure-placeholder, .payout-credit-placeholder, .payout-row-placeholder span { animation: none; }
 }

@@ -1,0 +1,62 @@
+[factory dashboard 1440] Scheduled calls | Shirting questions | Fri, Oct 30 · 10:00 AM ET | Demo Brand: Fri, Oct 30 · 10:00 AM ET | Lab dip timing and the three-month price hold. | Join call
+[factory dashboard 1440] page wider than viewport by 0px
+[factory dashboard 950] Scheduled calls | Shirting questions | Fri, Oct 30 · 10:00 AM ET | Demo Brand: Fri, Oct 30 · 10:00 AM ET | Lab dip timing and the three-month price hold. | Join call
+[factory dashboard 950] page wider than viewport by 0px
+[factory dashboard 375] Scheduled calls | Shirting questions | Fri, Oct 30 · 10:00 AM ET | Demo Brand: Fri, Oct 30 · 10:00 AM ET | Lab dip timing and the three-month price hold. | Join call
+[factory dashboard 375] page wider than viewport by 0px
+[factory order conversation]
+  THEIRS «Thanks, we'll review the fit sample today.» toggle=-
+  THEIRS «Can you share the trim card by Friday?» toggle=Show translation (中文)
+  OWN  «辅料卡周四可以寄出。» toggle=Show translation (English)
+  OWN  «Photos of the lab dip are attached below.» toggle=Show translation (中文)
+  list: 
+  [factory order call 1440] Fit sample review | Demo Brand: Sat, Oct 31 · 11:00 AM ET | Sat, Oct 31 · 11:00 AM ET | Waiting for Demo Brand to answer | Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length. | Withdraw invite
+  [factory order call 1440] Wash test results | Demo Brand: Sun, Nov 1 · 9:00 AM ET | Sun, Nov 1 · 9:00 AM ET | You declined | “Too early for Porto, and the wash test is not back yet.”
+  [factory order 1440] page wider than viewport by 0px
+  [factory order call 950] Fit sample review | Demo Brand: Sat, Oct 31 · 11:00 AM ET | Sat, Oct 31 · 11:00 AM ET | Waiting for Demo Brand to answer | Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length. | Withdraw invite
+  [factory order call 950] Wash test results | Demo Brand: Sun, Nov 1 · 9:00 AM ET | Sun, Nov 1 · 9:00 AM ET | You declined | “Too early for Porto, and the wash test is not back yet.”
+  [factory order 950] page wider than viewport by 0px
+  [factory order call 375] Fit sample review | Demo Brand: Sat, Oct 31 · 11:00 AM ET | Sat, Oct 31 · 11:00 AM ET | Waiting for Demo Brand to answer | Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length. | Withdraw invite
+  [factory order call 375] Wash test results | Demo Brand: Sun, Nov 1 · 9:00 AM ET | Sun, Nov 1 · 9:00 AM ET | You declined | “Too early for Porto, and the wash test is not back yet.”
+  [factory order 375] page wider than viewport by 0px
+[factory request conversation]
+  THEIRS «Could you confirm the lab dip timing before we award?» toggle=-
+  list: 
+  [factory request call 1440] Shirting questions | Demo Brand: Fri, Oct 30 · 10:00 AM ET | Fri, Oct 30 · 10:00 AM ET | Confirmed | Lab dip timing and the three-month price hold. | Join call | Add to calendar | Google Calendar | Cancel call
+  [factory request 1440] page wider than viewport by 0px
+  [factory request call 950] Shirting questions | Demo Brand: Fri, Oct 30 · 10:00 AM ET | Fri, Oct 30 · 10:00 AM ET | Confirmed | Lab dip timing and the three-month price hold. | Join call | Add to calendar | Google Calendar | Cancel call
+  [factory request 950] page wider than viewport by 0px
+  [factory request call 375] Shirting questions | Demo Brand: Fri, Oct 30 · 10:00 AM ET | Fri, Oct 30 · 10:00 AM ET | Confirmed | Lab dip timing and the three-month price hold. | Join call | Add to calendar | Google Calendar | Cancel call
+  [factory request 375] page wider than viewport by 0px
+[brand dashboard 1440] Scheduled calls | Shirting questions | Fri, Oct 30 · 10:00 AM ET | Demo Factory: Fri, Oct 30 · 10:00 AM ET | Lab dip timing and the three-month price hold. | Join call | Fit sample review (invite) | Sat, Oct 31 · 11:00 AM ET | Demo Factory: Sat, Oct 31 · 3:00 PM Lisbon | Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length. | Review invite
+[brand dashboard 1440] page wider than viewport by 0px
+[brand dashboard 950] Scheduled calls | Shirting questions | Fri, Oct 30 · 10:00 AM ET | Demo Factory: Fri, Oct 30 · 10:00 AM ET | Lab dip timing and the three-month price hold. | Join call | Fit sample review (invite) | Sat, Oct 31 · 11:00 AM ET | Demo Factory: Sat, Oct 31 · 3:00 PM Lisbon | Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length. | Review invite
+[brand dashboard 950] page wider than viewport by 0px
+[brand dashboard 375] Scheduled calls | Shirting questions | Fri, Oct 30 · 10:00 AM ET | Demo Factory: Fri, Oct 30 · 10:00 AM ET | Lab dip timing and the three-month price hold. | Join call | Fit sample review (invite) | Sat, Oct 31 · 11:00 AM ET | Demo Factory: Sat, Oct 31 · 3:00 PM Lisbon | Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length. | Review invite
+[brand dashboard 375] page wider than viewport by 0px
+[brand order conversation]
+  OWN  «Thanks, we'll review the fit sample today.» toggle=-
+  OWN  «Can you share the trim card by Friday?» toggle=Show translation (中文)
+  THEIRS «The trim card can ship on Thursday.» toggle=Show original (中文)
+  THEIRS «Photos of the lab dip are attached below.» toggle=Show translation (中文)
+  list: 
+  [brand order call 1440] Fit sample review | Demo Factory: Sat, Oct 31 · 3:00 PM Lisbon | Sat, Oct 31 · 11:00 AM ET | Demo Factory invited you | Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length. | Accept | Propose another time | Decline
+  [brand order call 1440] Wash test results | Demo Factory: Sun, Nov 1 · 9:00 AM ET | Sun, Nov 1 · 9:00 AM ET | Declined by Demo Factory | “Too early for Porto, and the wash test is not back yet.”
+  [brand order 1440] page wider than viewport by 0px
+  [brand order call 950] Fit sample review | Demo Factory: Sat, Oct 31 · 3:00 PM Lisbon | Sat, Oct 31 · 11:00 AM ET | Demo Factory invited you | Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length. | Accept | Propose another time | Decline
+  [brand order call 950] Wash test results | Demo Factory: Sun, Nov 1 · 9:00 AM ET | Sun, Nov 1 · 9:00 AM ET | Declined by Demo Factory | “Too early for Porto, and the wash test is not back yet.”
+  [brand order 950] page wider than viewport by 0px
+  [brand order call 375] Fit sample review | Demo Factory: Sat, Oct 31 · 3:00 PM Lisbon | Sat, Oct 31 · 11:00 AM ET | Demo Factory invited you | Walk through the washed-linen fit sample on camera: collar, pockets, sleeve length. | Accept | Propose another time | Decline
+  [brand order call 375] Wash test results | Demo Factory: Sun, Nov 1 · 9:00 AM ET | Sun, Nov 1 · 9:00 AM ET | Declined by Demo Factory | “Too early for Porto, and the wash test is not back yet.”
+  [brand order 375] page wider than viewport by 0px
+[brand request conversation]
+  OWN  «Could you confirm the lab dip timing before we award?» toggle=-
+  OWN  «You can also email me directly at sourcing@demo-brand.example.» toggle=-
+  OWN  «Easier to sort the details on WeChat, my ID is demo_brand_88.» toggle=-
+  list: 
+  [brand request call 1440] Shirting questions | Demo Factory: Fri, Oct 30 · 10:00 AM ET | Fri, Oct 30 · 10:00 AM ET | Confirmed | Lab dip timing and the three-month price hold. | Join call | Add to calendar | Google Calendar | Cancel call
+  [brand request 1440] page wider than viewport by 0px
+  [brand request call 950] Shirting questions | Demo Factory: Fri, Oct 30 · 10:00 AM ET | Fri, Oct 30 · 10:00 AM ET | Confirmed | Lab dip timing and the three-month price hold. | Join call | Add to calendar | Google Calendar | Cancel call
+  [brand request 950] page wider than viewport by 0px
+  [brand request call 375] Shirting questions | Demo Factory: Fri, Oct 30 · 10:00 AM ET | Fri, Oct 30 · 10:00 AM ET | Confirmed | Lab dip timing and the three-month price hold. | Join call | Add to calendar | Google Calendar | Cancel call
+  [brand request 375] page wider than viewport by 0px

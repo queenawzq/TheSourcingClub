@@ -26,10 +26,11 @@ import { formatMoney } from "../../lib/money.js";
 import { STRIPE_PUBLISHABLE_KEY, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { FACTORY_INVITE_INTRO, INVITE_NOT_EMAILED, creditHistory, inviteNotice, sendInvite } from "../../lib/domain/credits.js";
 import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
-import StripePayoutCard, { PayoutModal } from "./StripePayoutCard.jsx";
+import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
+import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
-import { earningsSummaryFor, factoryAmount } from "./payment-summary.mjs";
+import { availableOn, earningStatus, earningsSummaryFor, factoryAmount, stripeRelevant } from "./payment-summary.mjs";
 import "./order.css";
 import "./payout.css";
 
@@ -47,10 +48,43 @@ const dateLabel = (value) => value
   ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
   : "Date pending";
 
-const stripeDateLabel = (value) => dateLabel(value ? value * 1000 : null);
+// Stripe's arrival_date is a day (midnight UTC), not an instant: read in the
+// Americas as an instant it is the day before.
+const stripeDateLabel = (value) => value
+  ? new Date(value * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
+  : "Date pending";
 
 const cardBrand = (brand) => (brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : "Card");
 const cardExpiry = (card) => (card.expMonth && card.expYear ? `Expires ${String(card.expMonth).padStart(2, "0")}/${card.expYear}` : "");
+
+/**
+ * What a factory paid through Stripe is told under its figures while Stripe
+ * has not given them: slow (the placeholders stay), failed, or not readable
+ * by anyone but an owner. Our own figures never wait for any of these.
+ */
+const STRIPE_FIGURES_TEXT = {
+  slow: "Stripe is taking longer than usual. Pending, Paid out and withdrawals will show as soon as it answers.",
+  failed: "Pending, Paid out and withdrawals could not be read from Stripe right now. Try again shortly.",
+  owner: "Pending, Paid out and withdrawals are read from Stripe, which only a company owner can do.",
+};
+
+/** A grey bar where a figure will be, sized like it; nothing is guessed. */
+const FigurePlaceholder = ({ label, className = "payout-figure-placeholder" }) => (
+  <span className={className} role="status" aria-label={`Loading ${label}`} />
+);
+
+/** Rows shaped like the list they stand in for, until its sources answer. */
+function RowPlaceholders({ className, cells, label }) {
+  return (
+    <div role="status" aria-label={`Loading ${label}`}>
+      {[0, 1, 2].map((row) => (
+        <div className={`${className} payout-row-placeholder`} aria-hidden="true" key={row}>
+          {Array.from({ length: cells }, (_, cell) => <span key={cell} />)}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const PAYOUT_STATUS = {
   paid: "Completed",
@@ -65,15 +99,6 @@ const PAYOUT_STATUS = {
  * paid, fee included, as received; the factory is paid the step's amount.
  * A bank wire from the old site records what actually arrived.
  */
-
-const blankPayout = (row) => ({
-  bank_name: row?.bank_name ?? "",
-  account_name: row?.account_name ?? "",
-  account_number_last4: row?.account_number_last4 ?? "",
-  swift: row?.swift ?? "",
-  iban: row?.iban ?? "",
-  instructions: row?.instructions ?? "",
-});
 
 let billingStripePromise = null;
 const billingStripe = () => {
@@ -128,14 +153,32 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   });
   const [client, setClient] = useState("All clients");
   const [transactionType, setTransactionType] = useState("all");
-  const [account, setAccount] = useState(null);
-  const [form, setForm] = useState(null);
+  // The bank accounts staff pay where Stripe cannot (use-manual-payouts.js).
+  const payouts = useManualPayouts(org.id);
+  // null until each read answers. Each source has its own error, so one that
+  // fails does not hide what the others found.
   const [earnings, setEarnings] = useState(null);
+  const [earningsError, setEarningsError] = useState(null);
   const [credits, setCredits] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [creditsError, setCreditsError] = useState(null);
+  const [accountsError, setAccountsError] = useState(null);
+  // For an action on the page (billing, a credit reload).
   const [error, setError] = useState(null);
-  const [stripeBalance, setStripeBalance] = useState(null);
+  // undefined until the payout card has asked Stripe; null when it cannot.
+  const [stripeBalance, setStripeBalance] = useState(undefined);
+  const [stripeStatus, setStripeStatus] = useState("loading");
+  // Whether the payout card has its final shape (it knows how the factory is
+  // paid, from our database). Figures below it wait for that, never for
+  // Stripe, so the card settling can only move placeholders.
+  const [cardSettled, setCardSettled] = useState(false);
+  const settleCard = useCallback(() => setCardSettled(true), []);
+  // The card reads its account and Stripe again when Earnings is opened
+  // again, so its figures wait again rather than show the last answer.
+  const leaveEarnings = () => {
+    setCardSettled(false);
+    setStripeBalance(undefined);
+    setStripeStatus("loading");
+  };
   const [billingSecret, setBillingSecret] = useState(null);
   const [billingBusy, setBillingBusy] = useState(false);
   const [billingSaved, setBillingSaved] = useState(new URLSearchParams(window.location.search).get("billing") === "saved");
@@ -162,25 +205,18 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     }
   }, [org.id]);
 
-  const load = useCallback(async () => {
-    setError(null);
-    const [accountResult, ordersResult] = await Promise.all([
-      supabase
-        .from("factory_payout_accounts")
-        .select("id, bank_name, account_name, account_number_last4, swift, iban, bank_country, instructions")
-        .eq("org_id", org.id)
-        .eq("is_primary", true)
-        .maybeSingle(),
-      supabase
+  // Earnings, credits and payout accounts are read side by side, and each
+  // shows as soon as it answers: one spinner held the whole page, and the
+  // Stripe balance, for the slowest of the three.
+  const loadEarnings = useCallback(async () => {
+    const orders = unwrap(
+      await supabase
         .from("production_orders")
         .select("id, order_number, brand_org_id, orgs!production_orders_brand_org_id_fkey (name)")
         .eq("factory_org_id", org.id)
         .order("created_at", { ascending: false }),
-      loadCredits(),
-    ]);
-
-    const payout = unwrap(accountResult, "load your payout account");
-    const orders = unwrap(ordersResult, "load your payment orders");
+      "load your payment orders",
+    );
     const orderById = new Map(orders.map((order) => [order.id, order]));
 
     let paymentRows = [];
@@ -195,18 +231,19 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       );
     }
 
-    setAccount(payout);
-    setForm(blankPayout(payout));
     setEarnings(paymentRows.map((payment) => ({ ...payment, order: orderById.get(payment.order_id) })));
-  }, [org.id, loadCredits]);
+  }, [org.id]);
 
   useEffect(() => {
     let cancelled = false;
-    load().catch((failure) => {
-      if (!cancelled) setError(failure);
-    });
+    const failed = (setFailure) => (failure) => {
+      if (!cancelled) setFailure(failure);
+    };
+    payouts.load().catch(failed(setAccountsError));
+    loadEarnings().catch(failed(setEarningsError));
+    loadCredits().catch(failed(setCreditsError));
     return () => { cancelled = true; };
-  }, [load]);
+  }, [payouts.load, loadEarnings, loadCredits]);
 
   useEffect(() => {
     loadCards();
@@ -221,6 +258,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
 
   // A promise to pay is not an earning. The factory's ledger begins only
   // once the brand's money has cleared and TSC is holding or releasing it.
+  // Until the earnings answer, these are empty and nothing below draws them.
   const fundedEarnings = (earnings ?? []).filter((row) => ["confirmed", "released"].includes(row.state));
   const clients = useMemo(
     () => [...new Map((earnings ?? []).filter((row) => row.order?.brand_org_id)
@@ -235,7 +273,15 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // converted into the other, so an empty figure is a zero in the earnings'
   // currency, and a strip holding two currencies says why.
   const summaryCurrency = (visibleEarnings[0]?.currency || "USD").toUpperCase();
-  const summary = earningsSummaryFor(earnings ?? [], stripeBalance, client);
+  const earningsShown = cardSettled || accountsError ? earnings : null;
+  const summary = earningsSummaryFor(earningsShown, stripeBalance, client);
+  // Whether the Stripe-read figures (Pending, Paid out, withdrawals) wait for
+  // Stripe at all, and if so, what to say while they cannot be shown.
+  const needsStripe = stripeRelevant(earningsShown);
+  const stripeFigures = !needsStripe || stripeBalance ? null
+    : stripeBalance === undefined ? (stripeStatus === "slow" ? "slow" : "loading")
+    : !isOwner ? "owner" : "failed";
+  const transactionsReady = Boolean(earningsShown) && stripeFigures !== "loading" && stripeFigures !== "slow";
   const paidInOtherCurrency = summary.paid?.some((row) => row.currency !== summaryCurrency);
   const earningsSummary = [
     ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
@@ -259,14 +305,16 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       date: row.released_at || row.confirmed_at || row.sent_at || row.due_at || row.created_at,
       title: row.order_milestones?.title || row.order?.order_number || "Order payment",
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
-      status: row.state === "released"
-        ? "Credited to balance"
-        : row.release_requested_at
-          ? "Pending"
-          : "Awaiting approval",
+      // A brand pays the step plus TSC's fee; the factory earns the step. The
+      // brand's total is TSC's arrangement with the brand, so it is not shown.
+      note: [
+        availableOn(row, stripeBalance) ? `Available to withdraw from ${availableOn(row, stripeBalance)}.` : null,
+        row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
+      ].filter(Boolean).join(" "),
+      status: earningStatus(row, stripeBalance),
       amount: factoryAmount(row),
       currency: row.currency,
-      available: row.state === "released",
+      available: earningStatus(row, stripeBalance) === "Credited to balance",
     })),
     ...payoutTransactions.map((row) => ({
       id: `payout-${row.id}`,
@@ -282,80 +330,9 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   ]
     .filter((row) => transactionType === "all" || row.type === transactionType)
     .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-  const creditBalance = credits?.balance ?? 0;
 
   if (!isFactory) {
     return <section className="billing-history-page"><h1>Payments</h1><p className="projects-empty">Factory payment tools are not available on a brand account.</p></section>;
-  }
-
-  if (error && (!earnings || !credits || !form)) {
-    return (
-      <section className="billing-history-page live-payments-page">
-        <header className="billing-history-header"><div><h1>Payments</h1></div></header>
-        <p className="projects-empty projects-error" role="alert">{error.message}</p>
-      </section>
-    );
-  }
-
-  if (!earnings || !credits || !form) {
-    return (
-      <section className="billing-history-page live-payments-page">
-        <div className="spinner" aria-hidden="true" />
-        <p>Loading payments…</p>
-      </section>
-    );
-  }
-
-  const set = (key) => (event) => {
-    setSaved(false);
-    setForm((current) => ({ ...current, [key]: event.target.value }));
-  };
-
-  // The set-up dialog sends the country it asked for; null for a country it
-  // does not list, which the factory names in the instructions instead.
-  async function saveAccount(details = {}) {
-    if (!form.bank_name.trim() || !form.account_name.trim()) {
-      setError(new Error("Add the bank and the account name so TSC can pay you."));
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const payload = {
-        org_id: org.id,
-        is_primary: true,
-        ...Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim() || null])),
-        bank_country: "bank_country" in details ? details.bank_country : account?.bank_country ?? null,
-      };
-      const result = account?.id
-        ? await supabase.from("factory_payout_accounts").update(payload).eq("id", account.id).select().single()
-        : await supabase.from("factory_payout_accounts").insert(payload).select().single();
-      const updated = unwrap(result, "save your payout account");
-      setAccount(updated);
-      setForm(blankPayout(updated));
-      setSaved(true);
-    } catch (failure) {
-      setError(failure);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteAccount() {
-    if (!account?.id) return;
-    setBusy(true);
-    setError(null);
-    try {
-      unwrap(await supabase.from("factory_payout_accounts").delete().eq("id", account.id), "remove your payout account");
-      setAccount(null);
-      setForm(blankPayout());
-      setSaved(false);
-    } catch (failure) {
-      setError(failure);
-      throw failure;
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function addBillingMethod() {
@@ -396,7 +373,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         <div className="settings-access-tabs billing-tabs" role="tablist" aria-label="Payment activity type">
           {[["earnings", "Earnings"], ["billing", "Billing"], ["credits", "Credits"]].map(([key, label]) => (
             <button className={tab === key ? "active" : ""} type="button" role="tab" aria-selected={tab === key}
-                    onClick={() => { setTab(key); setClient("All clients"); showTabInAddress(key); }} key={key}>{label}</button>
+                    onClick={() => { setTab(key); setClient("All clients"); showTabInAddress(key); if (key !== "earnings") leaveEarnings(); }} key={key}>{label}</button>
           ))}
         </div>
 
@@ -404,35 +381,48 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
 
       {tab === "earnings" && (
         <>
-          <StripePayoutCard
+          {/* Mounted once the bank accounts are known, so it reads Stripe once. */}
+          {accountsError ? <p className="projects-empty projects-error" role="alert">{accountsError.message}</p>
+            : !payouts.accounts ? <PayoutCardPlaceholder isOwner={isOwner} />
+            : <StripePayoutCard
             org={org}
             isOwner={isOwner}
             onBalanceChange={setStripeBalance}
-            manualAccount={account}
-            manualForm={form}
+            onBalanceStatus={setStripeStatus}
+            onAccountKnown={settleCard}
+            manualAccount={payouts.primary}
+            manualAccounts={payouts.accounts ?? []}
+            manualEditingId={payouts.editingId}
+            onStartManual={payouts.startEdit}
+            onMakePrimaryManual={payouts.makePrimary}
+            manualForm={payouts.form}
             manualFields={FIELDS}
-            onManualFieldChange={set}
-            onSaveManual={saveAccount}
-            onDeleteManual={deleteAccount}
-            manualBusy={busy}
-            manualSaved={saved}
-          />
+            onManualFieldChange={payouts.setField}
+            onSaveManual={payouts.save}
+            onDeleteManual={payouts.remove}
+            manualBusy={payouts.busy}
+            manualSaved={payouts.saved}
+            manualOwed={payouts.owed}
+          />}
           <label className="payments-client-filter">
             <span>Filter by client</span>
-            <select aria-label="Filter by client" value={client} onChange={(event) => setClient(event.target.value)}>
+            <select aria-label="Filter by client" value={client} disabled={!earningsShown} onChange={(event) => setClient(event.target.value)}>
               <option value="All clients">All clients</option>
               {clients.map(({ id, name }) => <option value={id} key={id}>{name}</option>)}
             </select>
           </label>
+          {earningsError ? <p className="projects-empty projects-error" role="alert">{earningsError.message}</p> : <>
           <div className="project-summary-strip billing-payment-strip factory-earnings-summary" aria-label="Earnings summary">
             {earningsSummary.map(([label, amounts, help], index) => (
               <div className={`metric${index === 0 ? " highlight" : ""}`} key={label}>
-                <strong>{amounts === null ? "—" : (amounts.length ? amounts : [{ amount: 0, currency: summaryCurrency }])
+                <strong>{amounts === undefined ? <FigurePlaceholder label={label} />
+                  : amounts === null ? "—" : (amounts.length ? amounts : [{ amount: 0, currency: summaryCurrency }])
                   .map(({ amount, currency }) => <span className="payment-currency-value" key={currency}>{formatMoney(amount, currency)}</span>)}</strong>
                 <span className="payment-metric-label">{label} <PaymentHelp label={label}>{help}</PaymentHelp></span>
               </div>
             ))}
           </div>
+          {STRIPE_FIGURES_TEXT[stripeFigures] ? <p className="payment-allocation-note" role="status">{STRIPE_FIGURES_TEXT[stripeFigures]}</p> : null}
           {paidInOtherCurrency ? <p className="payment-allocation-note">Earnings are in each order's currency ({summaryCurrency}). Paid out is in the currency your bank received, so the two are not converted or added together.</p> : null}
           {hasUnallocatedHistory ? <p className="payment-allocation-note">Older withdrawals without a client link appear only under All clients.</p> : null}
 
@@ -448,7 +438,12 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
                 ))}
               </div>
             </div>
-            {transactions.length ? (
+            {!transactionsReady ? (
+              <div className="payout-transaction-table">
+                <div className="payout-transaction-labels" aria-hidden="true"><span>Date</span><span>Type / details</span><span>Status</span><span>Amount</span></div>
+                <RowPlaceholders className="payout-transaction-row" cells={4} label="transactions" />
+              </div>
+            ) : transactions.length ? (
               <div className="payout-transaction-table">
                 <div className="payout-transaction-labels" aria-hidden="true"><span>Date</span><span>Type / details</span><span>Status</span><span>Amount</span></div>
                 {transactions.map((row) => (
@@ -456,7 +451,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
                     <time dateTime={row.date || undefined}>{dateLabel(row.date)}</time>
                     <div className="payout-transaction-details">
                       <span className={`payout-transaction-type ${row.type}`}>{row.type === "earning" ? "Earning" : "Withdrawal"}</span>
-                      <div><strong>{row.title}</strong><span>{row.meta}</span></div>
+                      <div><strong>{row.title}</strong><span>{row.meta}</span>{row.note ? <span>{row.note}</span> : null}</div>
                     </div>
                     <span className={`billing-status payout-status-${row.status.toLowerCase().replaceAll(" ", "-")}`}>{row.status}</span>
                     <strong className={row.amount < 0 ? "payout-amount-negative" : row.available ? "payout-amount-positive" : "payout-amount-pending"}>
@@ -465,8 +460,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
                   </article>
                 ))}
               </div>
-            ) : <p className="projects-empty">{transactionType === "withdrawal" ? "No withdrawals yet." : "No funded earnings yet. Payments appear here after a brand funds a production step."}</p>}
+            ) : <p className="projects-empty">{transactionType === "withdrawal"
+              ? stripeFigures ? "Withdrawals are read from Stripe, so they cannot be listed right now." : "No withdrawals yet."
+              : "No funded earnings yet. Payments appear here after a brand funds a production step."}</p>}
           </section>
+          </>}
         </>
       )}
 
@@ -502,7 +500,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
           <section className="factory-credit-billing-card">
             <div>
               <span>Credit balance</span>
-              <strong>{creditBalance.toLocaleString()} credits</strong>
+              <strong>{credits ? `${credits.balance.toLocaleString()} credits` : creditsError ? "—" : <FigurePlaceholder label="credit balance" className="payout-credit-placeholder" />}</strong>
               <p>500 credits = $50 value. Credits are used when a quote is sent.</p>
             </div>
             <div className="factory-credit-billing-action live-credit-actions">
@@ -511,7 +509,9 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             </div>
           </section>
           {notice ? <p className="live-payment-notice" role="status">{notice}</p> : null}
-          {credits.rows.length ? (
+          {creditsError ? <p className="projects-empty projects-error" role="alert">{creditsError.message}</p>
+            : !credits ? <div className="billing-history-list"><RowPlaceholders className="billing-history-row" cells={3} label="credit activity" /></div>
+            : credits.rows.length ? (
             <div className="billing-history-list">
               {credits.rows.map((row) => (
                 <article className="billing-history-row" key={row.id}>
@@ -533,7 +533,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
           onInvite={async (email, message) => {
             const result = await sendInvite(org.id, email, message);
             setNotice(inviteNotice(result, { email }));
-            await load();
+            await loadCredits();
           }}
           onClose={() => setInviteOpen(false)}
         />

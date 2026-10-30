@@ -1771,9 +1771,6 @@ begin
     raise exception 'there is nothing to approve on a payment step' using errcode = '22023';
   end if;
 
-  -- Approving a paid step releases money, so it takes an owner, matching
-  -- award_quote. Signing off a lab dip does not, and requiring an owner for
-  -- every colour approval would put the founder in the middle of daily work.
   -- Approving is Approve samples; a step that releases money also needs
   -- Release funds (both, so neither alone pays a factory).
   if not public.is_org_member(o.brand_org_id) then
@@ -1784,10 +1781,25 @@ begin
     perform public.require_org_permission(o.brand_org_id, 'releaseFunds');
   end if;
 
-  -- Active or submitted steps can be approved without a comment. Completed
-  -- and future steps remain protected, including concurrent approvals.
+  -- Also the double-approve guard: a second concurrent call blocks on the row
+  -- lock above, then reads the new state and lands here.
   if m.state not in ('active', 'submitted') then
     raise exception 'that step is %, so it is not waiting on you', m.state
+      using errcode = '22023';
+  end if;
+
+  -- An ACTIVE step is approved from the factory's update on it. Before the
+  -- factory posts there is nothing to approve: the brand's own comment is not
+  -- the factory's work, and neither is a post by the person now approving.
+  -- Checked before the funding, so the brand is told what it is waiting for.
+  if m.state = 'active' and not exists (
+    select 1 from public.milestone_updates u
+     where u.milestone_id = m.id
+       and u.author_org_id = o.factory_org_id
+       and u.created_by is distinct from auth.uid()
+  ) then
+    raise exception '% has not posted an update on "%" yet. You can approve it once they do',
+      (select name from public.orgs where id = o.factory_org_id), m.title
       using errcode = '22023';
   end if;
 

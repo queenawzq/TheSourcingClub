@@ -6,7 +6,7 @@ import { AuthScreen } from "../shared/AuthScreen.jsx";
 import { ProfileCardHeader, ProfileChipSection, ProfileCompletionSummaryRow, ProfileDetailPair, ProfileOwnerBar, ProfilePerformanceCard, ProjectCardActions, PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import { TermsDialog } from "../shared/TermsDialog.jsx";
 import { archiveActionFor, cancelActionFor, filterOrders, OrderCardMenu, ProjectStepRail, rowsForTab, withArchivedTab } from "../shared/production-order-parts.jsx";
-import { clock, dateIn, dayLabel, theirTime, whenIn, zonedTime, zoneLabel } from "../shared/call-time.mjs";
+import { clock, dateIn, dayLabel, sameClock, theirTime, whenIn, zonedTime, zoneLabel } from "../shared/call-time.mjs";
 import "./styles.css";
 import "../shared/profile-shell.css";
 import "../shared/production-order-cards.css";
@@ -2158,10 +2158,12 @@ function MessageBubble({ message, showTranslation, onToggleTranslation, ownName,
   );
 }
 
-// Live passes `live`: the call's title and where joining stands (`text`),
-// the element Zoom draws into (`mountRef`), the meeting's Zoom-app link and
-// `onLeave`. The design's camera / microphone / share buttons are Zoom's own
-// inside the meeting, so live shows only "Open in Zoom app" and "Leave call".
+// Live passes `live`: the call's title and where it stands (`text`). The
+// meeting runs in a window of its own, so live offers "Show call window"
+// (`onShow`), the window's link when the browser blocked it (`openUrl`), the
+// meeting's Zoom-app link (`joinUrl`, which leaves the window first through
+// `onOpenApp`) and `onLeave`. The design's camera / microphone / share
+// buttons are Zoom's own inside the meeting.
 function VideoCallPanel({ thread, mode, setMode, live }) {
   const inCall = mode === "active";
 
@@ -2174,10 +2176,12 @@ function VideoCallPanel({ thread, mode, setMode, live }) {
           <p>{live ? live.text : inCall ? "Video preview · screen share available · call notes stay in this thread" : "Start a prototype call room. This is not connected to a live video provider yet."}</p>
         </div>
       </div>
-      {live && !live.failed && <div className="video-call-zoom" ref={live.mountRef} />}
+      {live?.mountRef && !live.failed && <div className="video-call-zoom" ref={live.mountRef} />}
       {live ? (
         <div className="video-call-controls">
-          {live.joinUrl && <a className={`${live.failed ? "primary-btn" : "secondary-btn"} compact-btn`} href={live.joinUrl} target="_blank" rel="noopener noreferrer">Open in Zoom app</a>}
+          {live.openUrl && <a className="primary-btn compact-btn" href={live.openUrl} target="_blank" rel="opener" onClick={live.onOpenLink}>Open the call</a>}
+          {live.onShow && <button className="secondary-btn compact-btn" type="button" onClick={live.onShow}>Show call window</button>}
+          {live.joinUrl && <a className={`${live.failed ? "primary-btn" : "secondary-btn"} compact-btn`} href={live.joinUrl} target="_blank" rel="noopener noreferrer" onClick={live.onOpenApp}>Open in Zoom app</a>}
           <button className={live.failed ? "" : "danger"} type="button" onClick={live.onLeave}>{live.failed ? "Close" : "Leave call"}</button>
         </div>
       ) : (
@@ -2294,7 +2298,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
     liveStart = liveDay && liveMinutes !== null ? zonedTime(viewMonth.year, viewMonth.month, liveDay, liveMinutes, timezone) : null;
     selectedDateLabel = liveDay ? dayLabel(zonedTime(viewMonth.year, viewMonth.month, liveDay, 12 * 60, timezone), timezone) : "Pick a date";
     brandTime = liveStart ? whenIn(liveStart, timezone) : "";
-    factoryTime = liveStart ? theirTime(liveStart, live.otherName, live.otherZone) : "";
+    factoryTime = liveStart ? theirTime(liveStart, live.otherName, live.otherZone, timezone) : "";
     scheduleNote = live.otherZone
       ? `Your time: ${zoneLabel(timezone)} · ${live.otherName}: ${zoneLabel(live.otherZone)} time`
       : `Your time: ${zoneLabel(timezone)}`;
@@ -2373,7 +2377,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
                     {live && liveSlots.map((slot) => (
                       <button className={slot.minutes === liveMinutes ? "selected" : ""} type="button" onClick={() => setLiveMinutes(slot.minutes)} key={slot.minutes}>
                         <strong>{clock(slot.at, timezone)} {zoneLabel(timezone)}</strong>
-                        {live.otherZone && <span>{otherClock(slot.at)}</span>}
+                        {live.otherZone && !sameClock(slot.at, live.otherZone, timezone) && <span>{otherClock(slot.at)}</span>}
                       </button>
                     ))}
                     {!live && availableTimes.map((utcMinutes) => (
@@ -8834,7 +8838,7 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
             type="button"
             data-testid="milestone-action"
             disabled={milestone.actionDisabled || undefined}
-            title={milestone.actionDisabled ? "Available when this milestone opens" : undefined}
+            title={milestone.actionDisabled ? (milestone.actionDisabledReason ?? "Available when this milestone opens") : undefined}
             onClick={handleAction}
           >
             {milestone.action}
@@ -10894,7 +10898,7 @@ export function FundScreen({ fundingMilestone, goTo, setFundingMilestone, live =
       : { defaultChecked };
   return (
     <div className="stack">
-      <Card title={live ? "Card details" : "Select billing method"}>
+      <Card title={live ? live.title ?? "Card details" : "Select billing method"}>
         {live ? (
           live.paymentElement
         ) : (

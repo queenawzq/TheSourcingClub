@@ -58,12 +58,19 @@ import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
 
 /**
- * Whether the step is open for brand approval. Comments are optional;
- * actionFor and the database still enforce payment and owner requirements.
+ * Whether the brand can approve this step now. The factory's update is what
+ * the brand approves from: there is no separate "send for approval" on the
+ * designed screens, so an open step is approvable once the factory has posted
+ * on it (approve_milestone checks the same). A step sent for approval the old
+ * way still is.
  */
-const approvable = (milestone) =>
+const approvable = (milestone, posted) =>
   milestone.kind !== "payment_only"
-  && ["submitted", "active"].includes(milestone.state);
+  && (milestone.state === "submitted" || (milestone.state === "active" && posted));
+
+/** An open step the factory has not posted on yet: nothing to approve. */
+const awaitingFirstUpdate = (milestone, posted) =>
+  milestone.kind !== "payment_only" && milestone.state === "active" && !posted;
 
 /**
  * What this step is waiting for, and from whom.
@@ -73,7 +80,7 @@ const approvable = (milestone) =>
  * factory never approves its own work, it posts updates from the row's menu.
  * A row with nothing to do carries no button rather than a disabled one.
  */
-function actionFor(milestone, { isFactory, canFund, canApprove, posted }) {
+function actionFor(milestone, { isFactory, canFund, canApprove, posted, factoryName }) {
   const payment = milestone.payment;
   const none = { action: "", tone: "", kind: "" };
 
@@ -93,6 +100,18 @@ function actionFor(milestone, { isFactory, canFund, canApprove, posted }) {
       action: milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve",
       tone: "primary",
       kind: "approve",
+    };
+  }
+  // Open, but the factory has posted nothing: approve_milestone refuses it,
+  // so the button stays in place, disabled, and the status line says why.
+  if (awaitingFirstUpdate(milestone, posted)) {
+    if (!canApprove || (milestone.kind === "approval_and_payment" && !canFund)) return none;
+    return {
+      action: milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve",
+      tone: "primary",
+      kind: "approve",
+      actionDisabled: true,
+      actionDisabledReason: `Available once ${factoryName || "the factory"} posts an update`,
     };
   }
   // Keep the next action visible on every upcoming step. The database still
@@ -142,7 +161,7 @@ function paymentLine(payment, isFactory, kind) {
 }
 
 /** The sentence under a step's title, from its own state and its payment's. */
-function statusLine(milestone, { isFactory, canFund, canApprove, org, posted }) {
+function statusLine(milestone, { isFactory, canFund, canApprove, org, factoryName, posted }) {
   const payment = milestone.payment;
   const money = paymentLine(payment, isFactory, milestone.kind);
 
@@ -159,7 +178,7 @@ function statusLine(milestone, { isFactory, canFund, canApprove, org, posted }) 
   }
   if (approvable(milestone, posted)) {
     const held = payment?.state === "confirmed" ? ` · ${money}` : "";
-    if (isFactory) return `${posted ? "Posted, awaiting the brand's approval" : "In progress"}${held}`;
+    if (isFactory) return `Posted, awaiting the brand's approval${held}`;
     if (milestone.kind === "approval_and_payment" && !(canApprove && canFund)) {
       return `Ready for approval by someone with Approve samples and Release funds${held}`;
     }
@@ -167,7 +186,13 @@ function statusLine(milestone, { isFactory, canFund, canApprove, org, posted }) 
     return `Ready for your approval${held}`;
   }
   if (milestone.state === "active") {
-    const work = isFactory ? "You can start this step" : "In progress";
+    // The brand approves from the factory's update, so before there is one
+    // it is told what it is waiting for rather than offered an approval.
+    const work = isFactory
+      ? "You can start this step"
+      : milestone.kind === "payment_only"
+        ? "In progress"
+        : `Waiting for ${factoryName || "the factory"}'s first update. You can approve once it posts`;
     return payment?.state === "confirmed" ? `${work} · ${money}` : work;
   }
   return money;
@@ -198,7 +223,7 @@ function dueBadge(milestone, today = new Date()) {
  * brand's funding. Reminding the other side about your own move is noise.
  */
 const waitingOnOther = (milestone, isFactory, posted) => (isFactory
-  ? (approvable(milestone) && (posted || milestone.state === "submitted")) || ["due", "failed"].includes(milestone.payment?.state)
+  ? approvable(milestone, posted) || ["due", "failed"].includes(milestone.payment?.state)
   : milestone.state === "active" && !posted);
 
 /** Brands nudge factories only when the current work is genuinely close. */
@@ -306,6 +331,22 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       .channel(`order-comments:${orderId}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", {
         event: "*", schema: "public", table: "milestone_updates", filter: `order_id=eq.${orderId}`,
+      }, refresh)
+      // A step approved, a payment funded, the steps confirmed or the order
+      // cancelled by the other side (20261029000210). Inserts and updates
+      // only: Realtime does not apply the read policy to deletes, and every
+      // delete here comes with an update the page hears anyway.
+      .on("postgres_changes", {
+        event: "INSERT", schema: "public", table: "order_milestones", filter: `order_id=eq.${orderId}`,
+      }, refresh)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "order_milestones", filter: `order_id=eq.${orderId}`,
+      }, refresh)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "order_payments", filter: `order_id=eq.${orderId}`,
+      }, refresh)
+      .on("postgres_changes", {
+        event: "UPDATE", schema: "public", table: "production_orders", filter: `id=eq.${orderId}`,
       }, refresh)
       .subscribe((status) => { if (status === "SUBSCRIBED") refresh(); });
     // Covers a dropped socket or missed event without refreshing the page or
@@ -443,6 +484,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const viewer = {
     isFactory,
     org,
+    factoryName: order.factory?.name,
     canFund: can(org, "releaseFunds"),
     canApprove: can(org, "approve"),
     canUpdate: can(org, "addUpdate"),

@@ -321,6 +321,9 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
     >
       <FundScreen
         live={{
+          // A brand with a saved card is asked to choose one, as the design
+          // draws it; "Card details" promised a card form that was not there.
+          title: addingCard ? "Card details" : "Select billing method",
           // The design's two promises are about approval; a payment-only
           // step is paid on as soon as it is funded.
           agreements: paymentOnly
@@ -339,6 +342,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
                         type="radio"
                         name="saved-card"
                         value={card.id}
+                        aria-label={`${card.brand} ending in ${card.last4}`}
                         checked={!addingCard && selectedCardId === card.id}
                         onChange={() => { setSelectedCardId(card.id); setAddingCard(false); }}
                       />
@@ -396,7 +400,9 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
                   </div>
                   <p className="muted save-card-note">This card will be saved securely to your company for future payments.</p>
                 </div>
-              ) : null}
+              ) : (
+                <p className="muted save-card-note">{figures.total} is charged to the card you choose. To pay with another card, add a new one.</p>
+              )}
               {savedCards.length > 0 && (
                 <button
                   className="billing-add-btn live-add-card-btn"
@@ -430,6 +436,9 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
   const currency = checkout?.currency ?? payment.currency;
   const total = formatMoney(checkout?.chargedCents ?? payment.charged_cents ?? payment.amount_cents, currency);
   const step = checkout?.title ?? payment.order_milestones?.title ?? "this step";
+  // A payment-only step is paid on to the factory as soon as it is funded,
+  // so it comes back released, not confirmed: it was charged all the same.
+  const paid = payment.state === "confirmed" || payment.state === "released";
   const copy = useMemo(() => {
     if (payment.state === "processing" || payment.state === "verify") {
       return {
@@ -452,7 +461,7 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
   return (
     <FlowShell
       screen="success"
-      heading={payment.state !== "confirmed" ? {
+      heading={!paid ? {
         title: "Payment on its way",
         description: paymentOnly
           ? `Stripe is confirming your payment. This step needs no approval: TSC pays it to ${factory} once it goes through.`
@@ -478,7 +487,7 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
           fee: formatMoney(checkout?.feeCents ?? (payment.charged_cents ?? payment.amount_cents) - payment.amount_cents, currency),
           feeLabel: "TSC service fee",
           total,
-          totalLabel: payment.state === "confirmed" ? "Paid today" : "Clearing",
+          totalLabel: paid ? "Paid today" : "Clearing",
         },
       }}
     >

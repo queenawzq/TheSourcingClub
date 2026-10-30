@@ -45,12 +45,88 @@ function OperationsContact() {
 function balanceCurrency(balance) {
   const available = balance?.available ?? [];
   const preferred = balance?.defaultCurrency?.toUpperCase();
-  const funded = available.filter((row) => row.amount > 0);
+  // Money still on its way counts too: a first earning is pending for days,
+  // and choosing by available money alone showed it in another currency as 0.
+  const funded = [...available, ...(balance?.pending ?? [])].filter((row) => row.amount > 0);
   const row = funded.find((entry) => entry.currency?.toUpperCase() === preferred) ?? funded[0]
     ?? available.find((entry) => entry.currency?.toUpperCase() === preferred);
   return row?.currency?.toUpperCase() ?? preferred ?? "USD";
 }
+const SLOW_BALANCE_MS = 8000;
+const BALANCE_STATUS_TEXT = {
+  slow: "Stripe is taking longer than usual. Your balance will show here as soon as it answers.",
+  failed: "We could not show your balance right now. Try again shortly.",
+};
+
 const amountIn = (rows, currency) => rows?.find((row) => row.currency?.toUpperCase() === currency)?.amount ?? 0;
+
+/** When the earliest earning still pending at Stripe can be withdrawn, in the reader's words. */
+function availableFrom(balance) {
+  const first = Math.min(...(balance?.pendingEarnings ?? []).map((row) => Number(row.available_on)).filter(Boolean));
+  return Number.isFinite(first)
+    // Stripe's available_on is a day (midnight UTC), not an instant: read in
+    // New York as an instant it is the day before.
+    ? new Date(first * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
+    : null;
+}
+
+/** "Bank account ending in 2345", the words the method list uses. */
+function methodLabel(method) {
+  return `${method.type === "card" ? "Payout card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`;
+}
+
+const stripeDay = (unix) => new Date(unix * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+/**
+ * Why a Stripe payout account cannot be removed now, in the factory's words,
+ * or null. Stripe itself refuses to remove a currency's default account.
+ */
+function stripeRemovalRefusal(method, methods, payoutsOnTheirWay) {
+  if (methods.length <= 1) {
+    return "This is your only payout account. Add another one first, so your earnings have somewhere to go.";
+  }
+  if (method.default || method.payoutsFor) {
+    return `${methodLabel(method)} is your default ${method.payoutsFor ? `${method.payoutsFor.toUpperCase()} ` : ""}payout account. In Stripe’s form, make another account the default first, then remove this one.`;
+  }
+  const onItsWay = payoutsOnTheirWay.find((payout) => payout.destination === method.id);
+  if (onItsWay) {
+    return `A withdrawal of ${formatMoney(onItsWay.amount, onItsWay.currency.toUpperCase())} is on its way to this account${onItsWay.arrival_date ? ` (expected ${stripeDay(onItsWay.arrival_date)})` : ""}. You can remove it once it arrives.`;
+  }
+  return null;
+}
+
+/** What closing Stripe's form did, after an Add or a Remove. */
+function handoverResult({ intent, target, before }, after) {
+  if (intent === "add") {
+    const added = after.filter((method) => !before.includes(method.id));
+    return added.length
+      ? `Added ${added.map((method) => methodLabel(method).toLowerCase()).join(" and ")}.`
+      : "No payout account was added.";
+  }
+  return after.some((method) => method.id === target?.id)
+    ? `${methodLabel(target)} is still there. Remove it under Payout details in Stripe’s form.`
+    : `Removed ${methodLabel(target).toLowerCase()}.`;
+}
+
+/**
+ * The database's refusal to remove a bank account TSC is about to pay
+ * (20261029000300), in words with the amount; any other failure as it was.
+ */
+export function payoutRemovalError(failure) {
+  if (failure?.cause?.hint === "payout_primary") return new Error(PRIMARY_REFUSAL);
+  if (failure?.cause?.hint !== "payout_owed") return failure;
+  const [cents, currency] = String(failure.cause.details ?? "").split(" ");
+  return new Error(`${bankOwedSentence([{ amount: Number(cents) || 0, currency: currency || "USD" }])} You can change the details with Edit, but not remove the account until that payment is sent.`);
+}
+
+const PRIMARY_REFUSAL = "This is the account TSC pays. Choose another account for TSC to pay first, then remove this one.";
+
+/** "TSC is about to pay $1,248.00 to this account." */
+export function bankOwedSentence(owed) {
+  const totals = new Map();
+  for (const { amount, currency } of owed) totals.set(currency, (totals.get(currency) ?? 0) + Number(amount));
+  return `TSC is about to pay ${[...totals].map(([currency, amount]) => formatMoney(amount, currency)).join(" and ")} to this account.`;
+}
 
 export function PayoutModal({ children, title, eyebrow, onClose, actions, wide = false }) {
   useEffect(() => {
@@ -83,11 +159,36 @@ export function PayoutModal({ children, title, eyebrow, onClose, actions, wide =
   );
 }
 
+/**
+ * The payout card before anything about the factory's payouts is known. An
+ * owner's has the two buttons' places, which stack under the balance on a
+ * phone.
+ */
+export function PayoutCardPlaceholder({ isOwner = false }) {
+  return (
+    <section className="live-payout-method-card live-stripe-payout-card payout-card-placeholder" data-testid="payout-card-placeholder">
+      <div className="live-payout-balance">
+        <span className="payout-label-placeholder" aria-hidden="true" />
+        <strong><span className="payout-balance-placeholder" role="status" aria-label="Loading payouts" /></strong>
+        <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
+        <p className="payment-provider-note" aria-hidden="true"><span className="payout-note-placeholder" /></p>
+      </div>
+      {isOwner ? <div className="live-payout-card-action" aria-hidden="true"><span className="payout-button-placeholder" /><span className="payout-button-placeholder" /></div> : null}
+    </section>
+  );
+}
+
 export default function StripePayoutCard({
   org,
   isOwner,
   onBalanceChange,
+  onBalanceStatus,
+  onAccountKnown,
   manualAccount,
+  manualAccounts = manualAccount ? [manualAccount] : [],
+  manualEditingId = null,
+  onStartManual,
+  onMakePrimaryManual,
   manualForm,
   manualFields,
   onManualFieldChange,
@@ -95,12 +196,19 @@ export default function StripePayoutCard({
   onDeleteManual,
   manualBusy,
   manualSaved,
+  manualOwed = [],
   renderCard = true,
   initialAction = null,
+  initialMethodId = null,
   onFlowClose,
 }) {
   const [account, setAccount] = useState(undefined);
   const [balance, setBalance] = useState(null);
+  // Where reading Stripe's balance stands: "loading", "slow" (still loading
+  // after SLOW_BALANCE_MS), "failed", "ready", or "none" when it is not read
+  // (not an owner, no active Stripe account). The card said "We could not
+  // show your balance" for the two seconds a normal read takes.
+  const [balanceStatus, setBalanceStatus] = useState("loading");
   const [country, setCountry] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -108,7 +216,20 @@ export default function StripePayoutCard({
   const [methodMenu, setMethodMenu] = useState(null);
   const [withdrawal, setWithdrawal] = useState(null);
   const [withdrawn, setWithdrawn] = useState(false);
+  // Remove and Add are TSC's own steps; Stripe's form does the last part,
+  // since TSC cannot change an Express account's bank accounts itself.
+  // `handover` remembers what the factory went there to do, so closing the
+  // form can say whether it happened.
+  const [removing, setRemoving] = useState(null);
+  const [handover, setHandover] = useState(null);
+  const [methodNotice, setMethodNotice] = useState(null);
+  const [removeError, setRemoveError] = useState(null);
+  // A bank-paid factory may keep several bank accounts (John, 2026-10-29):
+  // which one is being removed, and what the form or the list last refused.
+  const [removingManual, setRemovingManual] = useState(null);
+  const [manualError, setManualError] = useState(null);
   const handledInitialAction = useRef(false);
+  const accountKnown = useRef(false);
 
   useEffect(() => {
     if (manualSaved) {
@@ -133,15 +254,20 @@ export default function StripePayoutCard({
       supabase.from("factory_profiles").select("country_code").eq("org_id", org.id).maybeSingle(),
     ]);
     setAccount(saved);
+    accountKnown.current = true;
     setCountry((current) => current || saved?.country || manualCountry || profile?.country_code || "");
     if (saved?.transfers_active && isOwner) {
+      setBalanceStatus("loading");
       const nextBalance = await connectAction(org.id, "balance");
       setBalance(nextBalance);
+      setBalanceStatus("ready");
       onBalanceChange?.(nextBalance);
-    } else {
-      setBalance(null);
-      onBalanceChange?.(null);
+      return nextBalance;
     }
+    setBalance(null);
+    setBalanceStatus("none");
+    onBalanceChange?.(null);
+    return null;
   }, [org.id, isOwner, onBalanceChange, manualCountry]);
 
   useEffect(() => {
@@ -172,12 +298,25 @@ export default function StripePayoutCard({
         if (saved?.transfers_active) {
           setModal("manage");
         } else {
-          setModal(payoutAction === "remove" && manualAccount ? "remove" : "setup");
+          if (payoutAction === "remove" && manualAccount) {
+            setRemovingManual(manualAccount);
+            setRemoveError(null);
+            setModal("remove");
+          } else {
+            onStartManual?.(payoutAction === "add" ? null : manualAccount);
+            setModal("setup");
+          }
         }
       }
     })().catch((failure) => {
-      setError(failure);
+      // Once the account is known, a failure is the balance's, and the card
+      // says so in its own sentence: Stripe's raw message (which names our
+      // key, masked) is not for a factory. Before that, there is no sentence.
+      if (!accountKnown.current) setError(failure);
       setAccount((current) => (current === undefined ? null : current));
+      // The balance could not be read: say so, rather than "checking" forever.
+      setBalanceStatus("failed");
+      onBalanceChange?.(null);
     });
   }, [org.id, isOwner, load, manualAccount]);
 
@@ -185,6 +324,15 @@ export default function StripePayoutCard({
   const currency = balanceCurrency(balance);
   const available = amountIn(balance?.available, currency);
   const pending = amountIn(balance?.pending, currency);
+  // Nothing to withdraw yet, but money on its way: that is the balance to
+  // show, with the day it can be withdrawn, rather than a bare 0.00.
+  const arriving = Boolean(balance) && available <= 0 && pending > 0;
+  const arrivesOn = availableFrom(balance);
+  // A Stripe-paid owner whose balance is on its way from Stripe: the card
+  // keeps its shape (a placeholder) until it arrives; a slow answer still
+  // says so, and a failure says it failed.
+  const balanceWaiting = !balance && isOwner && Boolean(account?.transfers_active)
+    && (balanceStatus === "loading" || balanceStatus === "slow");
   const connectedMethods = balance?.methods ?? [];
   async function withdraw() {
     if (busy || !withdrawal) return;
@@ -197,10 +345,12 @@ export default function StripePayoutCard({
       setWithdrawn(true);
       // Never leave an already-withdrawn amount available if refreshing fails.
       setBalance(null);
-      onBalanceChange?.(null);
+      onBalanceChange?.(undefined);
       await load();
     } catch (failure) {
       setError(failure);
+      setBalanceStatus("failed");
+      onBalanceChange?.(null);
     } finally {
       setBusy(false);
     }
@@ -216,29 +366,67 @@ export default function StripePayoutCard({
     try {
       // No account means the form never got as far as creating one.
       if (await connectAccountFor(org.id)) await connectAction(org.id, "refresh");
-      await load();
+      const next = await load();
+      if (handover) setMethodNotice(handoverResult(handover, next?.methods ?? []));
+      setHandover(null);
     } catch (failure) {
       setError(failure);
+      setBalanceStatus("failed");
     } finally {
       setBusy(false);
     }
   }
 
+  // The Payments page says the same under the figures that need Stripe.
+  useEffect(() => {
+    onBalanceStatus?.(balanceStatus);
+  }, [balanceStatus, onBalanceStatus]);
+
+  // Once the card knows how the factory is paid it has its final shape, and
+  // the page can draw the figures below it without the card moving them.
+  useEffect(() => {
+    if (account !== undefined) onAccountKnown?.();
+  }, [account, onAccountKnown]);
+
+  // A read that is merely slow is not a failure: after a while, say so.
+  useEffect(() => {
+    if (balanceStatus !== "loading") return undefined;
+    const timer = setTimeout(() => setBalanceStatus((current) => (current === "loading" ? "slow" : current)), SLOW_BALANCE_MS);
+    return () => clearTimeout(timer);
+  }, [balanceStatus]);
+
   useEffect(() => {
     if (account === undefined || !initialAction || handledInitialAction.current) return;
     handledInitialAction.current = true;
+    const chosenManual = manualAccounts.find((row) => row.id === initialMethodId) ?? manualAccount;
     if (initialAction === "manage") {
       setModal(account?.transfers_active || manualAccount ? "manage" : "setup");
     } else if (initialAction === "add") {
-      setModal(account?.transfers_active ? "add" : "setup");
+      // Add always adds: a bank-paid factory's new account never overwrites one.
+      if (account?.transfers_active) setModal("add");
+      else { onStartManual?.(null); setModal("setup"); }
+    } else if (!account?.transfers_active && initialAction === "remove" && chosenManual) {
+      setRemovingManual(chosenManual);
+      setRemoveError(null);
+      setModal("remove");
+    } else if (!account?.transfers_active && initialAction === "edit") {
+      onStartManual?.(chosenManual ?? null);
+      setModal("setup");
+    } else if (account?.transfers_active && initialAction === "remove" && initialMethodId) {
+      // Settings' Remove on one account: straight to its removal dialog.
+      setRemoving({ id: initialMethodId });
+      setModal("remove-stripe");
     } else if (account?.transfers_active) {
       setModal("manage");
     } else {
-      setModal(initialAction === "remove" && manualAccount ? "remove" : "setup");
+      onStartManual?.(manualAccount ?? null);
+      setModal("setup");
     }
-  }, [account, initialAction, manualAccount]);
+  }, [account, initialAction, initialMethodId, manualAccount, manualAccounts, onStartManual]);
 
-  if (account === undefined) return null;
+  // The card's shape while the account is read, so it does not appear late
+  // and push the page down.
+  if (account === undefined) return renderCard ? <PayoutCardPlaceholder isOwner={isOwner} /> : null;
 
   const closeModal = () => {
     if (!busy && !manualBusy) {
@@ -265,7 +453,7 @@ export default function StripePayoutCard({
         <button className="primary-btn" type="button" disabled={busy || !country} onClick={() => setModal("onboarding")}>Continue</button>
       ) : (
         <button className="primary-btn" type="button" data-testid="save-payout" disabled={manualBusy || !manualReady}
-                onClick={() => onSaveManual?.({ bank_country: notListed ? null : country })}>
+                onClick={() => saveManual({ bank_country: notListed ? null : country })}>
           {manualBusy ? "Saving…" : "Save payout method"}
         </button>
       )}
@@ -304,14 +492,67 @@ export default function StripePayoutCard({
     default: true,
   }] : [];
 
-  const openSecureManagement = () => setModal("account");
+  const openSecureManagement = () => {
+    setHandover(null);
+    setMethodNotice(null);
+    setModal("account");
+  };
+  // Add or remove: TSC's dialog has done its part; Stripe's form does the rest.
+  const handOver = (intent, target = null) => {
+    setHandover({ intent, target, before: connectedMethods.map((method) => method.id) });
+    setMethodNotice(null);
+    setModal("account");
+  };
+  // Owed by bank only while Stripe is not the one paying this factory.
+  const bankOwed = account?.transfers_active ? [] : manualOwed;
+  // The account as Stripe lists it now (Settings passes only its id).
+  const removingMethod = removing ? connectedMethods.find((method) => method.id === removing.id) ?? null : null;
+  const removalRefusal = removingMethod
+    ? stripeRemovalRefusal(removingMethod, connectedMethods, balance?.payoutsOnTheirWay ?? [])
+    : balance ? "That payout account is no longer listed. It may have been removed already." : null;
+
+  // Add (blank) or Edit (that account): the parent holds the form.
+  const openManual = (row) => {
+    setManualError(null);
+    onStartManual?.(row);
+    setModal("setup");
+  };
+
+  async function saveManual(details) {
+    setManualError(null);
+    try {
+      await onSaveManual?.(details);
+    } catch (failure) {
+      setManualError(failure);
+    }
+  }
+
+  async function makePrimary(row) {
+    setManualError(null);
+    try {
+      await onMakePrimaryManual?.(row);
+      setMethodNotice(`TSC now pays ${methodLabel({ type: "bank_account", last4: row.account_number_last4 }).toLowerCase()}.`);
+    } catch (failure) {
+      setManualError(failure);
+    }
+  }
+
+  // Which bank account is being removed, and why it may not be yet.
+  const otherManual = removingManual ? manualAccounts.filter((row) => row.id !== removingManual.id) : [];
+  const manualRemovalRefusal = !removingManual ? null
+    : removingManual.is_primary && otherManual.length ? PRIMARY_REFUSAL
+    : removingManual.is_primary && bankOwed.length ? `${bankOwedSentence(bankOwed)} You can change the details with Edit, but not remove the account until that payment is sent.`
+    : null;
 
   async function removeManualMethod() {
+    setRemoveError(null);
     try {
-      await onDeleteManual?.();
+      await onDeleteManual?.(removingManual);
       setModal(null);
-    } catch {
-      // The parent displays the Supabase error under the balance.
+      setMethodNotice("Payout method removed.");
+    } catch (failure) {
+      // Said in the dialog, where the factory is looking.
+      setRemoveError(failure);
     }
   }
 
@@ -321,20 +562,30 @@ export default function StripePayoutCard({
         <div className="live-payout-balance">
           {/* Paid by bank, the factory has no balance anywhere: TSC sends each
               released payment, so the card says how it is paid instead. */}
-          <span className="payment-metric-label">{!account && manualAccount ? "Payouts" : "Available balance"}
-            <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp>
+          <span className="payment-metric-label">{!account && manualAccount ? "Payouts" : arriving ? "Balance on its way" : "Available balance"}
+            {arriving
+              ? <PaymentHelp label="Balance on its way">{PENDING_HELP}</PaymentHelp>
+              : <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp>}
           </span>
-          <strong>{balance ? formatMoney(available, currency) : !account && manualAccount ? "By bank transfer" : "—"}</strong>
-          <p>{balance
-            ? pending > 0
+          <strong data-testid="payout-balance">{balance ? formatMoney(arriving ? pending : available, currency)
+            // A placeholder the size of the amount, so the card does not
+            // jump when Stripe answers (a sentence said "checking" before).
+            : balanceWaiting ? <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />
+            : !account && manualAccount ? "By bank transfer" : "—"}</strong>
+          {balanceStatus === "loading" && balanceWaiting ? (
+            <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
+          ) : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
+            ? arriving
+              // Orders are in USD; Stripe credits an account in its own currency.
+              ? `Stripe is processing your earnings. You can withdraw them ${arrivesOn ? `from ${arrivesOn}` : "once processing finishes"}.${currency !== "USD" ? ` Stripe converts them to ${currency}, your account's currency.` : ""}`
+              : pending > 0
               ? <>{formatMoney(pending, currency)} pending <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></>
               : "Earnings stay in your balance until you withdraw them."
             // Only an owner reads the balance; for anyone else it is not "in progress".
             : account?.transfers_active
-              // Closing a Stripe form reads the account back before the
-              // balance, so the account is connected a moment before its
-              // balance arrives: that is loading, not a failure.
-              ? isOwner ? busy ? "Checking your balance…" : "We could not show your balance right now. Try again shortly." : "Only a company owner can view the withdrawable balance."
+              // The account is known a moment before its balance arrives:
+              // that is loading, and only a real failure says it failed.
+              ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : "Only a company owner can view the withdrawable balance."
               : account?.details_submitted
                 ? "Payout verification in progress"
                 : account
@@ -344,10 +595,14 @@ export default function StripePayoutCard({
                     ? <>Bank details on file{manualAccount.account_number_last4 ? ` (account ending in ${manualAccount.account_number_last4})` : ""}. TSC pays your released earnings to this account by bank transfer. <OperationsContact /></>
                     : manualAccount
                       ? "Your bank details are incomplete. Add the bank and the account name so TSC can pay you."
-                      : isOwner ? "Add a payout method to receive earnings" : "No payout method yet."}</p>
+                      : isOwner ? "Add a payout method to receive earnings" : "No payout method yet."}</p>}
           {manualSaved ? <p className="live-payment-notice">Payout method saved.</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
-          {balance ? <p className="payment-provider-note">Payments securely processed by Stripe.</p> : null}
+          {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
+          {/* The line's space is kept on every card, so the card is the
+              placeholder's height whichever way the factory is paid. */}
+          {balance || balanceWaiting ? <p className="payment-provider-note">Payments securely processed by Stripe.</p>
+            : <p className="payment-provider-note" aria-hidden="true">&nbsp;</p>}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </div>
         <div className="live-payout-card-action">
@@ -363,9 +618,9 @@ export default function StripePayoutCard({
           ) : account ? (
             <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>
           ) : manualAccount && !manualComplete(manualAccount) ? (
-            <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => setModal("setup")}>Complete bank details</button>
+            <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => openManual(manualAccount)}>Complete bank details</button>
           ) : (
-            <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => setModal(manualAccount ? "manage" : "setup")}>{manualAccount ? "Manage payout method" : "Add payout method"}</button>
+            <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => (manualAccount ? setModal("manage") : openManual(null))}>{manualAccount ? "Manage payout method" : "Add payout method"}</button>
           )
           : <p className="payout-owner-only">Only an owner of your company can set up or change payouts.</p>}
         </div>
@@ -390,7 +645,8 @@ export default function StripePayoutCard({
         >
           <div className="payout-methods-heading">
             <p className="payout-modal-intro">Choose where released earnings are sent.</p>
-            <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal(account ? "add" : "setup")}>+ Add payout method</button>
+            {/* Add always adds: a bank-paid factory's new account sits beside the others. */}
+            <button className="secondary-btn compact-btn" type="button" disabled={busy || manualBusy} onClick={() => (account ? setModal("add") : openManual(null))}>+ Add payout method</button>
           </div>
           <div className="payout-method-list">
             {account ? providerMethodRows.map((method) => (
@@ -409,31 +665,35 @@ export default function StripePayoutCard({
                   {methodMenu === method.id ? (
                     <div className="payout-method-popover" role="menu">
                       <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); openSecureManagement(); }}>Edit method</button>
-                      <button className="danger" type="button" role="menuitem" onClick={() => { setMethodMenu(null); openSecureManagement(); }}>Remove method</button>
+                      <button className="danger" type="button" role="menuitem" disabled={method.id === "connected-account"} onClick={() => { setMethodMenu(null); setRemoving(method); setModal("remove-stripe"); }}>Remove method</button>
                     </div>
                   ) : null}
                 </div>
               </article>
-            )) : manualAccount ? (
-              <article className="payout-method-row">
+            )) : manualAccounts.length ? manualAccounts.map((row) => (
+              <article className="payout-method-row" key={row.id}>
                 <div className="payout-bank-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M3 9h18M5 9v8m4-8v8m6-8v8m4-8v8M3 18h18M12 3l9 4H3l9-4Z" /></svg>
                 </div>
-                <div className="payout-method-name"><strong>Bank account{manualAccount.account_number_last4 ? ` ending in ${manualAccount.account_number_last4}` : ""}</strong><span>{manualAccount.bank_name || "Manual bank transfer"}</span></div>
-                <span className="payout-method-default">Default</span>
+                <div className="payout-method-name"><strong>{methodLabel({ type: "bank_account", last4: row.account_number_last4 })}</strong><span>{row.bank_name || "Manual bank transfer"}</span></div>
+                {row.is_primary ? <span className="payout-method-default">Default</span> : null}
                 <div className="payout-method-menu">
-                  <button className="rfq-more payout-more-button" type="button" aria-label="More actions for bank account" aria-expanded={methodMenu === "manual"} onClick={() => setMethodMenu((open) => open === "manual" ? null : "manual")}>...</button>
-                  {methodMenu === "manual" ? (
+                  <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${methodLabel({ type: "bank_account", last4: row.account_number_last4 }).toLowerCase()}`} aria-expanded={methodMenu === row.id} disabled={manualBusy} onClick={() => setMethodMenu((open) => open === row.id ? null : row.id)}>...</button>
+                  {methodMenu === row.id ? (
                     <div className="payout-method-popover" role="menu">
-                      <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); setModal("setup"); }}>Edit method</button>
-                      <button className="danger" type="button" role="menuitem" onClick={() => { setMethodMenu(null); setModal("remove"); }}>Remove method</button>
+                      <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); openManual(row); }}>Edit method</button>
+                      {!row.is_primary ? <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); makePrimary(row); }}>Pay this account</button> : null}
+                      <button className="danger" type="button" role="menuitem" onClick={() => { setMethodMenu(null); setRemovingManual(row); setRemoveError(null); setModal("remove"); }}>Remove method</button>
                     </div>
                   ) : null}
                 </div>
               </article>
-            ) : <div className="payout-empty-guidance">No payout method added yet.</div>}
+            )) : <div className="payout-empty-guidance">No payout method added yet.</div>}
           </div>
-          {account ? <p className="payout-security-copy">For security, bank details are added, changed and removed in Stripe's form: choose Edit method.</p> : null}
+          {account
+            ? <p className="payout-security-copy">For security, Stripe's form on this page holds the bank details: Add, Edit and Remove each finish there.</p>
+            : manualAccounts.length > 1 ? <p className="payout-security-copy">TSC pays your default bank account. To have another one paid, choose “Pay this account” on it.</p> : null}
+          {manualError ? <p className="live-stripe-error" role="alert">{manualError.message}</p> : null}
         </PayoutModal>
       ) : null}
 
@@ -454,7 +714,7 @@ export default function StripePayoutCard({
                 <div className="payout-option-title"><strong>Bank account</strong><span>Recommended</span></div>
                 <p>Standard payouts directly to your bank. Timing and availability depend on your country.</p>
               </div>
-              <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={openSecureManagement}>Set up</button>
+              <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={() => handOver("add")}>Set up</button>
             </article>
             <article className="payout-method-option">
               <div className="payout-option-icon payout-card-icon" aria-hidden="true">
@@ -464,26 +724,51 @@ export default function StripePayoutCard({
                 <div className="payout-option-title"><strong>Instant payout card</strong></div>
                 <p>Receive eligible payouts on a supported debit card. Stripe confirms availability, timing, and fees.</p>
               </div>
-              <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={openSecureManagement}>Set up</button>
+              <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => handOver("add")}>Set up</button>
             </article>
           </div>
           <p className="payout-security-copy">{STRIPE_FORM_NOTE}</p>
         </PayoutModal>
       ) : null}
 
-      {modal === "remove" ? (
+      {modal === "remove" && removingManual ? (
         <PayoutModal
-          title="Remove payout method?"
+          title={manualRemovalRefusal
+            ? `${methodLabel({ type: "bank_account", last4: removingManual.account_number_last4 })} can’t be removed yet`
+            : `Remove ${methodLabel({ type: "bank_account", last4: removingManual.account_number_last4 }).toLowerCase()}?`}
           eyebrow="Payments"
           onClose={closeModal}
-          actions={<><button className="secondary-btn" type="button" onClick={() => setModal("manage")}>Cancel</button><button className="primary-btn payout-remove-confirm" type="button" disabled={manualBusy} onClick={removeManualMethod}>{manualBusy ? "Removing…" : "Remove method"}</button></>}
+          actions={manualRemovalRefusal
+            ? <button className="secondary-btn" type="button" onClick={() => setModal("manage")}>Back</button>
+            : <><button className="secondary-btn" type="button" onClick={() => setModal("manage")}>Cancel</button><button className="primary-btn payout-remove-confirm" type="button" disabled={manualBusy} onClick={removeManualMethod}>{manualBusy ? "Removing…" : "Remove method"}</button></>}
         >
-          <p className="payout-modal-intro">TSC can’t pay out your released earnings until another payout method is added.</p>
+          <p className="payout-modal-intro" data-testid="payout-remove-reason">{manualRemovalRefusal
+            ?? (removingManual.is_primary
+              ? "TSC can’t pay out your released earnings until another payout method is added."
+              : "TSC will no longer keep these details. Your earnings still go to your default account.")}</p>
+          {removeError ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
+        </PayoutModal>
+      ) : null}
+
+      {modal === "remove-stripe" && removing ? (
+        <PayoutModal
+          title={!balance ? "Remove payout method" : removalRefusal ? `${removingMethod ? methodLabel(removingMethod) : "This account"} can’t be removed` : `Remove ${methodLabel(removingMethod).toLowerCase()}?`}
+          eyebrow="Payments"
+          onClose={closeModal}
+          actions={!balance || removalRefusal
+            ? <button className="secondary-btn" type="button" onClick={() => setModal("manage")}>Back</button>
+            : <><button className="secondary-btn" type="button" onClick={() => setModal("manage")}>Cancel</button><button className="primary-btn payout-remove-confirm" type="button" disabled={busy} onClick={() => handOver("remove", removingMethod)}>Continue in Stripe</button></>}
+        >
+          <p className="payout-modal-intro" data-testid="payout-remove-reason">{!balance
+            ? "Checking your payout accounts…"
+            : removalRefusal
+              ?? `Earnings will no longer be paid to ${methodLabel(removingMethod).toLowerCase()}. Stripe’s form opens next: under Payout details, remove the account ending in ${removingMethod.last4}, then choose Done.`}</p>
         </PayoutModal>
       ) : null}
 
       {modal === "setup" ? (
-        <PayoutModal title="Set up payout method" eyebrow="Payments" onClose={closeModal} actions={setupActions}>
+        <PayoutModal title={manualEditingId ? "Edit bank account" : manualAccounts.length ? "Add a payout method" : "Set up payout method"} eyebrow="Payments" onClose={closeModal} actions={setupActions}>
+          {manualError ? <p className="live-stripe-error" role="alert">{manualError.message}</p> : null}
           <p className="payout-modal-intro">Choose where your company is registered. We’ll show the payout method available for that country.</p>
           <label className="payout-country-field">
             <span>Company country</span>
@@ -546,7 +831,11 @@ export default function StripePayoutCard({
           onClose={closeStripeForm}
           actions={<button className="secondary-btn" type="button" onClick={closeStripeForm}>Done</button>}
         >
-          <p className="payout-modal-intro">Add, change or remove the bank account your earnings are paid to under “Payout details”.</p>
+          <p className="payout-modal-intro">{handover?.intent === "add"
+            ? "Under “Payout details”, add the bank account or card your earnings should be paid to, then choose Done."
+            : handover?.intent === "remove"
+              ? `Under “Payout details”, remove the account ending in ${handover.target?.last4}, then choose Done.`
+              : "Change the bank account your earnings are paid to under “Payout details”."}</p>
           <StripeConnectEmbed org={org} form="account" />
           <p className="payout-security-copy">{STRIPE_FORM_NOTE}</p>
         </PayoutModal>
