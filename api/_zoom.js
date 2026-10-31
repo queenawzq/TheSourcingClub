@@ -104,7 +104,8 @@ const base64url = (value) => Buffer.from(value).toString("base64url");
  * enough for a call that runs over, inside Zoom's 30 min – 48 h window.
  */
 export function sdkSignature(meetingNumber, env = process.env, now = Date.now()) {
-  const iat = Math.floor(now / 1000) - 30;
+  // Small clock differences must not make a fresh signature appear future-dated.
+  const iat = Math.floor(now / 1000) - 120;
   const exp = iat + 2 * 60 * 60;
   const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const payload = base64url(JSON.stringify({
