@@ -8774,7 +8774,7 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
             type="button"
             data-testid="milestone-action"
             disabled={milestone.actionDisabled || undefined}
-            title={milestone.actionDisabled ? "Available when this milestone opens" : undefined}
+            title={milestone.actionDisabled ? (milestone.actionDisabledReason ?? "Available when this milestone opens") : undefined}
             onClick={handleAction}
           >
             {milestone.action}
