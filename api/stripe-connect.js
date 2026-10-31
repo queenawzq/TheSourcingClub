@@ -43,7 +43,7 @@ export default async function handler(request, response) {
   const caller = callerClient(request);
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
-  const { orgId, action, country, amount, currency, requestId, token, makeDefault, methodId, promoteId } = jsonBody(request);
+  const { orgId, action, country, amount, currency, requestId, token, makeDefault, methodId, promoteId, replaceId } = jsonBody(request);
   const [owner, orgRead, { data: auth }] = await Promise.all([
     caller.rpc("is_org_owner", { target_org: orgId }),
     caller.from("orgs").select("id, name, type").eq("id", orgId).maybeSingle(),
@@ -152,8 +152,15 @@ export default async function handler(request, response) {
       let notice;
       try {
         if (action === "add_method") {
-          const added = payoutMethodRow(await addPayoutMethod(stripe, accountId, { token, makeDefault }), account.default_currency);
+          // Replace is one request: the new account goes in as the default,
+          // then the old one comes out. Two calls from the browser left the
+          // old one behind when the page closed between them.
+          const added = payoutMethodRow(await addPayoutMethod(stripe, accountId, { token, makeDefault: makeDefault || Boolean(replaceId) }), account.default_currency);
           notice = `${describe(added)} was added as a payout method${added.default ? " and is now the default" : ""}.`;
+          if (replaceId) {
+            const removed = payoutMethodRow(await removePayoutMethod(stripe, accountId, { methodId: replaceId, promoteId: added.id }), account.default_currency);
+            notice += ` ${describe(removed)} was removed.`;
+          }
         } else if (action === "default_method") {
           const chosen = payoutMethodRow(await makeDefaultPayoutMethod(stripe, accountId, methodId), account.default_currency);
           notice = `Withdrawals now go to ${describe(chosen).toLowerCase()}.`;

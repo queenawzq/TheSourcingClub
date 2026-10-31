@@ -75,7 +75,7 @@ function tokenDetails(country, currency, values, holder) {
   };
 }
 
-function BankForm({ org, country, currency, isFirst, onAdded, onClose }) {
+function BankForm({ org, country, currency, isFirst, replaceId, onAdded, onClose }) {
   const stripe = useStripe();
   const fields = bankFieldsFor(country);
   const [values, setValues] = useState({});
@@ -92,7 +92,7 @@ function BankForm({ org, country, currency, isFirst, onAdded, onClose }) {
     try {
       const { token, error } = await stripe.createToken("bank_account", tokenDetails(country, currency, values, holder));
       if (error) throw new Error(error.message);
-      onAdded(await connectAction(org.id, "add_method", { token: token.id, makeDefault: isFirst || makeDefault }));
+      onAdded(await connectAction(org.id, "add_method", { token: token.id, makeDefault: isFirst || makeDefault, replaceId }));
     } catch (failure) {
       setProblem(failure.message || "The bank account could not be added.");
       setBusy(false);

@@ -565,15 +565,12 @@ export default function StripePayoutCard({
     return changeMethod("default_method", { methodId: method.id });
   };
 
-  // A new account is in: a Replace then removes the old one.
-  async function methodAdded(result) {
+  // A new account is in (and, for a Replace, the old one out: the server
+  // does both in one request).
+  function methodAdded(result) {
     applyMethods(result);
-    const old = replacing;
     setReplacing(null);
     setModal("manage");
-    if (old && await changeMethod("remove_method", { methodId: old.id })) {
-      setMethodNotice(`${result.notice} ${methodLabel(old)} was removed.`);
-    }
   }
 
   const startAdd = (kind) => {
@@ -821,6 +818,7 @@ export default function StripePayoutCard({
           country={account?.country ?? country}
           currency={(balance?.defaultCurrency ?? currency).toUpperCase()}
           isFirst={!connectedMethods.length || Boolean(replacing?.default)}
+          replaceId={replacing?.id}
           onAdded={methodAdded}
           onClose={() => { setReplacing(null); setModal(replacing ? "remove-stripe" : "add"); }}
         />
