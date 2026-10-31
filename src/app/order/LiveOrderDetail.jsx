@@ -24,6 +24,7 @@ import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
 import { StepUpdatesModal } from "../../shared/StepUpdatesModal.jsx";
 import { getOrder, orderActivity } from "../../lib/domain/order.js";
+import { can, needsPermission } from "../../lib/domain/org.js";
 import {
   approveMilestone,
   listMilestones,
@@ -79,22 +80,22 @@ const awaitingFirstUpdate = (milestone, posted) =>
  * factory never approves its own work, it posts updates from the row's menu.
  * A row with nothing to do carries no button rather than a disabled one.
  */
-function actionFor(milestone, { isFactory, isOwner, posted, factoryName }) {
+function actionFor(milestone, { isFactory, canFund, canApprove, posted, factoryName }) {
   const payment = milestone.payment;
   const none = { action: "", tone: "", kind: "" };
 
   if (isFactory) return none;
   // A paid step is funded before the work; a payment that came back is paid
-  // again the same way. Only an owner may pay (begin_payment_checkout).
+  // again the same way. Release funds pays (begin_payment_checkout).
   if (payment?.state === "due" || payment?.state === "failed") {
-    return isOwner ? { action: "Fund milestone", tone: "primary", kind: "fund" } : none;
+    return canFund ? { action: "Fund milestone", tone: "primary", kind: "fund" } : none;
   }
   // approve_milestone refuses a paid step until its money is held.
   if (payment && milestone.kind === "approval_and_payment" && payment.state !== "confirmed") return none;
   if (approvable(milestone, posted)) {
-    // approve_milestone refuses a member on a paying step; say so on the row
-    // instead of offering a dialog that can only fail.
-    if (milestone.kind === "approval_and_payment" && !isOwner) return none;
+    // approve_milestone asks for Approve samples, and Release funds too on a
+    // paying step; say so on the row instead of a dialog that can only fail.
+    if (!canApprove || (milestone.kind === "approval_and_payment" && !canFund)) return none;
     return {
       action: milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve",
       tone: "primary",
@@ -104,7 +105,7 @@ function actionFor(milestone, { isFactory, isOwner, posted, factoryName }) {
   // Open, but the factory has posted nothing: approve_milestone refuses it,
   // so the button stays in place, disabled, and the status line says why.
   if (awaitingFirstUpdate(milestone, posted)) {
-    if (milestone.kind === "approval_and_payment" && !isOwner) return none;
+    if (!canApprove || (milestone.kind === "approval_and_payment" && !canFund)) return none;
     return {
       action: milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve",
       tone: "primary",
@@ -115,16 +116,17 @@ function actionFor(milestone, { isFactory, isOwner, posted, factoryName }) {
   }
   // Keep the next action visible on every upcoming step. The database still
   // owns sequencing, so a future CTA is disabled until that step opens rather
-  // than disappearing and leaving the schedule without a clear action.
+  // than disappearing and leaving the schedule without a clear action. Only
+  // to someone who will be able to press it once it opens.
   if (milestone.state === "pending") {
     if (milestone.kind === "payment_only" && payment?.state === "not_due") {
-      return { action: "Fund milestone", tone: "primary", kind: "fund", actionDisabled: true };
+      return canFund ? { action: "Fund milestone", tone: "primary", kind: "fund", actionDisabled: true } : none;
     }
     if (milestone.kind === "approval_and_payment") {
-      return { action: "Approve fund", tone: "primary", kind: "approve", actionDisabled: true };
+      return canApprove && canFund ? { action: "Approve fund", tone: "primary", kind: "approve", actionDisabled: true } : none;
     }
     if (milestone.kind === "approval_only") {
-      return { action: "Approve", tone: "primary", kind: "approve", actionDisabled: true };
+      return canApprove ? { action: "Approve", tone: "primary", kind: "approve", actionDisabled: true } : none;
     }
   }
   return none;
@@ -159,7 +161,7 @@ function paymentLine(payment, isFactory, kind) {
 }
 
 /** The sentence under a step's title, from its own state and its payment's. */
-function statusLine(milestone, { isFactory, isOwner, orgName, factoryName, posted }) {
+function statusLine(milestone, { isFactory, canFund, canApprove, org, factoryName, posted }) {
   const payment = milestone.payment;
   const money = paymentLine(payment, isFactory, milestone.kind);
 
@@ -168,16 +170,19 @@ function statusLine(milestone, { isFactory, isOwner, orgName, factoryName, poste
   }
   // Funding comes before the work, so an unfunded step says so first.
   if (["due", "processing", "failed", "sent"].includes(payment?.state) && milestone.state !== "pending") {
-    // A member gets no "Fund milestone" (actionFor): say why, up front.
-    if (!isFactory && !isOwner && (payment.state === "due" || payment.state === "failed")) {
-      return `${money}. Only an owner of ${orgName || "your company"} can pay for it`;
+    // Without Release funds there is no "Fund milestone" (actionFor): say why.
+    if (!isFactory && !canFund && (payment.state === "due" || payment.state === "failed")) {
+      return `${money}. Only someone with Release funds at ${org?.name || "your company"} can pay for it`;
     }
     return money;
   }
   if (approvable(milestone, posted)) {
     const held = payment?.state === "confirmed" ? ` · ${money}` : "";
     if (isFactory) return `Posted, awaiting the brand's approval${held}`;
-    if (milestone.kind === "approval_and_payment" && !isOwner) return `Ready for an owner's approval${held}`;
+    if (milestone.kind === "approval_and_payment" && !(canApprove && canFund)) {
+      return `Ready for approval by someone with Approve samples and Release funds${held}`;
+    }
+    if (!canApprove) return `Ready for approval by someone with Approve samples${held}`;
     return `Ready for your approval${held}`;
   }
   if (milestone.state === "active") {
@@ -474,7 +479,17 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const money = (cents) => (cents == null ? "—" : formatMoney(cents, order.currency));
   const other = isFactory ? order.brand?.name : order.factory?.name;
   const running = order.status === "active";
-  const viewer = { isFactory, isOwner, orgName: org.name, factoryName: order.factory?.name };
+  // What this person may do here (has_org_permission); the database refuses
+  // the rest, so the rows offer only these.
+  const viewer = {
+    isFactory,
+    org,
+    factoryName: order.factory?.name,
+    canFund: can(org, "releaseFunds"),
+    canApprove: can(org, "approve"),
+    canUpdate: can(org, "addUpdate"),
+    canSetSteps: can(org, "rfqFlow"),
+  };
   // The brand's figures with the fee (brandCharges); the factory's are the
   // summary's step amounts.
   const charged = isFactory ? null : charges;
@@ -517,7 +532,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         : "Nothing posted on this step yet",
       ...reminder,
       // Discussion remains open after approval, including completed orders.
+      // A factory's post is an update (Add update); a brand's is a comment.
       canComment: (running || order.status === "completed")
+        && (!isFactory || viewer.canUpdate)
         && (milestone.state === "complete" || (milestone.kind !== "payment_only"
           && (milestone.state === "active" || milestone.state === "submitted"))),
       // Keep the factory's next action visible on every work/approval step,
@@ -659,8 +676,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         reload={load}
         onBack={() => navigate("/orders")}
         vendor={{ ...counterparty, onMessage: () => navigate(`/orders/${orderId}/messages`), onCancel: proposeCancel }}
-        // Only an owner may pay (begin_payment_checkout); a member stays on the order.
-        onFund={isOwner ? (paymentId) => navigate(`/orders/${orderId}/payments/${paymentId}`) : undefined}
+        // Release funds pays (begin_payment_checkout); anyone else stays on the order.
+        onFund={viewer.canFund ? (paymentId) => navigate(`/orders/${orderId}/payments/${paymentId}`) : undefined}
+        locked={viewer.canSetSteps ? "" : needsPermission(org, "rfqFlow")}
         banner={cancelBanner}
         dialog={cancel.dialog}
       />
@@ -706,7 +724,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           orderId, milestoneId: milestone.id, orgId: org.id, reason: body, files,
         }))}
         onRemind={remind}
-        onManageMilestones={() => navigate(`/orders/${orderId}/schedule`)}
+        onManageMilestones={viewer.canSetSteps ? () => navigate(`/orders/${orderId}/schedule`) : undefined}
         // A refusal belongs to the dialog it happened in, not the next one.
         onDialogClose={() => setDialogError(null)}
         banner={cancelBanner}

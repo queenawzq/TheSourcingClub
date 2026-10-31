@@ -678,3 +678,62 @@ body {
   font-size: 10px;
   transform: none;
 }
+
+/* Team notices (main.jsx TeamNotices): removed from a company, or invited to
+   one, while working in another. Not in the design; the app's card style. */
+.tsc-team-notices {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  display: grid;
+  gap: 10px;
+  width: min(380px, calc(100vw - 32px));
+}
+.tsc-team-notice {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  box-shadow: 0 8px 24px rgba(11, 16, 32, .12);
+  padding: var(--card-compact-padding);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 20px;
+}
+.tsc-team-notice p { margin: 0; }
+.tsc-team-notice .tsc-team-notice-error { margin-top: 8px; color: var(--danger); }
+.tsc-team-notice-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Settings → team, live-only controls (SettingsScreen's live props). */
+.tsc-team-save-note {
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.tsc-team-role-btn,
+.tsc-team-revoke-btn {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+.tsc-team-role-btn:disabled,
+.tsc-team-revoke-btn:disabled { opacity: .45; cursor: not-allowed; }
+.tsc-team-invite-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.tsc-team-invite-actions .tsc-team-revoke-btn { margin-top: 0; color: var(--danger); }
+.tsc-team-confirm > p { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 20px; }

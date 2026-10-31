@@ -31,9 +31,10 @@ insert into public.orgs (id, type, name, slug) values
   ('29b00000-0000-0000-0000-0000000000f1', 'factory', 'P29 Bank Mill',    'pgtap29-bank-mill'),
   ('29b00000-0000-0000-0000-0000000000f2', 'factory', 'P29 Stripe Mill',  'pgtap29-stripe-mill');
 
-insert into public.org_members (org_id, user_id, role) values
-  ('29b00000-0000-0000-0000-0000000000f1', '29a00000-0000-0000-0000-000000000001', 'owner'),
-  ('29b00000-0000-0000-0000-0000000000f2', '29a00000-0000-0000-0000-000000000002', 'owner');
+-- permissions is filled by a trigger, which replica mode skips.
+insert into public.org_members (org_id, user_id, role, permissions) values
+  ('29b00000-0000-0000-0000-0000000000f1', '29a00000-0000-0000-0000-000000000001', 'owner', '{primaryContact}'),
+  ('29b00000-0000-0000-0000-0000000000f2', '29a00000-0000-0000-0000-000000000002', 'owner', '{primaryContact}');
 
 insert into public.stripe_connect_accounts (org_id, stripe_account_id, country, details_submitted, payouts_enabled, transfers_active) values
   ('29b00000-0000-0000-0000-0000000000f2', 'acct_p29stripe', 'GB', true, true, true);

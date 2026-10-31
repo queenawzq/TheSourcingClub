@@ -1937,6 +1937,94 @@ console.log("\nphase 5 — the home screen, and joining a team");
       ? ok("a newly joined member CANNOT record a payment as sent — that stays with owners")
       : fail("LEAK: a plain member moved money");
   }
+
+  // ---- per-member permissions (team_permissions) -------------------------
+  // The select strings src/lib/domain/org.js uses, exactly: a renamed column
+  // fails here, not on a screen.
+  const { data: teamRows, error: teamError } = await brand.client.from("org_members")
+    .select("user_id, role, permissions, title, created_at, user_profiles (id, full_name, email, avatar_url)")
+    .eq("org_id", org.id);
+  const joinedRow = (teamRows ?? []).find((row) => row.user_id === joiner.id);
+  teamError ? fail("the team list reads permissions and titles", teamError)
+    : JSON.stringify(joinedRow?.permissions) === JSON.stringify(["approve"])
+      ? ok("an invitation with no permissions named joins with the design's default (Approve samples)")
+      : fail(`the joined member holds ${JSON.stringify(joinedRow?.permissions)}`);
+
+  const { error: myOrgsError } = await joiner.client.from("org_members")
+    .select("role, permissions, title, orgs (id, type, name, slug, is_demo, created_at)").eq("user_id", joiner.id);
+  myOrgsError ? fail("a person reads their own permissions per company", myOrgsError)
+    : ok("a person reads their own permissions per company (listMyOrgs)");
+
+  const { error: selfPromote } = await joiner.client.from("org_members")
+    .update({ permissions: ["approve", "releaseFunds", "rfqFlow", "settingsAccess"] })
+    .eq("org_id", org.id).eq("user_id", joiner.id);
+  selfPromote ? ok("a member CANNOT give themself permissions with a direct update")
+    : fail("LEAK: a member rewrote their own permissions");
+
+  const { data: canRelease } = await joiner.client.rpc("has_org_permission", { target_org: org.id, perm: "releaseFunds" });
+  canRelease === false ? ok("has_org_permission answers for the caller") : fail(`has_org_permission said ${canRelease}`);
+  const { error: anonAsk } = await createClient(URL, ANON).rpc("has_org_permission", { target_org: org.id, perm: "rfqFlow" });
+  anonAsk ? ok("a signed-out visitor cannot ask about permissions") : fail("LEAK: anon asked has_org_permission");
+
+  // The invite route, run as the browser runs it.
+  const teamInvite = (client, body) => staffRouteAs("send-team-invite", client, { body });
+  const invited = await teamInvite(brand.client, {
+    orgId: org.id, email: `teammate-${stamp}@example.com`, name: "Smoke Teammate", title: "Finance", permissions: ["approve", "releaseFunds"],
+  });
+  invited.status === 200 && invited.id
+    ? ok(`an owner invites a teammate through the route (${invited.emailed ? "emailed" : `saved, ${invited.reason}`})`)
+    : fail(`the invite route answered ${invited.status}`, invited.error);
+  const { data: storedInvite } = await admin.from("org_invitations")
+    .select("permissions, title, invited_name, invited_by").eq("id", invited.id ?? "00000000-0000-0000-0000-000000000000").maybeSingle();
+  storedInvite?.title === "Finance" && storedInvite?.invited_name === "Smoke Teammate"
+    && JSON.stringify(storedInvite?.permissions) === JSON.stringify(["approve", "releaseFunds"])
+    && storedInvite?.invited_by === brand.id
+    ? ok("every field of the invite drawer reads back")
+    : fail("the invitation did not keep what was typed", storedInvite);
+
+  const again = await teamInvite(brand.client, { orgId: org.id, email: `teammate-${stamp}@example.com` });
+  again.status === 409 && again.code === "already_invited"
+    ? ok("a second invitation to the same address is refused as already invited")
+    : fail(`a repeat invitation answered ${again.status} ${again.code}`);
+
+  const byMember = await teamInvite(joiner.client, { orgId: org.id, email: `other-${stamp}@example.com` });
+  byMember.status === 403 ? ok("a member without Settings access CANNOT invite through the route")
+    : fail(`a member's invitation answered ${byMember.status}`);
+
+  const signedOut = await teamInvite(null, { orgId: org.id, email: `other-${stamp}@example.com` });
+  signedOut.status === 401 ? ok("the route asks a signed-out caller to sign in") : fail(`signed out answered ${signedOut.status}`);
+
+  await admin.from("org_invitations").update({ emailed_at: new Date().toISOString() }).eq("id", invited.id);
+  const tooSoon = await teamInvite(brand.client, { resendId: invited.id });
+  tooSoon.status === 429 && tooSoon.code === "resend_too_soon"
+    ? ok("Resend within ten minutes of the last email is refused, in words")
+    : fail(`an early resend answered ${tooSoon.status} ${tooSoon.code}`);
+
+  // The functions the Settings screen calls, by their real argument names.
+  const { error: accessError } = await brand.client.rpc("set_member_access", {
+    target_org: org.id, target_user: joiner.id, new_permissions: ["approve", "releaseFunds"], new_title: "Finance",
+  });
+  accessError ? fail("an owner changes a member's permissions", accessError) : ok("an owner changes a member's permissions");
+  const { error: basicsError } = await brand.client.rpc("save_company_basics", {
+    target_org: org.id, new_email: `ops-${stamp}@example.com`, new_phone: "+1 555 0100", new_location: null,
+  });
+  basicsError ? fail("an owner saves the company's details", basicsError) : ok("an owner saves the company's details");
+  const { data: theirDetails } = await losingFactory.from("org_contact_details").select("email").eq("org_id", org.id);
+  (theirDetails ?? []).length === 0 ? ok("another company CANNOT read them")
+    : fail("LEAK: another company read a company's contact details");
+  const { error: revokeError } = await brand.client.rpc("revoke_invitation", { target_invitation: invited.id });
+  revokeError ? fail("an owner withdraws an invitation", revokeError) : ok("an owner withdraws an invitation");
+  const { data: inviteNames, error: inviteNamesError } = await joiner.client.rpc("my_invitation_companies");
+  inviteNamesError ? fail("my_invitation_companies answers", inviteNamesError)
+    : ok(`my_invitation_companies answers (${(inviteNames ?? []).length} for someone already on the team)`);
+  const { error: lastOwnerError } = await brand.client.rpc("remove_member", { target_org: org.id, target_user: brand.id });
+  lastOwnerError?.hint === "last_owner" ? ok("the last owner CANNOT leave, and is told why")
+    : fail("the last owner was not stopped", lastOwnerError);
+  const { error: removeError } = await brand.client.rpc("remove_member", { target_org: org.id, target_user: joiner.id });
+  removeError ? fail("an owner removes a member", removeError) : ok("an owner removes a member");
+  const { data: stillSees } = await joiner.client.from("org_members").select("user_id").eq("org_id", org.id);
+  (stillSees ?? []).length === 0 ? ok("a removed member no longer reads the team")
+    : fail("LEAK: a removed member still reads the team");
 }
 
 console.log("\nphase 6 — admin operations");

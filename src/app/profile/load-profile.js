@@ -16,7 +16,7 @@ import { matchingEnabled, assessFactories, compareMatches } from "../../lib/doma
  */
 import { getBrandProfile, getFactoryProfile, getSelectedTerms } from "../../lib/domain/profile.js";
 import { BRAND_KINDS } from "../../lib/domain/brand-profile-fields.js";
-import { listMembers } from "../../lib/domain/org.js";
+import { can, listMembers } from "../../lib/domain/org.js";
 import { brandProfileForFactory, listRfqs, listSavedBrands } from "../../lib/domain/rfq.js";
 import { listThreads } from "../../lib/domain/message.js";
 import { listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
@@ -337,6 +337,7 @@ export async function loadOwnBrandProfile(org) {
   return {
     orgName: org.name,
     isOwner: org.role === "owner",
+    canInvite: can(org, "settingsAccess"),
     profile,
     terms,
     selected,

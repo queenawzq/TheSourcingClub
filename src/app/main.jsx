@@ -14,7 +14,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
-import { acceptInvitation, createOrg, listMyInvitations } from "../lib/domain/org.js";
+import { acceptInvitation, can, createOrg, listMyInvitations, needsPermission } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
@@ -466,7 +466,7 @@ function SetNewPassword({ onDone }) {
 }
 
 function ChooseOrgType() {
-  const { user, refreshOrgs, signOut: endSession } = useAuth();
+  const { user, refreshOrgs, lostAccess, signOut: endSession } = useAuth();
   const signOut = () => signOutInto(user?.user_metadata?.account_type ?? portalFromUrl(), endSession);
   // What the signup form already asked. The portal it was filled in decides
   // the side, so someone who signed up here is not asked either question
@@ -554,7 +554,7 @@ function ChooseOrgType() {
                 }
               }}
             >
-              Join {invitation.orgs?.name} as {invitation.role}
+              Join {invitation.orgs?.name ?? "the company"}{invitation.title ? ` as ${invitation.title}` : ""}
             </button>
           ))}
           {error ? <p className="gate-error">{error.message}</p> : null}
@@ -573,6 +573,11 @@ function ChooseOrgType() {
     <div className="gate">
       <form className="gate-card" onSubmit={submit}>
         <p className="gate-eyebrow">Signed in as {user?.email}</p>
+        {lostAccess ? (
+          <p className="gate-error" role="status">
+            You no longer have access to {lostAccess}. Join another company or start your own.
+          </p>
+        ) : null}
         <h1>Which side are you on?</h1>
         <p className="gate-note">
           This decides what you see. It cannot be changed later without our help,
@@ -839,8 +844,75 @@ function Shell() {
       isFactory={isFactory}
       onSignOut={signOut}
     >
+      <TeamNotices />
       <ShellRoutes activeOrg={activeOrg} profile={profile} user={user} isFactory={isFactory} />
     </DesignFrame>
+  );
+}
+
+/**
+ * Two things about this person's teams that can happen while they are in
+ * another company's workspace: they were removed from one (said once), or a
+ * company invited them (Join / Not now). Not in the design, which has no
+ * signed-in invitation at all; drawn as a small card in the app's style.
+ */
+function TeamNotices() {
+  const { lostAccess, dismissLostAccess, refreshOrgs, selectOrg } = useAuth();
+  const [invitations, setInvitations] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listMyInvitations().then((rows) => { if (!cancelled) setInvitations(rows); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const invitation = invitations[0] ?? null;
+  if (!lostAccess && !invitation) return null;
+
+  async function join() {
+    setBusy(true);
+    setError(null);
+    try {
+      const org = await acceptInvitation(invitation.id);
+      await refreshOrgs();
+      if (org?.id) selectOrg(org.id);
+      setInvitations((rows) => rows.slice(1));
+    } catch (failure) {
+      setError(/expired|not found|already used/i.test(failure.message)
+        ? "This invitation has expired or was withdrawn. Ask them to send it again."
+        : "We could not join you to this company. Try again.");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="tsc-team-notices" role="status">
+      {lostAccess ? (
+        <div className="tsc-team-notice">
+          <p>You no longer have access to {lostAccess}. Everything you worked on there stays with the company.</p>
+          <div className="tsc-team-notice-actions">
+            <button type="button" className="quiet-btn" onClick={dismissLostAccess}>OK</button>
+          </div>
+        </div>
+      ) : null}
+      {invitation ? (
+        <div className="tsc-team-notice">
+          <p>
+            You're invited to join <strong>{invitation.orgs?.name}</strong>
+            {invitation.title ? ` as ${invitation.title}` : ""}.
+          </p>
+          {error ? <p className="tsc-team-notice-error">{error}</p> : null}
+          <div className="tsc-team-notice-actions">
+            <button type="button" className="quiet-btn" disabled={busy} onClick={() => setInvitations((rows) => rows.slice(1))}>Not now</button>
+            <button type="button" className="primary-btn" disabled={busy} data-testid="join-invited-company" onClick={join}>
+              {busy ? "Joining…" : "Join"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -882,10 +954,12 @@ function navigateFromPrototype(screenKey, navigate) {
 }
 
 function ShellRoutes({ activeOrg, profile, user, isFactory }) {
-  // listMyOrgs folds the membership role onto the org, and several actions
-  // turn on it: awarding a quote, approving a step that releases money, and
-  // recording a payment as sent are all owner-only in the database.
+  // listMyOrgs folds the membership role and permissions onto the org. Payout
+  // setup stays owner-only; everything else turns on a permission
+  // (has_org_permission), and a screen the person may not use says which.
   const isOwner = activeOrg.role === "owner";
+  const mayQuote = can(activeOrg, "rfqFlow");
+  const quoteFlowOnly = (screen) => (mayQuote ? screen : <NeedsPermission org={activeOrg} perm="rfqFlow" />);
   // The ported screens navigate through this. Without it every goTo() from a
   // designed screen throws and silently does nothing — which the orders slice
   // shipped with, undetected, because the walkthrough reached /orders by URL
@@ -912,7 +986,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
           <LiveRfqs
             org={activeOrg}
             user={user}
-            isOwner={isOwner}
+            isOwner={mayQuote}
             goTo={(next) => navigateFromPrototype(next, navigate)}
           />
         ),
@@ -920,14 +994,14 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/rfqs/new",
       render: () =>
-        isFactory ? <NotForThisSide isFactory /> : (
+        isFactory ? <NotForThisSide isFactory /> : quoteFlowOnly(
           <LiveComposer org={activeOrg} />
         ),
     },
     {
       path: "/rfqs/:id/edit",
       render: (params) =>
-        isFactory ? <NotForThisSide isFactory /> : (
+        isFactory ? <NotForThisSide isFactory /> : quoteFlowOnly(
           <LiveComposer org={activeOrg} rfqId={params.id} />
         ),
     },
@@ -958,7 +1032,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // design puts it and where its visibility toggle lives. Arriving here
       // from an old link resumes the composer at that step.
       render: (params) =>
-        isFactory ? <NotForThisSide isFactory /> : (
+        isFactory ? <NotForThisSide isFactory /> : quoteFlowOnly(
           <LiveComposer org={activeOrg} rfqId={params.id} />
         ),
     },
@@ -978,13 +1052,13 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/rfqs/:id/quotes/:quoteId/contract",
       render: (params) =>
         isFactory ? <NotForThisSide isFactory /> : (
-          <LiveContract rfqId={params.id} quoteId={params.quoteId} isOwner={isOwner} />
+          <LiveContract rfqId={params.id} quoteId={params.quoteId} isOwner={mayQuote} orgName={activeOrg.name} />
         ),
     },
     {
       path: "/browse/:id/quote",
       render: (params) =>
-        isFactory ? <LiveQuoteForm org={activeOrg} rfqId={params.id} profile={profile} /> : <NotForThisSide isFactory={false} />,
+        isFactory ? quoteFlowOnly(<LiveQuoteForm org={activeOrg} rfqId={params.id} profile={profile} />) : <NotForThisSide isFactory={false} />,
     },
     {
       path: "/saved",
@@ -1010,7 +1084,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/browse/:id/quote/review",
       render: (params) =>
         isFactory
-          ? <LiveQuoteReview org={activeOrg} rfqId={params.id} profile={profile} isOwner={isOwner} />
+          ? quoteFlowOnly(<LiveQuoteReview org={activeOrg} rfqId={params.id} profile={profile} isOwner={can(activeOrg, "settingsAccess")} />)
           : <NotForThisSide isFactory={false} />,
     },
     {
@@ -1247,6 +1321,23 @@ function OrderRedirect({ navigate, orderId }) {
     navigate(`/orders/${orderId}`, { replace: true });
   }, [navigate, orderId]);
   return null;
+}
+
+/**
+ * A screen this person's company has not given them (Quote flow, RFQ flow…):
+ * said in words, with the way back, instead of a form the database refuses.
+ */
+function NeedsPermission({ org, perm }) {
+  const { navigate } = useRouter();
+  return (
+    <main className="home-page">
+      <div className="rfq-page">
+        <button type="button" className="quiet-btn" onClick={() => window.history.length > 1 ? window.history.back() : navigate("/")}>← Back</button>
+        <h1>Not available to you</h1>
+        <p className="muted" data-testid="needs-permission">{needsPermission(org, perm)}</p>
+      </div>
+    </main>
+  );
 }
 
 function NotForThisSide() {

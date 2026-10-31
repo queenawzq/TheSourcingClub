@@ -553,7 +553,7 @@ function FullSubmissionModal({ profile, submission, documents, onDocumentUrl, on
                 <ProfileDetailPair
                   key={member.email}
                   label={member.role === "owner" ? "Owner" : "Member"}
-                  value={[member.name, member.email].filter(Boolean).join(" · ")}
+                  value={[member.name, member.email, member.title, member.permissionsText].filter(Boolean).join(" · ")}
                 />
               ))}
               {invitations.map((invite) => (
@@ -1446,6 +1446,7 @@ const TEST_EMAILS = [
   { key: "review-needs-information", label: "Review decision · Needs information", localized: true },
   { key: "review-declined", label: "Review decision · Declined", localized: true },
   { key: "notification", label: "Notification · New quote", localized: true },
+  { key: "team-invite", label: "Team invitation" },
 ];
 
 // `unavailable` (live only): why this staff member's own address cannot

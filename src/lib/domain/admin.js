@@ -9,6 +9,7 @@ import { supabase, unwrap } from "../supabase.js";
 import { getColourSplits, getRfq } from "./rfq.js";
 import { listQuotesForRfq } from "./quote.js";
 import { listLinks, listTermsByKind } from "./taxonomy.js";
+import { permissionLabel } from "./org.js";
 
 /** True when the signed-in user is on the platform_admins table. */
 export async function isPlatformAdmin() {
@@ -127,12 +128,23 @@ export async function verificationQueue() {
  * dash. A field added to onboarding tomorrow arrives here on its own.
  */
 export async function orgSubmission(orgId) {
-  const [submissionResult, tierResult] = await Promise.all([
+  const [submissionResult, tierResult, teamResult] = await Promise.all([
     supabase.rpc("admin_verification_detail", { target_org: orgId }),
     supabase.rpc("admin_factory_tier_eligibility", { target_org: orgId }),
+    // Read-only for staff: what each person may do (org_members_read lets
+    // staff read memberships; nothing lets them change one).
+    supabase.from("org_members").select("role, permissions, title, user_profiles (email), orgs (type)").eq("org_id", orgId),
   ]);
   const submission = unwrap(submissionResult, "load the submitted profile");
-  return { ...submission, trustEligibility: tierResult.error ? null : tierResult.data };
+  const team = new Map((teamResult.data ?? []).map((row) => [row.user_profiles?.email, row]));
+  const members = (submission?.members ?? []).map((member) => {
+    const row = team.get(member.email);
+    if (!row) return member;
+    const kind = row.orgs?.type === "factory" ? "factory" : "brand";
+    const held = row.role === "owner" ? ["Everything (owner)"] : (row.permissions ?? []).map((key) => permissionLabel(key, kind));
+    return { ...member, title: row.title, permissionsText: held.length ? held.join(", ") : "No permissions" };
+  });
+  return { ...submission, members, trustEligibility: tierResult.error ? null : tierResult.data };
 }
 
 /**
