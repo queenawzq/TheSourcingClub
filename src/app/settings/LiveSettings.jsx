@@ -140,8 +140,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           const connected = balance?.methods ?? [];
           setPayoutMethods(connected.length ? connected.map((method) => ({
             id: method.id,
-            label: method.default ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Payout card" : "Bank account",
-            name: `${method.type === "card" ? "Payout card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`,
+            label: method.default ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Debit card" : "Bank account",
+            name: `${method.type === "card" ? "Debit card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`,
             note: [method.name, method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
           })) : [{ label: "Connected", name: "Payout account", note: "Managed securely through your connected payout account." }]);
         } else {
@@ -175,7 +175,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
 
   // Settings' list is built from the accounts, so it is read again after a change.
   const savePayout = async (details) => { await payouts.save(details); await reload(); };
-  const removePayout = async (account) => { await payouts.remove(account); await reload(); };
+  const removePayout = async (account, promote) => { await payouts.remove(account, promote); await reload(); };
   const makePrimaryPayout = async (account) => { await payouts.makePrimary(account); await reload(); };
 
 

@@ -163,6 +163,10 @@
    the window is the only edge. */
 .brand-profile-modal-layer.tsc-connect-layer { place-items: start center; overflow-y: auto; }
 .brand-profile-modal.payout-modal.tsc-connect-modal { max-height: none; overflow: visible; }
+/* With the layer scrolling, a sticky footer sticks to the layer's padded
+   edge and Stripe's form scrolled past beneath it, showing under the bar.
+   Here the footer ends the dialog, and × stays at the top. */
+.payout-modal.tsc-connect-modal .brand-profile-modal-actions { position: static; border-radius: 0 0 16px 16px; }
 .tsc-connect-embed { display: grid; gap: 12px; min-height: 120px; }
 .tsc-connect-status { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 20px; }
 .tsc-connect-status.error { color: var(--danger); }

@@ -91,10 +91,11 @@ export function useManualPayouts(orgId) {
     }
   }
 
-  async function remove(account) {
+  async function remove(account, promote = null) {
     setBusy(true);
     try {
-      unwrap(await supabase.from("factory_payout_accounts").delete().eq("id", account.id), "remove your payout account");
+      // Another account becomes the one TSC pays in the same call (20261030000100).
+      unwrap(await supabase.rpc("remove_payout_account", { target: account.id, promote: promote?.id ?? null }), "remove your payout account");
       await load();
     } catch (failure) {
       // Refused in the database (20261029000300): said with the reason.
