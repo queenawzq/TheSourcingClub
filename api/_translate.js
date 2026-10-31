@@ -1,5 +1,5 @@
 /**
- * Translate a message between English and Chinese, for the screen
+ * Detect the source language and translate non-English messages into English, for the screen
  * (api/screen-message.js), which translates while it checks so a message
  * costs one round trip, not two in a row. There is no /api/translate any
  * more: nothing called it once the screen translated, and it answered anyone,
@@ -20,8 +20,8 @@ const SCHEMA = {
   additionalProperties: false,
   required: ["source_language", "target_language", "translation"],
   properties: {
-    source_language: { type: "string", enum: ["en", "zh"] },
-    target_language: { type: "string", enum: ["en", "zh"] },
+    source_language: { type: "string", pattern: "^[a-z]{2,3}$" },
+    target_language: { type: "string", enum: ["en"] },
     translation: { type: "string" },
   },
 };
@@ -57,7 +57,7 @@ export async function translateText(input, { timeoutMs = 8000 } = {}) {
           {
             role: "user",
             content:
-`Translate this message between a clothing brand and a garment factory. If it is in English, translate to Simplified Chinese. If it is in Chinese, translate to English.
+`Translate this message between a clothing brand and a garment factory. Detect its source language using its ISO 639 language code. Translate any non-English message into English. For an English message, return source_language "en", target_language "en", and the unchanged message. Do not translate English into another language.
 
 Rules:
 - Translate what was written. Do not soften, expand, summarise or add pleasantries.
@@ -99,22 +99,18 @@ ${text.slice(0, 4000)}
 
     const fields = typeof raw === "string" ? JSON.parse(raw) : raw;
 
-    // A "translation" identical to the input, or into the language it came
-    // from, is not a translation. Better to show the original alone than to
-    // present the same sentence twice as though something had happened.
-    if (
-      !fields.translation ||
-      !fields.source_language ||
-      fields.source_language === fields.target_language ||
-      fields.translation.trim() === text
-    ) {
+    if (!/^[a-z]{2,3}$/.test(fields.source_language ?? "") || fields.target_language !== "en") {
+      return softTranslation("the model returned an invalid language");
+    }
+    const translated = typeof fields.translation === "string" ? fields.translation.trim() : "";
+    if (fields.source_language !== "en" && (!translated || translated === text)) {
       return softTranslation("nothing to translate into");
     }
 
     return {
       source_language: fields.source_language,
       target_language: fields.target_language,
-      translation: fields.translation,
+      translation: fields.source_language === "en" ? null : translated,
       model: payload.model ?? MODEL,
       error: null,
     };

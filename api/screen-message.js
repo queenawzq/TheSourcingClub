@@ -229,13 +229,13 @@ export default async function handler(request, response) {
   }
 
   const translation = await translating;
-  if (translation?.translation) {
+  if (translation?.source_language) {
     const { error: translateError } = await db
       .from("messages")
       .update({
         body_lang: translation.source_language,
         body_translated: translation.translation,
-        body_translated_lang: translation.target_language,
+        body_translated_lang: translation.translation ? translation.target_language : null,
         translated_by: translation.model ?? null,
       })
       .eq("id", message.id)

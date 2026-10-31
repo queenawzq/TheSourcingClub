@@ -2257,7 +2257,7 @@ async function main() {
     // Selecting a thread loads its messages, so the bubbles on screen are the
     // previous thread's for a moment. Wait for this message to actually be
     // among them rather than reading whatever is there first.
-    const wanted = (sent.body_translated ?? sent.body).slice(0, 12);
+    const wanted = sent.body.slice(0, 12);
     const readDeadline = Date.now() + 20000;
     let readerSees = "";
     while (Date.now() < readDeadline) {
@@ -2268,15 +2268,17 @@ async function main() {
     const openedGap = await fromNewest();
     check(openedGap >= 0 && openedGap < 4, `the conversation opens at its newest message (${openedGap}px from it)`);
     if (sent.body_translated) {
-      check(readerSees.includes(sent.body_translated.slice(0, 20)),
-        "the brand is shown English first, not a sentence it cannot read");
-      check(/show original/i.test(readerSees),
-        "with the original always one click away — a translation is a convenience, not the record");
+      check(readerSees.includes(factoryLine), "received messages show the original first");
+      const bubble = page.locator(".message-bubble").filter({ hasText: factoryLine });
+      await bubble.getByRole("button", { name: "Translate to English", exact: true }).click();
+      check((await bubble.innerText()).includes(sent.body_translated), "the English translation appears on request");
+      await bubble.getByRole("button", { name: "Show Original", exact: true }).click();
+      check((await bubble.innerText()).includes(factoryLine), "Show Original restores the received text");
     } else {
       check(readerSees.includes(factoryLine.slice(0, 8)),
         "with no translation available, the brand sees exactly what was written");
     }
-    await record(page, "The brand reads it", "in its own language, with the original one click away");
+    await record(page, "The brand reads it", "the original first, with English translation on request");
 
     // Read once the page has written it: the messages are drawn first and the
     // read is recorded just after.
