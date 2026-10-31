@@ -282,6 +282,8 @@ export async function rescreenStale(messages, userId, { now = Date.now(), olderT
   return moved;
 }
 
+export { englishTranslation } from "../../shared/message-translation.mjs";
+
 /**
  * Which text to show, and what the "show the original" control should say.
  *

@@ -802,6 +802,22 @@ await deliverMessage(must(await brand.client.from("messages").insert({
   body: "Thanks, we'll review the fit sample today.",
 }).select("id").single(), "order message"), "deliver the order message");
 
+// A received non-English message with a known English rendering, so testers
+// can exercise Translate to English / Show Original without a model key.
+await deliverMessage(must(await admin.from("messages").insert({
+  thread_id: orderThread?.id ?? orderThread, sender_org_id: factoryOrg.id, sender_user_id: factory.id,
+  body: "袖口按照新的尺寸表做好了，请确认。", body_lang: "zh",
+  body_translated: "The cuffs are ready according to the updated size chart. Please confirm.",
+  body_translated_lang: "en", translated_by: "demo-fixture",
+}).select("id").single(), "translated order message"), "deliver the translated order message");
+
+await deliverMessage(must(await admin.from("messages").insert({
+  thread_id: orderThread?.id ?? orderThread, sender_org_id: brandOrg.id, sender_user_id: brand.id,
+  body: "谢谢，我们今天会检查试衣样。", body_lang: "zh",
+  body_translated: "Thank you, we will review the fit sample today.",
+  body_translated_lang: "en", translated_by: "demo-fixture",
+}).select("id").single(), "brand translated message"), "deliver the brand translated message");
+
 // Calls, through each company's own login, so every notification is the real
 // one. The brand works in New York and the factory in Porto, so each side
 // reads the other's time. The factory invites the brand to a fit-sample call

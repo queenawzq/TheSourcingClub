@@ -24,7 +24,7 @@ import {
   theirTime,
   theirZoneFor,
 } from "../src/shared/call-time.mjs";
-import { joinUrlMismatch, meetingRequestBody } from "../api/_zoom.js";
+import { joinUrlMismatch, meetingRequestBody, sdkSignature } from "../api/_zoom.js";
 
 let failures = 0;
 let checks = 0;
@@ -127,6 +127,16 @@ check(!/ZoomMtgEmbedded|loadZoomEmbedded/.test(conversation), "the conversation 
 check(/onOpenApp: openedInZoomApp/.test(conversation) && /export function openedInZoomApp\(\) \{\s*if \(!current\) return;\s*closeWindow\(\);/.test(callWindow), "opening the Zoom app leaves the call's window first, and keeps the panel");
 const dashboardCards = readFileSync(new URL("../src/app/message/live-calls.js", import.meta.url), "utf8");
 check(/openCallWindow\(call\)/.test(dashboardCards), "the dashboard's Join call opens the window in the click");
+
+// A laptop clock 90 seconds ahead of Zoom must not issue a future-dated JWT.
+const zoomNow = 1_800_000_000;
+const signature = sdkSignature("12345678901", {
+  ZOOM_SDK_CLIENT_ID: "test-client", ZOOM_SDK_CLIENT_SECRET: "test-secret",
+}, (zoomNow + 90) * 1000);
+const claims = JSON.parse(Buffer.from(signature.split(".")[1], "base64url").toString());
+check(claims.iat <= zoomNow, "a slightly fast local clock does not future-date the Zoom signature");
+check(claims.exp > zoomNow + 1800 && claims.exp <= claims.iat + 48 * 3600,
+  "the skew allowance keeps the Zoom signature within its permitted lifetime");
 
 if (failures) {
   console.log(`check:calls: ${failures} of ${checks} checks failed`);
