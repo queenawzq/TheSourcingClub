@@ -1,3 +1,6 @@
+import { payoutBankOptions } from "./_payout-bank-options.js";
+import { payoutDisplayRates } from "./_payout-display-rates.js";
+import { connectUpgrade, beginConnectUpgrade, finishConnectUpgrade, upgradeReadiness } from "./_stripe-connect-upgrade.js";
 import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 import {
   MANAGED_CONTROLLER, PayoutMethodRefusal, addPayoutMethod, holdPayouts, listPayoutMethods, makeDefaultPayoutMethod,
@@ -59,6 +62,14 @@ export default async function handler(request, response) {
   try {
     const { data: existing } = await db.from("stripe_connect_accounts").select("*").eq("org_id", orgId).maybeSingle();
 
+    const upgrade = existing ? await connectUpgrade(db, orgId) : null;
+    if (action === "upgrade") {
+      if (!existing) return reply(response, 404, { error: "No payout account to upgrade." });
+      const current = await stripe.accounts.retrieve(existing.stripe_account_id);
+      await beginConnectUpgrade({ stripe, db, org, current, email: auth?.user?.email });
+      return reply(response, 200, { started: true });
+    }
+
     if (action === "onboard" || action === "session") {
       let accountId = existing?.stripe_account_id;
       if (!accountId) {
@@ -90,6 +101,10 @@ export default async function handler(request, response) {
         await saveConnectAccount(db, orgId, account);
         accountId = account.id;
       }
+      if (jsonBody(request).upgrade === true) {
+        if (!upgrade?.new_account_id || upgrade.completed_at) return reply(response, 409, { error: "Start or resume the payout upgrade first." });
+        accountId = upgrade.new_account_id;
+      }
       if (action === "session") return reply(response, 200, { clientSecret: await payoutSession(stripe, accountId) });
       const origin = appOrigin(request);
       const link = await stripe.accountLinks.create({
@@ -103,6 +118,11 @@ export default async function handler(request, response) {
 
     if (!existing) return reply(response, 404, { error: "payouts through Stripe are not set up yet" });
 
+    if (action === "bank_options") {
+      const account = await stripe.accounts.retrieve(existing.stripe_account_id);
+      return reply(response, 200, await payoutBankOptions(stripe, account.country));
+    }
+
     if (action === "withdraw") {
       if (!existing.payouts_enabled) return reply(response, 422, { error: "Finish payout verification before withdrawing." });
       const payout = await withdrawBalance(stripe, existing.stripe_account_id, { amount, currency, requestId });
@@ -114,21 +134,36 @@ export default async function handler(request, response) {
     await holdPayouts(stripe, existing.stripe_account_id);
 
     if (action === "refresh") {
+      if (upgrade && !upgrade.completed_at) {
+        await finishConnectUpgrade({ stripe, db, orgId, upgrade });
+        const active = await db.from("stripe_connect_accounts").select("stripe_account_id").eq("org_id", orgId).single();
+        if (active.error) throw new Error(active.error.message);
+        existing.stripe_account_id = active.data.stripe_account_id;
+      }
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       const saved = await saveConnectAccount(db, orgId, account);
-      const released = saved.transfers_active ? await releaseOwedTo({ stripe, db, factoryOrgId: orgId }) : [];
+      const released = saved?.transfers_active ? await releaseOwedTo({ stripe, db, factoryOrgId: orgId }) : [];
       return reply(response, 200, { account: saved, released });
     }
 
     if (action === "balance") {
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
-      const [balance, allocation, methods, onTheirWay] = await Promise.all([
+      const [balance, allocation, methods, onTheirWay, displayFx] = await Promise.all([
         stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
         payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
         listPayoutMethods(stripe, existing.stripe_account_id, account.default_currency),
         payoutsOnTheirWay(stripe, existing.stripe_account_id),
+        payoutDisplayRates(),
       ]);
+      const migration = await upgradeReadiness(stripe, upgrade);
+      if (upgrade?.completed_at) {
+        const historical = await payoutAllocationFor(stripe, db, orgId, upgrade.old_account_id);
+        allocation.payouts.push(...historical.payouts);
+        allocation.pending.push(...historical.pending);
+      }
       return reply(response, 200, {
+        displayFx,
+        upgrade: migration ? { started: true, verified: migration.verified, unsettled: migration.unsettled } : null,
         defaultCurrency: account.default_currency,
         available: balance.available.map(({ amount, currency }) => ({ amount, currency })),
         pending: balance.pending.map(({ amount, currency }) => ({ amount, currency })),
@@ -155,6 +190,13 @@ export default async function handler(request, response) {
           // Replace is one request: the new account goes in as the default,
           // then the old one comes out. Two calls from the browser left the
           // old one behind when the page closed between them.
+          if (replaceId) {
+            const target = await stripe.accounts.retrieveExternalAccount(accountId, replaceId);
+            const details = await stripe.tokens.retrieve(token);
+            if (!details.bank_account || details.bank_account.currency !== target.currency) {
+              throw new PayoutMethodRefusal(`A replacement must use ${target.currency.toUpperCase()}. Add a separate payout method to use another currency.`);
+            }
+          }
           const added = payoutMethodRow(await addPayoutMethod(stripe, accountId, { token, makeDefault: makeDefault || Boolean(replaceId) }), account.default_currency);
           notice = `${describe(added)} was added as a payout method${added.default ? " and is now the default" : ""}.`;
           if (replaceId) {

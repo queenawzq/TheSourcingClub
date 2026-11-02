@@ -364,7 +364,7 @@ export async function releasePayment({ stripe, db, paymentId }) {
     return { released: false, reason: "the brand's payment was refunded in Stripe, so there is nothing to pay out" };
   }
 
-  const { data: account } = await db
+  let { data: account } = await db
     .from("stripe_connect_accounts")
     .select("stripe_account_id, transfers_active")
     .eq("org_id", payment.production_orders.factory_org_id)
@@ -385,6 +385,13 @@ export async function releasePayment({ stripe, db, paymentId }) {
   if (!claimedAt) return { released: false, reason: "already being paid" };
 
   try {
+    // A caller may have read the old account just before an upgrade completed.
+    // The claim serialises against cutover; re-read its destination afterwards.
+    const fresh = await db.from("stripe_connect_accounts").select("stripe_account_id, transfers_active")
+      .eq("org_id", payment.production_orders.factory_org_id).single();
+    if (fresh.error) throw new Error(fresh.error.message);
+    account = fresh.data;
+    if (!account.transfers_active) throw new Error("Payout verification is incomplete.");
     // A transfer for this payment that reached Stripe but not our database
     // (a crash in between, or a claim that lapsed) is found here and
     // recorded instead.
@@ -440,7 +447,16 @@ export async function saveConnectAccount(db, orgId, account) {
     transfers_active: account.capabilities?.transfers === "active",
     requirements_due: account.requirements?.currently_due ?? [],
   };
-  const { error } = await db.from("stripe_connect_accounts").upsert(row, { onConflict: "org_id" });
+  // Late events from the retired account, or verification events for a
+  // replacement still onboarding, must never change the active destination.
+  const { data: current, error: readError } = await db.from("stripe_connect_accounts")
+    .select("stripe_account_id").eq("org_id", orgId).maybeSingle();
+  if (readError) throw new Error(readError.message);
+  if (current && current.stripe_account_id !== account.id) return null;
+  const result = current
+    ? await db.from("stripe_connect_accounts").update(row).eq("org_id", orgId).eq("stripe_account_id", account.id)
+    : await db.from("stripe_connect_accounts").insert(row);
+  const { error } = result;
   if (error) throw new Error(error.message);
   return row;
 }

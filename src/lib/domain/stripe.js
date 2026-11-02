@@ -87,8 +87,8 @@ export const connectAction = (orgId, action, extra = {}) => call("stripe-connect
  * A client secret for Stripe's embedded payout forms. Creates the company's
  * Stripe account first if it has none, in the country given.
  */
-export async function connectSession(orgId, country) {
-  const { clientSecret } = await connectAction(orgId, "session", country ? { country } : {});
+export async function connectSession(orgId, country, upgrade = false) {
+  const { clientSecret } = await connectAction(orgId, "session", { ...(country ? { country } : {}), upgrade });
   return clientSecret;
 }
 

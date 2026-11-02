@@ -11,7 +11,7 @@ import { connectInstanceFor } from "../../lib/stripe-connect-embed.js";
  * Stripe draws its own errors once a form is showing. Before that it draws
  * nothing at all, so the loading line and a failure to load are ours.
  */
-export default function StripeConnectEmbed({ org, country, form, onExit }) {
+export default function StripeConnectEmbed({ org, country, form, onExit, upgrade = false }) {
   const [shown, setShown] = useState(false);
   const [failure, setFailure] = useState(null);
   const shownRef = useRef(false);
@@ -37,7 +37,7 @@ export default function StripeConnectEmbed({ org, country, form, onExit }) {
       ) : !shown ? (
         <p className="tsc-connect-status" role="status">Loading Stripe’s secure form…</p>
       ) : null}
-      <ConnectComponentsProvider connectInstance={connectInstanceFor(org.id, country)}>
+      <ConnectComponentsProvider connectInstance={connectInstanceFor(org.id, country, upgrade)}>
         {form === "onboarding" ? (
           // eventually_due: ask for everything Stripe will need once, rather
           // than sending the factory back for more after its first payout.

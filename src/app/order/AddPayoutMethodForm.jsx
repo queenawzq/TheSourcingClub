@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { CardCvcElement, CardExpiryElement, CardNumberElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
 import { STRIPE_PUBLISHABLE_KEY, connectAction } from "../../lib/domain/stripe.js";
@@ -37,14 +37,14 @@ const CARD_OPTIONS = {
  * the US routing number, the UK sort code, or Canada's transit and
  * institution numbers; everywhere else the IBAN is the whole account.
  */
-function bankFieldsFor(country) {
+function bankFieldsFor(country, currency) {
   if (country === "US") {
     return [
       ["routing", "Routing number", "110000000", /^\d{9}$/],
       ["account", "Account number", "000123456789", /^\d{4,17}$/],
     ];
   }
-  if (country === "GB") {
+  if (country === "GB" && currency.toUpperCase() === "GBP") {
     return [
       ["routing", "Sort code", "10-88-00", /^\d{6}$/],
       ["account", "Account number", "00012345", /^\d{8}$/],
@@ -75,15 +75,44 @@ function tokenDetails(country, currency, values, holder) {
   };
 }
 
-function BankForm({ org, country, currency, isFirst, replaceId, onAdded, onClose }) {
+function BankForm({ org, country: initialCountry, currency: initialCurrency, isFirst, replaceId, onAdded, onClose }) {
   const stripe = useStripe();
-  const fields = bankFieldsFor(country);
+  const [country, setCountry] = useState(initialCountry);
+  const [currency, setCurrency] = useState(initialCurrency.toUpperCase());
+  const [options, setOptions] = useState(null);
+  const [optionsError, setOptionsError] = useState(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    setOptionsError(null);
+    connectAction(org.id, "bank_options").then((result) => {
+      if (!cancelled) setOptions(result);
+    }).catch((error) => { if (!cancelled) setOptionsError(error.message); });
+    return () => { cancelled = true; };
+  }, [org.id, attempt]);
+  // Stripe cannot delete the last account for a currency. A replacement
+  // must retain that currency; Add allows every supported combination.
+  const offeredCurrencies = Object.fromEntries(Object.entries(options?.currencies ?? {})
+    .filter(([code]) => !replaceId || code.toUpperCase() === initialCurrency.toUpperCase()));
+  const countries = [...new Set(Object.values(offeredCurrencies).flat())]
+    .map((code) => ({ code, name: new Intl.DisplayNames(["en"], { type: "region" }).of(code) || code }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const currencies = Object.entries(offeredCurrencies).filter(([, countries]) => countries.includes(country)).map(([code]) => code.toUpperCase());
+  const fields = bankFieldsFor(country, currency);
+  const supported = Boolean(options?.currencies[currency.toLowerCase()]?.includes(country));
+  function selectCountry(nextCountry) {
+    setCountry(nextCountry);
+    const possible = Object.entries(offeredCurrencies).filter(([, countries]) => countries.includes(nextCountry)).map(([code]) => code.toUpperCase());
+    if (!possible.includes(currency)) setCurrency(possible[0] || "");
+    setValues({});
+    setProblem(null);
+  }
   const [values, setValues] = useState({});
   const [holder, setHolder] = useState(org.name ?? "");
   const [makeDefault, setMakeDefault] = useState(true);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(null);
-  const ready = holder.trim() && fields.every(([key, , , pattern]) => pattern.test(clean(values[key])));
+  const ready = supported && holder.trim() && fields.every(([key, , , pattern]) => pattern.test(clean(values[key])));
 
   async function save() {
     if (!stripe || !ready || busy) return;
@@ -111,6 +140,21 @@ function BankForm({ org, country, currency, isFirst, replaceId, onAdded, onClose
     >
       <p className="payout-modal-intro">Withdrawals are paid to this account in {currency.toUpperCase()}. The account must be in your company’s name.</p>
       <div className="payout-manual-fields">
+        <label className="payout-country-field">
+          <span>Bank account country</span>
+          <select aria-label="Bank account country" value={country} disabled={!options || busy} onChange={(event) => selectCountry(event.target.value)}>
+            {!options ? <option value={country}>{new Intl.DisplayNames(["en"], { type: "region" }).of(country) || country}</option> : null}
+            {countries.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}
+          </select>
+        </label>
+        {currencies.length > 1 ? <label className="payout-country-field">
+          <span>Bank account currency</span>
+          <select aria-label="Bank account currency" value={currency} disabled={busy} onChange={(event) => { setCurrency(event.target.value); setValues({}); setProblem(null); }}>
+            {currencies.map((code) => <option key={code} value={code}>{code}</option>)}
+          </select>
+        </label> : null}
+        {!options && !optionsError ? <p className="payout-security-copy" role="status">Loading supported bank countries…</p> : null}
+        {optionsError ? <p className="live-stripe-error" role="alert">{optionsError} <button type="button" className="secondary-btn compact-btn" onClick={() => setAttempt((n) => n + 1)}>Try again</button></p> : null}
         <div className="payout-form-grid">
           <label>
             <span>Account holder name</span>

@@ -1,3 +1,4 @@
+import { payoutUsdTotal } from "../../lib/payout-display.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "../../lib/supabase.js";
@@ -271,7 +272,7 @@ export default function StripePayoutCard({
     setAccount(saved);
     accountKnown.current = true;
     setCountry((current) => current || saved?.country || manualCountry || profile?.country_code || "");
-    if (saved?.transfers_active && isOwner) {
+    if (saved && isOwner) {
       setBalanceStatus("loading");
       const nextBalance = await connectAction(org.id, "balance");
       setBalance(nextBalance);
@@ -351,6 +352,10 @@ export default function StripePayoutCard({
   const connectedMethods = balance?.methods ?? [];
   // Where TSC adds and removes payout accounts itself, rather than Stripe's form.
   const managed = Boolean(balance?.managedByTsc);
+  useEffect(() => {
+    if (balance && !balance.managedByTsc && (modal === "remove-stripe" || modal === "account")) setModal("upgrade");
+  }, [balance, modal]);
+
   async function withdraw() {
     if (busy || !withdrawal) return;
     setBusy(true);
@@ -416,7 +421,7 @@ export default function StripePayoutCard({
     handledInitialAction.current = true;
     const chosenManual = manualAccounts.find((row) => row.id === initialMethodId) ?? manualAccount;
     if (initialAction === "manage") {
-      setModal(account?.transfers_active || manualAccount ? "manage" : "setup");
+      setModal(account || manualAccount ? "manage" : "setup");
     } else if (initialAction === "add") {
       // Add always adds: a bank-paid factory's new account never overwrites one.
       if (account?.transfers_active) setModal("add");
@@ -577,8 +582,27 @@ export default function StripePayoutCard({
     setMethodNotice(null);
     setRemoveError(null);
     if (managed) setModal(kind === "card" ? "add-card" : "add-bank");
-    else handOver("add");
+    else setModal("upgrade");
   };
+
+  async function startUpgrade() {
+    setBusy(true);
+    setRemoveError(null);
+    try {
+      await connectAction(org.id, "upgrade");
+      setModal("upgrade-onboarding");
+    } catch (failure) { setRemoveError(failure); }
+    finally { setBusy(false); }
+  }
+  async function finishUpgrade() {
+    setBusy(true);
+    try {
+      await connectAction(org.id, "refresh");
+      await load();
+      setModal("manage");
+    } catch (failure) { setRemoveError(failure); }
+    finally { setBusy(false); }
+  }
 
   // Add (blank) or Edit (that account): the parent holds the form.
   const openManual = (row) => {
@@ -636,12 +660,12 @@ export default function StripePayoutCard({
         <div className="live-payout-balance">
           {/* Paid by bank, the factory has no balance anywhere: TSC sends each
               released payment, so the card says how it is paid instead. */}
-          <span className="payment-metric-label">{!account && manualAccount ? "Payouts" : arriving ? "Balance on its way" : "Available balance"}
+          <span className="payment-metric-label">{!account && manualAccount ? "Payouts" : arriving ? "Balance on its way (USD)" : "Available balance (USD)"}
             {arriving
               ? <PaymentHelp label="Balance on its way">{PENDING_HELP}</PaymentHelp>
               : <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp>}
           </span>
-          <strong data-testid="payout-balance">{balance ? formatMoney(arriving ? pending : available, currency)
+          <strong data-testid="payout-balance">{balance ? formatMoney(payoutUsdTotal(arriving ? balance.pending : balance.available, balance.displayFx), "USD")
             // A placeholder the size of the amount, so the card does not
             // jump when Stripe answers (a sentence said "checking" before).
             : balanceWaiting ? <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />
@@ -651,9 +675,9 @@ export default function StripePayoutCard({
           ) : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
             ? arriving
               // Orders are in USD; Stripe credits an account in its own currency.
-              ? `Stripe is processing your earnings. You can withdraw them ${arrivesOn ? `from ${arrivesOn}` : "once processing finishes"}.${currency !== "USD" ? ` Stripe converts them to ${currency}, your account's currency.` : ""}`
+              ? `Stripe is processing your earnings. You can withdraw them ${arrivesOn ? `from ${arrivesOn}` : "once processing finishes"}.${currency !== "USD" ? ` USD figures are estimates; withdrawals stay in ${currency}.` : ""}`
               : pending > 0
-              ? <>{formatMoney(pending, currency)} pending <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></>
+              ? <>{formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></>
               : "Earnings stay in your balance until you withdraw them."
             // Only an owner reads the balance; for anyone else it is not "in progress".
             : account?.transfers_active
@@ -675,7 +699,7 @@ export default function StripePayoutCard({
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
           {/* The line's space is kept on every card, so the card is the
               placeholder's height whichever way the factory is paid. */}
-          {balance || balanceWaiting ? <p className="payment-provider-note">Payments securely processed by Stripe.</p>
+          {balance || balanceWaiting ? <p className="payment-provider-note">{currency !== "USD" ? balance?.displayFx ? `USD estimate · reference rates ${balance.displayFx.date}. Withdrawals stay in ${currency}.` : `USD estimate unavailable. Withdrawals stay in ${currency}.` : "Payments securely processed by Stripe."}</p>
             : <p className="payment-provider-note" aria-hidden="true">&nbsp;</p>}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </div>
@@ -740,8 +764,8 @@ export default function StripePayoutCard({
                     <div className="payout-method-popover" role="menu">
                       {managed ? (
                         !method.default && method.standard !== false ? <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); makeStripeDefault(method); }}>Make default</button> : null
-                      ) : <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); openSecureManagement(); }}>Edit method</button>}
-                      <button className="danger" type="button" role="menuitem" disabled={method.id === "connected-account"} onClick={() => { setMethodMenu(null); setRemoving(method); setPromoteId(null); setRemoveError(null); setModal("remove-stripe"); }}>Remove method</button>
+                      ) : <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); setModal("upgrade"); }}>Upgrade payout methods</button>}
+                      <button className="danger" type="button" role="menuitem" disabled={method.id === "connected-account"} onClick={() => { setMethodMenu(null); setRemoving(method); setPromoteId(null); setRemoveError(null); setModal(managed ? "remove-stripe" : "upgrade"); }}>Remove method</button>
                     </div>
                   ) : null}
                 </div>
@@ -766,12 +790,19 @@ export default function StripePayoutCard({
               </article>
             )) : <div className="payout-empty-guidance">No payout method added yet.</div>}
           </div>
+          {account && balance && !managed ? (
+            <div className="payout-info-callout"><p>
+              {balance.upgrade ? "Your payout upgrade is in progress. New earnings are held by TSC until it finishes. You can still withdraw your existing balance."
+                : "Upgrade once to add and manage bank accounts directly on TSC. Stripe needs you to verify the replacement payout account."}
+              {" "}<button className="secondary-btn compact-btn" type="button" onClick={() => setModal("upgrade")}>{balance.upgrade ? "Continue upgrade" : "Upgrade payout methods"}</button>
+            </p></div>
+          ) : null}
           {removeError && modal === "manage" ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
           {methodNotice && modal === "manage" ? <p className="live-payment-notice" role="status">{methodNotice}</p> : null}
           {account
             ? <p className="payout-security-copy">{managed
               ? "Withdrawals go to your default account. Stripe, TSC’s payment partner, holds the bank details; everyone at your company is told when a payout method changes."
-              : "For security, Stripe's form on this page holds the bank details: Add, Edit and Remove each finish there."}</p>
+              : "Your existing bank details stay with Stripe. Complete the payout upgrade to manage bank accounts directly on TSC."}</p>
             : manualAccounts.length > 1 ? <p className="payout-security-copy">TSC pays your default bank account. To have another one paid, choose “Make default” on it.</p> : null}
           {manualError ? <p className="live-stripe-error" role="alert">{manualError.message}</p> : null}
         </PayoutModal>
@@ -794,7 +825,7 @@ export default function StripePayoutCard({
                 <div className="payout-option-title"><strong>Bank account</strong><span>Recommended</span></div>
                 <p>Standard payouts directly to your bank. Timing and availability depend on your country.</p>
               </div>
-              <button className="primary-btn compact-btn" type="button" data-testid="add-bank-account" disabled={busy} onClick={() => startAdd("bank")}>Set up</button>
+              <button className="primary-btn compact-btn" type="button" data-testid="add-bank-account" disabled={busy} onClick={() => startAdd("bank")}>Add bank account</button>
             </article>
             <article className="payout-method-option">
               <div className="payout-option-icon payout-card-icon" aria-hidden="true">
@@ -804,7 +835,7 @@ export default function StripePayoutCard({
                 <div className="payout-option-title"><strong>Instant payout card</strong></div>
                 <p>Receive eligible payouts on a supported debit card. Stripe confirms availability, timing, and fees.</p>
               </div>
-              <button className="secondary-btn compact-btn" type="button" data-testid="add-payout-card" disabled={busy} onClick={() => startAdd("card")}>Set up</button>
+              <button className="secondary-btn compact-btn" type="button" data-testid="add-payout-card" disabled={busy} onClick={() => startAdd("card")}>Add debit card</button>
             </article>
           </div>
           {managed ? null : <p className="payout-security-copy">{EXPRESS_FORM_NOTE}</p>}
@@ -930,6 +961,25 @@ export default function StripePayoutCard({
         >
           <p className="payout-modal-intro">Your Stripe setup link expired or was already used, so Stripe sent you back here. Continue to pick up where you left off.</p>
           <p className="payout-security-copy">{STRIPE_FORM_NOTE}</p>
+        </PayoutModal>
+      ) : null}
+
+      {modal === "upgrade" ? (
+        <PayoutModal title="Upgrade your payout methods" eyebrow="Payments" onClose={closeModal}
+          actions={<><button className="secondary-btn" type="button" disabled={busy} onClick={closeModal}>Not now</button>
+            <button className="primary-btn" type="button" disabled={busy} onClick={startUpgrade}>{busy ? "Starting…" : balance?.upgrade ? "Continue verification" : "Start upgrade"}</button>
+            {balance?.upgrade ? <button className="secondary-btn" type="button" disabled={busy} onClick={finishUpgrade}>Check and finish upgrade</button> : null}</>}>
+          <p className="payout-modal-intro">After a one-time verification, add, replace and remove bank accounts directly on TSC. Stripe requires a new payout account; you will need to confirm your business and bank details again and accept its agreement.</p>
+          <p className="payout-security-copy">Your existing balance stays in your current account. Once you start, new earnings are held by TSC until the upgrade finishes. Withdraw any remaining balance using Withdraw to bank and wait for it to arrive. Your payout history is kept.</p>
+          {balance?.upgrade ? <p role="status">{balance.upgrade.verified ? "Replacement account verified." : "Complete verification for the replacement account."} {balance.upgrade.unsettled ? "Your old account still has funds or a withdrawal settling. Withdraw available funds and check again after settlement." : "The old account is settled."}</p> : null}
+          {removeError ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
+        </PayoutModal>
+      ) : null}
+      {modal === "upgrade-onboarding" ? (
+        <PayoutModal wide title="Verify your replacement payout account" eyebrow="Payments" onClose={closeStripeForm}
+          actions={<button className="secondary-btn" type="button" onClick={closeStripeForm}>Close</button>}>
+          <p className="payout-security-copy">Your current account and balance stay available until this account is verified and the old account has settled.</p>
+          <StripeConnectEmbed org={org} upgrade form="onboarding" onExit={closeStripeForm} />
         </PayoutModal>
       ) : null}
 

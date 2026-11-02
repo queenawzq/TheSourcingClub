@@ -113,7 +113,7 @@ export default async function handler(request, response) {
         const orgId = known?.org_id ?? account.metadata?.org_id;
         if (orgId) {
           const saved = await saveConnectAccount(db, orgId, account);
-          if (saved.transfers_active) await releaseOwedTo({ stripe, db, factoryOrgId: orgId });
+          if (saved?.transfers_active) await releaseOwedTo({ stripe, db, factoryOrgId: orgId });
         }
         break;
       }

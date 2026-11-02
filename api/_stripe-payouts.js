@@ -1,3 +1,4 @@
+import { payoutBankOptions } from "./_payout-bank-options.js";
 /** Keep earnings in the connected balance until its owner withdraws them. */
 export async function holdPayouts(stripe, accountId) {
   await stripe.accounts.update(accountId, {
@@ -104,6 +105,15 @@ export async function addPayoutMethod(stripe, accountId, { token, makeDefault })
   // Withdraw sends a standard payout to the default, which a card that only
   // takes instant payouts cannot receive: a card is never made the default here.
   const isCard = token.startsWith("tok_");
+  if (!isCard) {
+    const details = await stripe.tokens.retrieve(token);
+    const account = await stripe.accounts.retrieve(accountId);
+    const options = await payoutBankOptions(stripe, account.country);
+    const bank = details.bank_account;
+    if (!bank || !options.currencies[bank.currency]?.includes(bank.country)) {
+      throw new PayoutMethodRefusal("Stripe does not support that bank country and currency for your company. Choose a supported combination.");
+    }
+  }
   return stripe.accounts.createExternalAccount(accountId, {
     external_account: token,
     ...(makeDefault && !isCard ? { default_for_currency: true } : {}),
