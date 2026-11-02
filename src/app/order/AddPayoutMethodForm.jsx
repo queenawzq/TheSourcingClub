@@ -222,14 +222,12 @@ function CardForm({ org, currency, onAdded, onClose }) {
         <button className="primary-btn" type="button" data-testid="save-payout-card" disabled={!stripe || !ready || busy} onClick={save}>{busy ? "Adding…" : "Add debit card"}</button>
       </>}
     >
-      <p className="payout-modal-intro">A debit card in your company’s name, for instant payouts where Stripe offers them. Your withdrawals keep going to your default bank account.</p>
       <div className="billing-card-form">
         {field("number", CardNumberElement, "Card number", { showIcon: true })}
         {field("expiry", CardExpiryElement, "Expiration date")}
         {field("cvc", CardCvcElement, "Security code")}
       </div>
       {problem ? <p className="live-stripe-error" role="alert">{problem}</p> : null}
-      <p className="payout-security-copy">The card number goes straight to Stripe, TSC’s payment partner. TSC keeps only the last four digits. Everyone at your company is told when a payout method changes.</p>
     </PayoutModal>
   );
 }

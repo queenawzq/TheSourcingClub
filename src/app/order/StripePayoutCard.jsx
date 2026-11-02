@@ -697,10 +697,7 @@ export default function StripePayoutCard({
           {manualSaved ? <p className="live-payment-notice">Payout method saved.</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
-          {/* The line's space is kept on every card, so the card is the
-              placeholder's height whichever way the factory is paid. */}
-          {balance || balanceWaiting ? <p className="payment-provider-note">{currency !== "USD" ? balance?.displayFx ? `USD estimate · reference rates ${balance.displayFx.date}. Withdrawals stay in ${currency}.` : `USD estimate unavailable. Withdrawals stay in ${currency}.` : "Payments securely processed by Stripe."}</p>
-            : <p className="payment-provider-note" aria-hidden="true">&nbsp;</p>}
+          {currency === "USD" && (balance || balanceWaiting) ? <p className="payment-provider-note">Payments securely processed by Stripe.</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </div>
         <div className="live-payout-card-action">
@@ -800,9 +797,7 @@ export default function StripePayoutCard({
           {removeError && modal === "manage" ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
           {methodNotice && modal === "manage" ? <p className="live-payment-notice" role="status">{methodNotice}</p> : null}
           {account
-            ? <p className="payout-security-copy">{managed
-              ? "Withdrawals go to your default account. Stripe, TSC’s payment partner, holds the bank details; everyone at your company is told when a payout method changes."
-              : "Your existing bank details stay with Stripe. Complete the payout upgrade to manage bank accounts directly on TSC."}</p>
+            ? !managed ? <p className="payout-security-copy">Your existing bank details stay with Stripe. Complete the payout upgrade to manage bank accounts directly on TSC.</p> : null
             : manualAccounts.length > 1 ? <p className="payout-security-copy">TSC pays your default bank account. To have another one paid, choose “Make default” on it.</p> : null}
           {manualError ? <p className="live-stripe-error" role="alert">{manualError.message}</p> : null}
         </PayoutModal>
@@ -815,7 +810,6 @@ export default function StripePayoutCard({
           onClose={closeModal}
           actions={<button className="secondary-btn" type="button" onClick={() => setModal("manage")}>Cancel</button>}
         >
-          <p className="payout-modal-intro">Choose how you’d like to receive your funds. {managed ? "Your details go straight to Stripe, TSC’s payment partner." : "Stripe will securely collect and verify the account details."}</p>
           <div className="payout-method-options">
             <article className="payout-method-option recommended">
               <div className="payout-option-icon payout-bank-icon" aria-hidden="true">
