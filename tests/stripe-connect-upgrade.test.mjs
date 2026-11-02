@@ -39,3 +39,11 @@ test('completed upgrades do not query or mutate Stripe',async()=>{
 test('already-managed accounts never create a replacement',async()=>{
   assert.equal(await beginConnectUpgrade({current:{controller:MANAGED_CONTROLLER}}),null);
 });
+
+test('creation failure resumes earnings releases and retains the retry operation', async () => {
+  const calls=[];
+  const db={rpc:async(...args)=>{calls.push(args);return {error:null};},from:()=>({select:()=>({eq:()=>({maybeSingle:async()=>({data:{old_account_id:'acct_old',started_at:'attempt'}})})})})};
+  const stripe={accounts:{create:async()=>{throw Error('connection lost');}}};
+  await assert.rejects(beginConnectUpgrade({stripe,db,org:{id:'org'},current:{id:'acct_old',country:'PT'}}),/connection lost/);
+  assert.deepEqual(calls[1],['record_connect_upgrade_creation',{target_org:'org',attempt:'attempt',replacement:null}]);
+});

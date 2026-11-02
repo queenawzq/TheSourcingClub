@@ -13,17 +13,22 @@ export async function beginConnectUpgrade({ stripe, db, org, current, email }) {
   if (!upgrade.new_account_id) {
     // Stable key prevents duplicate replacement accounts on concurrent clicks or
     // a timeout after Stripe creates it but before the database records the ID.
-    // New attempt after a failed creation requires a fresh migration operation.
-    const replacement = await stripe.accounts.create({
-      country: current.country, controller: MANAGED_CONTROLLER,
-      email: email || current.email || undefined,
-      capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
-      business_profile: { name: org.name },
-      metadata: { org_id: org.id, migrated_from_account_id: current.id },
-      settings: { payouts: { schedule: { interval: 'manual' } } },
-    }, { idempotencyKey: `connect-upgrade-${org.id}-${upgrade.started_at}` });
-    check(await db.from('stripe_connect_upgrades').update({ new_account_id: replacement.id })
-      .eq('org_id', org.id).is('new_account_id', null));
+    // Failed creation resumes releases; retry retains this key for safety.
+    let replacement;
+    try {
+      replacement = await stripe.accounts.create({
+        country: current.country, controller: MANAGED_CONTROLLER,
+        email: email || current.email || undefined,
+        capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
+        business_profile: { name: org.name },
+        metadata: { org_id: org.id, migrated_from_account_id: current.id },
+        settings: { payouts: { schedule: { interval: 'manual' } } },
+      }, { idempotencyKey: `connect-upgrade-${org.id}-${upgrade.started_at}` });
+    } catch (failure) {
+      check(await db.rpc('record_connect_upgrade_creation', { target_org: org.id, attempt: upgrade.started_at, replacement: null }));
+      throw failure;
+    }
+    check(await db.rpc('record_connect_upgrade_creation', { target_org: org.id, attempt: upgrade.started_at, replacement: replacement.id }));
     upgrade = await connectUpgrade(db, org.id);
   }
   return upgrade;

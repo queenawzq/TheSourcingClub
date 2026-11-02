@@ -18,7 +18,7 @@
  * says so, and closes itself on leaving: Zoom sends it to `left=1`.
  */
 import "./call.css";
-import { isConfigured } from "../lib/supabase.js";
+import { supabase, isConfigured } from "../lib/supabase.js";
 import { joinCall, loadZoomClient, ZOOM_SDK_VERSION } from "../lib/domain/calls.js";
 import { callWindowChannel } from "../app/message/call-window.js";
 
@@ -34,6 +34,16 @@ const callWindow = popup && callId ? callWindowChannel(callId, { onLeave: leave 
 // Closing the window is leaving the call.
 if (callWindow) window.addEventListener("pagehide", () => callWindow.left());
 let zoom = null;
+let signedOut = false;
+if (isConfigured) {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    if (event === "SIGNED_OUT" || (event === "INITIAL_SESSION" && !session)) {
+      signedOut = true;
+      void leave();
+    }
+  });
+  window.addEventListener("pagehide", () => subscription.unsubscribe(), { once: true });
+}
 
 const status = document.querySelector(".call-page-status");
 const actions = document.querySelector(".call-page-actions");
@@ -76,6 +86,7 @@ function link(label, href, { primary = false, newTab = false } = {}) {
 // Zoom draws its failures in a dialog of its own over its page, with a Retry
 // that fails the same way: put this page's message and ways on in front.
 function failed(text, join, failure) {
+  if (signedOut) { finished(); return; }
   console.warn("zoom join", failure?.errorCode, failure?.reason ?? failure?.errorMessage ?? failure?.message);
   const root = document.getElementById("zmmtg-root");
   if (root) root.style.display = "none";
@@ -85,6 +96,10 @@ function failed(text, join, failure) {
 // Out of the meeting: the conversation hears of it and the window closes.
 function finished() {
   callWindow?.left();
+  if (signedOut) {
+    const root = document.getElementById("zmmtg-root");
+    if (root) root.style.display = "none";
+  }
   if (popup) window.close();
   // A window the browser will not let a script close (opened from a link).
   status.textContent = "You left the call. You can close this window.";
@@ -100,6 +115,7 @@ async function leave() {
 }
 
 async function start() {
+  if (signedOut) return;
   if (params.get("left") === "1") {
     finished();
     return;
@@ -109,6 +125,7 @@ async function start() {
     return;
   }
   const answer = await joinCall(callId);
+  if (signedOut) return;
   if (!answer.ok) {
     show(answer.message);
     return;
@@ -121,6 +138,7 @@ async function start() {
     failed(failure.message, join, failure);
     return;
   }
+  if (signedOut) return;
   const cantOpen = "The video can't open on this page right now. Join the same call in the Zoom app.";
   ZoomMtg.setZoomJSLib(`https://source.zoom.us/${ZOOM_SDK_VERSION}/lib`, "/av");
   ZoomMtg.preLoadWasm();
@@ -136,12 +154,14 @@ async function start() {
     patchJsMedia: true,
     leaveOnPageUnload: true,
     success: () => {
+      if (signedOut) { void leave(); return; }
       ZoomMtg.join({
         signature: join.signature,
         meetingNumber: join.meetingNumber,
         passWord: join.passcode,
         userName: join.userName,
         success: () => {
+          if (signedOut) { void leave(); return; }
           callWindow?.joined(join.joinUrl);
           // Disconnected: left, ended by the host, or the connection is gone.
           ZoomMtg.inMeetingServiceListener("onMeetingStatus", (data) => {

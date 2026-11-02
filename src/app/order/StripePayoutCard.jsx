@@ -1,3 +1,4 @@
+import { balanceCurrency } from "../../lib/payout-currency.mjs";
 import { payoutUsdTotal } from "../../lib/payout-display.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -39,22 +40,6 @@ function OperationsContact() {
   );
 }
 
-/**
- * The currency the balance is shown in. A connected account is credited in its
- * own currency (a UK factory in GBP, a German one in EUR), so reading USD alone
- * shows $0 and disables Withdraw. Prefer money in the account's default
- * currency, then any currency holding money, then the default, then USD.
- */
-function balanceCurrency(balance) {
-  const available = balance?.available ?? [];
-  const preferred = balance?.defaultCurrency?.toUpperCase();
-  // Money still on its way counts too: a first earning is pending for days,
-  // and choosing by available money alone showed it in another currency as 0.
-  const funded = [...available, ...(balance?.pending ?? [])].filter((row) => row.amount > 0);
-  const row = funded.find((entry) => entry.currency?.toUpperCase() === preferred) ?? funded[0]
-    ?? available.find((entry) => entry.currency?.toUpperCase() === preferred);
-  return row?.currency?.toUpperCase() ?? preferred ?? "USD";
-}
 const SLOW_BALANCE_MS = 8000;
 const BALANCE_STATUS_TEXT = {
   slow: "Stripe is taking longer than usual. Your balance will show here as soon as it answers.",
@@ -343,6 +328,8 @@ export default function StripePayoutCard({
   // Nothing to withdraw yet, but money on its way: that is the balance to
   // show, with the day it can be withdrawn, rather than a bare 0.00.
   const arriving = Boolean(balance) && available <= 0 && pending > 0;
+  const recoveryCurrency = balanceCurrency(balance?.recovery);
+  const recoveryAvailable = amountIn(balance?.recovery?.available, recoveryCurrency);
   const arrivesOn = availableFrom(balance);
   // A Stripe-paid owner whose balance is on its way from Stripe: the card
   // keeps its shape (a placeholder) until it arrives; a slow answer still
@@ -361,7 +348,7 @@ export default function StripePayoutCard({
     setBusy(true);
     setError(null);
     try {
-      await connectAction(org.id, "withdraw", withdrawal);
+      await connectAction(org.id, withdrawal.previous ? "withdraw_previous" : "withdraw", withdrawal);
       setWithdrawal(null);
       setModal(null);
       setWithdrawn(true);
@@ -694,6 +681,13 @@ export default function StripePayoutCard({
                     : manualAccount
                       ? "Your bank details are incomplete. Add the bank and the account name so TSC can pay you."
                       : isOwner ? "Add a payout method to receive earnings" : "No payout method yet."}</p>}
+          {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
+            <p>Your previous payout account has funds remaining or returned after the upgrade.</p>
+            {recoveryAvailable > 0 && balance.recovery.payoutsEnabled ? <button className="secondary-btn compact-btn" disabled={busy} onClick={() => {
+              setWithdrawal({ previous: true, amount: recoveryAvailable, currency: recoveryCurrency.toLowerCase(), requestId: crypto.randomUUID() });
+              setModal("withdraw");
+            }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a> to recover these funds.</p>}
+          </div> : null}
           {manualSaved ? <p className="live-payment-notice">Payout method saved.</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested. Your bank is processing the payout.</p> : null}
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
@@ -726,7 +720,7 @@ export default function StripePayoutCard({
           <button className="secondary-btn" type="button" disabled={busy} onClick={closeModal}>Cancel</button>
           <button className="primary-btn" type="button" disabled={busy} onClick={withdraw}>{busy ? "Withdrawing…" : `Withdraw ${formatMoney(withdrawal.amount, withdrawal.currency)}`}</button>
         </>}>
-          <p>Send {formatMoney(withdrawal.amount, withdrawal.currency)} to your default payout account. Bank processing time depends on your bank and country.</p>
+          <p>Send {formatMoney(withdrawal.amount, withdrawal.currency)} to your {withdrawal.previous ? "previous account’s" : "default"} payout account. Bank processing time depends on your bank and country.</p>
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
         </PayoutModal>
       ) : null}
@@ -789,7 +783,7 @@ export default function StripePayoutCard({
           </div>
           {account && balance && !managed ? (
             <div className="payout-info-callout"><p>
-              {balance.upgrade ? "Your payout upgrade is in progress. New earnings are held by TSC until it finishes. You can still withdraw your existing balance."
+              {balance.upgrade ? balance.upgrade.creationFailed ? "Your payout upgrade has not started. Earnings continue to reach your current account. Retry the upgrade to continue." : "Your payout upgrade is in progress. New earnings are held by TSC until it finishes. You can still withdraw your existing balance."
                 : "Upgrade once to add and manage bank accounts directly on TSC. Stripe needs you to verify the replacement payout account."}
               {" "}<button className="secondary-btn compact-btn" type="button" onClick={() => setModal("upgrade")}>{balance.upgrade ? "Continue upgrade" : "Upgrade payout methods"}</button>
             </p></div>
