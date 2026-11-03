@@ -198,6 +198,55 @@
   white-space: nowrap;
 }
 
+.admin-production-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.admin-entity-identity > .admin-factory-tags {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  max-width: 48%;
+  overflow-x: auto;
+}
+
+.admin-factory-tags:empty {
+  display: none;
+}
+
+.admin-factory-tags .admin-production-types {
+  margin: 0;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+
+.admin-factory-tags .tag {
+  white-space: nowrap;
+}
+
+.admin-production-types > .production-knit {
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+  color: #6b21a8;
+}
+
+.admin-production-types > .production-jersey {
+  background: #ffedd5;
+  border-color: #fdba74;
+  color: #9a3412;
+}
+
+.admin-production-types > .production-woven {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
 .admin-entity-identity small {
   overflow: hidden;
   color: #60769b;
