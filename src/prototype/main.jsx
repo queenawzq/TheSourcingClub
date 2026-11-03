@@ -10834,7 +10834,7 @@ export function FundScreen({ fundingMilestone, goTo, setFundingMilestone, live =
       : { defaultChecked };
   return (
     <div className="stack">
-      <Card title={live ? "Card details" : "Select billing method"}>
+      <Card title={live ? live.title ?? "Card details" : "Select billing method"}>
         {live ? (
           live.paymentElement
         ) : (

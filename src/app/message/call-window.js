@@ -109,6 +109,17 @@ function closeWindow() {
 }
 
 /** Leaves the meeting in the window and closes it. */
+export function closeCallWindowsForSignOut() {
+  listen();
+  channel?.postMessage({ type: "signed-out" });
+  if (current) {
+    try { current.handle?.close(); } catch { /* Already gone. */ }
+    end();
+  }
+  channel?.close();
+  channel = null;
+}
+
 export function leaveCallWindow() {
   if (!current) return;
   closeWindow();
@@ -147,7 +158,7 @@ export function callWindowChannel(callId, { onLeave } = {}) {
   }
   const own = new BroadcastChannel(CHANNEL);
   own.onmessage = ({ data }) => {
-    if (data?.type === "leave" && data.callId === callId) onLeave?.();
+    if (data?.type === "signed-out" || (data?.type === "leave" && data.callId === callId)) onLeave?.();
   };
   let gone = false;
   return {

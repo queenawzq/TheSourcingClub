@@ -45,17 +45,18 @@ function fonts() {
  * The Connect instance for a company. `country` is used only if the company
  * has no Stripe account yet, when the first session creates one.
  */
-export function connectInstanceFor(orgId, country) {
-  let entry = instances.get(orgId);
+export function connectInstanceFor(orgId, country, upgrade = false) {
+  const key = `${orgId}:${upgrade ? "upgrade" : "current"}`;
+  let entry = instances.get(key);
   if (!entry) {
     entry = { country };
     entry.instance = loadConnectAndInitialize({
       publishableKey: STRIPE_PUBLISHABLE_KEY,
-      fetchClientSecret: () => connectSession(orgId, entry.country),
+      fetchClientSecret: () => connectSession(orgId, entry.country, upgrade),
       appearance: APPEARANCE,
       fonts: fonts(),
     });
-    instances.set(orgId, entry);
+    instances.set(key, entry);
   }
   if (country) entry.country = country;
   return entry.instance;

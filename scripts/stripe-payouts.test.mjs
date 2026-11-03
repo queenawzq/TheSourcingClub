@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { holdPayouts, payoutSession, withdrawBalance } from "../api/_stripe-payouts.js";
+import { holdPayouts, payoutSession, withdrawBalance, MANAGED_CONTROLLER } from "../api/_stripe-payouts.js";
 
 const request = { amount: 100, currency: "usd", requestId: "b1f9fd8c-76bd-43a7-ad48-502ebed382b3" };
 test("holding earnings disables automatic payouts without making a withdrawal", async () => {
@@ -31,7 +31,7 @@ test("invalid withdrawals and failure to disable autopayouts never move money", 
 test("the embedded payout session holds earnings and lets the factory add its own bank account", async () => {
   const calls = [];
   const stripe = {
-    accounts: { update: async (...args) => calls.push(["hold", ...args]) },
+    accounts: { retrieve: async () => ({ controller: { stripe_dashboard: { type: "express" } } }), update: async (...args) => calls.push(["hold", ...args]) },
     accountSessions: { create: async (...args) => { calls.push(["session", ...args]); return { client_secret: "acct_session_secret" }; } },
   };
   assert.equal(await payoutSession(stripe, "acct_factory"), "acct_session_secret");
@@ -42,4 +42,11 @@ test("the embedded payout session holds earnings and lets the factory add its ow
     components: { account_onboarding: payoutForm, account_management: payoutForm },
   }]);
   await assert.rejects(payoutSession({ accounts: { update: async () => { throw Error("Stripe unavailable"); } } }, "acct_factory"), /Stripe unavailable/);
+});
+
+test("managed embedded forms disable Stripe user authentication", async () => {
+  let session;
+  await payoutSession({accounts:{update:async()=>{},retrieve:async()=>({controller:MANAGED_CONTROLLER})},accountSessions:{create:async value=>{session=value;return {client_secret:'test'};}}},'acct_managed');
+  assert.equal(session.components.account_onboarding.features.disable_stripe_user_authentication,true);
+  assert.equal(session.components.account_management.features.disable_stripe_user_authentication,true);
 });

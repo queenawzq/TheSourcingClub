@@ -20,6 +20,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isConfigured, setKeepSignedIn, isThisTabsSession } from "./supabase.js";
 import { createOrg, listMyOrgs } from "./domain/org.js";
+import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
 
 /** Mirrors `minimum_password_length` in supabase/config.toml and the design's copy. */
@@ -142,6 +143,7 @@ export function AuthProvider({ children }) {
       // and refresh. A tab signed in without "Keep me logged in" holds its
       // own session, and must not turn into whoever signed in next door.
       if (!isThisTabsSession(nextSession)) return;
+      if (!nextSession) closeCallWindowsForSignOut();
       finishRestore(nextSession);
     });
 
@@ -466,6 +468,7 @@ export function AuthProvider({ children }) {
         setOrgs([]);
         setActiveOrgId(null);
         window.localStorage.removeItem("tscActiveOrg");
+        closeCallWindowsForSignOut();
         logoutStripeConnect();
         // supabase-js owns the stored token, and nothing else may clear it.
         //
