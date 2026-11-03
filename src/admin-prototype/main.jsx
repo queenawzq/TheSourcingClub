@@ -206,12 +206,7 @@ function Panel({ title, subtitle, action, onAction, children, className = "" }) 
 }
 
 function VerificationRow({ profile, onReview }) {
-  const productionTone = (type) => /jersey|cut.*sew/i.test(type) ? "jersey"
-    : /woven|weav/i.test(type) ? "woven"
-    : /knit|sweater/i.test(type) ? "knit" : "other";
-  const productionTags = [...new Set((profile.productionTypes ?? []).map(productionTone))]
-    .filter((type) => type !== "other");
-  const productionLabels = { woven: "Woven", knit: "Knit", jersey: "Jersey" };
+  const productionTags = profile.productionTags ?? [];
   return (
     <article className={`admin-verification-row${profile.confidence != null ? " has-confidence" : ""}`}>
       <div className="admin-entity-identity">
@@ -225,8 +220,8 @@ function VerificationRow({ profile, onReview }) {
           {(profile.entityType === "Factory" || profile.entityType === "Trading company") && (
             <div className="tag-row compact-tags admin-production-types" aria-label="Production types">
               {productionTags.map((type) => (
-                <span key={type} className={`tag production-${type}`} title={profile.productionTypesInferred ? "Inferred from the factory name and description" : undefined}>
-                  {productionLabels[type]}
+                <span key={type.kind} className={`tag production-${type.kind}`} title={type.source}>
+                  {type.label}{type.inferred ? " · inferred" : ""}
                 </span>
               ))}
             </div>

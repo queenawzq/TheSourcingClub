@@ -53,6 +53,7 @@ import { formatMoney, formatRange } from "../../lib/money.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { describeQuote } from "../quote/quote-view.js";
 import { monthLine, quantityLine } from "../rfq/resume-fields.js";
+import { productionCategories } from "./production-categories.mjs";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -192,6 +193,7 @@ export function toReviewProfile(row) {
     capabilityGroups: row.capabilityGroups ?? [],
     productionTypes: savedProductionTypes.length ? savedProductionTypes : inferredProductionTypes,
     productionTypesInferred: inferredProductionTypes.length > 0,
+    productionTags: productionCategories(row),
     makes: row.makes ?? [],
     confidence: row.verificationScore ?? null,
     // The queue row's name for that figure; the design's is "Confidence".
