@@ -206,6 +206,9 @@ function Panel({ title, subtitle, action, onAction, children, className = "" }) 
 }
 
 function VerificationRow({ profile, onReview }) {
+  const productionTone = (type) => /jersey|cut.*sew/i.test(type) ? "jersey"
+    : /woven|weav/i.test(type) ? "woven"
+    : /knit|sweater/i.test(type) ? "knit" : "other";
   return (
     <article className={`admin-verification-row${profile.confidence != null ? " has-confidence" : ""}`}>
       <div className="admin-entity-identity">
@@ -214,6 +217,22 @@ function VerificationRow({ profile, onReview }) {
           <strong>{profile.name}</strong>
           <small>{profile.entityType} · {profile.location}</small>
           <small className="admin-entity-submitted">Submitted {profile.submitted}</small>
+        </div>
+        <div className="admin-factory-tags">
+          {(profile.entityType === "Factory" || profile.entityType === "Trading company") && (
+            <div className="tag-row compact-tags admin-production-types" aria-label="Production types">
+              {(profile.productionTypes?.length ? profile.productionTypes : ["Production type not provided"]).map((type) => (
+                <span key={type} className={`tag production-${productionTone(type)}`} title={profile.productionTypesInferred ? "Inferred from the factory name and description" : undefined}>
+                  {type}{profile.productionTypesInferred ? " · inferred" : ""}
+                </span>
+              ))}
+            </div>
+          )}
+          {profile.makes?.length > 0 && (
+            <div className="tag-row compact-tags admin-production-types admin-factory-makes" aria-label="Makes">
+              {profile.makes.map((product) => <span className="tag" key={product}>{product}</span>)}
+            </div>
+          )}
         </div>
       </div>
       {profile.confidence != null
