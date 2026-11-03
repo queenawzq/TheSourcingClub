@@ -189,6 +189,7 @@ export function toReviewProfile(row) {
       ["Last note", row.note ? createElement("span", { className: "admin-review-note" }, row.note) : "—"],
     ],
     capabilities: row.capabilities ?? [],
+    capabilityGroups: row.capabilityGroups ?? [],
     productionTypes: savedProductionTypes.length ? savedProductionTypes : inferredProductionTypes,
     productionTypesInferred: inferredProductionTypes.length > 0,
     makes: row.makes ?? [],

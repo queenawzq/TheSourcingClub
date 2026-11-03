@@ -209,6 +209,9 @@ function VerificationRow({ profile, onReview }) {
   const productionTone = (type) => /jersey|cut.*sew/i.test(type) ? "jersey"
     : /woven|weav/i.test(type) ? "woven"
     : /knit|sweater/i.test(type) ? "knit" : "other";
+  const productionTags = [...new Set((profile.productionTypes ?? []).map(productionTone))]
+    .filter((type) => type !== "other");
+  const productionLabels = { woven: "Woven", knit: "Knit", jersey: "Jersey" };
   return (
     <article className={`admin-verification-row${profile.confidence != null ? " has-confidence" : ""}`}>
       <div className="admin-entity-identity">
@@ -221,16 +224,11 @@ function VerificationRow({ profile, onReview }) {
         <div className="admin-factory-tags">
           {(profile.entityType === "Factory" || profile.entityType === "Trading company") && (
             <div className="tag-row compact-tags admin-production-types" aria-label="Production types">
-              {(profile.productionTypes?.length ? profile.productionTypes : ["Production type not provided"]).map((type) => (
-                <span key={type} className={`tag production-${productionTone(type)}`} title={profile.productionTypesInferred ? "Inferred from the factory name and description" : undefined}>
-                  {type}{profile.productionTypesInferred ? " · inferred" : ""}
+              {productionTags.map((type) => (
+                <span key={type} className={`tag production-${type}`} title={profile.productionTypesInferred ? "Inferred from the factory name and description" : undefined}>
+                  {productionLabels[type]}
                 </span>
               ))}
-            </div>
-          )}
-          {profile.makes?.length > 0 && (
-            <div className="tag-row compact-tags admin-production-types admin-factory-makes" aria-label="Makes">
-              {profile.makes.map((product) => <span className="tag" key={product}>{product}</span>)}
             </div>
           )}
         </div>
@@ -1099,7 +1097,32 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
           <div className="admin-review-main">
             <Panel title="Profile summary" subtitle={profile.summary} action="View full submission" onAction={() => setFullProfileOpen(true)}>
               <div className="admin-detail-grid">{profile.details.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
-              {profile.capabilities?.length ? <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} /> : null}
+              {profile.capabilityGroups?.length ? (
+                <div className="admin-capability-groups">
+                  {[
+                    ["manufacturing_model", "Manufacturing model"],
+                    ["production_type", "Production type"],
+                    ["product_category", "Product categories"],
+                    ["make", "Makes"],
+                    ["market_level", "Market level"],
+                    ["specialty", "Specializes in"],
+                    ["service", "Services"],
+                    ["design_service", "Design services"],
+                    ["production_program", "Production programs supported"],
+                    ["sourcing_region", "Sourcing regions"],
+                    ["core_service", "Core services"],
+                    ["product_development", "Product development"],
+                    ["quality_compliance", "Quality & compliance"],
+                    ["region", profile.entityType === "Trading company" ? "Primary destination markets" : "Primary export markets"],
+                    ["digital_tool", "Digital tools"],
+                    ["certification", "Certifications"],
+                    ...profile.capabilityGroups.filter(({ kind }) => !["manufacturing_model", "production_type", "product_category", "make", "market_level", "specialty", "service", "design_service", "production_program", "sourcing_region", "core_service", "product_development", "quality_compliance", "region", "digital_tool", "certification"].includes(kind)).map(({ kind }) => [kind, kind.replaceAll("_", " ")]),
+                  ].map(([kind, label]) => {
+                    const group = profile.capabilityGroups.find((group) => group.kind === kind);
+                    return group?.items.length ? <ProfileChipSection key={kind} label={label} items={group.items} /> : null;
+                  })}
+                </div>
+              ) : profile.capabilities?.length ? <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} /> : null}
             </Panel>
             {profile.checks?.length ? (
             <Panel title="Verification checks" subtitle="Each check reads what this company submitted and what TSC already holds. None of them contacts an outside registry or certifier.">

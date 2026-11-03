@@ -205,14 +205,19 @@
   margin-top: 4px;
 }
 
+.admin-capability-groups {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+}
+
 .admin-entity-identity > .admin-factory-tags {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   margin-left: auto;
   max-width: 48%;
-  overflow-x: auto;
 }
 
 .admin-factory-tags:empty {
@@ -221,11 +226,16 @@
 
 .admin-factory-tags .admin-production-types {
   margin: 0;
-  flex: 0 0 auto;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
 }
 
 .admin-factory-tags .tag {
+  box-sizing: border-box;
+  min-height: 22px;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
   white-space: nowrap;
 }
 

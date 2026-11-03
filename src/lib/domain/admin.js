@@ -95,13 +95,17 @@ export async function verificationQueue() {
   const productionByOrg = new Map();
   const makesByOrg = new Map();
   const categoriesByOrg = new Map();
+  const capabilitiesByOrg = new Map();
   if (factoryIds.length) {
     const links = unwrap(await supabase.from("taxonomy_links")
       .select("org_id, taxonomy_terms!inner(kind, label_en)")
       .in("org_id", factoryIds)
-      .eq("subject_type", "factory_profile")
-      .in("taxonomy_terms.kind", ["production_type", "make", "product_category"]), "load factory production categories");
+      .eq("subject_type", "factory_profile"), "load factory capabilities");
     for (const link of links ?? []) {
+      const groups = capabilitiesByOrg.get(link.org_id) ?? {};
+      (groups[link.taxonomy_terms.kind] ??= new Set()).add(link.taxonomy_terms.label_en);
+      capabilitiesByOrg.set(link.org_id, groups);
+      if (!["production_type", "make", "product_category"].includes(link.taxonomy_terms.kind)) continue;
       const target = link.taxonomy_terms.kind === "production_type" ? productionByOrg
         : link.taxonomy_terms.kind === "make" ? makesByOrg : categoriesByOrg;
       const labels = target.get(link.org_id) ?? new Set();
@@ -135,6 +139,7 @@ export async function verificationQueue() {
     capabilities: row.capabilities ?? [],
     productionTypes: [...(productionByOrg.get(row.org_id) ?? [])].sort(),
     makes: [...(makesByOrg.get(row.org_id) ?? categoriesByOrg.get(row.org_id) ?? [])].sort(),
+    capabilityGroups: Object.entries(capabilitiesByOrg.get(row.org_id) ?? {}).map(([kind, labels]) => ({ kind, items: [...labels].sort() })),
     decidedAt: row.decided_at,
   }));
 }
