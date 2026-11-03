@@ -303,15 +303,37 @@ export function readable(message, { preferred = "en" } = {}) {
     };
   }
 
+  // Already in the reader's language: nothing to translate, so no toggle.
+  // A translation into the other language is for the other side, not them.
+  const foreign = hasTranslation && message.body_lang !== preferred;
   return {
     text: message.body,
     isTranslation: false,
-    original: hasTranslation ? message.body_translated : null,
-    originalLang: message.body_translated_lang,
+    original: foreign ? message.body_translated : null,
+    originalLang: foreign ? message.body_translated_lang : null,
   };
 }
 
 export const LANGUAGE_NAME = { en: "English", zh: "中文" };
+
+/**
+ * The language a reader reads a conversation in. The live app is English
+ * throughout, so there is no setting to ask: the language this company last
+ * wrote in, in this conversation; before it has written, the browser's
+ * (any `zh` means Chinese); otherwise English.
+ */
+export function readerLanguage(messages = [], orgId, browserLanguages = navigatorLanguages()) {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.sender_org_id === orgId && LANGUAGE_NAME[message.body_lang]) return message.body_lang;
+  }
+  return browserLanguages.some((tag) => /^zh\b/i.test(tag ?? "")) ? "zh" : "en";
+}
+
+function navigatorLanguages() {
+  if (typeof navigator === "undefined") return [];
+  return navigator.languages?.length ? [...navigator.languages] : [navigator.language].filter(Boolean);
+}
 
 /**
  * Staff: the messages waiting on a person. Held ones, and any still being

@@ -489,6 +489,18 @@ body {
   }
 }
 
+/* Scheduled calls: the design's list is 118 px tall with its own scroller,
+   one call in view. At phone width the title wraps and one call no longer
+   fits, so the card cut through it, "Join call" included. There the list
+   shows its calls in full (live lists at most four). */
+@media (max-width: 760px) {
+  .home-upcoming-call-card .home-upcoming-call-list,
+  .factory-upcoming-call-card .factory-upcoming-call-list {
+    max-height: none;
+    overflow-y: visible;
+  }
+}
+
 /* Review brief: the request's name is a textarea so a long one wraps inside
    the card, as the design's heading does. One row tall until it needs more. */
 .card textarea.card-title-input {

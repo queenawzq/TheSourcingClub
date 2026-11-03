@@ -254,28 +254,18 @@ export async function joinCall(callId) {
 }
 
 /**
- * Zoom's Component View, from Zoom's own CDN, loaded only when someone joins.
- * The CDN build brings its own React 18 and Redux as globals; the npm package
+ * Zoom's meeting, from Zoom's own CDN, loaded only when someone joins. The
+ * CDN build brings its own React 18 and Redux as globals; the npm package
  * would put a second React inside this React 19 bundle. Pinned version.
  */
 export const ZOOM_SDK_VERSION = "6.5.0";
 let zoomLoading = null;
 
-export function loadZoomEmbedded() {
-  return loadZoom("ZoomMtgEmbedded", [
-    "react.min.js",
-    "react-dom.min.js",
-    "redux.min.js",
-    "redux-thunk.min.js",
-    "lodash.min.js",
-  ], `zoom-meeting-embedded-${ZOOM_SDK_VERSION}.min.js`);
-}
-
 /**
- * Zoom's Client View, for phones and tablets (call.html): Zoom supports its
- * Component View on desktop browsers only, and draws it wider than a phone
- * (367px asked for 343, Oct 27). Client View is Zoom's own full-screen
- * meeting page, and needs react-redux besides.
+ * Zoom's Client View (call.html): Zoom's own full-window meeting, in a window
+ * of its own on a computer and on the page itself on a phone. It replaced the
+ * Component View drawn inside the conversation, which put the meeting and
+ * the conversation in each other's way. Needs react-redux besides.
  */
 export function loadZoomClient() {
   return loadZoom("ZoomMtg", [

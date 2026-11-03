@@ -48,8 +48,13 @@ body:has(> .call-page) {
   width: min(100%, 320px);
 }
 
-.call-page-actions a {
+.call-page-actions a,
+.call-page-actions button {
   display: block;
+  width: 100%;
+  background: none;
+  font: inherit;
+  cursor: pointer;
   padding: 12px 16px;
   border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 8px;
@@ -58,7 +63,8 @@ body:has(> .call-page) {
   text-decoration: none;
 }
 
-.call-page-actions a.primary {
+.call-page-actions a.primary,
+.call-page-actions button.primary {
   border-color: #2458ff;
   background: #2458ff;
 }
