@@ -2069,12 +2069,17 @@ async function main() {
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-row"]', 25000);
     const releaseSentence = `Only someone with Release funds at ${brandName}`;
-    const fundOffered = async () => (await eachText(page, '[data-testid="milestone-action"]'))
-      .some((label) => /^fund milestone$/i.test(label.trim()));
+    // Fund stays on the row either way (Queena, Nov 4): greyed out without
+    // the permission, pressable with it.
+    const fundButtons = () => page.evaluate(() => [...document.querySelectorAll('[data-testid="milestone-action"]')]
+      .filter((button) => /^fund milestone$/i.test(button.innerText.trim()))
+      .map((button) => ({ disabled: button.disabled, title: button.title })));
+    const fundOffered = async () => (await fundButtons()).some((button) => !button.disabled);
+    const fundGreyed = async () => (await fundButtons()).some((button) => button.disabled && /Release funds/.test(button.title));
     const sentenceShown = async () => (await page.locator("body").innerText()).includes(releaseSentence);
-    check(await within(page, sentenceShown) !== null && !(await fundOffered()),
-      "without Release funds the due step says who can pay it, and offers no Fund");
-    await record(page, "No Release funds", "the step says who can pay it");
+    check(await within(page, sentenceShown) !== null && !(await fundOffered()) && (await fundGreyed()),
+      "without Release funds the due step says who can pay it, and its Fund is greyed out, not hidden");
+    await record(page, "No Release funds", "Fund greyed out, the step says who can pay it");
 
     const access = (permissions) => brandOwner.client.rpc("set_member_access", {
       target_org: brandOrg.id, target_user: teammate.userId, new_permissions: permissions, new_title: "Production lead",
@@ -2086,9 +2091,9 @@ async function main() {
     await record(page, "Release funds given", "Fund milestone, live");
 
     const { error: takeError } = await access(["approve"]);
-    const sentenceAfter = await within(page, async () => !(await fundOffered()) && (await sentenceShown()));
+    const sentenceAfter = await within(page, async () => !(await fundOffered()) && (await fundGreyed()) && (await sentenceShown()));
     check(!takeError && sentenceAfter !== null,
-      `the owner takes it away and the sentence returns (${sentenceAfter} ms${takeError ? `, ${takeError.message}` : ""})`);
+      `the owner takes it away: Fund greys out and the sentence returns (${sentenceAfter} ms${takeError ? `, ${takeError.message}` : ""})`);
 
     const { error: removeError } = await brandOwner.client.rpc("remove_member", {
       target_org: brandOrg.id, target_user: teammate.userId,
@@ -4033,6 +4038,24 @@ async function main() {
     check(switched !== null && JSON.stringify(crossRow?.permissions) === '["addUpdate"]',
       `Join switches them to the factory, as a member with Add update (${JSON.stringify(crossRow?.permissions)})`);
     await record(page, "Joined from the banner", "now in the factory's workspace");
+
+    // On the request itself, Send quote is greyed out with the reason in
+    // words (Queena, Nov 4), not a button that opens a dead end. Only drawn
+    // while this factory has no quote on the request: with one, the page is
+    // the read-back of that quote instead.
+    await page.goto(`${APP}/browse/${publishedRfq.id}`);
+    await waitFor(page, ".factory-rfq-detail-page, .factory-detail-page", 25000);
+    if (await page.locator(".factory-rfq-detail-page").count()) {
+      const sendQuote = await page.evaluate(() => [...document.querySelectorAll(".factory-side-actions button")]
+        .find((button) => /^send quote$/i.test(button.innerText.trim()))?.disabled ?? null);
+      const blocked = await page.locator('[data-testid="send-quote-blocked"]').count()
+        ? await page.locator('[data-testid="send-quote-blocked"]').innerText() : "";
+      check(sendQuote === true && blocked.includes("RFQ flow"),
+        `without RFQ flow, Send quote is greyed out and says why (${blocked.trim() || "no sentence"})`);
+      await record(page, "No RFQ flow: Send quote", "greyed out, the permission named");
+    } else {
+      console.log("  · Send quote not drawn: this factory already quoted the request (read-back page)");
+    }
 
     // A factory member without RFQ flow is told so on the quote route.
     await page.goto(`${APP}/browse/${publishedRfq.id}/quote`);
