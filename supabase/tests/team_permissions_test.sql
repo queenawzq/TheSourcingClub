@@ -15,7 +15,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(91);
+select plan(94);
 
 insert into auth.users (id, email, raw_user_meta_data) values
   ('a2400000-0000-0000-0000-000000000001', 'p24-owner@example.com',     '{"name":"P24 Owner"}'),
@@ -314,6 +314,18 @@ select throws_ok(
   $$select public.approve_milestone(pg_temp.p24_step('Fit sample'), null)$$,
   '42501', 'You need the Release funds permission at P24 Brand to do this. An owner can give it to you in Settings.',
   'Approve samples alone CANNOT approve a step that releases money');
+
+-- 20261104000400: the brand may approve before the factory posts. With the
+-- permissions held, nothing posted on the step, the only refusal left is the
+-- funding (it used to be "P24 Factory has not posted an update").
+reset role;
+set local request.jwt.claims = '{"sub":"a2400000-0000-0000-0000-000000000001","email":"p24-owner@example.com","role":"authenticated"}';
+set local role authenticated;
+
+select throws_ok(
+  $$select public.approve_milestone(pg_temp.p24_step('Fit sample'), null)$$,
+  '22023', 'fund "Fit sample" first: TSC pays the factory from the money it holds when you approve',
+  'with the permissions, an open step with no factory update is refused only for its funding');
 
 reset role;
 set local request.jwt.claims = '{"sub":"a2400000-0000-0000-0000-000000000009","email":"p24-fquoter@example.com","role":"authenticated"}';
@@ -723,6 +735,36 @@ select ok(not has_table_privilege('authenticated', 'public.org_contact_details',
 select ok(exists (select 1 from pg_publication_tables
                    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'org_members'),
   'a change to the team reaches open screens');
+
+-- ---------------------------------------------------------------------------
+-- Two hats: staff who are also a member, deleting a company
+-- ---------------------------------------------------------------------------
+
+-- admin_delete_brand deletes the org, and the cascade fires the request
+-- guards. A staff member who is also on that brand's team without Quote flow
+-- must still be able to clean it up.
+reset role;
+set local request.jwt.claims = '{}';
+insert into auth.users (id, email) values
+  ('a2410000-0000-0000-0000-000000000001', 'p241-staff@example.com');
+insert into public.platform_admins (user_id) values ('a2410000-0000-0000-0000-000000000001');
+insert into public.orgs (id, type, name, slug) values
+  ('a2410000-0000-0000-0000-0000000000aa', 'brand', 'P241 Brand', 'pgtap241-brand');
+insert into public.org_members (org_id, user_id, role, permissions) values
+  ('a2410000-0000-0000-0000-0000000000aa', 'a2410000-0000-0000-0000-000000000001', 'member', '{approve}');
+insert into public.rfqs (id, brand_org_id, title) values
+  ('a2410000-0000-0000-0000-0000000001a1', 'a2410000-0000-0000-0000-0000000000aa', 'P241 draft');
+
+set local request.jwt.claims = '{"sub":"a2410000-0000-0000-0000-000000000001","email":"p241-staff@example.com","role":"authenticated"}';
+set local role authenticated;
+
+select lives_ok(
+  $$select public.admin_delete_brand('a2410000-0000-0000-0000-0000000000aa', 'P241 Brand')$$,
+  'staff who are also a member without Quote flow can still delete the brand, draft request and all');
+
+reset role;
+select is((select count(*) from public.rfqs where id = 'a2410000-0000-0000-0000-0000000001a1'), 0::bigint,
+  '... and its draft request goes with it');
 
 select * from finish();
 rollback;
