@@ -262,7 +262,7 @@ Things that will bite here specifically:
 - **Compute one side of a percentage split and subtract for the other.** Rounding both independently loses or invents a cent, permanently, on a figure a brand types into a bank transfer.
 - **`agree_schedule` takes a revision.** Without it a brand that confirmed steps it read on one screen, while a teammate changed them on another, would start the order on steps it never saw.
 - **The chain advances on approval (or on funding a payment-only step), never on the payout.** Keying it to the transfer would freeze a production order permanently on one failed Stripe call or forgotten admin click, with no error and no party able to unstick it. A payout that did not go leaves `release_requested_at` set and shows on the staff board.
-- **A step is approved from the factory's update on it** (`20261029000200`). `approve_milestone` refuses an open step of any approvable kind until the factory has posted on it: the brand's own comment does not count, and neither does a post by the person approving (someone in both companies). A step sent for approval the old way (`submitted`) still approves. The brand's row keeps its Approve button, disabled, and its status line says whose update it is waiting for. #59 had dropped this rule; John's board put it back (Oct 29).
+- **The brand may approve an open step before the factory posts** (`20261104000400`, Queena's rule; it replaced `20261029000200`'s "factory must post first"). Approving still needs the step funded when it pays, and the Approve samples permission (plus Release funds on a paid step), which `20261104100000` adds to the same function.
 - **The order page re-reads on the other side's change.** `milestone_updates`, `order_milestones`, `order_payments` and `production_orders` are in `supabase_realtime` (`20261026000300`, `20261029000210`), and `LiveOrderDetail` re-reads on their inserts and updates, with the 15 s re-read as the fallback. Realtime applies each table's read policy per subscriber; deletes are not listened to, because Realtime does not filter them.
 - **`documents_own` is `for all`** and says nothing about `milestone_update_id`. Without `documents_link_guard`, one UPDATE re-parents a photo onto another order and the counterparty read policy then serves it to strangers.
 - **Milestone photos need three things to work**: the kind in `PRIVATE_KINDS`, a `documents` read policy for the counterparty, *and* a matching `storage.objects` policy. With only the first two, `urlFor()` mints a signed URL that 400s — a broken image tile, not an error message.
@@ -561,7 +561,8 @@ hand-written line.
 
 ### Team & roles: per-member permissions
 
-`20261030000100`. The permission keys are the design's own (Settings →
+`20261104100000` (renumbered from `20261030000100`, which main's
+`remove_payout_account` already held). The permission keys are the design's own (Settings →
 Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
 `primaryContact`, `settingsAccess`; factory `rfqFlow` (RFQ flow),
 `addUpdate`, `primaryContact`, `settingsAccess`. Stored as
@@ -613,6 +614,12 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   invited address no longer creates a company of its own.
 - **Contact details live in `org_contact_details`, never `orgs`**: the other
   side of an order can read `orgs`.
+- **A missing permission greys the action out; it does not hide it**
+  (Queena, Nov 4). Fund, Approve and the factory's Send quote stay on screen,
+  disabled, and a visible line says which permission is missing and at which
+  company (a tooltip alone never shows on a touch screen). Whole flows a
+  person may not use (the composer, the quote form) say "Not available to
+  you" instead of drawing a form full of disabled inputs.
 
 ### Mock data leaking into the live app
 

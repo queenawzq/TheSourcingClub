@@ -1742,7 +1742,10 @@ begin
 end;
 $$;
 
--- approve_milestone: Approve samples, plus Release funds for a paid step (body from 20261026000400_approve_without_comments.sql)
+-- approve_milestone: Approve samples, plus Release funds for a paid step. Body
+-- from 20261104000400_approve_without_updates.sql (Queena: the brand may approve
+-- an open step before the factory posts); this file sorts after it, so this
+-- definition must keep that rule.
 create or replace function public.approve_milestone(target_milestone uuid, note text default null)
 returns public.order_milestones
 language plpgsql
@@ -1785,21 +1788,6 @@ begin
   -- lock above, then reads the new state and lands here.
   if m.state not in ('active', 'submitted') then
     raise exception 'that step is %, so it is not waiting on you', m.state
-      using errcode = '22023';
-  end if;
-
-  -- An ACTIVE step is approved from the factory's update on it. Before the
-  -- factory posts there is nothing to approve: the brand's own comment is not
-  -- the factory's work, and neither is a post by the person now approving.
-  -- Checked before the funding, so the brand is told what it is waiting for.
-  if m.state = 'active' and not exists (
-    select 1 from public.milestone_updates u
-     where u.milestone_id = m.id
-       and u.author_org_id = o.factory_org_id
-       and u.created_by is distinct from auth.uid()
-  ) then
-    raise exception '% has not posted an update on "%" yet. You can approve it once they do',
-      (select name from public.orgs where id = o.factory_org_id), m.title
       using errcode = '22023';
   end if;
 
