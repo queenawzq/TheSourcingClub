@@ -1022,7 +1022,11 @@ function CreditsCard({ orgId, refreshKey }) {
   );
 }
 
-function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, deciding = false }) {
+function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, deciding = false }) {
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteName, setDeleteName] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [requestOpen, setRequestOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   // Both modals had a textarea whose value was dropped on the floor: the
@@ -1214,10 +1218,32 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               </button>
               <button className="secondary-btn" type="button" onClick={() => setRequestOpen(true)}>Request more information</button>
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
+              {isVendor && onDeleteFactory && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete factory</button>}
             </section>
           </aside>
         </div>
       </div>
+      {deleteOpen && (
+        <div className="approve-fund-modal-layer" role="presentation">
+          <section className="approve-fund-modal admin-review-modal" role="dialog" aria-modal="true" aria-labelledby="delete-factory-title">
+            <header><h2 id="delete-factory-title">Delete factory</h2></header>
+            <p>Permanently delete {profile.name}, its company records, conversations, memberships, and uploaded files. This cannot be undone. Individual user accounts are kept.</p>
+            <p>Factories with quotes, orders, or payment records cannot be deleted.</p>
+            <label className="factory-onboarding-field"><span>Type {profile.name} to confirm</span><input autoFocus value={deleteName} disabled={deleteBusy} onChange={(event) => setDeleteName(event.target.value)} autoComplete="off" /></label>
+            {deleteError && <p className="admin-error" role="alert">{deleteError}</p>}
+            <footer>
+              <button className="secondary-btn" type="button" disabled={deleteBusy} onClick={() => setDeleteOpen(false)}>Cancel</button>
+              <button className="primary-btn danger-action" type="button" disabled={deleteBusy || deleteName.trim() !== profile.name} onClick={async () => {
+                if (deleteBusy) return;
+                setDeleteBusy(true); setDeleteError("");
+                try { await onDeleteFactory(profile.id, deleteName.trim()); setDeleteOpen(false); }
+                catch (error) { setDeleteError(error.message || "The factory could not be deleted"); }
+                finally { setDeleteBusy(false); }
+              }}>{deleteBusy ? "Deleting…" : "Delete factory permanently"}</button>
+            </footer>
+          </section>
+        </div>
+      )}
       {requestOpen && (
         <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setRequestOpen(false)}>
           <section className="approve-fund-modal admin-review-modal" role="dialog" aria-modal="true" aria-labelledby="request-info-title">
@@ -1968,6 +1994,16 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
     );
     window.setTimeout(() => setToast(""), 2400);
   };
+  const deleteFactoryProfile = actions.deleteFactory ? async (id, confirmation) => {
+    const result = await actions.deleteFactory(id, confirmation);
+    setSelectedProfile(null);
+    reloadQueue();
+    reloadMetrics();
+    reloadUsers();
+    navigate("Verification");
+    setToast(result.cleanupPending ? "Factory deleted. File cleanup needs staff attention." : "Factory deleted");
+    window.setTimeout(() => setToast(""), 5000);
+  } : null;
   const toggleUserStatus = async (id) => {
     const user = users.find((item) => item.id === id);
     if (!user || user.protected) return;
@@ -2008,7 +2044,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
-      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} deciding={deciding} />}
+      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} deciding={deciding} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate(quoteBack)} detail={shownDetail} backLabel={quoteBack} />}
       {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} testEmailsUnavailable={testEmailsUnavailable} validateThresholds={validateThresholds} />}

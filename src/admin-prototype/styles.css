@@ -1041,12 +1041,29 @@
 }
 
 .admin-decline-button {
-  min-height: 38px;
+  min-height: 28px;
+  margin-top: -6px;
   border: 0;
   background: transparent;
   color: #c83d3d;
   font-size: 12px;
   font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-delete-factory-button {
+  justify-self: center;
+  margin-top: -14px;
+  min-height: 28px;
+  padding: 2px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
   cursor: pointer;
 }
 
