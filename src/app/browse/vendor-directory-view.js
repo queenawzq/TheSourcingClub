@@ -311,10 +311,10 @@ export function filterPanel(terms, cards, tab = "factories", now = new Date()) {
 
 /** The orders "Sort" offers: what every vendor's profile records. */
 export const SORTS = [
-  { key: "fit", label: "Best fit" },
-  { key: "moq", label: "Lowest MOQ" },
-  { key: "lead", label: "Shortest lead time" },
-  { key: "newest", label: "Newest on TSC" },
+  { key: "fit", label: "Best fit", words: "best fit" },
+  { key: "moq", label: "Lowest MOQ", words: "lowest MOQ" },
+  { key: "lead", label: "Shortest lead time", words: "shortest lead time" },
+  { key: "newest", label: "Newest on TSC", words: "newest on TSC" },
 ];
 
 /**

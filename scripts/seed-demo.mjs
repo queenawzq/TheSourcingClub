@@ -192,9 +192,9 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Woven shirting and light outerwear, small runs. We pattern, sample and sew in-house, and send photo updates at every step.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "verified",
-  // Club Standard "Verified", while Ningbo Loomworks and Kowloon stay Basic:
-  // Browse's Club Standard filter then visibly narrows the list.
-  trust_tier: "verified",
+  // Club Standard: Demo Factory Trusted, Ningbo Loomworks Verified, Kowloon
+  // Basic, so each of Browse's Club Standard options picks one vendor out.
+  trust_tier: "trusted",
   published_at: new Date().toISOString(),
 }), "factory profile");
 
@@ -377,6 +377,7 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Woven shirting and linen, 200-unit minimums.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "verified",
+  trust_tier: "verified",
   published_at: new Date().toISOString(),
 }), "second factory profile");
 must(await admin.from("credit_ledger").insert({
@@ -396,7 +397,7 @@ must(await secondFactory.client.from("taxonomy_links").insert(await Promise.all(
   subject_type: "factory_profile", subject_id: secondFactoryOrg.id, org_id: secondFactoryOrg.id, term_id: await termId(kind, slug),
 })))), "second factory tags");
 must(await secondFactory.client.from("factory_capacity").insert({
-  org_id: secondFactoryOrg.id, category_term_id: await termId("capacity_category", "wovens"), input_mode: "units", monthly_units: 2400,
+  org_id: secondFactoryOrg.id, category_term_id: await termId("capacity_category", "wovens"), input_mode: "units", monthly_units: 450,
 }), "second factory capacity");
 must(await secondFactory.client.from("factory_capacity_months").insert(
   ["full", "open", "open", "partial", "partial", "open"].map((level, offset) => ({ org_id: secondFactoryOrg.id, month: firstOfMonth(offset), level })),

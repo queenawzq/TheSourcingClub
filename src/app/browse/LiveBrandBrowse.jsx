@@ -52,8 +52,8 @@ function keepChoices(orgId, choices) {
   }
 }
 
-/** The chosen filters in words, for the list view's summary line. */
-function matchingLine(panel, filters, query) {
+/** The chosen filters and order in words, for the line under the count. */
+function matchingLine(panel, filters, query, sort) {
   const byId = new Map([
     ...panel.checks.flatMap((group) => group.options.map((option) => [option.id, option.label])),
     ...panel.priceLevels.map((option) => [option.id, option.label]),
@@ -70,7 +70,8 @@ function matchingLine(panel, filters, query) {
     panel.quantities.find((option) => option.id === filters.quantity)?.label,
     query.trim() ? `"${query.trim()}"` : null,
   ].filter(Boolean);
-  return words.length ? `matching ${words.join(", ")}` : "every vendor listed on TSC, best fit first";
+  const order = `${(SORTS.find((option) => option.key === sort) ?? SORTS[0]).words} first`;
+  return words.length ? `matching ${words.join(", ")}, ${order}` : `every vendor listed on TSC, ${order}`;
 }
 
 export default function LiveBrandBrowse({ org, user, view = "cards" }) {
@@ -143,15 +144,17 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
     filters: {
       panel,
       value: chosen,
-      onToggle: (group, id) => setFilters(() => toggleFilter(chosen, group, id)),
-      onMoq: (range) => setFilters(() => ({
-        ...chosen,
+      // From the previous state, so two changes in one tick both count.
+      onToggle: (group, id) => setFilters((current) => toggleFilter(keepKnownFilters(current, panel), group, id)),
+      onMoq: (range) => setFilters((current) => ({
+        ...keepKnownFilters(current, panel),
         // The full span is the same as no MOQ filter.
         moq: panel.moq && range[0] <= panel.moq.min && range[1] >= panel.moq.max ? null : range,
       })),
       onReset: () => {
         setFilters(emptyFilters());
         setQuery("");
+        setSort("fit");
       },
       // Below 1180px the panel is a dialog over the results: its button says
       // how many filters are on, and its footer how many vendors match.
@@ -162,7 +165,7 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
         </div>
       ),
     },
-    matching: matchingLine(panel, chosen, query),
+    matching: matchingLine(panel, chosen, query, sort),
     sortControl: <BrowseSort options={SORTS} value={sort} onChange={setSort} />,
     search: query,
     onSearch: setQuery,
