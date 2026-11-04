@@ -80,8 +80,8 @@ dialogs and completion page), the **vendor's view of a brand**
 email, website or documents; opened from Saved brands, the request's brand
 card and the order page), the brand's **Browse vendors** (`/browse`, the
 designed marketplace, and `/browse/list`, the designed directory list: every
-published vendor, filters from the taxonomy, ranked like the dashboard's
-recommended factories), the brand's **Saved** vendors (`/saved`;
+verified, published vendor (John, Oct 25), filters from the taxonomy and Club
+Standard, sortable, ranked like the dashboard's recommended factories), the brand's **Saved** vendors (`/saved`;
 `saved_factories` is the brand's own list, filled by "Save" on Browse and
 "Save factory" on a vendor's profile), the brand's **Payments** (`/payments`,
 the designed `BillingScreen`: its order payments as Due / Processing / Failed

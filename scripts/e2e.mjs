@@ -3506,7 +3506,7 @@ async function main() {
     console.log("\nBROWSE VENDORS");
     await page.evaluate(() => [...document.querySelectorAll(".side-nav button, nav button")].find((button) => button.textContent.trim() === "Browse vendors")?.click());
     await waitFor(page, ".marketplace-factory-card", 25000);
-    await record(page, "Browse vendors", "every published vendor, on the designed marketplace");
+    await record(page, "Browse vendors", "every verified, published vendor, on the designed marketplace");
     const cardNames = () => page.evaluate(() => [...document.querySelectorAll(".marketplace-factory-card h2")].map((h) => h.textContent));
     const browseNames = await cardNames();
     check(browseNames.includes(factoryName), `the e2e factory is listed (${browseNames.length} factories)`);
@@ -3528,15 +3528,141 @@ async function main() {
     await clickButton(page, "reset");
     await page.waitForTimeout(400);
     check((await cardNames()).length === browseNames.length, "Reset brings every vendor back");
-    const filterResult = await page.evaluate(async () => {
-      const box = [...document.querySelectorAll(".marketplace-filter-panel .directory-check")].find((label) => label.textContent.trim() === "Wovens")?.querySelector("input");
-      box?.click();
-      await new Promise((resolve) => setTimeout(resolve, 400));
-      return { found: Boolean(box), shown: document.querySelectorAll(".marketplace-factory-card").length };
+    // Every filter group narrows the list: for each, some option leaves
+    // fewer vendors than all and more than none (the demo seed gives the two
+    // factories different tags, countries, leads and Club Standard). Then the
+    // groups the database can say exactly are checked vendor by vendor.
+    const cardIds = () => page.evaluate(() => [...document.querySelectorAll(".marketplace-factory-card a.marketplace-factory-profile-link")]
+      .map((link) => (link.getAttribute("href") ?? "").match(/factories\/([^/?]+)/)?.[1]).filter(Boolean));
+    const allIds = await cardIds();
+    const groupSweep = await page.evaluate(async () => {
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const count = () => document.querySelectorAll(".marketplace-factory-card").length;
+      const reset = async () => {
+        [...document.querySelectorAll(".marketplace-filter-panel .directory-filter-header button")].find((button) => button.textContent.trim() === "Reset")?.click();
+        await sleep(150);
+      };
+      const total = count();
+      const result = {};
+      for (const group of document.querySelectorAll(".marketplace-filter-panel .directory-filter-group")) {
+        const title = group.querySelector("h2").textContent;
+        const controls = [...group.querySelectorAll("input[type=checkbox], button.directory-chip")];
+        let narrowed = null;
+        for (const control of controls) {
+          control.click();
+          await sleep(150);
+          const shown = count();
+          const label = (control.closest("label")?.textContent || control.textContent).trim();
+          await reset();
+          if (shown > 0 && shown < total) { narrowed = `${label}: ${shown} of ${total}`; break; }
+        }
+        result[title] = { options: controls.length, narrowed };
+      }
+      return result;
     });
-    check(filterResult.found && filterResult.shown <= browseNames.length, `a production-type filter narrows the list (${filterResult.shown} of ${browseNames.length})`);
-    await record(page, "Filtered by production type", "options from the taxonomy, not the design's list");
+    for (const title of ["Production type", "Product categories", "Specializes in", "Price point", "Location", "Certifications", "Lead time", "Club Standard", "Open capacity"]) {
+      const group = groupSweep[title];
+      check(Boolean(group?.narrowed), `the "${title}" filter narrows the list (${group?.narrowed ?? (group ? `no option of ${group.options} did` : "group not drawn")})`);
+    }
+
+    // Exactly the vendors the database says, for Location and Club Standard.
+    const { data: directoryRows } = await db.from("factory_profiles")
+      .select("org_id, country_code, trust_tier, moq, orgs!inner (is_demo)")
+      .eq("verification_status", "verified").eq("vendor_kind", "manufacturer")
+      .not("published_at", "is", null).eq("orgs.is_demo", false);
+    const listedById = new Map((directoryRows ?? []).map((row) => [row.org_id, row]));
+    check(allIds.length === listedById.size && allIds.every((id) => listedById.has(id)),
+      `the Factories tab lists exactly the verified, published factories (${allIds.length} shown, ${listedById.size} in the database)`);
+    const { data: countryTerms } = await db.from("taxonomy_terms").select("label_en, extra").eq("kind", "country").is("org_id", null);
+    const pickChip = async (groupTitle, label) => page.evaluate(({ groupTitle, label }) => {
+      const group = [...document.querySelectorAll(".marketplace-filter-panel .directory-filter-group")].find((item) => item.querySelector("h2").textContent === groupTitle);
+      const control = [...(group?.querySelectorAll("input[type=checkbox], button.directory-chip") ?? [])]
+        .find((item) => (item.closest("label")?.textContent || item.textContent).trim() === label);
+      control?.click();
+      return Boolean(control);
+    }, { groupTitle, label });
+    const sameIds = (shown, expected) => shown.length === expected.length && expected.every((id) => shown.includes(id));
+    const portugal = countryTerms.find((term) => term.extra?.code === "PT")?.label_en ?? "Portugal";
+    check(await pickChip("Location", portugal), `the Location group offers ${portugal}`);
+    await page.waitForTimeout(300);
+    const inPortugal = (directoryRows ?? []).filter((row) => row.country_code === "PT").map((row) => row.org_id);
+    const shownInPortugal = await cardIds();
+    check(sameIds(shownInPortugal, inPortugal), `Location: ${portugal} shows exactly the factories based there (${shownInPortugal.length} of ${allIds.length})`);
+    const lineText = await page.locator(".marketplace-summary span").first().innerText();
+    check(lineText.includes(portugal), `the summary line names the filter ("${lineText}")`);
     await clickButton(page, "reset");
+    await page.waitForTimeout(300);
+    check(await pickChip("Club Standard", "Verified"), "the Club Standard group is drawn");
+    await page.waitForTimeout(300);
+    const verifiedTier = (directoryRows ?? []).filter((row) => row.trust_tier === "verified").map((row) => row.org_id);
+    const shownVerified = await cardIds();
+    check(sameIds(shownVerified, verifiedTier), `Club Standard: Verified shows exactly the factories staff gave that tier (${shownVerified.length} of ${allIds.length})`);
+    await record(page, "Filtered by Club Standard", "each filter narrows the list, and the line under the count names it");
+    await clickButton(page, "reset");
+    await page.waitForTimeout(300);
+
+    // MOQ: a press on the bars moves the nearer handle (here the low one, to 175).
+    const moqLow = await page.evaluate(async () => {
+      const chart = document.querySelector(".marketplace-filter-panel .live-moq-chart");
+      const box = chart.getBoundingClientRect();
+      const ratio = (175 - 50) / (500 - 50);
+      chart.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, clientX: box.left + 18 + (box.width - 36) * ratio, clientY: box.top + 20 }));
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return Number(document.querySelector(".marketplace-filter-panel .moq-values span").textContent.replace(/,/g, ""));
+    });
+    const moqIds = await cardIds();
+    check(moqLow === 175 && moqIds.length > 0 && moqIds.length < allIds.length && moqIds.every((id) => (directoryRows.find((row) => row.org_id === id)?.moq ?? 0) >= 175),
+      `MOQ: pressing the bars sets the lowest MOQ to ${moqLow} and leaves only factories at or above it (${moqIds.length} of ${allIds.length})`);
+    await clickButton(page, "reset");
+    await page.waitForTimeout(300);
+
+    // Sort: Lowest MOQ, then back to Best fit.
+    const chooseSort = async (label) => {
+      await clickButton(page, "sort:");
+      await page.waitForTimeout(200);
+      await page.evaluate((text) => [...document.querySelectorAll(".browse-sort-menu button")].find((button) => button.textContent === text)?.click(), label);
+      await page.waitForTimeout(300);
+    };
+    await chooseSort("Lowest MOQ");
+    const byMoq = (await cardIds()).map((id) => listedById.get(id)?.moq ?? Infinity);
+    check(byMoq.every((moq, index) => index === 0 || byMoq[index - 1] <= moq), `Sort: Lowest MOQ orders the factories by MOQ (${byMoq.join(", ")})`);
+    const sortLabel = await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => /^Sort:/.test(button.textContent))?.textContent);
+    check(sortLabel === "Sort: Lowest MOQ", `the Sort button says which order is on ("${sortLabel}")`);
+    await chooseSort("Best fit");
+    const backToFit = await cardIds();
+    check(backToFit.join() === allIds.join(), "Sort: Best fit puts the original order back");
+
+    // Below 1180px, on the list view: the Filters button opens the panel as a
+    // dialog, its footer says how many match, and the choice outlives the
+    // switch back to the cards.
+    await page.setViewportSize(950, 900);
+    await clickButton(page, "list view");
+    await waitFor(page, ".directory-factory-card", 15000);
+    await clickButton(page, "filters");
+    await waitFor(page, ".directory-filter-panel.is-mobile-open", 5000);
+    await page.evaluate((label) => {
+      const chip = [...document.querySelectorAll(".directory-filter-panel .directory-chip")].find((item) => item.textContent.trim() === label);
+      chip?.click();
+    }, portugal);
+    await page.waitForTimeout(300);
+    const footer = await page.locator(".directory-filter-panel .browse-filter-footer button").first().innerText();
+    await record(page, "List view filters at 950px", "a dialog, with how many vendors match");
+    await page.locator(".directory-filter-panel .browse-filter-footer button").first().click();
+    await page.waitForTimeout(300);
+    const listShown = await page.locator(".directory-factory-card").count();
+    check(footer.trim() === `Show ${listShown} ${listShown === 1 ? "factory" : "factories"}` && listShown === inPortugal.length,
+      `the dialog's "${footer.trim()}" matches the list behind it (${listShown})`);
+    const filtersLabel = await page.evaluate(() => [...document.querySelectorAll(".directory-summary-actions button")].find((button) => /^Filters/.test(button.textContent))?.textContent);
+    check(filtersLabel === "Filters · 1", `the Filters button counts the filters on ("${filtersLabel}")`);
+    await clickButton(page, "marketplace cards");
+    await waitFor(page, ".marketplace-factory-card", 15000);
+    check((await page.locator(".marketplace-factory-card").count()) === inPortugal.length, "the filter is still on after switching to the cards");
+    await clickButton(page, "filters");
+    await page.waitForTimeout(200);
+    await clickButton(page, "reset");
+    await page.waitForTimeout(200);
+    await clickButton(page, "close");
+    await page.setViewportSize(1440, 1100);
     await page.waitForTimeout(300);
 
     // Trading companies on their own tab.
