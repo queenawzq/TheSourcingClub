@@ -291,8 +291,8 @@ select ok(exists (select 1 from auth.users where id = 'c2200000-0000-0000-0000-0
       and (select result -> 'keptUsers' from p22_purge) @> '[{"id":"c2200000-0000-0000-0000-00000000000c"}]',
   'a test user whose signature a real company holds is kept, and named');
 
-select is((select version from public.current_legal_documents() where kind = 'privacy'), 4,
-  'privacy policy v4 is the current one');
+select is((select version from public.current_legal_documents() where kind = 'privacy'), 5,
+  'privacy policy v5 is the current one, with Payoneer on top of v4');
 
 select * from finish();
 

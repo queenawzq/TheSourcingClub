@@ -485,7 +485,7 @@ links point.
   funds"), copied verbatim from the designed cards. Since payments moved to
   Stripe that is what happens, so the terms stay at v1.
 - **The privacy policy names every processor** (Supabase, Vercel, Resend,
-  OpenRouter, Google Sheets, Netlify Forms, from v2 Stripe, from v3 Zoom),
+  OpenRouter, Google Sheets, Netlify Forms, from v2 Stripe, from v3 Zoom, from v5 Payoneer),
   and from v4 what OpenRouter does: translation, drafting, message
   screening and help with profile reviews. Adding a service that touches
   personal data means publishing a new version of it.
