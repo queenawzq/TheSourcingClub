@@ -1,10 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { emailTransport, sendDueNotificationEmails, serviceClient } from "./_notification-sender.js";
+import { sendResubmissionAlerts, sendReviewDecisionEmails } from "./_review-decision-sender.js";
 
 /**
  * The daily job: capacity reminders and steps due soon
- * (run_daily_notifications), then every email still queued.
+ * (run_daily_notifications), then every email still queued: notifications,
+ * review decisions that failed or never went (at most five attempts each, the
+ * company's current decision only), and staff alerts for profiles sent back.
  *
  * Vercel's cron calls it once a day (vercel.json) with GET and
  * `Authorization: Bearer $CRON_SECRET`. Test sites have no crons, so platform
@@ -72,5 +75,22 @@ export default async function handler(request, response) {
     }
   }
 
-  response.status(200).json({ reminders, emails, error: null });
+  // Review emails retry here; staff can also resend one from the review page.
+  const reviews = { sent: 0, skipped: 0, failed: 0, alerts: 0 };
+  if (mail) {
+    try {
+      const decisions = await sendReviewDecisionEmails(service, request, { max: 50 });
+      reviews.sent = decisions.sent.length;
+      reviews.skipped = decisions.skipped.length;
+      reviews.failed = decisions.failed.length;
+      const alerts = await sendResubmissionAlerts(service, request, { max: 50 });
+      reviews.alerts = alerts.sent;
+      reviews.failed += alerts.failed;
+    } catch (error) {
+      response.status(500).json({ reminders, emails, reviews, error: error.message });
+      return;
+    }
+  }
+
+  response.status(200).json({ reminders, emails, reviews, error: null });
 }

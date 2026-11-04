@@ -129,12 +129,24 @@ export async function getMyReview(orgId) {
   };
 }
 
-/** Send a profile staff returned for more information back to their queue. */
+/**
+ * Send a profile staff returned for more information back to their queue.
+ * Staff have no bell, so the database queues an email to the operations inbox;
+ * this asks the server to send it now (the daily job sends it otherwise).
+ */
 export async function resubmitForReview(orgId) {
-  return unwrap(
+  const state = unwrap(
     await supabase.rpc("resubmit_for_review", { target_org: orgId }),
     "send your profile back for review",
   );
+  supabase.auth.getSession()
+    .then(({ data: { session } }) => fetch("/api/review-resubmitted", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
+      body: JSON.stringify({ orgId }),
+    }))
+    .catch(() => {});
+  return state;
 }
 
 /**

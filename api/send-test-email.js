@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
-import { messageFor } from "./send-review-decision.js";
+import { messageFor, resubmissionAlertMessage } from "./_review-decision-sender.js";
 
 /**
  * Send one of the product's emails to the signed-in admin, filled with sample
@@ -42,6 +42,7 @@ const TEMPLATES = {
   "review-approved": (locale, name) => review("approved", locale, name, ""),
   "review-needs-information": (locale, name) => review("needs_information", locale, name, SAMPLE_NOTE),
   "review-declined": (locale, name) => review("declined", locale, name, SAMPLE_NOTE),
+  "review-resubmitted": () => resubmissionAlertMessage({ orgId: "00000000-0000-4000-8000-000000000000", orgName: "Sample Factory Ltd.", orgType: "factory", note: SAMPLE_NOTE }, { appUrl: appUrl() }),
   "notification": (locale, name) => sampleNotification(locale, name),
 };
 
@@ -78,7 +79,7 @@ function sampleOnboarding(companyName, path) {
 }
 
 function review(decision, locale, name, note) {
-  return messageFor({ decision, locale, recipient_name: name, note, orgs: { name: "Sample Company" } });
+  return messageFor({ decision, locale, recipient_name: name, note, orgs: { name: "Sample Company", type: "factory" } }, { appUrl: appUrl() });
 }
 
 export default async function handler(request, response) {

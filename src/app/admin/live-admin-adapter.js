@@ -27,6 +27,8 @@ import {
   claimReview,
   companyCredits,
   decideReview,
+  resendReviewEmails,
+  reviewEmailStatus,
   latestReviewAssists,
   orgDocuments,
   orgSubmission,
@@ -358,6 +360,8 @@ export function createAdminAdapter({ user, signOut }) {
         return decideReview(orgId, decision, note ?? null, null, tier ?? null);
       },
       suggestReviewRequest,
+      resendReviewEmails,
+      reviewEmailStatus,
       // The detail screens' data, read when one opens. The row is a queue
       // tuple; its named `rfqId` (a quote) or `id` (a request) says which.
       rfqDetail: (row) => rfqDetail(row.rfqId ?? row.id).then(toRfqDetail),

@@ -1022,7 +1022,107 @@ function CreditsCard({ orgId, refreshKey }) {
   );
 }
 
-function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false }) {
+// Live only (the prototype has no outbox): who the company's current review
+// email went to, and "Resend email" for one that failed or never went.
+const REVIEW_EMAIL_DECISION = {
+  approved: "approval",
+  needs_information: "request for more information",
+  declined: "decline",
+};
+const REVIEW_EMAIL_STATUS = {
+  sent: "Sent",
+  pending: "Waiting to send",
+  sending: "Sending",
+  failed: "Not sent",
+  skipped: "Not sent",
+};
+
+function ReviewEmailCard({ orgId, companyName, refreshKey, onResent }) {
+  const actions = useActions();
+  const [status, setStatus] = useState(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState(null);
+
+  const load = () => actions.reviewEmailStatus(orgId)
+    .then((value) => { setStatus(value); setError(""); })
+    .catch(() => setError("The email status could not be read. Reload the page to try again."));
+  useEffect(() => { setStatus(null); setError(""); setNotice(null); load(); }, [orgId, refreshKey]);
+
+  const recipients = status?.recipients ?? [];
+  const canResend = Boolean(status?.current) && recipients.some((row) => row.status === "failed" || row.status === "pending");
+  const resend = async () => {
+    if (busy) return;
+    setBusy(true);
+    setNotice(null);
+    try {
+      const result = await actions.resendReviewEmails(orgId);
+      setNotice(reviewEmailSentence(result, { company: companyName }));
+      onResent?.();
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="factory-profile-card admin-review-meta admin-review-email-card">
+      <h2>Email to the company</h2>
+      {error && <p className="admin-error" role="alert">{error}</p>}
+      {!status && !error && <p className="admin-assist-meta">Loading…</p>}
+      {status && !recipients.length && <p className="admin-assist-meta">No review email has been sent to this company yet.</p>}
+      {status && recipients.length > 0 && (
+        <>
+          <p className="admin-assist-meta">
+            The {REVIEW_EMAIL_DECISION[status.decision] ?? "decision"}{status.current ? "" : " (no longer current)"}:
+          </p>
+          <ul className="admin-review-email-lines">
+            {recipients.map((row) => (
+              <li key={row.email}>
+                <span>{row.email}</span>
+                <strong className={`admin-review-email-status ${row.status}`}>
+                  {REVIEW_EMAIL_STATUS[row.status] ?? row.status}
+                  {row.status === "sent" && row.sent_at ? ` · ${new Date(row.sent_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}
+                </strong>
+                {row.reason && row.status !== "sent" && <small>{row.reason.charAt(0).toUpperCase() + row.reason.slice(1)}.</small>}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {status?.members_without_email > 0 && (
+        <p className="admin-assist-meta">{status.members_without_email === 1 ? "1 member has" : `${status.members_without_email} members have`} no email address and cannot be emailed.</p>
+      )}
+      {notice && <p className="admin-assist-meta" role="status">{notice}</p>}
+      {canResend && <button className="secondary-btn" type="button" disabled={busy} onClick={resend}>{busy ? "Sending…" : "Resend email"}</button>}
+    </section>
+  );
+}
+
+// What happened to a review email, from api/send-review-decision.js's outcome.
+// `subject` is the decision's own words ("Profile declined"); without one the
+// sentence is about a resend.
+function reviewEmailSentence(result, { subject = null, company = "the company" } = {}) {
+  const people = (count) => count === 1 ? "1 person" : `${count} people`;
+  const failedReason = result?.failed?.[0]?.reason;
+  const lead = (rest) => subject ? `${subject}, but ${rest}` : `${rest.charAt(0).toUpperCase()}${rest.slice(1)}`;
+  switch (result?.outcome) {
+    case "emailed": return subject ? `${subject} and emailed to ${people(result.sent)}.` : `Emailed to ${people(result.sent)}.`;
+    case "partly": return `${subject ? `${subject} and emailed` : "Emailed"} to ${people(result.sent)}, but ${people(result.failed.length)} could not be emailed (${failedReason}). Use “Resend email” on this page.`;
+    case "failed": return lead(`the email could not be sent${failedReason ? ` (${failedReason})` : ""}. Use “Resend email” on this page; the daily job also retries it.`);
+    case "not_configured": return lead("email is not set up on this site, so nothing was emailed.");
+    case "already_sent": return subject
+      ? `No change: ${company} was already sent this, so nothing was sent again.`
+      : "Nothing to resend: every email for this decision was already sent.";
+    case "no_recipients": {
+      const tests = (result.skipped ?? []).length;
+      return lead(`nobody at ${company} has an email address we can send to${tests ? ` (${tests === 1 ? "a test address" : `${tests} test addresses`})` : ""}.`);
+    }
+    default: return lead(`${String(result?.error ?? "the email could not be sent").replace(/\.$/, "").replace(/^./, (c) => c.toLowerCase())}.`);
+  }
+}
+
+function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false, emailRefresh = 0 }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteName, setDeleteName] = useState("");
   const [deleteBusy, setDeleteBusy] = useState(false);
@@ -1222,6 +1322,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
               {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}
             </section>
+            {actions.reviewEmailStatus && <ReviewEmailCard orgId={profile.id} companyName={profile.name} refreshKey={`${profile.status}-${emailRefresh}`} />}
           </aside>
         </div>
       </div>
@@ -1510,6 +1611,7 @@ const TEST_EMAILS = [
   { key: "review-approved", label: "Review decision · Approved", localized: true },
   { key: "review-needs-information", label: "Review decision · Needs information", localized: true },
   { key: "review-declined", label: "Review decision · Declined", localized: true },
+  { key: "review-resubmitted", label: "Review · Company sent its profile back (to staff)" },
   { key: "notification", label: "Notification · New quote", localized: true },
 ];
 
@@ -1958,6 +2060,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
   // One decision at a time: a double click on "Approve" recorded it twice
   // and told the company twice.
   const [deciding, setDeciding] = useState(false);
+  const [emailRefresh, setEmailRefresh] = useState(0);
   const decidingRef = useRef(false);
   const decide = async (id, status, note = null, tier = null) => {
     if (decidingRef.current) return;
@@ -1988,13 +2091,16 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
     const outcome = status === "Approved" ? `Profile approved${tier ? ` as ${tier[0].toUpperCase()}${tier.slice(1)}` : ""}`
       : status === "Declined" ? "Profile declined"
       : "Information request sent";
-    setToast(
-      !decisionEmail ? outcome
-        : decisionEmail.error ? `${outcome}; email is queued for retry`
-        : decisionEmail.alreadySent ? `${outcome}; email was already sent`
-        : `${outcome} and email sent`
-    );
-    window.setTimeout(() => setToast(""), 2400);
+    // Live only: the prototype's action sends no email. The sentence says
+    // what the server reports, and stays long enough to read when it asks
+    // staff to do something.
+    const company = selectedProfile?.id === id ? selectedProfile.name : "the company";
+    const sentence = decisionEmail
+      ? reviewEmailSentence(decisionEmail, { subject: status === "Needs information" ? "Information request recorded" : outcome, company })
+      : outcome;
+    setEmailRefresh((value) => value + 1);
+    setToast(sentence);
+    window.setTimeout(() => setToast(""), !decisionEmail || decisionEmail.outcome === "emailed" ? 2400 : 7000);
   };
   const deleteFactoryProfile = actions.deleteFactory ? async (id, confirmation) => {
     const result = await actions.deleteFactory(id, confirmation);
@@ -2056,7 +2162,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
-      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} />}
+      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} emailRefresh={emailRefresh} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate(quoteBack)} detail={shownDetail} backLabel={quoteBack} />}
       {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} testEmailsUnavailable={testEmailsUnavailable} validateThresholds={validateThresholds} />}
