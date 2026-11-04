@@ -179,9 +179,8 @@
    while the panel is open as a dialog, below 1180px. */
 .directory-page .browse-filter-footer {
   position: sticky;
-  bottom: -20px;
+  bottom: 0;
   z-index: 1;
-  margin: 0 0 -20px;
   padding: 14px 0 20px;
   border-top: 1px solid #e2e8f0;
   background: #fff;
@@ -217,12 +216,26 @@
     box-shadow: 0 20px 60px rgba(11, 18, 35, 0.24);
   }
 
+  /* Both dialogs: no padding above the sticky header or below the sticky
+     footer, which pin to the scroll edges themselves. With the panel's 20px
+     padding and the design's top: -20px, a strip of the options showed
+     above the header while they scrolled. */
+  .directory-page .marketplace-filter-panel.is-mobile-open,
+  .directory-page .directory-filter-panel.is-mobile-open {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .directory-page .marketplace-filter-panel.is-mobile-open .directory-filter-header {
+    top: 0;
+    margin-top: 0;
+  }
+
   .directory-page .directory-filter-panel.is-mobile-open .directory-filter-header {
     position: sticky;
-    top: -20px;
+    top: 0;
     z-index: 1;
     justify-content: flex-end;
-    margin-top: -20px;
     padding: 20px 0 14px;
     border-bottom: 1px solid #e2e8f0;
     background: #fff;
@@ -230,5 +243,16 @@
 
   .directory-page .directory-filter-panel.is-mobile-open .directory-filter-header strong {
     margin-right: auto;
+  }
+}
+
+/* On a phone the cards page's Filters / Sort / List view row wraps, as the
+   list page's does; the design keeps it on one line (min-width: max-content),
+   which ran past the screen once a filter count or a longer sort was in it. */
+@media (max-width: 760px) {
+  .directory-page .marketplace-summary .directory-summary-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    min-width: 0;
   }
 }

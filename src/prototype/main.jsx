@@ -6598,7 +6598,7 @@ function CertificationCard({ title, detail, icon }) {
 export function FactorySearchScreen({ goTo, live = null }) {
   const vendors = live ? live.vendors : directoryFactories;
   // Live, below 1180px the panel opens as the marketplace's dialog does.
-  const [filtersOpen, setFiltersOpen] = useFilterDialog();
+  const [filtersOpen, setFiltersOpen, filtersButton] = useFilterDialog();
   return (
     <div className="directory-shell">
       {filtersOpen && (
@@ -6739,6 +6739,7 @@ export function FactorySearchScreen({ goTo, live = null }) {
           <div className="directory-summary-actions">
             {live && (
               <button
+                ref={filtersButton}
                 className="filter-button compact-filter-button"
                 type="button"
                 aria-controls="directory-filter-panel"
@@ -6769,10 +6770,18 @@ export function FactorySearchScreen({ goTo, live = null }) {
   );
 }
 
-/** A filter panel opened as a dialog: closes on Escape, and the page behind it stops scrolling. */
+/**
+ * A filter panel opened as a dialog: closes on Escape, the page behind it
+ * stops scrolling, and closing hands focus back to the button that opened it
+ * (`opener`).
+ */
 function useFilterDialog() {
   const [open, setOpen] = useState(false);
+  const opener = useRef(null);
+  const wasOpen = useRef(false);
   useEffect(() => {
+    if (wasOpen.current && !open) opener.current?.focus();
+    wasOpen.current = open;
     if (!open) return undefined;
     const previousOverflow = document.body.style.overflow;
     const closeOnEscape = (event) => {
@@ -6785,7 +6794,7 @@ function useFilterDialog() {
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
-  return [open, setOpen];
+  return [open, setOpen, opener];
 }
 
 function FilterGroup({ title, children }) {
