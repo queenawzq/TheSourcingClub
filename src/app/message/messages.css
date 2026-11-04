@@ -409,3 +409,5 @@
   cursor: pointer;
 }
 .call-card-calendar-link:disabled { opacity: 0.5; cursor: default; }
+
+.call-card-overflow .project-overflow-menu .call-menu-delete { color: #c83d3d; }

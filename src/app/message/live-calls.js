@@ -80,7 +80,7 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
     tone = "confirmed";
     actions = [
       { label: "Join call", primary: true, onClick: () => handlers.join(call), disabled: busy },
-      { label: "Cancel call", destructive: true, onClick: () => handlers.cancel(call), disabled: busy },
+      { label: "Cancel call", onClick: () => handlers.cancel(call), disabled: busy },
       ...calendar,
     ];
   } else if (state === "live") {
@@ -90,7 +90,7 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
       { label: "Join call", primary: true, onClick: () => handlers.join(call), disabled: busy },
       // cancel_call allows it until the start, so someone who can't make it
       // in the last ten minutes says so here, not in a message.
-      ...(start.getTime() > now ? [{ label: "Cancel call", destructive: true, onClick: () => handlers.cancel(call), disabled: busy }] : []),
+      ...(start.getTime() > now ? [{ label: "Cancel call", onClick: () => handlers.cancel(call), disabled: busy }] : []),
       ...calendar,
     ];
   } else {
@@ -115,7 +115,7 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
       actions,
       menuActions: state === "declined" ? [
         { label: "Schedule another call", onClick: () => handlers.scheduleAgain(call), disabled: busy },
-        { label: "Delete", onClick: () => handlers.deleteCard(call), disabled: busy },
+        { label: "Delete", destructive: true, onClick: () => handlers.deleteCard(call), disabled: busy },
       ] : [],
       note: notes[call.id]?.text ?? null,
       noteIsError: Boolean(notes[call.id]?.error),

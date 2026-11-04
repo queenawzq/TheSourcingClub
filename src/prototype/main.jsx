@@ -2234,7 +2234,7 @@ function UpcomingCallCard({ call, thread, live }) {
       </div>
       {live?.menuActions?.length > 0 && <div className="project-overflow call-card-overflow" ref={menuRef}>
         <button className="rfq-more" type="button" aria-label="More call actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
-        {menuOpen && <div className="project-overflow-menu" role="menu">{live.menuActions.map((action) => <button key={action.label} type="button" role="menuitem" disabled={action.disabled} onClick={() => { setMenuOpen(false); action.onClick(); }}>{action.label}</button>)}</div>}
+        {menuOpen && <div className="project-overflow-menu" role="menu">{live.menuActions.map((action) => <button key={action.label} className={action.destructive ? "call-menu-delete" : undefined} type="button" role="menuitem" disabled={action.disabled} onClick={() => { setMenuOpen(false); action.onClick(); }}>{action.label}</button>)}</div>}
       </div>}
       {live?.status && <p className={`call-card-status ${live.tone ?? ""}`}>{live.status}</p>}
       <div className="home-upcoming-call-actions">
