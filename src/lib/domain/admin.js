@@ -18,6 +18,18 @@ export async function isPlatformAdmin() {
   return Boolean(data);
 }
 
+export async function deleteBrand(orgId, confirmName) {
+  return staffRoute("/api/admin-delete-brand", {
+    body: { orgId, confirmName }, failure: "The brand could not be deleted",
+  });
+}
+
+export async function deleteFactory(orgId, confirmName) {
+  return staffRoute("/api/admin-delete-factory", {
+    body: { orgId, confirmName }, failure: "The factory could not be deleted",
+  });
+}
+
 /**
  * Documents waiting on a decision.
  *
@@ -92,6 +104,29 @@ export async function verificationQueue() {
     "load the verification queue",
   );
 
+  const factoryIds = (rows ?? []).filter((row) => row.org_type === "factory").map((row) => row.org_id);
+  const productionByOrg = new Map();
+  const makesByOrg = new Map();
+  const categoriesByOrg = new Map();
+  const capabilitiesByOrg = new Map();
+  if (factoryIds.length) {
+    const links = unwrap(await supabase.from("taxonomy_links")
+      .select("org_id, taxonomy_terms!inner(kind, label_en)")
+      .in("org_id", factoryIds)
+      .eq("subject_type", "factory_profile"), "load factory capabilities");
+    for (const link of links ?? []) {
+      const groups = capabilitiesByOrg.get(link.org_id) ?? {};
+      (groups[link.taxonomy_terms.kind] ??= new Set()).add(link.taxonomy_terms.label_en);
+      capabilitiesByOrg.set(link.org_id, groups);
+      if (!["production_type", "make", "product_category"].includes(link.taxonomy_terms.kind)) continue;
+      const target = link.taxonomy_terms.kind === "production_type" ? productionByOrg
+        : link.taxonomy_terms.kind === "make" ? makesByOrg : categoriesByOrg;
+      const labels = target.get(link.org_id) ?? new Set();
+      labels.add(link.taxonomy_terms.label_en);
+      target.set(link.org_id, labels);
+    }
+  }
+
   return (rows ?? []).map((row) => ({
     orgId: row.org_id,
     name: row.org_name,
@@ -115,6 +150,9 @@ export async function verificationQueue() {
     verificationScore: row.verification_score,
     verificationChecks: row.verification_checks ?? [],
     capabilities: row.capabilities ?? [],
+    productionTypes: [...(productionByOrg.get(row.org_id) ?? [])].sort(),
+    makes: [...(makesByOrg.get(row.org_id) ?? categoriesByOrg.get(row.org_id) ?? [])].sort(),
+    capabilityGroups: Object.entries(capabilitiesByOrg.get(row.org_id) ?? {}).map(([kind, labels]) => ({ kind, items: [...labels].sort() })),
     decidedAt: row.decided_at,
   }));
 }

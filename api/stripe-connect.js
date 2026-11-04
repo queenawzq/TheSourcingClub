@@ -1,5 +1,11 @@
+import { payoutBankOptions } from "./_payout-bank-options.js";
+import { payoutDisplayRates } from "./_payout-display-rates.js";
+import { connectUpgrade, beginConnectUpgrade, finishConnectUpgrade, upgradeReadiness } from "./_stripe-connect-upgrade.js";
 import { PAYOUT_COUNTRIES, appOrigin, callerClient, jsonBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
-import { holdPayouts, payoutSession, withdrawBalance } from "./_stripe-payouts.js";
+import {
+  MANAGED_CONTROLLER, PayoutMethodRefusal, addPayoutMethod, holdPayouts, listPayoutMethods, makeDefaultPayoutMethod,
+  managedByTsc, payoutMethodRow, payoutSession, payoutsOnTheirWay, removePayoutMethod, withdrawBalance,
+} from "./_stripe-payouts.js";
 import { payoutAllocationFor } from "./_payout-allocation.js";
 
 /**
@@ -15,10 +21,16 @@ import { payoutAllocationFor } from "./_payout-allocation.js";
  *              pays out anything already owed once transfers are on
  *   dashboard  a one-time link to the factory's Express dashboard
  *   balance    the factory's live balances and recent bank payouts
+ *   add_method, default_method, remove_method
+ *              the factory's payout accounts, changed by TSC on an account
+ *              TSC manages (see managedByTsc); each tells the company
  *
  * Owners only: where a company's money goes is the highest-value thing in
  * this system (the same rule as factory_payout_accounts).
  */
+/** "Bank account ending in 2345", as the factory's list says it. */
+const describe = (method) => `${method.type === "card" ? "Debit card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`;
+
 export default async function handler(request, response) {
   if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
 
@@ -34,7 +46,7 @@ export default async function handler(request, response) {
   const caller = callerClient(request);
   if (!caller) return reply(response, 401, { error: "sign in is required" });
 
-  const { orgId, action, country, amount, currency, requestId } = jsonBody(request);
+  const { orgId, action, country, amount, currency, requestId, token, makeDefault, methodId, promoteId, replaceId } = jsonBody(request);
   const [owner, orgRead, { data: auth }] = await Promise.all([
     caller.rpc("is_org_owner", { target_org: orgId }),
     caller.from("orgs").select("id, name, type").eq("id", orgId).maybeSingle(),
@@ -49,6 +61,14 @@ export default async function handler(request, response) {
 
   try {
     const { data: existing } = await db.from("stripe_connect_accounts").select("*").eq("org_id", orgId).maybeSingle();
+
+    const upgrade = existing ? await connectUpgrade(db, orgId) : null;
+    if (action === "upgrade") {
+      if (!existing) return reply(response, 404, { error: "No payout account to upgrade." });
+      const current = await stripe.accounts.retrieve(existing.stripe_account_id);
+      await beginConnectUpgrade({ stripe, db, org, current, email: auth?.user?.email });
+      return reply(response, 200, { started: true });
+    }
 
     if (action === "onboard" || action === "session") {
       let accountId = existing?.stripe_account_id;
@@ -66,8 +86,11 @@ export default async function handler(request, response) {
         // No idempotency key: Stripe would replay a first failure (Connect
         // not yet enabled, say) for 24 hours. The row saved below is what
         // makes this happen once per company.
+        // TSC collects the company's details (in Stripe's embedded form) and
+        // carries its losses, so TSC can change its payout accounts on TSC's
+        // own page; Express accounts made before 2026-10-30 cannot.
         const account = await stripe.accounts.create({
-          type: "express",
+          controller: MANAGED_CONTROLLER,
           country: code,
           email: auth?.user?.email ?? undefined,
           capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
@@ -77,6 +100,10 @@ export default async function handler(request, response) {
         });
         await saveConnectAccount(db, orgId, account);
         accountId = account.id;
+      }
+      if (jsonBody(request).upgrade === true) {
+        if (!upgrade?.new_account_id || upgrade.completed_at) return reply(response, 409, { error: "Start or resume the payout upgrade first." });
+        accountId = upgrade.new_account_id;
       }
       if (action === "session") return reply(response, 200, { clientSecret: await payoutSession(stripe, accountId) });
       const origin = appOrigin(request);
@@ -91,6 +118,19 @@ export default async function handler(request, response) {
 
     if (!existing) return reply(response, 404, { error: "payouts through Stripe are not set up yet" });
 
+    if (action === "bank_options") {
+      const account = await stripe.accounts.retrieve(existing.stripe_account_id);
+      return reply(response, 200, await payoutBankOptions(stripe, account.country));
+    }
+
+    if (action === "withdraw_previous") {
+      if (!upgrade?.completed_at) return reply(response, 409, { error: "No previous payout account is available." });
+      const previous = await stripe.accounts.retrieve(upgrade.old_account_id);
+      if (!previous.payouts_enabled) return reply(response, 422, { error: "Contact TSC operations to recover funds from your previous payout account." });
+      const payout = await withdrawBalance(stripe, upgrade.old_account_id, { amount, currency, requestId });
+      return reply(response, 200, { payout: { id: payout.id, amount: payout.amount, currency: payout.currency, status: payout.status } });
+    }
+
     if (action === "withdraw") {
       if (!existing.payouts_enabled) return reply(response, 422, { error: "Finish payout verification before withdrawing." });
       const payout = await withdrawBalance(stripe, existing.stripe_account_id, { amount, currency, requestId });
@@ -102,21 +142,40 @@ export default async function handler(request, response) {
     await holdPayouts(stripe, existing.stripe_account_id);
 
     if (action === "refresh") {
+      if (upgrade && !upgrade.completed_at) {
+        await finishConnectUpgrade({ stripe, db, orgId, upgrade });
+        const active = await db.from("stripe_connect_accounts").select("stripe_account_id").eq("org_id", orgId).single();
+        if (active.error) throw new Error(active.error.message);
+        existing.stripe_account_id = active.data.stripe_account_id;
+      }
       const account = await stripe.accounts.retrieve(existing.stripe_account_id);
       const saved = await saveConnectAccount(db, orgId, account);
-      const released = saved.transfers_active ? await releaseOwedTo({ stripe, db, factoryOrgId: orgId }) : [];
+      const released = saved?.transfers_active ? await releaseOwedTo({ stripe, db, factoryOrgId: orgId }) : [];
       return reply(response, 200, { account: saved, released });
     }
 
     if (action === "balance") {
-      const [balance, allocation, externalAccounts, account, recentPayouts] = await Promise.all([
+      const account = await stripe.accounts.retrieve(existing.stripe_account_id);
+      const [balance, allocation, methods, onTheirWay, displayFx] = await Promise.all([
         stripe.balance.retrieve({}, { stripeAccount: existing.stripe_account_id }),
         payoutAllocationFor(stripe, db, orgId, existing.stripe_account_id),
-        stripe.accounts.listExternalAccounts(existing.stripe_account_id, { limit: 10 }),
-        stripe.accounts.retrieve(existing.stripe_account_id),
-        stripe.payouts.list({ limit: 20 }, { stripeAccount: existing.stripe_account_id }),
+        listPayoutMethods(stripe, existing.stripe_account_id, account.default_currency),
+        payoutsOnTheirWay(stripe, existing.stripe_account_id),
+        payoutDisplayRates(),
       ]);
+      const migration = await upgradeReadiness(stripe, upgrade);
+      let recovery = null;
+      if (upgrade?.completed_at) {
+        const previous = await stripe.accounts.retrieve(upgrade.old_account_id);
+        const funds = await stripe.balance.retrieve({}, { stripeAccount: upgrade.old_account_id });
+        recovery = { available: funds.available, pending: funds.pending, defaultCurrency: previous.default_currency, payoutsEnabled: previous.payouts_enabled };
+        const historical = await payoutAllocationFor(stripe, db, orgId, upgrade.old_account_id);
+        allocation.payouts.push(...historical.payouts);
+        allocation.pending.push(...historical.pending);
+      }
       return reply(response, 200, {
+        displayFx, recovery,
+        upgrade: migration ? { started: true, creationFailed: upgrade.creation_failed, verified: migration.verified, unsettled: migration.unsettled } : null,
         defaultCurrency: account.default_currency,
         available: balance.available.map(({ amount, currency }) => ({ amount, currency })),
         pending: balance.pending.map(({ amount, currency }) => ({ amount, currency })),
@@ -124,31 +183,63 @@ export default async function handler(request, response) {
         pendingEarnings: allocation.pending,
         // Withdrawals not yet at the bank, and which account each is going to:
         // that account cannot be removed until its money arrives.
-        payoutsOnTheirWay: recentPayouts.data
-          .filter((payout) => payout.status === "pending" || payout.status === "in_transit")
-          .map((payout) => ({
-            id: payout.id,
-            amount: payout.amount,
-            currency: payout.currency,
-            arrival_date: payout.arrival_date,
-            destination: typeof payout.destination === "string" ? payout.destination : payout.destination?.id ?? null,
-          })),
-        methods: externalAccounts.data.map((method) => ({
-          id: method.id,
-          type: method.object === "card" ? "card" : "bank_account",
-          name: method.object === "card" ? method.brand : method.bank_name,
-          last4: method.last4,
-          currency: method.currency,
-          country: method.country,
-          // default_for_currency is true for one account per currency, so a
-          // EUR account and a USD one are both "default". The default is the
-          // one in the account's own currency; the other only takes payouts
-          // in its currency.
-          default: Boolean(method.default_for_currency) && method.currency === account.default_currency,
-          payoutsFor: method.default_for_currency && method.currency !== account.default_currency ? method.currency : null,
-        // The default first, as Stripe lists it (Payments and Settings both read this order).
-        })).sort((a, b) => Number(b.default) - Number(a.default)),
+        payoutsOnTheirWay: onTheirWay,
+        methods,
+        // TSC adds and removes payout accounts itself only where Stripe lets it.
+        managedByTsc: managedByTsc(account),
       });
+    }
+
+    if (action === "add_method" || action === "default_method" || action === "remove_method") {
+      const account = await stripe.accounts.retrieve(existing.stripe_account_id);
+      if (!managedByTsc(account)) {
+        return reply(response, 409, { error: "Your payout methods are changed in Stripe's form on this page." });
+      }
+      const accountId = existing.stripe_account_id;
+      let notice;
+      try {
+        if (action === "add_method") {
+          // Replace is one request: the new account goes in as the default,
+          // then the old one comes out. Two calls from the browser left the
+          // old one behind when the page closed between them.
+          if (replaceId) {
+            const target = await stripe.accounts.retrieveExternalAccount(accountId, replaceId);
+            const details = await stripe.tokens.retrieve(token);
+            if (!details.bank_account || details.bank_account.currency !== target.currency) {
+              throw new PayoutMethodRefusal(`A replacement must use ${target.currency.toUpperCase()}. Add a separate payout method to use another currency.`);
+            }
+          }
+          const added = payoutMethodRow(await addPayoutMethod(stripe, accountId, { token, makeDefault: makeDefault || Boolean(replaceId) }), account.default_currency);
+          notice = `${describe(added)} was added as a payout method${added.default ? " and is now the default" : ""}.`;
+          if (replaceId) {
+            const removed = payoutMethodRow(await removePayoutMethod(stripe, accountId, { methodId: replaceId, promoteId: added.id }), account.default_currency);
+            notice += ` ${describe(removed)} was removed.`;
+          }
+        } else if (action === "default_method") {
+          const chosen = payoutMethodRow(await makeDefaultPayoutMethod(stripe, accountId, methodId), account.default_currency);
+          notice = `Withdrawals now go to ${describe(chosen).toLowerCase()}.`;
+        } else {
+          const removed = payoutMethodRow(await removePayoutMethod(stripe, accountId, { methodId, promoteId }), account.default_currency);
+          notice = `${describe(removed)} was removed from your payout methods.`;
+        }
+      } catch (failure) {
+        if (failure instanceof PayoutMethodRefusal) return reply(response, 422, { error: failure.message });
+        // Stripe's own words on a bad account number are written for the person.
+        if (failure?.type === "StripeCardError" || failure?.type === "StripeInvalidRequestError") {
+          return reply(response, 422, { error: failure.message });
+        }
+        throw failure;
+      }
+      // Where earnings go is the highest-value thing a company has here: every
+      // change is said to the whole company, so one nobody made is noticed.
+      await db.from("notifications").insert({
+        org_id: orgId,
+        kind: "payout_method_changed",
+        title: "Your payout methods changed",
+        body: `${notice} If nobody at your company made this change, email operations@contact.sourcing-club.com now.`,
+      });
+      const methods = await listPayoutMethods(stripe, accountId, account.default_currency);
+      return reply(response, 200, { methods, notice });
     }
 
     if (action === "dashboard") {

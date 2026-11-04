@@ -104,3 +104,21 @@
   margin: 0;
   text-align: left;
 }
+
+.profile-document-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #174df2;
+  text-align: left;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.profile-document-modal { width: min(900px, calc(100vw - 32px)); max-height: 90vh; overflow: auto; }
+.profile-document-modal header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.profile-document-modal h2 { overflow-wrap: anywhere; }
+.profile-document-modal iframe { width: 100%; height: 65vh; border: 0; }
+.profile-document-modal img { display: block; max-width: 100%; max-height: 65vh; object-fit: contain; margin: auto; }

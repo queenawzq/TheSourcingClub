@@ -22,13 +22,12 @@ import { joinsInPage, openCallWindow } from "./call-window.js";
 
 const OPEN = new Set(["invite", "waiting", "upcoming", "live"]);
 
-/** Calls worth a card: open ones first by time, then the last few closed. */
+/** Open calls go in the sidebar; declined calls remain in the conversation. */
 export function callsForPanel(calls, orgId, now = Date.now()) {
   const open = calls.filter((call) => OPEN.has(callState(call, orgId, now)));
   const closed = calls
-    .filter((call) => !OPEN.has(callState(call, orgId, now)))
-    .sort((a, b) => new Date(b.responded_at ?? b.starts_at) - new Date(a.responded_at ?? a.starts_at))
-    .slice(0, 3);
+    .filter((call) => callState(call, orgId, now) === "declined")
+    .sort((a, b) => new Date(b.responded_at ?? b.starts_at) - new Date(a.responded_at ?? a.starts_at));
   return [...open, ...closed];
 }
 
@@ -58,8 +57,8 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
   const start = startOf(call);
   const busy = busyId === call.id;
   const calendar = [
-    { label: "Add to calendar", onClick: () => downloadIcs(call, other.name), disabled: busy },
-    { label: "Google Calendar", onClick: () => window.open(googleCalendarUrl(call, other.name), "_blank", "noopener"), disabled: busy },
+    { label: "Add to calendar", textLink: true, onClick: () => downloadIcs(call, other.name), disabled: busy },
+    { label: "Google Calendar", textLink: true, onClick: () => window.open(googleCalendarUrl(call, other.name), "_blank", "noopener"), disabled: busy },
   ];
 
   let status;
@@ -71,7 +70,7 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
     actions = [
       { label: "Accept", primary: true, onClick: () => handlers.accept(call), disabled: busy },
       { label: "Propose another time", onClick: () => handlers.counter(call), disabled: busy },
-      { label: "Decline", onClick: () => handlers.decline(call), disabled: busy },
+      { label: "Decline", destructive: true, onClick: () => handlers.decline(call), disabled: busy },
     ];
   } else if (state === "waiting") {
     status = `Waiting for ${other.name} to answer`;
@@ -81,18 +80,18 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
     tone = "confirmed";
     actions = [
       { label: "Join call", primary: true, onClick: () => handlers.join(call), disabled: busy },
-      ...calendar,
       { label: "Cancel call", onClick: () => handlers.cancel(call), disabled: busy },
+      ...calendar,
     ];
   } else if (state === "live") {
     status = start.getTime() > now ? "Starting soon" : "On now";
     tone = "confirmed";
     actions = [
       { label: "Join call", primary: true, onClick: () => handlers.join(call), disabled: busy },
-      ...calendar,
       // cancel_call allows it until the start, so someone who can't make it
       // in the last ten minutes says so here, not in a message.
       ...(start.getTime() > now ? [{ label: "Cancel call", onClick: () => handlers.cancel(call), disabled: busy }] : []),
+      ...calendar,
     ];
   } else {
     status = CLOSED_STATUS[state]?.(call, other, orgId) ?? state;
@@ -109,8 +108,15 @@ export function panelCard(call, { orgId, ownZone, otherZone, handlers, busyId, n
       : call.agenda ?? "",
     live: {
       status,
+      inConversation: state === "declined",
+      eventTimestamp: call.responded_at ?? call.updated_at ?? call.starts_at,
+      eventTime: call.responded_at ? new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(new Date(call.responded_at)) : null,
       tone,
       actions,
+      menuActions: state === "declined" ? [
+        { label: "Schedule another call", onClick: () => handlers.scheduleAgain(call), disabled: busy },
+        { label: "Delete", destructive: true, onClick: () => handlers.deleteCard(call), disabled: busy },
+      ] : [],
       note: notes[call.id]?.text ?? null,
       noteIsError: Boolean(notes[call.id]?.error),
     },

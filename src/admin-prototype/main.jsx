@@ -206,6 +206,7 @@ function Panel({ title, subtitle, action, onAction, children, className = "" }) 
 }
 
 function VerificationRow({ profile, onReview }) {
+  const productionTags = profile.productionTags ?? [];
   return (
     <article className={`admin-verification-row${profile.confidence != null ? " has-confidence" : ""}`}>
       <div className="admin-entity-identity">
@@ -214,6 +215,17 @@ function VerificationRow({ profile, onReview }) {
           <strong>{profile.name}</strong>
           <small>{profile.entityType} · {profile.location}</small>
           <small className="admin-entity-submitted">Submitted {profile.submitted}</small>
+        </div>
+        <div className="admin-factory-tags">
+          {(profile.entityType === "Factory" || profile.entityType === "Trading company") && (
+            <div className="tag-row compact-tags admin-production-types" aria-label="Production types">
+              {productionTags.map((type) => (
+                <span key={type.kind} className={`tag production-${type.kind}`} title={type.source}>
+                  {type.label}{type.inferred ? " · inferred" : ""}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       {profile.confidence != null
@@ -1010,7 +1022,11 @@ function CreditsCard({ orgId, refreshKey }) {
   );
 }
 
-function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, deciding = false }) {
+function VerificationDetail({ profile, submission, documents, onDocumentUrl, onBack, onDecision, onSuggestRequest, onDeleteFactory, onDeleteBrand, deciding = false }) {
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteName, setDeleteName] = useState("");
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [requestOpen, setRequestOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
   // Both modals had a textarea whose value was dropped on the floor: the
@@ -1029,6 +1045,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const actions = useActions();
   const eligibility = submission?.trustEligibility ?? null;
   const isVendor = profile?.entityType === "Factory" || profile?.entityType === "Trading company";
+  const deleteLabel = isVendor ? "factory" : "brand";
+  const onDeleteCompany = isVendor ? onDeleteFactory : onDeleteBrand;
   const hasWalkthrough = eligibility?.hasWalkthrough ?? (documents ?? []).some(
     (document) => document.kind === "walkthrough" && document.status !== "rejected" && Number(document.size_bytes) > 0,
   );
@@ -1080,7 +1098,32 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
           <div className="admin-review-main">
             <Panel title="Profile summary" subtitle={profile.summary} action="View full submission" onAction={() => setFullProfileOpen(true)}>
               <div className="admin-detail-grid">{profile.details.map(([label, value]) => <ProfileDetailPair label={label} value={value} key={label} />)}</div>
-              {profile.capabilities?.length ? <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} /> : null}
+              {profile.capabilityGroups?.length ? (
+                <div className="admin-capability-groups">
+                  {[
+                    ["manufacturing_model", "Manufacturing model"],
+                    ["production_type", "Production type"],
+                    ["product_category", "Product categories"],
+                    ["make", "Makes"],
+                    ["market_level", "Market level"],
+                    ["specialty", "Specializes in"],
+                    ["service", "Services"],
+                    ["design_service", "Design services"],
+                    ["production_program", "Production programs supported"],
+                    ["sourcing_region", "Sourcing regions"],
+                    ["core_service", "Core services"],
+                    ["product_development", "Product development"],
+                    ["quality_compliance", "Quality & compliance"],
+                    ["region", profile.entityType === "Trading company" ? "Primary destination markets" : "Primary export markets"],
+                    ["digital_tool", "Digital tools"],
+                    ["certification", "Certifications"],
+                    ...profile.capabilityGroups.filter(({ kind }) => !["manufacturing_model", "production_type", "product_category", "make", "market_level", "specialty", "service", "design_service", "production_program", "sourcing_region", "core_service", "product_development", "quality_compliance", "region", "digital_tool", "certification"].includes(kind)).map(({ kind }) => [kind, kind.replaceAll("_", " ")]),
+                  ].map(([kind, label]) => {
+                    const group = profile.capabilityGroups.find((group) => group.kind === kind);
+                    return group?.items.length ? <ProfileChipSection key={kind} label={label} items={group.items} /> : null;
+                  })}
+                </div>
+              ) : profile.capabilities?.length ? <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} /> : null}
             </Panel>
             {profile.checks?.length ? (
             <Panel title="Verification checks" subtitle="Each check reads what this company submitted and what TSC already holds. None of them contacts an outside registry or certifier.">
@@ -1177,10 +1220,32 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               </button>
               <button className="secondary-btn" type="button" onClick={() => setRequestOpen(true)}>Request more information</button>
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
+              {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}
             </section>
           </aside>
         </div>
       </div>
+      {deleteOpen && (
+        <div className="approve-fund-modal-layer" role="presentation">
+          <section className="approve-fund-modal admin-review-modal" role="dialog" aria-modal="true" aria-labelledby="delete-factory-title">
+            <header><h2 id="delete-factory-title">Delete {deleteLabel}</h2></header>
+            <p>Permanently delete {profile.name}, its company records, conversations, memberships, and uploaded files. This cannot be undone. Individual user accounts are kept.</p>
+            <p>Companies with quotes, orders, or payment records cannot be deleted.</p>
+            <label className="factory-onboarding-field"><span>Type {profile.name} to confirm</span><input autoFocus value={deleteName} disabled={deleteBusy} onChange={(event) => setDeleteName(event.target.value)} autoComplete="off" /></label>
+            {deleteError && <p className="admin-error" role="alert">{deleteError}</p>}
+            <footer>
+              <button className="secondary-btn" type="button" disabled={deleteBusy} onClick={() => setDeleteOpen(false)}>Cancel</button>
+              <button className="primary-btn danger-action" type="button" disabled={deleteBusy || deleteName.trim() !== profile.name} onClick={async () => {
+                if (deleteBusy) return;
+                setDeleteBusy(true); setDeleteError("");
+                try { await onDeleteCompany(profile.id, deleteName.trim()); setDeleteOpen(false); }
+                catch (error) { setDeleteError(error.message || "The company could not be deleted"); }
+                finally { setDeleteBusy(false); }
+              }}>{deleteBusy ? "Deleting…" : `Delete ${deleteLabel} permanently`}</button>
+            </footer>
+          </section>
+        </div>
+      )}
       {requestOpen && (
         <div className="approve-fund-modal-layer" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && setRequestOpen(false)}>
           <section className="approve-fund-modal admin-review-modal" role="dialog" aria-modal="true" aria-labelledby="request-info-title">
@@ -1932,6 +1997,26 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
     );
     window.setTimeout(() => setToast(""), 2400);
   };
+  const deleteFactoryProfile = actions.deleteFactory ? async (id, confirmation) => {
+    const result = await actions.deleteFactory(id, confirmation);
+    setSelectedProfile(null);
+    reloadQueue();
+    reloadMetrics();
+    reloadUsers();
+    navigate("Verification");
+    setToast(result.cleanupPending ? "Factory deleted. File cleanup needs staff attention." : "Factory deleted");
+    window.setTimeout(() => setToast(""), 5000);
+  } : null;
+  const deleteBrandProfile = actions.deleteBrand ? async (id, confirmation) => {
+    const result = await actions.deleteBrand(id, confirmation);
+    setSelectedProfile(null);
+    reloadQueue();
+    reloadMetrics();
+    reloadUsers();
+    navigate("Verification");
+    setToast(result.cleanupPending ? "Brand deleted. File cleanup needs staff attention." : "Brand deleted");
+    window.setTimeout(() => setToast(""), 5000);
+  } : null;
   const toggleUserStatus = async (id) => {
     const user = users.find((item) => item.id === id);
     if (!user || user.protected) return;
@@ -1972,7 +2057,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
       {screen === "Overview" && <Overview profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} metrics={metrics} onReview={openReview} onNavigate={navigate} onOpenRfq={openRfq} showNotifications={showNotifications} />}
       {["RFQs", "Quotes", "Verification"].includes(screen) && <QueuePage matchingPanel={matchingPanel} kind={screen} profiles={profiles} rfqRows={rfqList} quoteRows={quoteList} onReview={openReview} onOpenRfq={openRfq} onOpenQuote={openQuote} />}
       {screen === "Users" && <UsersPage users={users} onToggleStatus={toggleUserStatus} />}
-      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} deciding={deciding} />}
+      {screen === "Review" && <VerificationDetail profile={selectedProfile} submission={reviewSubmission} documents={reviewDocuments} onDocumentUrl={actions.documentUrl} onBack={() => navigate(reviewBack)} onDecision={decide} onSuggestRequest={actions.suggestReviewRequest} onDeleteFactory={deleteFactoryProfile} onDeleteBrand={deleteBrandProfile} deciding={deciding} />}
       {screen === "RFQ detail" && <AdminRfqDetail rfq={selectedRfq} backLabel={rfqBack} onBack={() => navigate(rfqBack)} onOpenQuote={openQuote} quoteRows={quoteList} detail={shownDetail} />}
       {screen === "Quote detail" && <AdminQuoteDetail quote={selectedQuote} rfq={selectedRfq} onBack={() => navigate(quoteBack)} detail={shownDetail} backLabel={quoteBack} />}
       {screen === "Settings" && <SettingsPage user={viewer.user} account={currentAdmin} onSignOut={actions.signOut} testEmailsIntro={testEmailsIntro} testEmailsUnavailable={testEmailsUnavailable} validateThresholds={validateThresholds} />}

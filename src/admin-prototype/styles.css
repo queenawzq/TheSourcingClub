@@ -198,6 +198,85 @@
   white-space: nowrap;
 }
 
+.admin-production-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.admin-capability-groups {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.admin-verification-row > .admin-entity-identity {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 160px;
+}
+
+.admin-entity-identity > .admin-factory-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-start;
+  margin-left: 0;
+  min-width: 0;
+}
+
+.admin-factory-tags:empty {
+  display: none;
+}
+
+.admin-factory-tags .admin-production-types {
+  margin: 0;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+@media (max-width: 760px) {
+  .admin-verification-row > .admin-entity-identity {
+    grid-template-columns: 44px minmax(0, 1fr);
+  }
+  .admin-entity-identity > .admin-factory-tags {
+    grid-column: 2;
+  }
+}
+
+.admin-factory-tags .tag {
+  --pill-height: 26px;
+  --pill-padding: 0 10px;
+  --pill-font-size: 11px;
+  --pill-line: 24px;
+  box-sizing: border-box;
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 24px;
+  white-space: nowrap;
+}
+
+.admin-production-types > .production-knit {
+  background: #f3e8ff;
+  border-color: #d8b4fe;
+  color: #6b21a8;
+}
+
+.admin-production-types > .production-jersey {
+  background: #ffedd5;
+  border-color: #fdba74;
+  color: #9a3412;
+}
+
+.admin-production-types > .production-woven {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1e40af;
+}
+
 .admin-entity-identity small {
   overflow: hidden;
   color: #60769b;
@@ -962,12 +1041,31 @@
 }
 
 .admin-decline-button {
-  min-height: 38px;
+  min-height: 28px;
+  margin-top: -6px;
   border: 0;
   background: transparent;
   color: #c83d3d;
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.admin-delete-factory-button {
+  justify-self: center;
+  margin-top: -14px;
+  min-height: 28px;
+  padding: 2px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
   cursor: pointer;
 }
 

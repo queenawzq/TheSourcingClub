@@ -1,3 +1,4 @@
+import { payoutUsdMinor, payoutUsdTotal } from "../../lib/payout-display.mjs";
 /**
  * The factory Payments page, using the tabbed design from the factory app.
  *
@@ -272,7 +273,6 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // what reached the bank, in the currency Stripe paid it in. Neither is
   // converted into the other, so an empty figure is a zero in the earnings'
   // currency, and a strip holding two currencies says why.
-  const summaryCurrency = (visibleEarnings[0]?.currency || "USD").toUpperCase();
   const earningsShown = cardSettled || accountsError ? earnings : null;
   const summary = earningsSummaryFor(earningsShown, stripeBalance, client);
   // Whether the Stripe-read figures (Pending, Paid out, withdrawals) wait for
@@ -282,16 +282,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     : stripeBalance === undefined ? (stripeStatus === "slow" ? "slow" : "loading")
     : !isOwner ? "owner" : "failed";
   const transactionsReady = Boolean(earningsShown) && stripeFigures !== "loading" && stripeFigures !== "slow";
-  const paidInOtherCurrency = summary.paid?.some((row) => row.currency !== summaryCurrency);
   const earningsSummary = [
     ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
     ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
     ["Pending", summary.pending, PENDING_HELP],
-    ["Paid out", summary.paid, "Withdrawals paid out to your bank account, shown in the withdrawal currency. For each client, withdrawals use the oldest available earnings first. Withdrawals still processing are not included."],
+    ["Paid out", summary.paid, "Withdrawals paid out to your bank account, shown as estimated USD equivalents when the bank received another currency. For each client, withdrawals use the oldest available earnings first. Withdrawals still processing are not included."],
   ];
   const paymentById = new Map((earnings ?? []).map((row) => [row.id, row]));
-  const hasUnallocatedHistory = stripeBalance?.payouts?.some((row) => row.paid
-    && row.allocations.reduce((sum, part) => sum + part.amount, 0) < row.amount);
   const payoutTransactions = (stripeBalance?.payouts ?? []).flatMap((row) => {
     if (client === "All clients") return [row];
     const amount = row.allocations.filter((part) => paymentById.get(part.paymentId)?.order?.brand_org_id === client)
@@ -416,15 +413,12 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             {earningsSummary.map(([label, amounts, help], index) => (
               <div className={`metric${index === 0 ? " highlight" : ""}`} key={label}>
                 <strong>{amounts === undefined ? <FigurePlaceholder label={label} />
-                  : amounts === null ? "—" : (amounts.length ? amounts : [{ amount: 0, currency: summaryCurrency }])
-                  .map(({ amount, currency }) => <span className="payment-currency-value" key={currency}>{formatMoney(amount, currency)}</span>)}</strong>
+                  : amounts === null ? "—" : <span className="payment-currency-value">{formatMoney(payoutUsdTotal(amounts, stripeBalance?.displayFx), "USD")}</span>}</strong>
                 <span className="payment-metric-label">{label} <PaymentHelp label={label}>{help}</PaymentHelp></span>
               </div>
             ))}
           </div>
           {STRIPE_FIGURES_TEXT[stripeFigures] ? <p className="payment-allocation-note" role="status">{STRIPE_FIGURES_TEXT[stripeFigures]}</p> : null}
-          {paidInOtherCurrency ? <p className="payment-allocation-note">Earnings are in each order's currency ({summaryCurrency}). Paid out is in the currency your bank received, so the two are not converted or added together.</p> : null}
-          {hasUnallocatedHistory ? <p className="payment-allocation-note">Older withdrawals without a client link appear only under All clients.</p> : null}
 
           <section className="payout-transactions-section" aria-labelledby="transactions-heading">
             <div className="payout-transactions-header">
@@ -455,7 +449,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
                     </div>
                     <span className={`billing-status payout-status-${row.status.toLowerCase().replaceAll(" ", "-")}`}>{row.status}</span>
                     <strong className={row.amount < 0 ? "payout-amount-negative" : row.available ? "payout-amount-positive" : "payout-amount-pending"}>
-                      {row.amount < 0 ? "−" : row.available ? "+" : ""}{formatMoney(Math.abs(row.amount), row.currency)}
+                      {row.amount < 0 ? "−" : row.available ? "+" : ""}{formatMoney(payoutUsdMinor(Math.abs(row.amount), row.currency, stripeBalance?.displayFx), "USD")}
                     </strong>
                   </article>
                 ))}

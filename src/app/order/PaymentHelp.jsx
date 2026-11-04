@@ -53,4 +53,4 @@ export default function PaymentHelp({ label, children }) {
   </>;
 }
 
-export const PENDING_HELP = "Pending payments become available to withdraw after processing. No action is needed, and there is no extra platform hold.";
+export const PENDING_HELP = "Pending payments become available to withdraw after processing.";

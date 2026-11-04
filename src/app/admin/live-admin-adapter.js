@@ -44,6 +44,8 @@ import {
   testDataPreview,
   userDirectory,
   verificationQueue,
+  deleteFactory,
+  deleteBrand,
 } from "../../lib/domain/admin.js";
 import { createElement } from "react";
 import { urlFor } from "../../lib/domain/documents.js";
@@ -53,6 +55,7 @@ import { formatMoney, formatRange } from "../../lib/money.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { describeQuote } from "../quote/quote-view.js";
 import { monthLine, quantityLine } from "../rfq/resume-fields.js";
+import { productionCategories } from "./production-categories.mjs";
 
 const MONTH_DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
 
@@ -144,6 +147,17 @@ function ago(value) {
  */
 export function toReviewProfile(row) {
   const [status, tone] = REVIEW_LABEL[row.state] ?? ["Ready for review", "info"];
+  const savedProductionTypes = row.productionTypes ?? [];
+  const description = [row.name, row.intro].filter(Boolean).join(" ");
+  const inferredProductionTypes = row.type === "factory" && !savedProductionTypes.length
+    ? [
+      [/\b(woven|wovens|weaving)\b/i, "Wovens"],
+      [/\b(jersey|jerseys|cut[ -]and[ -]sew|cut\s*&\s*sew)\b/i, "Jersey / cut & sew"],
+      [/\b(knit|knits|knitwear|knitting|sweater|sweaters)\b/i, "Knitwear"],
+      [/\b(denim|jeans)\b/i, "Denim"],
+      [/\b(seamless|circular knitting)\b/i, "Seamless / circular knit"],
+    ].filter(([pattern]) => pattern.test(description)).map(([, label]) => label)
+    : [];
   return {
     id: row.orgId,
     initials: initials(row.name),
@@ -178,6 +192,11 @@ export function toReviewProfile(row) {
       ["Last note", row.note ? createElement("span", { className: "admin-review-note" }, row.note) : "—"],
     ],
     capabilities: row.capabilities ?? [],
+    capabilityGroups: row.capabilityGroups ?? [],
+    productionTypes: savedProductionTypes.length ? savedProductionTypes : inferredProductionTypes,
+    productionTypesInferred: inferredProductionTypes.length > 0,
+    productionTags: productionCategories(row),
+    makes: row.makes ?? [],
     confidence: row.verificationScore ?? null,
     // The queue row's name for that figure; the design's is "Confidence".
     confidenceLabel: "Complete",
@@ -322,6 +341,8 @@ export function createAdminAdapter({ user, signOut }) {
     adminUsers: () => userDirectory().then((rows) => rows.map(toAdminUser)),
 
     actions: {
+      deleteFactory,
+      deleteBrand,
       claimReview,
       signOut,
       sendTestEmail,

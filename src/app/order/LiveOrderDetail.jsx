@@ -57,20 +57,23 @@ import {
 import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
 
-/**
- * Whether the brand can approve this step now. The factory's update is what
- * the brand approves from: there is no separate "send for approval" on the
- * designed screens, so an open step is approvable once the factory has posted
- * on it (approve_milestone checks the same). A step sent for approval the old
- * way still is.
- */
-const approvable = (milestone, posted) =>
+/** Approval depends on step state and funding, never on posted updates. */
+const approvable = (milestone) =>
   milestone.kind !== "payment_only"
-  && (milestone.state === "submitted" || (milestone.state === "active" && posted));
+  && ["active", "submitted"].includes(milestone.state);
 
-/** An open step the factory has not posted on yet: nothing to approve. */
-const awaitingFirstUpdate = (milestone, posted) =>
-  milestone.kind !== "payment_only" && milestone.state === "active" && !posted;
+/**
+ * Which permissions this viewer lacks to take a step's action, in the words
+ * Settings uses. Empty when they hold everything the action asks for.
+ */
+function missingFor(milestone, kind, { canFund, canApprove }) {
+  if (kind === "fund") return canFund ? [] : ["Release funds"];
+  const missing = canApprove ? [] : ["Approve samples"];
+  if (milestone.kind === "approval_and_payment" && !canFund) missing.push("Release funds");
+  return missing;
+}
+
+const permissionWords = (missing) => missing.join(" and ");
 
 /**
  * What this step is waiting for, and from whom.
@@ -78,56 +81,44 @@ const awaitingFirstUpdate = (milestone, posted) =>
  * The design draws a fixed action per row: "Approve", or "Fund milestone".
  * Live it depends on the state the row is in and which side is looking: a
  * factory never approves its own work, it posts updates from the row's menu.
- * A row with nothing to do carries no button rather than a disabled one.
+ * A brand member without the permission the action asks for still sees it,
+ * greyed out, and the status line says which permission (Queena, Nov 4): a
+ * hidden button reads as a missing feature, and a tooltip alone never shows
+ * on a touch screen.
  */
-function actionFor(milestone, { isFactory, canFund, canApprove, posted, factoryName }) {
+function actionFor(milestone, viewer) {
+  const { isFactory } = viewer;
   const payment = milestone.payment;
   const none = { action: "", tone: "", kind: "" };
+  const button = (action, kind, opensLater = false) => {
+    const missing = missingFor(milestone, kind, viewer);
+    if (missing.length) {
+      return {
+        action, tone: "primary", kind, actionDisabled: true,
+        actionDisabledReason: `Needs the ${permissionWords(missing)} permission`,
+      };
+    }
+    return opensLater ? { action, tone: "primary", kind, actionDisabled: true } : { action, tone: "primary", kind };
+  };
 
   if (isFactory) return none;
   // A paid step is funded before the work; a payment that came back is paid
   // again the same way. Release funds pays (begin_payment_checkout).
-  if (payment?.state === "due" || payment?.state === "failed") {
-    return canFund ? { action: "Fund milestone", tone: "primary", kind: "fund" } : none;
-  }
+  if (payment?.state === "due" || payment?.state === "failed") return button("Fund milestone", "fund");
   // approve_milestone refuses a paid step until its money is held.
   if (payment && milestone.kind === "approval_and_payment" && payment.state !== "confirmed") return none;
-  if (approvable(milestone, posted)) {
+  if (approvable(milestone)) {
     // approve_milestone asks for Approve samples, and Release funds too on a
-    // paying step; say so on the row instead of a dialog that can only fail.
-    if (!canApprove || (milestone.kind === "approval_and_payment" && !canFund)) return none;
-    return {
-      action: milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve",
-      tone: "primary",
-      kind: "approve",
-    };
-  }
-  // Open, but the factory has posted nothing: approve_milestone refuses it,
-  // so the button stays in place, disabled, and the status line says why.
-  if (awaitingFirstUpdate(milestone, posted)) {
-    if (!canApprove || (milestone.kind === "approval_and_payment" && !canFund)) return none;
-    return {
-      action: milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve",
-      tone: "primary",
-      kind: "approve",
-      actionDisabled: true,
-      actionDisabledReason: `Available once ${factoryName || "the factory"} posts an update`,
-    };
+    // paying step.
+    return button(milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve", "approve");
   }
   // Keep the next action visible on every upcoming step. The database still
   // owns sequencing, so a future CTA is disabled until that step opens rather
-  // than disappearing and leaving the schedule without a clear action. Only
-  // to someone who will be able to press it once it opens.
+  // than disappearing and leaving the schedule without a clear action.
   if (milestone.state === "pending") {
-    if (milestone.kind === "payment_only" && payment?.state === "not_due") {
-      return canFund ? { action: "Fund milestone", tone: "primary", kind: "fund", actionDisabled: true } : none;
-    }
-    if (milestone.kind === "approval_and_payment") {
-      return canApprove && canFund ? { action: "Approve fund", tone: "primary", kind: "approve", actionDisabled: true } : none;
-    }
-    if (milestone.kind === "approval_only") {
-      return canApprove ? { action: "Approve", tone: "primary", kind: "approve", actionDisabled: true } : none;
-    }
+    if (milestone.kind === "payment_only" && payment?.state === "not_due") return button("Fund milestone", "fund", true);
+    if (milestone.kind === "approval_and_payment") return button("Approve fund", "approve", true);
+    if (milestone.kind === "approval_only") return button("Approve", "approve", true);
   }
   return none;
 }
@@ -194,6 +185,17 @@ function statusLine(milestone, { isFactory, canFund, canApprove, org, factoryNam
         ? "In progress"
         : `Waiting for ${factoryName || "the factory"}'s first update. You can approve once it posts`;
     return payment?.state === "confirmed" ? `${work} · ${money}` : work;
+  }
+  // An upcoming step whose greyed button this viewer could not press even
+  // once it opens: say so here, where a touch screen can read it.
+  if (milestone.state === "pending" && !isFactory) {
+    const { kind } = actionFor(milestone, { isFactory, canFund, canApprove });
+    const missing = kind ? missingFor(milestone, kind, { canFund, canApprove }) : [];
+    if (missing.length) {
+      const verb = kind === "fund" ? "pay for" : "approve";
+      const who = `Only someone with ${permissionWords(missing)} at ${org?.name || "your company"} can ${verb} it`;
+      return money ? `${money}. ${who}` : `Upcoming. ${who}`;
+    }
   }
   return money;
 }

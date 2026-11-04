@@ -16,7 +16,7 @@ import { MessagesScreen } from "../../prototype/main.jsx";
 import "./messages.css";
 import { supabase } from "../../lib/supabase.js";
 import { ATTACHMENT_ACCEPT, attachmentRefusal, urlFor } from "../../lib/domain/documents.js";
-import { awaitingScreen, fileOnlyBody, LANGUAGE_NAME, listMessages, listThreads, markRead, openOrderThread, readable, readerLanguage, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
+import { awaitingScreen, fileOnlyBody, englishTranslation, listMessages, listThreads, markRead, openOrderThread, RESCREEN_AFTER_MS, rescreenStale, sendMessage, sentAt, threadProjectNames } from "../../lib/domain/message.js";
 import { acceptCall, browserTimeZone, canJoinCall, cancelCall, counterCall, counterpartyTimeZone, declineCall, listCalls, otherSide, proposeCall, theirZoneFor, zoneOptions } from "../../lib/domain/calls.js";
 import { callsForPanel, panelCard } from "./live-calls.js";
 import { useCallClock } from "./use-calls.js";
@@ -133,6 +133,15 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const [theirZones, setTheirZones] = useState({});
   const [activeId, setActiveId] = useState(threadId ?? null);
   const [dialog, setDialog] = useState(null);
+  const [deletedCallCards, setDeletedCallCards] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    setDeletedCallCards([]);
+    supabase.from("call_card_dismissals").select("call_id").eq("user_id", user.id).then(({ data, error }) => {
+      if (!cancelled && !error) setDeletedCallCards((data ?? []).map((row) => row.call_id));
+    });
+    return () => { cancelled = true; };
+  }, [user.id]);
   const [callBusy, setCallBusy] = useState(null);
   const [callNotes, setCallNotes] = useState({});
   // Withdraw, cancel or decline waiting on "are you sure?": { call, mode }.
@@ -397,6 +406,12 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   }
 
   const callHandlers = {
+    scheduleAgain: (call) => setDialog({ threadId: call.thread_id, key: `new-${call.id}`, busy: false, error: null }),
+    deleteCard: (call) => changeCall(call, async () => {
+      const { error } = await supabase.from("call_card_dismissals").upsert({ call_id: call.id, user_id: user.id });
+      if (error) throw error;
+      setDeletedCallCards((current) => [...current, call.id]);
+    }),
     accept: (call) => changeCall(call, () => acceptCall(call.id, ownZone)),
     // Each closes the call for both sides and cannot be undone: asked first.
     decline: (call) => setConfirmCall({ call, mode: "decline" }),
@@ -508,8 +523,6 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       documents: item.files.map((file) => ({ file_name: file.name })),
     }));
     const rows = [...(messagesByThread[thread.id] ?? []), ...outgoingRows];
-    // The language this reader reads this conversation in (readerLanguage).
-    const preferred = readerLanguage(messagesByThread[thread.id], org.id);
 
     return {
       id: thread.id,
@@ -519,20 +532,12 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
       project: projectNames.get(thread.id) ?? thread.subject_title ?? "",
       kind: thread.subject_kind === "order" ? "Production order" : "Request for quote",
       lastDate: dayLabel(thread.last_message_at),
-      // The other side's last words in the reader's language, as in the
-      // conversation itself; the reader's own as typed.
-      lastPreview: (thread.last_sender_org_id !== org.id && thread.last_body_translated_lang === preferred
-        ? thread.last_body_translated
-        : thread.last_body) ?? "No messages yet.",
+      // Match the conversation: original text until the reader requests English.
+      lastPreview: thread.last_body ?? "No messages yet.",
       unread: Number(thread.unread_count) || 0,
       files: [],
       messages: rows.map((message) => {
         const mine = message.sender_org_id === org.id;
-        // The reader's own words as they typed them, the translation one
-        // click away. The other side's: the reader's language first.
-        const view = mine
-          ? { text: message.body, isTranslation: Boolean(message.body_translated), original: message.body_translated, originalLang: message.body_translated_lang }
-          : readable(message, { preferred });
         const linked = (message.documents ?? []).filter((doc) => doc.file_name);
         const files = linked.length
           ? linked.map((doc) => ({ name: doc.file_name, uploading: !doc.storage_path, onOpen: doc.storage_path ? () => openAttachment(doc, setError) : undefined }))
@@ -543,34 +548,12 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           // The bubble's side and label: the reader's own messages on the
           // right with their own name, whichever side the reader is on.
           own: mine,
+          timestamp: sentAt(message),
           time: sentAt(message) ? TIME.format(new Date(sentAt(message))) : "",
           // Only the sender's company ever reads a message that is not
           // delivered (the read policy), so this is always the reader's own.
           status: deliveryStatus(message, { unscreened: unscreened.has(message.id) }),
-          // The reader's own language first, with the original one click
-          // away — the rule in CLAUDE.md. The designed bubble shows `body`
-          // by default and `translation` when toggled, so the readable text
-          // is the body and the toggle reveals what was actually typed.
-          // The other side's words get a toggle only when they were written
-          // in another language than the reader's: an English reader of
-          // English has nothing to translate. The reader's own words always
-          // have the translation the other side reads one click away.
-          ...(view.original
-            ? {
-              body: view.text,
-              translation: view.original,
-              language: view.originalLang,
-              ...(!mine && view.isTranslation
-                ? {
-                  showAltLabel: `Show original${LANGUAGE_NAME[view.originalLang] ? ` (${LANGUAGE_NAME[view.originalLang]})` : ""}`,
-                  hideAltLabel: "Show translation",
-                }
-                : {
-                  showAltLabel: `Show translation${LANGUAGE_NAME[view.originalLang] ? ` (${LANGUAGE_NAME[view.originalLang]})` : ""}`,
-                  hideAltLabel: mine ? "Show what you wrote" : "Show original",
-                }),
-            }
-            : { body: view.text }),
+          ...englishTranslation(message, { own: mine }),
           attachments: files.length ? files : undefined,
         };
       }),
@@ -580,7 +563,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   // Each conversation's calls as the designed cards.
   const callCards = {};
   for (const thread of threads) {
-    const theirs = calls.filter((call) => call.thread_id === thread.id);
+    const theirs = calls.filter((call) => call.thread_id === thread.id && !deletedCallCards.includes(call.id));
     callCards[thread.id] = callsForPanel(theirs, org.id, now).map((call) => panelCard(call, {
       now,
       orgId: org.id,

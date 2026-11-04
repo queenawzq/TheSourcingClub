@@ -3,12 +3,9 @@ import { matchingEnabled, assessFactories, compareMatches } from "../../lib/doma
  * Loading profile records: a vendor's, for its own page and for the brand's
  * view of it; a brand's, for its own page and for the vendor's view of it.
  *
- * The owner reads everything it has. A brand reads only what the access
- * rules already admit for a published profile: the profile row, its tags,
- * capacity, references, certification claims and the public-bucket images and
- * video. So the brand's load never asks for the business registration, a
- * certificate file or the factory's orders: private documents are refused by
- * the rules anyway, and a factory's orders would carry other brands' names.
+ * Owners read their own records. Signed-in brands can read published vendor
+ * profiles, public media, and uploaded registration/certificate documents.
+ * Other private documents and other brands' order history stay private.
  *
  * A vendor reads a brand only through brand_profile_for_factory(), which
  * returns what the brand told vendors and nothing private (no revenue, email,
@@ -111,15 +108,18 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
   );
   if (!profile) return null;
 
-  const [terms, selected, capacity, refs, claims, media] = await Promise.all([
+  const [terms, selected, capacity, refs, claims, media, verificationDocs] = await Promise.all([
     listTermsByKind(KINDS),
     getSelectedTerms("factory_profile", vendorOrgId),
     getCapacity(vendorOrgId),
     references(vendorOrgId, "load this vendor's references"),
-    // The claim and its status only: the certificate file is private.
-    supabase.from("factory_certifications").select("id, term_id, status").eq("org_id", vendorOrgId).order("created_at")
+    // Link each claim to its previewable certificate.
+    supabase.from("factory_certifications").select("id, term_id, status, document_id").eq("org_id", vendorOrgId).order("created_at")
       .then((result) => unwrap(result, "load this vendor's certifications")),
     publicMedia(vendorOrgId),
+    supabase.from("documents").select("id, kind, bucket, storage_path, file_name, mime_type, created_at")
+      .eq("org_id", vendorOrgId).in("kind", ["business_registration", "certificate"])
+      .order("created_at").then((result) => unwrap(result, "load this vendor's documents")),
   ]);
   const certificationTerms = terms.certification ?? [];
 
@@ -133,10 +133,11 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
     certifications: claims
       .map((claim) => {
         const term = certificationTerms.find((item) => item.id === claim.term_id);
-        return term ? { name: termLabel(term), status: claim.status, hasFile: false } : null;
+        return term ? { name: termLabel(term), status: claim.status, hasFile: verificationDocs.some((doc) => doc.id === claim.document_id), document: verificationDocs.find((doc) => doc.id === claim.document_id) ?? null } : null;
       })
       .filter(Boolean),
-    registrationDoc: null,
+    registrationDoc: verificationDocs.filter((doc) => doc.kind === "business_registration").at(-1) ?? null,
+    verificationDocs,
     ...media,
     orders: [],
   };
