@@ -9309,6 +9309,9 @@ export function FactoryProjectDetail({
   backLabel = "‹ Back to explore",
   onSendQuote,
   // Live mounts pass these; the prototype passes none and is unchanged.
+  // sendQuoteBlocked: why this person cannot send a quote; the button greys
+  // out and the reason is shown under it.
+  sendQuoteBlocked,
   brief,
   details,
   materials,
@@ -9437,11 +9440,12 @@ export function FactoryProjectDetail({
               </span>
             )}
             <div className="factory-side-actions">
-              <button className="primary-btn" type="button" onClick={onSendQuote}>Send quote</button>
+              <button className="primary-btn" type="button" onClick={onSendQuote} disabled={Boolean(sendQuoteBlocked) || undefined}>Send quote</button>
               <button className="secondary-btn" type="button" onClick={onToggleSave}>
                 {saved ? "Saved" : "Save request"}
               </button>
             </div>
+            {sendQuoteBlocked && <p className="muted" data-testid="send-quote-blocked">{sendQuoteBlocked}</p>}
           </section>
 
           <section className="factory-side-card">

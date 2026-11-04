@@ -32,6 +32,7 @@ import {
   saveRequest,
   unsaveRequest,
 } from "../../lib/domain/rfq.js";
+import { can, needsPermission } from "../../lib/domain/org.js";
 import {
   formatCapacityWindow,
   formatDayRange,
@@ -229,6 +230,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   if (!rfq) return null;
 
   const verified = profile?.verification_status === "verified";
+  // Writing and sending a quote is RFQ flow (submit_quote asks the same).
+  const mayQuote = can(org, "rfqFlow");
   const isTrading = profile?.vendor_kind === "trading_company";
   const fit = matchFit(extras.match);
   const quoteUnitMax = myQuote?.unit_price_max_cents ?? myQuote?.unit_price_cents;
@@ -364,7 +367,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           onToggleSave={toggleSave}
           backLabel={`‹ Back to ${backTarget.label}`}
           onBack={() => navigate(backTarget.path)}
-          onSendQuote={verified ? () => navigate(quotePath) : undefined}
+          onSendQuote={verified && mayQuote ? () => navigate(quotePath) : undefined}
+          sendQuoteBlocked={verified && !mayQuote ? needsPermission(org, "rfqFlow") : ""}
         />
       </>
     );
