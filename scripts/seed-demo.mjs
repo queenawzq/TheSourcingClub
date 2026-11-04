@@ -186,7 +186,9 @@ must(await admin.from("factory_profiles").upsert({
   founded_year: 2012,
   employee_count: 85,
   moq: 150,
-  typical_lead_days: 28,
+  // Longer than Ningbo's 35, so "Shortest lead time" on Browse moves a card:
+  // Demo Factory is first on best fit and on lowest MOQ.
+  typical_lead_days: 50,
   sample_lead_days: 10,
   equipment_notes: "Single-needle lockstitch, Overlock, Automatic buttonholer, Fusing press",
   intro: "Woven shirting and light outerwear, small runs. We pattern, sample and sew in-house, and send photo updates at every step.",
