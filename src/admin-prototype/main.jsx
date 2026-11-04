@@ -1034,10 +1034,12 @@ const REVIEW_EMAIL_STATUS = {
   pending: "Waiting to send",
   sending: "Sending",
   failed: "Not sent",
+  unconfirmed: "Not confirmed",
   skipped: "Not sent",
 };
 
-function ReviewEmailCard({ orgId, companyName, refreshKey, onResent }) {
+// `sending` is the decision being recorded and emailed elsewhere on the page.
+function ReviewEmailCard({ orgId, companyName, refreshKey, sending = false, onResent }) {
   const actions = useActions();
   const [status, setStatus] = useState(null);
   const [error, setError] = useState("");
@@ -1050,7 +1052,8 @@ function ReviewEmailCard({ orgId, companyName, refreshKey, onResent }) {
   useEffect(() => { setStatus(null); setError(""); setNotice(null); load(); }, [orgId, refreshKey]);
 
   const recipients = status?.recipients ?? [];
-  const canResend = Boolean(status?.current) && recipients.some((row) => row.status === "failed" || row.status === "pending");
+  const canResend = Boolean(status?.current) && recipients.some((row) => ["failed", "unconfirmed", "pending"].includes(row.status));
+  const inFlight = busy || sending;
   const resend = async () => {
     if (busy) return;
     setBusy(true);
@@ -1076,10 +1079,10 @@ function ReviewEmailCard({ orgId, companyName, refreshKey, onResent }) {
           <p className="admin-assist-meta">
             The {REVIEW_EMAIL_DECISION[status.decision] ?? "decision"}{status.current ? "" : " (no longer current)"}:
           </p>
-          <ul className="admin-review-email-lines">
+          <ul className={`admin-review-email-lines${inFlight ? " is-sending" : ""}`}>
             {recipients.map((row) => (
               <li key={row.email}>
-                <span>{row.email}</span>
+                <span title={row.email}>{row.email}</span>
                 <strong className={`admin-review-email-status ${row.status}`}>
                   {REVIEW_EMAIL_STATUS[row.status] ?? row.status}
                   {row.status === "sent" && row.sent_at ? ` · ${new Date(row.sent_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}` : ""}
@@ -1093,8 +1096,9 @@ function ReviewEmailCard({ orgId, companyName, refreshKey, onResent }) {
       {status?.members_without_email > 0 && (
         <p className="admin-assist-meta">{status.members_without_email === 1 ? "1 member has" : `${status.members_without_email} members have`} no email address and cannot be emailed.</p>
       )}
-      {notice && <p className="admin-assist-meta" role="status">{notice}</p>}
-      {canResend && <button className="secondary-btn" type="button" disabled={busy} onClick={resend}>{busy ? "Sending…" : "Resend email"}</button>}
+      {inFlight && <p className="admin-assist-meta" role="status">Sending the email…</p>}
+      {!inFlight && notice && <p className="admin-assist-meta" role="status">{notice}</p>}
+      {(canResend || inFlight) && <button className="secondary-btn" type="button" disabled={inFlight} onClick={resend}>{inFlight ? "Sending…" : "Resend email"}</button>}
     </section>
   );
 }
@@ -1108,7 +1112,11 @@ function reviewEmailSentence(result, { subject = null, company = "the company" }
   const lead = (rest) => subject ? `${subject}, but ${rest}` : `${rest.charAt(0).toUpperCase()}${rest.slice(1)}`;
   switch (result?.outcome) {
     case "emailed": return subject ? `${subject} and emailed to ${people(result.sent)}.` : `Emailed to ${people(result.sent)}.`;
-    case "partly": return `${subject ? `${subject} and emailed` : "Emailed"} to ${people(result.sent)}, but ${people(result.failed.length)} could not be emailed (${failedReason}). Use “Resend email” on this page.`;
+    case "partly": {
+      const missing = [...(result.failed ?? []), ...(result.unconfirmed ?? [])];
+      return `${subject ? `${subject} and emailed` : "Emailed"} to ${people(result.sent)}, but ${people(missing.length)} could not be confirmed (${missing[0]?.reason}). Use “Resend email” on this page.`;
+    }
+    case "unconfirmed": return lead("the email service did not confirm the email in time. It may still arrive; “Resend email” retries it without sending a second copy.");
     case "failed": return lead(`the email could not be sent${failedReason ? ` (${failedReason})` : ""}. Use “Resend email” on this page; the daily job also retries it.`);
     case "not_configured": return lead("email is not set up on this site, so nothing was emailed.");
     case "already_sent": return subject
@@ -1322,7 +1330,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
               {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}
             </section>
-            {actions.reviewEmailStatus && <ReviewEmailCard orgId={profile.id} companyName={profile.name} refreshKey={`${profile.status}-${emailRefresh}`} />}
+            {actions.reviewEmailStatus && <ReviewEmailCard orgId={profile.id} companyName={profile.name} refreshKey={`${profile.status}-${emailRefresh}`} sending={deciding} />}
           </aside>
         </div>
       </div>
@@ -1777,12 +1785,19 @@ function DailyJobsPanel() {
   const run = async () => {
     setStatus({ state: "running", message: "" });
     try {
-      const { reminders = {}, emails = {} } = await actions.runDailyJobs();
+      const { reminders = {}, emails = {}, reviews = null } = await actions.runDailyJobs();
       const count = (n, one, many) => `${n ?? 0} ${(n ?? 0) === 1 ? one : many}`;
       const sent = emails.configured === false ? "emails wait until sending is set up" : `${count(emails.sent, "email", "emails")} sent`;
+      // Live only: the review decision emails and staff alerts it retried.
+      const reviewParts = reviews && emails.configured !== false ? [
+        `${count(reviews.sent, "review email", "review emails")} sent`,
+        reviews.alerts ? `${count(reviews.alerts, "alert", "alerts")} to staff sent` : "",
+        reviews.failed ? `${reviews.failed} not sent` : "",
+        reviews.unconfirmed ? `${reviews.unconfirmed} not confirmed` : "",
+      ].filter(Boolean) : [];
       setStatus({
         state: "done",
-        message: `${count(reminders.capacity_reminders, "capacity reminder", "capacity reminders")}, ${count(reminders.due_soon, "step due soon", "steps due soon")}; ${sent}.`,
+        message: `${count(reminders.capacity_reminders, "capacity reminder", "capacity reminders")}, ${count(reminders.due_soon, "step due soon", "steps due soon")}; ${sent}${reviewParts.length ? `; ${reviewParts.join(", ")}` : ""}.`,
       });
     } catch (error) {
       setStatus({ state: "error", message: error.message });

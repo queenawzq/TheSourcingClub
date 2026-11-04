@@ -2736,6 +2736,60 @@ console.log("\nreview decision emails (20261104200000)");
     opsMail?.Subject === `Rev Factory ${stamp} sent its profile back for review` && opsMail.Text.includes(`screen=review&profile=${org.id}`) && opsMail.Text.includes(`One more thing (${stamp}).`)
       ? ok("naming the company, the request it answered, and a link to its review")
       : fail("the staff alert is missing its company, request or link", opsMail?.Text?.slice(0, 300));
+
+    // The provider's idempotency key. A timeout is an unknown outcome: the
+    // first send may have gone, so the retry must carry the SAME key for the
+    // provider to drop the copy. Only a definite refusal moves the key on
+    // (the provider replays a key's first answer, errors included, for 24 h).
+    const { sendReviewDecisionEmails, classifySendError } = await import("../api/_review-decision-sender.js");
+    classifySendError(new TypeError("fetch failed")).newKey === false && classifySendError(new Error("422 invalid")).newKey === true
+      ? ok("an unreachable service keeps the key; a refusal takes a new one")
+      : fail("the key choice for a failed send is wrong");
+    const fake = (plan) => {
+      const keys = [];
+      return {
+        keys,
+        mail: {
+          name: "fake",
+          async send(row) {
+            keys.push(`${row.recipient_email} ${row.id}`);
+            const step = plan.shift() ?? "ok";
+            if (step === "hang") return new Promise(() => {});
+            if (step === "refuse") throw new Error("422 the provider refused it");
+            return `fake-${keys.length}`;
+          },
+        },
+      };
+    };
+    const keyOf = (keys, email) => keys.find((line) => line.startsWith(`${email} `))?.split(" ")[1];
+    const ownerEmail = `rev-owner-${stamp}@example.com`;
+
+    await decide("needs_information", `Key check one (${stamp}).`);
+    const hung = fake(["hang"]);
+    const timedOut = await sendReviewDecisionEmails(admin, null, { orgId: org.id, mail: hung.mail, timeoutMs: 300 });
+    timedOut.unconfirmed.length === 1 && timedOut.failed.length === 1 && timedOut.failed[0].reason.startsWith("not tried")
+      ? ok("a send that times out is \"not confirmed\", and the rest of the batch is not tried")
+      : fail(`after a timeout: ${JSON.stringify(timedOut)}`);
+    const { data: unconfirmedRow } = await admin.from("verification_approval_email_outbox").select("status, key_generation")
+      .eq("org_id", org.id).eq("recipient_email", timedOut.unconfirmed[0]?.email).order("review_updated_at", { ascending: false }).limit(1).single();
+    unconfirmedRow?.status === "unconfirmed" ? ok("and is recorded as unconfirmed, not failed") : fail(`the timed-out row is ${unconfirmedRow?.status}`);
+    await staff.client.rpc("admin_requeue_review_emails", { target_org: org.id });
+    const retry = fake([]);
+    await sendReviewDecisionEmails(admin, null, { orgId: org.id, mail: retry.mail, timeoutMs: 300 });
+    const timedOutEmail = timedOut.unconfirmed[0]?.email;
+    keyOf(retry.keys, timedOutEmail) && keyOf(retry.keys, timedOutEmail) === keyOf(hung.keys, timedOutEmail)
+      ? ok("Resend after a timeout uses the SAME key, so the provider drops a second copy")
+      : fail(`keys after a timeout: ${hung.keys} then ${retry.keys}`);
+
+    await decide("needs_information", `Key check two (${stamp}).`);
+    const refused = fake(["refuse", "refuse"]);
+    await sendReviewDecisionEmails(admin, null, { orgId: org.id, mail: refused.mail, timeoutMs: 300 });
+    await staff.client.rpc("admin_requeue_review_emails", { target_org: org.id });
+    const afterRefusal = fake([]);
+    const accepted = await sendReviewDecisionEmails(admin, null, { orgId: org.id, mail: afterRefusal.mail, timeoutMs: 300 });
+    accepted.sent.length === 2 && keyOf(afterRefusal.keys, ownerEmail) && keyOf(afterRefusal.keys, ownerEmail) !== keyOf(refused.keys, ownerEmail)
+      ? ok("after a refusal the retry takes a new key, so the provider's replayed refusal cannot block it")
+      : fail(`keys after a refusal: ${refused.keys} then ${afterRefusal.keys}`);
   }
 }
 

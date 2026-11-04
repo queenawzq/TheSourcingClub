@@ -16,6 +16,11 @@
 --    sender what is due (pending, failed under 5 attempts, or stuck sending for
 --    10 minutes), for one company (staff's kick and "Resend email") or for all
 --    (the daily job). admin_requeue_review_emails() is staff's "Resend email".
+--    A send that timed out is 'unconfirmed', not 'failed': the provider may
+--    have delivered it, so it is retried under the SAME idempotency key and
+--    the provider drops the copy. Only a definite refusal moves the key on
+--    (key_generation), because a provider replays a key's first answer,
+--    errors included, for 24 hours.
 --    Only the company's current decision is sent: an older unsent email is
 --    skipped, so a request that failed last week no longer goes out with
 --    today's approval.
@@ -156,7 +161,11 @@ alter table public.verification_approval_email_outbox
   drop constraint if exists verification_approval_email_outbox_status_check;
 alter table public.verification_approval_email_outbox
   add constraint verification_approval_email_outbox_status_check
-  check (status in ('pending', 'sending', 'sent', 'failed', 'skipped'));
+  check (status in ('pending', 'sending', 'sent', 'failed', 'unconfirmed', 'skipped'));
+
+-- Part of the provider's idempotency key; moves on only after a refusal.
+alter table public.verification_approval_email_outbox
+  add column key_generation integer not null default 0 check (key_generation >= 0);
 
 -- Copy of 20260920000100 with the recipients and the repeat rule changed.
 create or replace function public.queue_verification_approval_email()
@@ -246,6 +255,7 @@ returns table (
   decision           text,
   review_updated_at  timestamptz,
   attempts           integer,
+  key_generation     integer,
   recipient_email    text,
   recipient_name     text,
   locale             text,
@@ -262,14 +272,14 @@ begin
   update public.verification_approval_email_outbox o
      set status = 'skipped',
          last_error = 'a later step in the review replaced this email'
-   where o.status in ('pending', 'failed', 'sending')
+   where o.status in ('pending', 'failed', 'unconfirmed', 'sending')
      and (target_org is null or o.org_id = target_org)
      and not public.review_email_is_current(o.org_id, o.decision, o.review_updated_at);
 
   update public.verification_approval_email_outbox o
      set status = 'skipped',
          last_error = 'no longer a member of the company'
-   where o.status in ('pending', 'failed', 'sending')
+   where o.status in ('pending', 'failed', 'unconfirmed', 'sending')
      and (target_org is null or o.org_id = target_org)
      and not exists (
        select 1 from public.org_members m
@@ -290,7 +300,7 @@ begin
        and o.updated_at > now() - interval '7 days'
        and (
          o.status = 'pending'
-         or (o.status = 'failed' and o.attempts < 5)
+         or (o.status in ('failed', 'unconfirmed') and o.attempts < 5)
          or (o.status = 'sending' and o.updated_at < now() - interval '10 minutes')
        )
      order by o.created_at
@@ -308,7 +318,7 @@ begin
     returning o.*
   )
   select c.org_id, c.recipient_user_id, c.decision, c.review_updated_at, c.attempts,
-         c.recipient_email, c.recipient_name, c.locale, c.note, g.name, g.type::text
+         c.key_generation, c.recipient_email, c.recipient_name, c.locale, c.note, g.name, g.type::text
     from claimed c
     join public.orgs g on g.id = c.org_id;
 end;
@@ -324,7 +334,8 @@ create or replace function public.finish_review_decision_email(
   row_review_updated_at timestamptz,
   outcome             text,
   provider            text default null,
-  error_text          text default null
+  error_text          text default null,
+  new_key             boolean default false
 )
 returns void
 language plpgsql
@@ -332,11 +343,12 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
-  if outcome not in ('sent', 'failed', 'skipped') then
+  if outcome not in ('sent', 'failed', 'unconfirmed', 'skipped') then
     raise exception 'unknown email outcome' using errcode = '22023';
   end if;
   update public.verification_approval_email_outbox o
      set status      = outcome,
+         key_generation = o.key_generation + case when new_key then 1 else 0 end,
          provider_id = coalesce(provider, o.provider_id),
          last_error  = case when outcome = 'sent' then null else left(error_text, 500) end,
          sent_at     = case when outcome = 'sent' then now() else o.sent_at end
@@ -347,8 +359,8 @@ begin
 end;
 $$;
 
-revoke all on function public.finish_review_decision_email(uuid, uuid, text, timestamptz, text, text, text) from public, anon, authenticated;
-grant execute on function public.finish_review_decision_email(uuid, uuid, text, timestamptz, text, text, text) to service_role;
+revoke all on function public.finish_review_decision_email(uuid, uuid, text, timestamptz, text, text, text, boolean) from public, anon, authenticated;
+grant execute on function public.finish_review_decision_email(uuid, uuid, text, timestamptz, text, text, text, boolean) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 4. What staff are told about the email
@@ -408,7 +420,7 @@ $$;
 revoke all on function public.admin_review_email_status(uuid) from public, anon;
 grant execute on function public.admin_review_email_status(uuid) to authenticated;
 
--- "Resend email": the current decision's failed or waiting emails go back in
+-- "Resend email": the current decision's failed, unconfirmed or waiting emails go back in
 -- the queue with a fresh allowance of attempts (and a fresh 7 days). Returns
 -- how many are now waiting.
 create or replace function public.admin_requeue_review_emails(target_org uuid)
@@ -427,7 +439,7 @@ begin
   update public.verification_approval_email_outbox o
      set status = 'pending', attempts = 0, last_error = null
    where o.org_id = target_org
-     and o.status in ('failed', 'pending')
+     and o.status in ('failed', 'unconfirmed', 'pending')
      and public.review_email_is_current(o.org_id, o.decision, o.review_updated_at);
 
   select count(*)::int into waiting
@@ -452,8 +464,9 @@ create table public.review_resubmission_email_outbox (
   -- The request the company was answering, so staff know what to look for.
   note            text,
   status          text not null default 'pending'
-                  check (status in ('pending', 'sending', 'sent', 'failed', 'skipped')),
+                  check (status in ('pending', 'sending', 'sent', 'failed', 'unconfirmed', 'skipped')),
   attempts        integer not null default 0 check (attempts >= 0),
+  key_generation  integer not null default 0 check (key_generation >= 0),
   provider_id     text,
   last_error      text,
   sent_at         timestamptz,
@@ -503,6 +516,7 @@ returns table (
   org_id          uuid,
   resubmitted_at  timestamptz,
   attempts        integer,
+  key_generation  integer,
   note            text,
   org_name        text,
   org_type        text
@@ -515,7 +529,7 @@ begin
   -- Staff have already acted on it: nothing to tell them.
   update public.review_resubmission_email_outbox o
      set status = 'skipped', last_error = 'staff had already decided the review'
-   where o.status in ('pending', 'failed', 'sending')
+   where o.status in ('pending', 'failed', 'unconfirmed', 'sending')
      and (target_org is null or o.org_id = target_org)
      and not exists (
        select 1 from public.org_reviews r
@@ -530,7 +544,7 @@ begin
        and o.updated_at > now() - interval '7 days'
        and (
          o.status = 'pending'
-         or (o.status = 'failed' and o.attempts < 5)
+         or (o.status in ('failed', 'unconfirmed') and o.attempts < 5)
          or (o.status = 'sending' and o.updated_at < now() - interval '10 minutes')
        )
      order by o.created_at
@@ -544,7 +558,7 @@ begin
      where o.org_id = due.org_id and o.resubmitted_at = due.resubmitted_at
     returning o.*
   )
-  select c.org_id, c.resubmitted_at, c.attempts, c.note, g.name, g.type::text
+  select c.org_id, c.resubmitted_at, c.attempts, c.key_generation, c.note, g.name, g.type::text
     from claimed c
     join public.orgs g on g.id = c.org_id;
 end;
@@ -558,7 +572,8 @@ create or replace function public.finish_review_resubmission_email(
   row_resubmitted_at timestamptz,
   outcome         text,
   provider        text default null,
-  error_text      text default null
+  error_text      text default null,
+  new_key         boolean default false
 )
 returns void
 language plpgsql
@@ -566,11 +581,12 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
-  if outcome not in ('sent', 'failed', 'skipped') then
+  if outcome not in ('sent', 'failed', 'unconfirmed', 'skipped') then
     raise exception 'unknown email outcome' using errcode = '22023';
   end if;
   update public.review_resubmission_email_outbox o
      set status      = outcome,
+         key_generation = o.key_generation + case when new_key then 1 else 0 end,
          provider_id = coalesce(provider, o.provider_id),
          last_error  = case when outcome = 'sent' then null else left(error_text, 500) end,
          sent_at     = case when outcome = 'sent' then now() else o.sent_at end
@@ -579,5 +595,5 @@ begin
 end;
 $$;
 
-revoke all on function public.finish_review_resubmission_email(uuid, timestamptz, text, text, text) from public, anon, authenticated;
-grant execute on function public.finish_review_resubmission_email(uuid, timestamptz, text, text, text) to service_role;
+revoke all on function public.finish_review_resubmission_email(uuid, timestamptz, text, text, text, boolean) from public, anon, authenticated;
+grant execute on function public.finish_review_resubmission_email(uuid, timestamptz, text, text, text, boolean) to service_role;

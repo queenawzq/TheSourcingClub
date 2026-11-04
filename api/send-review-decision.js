@@ -16,6 +16,9 @@ export { messageFor } from "./_review-decision-sender.js";
  *   outcome  emailed        every current email went
  *            partly         some went, some failed
  *            failed         none went; "Resend email" or the daily job retries
+ *            unconfirmed    the email service did not confirm in time; it may
+ *                           still arrive, and a retry keeps the same key so the
+ *                           service drops a second copy
  *            not_configured this site cannot send email; they wait in the queue
  *            already_sent   nothing new to send: this decision was sent before
  *            no_recipients  nobody at the company has an address that can
@@ -33,12 +36,17 @@ const ORG_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9
 function outcomeOf(result, status, decision) {
   const rows = status?.recipients ?? [];
   const current = Boolean(status?.current) && (!decision || status?.decision === decision);
-  if (result.sent.length && result.failed.length) return "partly";
+  const notSent = result.failed.length + result.unconfirmed.length;
+  if (result.sent.length && notSent) return "partly";
   if (result.sent.length) return "emailed";
+  // A timeout comes first: the rest of its batch was not tried because of it,
+  // and the one that timed out may still arrive.
+  if (result.unconfirmed.length) return "unconfirmed";
   if (result.failed.length) return "failed";
   if (!current) return "no_recipients";
   if (!result.configured && rows.some((row) => row.status === "pending" || row.status === "failed")) return "not_configured";
   if (rows.some((row) => row.status === "sent")) return "already_sent";
+  if (rows.some((row) => row.status === "unconfirmed")) return "unconfirmed";
   if (rows.some((row) => row.status === "failed")) return "failed";
   return "no_recipients";
 }
@@ -107,6 +115,7 @@ export default async function handler(request, response) {
     sent: result.sent.length,
     skipped: result.skipped,
     failed: result.failed,
+    unconfirmed: result.unconfirmed,
     configured: result.configured,
     status: status ?? null,
     error: null,

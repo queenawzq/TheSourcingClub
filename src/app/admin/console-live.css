@@ -120,29 +120,44 @@
 .admin-credits-direction { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 /* Live only (not in the design): who the company's review email went to, and
-   "Resend email" for one that failed or never went (ReviewEmailCard). */
+   "Resend email" for one that failed or never went (ReviewEmailCard). Each
+   person is a small block, address over status: an address beside its status
+   in a 256px column wrapped letter by letter. */
 .admin-review-email-card > .secondary-btn { width: 100%; margin-top: 12px; }
 .admin-review-email-card .admin-assist-meta { margin: 8px 0 0; }
 .admin-review-email-lines {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin: 10px 0 0;
   padding: 0;
   list-style: none;
 }
+.admin-review-email-lines.is-sending { opacity: 0.55; }
 .admin-review-email-lines li {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px 12px;
+  gap: 2px;
+  min-width: 0;
   color: #4c6487;
   font-size: 12px;
   line-height: 17px;
 }
-.admin-review-email-lines li span { min-width: 0; overflow-wrap: anywhere; }
-.admin-review-email-lines li small { grid-column: 1 / -1; color: #4c6487; font-size: 12px; }
-.admin-review-email-status { color: #0e1118; font-weight: 600; text-align: right; }
+.admin-review-email-lines li span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0e1118;
+}
+.admin-review-email-lines li small { color: #4c6487; font-size: 12px; }
+.admin-review-email-status { color: #0e1118; font-weight: 600; }
 .admin-review-email-status.failed,
+.admin-review-email-status.unconfirmed,
 .admin-review-email-status.skipped { color: #b42318; }
+/* Where the side column becomes three across (the design's own breakpoint),
+   the card takes the full row like the decision card above it. */
+@media (max-width: 1120px) {
+  .admin-review-side .admin-review-email-card { grid-column: 1 / -1; }
+}
 
 /* Live only: the review summary's "Last note" (live-admin-adapter.js) is a
    whole request, so it takes a full row and keeps its line breaks. */

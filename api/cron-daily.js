@@ -76,16 +76,18 @@ export default async function handler(request, response) {
   }
 
   // Review emails retry here; staff can also resend one from the review page.
-  const reviews = { sent: 0, skipped: 0, failed: 0, alerts: 0 };
+  const reviews = { sent: 0, skipped: 0, failed: 0, unconfirmed: 0, alerts: 0 };
   if (mail) {
     try {
       const decisions = await sendReviewDecisionEmails(service, request, { max: 50 });
       reviews.sent = decisions.sent.length;
       reviews.skipped = decisions.skipped.length;
       reviews.failed = decisions.failed.length;
+      reviews.unconfirmed = decisions.unconfirmed.length;
       const alerts = await sendResubmissionAlerts(service, request, { max: 50 });
       reviews.alerts = alerts.sent;
       reviews.failed += alerts.failed;
+      reviews.unconfirmed += alerts.unconfirmed;
     } catch (error) {
       response.status(500).json({ reminders, emails, reviews, error: error.message });
       return;

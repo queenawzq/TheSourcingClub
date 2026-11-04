@@ -19,7 +19,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(38);
+select plan(42);
 
 create function pg_temp.age_outbox() returns void language sql as $$
   update public.verification_approval_email_outbox
@@ -190,8 +190,8 @@ select lives_ok(
   $$select public.finish_review_decision_email('d5800000-0000-0000-0000-0000000000f1', 'c5800000-0000-0000-0000-000000000002', 'approved',
       (select review_updated_at from public.verification_approval_email_outbox
         where org_id = 'd5800000-0000-0000-0000-0000000000f1' and decision = 'approved' limit 1),
-      'failed', null, 'email provider returned 500')$$,
-  'the send fails'
+      'failed', null, 'the email service did not accept it', true)$$,
+  'the provider refuses the send'
 );
 select is(
   (select count(*)::int from public.claim_review_decision_emails('d5800000-0000-0000-0000-0000000000f1')),
@@ -209,6 +209,41 @@ select is(
   'but not after five attempts'
 );
 reset role;
+
+-- A refusal moves the provider key on; a timeout ("unconfirmed") keeps it
+-- and is retried like a failure.
+select is(
+  (select key_generation from public.verification_approval_email_outbox
+    where org_id = 'd5800000-0000-0000-0000-0000000000f1' and decision = 'approved'
+      and recipient_user_id = 'c5800000-0000-0000-0000-000000000002'),
+  1,
+  'a refusal moves the provider key on'
+);
+-- (Back under the five-attempt cap the test above set it to.)
+update public.verification_approval_email_outbox set attempts = 1
+ where org_id = 'd5800000-0000-0000-0000-0000000000f1' and decision = 'approved'
+   and recipient_user_id = 'c5800000-0000-0000-0000-000000000002';
+set local role service_role;
+select lives_ok(
+  $$select public.finish_review_decision_email('d5800000-0000-0000-0000-0000000000f1', 'c5800000-0000-0000-0000-000000000002', 'approved',
+      (select review_updated_at from public.verification_approval_email_outbox
+        where org_id = 'd5800000-0000-0000-0000-0000000000f1' and decision = 'approved' limit 1),
+      'unconfirmed', null, 'the email service did not confirm it in time, so it may still arrive')$$,
+  'a send that timed out is recorded as unconfirmed'
+);
+select is(
+  (select count(*)::int from public.claim_review_decision_emails('d5800000-0000-0000-0000-0000000000f1')),
+  1,
+  'and is handed to the sender again'
+);
+reset role;
+select is(
+  (select key_generation from public.verification_approval_email_outbox
+    where org_id = 'd5800000-0000-0000-0000-0000000000f1' and decision = 'approved'
+      and recipient_user_id = 'c5800000-0000-0000-0000-000000000002'),
+  1,
+  'under the same key: a timeout never moves it'
+);
 
 -- A sender that died mid-send: due again after 10 minutes, not before.
 set local session_replication_role = replica;
