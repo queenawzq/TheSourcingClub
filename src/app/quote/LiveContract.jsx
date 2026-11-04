@@ -128,7 +128,10 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
       onBack={back}
       onNext={award}
       busy={busy || savingAttachments}
-      primaryLabel={blocked || files === null ? "" : busy ? "Creating production steps…" : "Create production steps"}
+      // Missing Quote flow greys the button out (the reason is the line
+      // below); any other block leaves nothing to press at all.
+      primaryLabel={(blocked && isOwner) || files === null ? "" : busy ? "Creating production steps…" : "Create production steps"}
+      primaryDisabled={Boolean(blocked)}
       rail={found ? {
         vendor: {
           initials: found.view.initials,

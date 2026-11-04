@@ -1695,10 +1695,12 @@ async function main() {
     const contractRefusal = await page.locator('[data-testid="contract-blocked"]').innerText();
     check(/only someone with quote flow/i.test(contractRefusal) && contractRefusal.includes(brandName),
       `the contract says who can choose a quote (${contractRefusal.trim()})`);
-    const awardButton = await eachText(page, ".bottom-bar .primary-btn");
-    check(!awardButton.some((label) => /create production steps/i.test(label)),
-      `and offers no "Create production steps" (${JSON.stringify(awardButton)})`);
-    await record(page, "No Quote flow: the contract", "the quote reads back; choosing it is not offered");
+    const awardButton = await page.evaluate(() => [...document.querySelectorAll(".bottom-bar .primary-btn")]
+      .map((button) => ({ label: button.innerText.trim(), disabled: button.disabled })));
+    check(awardButton.some((button) => /create production steps/i.test(button.label) && button.disabled)
+      && !awardButton.some((button) => /create production steps/i.test(button.label) && !button.disabled),
+      `and "Create production steps" is greyed out, not hidden (${JSON.stringify(awardButton)})`);
+    await record(page, "No Quote flow: the contract", "the quote reads back; Create production steps greyed out");
     await signOutFully(page);
 
     await signIn(page, brandEmail, "Brand deciding");
