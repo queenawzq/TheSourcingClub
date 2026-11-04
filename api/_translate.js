@@ -30,7 +30,7 @@ export function softTranslation(reason) {
   return { source_language: null, target_language: null, translation: null, error: reason };
 }
 
-export async function translateText(input, { timeoutMs = 8000 } = {}) {
+export async function translateText(input, { timeoutMs = 8000, context = "message" } = {}) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) return softTranslation("no model key configured on the server");
 
@@ -57,7 +57,7 @@ export async function translateText(input, { timeoutMs = 8000 } = {}) {
           {
             role: "user",
             content:
-`Translate this message between a clothing brand and a garment factory. Detect its source language using its ISO 639 language code. Translate any non-English message into English. For an English message, return source_language "en", target_language "en", and the unchanged message. Do not translate English into another language.
+`Translate this ${context === "factory profile" ? "factory profile text for a clothing brand" : "message between a clothing brand and a garment factory"}. Detect its source language using its ISO 639 language code. Translate any non-English message into English. For an English message, return source_language "en", target_language "en", and the unchanged message. Do not translate English into another language.
 
 Rules:
 - Translate what was written. Do not soften, expand, summarise or add pleasantries.

@@ -16,7 +16,7 @@
  * rail is empty when nothing is waiting. That is the one behaviour the
  * prototype cannot have and the product cannot do without.
  */
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { HomeScreen } from "../../prototype/main.jsx";
 import { dashboardSnapshot } from "../../lib/domain/dashboard.js";
 import { listRfqs } from "../../lib/domain/rfq.js";
@@ -29,6 +29,7 @@ import { toProjectCard, toRfqCard } from "../live-adapter.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { initialsOf } from "../profile/factory-profile-view.js";
+import { useVendorTranslations } from "../browse/useVendorTranslations.js";
 import { loadRecommendedVendors } from "../profile/load-profile.js";
 import { browserTimeZone } from "../../lib/domain/calls.js";
 import { dashboardCalls, inviteAttention } from "../message/live-calls.js";
@@ -266,6 +267,9 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
     return () => { cancelled = true; };
   }, [org.id, isFactory, state.loaded]);
 
+  const recommendedCards = useMemo(() => recommended.map((vendor) => toRecommendedCard(vendor, navigate)), [recommended, navigate]);
+  const translatedRecommended = useVendorTranslations(recommendedCards, org.id);
+
   return (
     <>
       {error && <p className="home-load-error" role="alert">{error.message}</p>}
@@ -274,7 +278,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         // sourcing?" — is for an account that genuinely has nothing yet, not
         // for one that simply has nothing outstanding today.
         dashboardState={rfqs.length || projects.length ? "active" : "newcomer"}
-        factories={recommended.map((vendor) => toRecommendedCard(vendor, navigate))}
+        factories={translatedRecommended}
         goTo={goTo}
         onOpenActivity={openActivity}
         orgName={org.name}

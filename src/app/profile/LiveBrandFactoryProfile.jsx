@@ -13,6 +13,10 @@ import { matchingEnabled, assessFactories } from "../../lib/domain/matching.js";
  */
 import React, { useEffect, useState } from "react";
 import { BrandFactoryProfileScreen } from "../../prototype/main.jsx";
+import { FactoryManufacturingProfilePage } from "../../factory-prototype/main.jsx";
+import { factoryProfileView } from "./factory-profile-view.js";
+import { supabase } from "../../lib/supabase.js";
+import { englishProfileParts } from "./profile-translation.mjs";
 import { urlFor } from "../../lib/domain/documents.js";
 import { listThreads } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
@@ -25,7 +29,7 @@ import "./profile.css";
 const FALLBACK = { browse: "/browse", saved: "/saved", dashboard: "/", quotes: "/rfqs", order: "/orders", invite: "/rfqs" };
 
 function Frame({ children }) {
-  return <main className="factory-profile-page brand-profile-page">{children}</main>;
+  return <div>{children}</div>;
 }
 
 /**
@@ -37,6 +41,30 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
   const { navigate } = useRouter();
   const { saveFor, error: saveError } = useSavedVendors(org, user);
   const [preview, setPreview] = useState(null);
+  const [translation, setTranslation] = useState({ loading: true, texts: {}, error: false });
+  const [showOriginal, setShowOriginal] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    setShowOriginal(false);
+    setTranslation({ loading: true, texts: {}, error: false });
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const response = await fetch("/api/profile-translation", {
+          method: "POST", signal: controller.signal,
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
+          body: JSON.stringify({ orgId: vendorOrgId }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error);
+        if (!cancelled) setTranslation({ loading: false, texts: data.translations ?? {}, error: Boolean(data.incomplete) });
+      } catch {
+        if (!cancelled) setTranslation({ loading: false, texts: {}, error: true });
+      }
+    })();
+    return () => { cancelled = true; controller.abort(); };
+  }, [vendorOrgId, org.id]);
   const [assessment, setAssessment] = useState(null);
   const [state, setState] = useState({ parts: undefined, thread: null, error: null });
 
@@ -81,14 +109,32 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
     );
   }
 
+  const translated = Object.keys(translation.texts).length > 0;
+  const displayedParts = showOriginal ? state.parts : englishProfileParts(state.parts, translation.texts);
+  const isTrading = state.parts.profile?.vendor_kind === "trading_company";
+  const ProfileComponent = isTrading ? BrandFactoryProfileScreen : FactoryManufacturingProfilePage;
+  const publicView = factoryProfileView(displayedParts);
+  publicView.data = {
+    ...publicView.data,
+    clubOrders: String(state.parts.publicMetrics?.clubOrders ?? 0),
+    repeatBrands: String(state.parts.publicMetrics?.repeatBrands ?? 0),
+    certifications: brandFactoryView(displayedParts).trust,
+  };
   const requestQuote = onRequestQuote ?? (() => navigate(`/rfqs/new?invite=${vendorOrgId}`));
   const message = state.thread ? () => navigate(`/messages/${state.thread.id}`) : null;
 
   return (
     <Frame>
-      <BrandFactoryProfileScreen
+      <ProfileComponent
+        language="en"
         live={{
-          ...brandFactoryView(state.parts),
+          ...(isTrading ? brandFactoryView(displayedParts) : publicView),
+          publicView: true,
+          translationControls: (<div className="profile-translation-controls" aria-live="polite">
+        {translation.loading ? <span>Preparing English version…</span> : <>
+          {translated && <><span className="profile-translation-label">{showOriginal ? "Original text" : "Automatically translated to English"}</span><button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "See English translation" : "See original"}</button></>}
+        </>}
+      </div>),
           onPreviewDocument: async (document) => {
             setPreview({ document, loading: true });
             try {
@@ -117,7 +163,8 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
       />
       {preview && <div className="approve-fund-modal-layer">
         <section className="approve-fund-modal profile-document-modal" role="dialog" aria-modal="true" aria-label={`${preview.document.file_name} preview`}>
-          <header><h2>{preview.document.file_name}</h2><button className="secondary-btn" type="button" autoFocus onClick={() => setPreview(null)}>Close</button></header>
+          <button className="settings-drawer-close" type="button" aria-label="Close document preview" autoFocus onClick={() => setPreview(null)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
+          <header><h2>{preview.document.file_name}</h2></header>
           {preview.loading ? <p role="status">Loading preview…</p> : preview.error ? <p role="alert">{preview.error}</p> : <>
             {preview.document.mime_type?.startsWith("image/") ? <img src={preview.url} alt={preview.document.file_name} />
               : /\.pdf$/i.test(preview.document.file_name) || preview.document.mime_type === "application/pdf" ? <iframe src={preview.url} title={preview.document.file_name} />

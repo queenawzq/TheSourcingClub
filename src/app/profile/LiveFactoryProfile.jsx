@@ -11,6 +11,7 @@ import EvidenceReview from "../matching/EvidenceReview.jsx";
  * Everything is the vendor reading and writing its own rows, so no new access
  * rule is involved.
  */
+import { useAuth } from "../../lib/auth.jsx";
 import React, { useCallback, useEffect, useState } from "react";
 import { FactoryManufacturingProfilePage, FactoryProfileCompletionPage, TradingCompanyProfilePage } from "../../factory-prototype/main.jsx";
 import { useRouter } from "../../lib/router.jsx";
@@ -186,14 +187,16 @@ function Completion({ view, verified, editors, isTrading, org }) {
  * /profile/edit/<editor>).
  */
 export default function LiveFactoryProfile({ org, page = "profile", editor = null }) {
+  const { refreshOrgs } = useAuth();
   const { navigate } = useRouter();
   const { parts, error, reload } = useProfileParts(org);
 
   if (!parts) return <Waiting error={error} />;
 
+  const language = new URLSearchParams(window.location.search).get("lang") === "zh" ? "zh" : "en";
   const isTrading = parts.profile?.vendor_kind === "trading_company";
   const verified = parts.profile?.verification_status === "verified";
-  const view = isTrading ? tradingProfileView(parts) : factoryProfileView(parts);
+  const view = isTrading ? tradingProfileView(parts) : factoryProfileView(parts, new Date(), language);
   const editors = isTrading ? TRADING_EDITORS : SAVED_EDITORS;
 
   if (page === "completion") return <Completion org={org} view={view} verified={verified} editors={editors} isTrading={isTrading} />;
@@ -204,6 +207,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
     files: fileDialogs(org, parts, reload),
     onSave: async (section, form) => {
       await saveProfileSection(org, section, form, parts);
+      await refreshOrgs();
       await reload();
     },
     // Leave a dialog's own address once it closes, so a refresh shows the
@@ -229,6 +233,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
 
   return (
     <FactoryManufacturingProfilePage
+      language={language}
       // A fresh page per dialog link, so following one from the completion
       // page opens it even if the profile was already showing.
       key={editor ?? "profile"}

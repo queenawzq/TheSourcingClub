@@ -29,6 +29,7 @@
  * switches are the company's (notification_preferences), loaded on their own
  * so that a failure there does not blank the page.
  */
+import { useAuth } from "../../lib/auth.jsx";
 import React, { useCallback, useEffect, useState } from "react";
 import { SettingsScreen, factoryAccountPermissionLabels, settingsPermissionLabels } from "../../prototype/main.jsx";
 import { inviteMember, listMembers, listPendingInvitations } from "../../lib/domain/org.js";
@@ -87,6 +88,8 @@ function sentLabel(createdAt) {
 }
 
 export default function LiveSettings({ org, isFactory, onSignOut }) {
+  const { refreshOrgs } = useAuth();
+  const [savedAccount, setSavedAccount] = useState(null);
   const [members, setMembers] = useState(null);
   const [profile, setProfile] = useState(null);
   const [invites, setInvites] = useState([]);
@@ -126,6 +129,9 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         listPendingInvitations(org.id),
       ]);
       setProfile(loadedProfile);
+      const company = unwrap(await supabase.from("orgs").select("name").eq("id", org.id).single(), "load account settings");
+      const contact = unwrap(await supabase.from("company_contact_details").select("phone").eq("org_id", org.id).maybeSingle(), "load company contact");
+      setSavedAccount({ name: company.name, phone: contact?.phone ?? "", location: (isFactory ? loadedProfile?.location : loadedProfile?.hq_location) ?? "" });
       setInvites(loadedInvites);
       setMembers(loadedMembers);
       loadCards();
@@ -224,7 +230,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   const owner = (members ?? []).find((member) => member.role === "owner");
   const ownerEmail = owner?.user_profiles?.email ?? "";
   const live = {
-    account: isFactory
+    account: savedAccount ? { ...savedAccount, email: isFactory ? ownerEmail : profile?.business_email || ownerEmail } : isFactory
       ? {
           name: org.name ?? "",
           email: ownerEmail,
@@ -272,6 +278,11 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     <>
       <SettingsScreen
         accountType={isFactory ? "factory" : "brand"}
+        onSaveAccount={async (details) => {
+          const result = unwrap(await supabase.rpc("save_account_settings", { target_org: org.id, account_name: details.name, phone: details.phone, location: details.location }), "save account settings");
+          setSavedAccount(result);
+          await refreshOrgs();
+        }}
         // What each role may do is decided in the database, not per person.
         permissionsNote={isFactory
           ? "Set by role for now: any member can send quotes and post updates; only an owner sets up payouts and buys credits. Per-person permissions aren't available yet."

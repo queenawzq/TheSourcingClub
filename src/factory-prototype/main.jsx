@@ -2071,7 +2071,7 @@ function App() {
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingReviewEdit, setOnboardingReviewEdit] = useState(false);
   const [onboardingLanguage, setOnboardingLanguage] = useState(() => (
-    window.localStorage.getItem("tscFactoryPrototypeLanguage") === "zh" ? "zh" : "en"
+    (query.get("lang") ?? window.localStorage.getItem("tscFactoryPrototypeLanguage")) === "zh" ? "zh" : "en"
   ));
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => window.matchMedia("(max-width: 760px)").matches);
   const [screen, setScreen] = useState(shouldOpenPrototypeScreen ? restoredScreen : "dashboard");
@@ -3152,10 +3152,10 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
   const [projectTab, setProjectTab] = useState("completed");
   const [profileMode, setProfileMode] = useState(new URLSearchParams(window.location.search).get("view") === "public" ? "public" : "edit");
   const [activeEditor, setActiveEditor] = useState(() => (live?.editors?.includes(live.initialEditor) ? live.initialEditor : null));
-  const isOwnerView = profileMode === "edit";
+  const isOwnerView = !live?.publicView && profileMode === "edit";
   // Live, only the dialogs wired to the database get their button.
   const canEditSection = (editor) => isOwnerView && (!live || Boolean(live.editors?.includes(editor)));
-  const visibleProjects = projectTab === "completed" ? data.pastProjects : data.inProductionProjects;
+  const visibleProjects = !isOwnerView ? [] : projectTab === "completed" ? data.pastProjects : data.inProductionProjects;
   const openEditor = (editor) => {
     setProfileMode("edit");
     setActiveEditor(editor);
@@ -3213,28 +3213,30 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
         </div>
       </div>
       {/* In the factory's own preview this shows what brands will press. */}
-      <button className="primary-btn" type="button" title={live ? "Brands use this to message you" : undefined}>Contact factory</button>
+      <button className="primary-btn" type="button" onClick={live?.contact?.onClick} title={live && !live.publicView ? "Brands use this to message you" : undefined}>{live?.contact?.label ?? "Contact factory"}</button>
+      {live?.onRequestQuote && live?.contact?.label !== "Request quote" && <button className="secondary-btn" type="button" onClick={live.onRequestQuote}>Request quote</button>}
     </section>
   );
 
   return (
     <main className={`factory-profile-page ${isOwnerView ? "is-owner-view" : "is-public-view"}`}>
+      <FactoryMainLanguageLayer language={language} />
       <div className="factory-profile-shell">
-        <ProfileOwnerBar
+        {live?.publicView ? <div className="factory-profile-owner-bar brand-vendor-profile-navigation"><button className="project-back-link" type="button" onClick={live.back.onClick}>‹ Back to {live.back.label}</button>{live.translationControls}</div> : <ProfileOwnerBar
           ariaLabel="Profile view mode"
           isOwnerView={isOwnerView}
           onEdit={() => canEditSection("overview") ? openEditor("overview") : setProfileMode("edit")}
           onPublic={() => setProfileMode("public")}
           ownerText="Edit what brands see"
           profileLabel="Factory profile"
-        />
+        />}
 
         {isOwnerView && renderProfileStatusCard("factory-profile-compact-status-card")}
         {!isOwnerView && renderContactCard("factory-profile-compact-contact-card")}
 
         <section className="factory-profile-hero">
           {canEditSection("banner") && <button className="factory-profile-banner-edit" type="button" onClick={() => openEditor("banner")}>Edit</button>}
-          {!isOwnerView && <button className="factory-profile-banner-edit" type="button" onClick={() => setProfileMode("edit")}>Save factory</button>}
+          {!isOwnerView && <button className="factory-profile-banner-edit" type="button" disabled={live?.save?.busy} onClick={live?.publicView ? live?.save?.onToggle : () => setProfileMode("edit")}>{live?.publicView && live?.save?.saved ? "Saved" : "Save factory"}</button>}
           <div className="factory-profile-identity">
             <div className="factory-profile-logo-wrap">
               <div className="factory-profile-logo">{live?.logoUrl ? <img src={live.logoUrl} alt={`${data.name} logo`} /> : live ? live.initials : "AM"}</div>
@@ -3345,7 +3347,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
               )}
             </section>
 
-            <section className="factory-profile-card">
+            {isOwnerView && <section className="factory-profile-card">
               <div className="factory-profile-section-header">
                 <div>
                   <h2>Past projects</h2>
@@ -3404,7 +3406,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
                   </article>
                 ))}
               </div>
-            </section>
+            </section>}
             {isOwnerView && live?.matchingPanel}
           </section>
 
@@ -3420,7 +3422,7 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
               <div className="factory-profile-cert-list">
                 {data.certifications.map((cert) => (
                   <div className="factory-profile-cert" key={cert.name}>
-                    <strong>{cert.name}</strong>
+                    {cert.document && live?.onPreviewDocument ? <button className="profile-document-link" type="button" onClick={() => live.onPreviewDocument(cert.document)}>{cert.name}</button> : <strong>{cert.name}</strong>}
                     <span className={cert.status === "Verified" || cert.status === "Uploaded" ? "verified" : ""}>{cert.status}</span>
                   </div>
                 ))}

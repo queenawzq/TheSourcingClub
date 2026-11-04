@@ -1,0 +1,17 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+select plan(3);
+insert into auth.users(id,email) values ('db000000-0000-0000-0000-000000000001','metrics@example.com');
+insert into public.orgs(id,type,name,slug) values ('db000000-0000-0000-0000-000000000010','factory','Metrics Factory','pgtap-public-metrics');
+insert into public.factory_profiles(org_id,published_at) values ('db000000-0000-0000-0000-000000000010',now());
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"db000000-0000-0000-0000-000000000001","role":"authenticated"}';
+select is(public.public_factory_metrics('db000000-0000-0000-0000-000000000010'),' {"clubOrders":0,"repeatBrands":0}'::jsonb,'Published factory exposes aggregate counts only');
+reset role;
+update public.factory_profiles set published_at=null where org_id='db000000-0000-0000-0000-000000000010';
+set local role authenticated;
+select is(public.public_factory_metrics('db000000-0000-0000-0000-000000000010'),null::jsonb,'Unpublished profile metrics are hidden');
+reset role;
+select is(public.public_factory_metrics('db000000-0000-0000-0000-000000000099'),null::jsonb,'Missing profile exposes no metrics');
+select * from finish();
+rollback;

@@ -108,7 +108,7 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
   );
   if (!profile) return null;
 
-  const [terms, selected, capacity, refs, claims, media, verificationDocs] = await Promise.all([
+  const [terms, selected, capacity, refs, claims, media, verificationDocs, publicMetrics] = await Promise.all([
     listTermsByKind(KINDS),
     getSelectedTerms("factory_profile", vendorOrgId),
     getCapacity(vendorOrgId),
@@ -120,6 +120,7 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
     supabase.from("documents").select("id, kind, bucket, storage_path, file_name, mime_type, created_at")
       .eq("org_id", vendorOrgId).in("kind", ["business_registration", "certificate"])
       .order("created_at").then((result) => unwrap(result, "load this vendor's documents")),
+    supabase.rpc("public_factory_metrics", { target_org: vendorOrgId }).then((result) => unwrap(result, "load factory performance")),
   ]);
   const certificationTerms = terms.certification ?? [];
 
@@ -138,6 +139,7 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
       .filter(Boolean),
     registrationDoc: verificationDocs.filter((doc) => doc.kind === "business_registration").at(-1) ?? null,
     verificationDocs,
+    publicMetrics,
     ...media,
     orders: [],
   };

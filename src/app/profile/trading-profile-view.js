@@ -146,7 +146,7 @@ export function tradingProfileChecks(parts, now = new Date()) {
  */
 export function tradingProfileView(parts, now = new Date()) {
   const { orgName, profile, terms, selected, orders = [] } = parts;
-  const name = profile?.legal_name || orgName;
+  const name = orgName || profile?.legal_name;
   const chips = chipsFor(selected, terms);
   const location = profile?.location || NOT_GIVEN;
   const team = profile?.employee_count != null ? count(profile.employee_count) : null;
@@ -247,7 +247,7 @@ export function tradingProfileEditForm(parts) {
   const text = (value) => (value == null ? "" : String(value));
   const chips = chipsFor(selected, terms);
   return {
-    name: profile?.legal_name || orgName || "",
+    name: orgName || profile?.legal_name || "",
     founded: text(profile?.founded_year),
     website: text(profile?.website_url),
     location: text(profile?.location),

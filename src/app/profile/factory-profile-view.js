@@ -71,9 +71,9 @@ export function documentStatus(status, hasFile) {
  * Labels per chip group, in the taxonomy's order.
  * `selected` is getSelectedTerms() ({ kind: [termId] }), `terms` listTermsByKind().
  */
-export function chipLabels(kind, selected, terms) {
+export function chipLabels(kind, selected, terms, language = "en") {
   const ids = new Set(selected?.[kind] ?? []);
-  return (terms?.[kind] ?? []).filter((term) => ids.has(term.id)).map((term) => termLabel(term));
+  return (terms?.[kind] ?? []).filter((term) => ids.has(term.id)).map((term) => termLabel(term, language));
 }
 
 function capacityRowsFor(profile, capacityState, terms, now) {
@@ -291,11 +291,11 @@ export function profileStatus(checks) {
  *          walkthrough: { url, status, title, caption, created_at } | null,
  *          orders }
  */
-export function factoryProfileView(parts, now = new Date()) {
+export function factoryProfileView(parts, now = new Date(), language = "en") {
   const { orgName, profile, terms, selected, capacity, orders = [] } = parts;
-  const name = profile?.legal_name || orgName;
+  const name = orgName || profile?.legal_name;
   const chips = Object.fromEntries(
-    Object.entries(CHIP_KINDS).map(([key, kind]) => [key, chipLabels(kind, selected, terms)]),
+    Object.entries(CHIP_KINDS).map(([key, kind]) => [key, chipLabels(kind, selected, terms, language)]),
   );
   const registration = parts.registrationDoc
     ? documentStatus(parts.registrationDoc.status, true)
@@ -405,7 +405,7 @@ export function factoryProfileEditForm(parts, now = new Date()) {
   );
 
   return {
-    name: profile?.legal_name || orgName || "",
+    name: orgName || profile?.legal_name || "",
     location: text(profile?.location),
     nearestPort: text(profile?.nearest_port),
     founded: text(profile?.founded_year),
