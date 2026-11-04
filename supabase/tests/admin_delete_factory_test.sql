@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(10);
+select plan(11);
 insert into auth.users(id, email) values
 ('df000000-0000-0000-0000-000000000001', 'delete-staff@example.com'),
 ('df000000-0000-0000-0000-000000000002', 'delete-owner@example.com');
@@ -28,7 +28,7 @@ select throws_ok($$select public.admin_delete_factory('df000000-0000-0000-0000-0
 set local request.jwt.claims = '{"sub":"df000000-0000-0000-0000-000000000001","role":"authenticated"}';
 select throws_ok($$select public.admin_delete_factory('df000000-0000-0000-0000-000000000010', 'Wrong name')$$, '22023', null, 'Exact company name is required');
 select throws_ok($$select public.admin_delete_factory('df000000-0000-0000-0000-000000000030', 'Protected Brand')$$, 'P0002', null, 'Brands cannot be deleted through factory cleanup');
-select throws_ok($$select public.admin_delete_factory('df000000-0000-0000-0000-000000000040', 'Staff Factory')$$, '42501', null, 'Staff companies are protected');
+select lives_ok($$select public.admin_delete_factory('df000000-0000-0000-0000-000000000040', 'Staff Factory')$$, 'Staff-linked companies can be deleted');
 select throws_ok($$select public.admin_delete_factory('df000000-0000-0000-0000-000000000020', 'Quoted Factory')$$, '22023', null, 'Quote history blocks deletion');
 select lives_ok($$select public.admin_delete_factory('df000000-0000-0000-0000-000000000010', 'Disposable Factory')$$, 'Staff can delete an unused factory');
 reset role;
@@ -36,5 +36,6 @@ select is((select count(*) from public.orgs where id = 'df000000-0000-0000-0000-
 select is((select count(*) from public.org_members where org_id = 'df000000-0000-0000-0000-000000000010'), 0::bigint, 'Company memberships are removed');
 select is((select count(*) from auth.users where id = 'df000000-0000-0000-0000-000000000002'), 1::bigint, 'Individual account is kept');
 select is((select jsonb_array_length(files) from public.admin_factory_deletions where org_id = 'df000000-0000-0000-0000-000000000010'), 1, 'Cleanup manifest excludes another company storage path');
+select is((select count(*) from public.platform_admins where user_id = 'df000000-0000-0000-0000-000000000001'), 1::bigint, 'Deleting staff company preserves platform access');
 select * from finish();
 rollback;
