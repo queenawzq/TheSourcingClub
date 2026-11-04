@@ -16,7 +16,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(68);
+select plan(69);
 
 set local session_replication_role = replica;
 
@@ -317,6 +317,11 @@ select is(
 select lives_ok(
   $$ select public.release_payment_to_factory('31800000-0000-0000-0000-000000000007') $$,
   'a bank-paid factory still needs no note'
+);
+select throws_ok(
+  $$ select public.release_payment_to_factory('31800000-0000-0000-0000-000000000007', 'from a stale tab') $$,
+  '22023', 'that payout was already marked as paid',
+  'a stale tab marking it by bank again is told it was already paid'
 );
 
 -- ---------------------- recording it ------------------------------------

@@ -183,6 +183,7 @@ grant execute on function public.release_payment_by_payoneer(uuid, text, text, t
 -- release_payment_to_factory (from 20261022000300), same signature and grants.
 -- Changed: a factory paid by Payoneer is not marked paid by bank without a
 -- note saying why, which also catches a tab still showing the old bank details.
+-- A payout already marked says so in the same words as the Payoneer path.
 -- ---------------------------------------------------------------------------
 create or replace function public.release_payment_to_factory(
   target_payment uuid,
@@ -204,6 +205,10 @@ begin
   select * into p from public.order_payments where id = target_payment for update;
   if not found then
     raise exception 'payment not found' using errcode = 'P0002';
+  end if;
+  if p.state = 'released' then
+    raise exception 'that payout was already marked as paid'
+      using errcode = '22023', hint = 'payout_already_released';
   end if;
   if p.state <> 'confirmed' then
     raise exception 'that payment is %; only a confirmed one can be released', p.state

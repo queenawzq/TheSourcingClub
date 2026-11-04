@@ -120,6 +120,7 @@ export function useManualPayouts(orgId) {
   }
 
   async function remove(account, promote = null) {
+    setSaved(false);
     setBusy(true);
     try {
       // Another account becomes the one TSC pays in the same call (20261030000100).
@@ -134,6 +135,7 @@ export function useManualPayouts(orgId) {
   }
 
   async function makePrimary(account) {
+    setSaved(false);
     setBusy(true);
     try {
       unwrap(await supabase.rpc("set_primary_payout_account", { target: account.id }), "choose the account TSC pays");

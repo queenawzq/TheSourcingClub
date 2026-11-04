@@ -62,13 +62,15 @@ const ROW_TIME = {
 const paidByStripe = (row) => row.factory_stripe_ready && row.stripe_payment_intent_id;
 const paidByPayoneer = (row) => !paidByStripe(row) && row.payout_method === "payoneer";
 
-function Actions({ row, section, note, payoneerId, onDecide, busy }) {
+function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
+  const said = refusal ? <span className="admin-error admin-row-message" role="alert" data-testid="payment-refusal">{refusal.message}</span> : null;
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
   const [confirming, setConfirming] = useState(null);
   if (section === "wire") {
     return (
       <>
+        {said}
         <button type="button" className="admin-approve" disabled={busy}
                 data-testid="confirm-payment"
                 onClick={() => onDecide(row, "confirm", note)}>
@@ -88,7 +90,7 @@ function Actions({ row, section, note, payoneerId, onDecide, busy }) {
       if (confirming) {
         return (
           <>
-            <span className="admin-sub" role="alert">
+            <span className="admin-sub admin-row-message" role="alert">
               {confirming === "payoneer"
                 ? `Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by Payoneer (${row.payoneer_email}), payment ID ${id}?`
                 : `Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank, not to their Payoneer account?`}
@@ -107,6 +109,7 @@ function Actions({ row, section, note, payoneerId, onDecide, busy }) {
       }
       return (
         <>
+          {said}
           <button type="button" className="admin-approve" disabled={busy || !id}
                   data-testid="release-payoneer"
                   title={id ? "Pay from TSC's Payoneer business account first, then mark it here" : "Enter the payment ID from Payoneer"}
@@ -123,14 +126,17 @@ function Actions({ row, section, note, payoneerId, onDecide, busy }) {
       );
     }
     return paidByStripe(row) ? (
+      <>
+      {said}
       <button type="button" className="admin-approve" disabled={busy}
               data-testid="retry-payout"
               onClick={() => onDecide(row, "retry", note)}>
         Retry payout
       </button>
+      </>
     ) : confirming ? (
       <>
-        <span className="admin-sub" role="alert">
+        <span className="admin-sub admin-row-message" role="alert">
           {`Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank?`}
           {row.payout_summary === "no bank details on file" ? " No bank details are on file." : null}
         </span>
@@ -145,12 +151,15 @@ function Actions({ row, section, note, payoneerId, onDecide, busy }) {
         </button>
       </>
     ) : (
+      <>
+      {said}
       <button type="button" className="admin-approve" disabled={busy}
               data-testid="release-payment"
               title="Pay the factory by bank transfer first, then mark it here"
               onClick={() => setConfirming("bank")}>
         Mark paid out by bank
       </button>
+      </>
     );
   }
   return null;
@@ -175,7 +184,7 @@ function useNarrow() {
 
 const ACTS = new Set(["wire", "payout"]);
 
-function Row({ row, section, onDecide, busy, narrow }) {
+function Row({ row, section, onDecide, busy, narrow, refusal }) {
   const [note, setNote] = useState("");
   const [payoneerId, setPayoneerId] = useState("");
   const acts = ACTS.has(section);
@@ -188,11 +197,11 @@ function Row({ row, section, onDecide, busy, narrow }) {
           <input type="text" data-testid="payoneer-payment-id" value={payoneerId} onChange={(event) => setPayoneerId(event.target.value)} />
         </label>
       ) : null}
-      <input type="text" aria-label="Note" placeholder={section === "wire" ? "Note, required to reject" : "Optional note"}
+      <input type="text" aria-label="Note" placeholder={section === "wire" ? "Note, required to reject" : section === "payout" && paidByPayoneer(row) ? "Note, required if paid by bank" : "Optional note"}
              value={note} onChange={(event) => setNote(event.target.value)} />
     </>
   ) : null;
-  const buttons = <Actions row={row} section={section} note={note} payoneerId={payoneerId} onDecide={onDecide} busy={busy} />;
+  const buttons = <Actions row={row} section={section} note={note} payoneerId={payoneerId} onDecide={onDecide} busy={busy} refusal={refusal} />;
 
   return (
     <>
@@ -263,16 +272,19 @@ function Row({ row, section, onDecide, busy, narrow }) {
   );
 }
 
-function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow }) {
+function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal }) {
   return (
     <section data-section={id}>
       <h2>{title} ({rows.length})</h2>
       {rows.length === 0 ? (
         <p className="admin-sub">{empty}</p>
       ) : (
+        <>
+        {/* Above the table, not its <caption>: .admin-sub is display: block,
+            which squeezed a caption into the first column. */}
+        <p className="admin-sub admin-section-caption">{caption}</p>
         <div className="admin-scroll">
           <table>
-            <caption className="admin-sub">{caption}</caption>
             <thead>
               <tr>
                 <th>Order</th>
@@ -291,11 +303,12 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow }) 
             <tbody>
               {rows.map((row) => (
                 <Row key={row.payment_id} row={row} section={id} onDecide={onDecide} busy={busyId === row.payment_id}
-                     narrow={narrow} />
+                     narrow={narrow} refusal={refusal?.paymentId === row.payment_id ? refusal.failure : null} />
               ))}
             </tbody>
           </table>
         </div>
+        </>
       )}
     </section>
   );
@@ -323,6 +336,9 @@ export default function AdminPayments() {
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState(null);
+  // A refused action is said in its row, beside the buttons: the top of the
+  // page may be a screen away from where staff are looking.
+  const [refusal, setRefusal] = useState(null);
   const narrow = useNarrow();
 
   const load = useCallback(async () => {
@@ -338,7 +354,7 @@ export default function AdminPayments() {
 
   async function decide(row, decision, note, payoneerId) {
     setBusyId(row.payment_id);
-    setError(null);
+    setRefusal(null);
     setNotice(null);
     try {
       if (decision === "confirm") await confirmPaymentReceived(row.payment_id, { note });
@@ -353,7 +369,7 @@ export default function AdminPayments() {
       } else await releasePayment(row.payment_id, note);
       await load();
     } catch (failure) {
-      setError(failure);
+      setRefusal({ paymentId: row.payment_id, failure });
     } finally {
       setBusyId(null);
     }
@@ -373,7 +389,7 @@ export default function AdminPayments() {
   }
 
   const sections = boardSections(rows);
-  const shared = { onDecide: decide, busyId, narrow };
+  const shared = { onDecide: decide, busyId, narrow, refusal };
 
   return (
     <div className="admin">

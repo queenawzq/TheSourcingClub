@@ -2816,7 +2816,8 @@ export function SettingsScreen({
                             </div>
                           ) : null}
                         </div>
-                      ) : (
+                      /* Live, someone who may change nothing (a member) has no menu. */
+                      ) : livePaymentMethods && !onEditPaymentMethod && !onDeletePaymentMethod ? null : (
                       <div className="settings-payment-menu">
                         <button
                           className="settings-menu-btn"

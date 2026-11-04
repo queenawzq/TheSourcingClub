@@ -411,7 +411,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         onAddBillingMethod={canSettings ? addBillingMethod : undefined}
         onRemoveBillingMethod={canSettings ? removeCard : undefined}
         billingMethodNote={canSettings ? "" : `Only someone with Settings access at ${org.name || "your company"} can add or remove payment methods.`}
-        onEditPaymentMethod={isFactory && isOwner ? () => openPayoutFlow("edit") : undefined}
+        onEditPaymentMethod={isFactory && isOwner ? (method) => openPayoutFlow("edit", method?.id) : undefined}
         onDeletePaymentMethod={isFactory && isOwner ? (method) => openPayoutFlow("remove", method?.id) : undefined}
         team={team}
         {...live}

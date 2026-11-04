@@ -224,6 +224,8 @@ export default function StripePayoutCard({
   const [removing, setRemoving] = useState(null);
   const [handover, setHandover] = useState(null);
   const [methodNotice, setMethodNotice] = useState(null);
+  // Said once the person leaves the field, not at the first letter they type.
+  const [payoneerEmailLeft, setPayoneerEmailLeft] = useState(false);
   const [removeError, setRemoveError] = useState(null);
   // TSC's own add and remove (an account TSC manages): which account a
   // Replace removes once the new one is added, which account becomes the
@@ -486,7 +488,7 @@ export default function StripePayoutCard({
       <div className="payout-form-grid">
         <label>
           <span>Payoneer account email (required)</span>
-          <input type="email" autoComplete="off" data-field="payout_payoneer_email" value={manualForm?.payoneer_email ?? ""} required onChange={onManualFieldChange("payoneer_email")} placeholder="The email you sign in to Payoneer with" />
+          <input type="email" autoComplete="off" data-field="payout_payoneer_email" value={manualForm?.payoneer_email ?? ""} required onBlur={() => setPayoneerEmailLeft(true)} onChange={onManualFieldChange("payoneer_email")} placeholder="The email you sign in to Payoneer with" />
         </label>
         <label>
           <span>Re-enter the email (required)</span>
@@ -494,7 +496,7 @@ export default function StripePayoutCard({
         </label>
       </div>
       {payoneerMismatch ? <p className="live-stripe-error" role="alert">The two email addresses don't match.</p> : null}
-      {manualForm?.payoneer_email && !validPayoneerEmail(manualForm.payoneer_email) ? <p className="payout-security-copy">Enter a valid email address for your Payoneer account.</p> : null}
+      {payoneerEmailLeft && manualForm?.payoneer_email && !validPayoneerEmail(manualForm.payoneer_email) ? <p className="live-stripe-error" role="alert">Enter a valid email address for your Payoneer account.</p> : null}
       <p className="payout-security-copy">TSC pays your released earnings to this Payoneer account by hand, from TSC's Payoneer business account. TSC is not connected to your Payoneer account and never sees its sign-in or balance.</p>
     </div>
   );
@@ -621,8 +623,17 @@ export default function StripePayoutCard({
   }
 
   // Add (blank) or Edit (that account): the parent holds the form.
+  // One notice at a time, and only about what just happened.
+  const openManage = () => {
+    setMethodNotice(null);
+    setRemoveError(null);
+    setModal("manage");
+  };
+
   const openManual = (row) => {
     setManualError(null);
+    setMethodNotice(null);
+    setPayoneerEmailLeft(false);
     onStartManual?.(row);
     setModal("setup");
   };
@@ -735,14 +746,14 @@ export default function StripePayoutCard({
               setWithdrawal({ amount: available, currency: currency.toLowerCase(), requestId: crypto.randomUUID() });
               setModal("withdraw");
             }}>Withdraw to bank</button>
-            <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("manage")}>Manage payout method</button>
+            <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={openManage}>Manage payout method</button>
             </>
           ) : account ? (
             <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>
           ) : manualAccount && !manualComplete(manualAccount) ? (
             <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => openManual(manualAccount)}>Complete bank details</button>
           ) : (
-            <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => (manualAccount ? setModal("manage") : openManual(null))}>{manualAccount ? "Manage payout method" : "Add payout method"}</button>
+            <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => (manualAccount ? openManage() : openManual(null))}>{manualAccount ? "Manage payout method" : "Add payout method"}</button>
           )
           : <p className="payout-owner-only">Only an owner of your company can set up or change payouts.</p>}
         </div>
