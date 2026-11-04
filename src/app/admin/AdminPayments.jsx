@@ -13,8 +13,9 @@
  *                    cancelled after the approval. "Retry payout" when the
  *                    factory has a Stripe account that can take transfers and
  *                    the money came through Stripe; otherwise staff pay by
- *                    bank (mainland China, Hong Kong… where Stripe cannot pay
- *                    out) and mark it paid out.
+ *                    bank or from TSC's Payoneer business account, by hand
+ *                    (mainland China, Hong Kong… where Stripe cannot pay out;
+ *                    nothing here calls Payoneer), and mark it paid out.
  *   Refunded after payout
  *                    the brand's money was refunded in Stripe after the
  *                    factory was paid: TSC paid out money it no longer holds,
@@ -38,7 +39,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { useAuth } from "../../lib/auth.jsx";
 import {
-  confirmPaymentReceived, paymentBoard, rejectPaymentSent, releasePayment,
+  confirmPaymentReceived, paymentBoard, rejectPaymentSent, releasePayment, releasePaymentByPayoneer,
 } from "../../lib/domain/payment.js";
 import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
@@ -58,10 +59,13 @@ const ROW_TIME = {
   cancelled: (row) => row.confirmed_at ?? row.processing_at,
 };
 
-function Actions({ row, section, note, onDecide, busy }) {
+const paidByStripe = (row) => row.factory_stripe_ready && row.stripe_payment_intent_id;
+const paidByPayoneer = (row) => !paidByStripe(row) && row.payout_method === "payoneer";
+
+function Actions({ row, section, note, payoneerId, onDecide, busy }) {
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState(null);
   if (section === "wire") {
     return (
       <>
@@ -79,7 +83,46 @@ function Actions({ row, section, note, onDecide, busy }) {
     );
   }
   if (section === "payout") {
-    return row.factory_stripe_ready && row.stripe_payment_intent_id ? (
+    if (paidByPayoneer(row)) {
+      const id = payoneerId.trim();
+      if (confirming) {
+        return (
+          <>
+            <span className="admin-sub" role="alert">
+              {confirming === "payoneer"
+                ? `Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by Payoneer (${row.payoneer_email}), payment ID ${id}?`
+                : `Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank, not to their Payoneer account?`}
+            </span>
+            <button type="button" className="admin-approve" disabled={busy}
+                    data-testid="release-payment-confirm"
+                    onClick={() => { const how = confirming; setConfirming(null); onDecide(row, how === "payoneer" ? "payoneer" : "release", note, id); }}>
+              Yes, mark paid out
+            </button>
+            <button type="button" className="admin-reject" disabled={busy}
+                    onClick={() => setConfirming(null)}>
+              Cancel
+            </button>
+          </>
+        );
+      }
+      return (
+        <>
+          <button type="button" className="admin-approve" disabled={busy || !id}
+                  data-testid="release-payoneer"
+                  title={id ? "Pay from TSC's Payoneer business account first, then mark it here" : "Enter the payment ID from Payoneer"}
+                  onClick={() => setConfirming("payoneer")}>
+            Mark paid out by Payoneer
+          </button>
+          <button type="button" className="quiet-btn" disabled={busy || !note.trim()}
+                  data-testid="release-bank-instead"
+                  title={note.trim() ? undefined : "Add a note saying why it was paid by bank"}
+                  onClick={() => setConfirming("bank")}>
+            Paid by bank instead
+          </button>
+        </>
+      );
+    }
+    return paidByStripe(row) ? (
       <button type="button" className="admin-approve" disabled={busy}
               data-testid="retry-payout"
               onClick={() => onDecide(row, "retry", note)}>
@@ -93,11 +136,11 @@ function Actions({ row, section, note, onDecide, busy }) {
         </span>
         <button type="button" className="admin-approve" disabled={busy}
                 data-testid="release-payment-confirm"
-                onClick={() => { setConfirming(false); onDecide(row, "release", note); }}>
+                onClick={() => { setConfirming(null); onDecide(row, "release", note); }}>
           Yes, mark paid out
         </button>
         <button type="button" className="admin-reject" disabled={busy}
-                onClick={() => setConfirming(false)}>
+                onClick={() => setConfirming(null)}>
           Cancel
         </button>
       </>
@@ -105,7 +148,7 @@ function Actions({ row, section, note, onDecide, busy }) {
       <button type="button" className="admin-approve" disabled={busy}
               data-testid="release-payment"
               title="Pay the factory by bank transfer first, then mark it here"
-              onClick={() => setConfirming(true)}>
+              onClick={() => setConfirming("bank")}>
         Mark paid out by bank
       </button>
     );
@@ -134,13 +177,22 @@ const ACTS = new Set(["wire", "payout"]);
 
 function Row({ row, section, onDecide, busy, narrow }) {
   const [note, setNote] = useState("");
+  const [payoneerId, setPayoneerId] = useState("");
   const acts = ACTS.has(section);
 
   const noteInput = acts ? (
-    <input type="text" placeholder={section === "wire" ? "Note, required to reject" : "Optional note"}
-           value={note} onChange={(event) => setNote(event.target.value)} />
+    <>
+      {section === "payout" && paidByPayoneer(row) ? (
+        <label className="admin-sub">
+          Payoneer payment ID (required)
+          <input type="text" data-testid="payoneer-payment-id" value={payoneerId} onChange={(event) => setPayoneerId(event.target.value)} />
+        </label>
+      ) : null}
+      <input type="text" aria-label="Note" placeholder={section === "wire" ? "Note, required to reject" : "Optional note"}
+             value={note} onChange={(event) => setNote(event.target.value)} />
+    </>
   ) : null;
-  const buttons = <Actions row={row} section={section} note={note} onDecide={onDecide} busy={busy} />;
+  const buttons = <Actions row={row} section={section} note={note} payoneerId={payoneerId} onDecide={onDecide} busy={busy} />;
 
   return (
     <>
@@ -170,11 +222,16 @@ function Row({ row, section, onDecide, busy, narrow }) {
             : null}
           {section === "payout" ? (
             <span className="admin-sub">
-              {row.factory_stripe_ready && row.stripe_payment_intent_id
+              {paidByStripe(row)
                 ? "pay out through Stripe"
-                : `pay by bank: ${row.payout_summary}`}
+                : paidByPayoneer(row)
+                  ? `pay by Payoneer: ${row.payoneer_email}`
+                  : `pay by bank: ${row.payout_summary}`}
             </span>
           ) : null}
+          {section === "refunded" && row.payoneer_payment_id
+            ? <span className="admin-sub">{`paid by Payoneer, payment ID ${row.payoneer_payment_id}`}</span>
+            : null}
         </td>
         <td>
           {when(ROW_TIME[section](row))}
@@ -197,7 +254,7 @@ function Row({ row, section, onDecide, busy, narrow }) {
                 note and buttons stay in view however the table is scrolled. */}
             <div style={{ position: "sticky", left: 0, maxWidth: "calc(100vw - 80px)" }}>
               {noteInput}
-              <div className="admin-actions" style={{ marginTop: 8 }}>{buttons}</div>
+              <div className="admin-actions" style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>{buttons}</div>
             </div>
           </td>
         </tr>
@@ -279,7 +336,7 @@ export default function AdminPayments() {
 
   useEffect(() => { load(); }, [load]);
 
-  async function decide(row, decision, note) {
+  async function decide(row, decision, note, payoneerId) {
     setBusyId(row.payment_id);
     setError(null);
     setNotice(null);
@@ -291,6 +348,8 @@ export default function AdminPayments() {
         setNotice(result.released
           ? `${row.order_number}: paid out to ${row.factory_name}.`
           : `${row.order_number}: not paid out. ${result.reason ?? ""}`);
+      } else if (decision === "payoneer") {
+        await releasePaymentByPayoneer(row.payment_id, { paidTo: row.payoneer_email, payoneerPaymentId: payoneerId, note });
       } else await releasePayment(row.payment_id, note);
       await load();
     } catch (failure) {
@@ -325,7 +384,8 @@ export default function AdminPayments() {
         Brands pay TSC through Stripe, by card, and TSC holds the money until
         the brand approves the step. Approving pays a factory with a Stripe account on its own.
         Stripe can't pay out to some countries (mainland China, Hong Kong…): those factories are
-        paid by bank transfer from here.
+        paid by hand, by bank transfer or from TSC's Payoneer business account, and marked paid out
+        here. Nothing here sends money or calls Payoneer.
       </p>
 
       {error ? <p className="admin-error">{error.message}</p> : null}
@@ -333,7 +393,7 @@ export default function AdminPayments() {
 
       <Section id="payout" title="Payout owed" rows={sections.payout} {...shared}
                empty="Every approved payment has been paid out."
-               caption="The brand approved these steps (on a cancelled order too, if it approved before the cancellation). Retry a Stripe payout, or pay by bank and mark it paid out." />
+               caption="The brand approved these steps (on a cancelled order too, if it approved before the cancellation). Retry a Stripe payout, or pay by bank or Payoneer by hand and mark it paid out." />
       {sections.refunded.length ? (
         <Section id="refunded" title="Refunded after payout" rows={sections.refunded} {...shared}
                  empty=""

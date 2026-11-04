@@ -163,7 +163,12 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
             note: [method.name, method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
           })) : [{ label: "Connected", name: "Payout account", note: "Managed securely through your connected payout account." }]);
         } else {
-          setPayoutMethods(manualAccounts.map((account) => ({
+          setPayoutMethods(manualAccounts.map((account) => (account.method === "payoneer" ? {
+            id: account.id,
+            label: account.is_primary ? "Default" : "Payoneer",
+            name: "Payoneer",
+            note: `${account.payoneer_email} · paid by TSC by hand`,
+          } : {
             id: account.id,
             label: account.is_primary ? "Default" : "Bank account",
             name: `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}`,
@@ -446,6 +451,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           manualForm={payouts.form}
           manualFields={PAYOUT_FIELDS}
           onManualFieldChange={payouts.setField}
+          onManualMethodChange={payouts.setMethod}
           onSaveManual={savePayout}
           onDeleteManual={removePayout}
           manualBusy={payouts.busy}

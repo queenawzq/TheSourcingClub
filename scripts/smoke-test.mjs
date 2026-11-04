@@ -1186,6 +1186,21 @@ console.log("\nphase 3 — the order runs");
         ? ok("and the brand still cannot read the factory's bank details: it pays TSC, not the factory")
         : fail("LEAK: bank details visible to the brand with a payment due");
 
+      // The exact embed the factory's Earnings use: to-ONE, an object or null.
+      const earningEmbed = "id, payoneer_payouts (paid_to_email, payoneer_payment_id)";
+      for (const [who, client] of [["factory", factoryClient], ["brand", brand.client]]) {
+        const { data: rows, error } = await client.from("order_payments").select(earningEmbed).eq("id", deposit.id);
+        !error && rows?.length === 1 && rows[0].payoneer_payouts === null
+          ? ok(`the ${who} reads the Payoneer embed on a payment, null when there is none`)
+          : fail(`the ${who}'s Payoneer embed`, error);
+      }
+      const notStaff = await factoryClient.rpc("release_payment_by_payoneer", {
+        target_payment: deposit.id, paid_to: "x@example.com", payoneer_payment_id: "PO-1", note: null,
+      });
+      notStaff.error?.code === "42501"
+        ? ok("a factory cannot record its own Payoneer payout")
+        : fail("LEAK: a factory reached release_payment_by_payoneer", notStaff.error);
+
       const checkout = await brand.client.rpc("begin_payment_checkout", { target_payment: deposit.id });
       checkout.error ? fail("the brand owner starts paying", checkout.error)
         : Number(checkout.data.charged_cents) === Number(deposit.amount_cents) + Number(checkout.data.fee_cents)

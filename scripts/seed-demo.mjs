@@ -1076,6 +1076,30 @@ const seersucker = await runningOrder({
 });
 await funded(await dueNow(seersucker, seersuckerTitle), CARD);
 await approveOpenStep(seersucker, seersuckerTitle, secondFactory);
+// 7. Kowloon Sourcing Partners is in Hong Kong and paid through Payoneer, by
+//    hand from TSC's Payoneer account: one fit sample paid out with its
+//    payment ID, one approved and waiting on staff ("Payout owed").
+must(await tradingCompany.client.from("factory_payout_accounts").insert({
+  org_id: tradingOrg.id, method: "payoneer", payoneer_email: "kowloon-payouts@example.com", bank_country: "HK", is_primary: true,
+}), "the trading company's Payoneer account");
+const hopsackTitle = "Linen hopsack blazer, AW27";
+const hopsack = await runningOrder({
+  title: hopsackTitle, brief: "120 linen hopsack blazers, half lined.", quantity: 120, unitPrice: 4200,
+  vendor: tradingCompany, vendorOrg: tradingOrg,
+});
+const hopsackFit = await dueNow(hopsack, hopsackTitle);
+await funded(hopsackFit, CARD);
+await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
+must(await adminUser.client.rpc("release_payment_by_payoneer", {
+  target_payment: hopsackFit.id, paid_to: "kowloon-payouts@example.com", payoneer_payment_id: "DEMO-PO-20260001",
+}), "pay the blazer's fit sample by Payoneer");
+const tencelTitle = "Tencel wrap dress, AW27";
+const tencel = await runningOrder({
+  title: tencelTitle, brief: "150 Tencel wrap dresses, garment-washed.", quantity: 150, unitPrice: 3100,
+  vendor: tradingCompany, vendorOrg: tradingOrg,
+});
+await funded(await dueNow(tencel, tencelTitle), CARD);
+await approveOpenStep(tencel, tencelTitle, tradingCompany);
 
 // Dates on the steps not done yet, as a brand sets them on "Production
 // steps", so "Next due" on the dashboard and the orders list, and each step's

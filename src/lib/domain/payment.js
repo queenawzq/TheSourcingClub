@@ -138,14 +138,51 @@ export async function rejectPaymentSent(paymentId, note) {
   );
 }
 
+/** The database's refusals of a manual payout, in staff's words (20261104300100). */
+const RELEASE_REFUSALS = {
+  payoneer_default: "This factory is paid by Payoneer. Enter the payment ID, or add a note saying why it was paid by bank.",
+  payoneer_id_format: "Enter the payment ID from Payoneer: 3 to 64 letters, numbers or - _ . /",
+  payoneer_id_used: "This Payoneer payment ID is already recorded for another factory. Check it and try again.",
+  payout_changed: "This factory changed where it is paid after this page loaded. Reload and check before marking it. If you already paid, add a note saying where.",
+  payout_already_released: "This payout was already marked as paid. Reload the board.",
+  payout_own_company: "You belong to this company, so someone else on the staff must record its payout.",
+  payout_stripe: "Stripe pays this factory now. Reload the board and retry the payout.",
+};
+
+function saidToStaff(failure) {
+  const sentence = RELEASE_REFUSALS[failure?.cause?.hint];
+  return sentence ? new Error(sentence) : failure;
+}
+
 export async function releasePayment(paymentId, note) {
-  return unwrap(
-    await supabase.rpc("release_payment_to_factory", {
-      target_payment: paymentId,
-      note: note || null,
-    }),
-    "release these funds",
-  );
+  try {
+    return unwrap(
+      await supabase.rpc("release_payment_to_factory", {
+        target_payment: paymentId,
+        note: note || null,
+      }),
+      "release these funds",
+    );
+  } catch (failure) {
+    throw saidToStaff(failure);
+  }
+}
+
+/** Staff sent this payout from TSC's Payoneer account by hand: record it. */
+export async function releasePaymentByPayoneer(paymentId, { paidTo, payoneerPaymentId, note }) {
+  try {
+    return unwrap(
+      await supabase.rpc("release_payment_by_payoneer", {
+        target_payment: paymentId,
+        paid_to: paidTo,
+        payoneer_payment_id: payoneerPaymentId,
+        note: note || null,
+      }),
+      "record this payout",
+    );
+  } catch (failure) {
+    throw saidToStaff(failure);
+  }
 }
 
 /** Computed the same way the database computes it: floor, in minor units. */
