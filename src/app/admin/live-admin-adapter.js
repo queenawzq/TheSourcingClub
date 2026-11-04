@@ -45,6 +45,7 @@ import {
   userDirectory,
   verificationQueue,
   deleteFactory,
+  deleteBrand,
 } from "../../lib/domain/admin.js";
 import { createElement } from "react";
 import { urlFor } from "../../lib/domain/documents.js";
@@ -341,6 +342,7 @@ export function createAdminAdapter({ user, signOut }) {
 
     actions: {
       deleteFactory,
+      deleteBrand,
       claimReview,
       signOut,
       sendTestEmail,

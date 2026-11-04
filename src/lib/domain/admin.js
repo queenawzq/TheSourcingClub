@@ -17,6 +17,12 @@ export async function isPlatformAdmin() {
   return Boolean(data);
 }
 
+export async function deleteBrand(orgId, confirmName) {
+  return staffRoute("/api/admin-delete-brand", {
+    body: { orgId, confirmName }, failure: "The brand could not be deleted",
+  });
+}
+
 export async function deleteFactory(orgId, confirmName) {
   return staffRoute("/api/admin-delete-factory", {
     body: { orgId, confirmName }, failure: "The factory could not be deleted",
