@@ -591,13 +591,13 @@ select lives_ok(
   'the brand owner records the payment as sent'
 );
 
--- Now the factory owes nothing more, and the bank details become readable —
--- but only because a payment is genuinely outstanding.
+-- Money outstanding gives a brand no reason to read them: it pays TSC, never
+-- the factory (20261104300000).
 select is(
   (select count(*)::int from public.factory_payout_accounts
      where org_id = 'd3000000-0000-0000-0000-0000000000f1'),
-  1,
-  'a brand CAN read the factory''s bank details once it actually owes money'
+  0,
+  'a brand CANNOT read the factory''s bank details, even with a payment outstanding'
 );
 
 select is(

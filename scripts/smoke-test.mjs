@@ -1182,9 +1182,9 @@ console.log("\nphase 3 — the order runs");
     {
       const { data: payout } = await brand.client
         .from("factory_payout_accounts").select("id").eq("org_id", winner.factory_org_id);
-      (payout ?? []).length === 1
-        ? ok("and the brand can read the factory's bank details — because money is owed")
-        : fail("the brand cannot read the payout account with a payment due");
+      (payout ?? []).length === 0
+        ? ok("and the brand still cannot read the factory's bank details: it pays TSC, not the factory")
+        : fail("LEAK: bank details visible to the brand with a payment due");
 
       const checkout = await brand.client.rpc("begin_payment_checkout", { target_payment: deposit.id });
       checkout.error ? fail("the brand owner starts paying", checkout.error)

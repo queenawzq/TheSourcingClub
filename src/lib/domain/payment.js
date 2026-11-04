@@ -62,19 +62,6 @@ export async function getPayment(orderId, paymentId) {
   );
 }
 
-/** Where the brand actually sends the money. */
-export async function payoutAccountFor(factoryOrgId) {
-  return unwrap(
-    await supabase
-      .from("factory_payout_accounts")
-      .select("id, bank_name, account_name, account_number_last4, swift, iban, bank_country, instructions")
-      .eq("org_id", factoryOrgId)
-      .eq("is_primary", true)
-      .maybeSingle(),
-    "load the factory's payment details",
-  );
-}
-
 /** The factory's own payout accounts, primary first, for its Settings page. */
 export async function listPayoutAccounts(factoryOrgId) {
   return unwrap(
