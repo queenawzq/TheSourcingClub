@@ -192,6 +192,9 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Woven shirting and light outerwear, small runs. We pattern, sample and sew in-house, and send photo updates at every step.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "verified",
+  // Club Standard "Verified", while Ningbo Loomworks and Kowloon stay Basic:
+  // Browse's Club Standard filter then visibly narrows the list.
+  trust_tier: "verified",
   published_at: new Date().toISOString(),
 }), "factory profile");
 

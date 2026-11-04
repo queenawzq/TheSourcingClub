@@ -65,6 +65,13 @@ export function startWindows(now = new Date()) {
   }));
 }
 
+/** The design's Club Standard group, read against the vendor's `trust_tier`. */
+export const TRUST_TIERS = [
+  { key: "trusted", label: "Trusted", icon: "trusted" },
+  { key: "verified", label: "Verified", icon: "verified" },
+  { key: "basic", label: "Basic", icon: "basic" },
+];
+
 /** The filter groups for each tab, in the design's order. `kind` = a taxonomy kind. */
 const GROUPS = {
   factories: [
@@ -164,6 +171,8 @@ export function vendorCard(parts, now = new Date()) {
       moq,
       lead,
       openMonths,
+      trustTier: profile?.trust_tier ?? "basic",
+      publishedAt: profile?.published_at ?? null,
     },
     searchText,
   };
@@ -177,6 +186,7 @@ export function emptyFilters() {
     countries: [],
     certifications: [],
     leadTimes: [],
+    tiers: [],
     startWindow: "",
     quantity: "",
   };
@@ -186,7 +196,7 @@ const toggle = (list, value) => (list.includes(value) ? list.filter((item) => it
 
 /** A copy of `filters` with one option switched on or off. */
 export function toggleFilter(filters, group, value) {
-  if (group === "countries" || group === "certifications" || group === "leadTimes") {
+  if (group === "countries" || group === "certifications" || group === "leadTimes" || group === "tiers") {
     return { ...filters, [group]: toggle(filters[group], value) };
   }
   if (group === "startWindow" || group === "quantity") {
@@ -220,6 +230,7 @@ export function filterVendors(cards, filters, query = "") {
       const ranges = LEAD_TIMES.filter((range) => filters.leadTimes.includes(range.key));
       if (facts.lead == null || !ranges.some((range) => range.test(facts.lead))) return false;
     }
+    if (filters.tiers.length && !filters.tiers.includes(facts.trustTier)) return false;
     const quantity = QUANTITIES.find((item) => item.key === filters.quantity);
     if (filters.startWindow || quantity) {
       const months = facts.openMonths.filter((open) => !filters.startWindow || open.month === filters.startWindow);
@@ -236,6 +247,7 @@ export function activeFilterCount(filters) {
     + filters.countries.length
     + filters.certifications.length
     + filters.leadTimes.length
+    + filters.tiers.length
     + (filters.startWindow ? 1 : 0)
     + (filters.quantity ? 1 : 0);
 }
@@ -290,8 +302,59 @@ export function filterPanel(terms, cards, tab = "factories", now = new Date()) {
       .map((term) => ({ id: term.extra.code, label: termLabel(term) })),
     certifications: platform("certification").map((term) => ({ id: term.id, label: termLabel(term) })),
     leadTimes: LEAD_TIMES.map(({ key, label }) => ({ id: key, label })),
+    tiers: TRUST_TIERS.map(({ key, label, icon }) => ({ id: key, label, icon })),
     startWindows: startWindows(now),
     quantities: QUANTITIES.map(({ key, label }) => ({ id: key, label })),
     moq: moqScale(cards),
   };
+}
+
+/** The orders "Sort" offers: what every vendor's profile records. */
+export const SORTS = [
+  { key: "fit", label: "Best fit" },
+  { key: "moq", label: "Lowest MOQ" },
+  { key: "lead", label: "Shortest lead time" },
+  { key: "newest", label: "Newest on TSC" },
+];
+
+/**
+ * `cards` (already in best-fit order) in the chosen order. A vendor that has
+ * not given the figure goes last; ties keep best fit.
+ */
+export function sortVendors(cards, key = "fit") {
+  const number = (field) => (card) => card.facts[field] ?? Infinity;
+  const by = {
+    moq: number("moq"),
+    lead: number("lead"),
+    newest: (card) => -(Date.parse(card.facts.publishedAt) || -Infinity),
+  }[key];
+  if (!by) return cards;
+  return cards
+    .map((card, index) => ({ card, index, value: by(card) }))
+    .sort((a, b) => (a.value === b.value ? a.index - b.index : a.value < b.value ? -1 : 1))
+    .map(({ card }) => card);
+}
+
+/**
+ * Filters kept from an earlier visit, with every option the panel no longer
+ * offers dropped, so nothing is filtered (or counted) that cannot be seen.
+ */
+export function keepKnownFilters(stored, panel) {
+  const filters = emptyFilters();
+  if (!stored || typeof stored !== "object") return filters;
+  const known = (list, options) => (Array.isArray(list) ? list.filter((id) => options.some((option) => option.id === id)) : []);
+  for (const group of panel.checks) {
+    const ids = known(stored.terms?.[group.key], group.options);
+    if (ids.length) filters.terms[group.key] = ids;
+  }
+  const levels = known(stored.terms?.market_level, panel.priceLevels);
+  if (levels.length) filters.terms.market_level = levels;
+  filters.countries = known(stored.countries, panel.countries);
+  filters.certifications = known(stored.certifications, panel.certifications);
+  filters.leadTimes = known(stored.leadTimes, panel.leadTimes);
+  filters.tiers = known(stored.tiers, panel.tiers);
+  if (panel.startWindows.some((option) => option.key === stored.startWindow)) filters.startWindow = stored.startWindow;
+  if (panel.quantities.some((option) => option.id === stored.quantity)) filters.quantity = stored.quantity;
+  if (Array.isArray(stored.moq) && stored.moq.length === 2 && stored.moq.every(Number.isFinite)) filters.moq = stored.moq;
+  return filters;
 }
