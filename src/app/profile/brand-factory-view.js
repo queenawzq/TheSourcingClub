@@ -91,8 +91,9 @@ export function brandFactoryView(parts, now = new Date()) {
       ["Availability", row("Booking level")],
     ],
     trust: [
-      { name: "Business registration", status: verified ? "Verified" : "In review", verified },
-      ...parts.certifications.map((cert) => trustRow(cert.name, cert.status)),
+      { name: "Business registration", status: parts.registrationDoc ? "Uploaded" : "Not uploaded", document: parts.registrationDoc },
+      ...parts.certifications.map((cert) => ({ ...trustRow(cert.name, cert.status), document: cert.document })),
+      ...(parts.verificationDocs ?? []).filter((doc) => doc.id !== parts.registrationDoc?.id && !parts.certifications.some((cert) => cert.document?.id === doc.id)).map((doc) => ({ name: doc.file_name, status: "Uploaded", document: doc })),
     ],
   };
 }

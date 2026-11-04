@@ -81,13 +81,10 @@ function actionFor(milestone, { isFactory, isOwner, posted, factoryName }) {
   }
   if (approvable(milestone)) {
     if (milestone.kind === "approval_and_payment" && !isOwner) return none;
-    const awaitingFunding = milestone.kind === "approval_and_payment" && payment?.state !== "confirmed";
     return {
       action: milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve",
       tone: "primary",
       kind: "approve",
-      actionDisabled: awaitingFunding,
-      actionDisabledReason: awaitingFunding ? "Available once payment is confirmed" : undefined,
     };
   }
   // Keep the next action visible on every upcoming step. The database still

@@ -13,6 +13,7 @@ import { matchingEnabled, assessFactories } from "../../lib/domain/matching.js";
  */
 import React, { useEffect, useState } from "react";
 import { BrandFactoryProfileScreen } from "../../prototype/main.jsx";
+import { urlFor } from "../../lib/domain/documents.js";
 import { listThreads } from "../../lib/domain/message.js";
 import { useRouter } from "../../lib/router.jsx";
 import { BACK_LABELS, brandFactoryView } from "./brand-factory-view.js";
@@ -35,6 +36,7 @@ function Frame({ children }) {
 export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from = null, onBack = null, onRequestQuote = null }) {
   const { navigate } = useRouter();
   const { saveFor, error: saveError } = useSavedVendors(org, user);
+  const [preview, setPreview] = useState(null);
   const [assessment, setAssessment] = useState(null);
   const [state, setState] = useState({ parts: undefined, thread: null, error: null });
 
@@ -87,6 +89,15 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
       <BrandFactoryProfileScreen
         live={{
           ...brandFactoryView(state.parts),
+          onPreviewDocument: async (document) => {
+            setPreview({ document, loading: true });
+            try {
+              const url = await urlFor(document);
+              setPreview((current) => current?.document.id === document.id ? { document, url } : current);
+            } catch (error) {
+              setPreview((current) => current?.document.id === document.id ? { document, error: error.message } : current);
+            }
+          },
           matchPanel: assessment ? (
             <section className="matching-panel matching-in-column" aria-label="How this factory matches">
               <header className="matching-head"><h2>How it matches your needs</h2></header>
@@ -104,6 +115,17 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
           contact: message ? { label: "Message factory", onClick: message } : { label: "Request quote", onClick: requestQuote },
         }}
       />
+      {preview && <div className="approve-fund-modal-layer">
+        <section className="approve-fund-modal profile-document-modal" role="dialog" aria-modal="true" aria-label={`${preview.document.file_name} preview`}>
+          <header><h2>{preview.document.file_name}</h2><button className="secondary-btn" type="button" autoFocus onClick={() => setPreview(null)}>Close</button></header>
+          {preview.loading ? <p role="status">Loading preview…</p> : preview.error ? <p role="alert">{preview.error}</p> : <>
+            {preview.document.mime_type?.startsWith("image/") ? <img src={preview.url} alt={preview.document.file_name} />
+              : /\.pdf$/i.test(preview.document.file_name) || preview.document.mime_type === "application/pdf" ? <iframe src={preview.url} title={preview.document.file_name} />
+              : <p>This file type cannot be previewed here.</p>}
+            <a href={preview.url} target="_blank" rel="noopener noreferrer">Open document in a new tab</a>
+          </>}
+        </section>
+      </div>}
       {saveError && <p className="live-profile-error" role="alert">Couldn't update your saved vendors: {saveError.message}</p>}
     </Frame>
   );

@@ -4648,9 +4648,11 @@ function FactoryDashboardCallCard({ language, calls: liveCalls }) {
               <h3>{call.title}</h3>
               <strong>{call.time}</strong>
             </div>
-            <span>{call.counterpartTime}</span>
             <div className="factory-upcoming-call-actions">
-              <p className="factory-upcoming-call-description">{call.description}</p>
+              <div className="factory-upcoming-call-context">
+                {call.counterpartTime && <span>{call.counterpartTime}</span>}
+                {call.description && <p className="factory-upcoming-call-description">{call.description}</p>}
+              </div>
               <button className="secondary-btn compact-btn" type="button" onClick={call.onAction}>{call.action ?? (isZh ? "加入通话" : "Join call")}</button>
             </div>
           </section>

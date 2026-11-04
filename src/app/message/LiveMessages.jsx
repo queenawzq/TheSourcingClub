@@ -133,6 +133,15 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   const [theirZones, setTheirZones] = useState({});
   const [activeId, setActiveId] = useState(threadId ?? null);
   const [dialog, setDialog] = useState(null);
+  const [deletedCallCards, setDeletedCallCards] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    setDeletedCallCards([]);
+    supabase.from("call_card_dismissals").select("call_id").eq("user_id", user.id).then(({ data, error }) => {
+      if (!cancelled && !error) setDeletedCallCards((data ?? []).map((row) => row.call_id));
+    });
+    return () => { cancelled = true; };
+  }, [user.id]);
   const [callBusy, setCallBusy] = useState(null);
   const [callNotes, setCallNotes] = useState({});
   // Withdraw, cancel or decline waiting on "are you sure?": { call, mode }.
@@ -397,6 +406,12 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   }
 
   const callHandlers = {
+    scheduleAgain: (call) => setDialog({ threadId: call.thread_id, key: `new-${call.id}`, busy: false, error: null }),
+    deleteCard: (call) => changeCall(call, async () => {
+      const { error } = await supabase.from("call_card_dismissals").upsert({ call_id: call.id, user_id: user.id });
+      if (error) throw error;
+      setDeletedCallCards((current) => [...current, call.id]);
+    }),
     accept: (call) => changeCall(call, () => acceptCall(call.id, ownZone)),
     // Each closes the call for both sides and cannot be undone: asked first.
     decline: (call) => setConfirmCall({ call, mode: "decline" }),
@@ -533,6 +548,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           // The bubble's side and label: the reader's own messages on the
           // right with their own name, whichever side the reader is on.
           own: mine,
+          timestamp: sentAt(message),
           time: sentAt(message) ? TIME.format(new Date(sentAt(message))) : "",
           // Only the sender's company ever reads a message that is not
           // delivered (the read policy), so this is always the reader's own.
@@ -547,7 +563,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
   // Each conversation's calls as the designed cards.
   const callCards = {};
   for (const thread of threads) {
-    const theirs = calls.filter((call) => call.thread_id === thread.id);
+    const theirs = calls.filter((call) => call.thread_id === thread.id && !deletedCallCards.includes(call.id));
     callCards[thread.id] = callsForPanel(theirs, org.id, now).map((call) => panelCard(call, {
       now,
       orgId: org.id,

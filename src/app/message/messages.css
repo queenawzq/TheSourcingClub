@@ -59,7 +59,25 @@
 }
 
 .call-card-status.attention {
-  color: #8a5a00;
+  color: #60769b;
+}
+
+.call-card-decline {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: #c83d3d;
+  font-size: 12px;
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.call-card-decline:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .call-card-status.confirmed {
@@ -306,3 +324,88 @@
 .message-composer-notice[role="alert"] {
   color: #b42318;
 }
+
+.upcoming-call-card:has(.call-card-overflow) { position: relative; padding-right: 52px; }
+.call-card-overflow { position: absolute; top: 12px; right: 12px; }
+
+.message-call-event {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 12px;
+  width: min(100%, 560px);
+  margin: 0;
+}
+.message-call-event-avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: #0e1118;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+.message-call-event-content { min-width: 0; }
+.message-call-event-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; margin: 0 0 10px; }
+.message-call-event-header strong { font-size: 13px; font-weight: 600; }
+.message-call-event-header > span, .message-call-event-header > time { color: #60769b; font-size: 11px; }
+.message-call-event-header > time { font-weight: 500; }
+.message-call-event .upcoming-call-card {
+  margin: 0;
+  max-width: 100%;
+  border: 0;
+  border-radius: 10px;
+  background: #f6f8fb;
+  padding: 16px 52px 16px 18px;
+}
+.message-call-event .home-upcoming-call-actions {
+  border-left: 2px solid #d7e0ea;
+  padding-left: 12px;
+}
+.message-call-event .home-upcoming-call-description { border: 0; padding-left: 0; }
+.message-call-event .call-card-status { margin-top: -4px; }
+
+.message-entry {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  max-width: 85%;
+  justify-self: start;
+}
+.message-entry.own {
+  justify-self: end;
+  grid-template-columns: minmax(0, 1fr);
+}
+.message-entry.own > .message-call-event-avatar { display: none; }
+.message-entry.own > .message-entry-content { grid-column: 1; grid-row: 1; }
+.message-entry.own .message-call-event-header { justify-content: flex-end; }
+.message-entry.own .message-bubble { justify-self: end; text-align: right; }
+.message-entry-content { min-width: 0; }
+.message-entry .message-bubble {
+  max-width: 100%;
+  justify-self: start;
+  padding: 10px 12px;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+.message-entry.own .message-bubble { border-color: #c4d5ff; background: #f2f7fd; }
+.message-entry .message-bubble > .message-call-event-header { margin-bottom: 0; }
+.message-entry .message-bubble > p { margin: 0; }
+
+.call-card-calendar-link {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: #60769b;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.call-card-calendar-link:disabled { opacity: 0.5; cursor: default; }

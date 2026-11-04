@@ -1875,7 +1875,9 @@ export function MessagesScreen({
   // nothing behind them — see CLAUDE.md. Rather than render invented times and
   // availability as if they were real, the live mount goes without them.
   const activeScheduledCall = isLive ? null : scheduledCalls[activeThread?.id];
-  const liveCallCards = liveCalls ? liveCalls[activeThread?.id] ?? [] : [];
+  const threadCallCards = liveCalls ? liveCalls[activeThread?.id] ?? [] : [];
+  const conversationCallCards = threadCallCards.filter((call) => call.live?.inConversation);
+  const liveCallCards = threadCallCards.filter((call) => !call.live?.inConversation);
   const scheduleOpen = liveScheduling ? liveScheduling.open : showSchedule;
   const closeSchedule = liveScheduling ? liveScheduling.onClose : () => setShowSchedule(false);
 
@@ -1987,19 +1989,26 @@ export function MessagesScreen({
             atEnd.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
           }}
         >
-          {activeThread.messages.map((message, index) => {
+          {[
+            ...activeThread.messages.map((message, index) => ({ message, index, timestamp: message.timestamp })),
+            ...conversationCallCards.map((call) => ({ call, timestamp: call.live.eventTimestamp })),
+          ].sort((a, b) => (a.timestamp ? new Date(a.timestamp).getTime() : 0) - (b.timestamp ? new Date(b.timestamp).getTime() : 0)).map(({ message, index, call }) => {
+            if (call) return (<article className="message-call-event" key={call.id}>
+            <span className="message-call-event-avatar" aria-hidden="true">TSC</span>
+            <div className="message-call-event-content">
+              <header className="message-call-event-header"><strong>Call declined</strong>{call.live.eventTime && <time>{call.live.eventTime}</time>}</header>
+              <UpcomingCallCard call={call} thread={activeThread} live={call.live} />
+            </div>
+          </article>);
             const translationKey = `${activeThread.id}-${index}`;
-            const showTranslation = Boolean(translatedMessages[translationKey]);
-            return (
-              <MessageBubble
-                message={message}
-                showTranslation={showTranslation}
-                onToggleTranslation={() => toggleTranslation(activeThread.id, index)}
-                ownName={ownName}
-                otherName={activeThread.name}
-                key={message.id ?? `${message.time}-${index}`}
-              />
-            );
+            return <MessageBubble
+              message={message}
+              showTranslation={Boolean(translatedMessages[translationKey])}
+              onToggleTranslation={() => toggleTranslation(activeThread.id, index)}
+              ownName={ownName}
+              otherName={activeThread.name}
+              key={message.id ?? `${message.time}-${index}`}
+            />;
           })}
         </div>
 
@@ -2107,17 +2116,19 @@ function MessageBubble({ message, showTranslation, onToggleTranslation, ownName,
   // Live messages say whether they are the reader's own; the design's are
   // always read by the brand.
   const isOwn = message.own ?? message.from === "brand";
+  const senderName = isOwn ? ownName ?? "Maison Rue" : otherName ?? "Factory";
+  const senderInitials = senderName.split(/\s+/).filter(Boolean).slice(0, 2).map((word) => word[0]).join("").toUpperCase();
   const hasTranslation = Boolean(message.translation);
   // Live only: a message of the reader's own that has not reached the other
   // side (held for review, or not delivered). The design has no such state.
   const status = message.status ?? null;
 
   return (
-    <article className={`${isOwn ? "message-bubble own" : "message-bubble"}${status ? ` message-bubble-${status.kind}` : ""}`}>
-      <div>
-        <span>{isOwn ? ownName ?? "Maison Rue" : otherName ?? "Factory"}</span>
-        <time>{message.time}</time>
-      </div>
+    <article className={`message-entry${isOwn ? " own" : ""}`}>
+      <span className="message-call-event-avatar" aria-hidden="true">{senderInitials}</span>
+      <div className="message-entry-content">
+      <header className="message-call-event-header"><strong>{senderName}</strong><time>{message.time}</time></header>
+      <div className={`${isOwn ? "message-bubble own" : "message-bubble"}${status ? ` message-bubble-${status.kind}` : ""}`}>
       <p>{showTranslation && hasTranslation ? message.translation : message.body || message.original}</p>
       {hasTranslation && (
         <div className="message-translation-card">
@@ -2154,6 +2165,8 @@ function MessageBubble({ message, showTranslation, onToggleTranslation, ownName,
           {status.note && <span>{status.note}</span>}
         </div>
       )}
+      </div>
+      </div>
     </article>
   );
 }
@@ -2201,6 +2214,15 @@ function VideoCallPanel({ thread, mode, setMode, live }) {
 // design draws only an accepted call with "Join call"; the prototype passes
 // none and is unchanged.
 function UpcomingCallCard({ call, thread, live }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (event) => { if (!menuRef.current?.contains(event.target) || event.key === "Escape") setMenuOpen(false); };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", close);
+    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", close); };
+  }, [menuOpen]);
   return (
     <section className="upcoming-call-card home-upcoming-call-time">
       <div className="home-upcoming-call-heading">
@@ -2210,6 +2232,10 @@ function UpcomingCallCard({ call, thread, live }) {
         </div>
         <strong>{call.brandTime}</strong>
       </div>
+      {live?.menuActions?.length > 0 && <div className="project-overflow call-card-overflow" ref={menuRef}>
+        <button className="rfq-more" type="button" aria-label="More call actions" aria-expanded={menuOpen} onClick={() => setMenuOpen((open) => !open)}>...</button>
+        {menuOpen && <div className="project-overflow-menu" role="menu">{live.menuActions.map((action) => <button key={action.label} type="button" role="menuitem" disabled={action.disabled} onClick={() => { setMenuOpen(false); action.onClick(); }}>{action.label}</button>)}</div>}
+      </div>}
       {live?.status && <p className={`call-card-status ${live.tone ?? ""}`}>{live.status}</p>}
       <div className="home-upcoming-call-actions">
         <p className="home-upcoming-call-description">{call.agenda}</p>
@@ -2218,7 +2244,7 @@ function UpcomingCallCard({ call, thread, live }) {
             <div className="call-card-actions">
               {live.actions.map((action) => (
                 <button
-                  className={`${action.primary ? "primary-btn" : "secondary-btn"} compact-btn`}
+                  className={action.destructive ? "call-card-decline" : action.textLink ? "call-card-calendar-link" : `${action.primary ? "primary-btn" : "secondary-btn"} compact-btn`}
                   type="button"
                   disabled={action.disabled}
                   onClick={action.onClick}
@@ -5048,7 +5074,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
               <div className="factory-profile-cert-list">
                 {view.trust.map((item) => (
                   <div className="factory-profile-cert" key={item.name}>
-                    <strong>{item.name}</strong>
+                    {item.document && live?.onPreviewDocument ? <button className="profile-document-link" type="button" onClick={() => live.onPreviewDocument(item.document)}>{item.name}</button> : <strong>{item.name}</strong>}
                     <span className={item.verified ? "verified" : undefined}>{item.status}</span>
                   </div>
                 ))}
