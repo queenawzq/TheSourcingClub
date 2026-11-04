@@ -1691,8 +1691,9 @@ async function main() {
     const { data: openQuote } = await db.from("quotes").select("id")
       .eq("rfq_id", publishedRfq.id).eq("factory_org_id", factoryOrg.id).eq("status", "submitted").single();
     await page.goto(`${APP}/rfqs/${publishedRfq.id}/quotes/${openQuote.id}/contract`);
-    await waitFor(page, '[data-testid="contract-blocked"]', 25000);
-    const contractRefusal = await page.locator('[data-testid="contract-blocked"]').innerText();
+    // Said beside the greyed-out button, in the bottom bar.
+    await waitFor(page, ".bottom-bar .bottom-meta", 25000);
+    const contractRefusal = await page.locator(".bottom-bar .bottom-meta").innerText();
     check(/only someone with quote flow/i.test(contractRefusal) && contractRefusal.includes(brandName),
       `the contract says who can choose a quote (${contractRefusal.trim()})`);
     const awardButton = await page.evaluate(() => [...document.querySelectorAll(".bottom-bar .primary-btn")]

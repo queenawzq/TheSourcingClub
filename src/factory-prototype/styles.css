@@ -8268,6 +8268,14 @@ body:has(.factory-onboarding-page) {
   padding: var(--button-padding);
 }
 
+/* Live only: why Edit and Withdraw are greyed out, on a row of its own under
+   the header (the header's own p takes the subtitle area). */
+.factory-rfq-read-header .factory-rfq-read-blocked {
+  grid-area: auto;
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+}
+
 .factory-review-header-top {
   display: flex;
   align-items: center;

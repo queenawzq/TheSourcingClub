@@ -151,6 +151,9 @@ function paymentLine(payment, isFactory, kind) {
   }
 }
 
+/** Stripe's failure reasons end in a full stop; a sentence joined after one must not double it. */
+const withoutFullStop = (text) => text.replace(/[.\s]+$/, "");
+
 /** The sentence under a step's title, from its own state and its payment's. */
 function statusLine(milestone, { isFactory, canFund, canApprove, org, factoryName, posted }) {
   const payment = milestone.payment;
@@ -163,7 +166,7 @@ function statusLine(milestone, { isFactory, canFund, canApprove, org, factoryNam
   if (["due", "processing", "failed", "sent"].includes(payment?.state) && milestone.state !== "pending") {
     // Without Release funds there is no "Fund milestone" (actionFor): say why.
     if (!isFactory && !canFund && (payment.state === "due" || payment.state === "failed")) {
-      return `${money}. Only someone with Release funds at ${org?.name || "your company"} can pay for it`;
+      return `${withoutFullStop(money)}. Only someone with Release funds at ${org?.name || "your company"} can pay for it`;
     }
     return money;
   }
@@ -194,7 +197,7 @@ function statusLine(milestone, { isFactory, canFund, canApprove, org, factoryNam
     if (missing.length) {
       const verb = kind === "fund" ? "pay for" : "approve";
       const who = `Only someone with ${permissionWords(missing)} at ${org?.name || "your company"} can ${verb} it`;
-      return money ? `${money}. ${who}` : `Upcoming. ${who}`;
+      return money ? `${withoutFullStop(money)}. ${who}` : `Upcoming. ${who}`;
     }
   }
   return money;

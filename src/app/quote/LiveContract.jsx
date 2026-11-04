@@ -55,6 +55,11 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
         : !isOwner
           ? `Only someone with Quote flow at ${orgName || "your company"} can choose a quote. An owner can give it to you in Settings.`
           : null;
+  // Missing Quote flow is said beside the greyed-out button, in the bottom
+  // bar's own neutral text; the other reasons leave nothing to press and stay
+  // in the banner.
+  const permissionBlock = Boolean(blocked) && Boolean(found) && state.rfq.status === "open"
+    && found.raw.status === "submitted" && !isOwner;
 
   async function award() {
     if (busy || blocked || attachmentLock.current || files === null) return;
@@ -130,8 +135,9 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
       busy={busy || savingAttachments}
       // Missing Quote flow greys the button out (the reason is the line
       // below); any other block leaves nothing to press at all.
-      primaryLabel={(blocked && isOwner) || files === null ? "" : busy ? "Creating production steps…" : "Create production steps"}
+      primaryLabel={(blocked && !permissionBlock) || files === null ? "" : busy ? "Creating production steps…" : "Create production steps"}
       primaryDisabled={Boolean(blocked)}
+      centerText={permissionBlock ? blocked : ""}
       rail={found ? {
         vendor: {
           initials: found.view.initials,
@@ -141,7 +147,7 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
         },
       } : null}
     >
-      {blocked && <p className="composer-error" role="status" data-testid="contract-blocked">{blocked}</p>}
+      {blocked && !permissionBlock && <p className="composer-error" role="status" data-testid="contract-blocked">{blocked}</p>}
       {found && (
         <ContractScreen
           terms={{ ...found.view, title: state.request.title, brief: state.request.brief }}

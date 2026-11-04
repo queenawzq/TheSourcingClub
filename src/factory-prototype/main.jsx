@@ -5899,7 +5899,9 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote, customTabs 
 
 // `onMessage` is live only: it opens this vendor's conversation with the
 // brand. The prototype passes none and the status card is exactly as drawn.
-export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, backLabel = "‹ Back to RFQs", onEdit, onWithdraw, quote, status, priceTotal, onMessage }) {
+// quoteBlocked (live only): why this person cannot change the quote; Edit and
+// Withdraw grey out and the reason is shown under them.
+export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, backLabel = "‹ Back to RFQs", onEdit, onWithdraw, quote, status, priceTotal, onMessage, quoteBlocked }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-rfq-read-page">
       <div className="factory-submit-content">
@@ -5915,13 +5917,14 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
           {onWithdraw ? (
             <div className="factory-rfq-read-actions">
               {onEdit !== null && (
-                <button className="secondary-btn" type="button" onClick={onEdit}>Edit quote</button>
+                <button className="secondary-btn" type="button" onClick={onEdit} disabled={Boolean(quoteBlocked) || undefined}>Edit quote</button>
               )}
-              <button className="secondary-btn" type="button" data-testid="withdraw-quote" onClick={onWithdraw}>Withdraw quote</button>
+              <button className="secondary-btn" type="button" data-testid="withdraw-quote" onClick={onWithdraw} disabled={Boolean(quoteBlocked) || undefined}>Withdraw quote</button>
             </div>
           ) : onEdit !== null && (
-            <button className="secondary-btn factory-rfq-edit-btn" type="button" onClick={onEdit}>Edit quote</button>
+            <button className="secondary-btn factory-rfq-edit-btn" type="button" onClick={onEdit} disabled={Boolean(quoteBlocked) || undefined}>Edit quote</button>
           )}
+          {quoteBlocked && (onWithdraw || onEdit !== null) && <p className="muted factory-rfq-read-blocked" data-testid="quote-blocked">{quoteBlocked}</p>}
         </header>
 
         <div className="factory-submit-layout factory-rfq-read-layout">

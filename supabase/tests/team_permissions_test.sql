@@ -15,7 +15,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(94);
+select plan(95);
 
 insert into auth.users (id, email, raw_user_meta_data) values
   ('a2400000-0000-0000-0000-000000000001', 'p24-owner@example.com',     '{"name":"P24 Owner"}'),
@@ -239,6 +239,11 @@ select throws_ok(
   $$select public.withdraw_quote('a2400000-0000-0000-0000-0000000002a1')$$,
   '42501', null,
   'a factory member without RFQ flow CANNOT withdraw a quote');
+
+select throws_ok(
+  $$select public.revise_quote('a2400000-0000-0000-0000-0000000002a1')$$,
+  '42501', 'You need the RFQ flow permission at P24 Factory to do this. An owner can give it to you in Settings.',
+  'a factory member without RFQ flow CANNOT revise a sent quote (Edit quote)');
 
 reset role;
 set local request.jwt.claims = '{"sub":"a2400000-0000-0000-0000-000000000009","email":"p24-fquoter@example.com","role":"authenticated"}';
