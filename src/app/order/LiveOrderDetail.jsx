@@ -504,6 +504,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       ? { canRemind: running && waitingOnOther(milestone, true, posted), reminderReason: "" }
       : brandReminderState(milestone, { running, posted, current: milestone.id === order.current_milestone_id });
     const next = actionFor(milestone, { ...viewer, posted });
+    const noUpdatePermission = isFactory && !viewer.canUpdate && running
+      && milestone.kind !== "payment_only" && !["complete", "cancelled"].includes(milestone.state);
     const fileCount = stepUpdates.reduce((sum, update) => sum + (update.documents?.length ?? 0), 0);
     return {
       id: milestone.id,
@@ -522,6 +524,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       // someone starts work unpaid.
       meta: [
         statusLine(milestone, { ...viewer, posted }),
+        // Add update stays on the factory's row, greyed out (Queena, Nov 4);
+        // this is the reason a touch screen can read.
+        noUpdatePermission ? `Only someone with Add update at ${org?.name || "your company"} can post updates on it` : null,
         milestone.due_on ? `due ${day(milestone.due_on)}` : null,
       ].filter(Boolean).join(" · "),
       ...(hasDispute ? { dueStatus: "Dispute opened", dueTone: "danger" } : dueBadge(milestone)),
@@ -547,6 +552,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         && milestone.state !== "complete"
         && milestone.state !== "cancelled"
         && milestone.kind !== "payment_only",
+      updateDisabledReason: noUpdatePermission ? "Needs the Add update permission" : "",
       canDispute: running && !hasDispute && (milestone.state === "active" || milestone.state === "submitted"),
       ...next,
       // Approval ends the work, not its history. Keep existing comments and
