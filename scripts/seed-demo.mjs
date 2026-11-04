@@ -503,6 +503,24 @@ must(await adminUser.client.rpc("admin_review_decision_with_tier", {
   target_org: returnedFactoryOrg.id, decision: "needs_information", note: RETURNED_NOTE, risk: null, tier: null,
 }), "ask the returned factory for more information");
 
+// A company staff can review but nobody can be emailed about: no members, so
+// a decision on it shows "nobody at … has an email address we can send to".
+// A brand, so it never appears in anyone's Browse. No login, so the previous
+// seed's one goes by its slug.
+must(await admin.from("orgs").delete().eq("slug", "demo-no-contact"), "clear the company with no members");
+{
+  const noContactOrg = must(await admin.from("orgs").insert({
+    type: "brand", name: "Northgate Goods", slug: "demo-no-contact",
+  }).select("id").single(), "a company with no members");
+  must(await admin.from("brand_profiles").upsert({
+    org_id: noContactOrg.id,
+    legal_name: "Northgate Goods Ltd",
+    hq_location: "Leeds, UK",
+    onboarding_completed_at: new Date().toISOString(),
+    verification_status: "pending",
+  }), "its brand profile");
+}
+
 // One company a test run would have left behind, so Admin → Settings → Test
 // data has something to find on a fresh test database. Two hours old (the
 // cleanup leaves anything younger alone) and with no members, like the ones
@@ -1177,6 +1195,7 @@ done. Every login uses the password "${PASSWORD}".
   page (with an OpenRouter key) should point at its legal name, website, registration and expired GOTS;
   "Request more information" → "Suggest with AI" fills the note, which staff edit before sending
   (without an OpenRouter key the note is built from the checks, and says so).
+  Northgate Goods has no members: a decision on it says nobody can be emailed.
   Admin → Settings → Test data finds "Atelier E2E <number>" (a leftover test company) and deletes it.
   Admin → Settings → "Run daily jobs now" reminds ${LOGINS.factory.name} that its capacity is a
   month old${dueSoonStep ? ` and that "${dueSoonStep.title}" is due in three days` : ""} (bell and email, once)${unfundedStep ? `,
