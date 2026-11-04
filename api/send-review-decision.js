@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { EMAIL_LOGO_URL } from "./_email-assets.js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 // Vercel compiles api/*.js as CommonJS; import the ESM email builder lazily.
 const loadReviewEmail = () => import("../scripts/generate-account-approved-email.mjs");
@@ -52,7 +53,7 @@ export async function messageFor(row) {
       recipientName: row.recipient_name,
       locale: row.locale,
       loginUrl,
-      logoUrl: `${appUrl()}/assets/logo.png`,
+      logoUrl: EMAIL_LOGO_URL,
       supportEmail: REPLY_TO,
       companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
       note: row.note,
@@ -65,7 +66,7 @@ export async function messageFor(row) {
       recipientName: row.recipient_name,
       locale: row.locale,
       loginUrl,
-      logoUrl: `${appUrl()}/assets/logo.png`,
+      logoUrl: EMAIL_LOGO_URL,
       supportEmail: REPLY_TO,
       companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
       note: row.note,

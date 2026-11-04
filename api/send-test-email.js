@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { EMAIL_LOGO_URL } from "./_email-assets.js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { messageFor } from "./send-review-decision.js";
 
@@ -61,7 +62,7 @@ async function sampleTeamInvite(name) {
     expiresAt: new Date(Date.now() + 14 * 86400000).toISOString(),
   }, {
     appUrl: app,
-    logoUrl: `${app}/assets/logo.png`,
+    logoUrl: EMAIL_LOGO_URL,
     supportEmail: REPLY_TO,
     companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
   });
@@ -83,7 +84,7 @@ async function sampleNotification(locale, name) {
     body: "$18.40 a unit for 300 units, 28 days after sample approval.",
   }, {
     appUrl: appUrl(),
-    logoUrl: `${appUrl()}/assets/logo.png`,
+    logoUrl: EMAIL_LOGO_URL,
     supportEmail: REPLY_TO,
     companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
   });
@@ -93,7 +94,7 @@ function sampleOnboarding(companyName, path) {
   return {
     companyName,
     dashboardUrl: `${appUrl()}${path}`,
-    logoUrl: `${appUrl()}/assets/logo.png`,
+    logoUrl: EMAIL_LOGO_URL,
     supportEmail: REPLY_TO,
     companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
   };
