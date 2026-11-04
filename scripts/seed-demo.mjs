@@ -714,6 +714,21 @@ await sendQuote(secondFactory, secondFactoryOrg, shirting, {
   answer: "For three months, with a deposit on the fabric.",
 });
 
+// Open to every vendor and quoted by none: the factory's RFQ details page and
+// its Send quote only show on a request it has not quoted yet.
+await publishRequest({
+  title: "Linen camp shirt, SS27",
+  brief: "200 men's camp-collar shirts in washed linen. Fit sample before bulk.",
+  quantity: 200,
+  colours: [["Natural", 120], ["Olive", 80]],
+  material: "Washed linen, 150 gsm",
+  samples: "Fit sample before bulk",
+  extra: "Corozo buttons. We supply the woven labels.",
+  month: "2027-04-01",
+  tags: [["product_category", "tops"], ["region", "portugal"]],
+  question: "Can you dye the olive to our lab dip?",
+});
+
 // A conversation, so the request card's third metric is a real number.
 const thread = must(await brand.client.rpc("open_rfq_thread", { target_rfq: shirting.id, factory_org: factoryOrg.id }), "thread");
 const threadId = thread?.id ?? thread;
