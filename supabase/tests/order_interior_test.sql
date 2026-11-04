@@ -18,6 +18,18 @@ create extension if not exists pgtap with schema extensions;
 
 select plan(35);
 
+-- Probe successful approvals without advancing the shared fixture schedule.
+create function pg_temp.probe_approval(step_id uuid) returns void language plpgsql as $$
+begin
+  begin
+    perform public.approve_milestone(step_id, null);
+    raise exception using errcode = 'Z0001', message = 'rollback successful probe';
+  exception when sqlstate 'Z0001' then
+    null;
+  end;
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Fixtures: an awarded order the brand has confirmed, so its first step is open
 -- ---------------------------------------------------------------------------
@@ -138,8 +150,8 @@ select throws_ok(
 -- Asked before the funding, so the brand hears what it is waiting for.
 select throws_ok(
   $$select public.approve_milestone((select first_step from p10), null)$$,
-  '22023', 'P10 Factory has not posted an update on "Fit sample" yet. You can approve it once they do',
-  'with only the brand''s own comment on it, an open step has nothing to approve yet'
+  '22023', 'fund "Fit sample" first: TSC pays the factory from the money it holds when you approve',
+  'an unfunded paying step still cannot be approved'
 );
 
 reset role;
@@ -258,9 +270,10 @@ reset role;
 set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 
-select lives_ok(
+select throws_ok(
   $$select public.remind_milestone((select first_step from p10))$$,
-  'the brand can remind the factory about an open step'
+  '22023', NULL,
+  'a step with a factory update needs no factory reminder'
 );
 
 select throws_ok(
@@ -283,8 +296,8 @@ select is(
        and kind = 'milestone_reminder'
        and subject_id = (select first_step from p10)
        and order_id = (select order_id from p10)),
-  1,
-  'exactly one reminder reached the factory, carrying the order so its link opens'
+  0,
+  'no unnecessary reminder is sent for a step with a factory update'
 );
 
 -- ---------------------------------------------------------------------------
@@ -354,10 +367,9 @@ delete from public.milestone_updates where id in (select id from p10_factory_pos
 set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 
-select throws_ok(
-  $$select public.approve_milestone((select first_step from p10), null)$$,
-  '22023', NULL,
-  'a funded paying step with only the brand''s comment cannot be approved: nothing the factory did is in it'
+select lives_ok(
+  $$select pg_temp.probe_approval((select first_step from p10))$$,
+  'an eligible brand can approve without a factory update'
 );
 
 reset role;
@@ -369,10 +381,9 @@ set local role authenticated;
 
 select public.post_milestone_update((select first_step from p10), 'Looks fine to me.', '{}');
 
-select throws_ok(
-  $$select public.approve_milestone((select first_step from p10), null)$$,
-  '22023', NULL,
-  'a person in both companies cannot approve a step on the strength of their own post'
+select lives_ok(
+  $$select pg_temp.probe_approval((select first_step from p10))$$,
+  'an eligible brand can approve without a factory update'
 );
 
 reset role;
@@ -426,10 +437,9 @@ grant select on p10_later to public;
 set local request.jwt.claims = '{"sub":"ca000000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 
-select throws_ok(
-  $$select public.approve_milestone((select bulk_step from p10_later), null)$$,
-  '22023', NULL,
-  'an update-only step the factory has posted nothing on cannot be approved'
+select lives_ok(
+  $$select pg_temp.probe_approval((select bulk_step from p10_later))$$,
+  'an eligible brand can approve without a factory update'
 );
 
 reset role;
@@ -446,10 +456,9 @@ select lives_ok(
   'once the factory has posted, the brand completes the update-only step'
 );
 
-select throws_ok(
-  $$select public.approve_milestone((select qc_step from p10_later), null)$$,
-  '22023', NULL,
-  'an approval-only step the factory has posted nothing on cannot be approved'
+select lives_ok(
+  $$select pg_temp.probe_approval((select qc_step from p10_later))$$,
+  'an eligible brand can approve without a factory update'
 );
 
 reset role;

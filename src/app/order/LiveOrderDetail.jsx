@@ -56,20 +56,10 @@ import {
 import { dateFrom } from "../../lib/dates.js";
 import "../profile/profile.css";
 
-/**
- * Whether the brand can approve this step now. The factory's update is what
- * the brand approves from: there is no separate "send for approval" on the
- * designed screens, so an open step is approvable once the factory has posted
- * on it (approve_milestone checks the same). A step sent for approval the old
- * way still is.
- */
-const approvable = (milestone, posted) =>
+/** Approval depends on step state and funding, never on posted updates. */
+const approvable = (milestone) =>
   milestone.kind !== "payment_only"
-  && (milestone.state === "submitted" || (milestone.state === "active" && posted));
-
-/** An open step the factory has not posted on yet: nothing to approve. */
-const awaitingFirstUpdate = (milestone, posted) =>
-  milestone.kind !== "payment_only" && milestone.state === "active" && !posted;
+  && ["active", "submitted"].includes(milestone.state);
 
 /**
  * What this step is waiting for, and from whom.
@@ -89,28 +79,15 @@ function actionFor(milestone, { isFactory, isOwner, posted, factoryName }) {
   if (payment?.state === "due" || payment?.state === "failed") {
     return isOwner ? { action: "Fund milestone", tone: "primary", kind: "fund" } : none;
   }
-  // approve_milestone refuses a paid step until its money is held.
-  if (payment && milestone.kind === "approval_and_payment" && payment.state !== "confirmed") return none;
-  if (approvable(milestone, posted)) {
-    // approve_milestone refuses a member on a paying step; say so on the row
-    // instead of offering a dialog that can only fail.
+  if (approvable(milestone)) {
     if (milestone.kind === "approval_and_payment" && !isOwner) return none;
+    const awaitingFunding = milestone.kind === "approval_and_payment" && payment?.state !== "confirmed";
     return {
       action: milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve",
       tone: "primary",
       kind: "approve",
-    };
-  }
-  // Open, but the factory has posted nothing: approve_milestone refuses it,
-  // so the button stays in place, disabled, and the status line says why.
-  if (awaitingFirstUpdate(milestone, posted)) {
-    if (milestone.kind === "approval_and_payment" && !isOwner) return none;
-    return {
-      action: milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve",
-      tone: "primary",
-      kind: "approve",
-      actionDisabled: true,
-      actionDisabledReason: `Available once ${factoryName || "the factory"} posts an update`,
+      actionDisabled: awaitingFunding,
+      actionDisabledReason: awaitingFunding ? "Available once payment is confirmed" : undefined,
     };
   }
   // Keep the next action visible on every upcoming step. The database still
