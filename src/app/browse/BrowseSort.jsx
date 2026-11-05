@@ -5,7 +5,7 @@
  */
 import React, { useEffect, useRef, useState } from "react";
 
-export default function BrowseSort({ options, value, onChange }) {
+export default function BrowseSort({ options, value, onChange, ariaLabel = "Sort vendors" }) {
   const [open, setOpen] = useState(false);
   const box = useRef(null);
   const current = options.find((option) => option.key === value) ?? options[0];
@@ -38,7 +38,7 @@ export default function BrowseSort({ options, value, onChange }) {
         Sort: {current.label}
       </button>
       {open && (
-        <div className="browse-sort-menu" role="menu" aria-label="Sort vendors">
+        <div className="browse-sort-menu" role="menu" aria-label={ariaLabel}>
           {options.map((option) => (
             <button
               type="button"

@@ -12,6 +12,7 @@
  *   demo-factory@example.com      the factory that quoted and runs the orders
  *   demo-factory-two@example.com  a second factory, with a competing quote
  *   demo-factory-new@example.com  a factory waiting for verification
+ *   demo-brand-two@example.com    a brand with five open requests, nothing paid
  *   demo-admin@example.com        a platform admin, for /admin.html
  *
  * All use the password "demo password 8". The list lives in
@@ -119,12 +120,13 @@ const secondFactory = await demoUser(LOGINS.secondFactory);
 const newFactory = await demoUser(LOGINS.newFactory);
 const returnedFactory = await demoUser(LOGINS.returnedFactory);
 const newBrand = await demoUser(LOGINS.newBrand);
+const secondBrand = await demoUser(LOGINS.secondBrand);
 const tradingCompany = await demoUser(LOGINS.tradingCompany);
 const adminUser = await demoUser(LOGINS.admin);
 const brandMember = await demoUser(LOGINS.brandMember);
 const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
-const demoUsers = { brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, tradingCompany, otherDomainFactory, admin: adminUser };
+const demoUsers = { brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -645,23 +647,23 @@ for (const [file, name, caption] of [
  * a request ("Reorder style") and reopening a draft both carry every one of
  * these, so a bare request would show a tester almost nothing.
  */
-async function publishRequest({ title, brief, quantity, colours, material, samples, extra, month, tags, question }) {
-  const id = must(await brand.client
+async function publishRequest({ title, brief, quantity, colours, material, samples, extra, month, tags, question, price = [1800, 2600], by = { client: brand.client, org: brandOrg } }) {
+  const id = must(await by.client
     .from("rfqs")
-    .insert({ brand_org_id: brandOrg.id, status: "draft", visibility: "open_to_all" })
+    .insert({ brand_org_id: by.org.id, status: "draft", visibility: "open_to_all" })
     .select("id")
     .single(), "draft").id;
 
-  must(await brand.client.from("rfq_colour_splits").insert(
+  must(await by.client.from("rfq_colour_splits").insert(
     colours.map(([colour, units], sort) => ({ rfq_id: id, colour, quantity: units, sort })),
   ), "colour breakdown");
-  must(await brand.client.from("rfq_questions").insert({ rfq_id: id, prompt: question, sort: 0 }), "question");
+  must(await by.client.from("rfq_questions").insert({ rfq_id: id, prompt: question, sort: 0 }), "question");
   const termIds = await Promise.all(tags.map(([kind, slug]) => termId(kind, slug)));
-  must(await brand.client.from("taxonomy_links").insert(
-    termIds.map((term) => ({ subject_type: "rfq", subject_id: id, term_id: term, org_id: brandOrg.id })),
+  must(await by.client.from("taxonomy_links").insert(
+    termIds.map((term) => ({ subject_type: "rfq", subject_id: id, term_id: term, org_id: by.org.id })),
   ), "request tags");
 
-  must(await brand.client.from("rfqs").update({
+  must(await by.client.from("rfqs").update({
     title,
     brief,
     quantity_total: quantity,
@@ -670,8 +672,8 @@ async function publishRequest({ title, brief, quantity, colours, material, sampl
     additional_details: extra,
     target_delivery_month: month,
     sourcing_responsibility_term_id: await termId("sourcing_responsibility", "mixed"),
-    target_unit_price_min_cents: 1800,
-    target_unit_price_max_cents: 2600,
+    target_unit_price_min_cents: price[0],
+    target_unit_price_max_cents: price[1],
     requires_sample: true,
     quote_deadline: new Date(Date.now() + 12 * 864e5).toISOString(),
     status: "open",
@@ -934,6 +936,75 @@ const cancelled = await award(await sendQuote(factory, factoryOrg, tote, {
 }));
 must(await brand.client.rpc("propose_cancellation", { target_order: cancelled.id, reason: "The season's tote was dropped." }), "propose cancelling");
 must(await factory.client.rpc("accept_cancellation", { target_order: cancelled.id }), "accept the cancellation");
+
+// Open requests from a second brand, for the vendors' Browse RFQs: each filter
+// group there (category, price, quantity, region, payment, timeline,
+// certification) needs requests that differ, and "Payment verified" needs a
+// brand that has paid nothing. Next month keeps "Bulk in 60 days" true whenever
+// this runs.
+console.log("second brand's open requests");
+const secondBrandOrg = must(await secondBrand.client.rpc("create_org", { org_name: LOGINS.secondBrand.name, org_kind: "brand" }), "create second brand org");
+must(await admin.from("brand_profiles").upsert({
+  org_id: secondBrandOrg.id,
+  hq_location: "Toronto, Canada",
+  onboarding_completed_at: new Date().toISOString(),
+  verification_status: "verified",
+}), "second brand profile");
+const seedNow = new Date();
+const nextMonth = new Date(Date.UTC(seedNow.getUTCFullYear(), seedNow.getUTCMonth() + 1, 1)).toISOString().slice(0, 10);
+const openRequests = [
+  {
+    title: "Selvedge denim jacket, AW27",
+    brief: "800 unisex trucker jackets in 13oz selvedge denim, with a wash development round.",
+    quantity: 800,
+    price: [4500, 7000],
+    month: nextMonth,
+    tags: [["product_category", "outerwear"], ["service", "full-package"], ["region", "china"]],
+  },
+  {
+    title: "Recycled swim set",
+    brief: "150 two-piece swim sets in recycled nylon, printed lining.",
+    quantity: 150,
+    price: [1200, 1600],
+    month: null,
+    tags: [["product_category", "swimwear"], ["certification", "grs"], ["region", "portugal"]],
+  },
+  {
+    title: "Silk slip dress capsule",
+    brief: "120 bias-cut slip dresses in sand-washed silk. Any region with a strong sample room.",
+    quantity: 120,
+    price: [9500, 14000],
+    month: "2027-06-01",
+    tags: [["product_category", "dresses-jumpsuits"]],
+  },
+  {
+    title: "Suede card wallets",
+    brief: "400 suede card wallets with a debossed logo.",
+    quantity: 400,
+    price: [4000, 6000],
+    month: "2027-05-01",
+    tags: [["product_category", "accessories"], ["region", "turkey"]],
+  },
+  {
+    title: "Organic baby rompers",
+    brief: "350 organic cotton rompers with snap closures.",
+    quantity: 350,
+    price: [1800, 2600],
+    month: nextMonth,
+    tags: [["product_category", "childrenswear-baby"], ["certification", "gots"], ["region", "china"]],
+  },
+];
+for (const request of openRequests) {
+  await publishRequest({
+    ...request,
+    by: { client: secondBrand.client, org: secondBrandOrg },
+    colours: [["Natural", request.quantity]],
+    material: "As in the brief.",
+    samples: "Fit sample before bulk.",
+    extra: "",
+    question: "What is your earliest start date?",
+  });
+}
 
 // Two running orders with a cancellation waiting on an answer, so both
 // sides' cancel banners can be seen without clicking one into being: on the
@@ -1199,6 +1270,7 @@ done. Every login uses the password "${PASSWORD}".
   new factory     ${LOGINS.newFactory.email}   (waiting for verification)
   returned factory ${LOGINS.returnedFactory.email}   (asked for more information, a long note)
   new brand       ${LOGINS.newBrand.email}   (no requests yet: recommended factories)
+  second brand    ${LOGINS.secondBrand.email}   (five open requests, nothing paid: Browse RFQs' filters)
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory
   other domain    ${LOGINS.otherDomainFactory.email}   (invite it from another demo company: "already has an account")
   admin           ${LOGINS.admin.email}   ${app.replace("app.html", "admin.html")}
