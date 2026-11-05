@@ -55,8 +55,8 @@ export function earningsSummaryFor(earnings, balance, client) {
 
 /**
  * Where one earning stands, in the factory's words. Released through Stripe
- * is in the balance only once Stripe has processed it; released by bank went
- * to the factory's bank, never to a balance.
+ * is in the balance only once Stripe has processed it; released by bank or
+ * Payoneer went to that account, never to a balance.
  *
  * `balance` is Stripe's answer: undefined while it is still being read (the
  * list draws before it arrives, and said "Credited to balance" for two
@@ -65,6 +65,7 @@ export function earningsSummaryFor(earnings, balance, client) {
  */
 export function earningStatus(row, balance) {
   if (row.state !== "released") return row.release_requested_at ? "Pending" : "Awaiting approval";
+  if (row.payoneer_payouts) return "Paid by Payoneer";
   if (!row.stripe_transfer_id) return "Paid by bank transfer";
   if (balance === undefined) return "Checking…";
   if (balance === null) return "Sent to your Stripe account";

@@ -2301,6 +2301,62 @@ async function main() {
     check(paidOut.state === "released", "the payment is paid out");
     check(Boolean(paidOut.released_by), "and stamped with which member of staff did it");
 
+    // ================= PAYONEER, BY HAND =================
+    // Needs the demo data (Kowloon, seed-demo.mjs). Nothing calls Payoneer.
+    console.log("\nPAYONEER, BY HAND");
+    const kowloonOwed = await page.evaluate(() => [...document.querySelectorAll('[data-section="payout"] tr')]
+      .some((row) => row.innerText.includes("kowloon-payouts@example.com")));
+    if (!kowloonOwed) {
+      console.log("  (no demo data on this database: skipped)");
+    } else {
+      const payoneerRow = page.locator('[data-section="payout"] tr', { hasText: "kowloon-payouts@example.com" }).first();
+      check(await payoneerRow.locator('[data-testid="release-payoneer"]').isDisabled(),
+        "staff cannot mark a Payoneer payout without its payment ID");
+      const payoneerId = `E2E-PO-${stamp}`;
+      await page.locator('[data-testid="payoneer-payment-id"]').first().fill(payoneerId);
+      await page.locator('[data-testid="release-payoneer"]').first().click();
+      await page.locator('[data-testid="release-payment-confirm"]').first().click();
+      await page.waitForTimeout(3500);
+      const { data: recorded } = await db.from("payoneer_payouts")
+        .select("paid_to_email").eq("payoneer_payment_id", payoneerId).single();
+      check(recorded?.paid_to_email === "kowloon-payouts@example.com", "the payout is recorded with the email paid");
+      await record(page, "Paid out by Payoneer", "staff pay from TSC's Payoneer account, then record the ID");
+
+      await signOutFully(page);
+      // A demo login, so the demo password rather than this run's.
+      await page.goto(portalUrl("factory"));
+      await waitFor(page, 'input[name="email"]', 30000);
+      await page.locator('input[name="email"]').first().fill("demo-trading@example.com");
+      await page.locator('input[name="password"]').first().fill("demo password 8");
+      await clickButton(page, "log in");
+      await page.waitForTimeout(4000);
+      await page.goto(`${APP}/payout`);
+      await waitFor(page, '[data-testid="payout-balance"]', 25000);
+      check(/by payoneer/i.test(await page.locator('[data-testid="payout-balance"]').innerText()),
+        "the factory's card says it is paid by Payoneer");
+      await waitFor(page, ".payout-transaction-row", 25000);
+      const payoneerEarnings = await page.locator(".payout-transaction-table").innerText();
+      check(payoneerEarnings.includes(payoneerId) && /paid by payoneer/i.test(payoneerEarnings),
+        "its earnings say so, with the reference");
+
+      await page.locator('[data-testid="add-payout-method"]').click();
+      await clickButton(page, "add payout method");
+      await page.locator('[data-testid="payout-use-payoneer"]').click();
+      await page.locator('[data-field="payout_payoneer_email"]').fill("e2e-second@example.com");
+      await page.locator('[data-field="payout_payoneer_email_confirm"]').fill("e2e-typo@example.com");
+      check(await page.locator('[data-testid="save-payout"]').isDisabled(), "two different emails cannot be saved");
+      await page.locator('[data-field="payout_payoneer_email_confirm"]').fill("e2e-second@example.com");
+      await page.locator('[data-testid="save-payout"]').click();
+      await page.waitForTimeout(2500);
+      const { data: added } = await db.from("factory_payout_accounts")
+        .select("id, method").eq("payoneer_email", "e2e-second@example.com").single();
+      check(added?.method === "payoneer", "a second Payoneer account is saved");
+      await db.from("factory_payout_accounts").delete().eq("id", added.id);
+
+      await signOutFully(page);
+      await signIn(page, adminEmail, "Admin paying out");
+    }
+
     // ================= AND THE FACTORY SEES IT PAID =================
     console.log("\nAND THE FACTORY SEES IT PAID");
     await signOutFully(page);

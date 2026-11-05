@@ -1,7 +1,8 @@
 /**
- * A bank-paid factory's bank accounts (factory_payout_accounts): where Stripe
- * cannot pay out (mainland China, Hong Kong…), staff pay each released
- * earning by bank to the account marked is_primary, "the one TSC pays".
+ * A manually paid factory's payout methods (factory_payout_accounts): where
+ * Stripe cannot pay out (mainland China, Hong Kong…), staff pay each released
+ * earning by hand to the one marked is_primary, "the one TSC pays": a bank
+ * account, or a Payoneer account given by its email. Nothing calls Payoneer.
  *
  * A factory may keep more than one (John, 2026-10-29): Add always saves a new
  * row, never overwriting another; the first one saved is the one TSC pays,
@@ -15,7 +16,7 @@ import { useCallback, useState } from "react";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import { payoutRemovalError } from "./StripePayoutCard.jsx";
 
-const COLUMNS = "id, is_primary, bank_name, account_name, account_number_last4, swift, iban, bank_country, instructions, created_at";
+const COLUMNS = "id, is_primary, method, payoneer_email, bank_name, account_name, account_number_last4, swift, iban, bank_country, instructions, created_at";
 
 export const blankPayout = (row) => ({
   bank_name: row?.bank_name ?? "",
@@ -24,7 +25,16 @@ export const blankPayout = (row) => ({
   swift: row?.swift ?? "",
   iban: row?.iban ?? "",
   instructions: row?.instructions ?? "",
+  method: row?.method ?? "bank",
+  payoneer_email: row?.payoneer_email ?? "",
+  // Typed twice, never stored: a mistyped address pays a stranger. An email
+  // being edited starts confirmed, so only a change has to be typed again.
+  payoneer_email_confirm: row?.payoneer_email ?? "",
 });
+
+/** The form of 20261104300100's check: what the database will accept. */
+export const payoneerEmail = (value) => (value ?? "").trim().toLowerCase();
+export const validPayoneerEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payoneerEmail(value)) && payoneerEmail(value).length <= 254;
 
 export function useManualPayouts(orgId) {
   const [accounts, setAccounts] = useState(null);
@@ -64,17 +74,31 @@ export function useManualPayouts(orgId) {
     setForm((current) => ({ ...current, [key]: event.target.value }));
   };
 
+  /** Bank or Payoneer, in the setup dialog. An error from the other one goes with it. */
+  const setMethod = (method) => {
+    setSaved(false);
+    setForm((current) => ({ ...current, method }));
+  };
+
   // The card passes the payout country it was set up for, which the form
   // itself has no field for. Throws, for the card to say in its dialog.
   async function save(details = {}) {
-    if (!form.bank_name.trim() || !form.account_name.trim()) {
+    const editing = (accounts ?? []).find((account) => account.id === editingId) ?? null;
+    const { method, payoneer_email, payoneer_email_confirm, ...bank } = form;
+    const payoneer = method === "payoneer";
+    if (payoneer) {
+      if (!validPayoneerEmail(payoneer_email)) throw new Error("Enter a valid email address for your Payoneer account.");
+      if (payoneerEmail(payoneer_email) !== payoneerEmail(payoneer_email_confirm)) throw new Error("The two email addresses don't match.");
+    } else if (!form.bank_name.trim() || !form.account_name.trim()) {
       throw new Error("Add the bank and the account name so TSC can pay you.");
     }
-    const editing = (accounts ?? []).find((account) => account.id === editingId) ?? null;
     setBusy(true);
     try {
       const payload = {
-        ...Object.fromEntries(Object.entries(form).map(([key, value]) => [key, value.trim() || null])),
+        // A Payoneer row holds only its email; the database refuses bank details on one.
+        ...Object.fromEntries(Object.entries(bank).map(([key, value]) => [key, payoneer ? null : value.trim() || null])),
+        payoneer_email: payoneer ? payoneerEmail(payoneer_email) : null,
+        ...(editing ? {} : { method }),
         bank_country: "bank_country" in details ? details.bank_country : editing?.bank_country ?? null,
       };
       unwrap(editing
@@ -86,12 +110,17 @@ export function useManualPayouts(orgId) {
       "save your payout account");
       await load();
       setSaved(true);
+    } catch (failure) {
+      if (payoneer && failure?.cause?.code === "23505") throw new Error("This Payoneer account is already on file.");
+      if (failure?.cause?.code === "42501") throw new Error("Only a company owner can change payout methods.");
+      throw failure;
     } finally {
       setBusy(false);
     }
   }
 
   async function remove(account, promote = null) {
+    setSaved(false);
     setBusy(true);
     try {
       // Another account becomes the one TSC pays in the same call (20261030000100).
@@ -106,6 +135,7 @@ export function useManualPayouts(orgId) {
   }
 
   async function makePrimary(account) {
+    setSaved(false);
     setBusy(true);
     try {
       unwrap(await supabase.rpc("set_primary_payout_account", { target: account.id }), "choose the account TSC pays");
@@ -126,6 +156,7 @@ export function useManualPayouts(orgId) {
     load,
     startEdit,
     setField,
+    setMethod,
     save,
     remove,
     makePrimary,

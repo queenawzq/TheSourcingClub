@@ -8,8 +8,8 @@ import { payoutUsdMinor, payoutUsdTotal } from "../../lib/payout-display.mjs";
  *
  * TSC holds what a brand funds and pays the factory when the brand approves
  * the step: through Stripe where Stripe can pay out (StripePayoutCard), or by
- * bank transfer from staff to the bank details on this page where it cannot
- * (mainland China, Hong Kong…). Brands never see these bank details.
+ * hand from staff to the bank or Payoneer details on this page where it cannot
+ * (mainland China, Hong Kong…). Brands never see these details.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
@@ -225,7 +225,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       paymentRows = unwrap(
         await supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id)")
           .in("order_id", orders.map((order) => order.id))
           .order("created_at", { ascending: false }),
         "load your earnings",
@@ -286,7 +286,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
     ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
     ["Pending", summary.pending, PENDING_HELP],
-    ["Paid out", summary.paid, "Withdrawals paid out to your bank account, shown as estimated USD equivalents when the bank received another currency. For each client, withdrawals use the oldest available earnings first. Withdrawals still processing are not included."],
+    ["Paid out", summary.paid, `${earnings?.some((row) => row.payoneer_payouts) ? "Includes payments TSC sent to your Payoneer account. " : ""}Withdrawals paid out to your bank account, shown as estimated USD equivalents when the bank received another currency. For each client, withdrawals use the oldest available earnings first. Withdrawals still processing are not included.`],
   ];
   const paymentById = new Map((earnings ?? []).map((row) => [row.id, row]));
   const payoutTransactions = (stripeBalance?.payouts ?? []).flatMap((row) => {
@@ -307,6 +307,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       note: [
         availableOn(row, stripeBalance) ? `Available to withdraw from ${availableOn(row, stripeBalance)}.` : null,
         row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
+        // To-ONE (payment_id is its primary key): an object or null, never an array.
+        row.payoneer_payouts ? `Payoneer payment ID ${row.payoneer_payouts.payoneer_payment_id}, sent to ${row.payoneer_payouts.paid_to_email}.` : null,
       ].filter(Boolean).join(" "),
       status: earningStatus(row, stripeBalance),
       amount: factoryAmount(row),
@@ -395,6 +397,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             manualForm={payouts.form}
             manualFields={FIELDS}
             onManualFieldChange={payouts.setField}
+            onManualMethodChange={payouts.setMethod}
             onSaveManual={payouts.save}
             onDeleteManual={payouts.remove}
             manualBusy={payouts.busy}
