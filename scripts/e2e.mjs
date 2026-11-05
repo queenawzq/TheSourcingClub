@@ -2109,6 +2109,8 @@ async function main() {
     const { data: teammateGone } = await db.from("org_members").select("user_id")
       .eq("org_id", brandOrg.id).eq("user_id", teammate.userId);
     check((teammateGone ?? []).length === 0, "and the membership is gone");
+    const { data: teammateCompanies } = await db.from("org_members").select("org_id").eq("user_id", teammate.userId);
+    check((teammateCompanies ?? []).length === 0, "and no company is created for them from their signup answers");
     const { data: teammateOrder } = await teammate.client.from("production_orders").select("id").eq("id", bornOrder.id);
     check((teammateOrder ?? []).length === 0, "and the database no longer shows them the order");
     await signOutFully(page);

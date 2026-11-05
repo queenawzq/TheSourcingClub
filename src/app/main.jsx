@@ -14,7 +14,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
-import { acceptInvitation, can, createOrg, listMyInvitations, needsPermission } from "../lib/domain/org.js";
+import { acceptInvitation, can, createOrg, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
@@ -466,7 +466,7 @@ function SetNewPassword({ onDone }) {
 }
 
 function ChooseOrgType() {
-  const { user, refreshOrgs, lostAccess, signOut: endSession } = useAuth();
+  const { user, refreshOrgs, lostAccess, dismissLostAccess, signOut: endSession } = useAuth();
   const signOut = () => signOutInto(user?.user_metadata?.account_type ?? portalFromUrl(), endSession);
   // What the signup form already asked. The portal it was filled in decides
   // the side, so someone who signed up here is not asked either question
@@ -485,16 +485,26 @@ function ChooseOrgType() {
   // organisation of their own — the one thing they should not do. The
   // invitation existed in the database and no screen ever showed it.
   const [invitations, setInvitations] = useState([]);
+  // The company they were removed from or left. Kept in the database, because
+  // state in this tab does not survive a reload, and a reload must not read as
+  // a fresh signup.
+  const [departure, setDeparture] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
-    listMyInvitations()
-      .catch(() => [])
-      .then(async (pending) => {
+    Promise.all([
+      listMyInvitations().catch(() => []),
+      // Unknown counts as "has left": asking again costs a click, while a
+      // company created by mistake cannot be taken back.
+      myLastDeparture(user?.id).catch(() => ({ orgName: null, byChoice: false, unknown: true })),
+    ])
+      .then(async ([pending, gone]) => {
         if (cancelled) return;
         setInvitations(pending);
+        if (gone && !gone.unknown) setDeparture(gone);
         // An invitation wins: joining is what an invited person should do.
-        if (pending.length || !answeredKind || !answeredName) {
+        // Creating from the signup answers is only for someone who just signed up.
+        if (pending.length || gone || lostAccess || !answeredKind || !answeredName) {
           setAutoCreating(false);
           return;
         }
@@ -519,6 +529,7 @@ function ChooseOrgType() {
     setError(null);
     try {
       await createOrg(name, kind);
+      dismissLostAccess();
       await refreshOrgs();
     } catch (createError) {
       setError(createError);
@@ -526,11 +537,19 @@ function ChooseOrgType() {
     }
   }
 
+  const goneFrom = departure ? (departure.orgName ?? "your company") : lostAccess;
+  const goneNotice = goneFrom ? (
+    <p className="gate-error" role="status" data-testid="lost-access">
+      {departure?.byChoice ? `You left ${goneFrom}.` : `You no longer have access to ${goneFrom}.`} Join another company or start your own.
+    </p>
+  ) : null;
+
   if (invitations.length) {
     return (
       <div className="gate">
         <div className="gate-card">
           <p className="gate-eyebrow">Signed in as {user?.email}</p>
+          {goneNotice}
           <h1>You have been invited</h1>
           <p className="gate-note">
             Join an organisation that already exists, rather than starting one of your own.
@@ -573,11 +592,7 @@ function ChooseOrgType() {
     <div className="gate">
       <form className="gate-card" onSubmit={submit}>
         <p className="gate-eyebrow">Signed in as {user?.email}</p>
-        {lostAccess ? (
-          <p className="gate-error" role="status">
-            You no longer have access to {lostAccess}. Join another company or start your own.
-          </p>
-        ) : null}
+        {goneNotice}
         <h1>Which side are you on?</h1>
         <p className="gate-note">
           This decides what you see. It cannot be changed later without our help,

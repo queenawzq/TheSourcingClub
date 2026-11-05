@@ -15,7 +15,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(96);
+select plan(115);
 
 insert into auth.users (id, email, raw_user_meta_data) values
   ('a2400000-0000-0000-0000-000000000001', 'p24-owner@example.com',     '{"name":"P24 Owner"}'),
@@ -775,6 +775,129 @@ select lives_ok(
 reset role;
 select is((select count(*) from public.rfqs where id = 'a2410000-0000-0000-0000-0000000001a1'), 0::bigint,
   '... and its draft request goes with it');
+
+-- ---------------------------------------------------------------------------
+-- A save that does not touch the name; a removed member's invitations;
+-- the record of having left
+-- ---------------------------------------------------------------------------
+
+reset role;
+set local request.jwt.claims = '{}';
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('a2420000-0000-0000-0000-000000000001', 'p242-owner@example.com',  '{"name":"P242 Owner"}'),
+  ('a2420000-0000-0000-0000-000000000002', 'p242-member@example.com', '{"name":"P242 Member"}'),
+  ('a2420000-0000-0000-0000-000000000003', 'p242-second@example.net', '{"name":"P242 Second"}'),
+  ('a2420000-0000-0000-0000-000000000004', 'p242-leaver@example.com', '{"name":"P242 Leaver"}');
+insert into public.orgs (id, type, name, slug) values
+  ('a2420000-0000-0000-0000-0000000000aa', 'brand', 'P242 Brand', 'pgtap242-brand');
+insert into public.org_members (org_id, user_id, role, permissions) values
+  ('a2420000-0000-0000-0000-0000000000aa', 'a2420000-0000-0000-0000-000000000001', 'owner', '{primaryContact}'),
+  ('a2420000-0000-0000-0000-0000000000aa', 'a2420000-0000-0000-0000-000000000002', 'member', '{settingsAccess,releaseFunds}'),
+  ('a2420000-0000-0000-0000-0000000000aa', 'a2420000-0000-0000-0000-000000000004', 'member', '{settingsAccess}');
+
+-- The owner renames the company while the member's page still holds the old name.
+set local request.jwt.claims = '{"sub":"a2420000-0000-0000-0000-000000000001","email":"p242-owner@example.com","role":"authenticated"}';
+set local role authenticated;
+select lives_ok(
+  $$select public.save_account_settings('a2420000-0000-0000-0000-0000000000aa', 'P242 Renamed', null, null)$$,
+  'an owner renames the company');
+
+reset role;
+set local request.jwt.claims = '{"sub":"a2420000-0000-0000-0000-000000000002","email":"p242-member@example.com","role":"authenticated"}';
+set local role authenticated;
+
+select lives_ok(
+  $$select public.save_account_settings('a2420000-0000-0000-0000-0000000000aa', null, '+1 555 0100', 'Leeds, UK')$$,
+  'a member with Settings access saves with no name, after the rename');
+select is(
+  public.save_account_settings('a2420000-0000-0000-0000-0000000000aa', null, '+1 555 0101', 'Leeds, UK') ->> 'name',
+  'P242 Renamed',
+  '... and the answer carries the current name');
+select is((select name from public.orgs where id = 'a2420000-0000-0000-0000-0000000000aa'), 'P242 Renamed',
+  '... which is left as the owner made it');
+select is((select phone from public.company_contact_details where org_id = 'a2420000-0000-0000-0000-0000000000aa'), '+1 555 0101',
+  '... and the phone is saved');
+select throws_ok(
+  $$select public.save_account_settings('a2420000-0000-0000-0000-0000000000aa', 'P242 Brand', '+1 555 0100', 'Leeds, UK')$$,
+  '42501', null,
+  'a stale or changed name sent by a member is still refused');
+select throws_ok(
+  $$select public.save_account_settings('a2420000-0000-0000-0000-0000000000aa', '   ', '+1 555 0100', 'Leeds, UK')$$,
+  '22023', null,
+  'a blank name is not "leave it"');
+
+-- The member prepares a way back in: a second address of their own.
+insert into public.org_invitations (org_id, email, permissions)
+values ('a2420000-0000-0000-0000-0000000000aa', 'p242-second@example.net', '{releaseFunds,settingsAccess}');
+
+reset role;
+set local request.jwt.claims = '{"sub":"a2420000-0000-0000-0000-000000000001","email":"p242-owner@example.com","role":"authenticated"}';
+set local role authenticated;
+insert into public.org_invitations (org_id, email, permissions)
+values ('a2420000-0000-0000-0000-0000000000aa', 'p242-owners-pick@example.net', '{}');
+select lives_ok(
+  $$select public.remove_member('a2420000-0000-0000-0000-0000000000aa', 'a2420000-0000-0000-0000-000000000002')$$,
+  'the owner removes the member');
+
+reset role;
+select is(
+  (select status::text from public.org_invitations where org_id = 'a2420000-0000-0000-0000-0000000000aa' and email = 'p242-second@example.net'),
+  'revoked',
+  'the invitation the removed member sent is withdrawn');
+select is(
+  (select status::text from public.org_invitations where org_id = 'a2420000-0000-0000-0000-0000000000aa' and email = 'p242-owners-pick@example.net'),
+  'pending',
+  'someone else''s invitation is left alone');
+select ok(
+  (select body like '%invitation they sent was withdrawn%' from public.notifications
+    where org_id = 'a2420000-0000-0000-0000-0000000000aa' and kind = 'team_member_removed'),
+  'the team is told it was withdrawn');
+
+do $$ begin
+  perform set_config('p242.second_invite',
+    (select id::text from public.org_invitations where email = 'p242-second@example.net'), true);
+end $$;
+set local request.jwt.claims = '{"sub":"a2420000-0000-0000-0000-000000000003","email":"p242-second@example.net","role":"authenticated"}';
+set local role authenticated;
+select throws_ok(
+  format('select public.accept_invitation(%L)', current_setting('p242.second_invite')),
+  'P0002', null,
+  'the second address cannot get back in');
+select is(
+  (select count(*) from public.my_invitation_companies()), 0::bigint,
+  '... and no longer sees an invitation');
+
+reset role;
+set local request.jwt.claims = '{"sub":"a2420000-0000-0000-0000-000000000004","email":"p242-leaver@example.com","role":"authenticated"}';
+set local role authenticated;
+select lives_ok(
+  $$select public.remove_member('a2420000-0000-0000-0000-0000000000aa', 'a2420000-0000-0000-0000-000000000004')$$,
+  'a member leaves their only company');
+select is(
+  (select org_name || ':' || by_choice from public.org_member_departures where user_id = 'a2420000-0000-0000-0000-000000000004'),
+  'P242 Renamed:true',
+  'leaving is on record, by choice, with the company''s name');
+select is(
+  (select count(*) from public.org_member_departures), 1::bigint,
+  'a person reads only their own record');
+select throws_ok(
+  $$delete from public.org_member_departures$$,
+  '42501', null,
+  'a person cannot clear the record, to have a company created for them');
+
+reset role;
+set local request.jwt.claims = '{"sub":"a2420000-0000-0000-0000-000000000002","email":"p242-member@example.com","role":"authenticated"}';
+set local role authenticated;
+select is(
+  (select org_name || ':' || by_choice from public.org_member_departures),
+  'P242 Renamed:false',
+  'being removed is on record, not by choice');
+
+reset role;
+set local request.jwt.claims = '{}';
+delete from auth.users where id = 'a2420000-0000-0000-0000-000000000004';
+select is((select count(*) from auth.users where id = 'a2420000-0000-0000-0000-000000000004'), 0::bigint,
+  'deleting an account with a record takes the record with it');
 
 select * from finish();
 rollback;

@@ -38,7 +38,7 @@ import { createPortal } from "react-dom";
 import { SettingsScreen, factoryAccountPermissionLabels, settingsPermissionLabels } from "../../prototype/main.jsx";
 import {
   can, inviteMember, listMembers, listPendingInvitations, permissionLabel, removeMember,
-  resendInvitation, revokeInvitation, setMemberAccess, setMemberRole, teamInviteNotice,
+  resendInvitation, revokeInvitation, setMemberAccess, setMemberRole, teamError, teamInviteNotice,
 } from "../../lib/domain/org.js";
 import { useAuth } from "../../lib/auth.jsx";
 import { useManualPayouts } from "../order/use-manual-payouts.js";
@@ -387,7 +387,10 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           canSettings ? "" : "Only someone with Settings access invites people and sees invitations.",
         ].filter(Boolean).join(" ")}
         onSaveAccount={canSettings ? async (details) => {
-          const result = unwrap(await supabase.rpc("save_account_settings", { target_org: org.id, account_name: details.name, phone: details.phone, location: details.location }), "save account settings");
+          // A non-owner's save never carries the name: their copy goes stale
+          // when an owner renames the company, and null means "leave it".
+          const { data: result, error: refused } = await supabase.rpc("save_account_settings", { target_org: org.id, account_name: isOwner ? details.name : null, phone: details.phone, location: details.location });
+          if (refused) throw new Error(refused.code === "22023" ? refused.message : teamError(refused, "save these details"));
           setSavedAccount(result);
           await refreshOrgs();
         } : undefined}

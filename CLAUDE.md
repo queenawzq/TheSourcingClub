@@ -616,6 +616,20 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   Settings access, the company's name an owner, and the sign-in email is not
   edited there. The phone lives in `company_contact_details`, never `orgs`: the
   other side of an order can read `orgs`.
+- **Someone with no company is not always someone who just signed up**
+  (`20261104100100`). `ChooseOrgType` creates a company from the signup answers
+  only for an account with no `org_member_departures` row. A trigger on
+  `org_members` writes that row on every way out (removed, left, staff deleting
+  the company), so a removed person is told, also after a reload, and nothing is
+  created. A failed read of the row counts as "has left".
+- **A non-owner's save never carries the company's name.** `save_account_settings`
+  takes a null name as "leave it" (their copy goes stale when an owner renames),
+  and `renameIfChanged` calls `rename_factory` only for an owner who changed it.
+  Non-owners see the name read-only with the reason.
+- **Removing someone, or leaving, withdraws the pending invitations they sent**
+  (`remove_member`), or a member about to be removed could invite a second
+  address of their own and come back with those rights. Someone who already
+  accepted stays: they are on the team, and the owner can see them.
 - **A missing permission greys the action out; it does not hide it**
   (Queena, Nov 4). Fund, Approve and the factory's Send quote stay on screen,
   disabled, and a visible line says which permission is missing and at which
