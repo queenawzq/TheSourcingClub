@@ -898,7 +898,22 @@ async function main() {
     check(labelsShown === 1, `the request dialog labels its message once (${labelsShown})`);
     await page.locator(".admin-request-message textarea").fill(askFor);
     await clickButton(page, "send request");
+    // The toast says what happened to the email, not "queued for retry".
+    let askToast = "";
+    for (let tries = 0; tries < 25 && !askToast; tries += 1) {
+      askToast = await page.locator(".admin-toast").innerText().catch(() => "");
+      if (!askToast) await page.waitForTimeout(200);
+    }
+    check(/^Information request recorded and emailed to 1 person\.$/.test(askToast), `the toast says the request was emailed, and to how many ("${askToast}")`);
     await page.waitForTimeout(3000);
+    const emailCard = await page.locator(".admin-review-email-card").innerText().catch(() => "");
+    check(emailCard.includes(`e2e-factory-${stamp}@example.com`) && /Sent/.test(emailCard), `the review page says who was emailed (${emailCard.replace(/\s+/g, " ").slice(0, 120)})`);
+    const askedMail = await (async () => {
+      const found = await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:e2e-factory-${stamp}@example.com subject:"more information"`)}`).then((r) => r.json()).catch(() => ({}));
+      const id = found.messages?.[0]?.ID;
+      return id ? fetch(`${MAIL}/api/v1/message/${id}`).then((r) => r.json()) : null;
+    })();
+    check(Boolean(askedMail?.Text?.replace(/\r\n/g, "\n").includes(askFor)), "and the email carries the request exactly as staff wrote it");
     const afterAsk = await page.locator("body").innerText();
     check(afterAsk.includes(askFor.split("\n")[0]), "the review summary shows the note just sent, without a reload");
     check(/needs information/i.test(afterAsk), "and the badge says Needs information");
@@ -953,6 +968,17 @@ async function main() {
     await answering.auth.signInWithPassword({ email: `e2e-factory-${stamp}@example.com`, password: PASSWORD });
     const { data: resent, error: resendError } = await answering.rpc("resubmit_for_review", { target_org: factoryOrg.id });
     check(!resendError && resent === "ready_for_review", "the factory sends its profile back to staff's queue");
+    // Staff have no bell: the operations inbox is emailed instead.
+    const { data: { session: answeringSession } } = await answering.auth.getSession();
+    await fetch(`${new URL(APP).origin}/api/review-resubmitted`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${answeringSession?.access_token}` },
+      body: JSON.stringify({ orgId: factoryOrg.id }),
+    }).catch(() => {});
+    const alertFound = await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`subject:"sent its profile back for review"`)}&limit=50`).then((r) => r.json()).catch(() => ({}));
+    const alertMessage = (alertFound.messages ?? []).find((m) => m.Subject === `${factoryName} sent its profile back for review`);
+    const alertBody = alertMessage ? await fetch(`${MAIL}/api/v1/message/${alertMessage.ID}`).then((r) => r.json()) : null;
+    check(Boolean(alertBody?.Text?.includes(`screen=review&profile=${factoryOrg.id}`)), "and staff are emailed, with a link to the review");
     await factoryPage.close();
 
     // A factory is approved at a trust tier; with no walkthrough or orders

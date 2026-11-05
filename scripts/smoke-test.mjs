@@ -2710,6 +2710,177 @@ console.log("\npassword recovery email");
   }
 }
 
+console.log("\nreview decision emails (20261104200000)");
+{
+  // Staff's request for more information reaches every member, once, with the
+  // note as typed; each outcome is reported as what happened; a failed email
+  // is resent; and a company sending its profile back emails staff.
+  const callApi = async (file, token, body, env = {}) => {
+    const { default: handler } = await import(`../api/${file}.js`);
+    const keys = ["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_ROLE_KEY", "RESEND_API_KEY", "RESEND_FROM_EMAIL", "MAILPIT_URL", "VERCEL", "PUBLIC_APP_URL"];
+    const saved = { ...process.env };
+    Object.assign(process.env, { SUPABASE_URL: URL, SUPABASE_ANON_KEY: ANON, SUPABASE_SERVICE_ROLE_KEY: SERVICE, MAILPIT_URL: MAIL });
+    for (const key of ["RESEND_API_KEY", "RESEND_FROM_EMAIL", "VERCEL", "PUBLIC_APP_URL"]) delete process.env[key];
+    for (const [key, value] of Object.entries(env)) if (value == null) delete process.env[key]; else process.env[key] = value;
+    let status = 0;
+    let payload = null;
+    const response = { status(code) { status = code; return response; }, json(value) { payload = value; return response; } };
+    try {
+      await handler({ method: "POST", body, headers: { host: "127.0.0.1:5173", ...(token ? { authorization: `Bearer ${token}` } : {}) } }, response);
+    } finally {
+      for (const key of keys) if (key in saved) process.env[key] = saved[key]; else delete process.env[key];
+    }
+    return { status, ...payload };
+  };
+  const tokenOf = async (user) => (await user.client.auth.getSession()).data.session?.access_token;
+  const mailTo = async (address) => {
+    const search = await fetch(`${MAIL}/api/v1/search?query=${encodeURIComponent(`to:${address}`)}`).then((r) => r.json()).catch(() => ({}));
+    return Promise.all((search.messages ?? []).map((m) => fetch(`${MAIL}/api/v1/message/${m.ID}`).then((r) => r.json())));
+  };
+
+  const mailpitUp = MAIL && await fetch(`${MAIL}/api/v1/info`).then((r) => r.ok).catch(() => false);
+  if (!mailpitUp) {
+    ok("(skipped: no local Mailpit to send to)");
+  } else {
+    const staff = await signedInUser(`rev-admin-${stamp}@example.com`);
+    await admin.from("platform_admins").insert({ user_id: staff.id });
+    const owner = await signedInUser(`rev-owner-${stamp}@example.com`);
+    const member = await signedInUser(`rev-member-${stamp}@example.com`);
+    const { data: org } = await admin.from("orgs").insert({ type: "factory", name: `Rev Factory ${stamp}`, slug: `rev-factory-${stamp}` }).select().single();
+    await admin.from("org_members").insert([
+      { org_id: org.id, user_id: owner.id, role: "owner" },
+      { org_id: org.id, user_id: member.id, role: "member" },
+    ]);
+    const staffToken = await tokenOf(staff);
+    const decide = (decision, note) => staff.client.rpc("admin_review_decision_with_tier", { target_org: org.id, decision, note, risk: null, tier: null });
+    const kick = (body = {}, env = {}) => callApi("send-review-decision", staffToken, { orgId: org.id, ...body }, env);
+
+    const NOTE = `Please upload your licence.\n\nAnd your OEKO-TEX certificate (${stamp}).`;
+    await decide("needs_information", NOTE);
+    const first = await kick({ decision: "needs_information" });
+    first.outcome === "emailed" && first.sent === 2
+      ? ok("a request for more information is emailed to the owner AND the member")
+      : fail(`the request's email: ${JSON.stringify({ outcome: first.outcome, sent: first.sent, error: first.error })}`);
+    const [ownerMail] = await mailTo(`rev-owner-${stamp}@example.com`);
+    ownerMail?.Text?.replace(/\r\n/g, "\n").includes(NOTE)
+      ? ok("and the email carries the note exactly as typed")
+      : fail("the email does not carry the note as typed", ownerMail?.Text?.slice(0, 300));
+    ownerMail?.Text?.includes("app.html?portal=factory")
+      ? ok("and a factory's link opens the factory portal")
+      : fail("the factory's link does not open the factory portal");
+
+    await decide("needs_information", NOTE);
+    const repeat = await kick({ decision: "needs_information" });
+    repeat.outcome === "already_sent" && repeat.sent === 0
+      ? ok("the same request again sends nothing, and says so")
+      : fail(`a repeated request: ${JSON.stringify({ outcome: repeat.outcome, sent: repeat.sent })}`);
+
+    await decide("needs_information", `The licence photo cannot be read (${stamp}).`);
+    const down = await kick({ decision: "needs_information" }, { MAILPIT_URL: "http://127.0.0.1:9" });
+    down.outcome === "failed" && down.failed?.[0]?.reason === "the email service could not be reached"
+      ? ok("a send that fails is reported as failed, in words")
+      : fail(`a failed send: ${JSON.stringify({ outcome: down.outcome, failed: down.failed })}`);
+    const resent = await kick({ resend: true });
+    resent.outcome === "emailed" && resent.sent === 2
+      ? ok("and \"Resend email\" sends it")
+      : fail(`resend: ${JSON.stringify({ outcome: resent.outcome, sent: resent.sent, error: resent.error })}`);
+
+    await decide("approved", null);
+    const unset = await kick({ decision: "approved" }, { MAILPIT_URL: null });
+    unset.outcome === "not_configured"
+      ? ok("with no way to send email, the screen is told so, not \"already sent\"")
+      : fail(`no transport: ${JSON.stringify({ outcome: unset.outcome })}`);
+    const later = await kick({ decision: "approved" });
+    later.outcome === "emailed" && later.sent === 2
+      ? ok("and the approval waits in the queue until it can be sent")
+      : fail(`the waiting approval: ${JSON.stringify({ outcome: later.outcome, sent: later.sent })}`);
+    const approvals = (await mailTo(`rev-owner-${stamp}@example.com`)).filter((m) => /approved/i.test(m.Subject ?? ""));
+    approvals.length === 1 && !approvals[0].Text.includes("licence")
+      ? ok("the approval email does not quote the earlier request")
+      : fail(`approval emails: ${approvals.length}`, approvals[0]?.Text?.slice(0, 300));
+
+    const { data: empty } = await admin.from("orgs").insert({ type: "brand", name: `Rev Empty ${stamp}`, slug: `rev-empty-${stamp}` }).select().single();
+    await staff.client.rpc("admin_review_decision_with_tier", { target_org: empty.id, decision: "needs_information", note: "Please add a website.", risk: null, tier: null });
+    const nobody = await callApi("send-review-decision", staffToken, { orgId: empty.id, decision: "needs_information" });
+    nobody.outcome === "no_recipients"
+      ? ok("a company with nobody to email is reported as such, not \"already sent\"")
+      : fail(`nobody to email: ${JSON.stringify({ outcome: nobody.outcome })}`);
+
+    const stranger = await callApi("send-review-decision", await tokenOf(owner), { orgId: org.id });
+    stranger.status === 403 ? ok("a company CANNOT trigger review emails") : fail(`a company triggered review emails (${stranger.status})`);
+
+    // Back to needs information, and the company answers.
+    await decide("needs_information", `One more thing (${stamp}).`);
+    await kick({ decision: "needs_information" });
+    await owner.client.rpc("resubmit_for_review", { target_org: org.id });
+    const otherOrg = await callApi("review-resubmitted", await tokenOf(brand), { orgId: org.id });
+    otherOrg.status === 403 ? ok("another company CANNOT send that company's alert") : fail(`another company sent the alert (${otherOrg.status})`);
+    const alert = await callApi("review-resubmitted", await tokenOf(owner), { orgId: org.id }, { REVIEW_ALERT_EMAIL: `rev-ops-${stamp}@example.com` });
+    const again = await callApi("review-resubmitted", await tokenOf(owner), { orgId: org.id }, { REVIEW_ALERT_EMAIL: `rev-ops-${stamp}@example.com` });
+    alert.sent === 1 && again.sent === 0
+      ? ok("sending the profile back emails staff once")
+      : fail(`the staff alert: ${JSON.stringify({ first: alert, again })}`);
+    const [opsMail] = await mailTo(`rev-ops-${stamp}@example.com`);
+    opsMail?.Subject === `Rev Factory ${stamp} sent its profile back for review` && opsMail.Text.includes(`screen=review&profile=${org.id}`) && opsMail.Text.includes(`One more thing (${stamp}).`)
+      ? ok("naming the company, the request it answered, and a link to its review")
+      : fail("the staff alert is missing its company, request or link", opsMail?.Text?.slice(0, 300));
+
+    // The provider's idempotency key. A timeout is an unknown outcome: the
+    // first send may have gone, so the retry must carry the SAME key for the
+    // provider to drop the copy. Only a definite refusal moves the key on
+    // (the provider replays a key's first answer, errors included, for 24 h).
+    const { sendReviewDecisionEmails, classifySendError } = await import("../api/_review-decision-sender.js");
+    classifySendError(new TypeError("fetch failed")).newKey === false && classifySendError(new Error("422 invalid")).newKey === true
+      ? ok("an unreachable service keeps the key; a refusal takes a new one")
+      : fail("the key choice for a failed send is wrong");
+    const fake = (plan) => {
+      const keys = [];
+      return {
+        keys,
+        mail: {
+          name: "fake",
+          async send(row) {
+            keys.push(`${row.recipient_email} ${row.id}`);
+            const step = plan.shift() ?? "ok";
+            if (step === "hang") return new Promise(() => {});
+            if (step === "refuse") throw new Error("422 the provider refused it");
+            return `fake-${keys.length}`;
+          },
+        },
+      };
+    };
+    const keyOf = (keys, email) => keys.find((line) => line.startsWith(`${email} `))?.split(" ")[1];
+    const ownerEmail = `rev-owner-${stamp}@example.com`;
+
+    await decide("needs_information", `Key check one (${stamp}).`);
+    const hung = fake(["hang"]);
+    const timedOut = await sendReviewDecisionEmails(admin, null, { orgId: org.id, mail: hung.mail, timeoutMs: 300 });
+    timedOut.unconfirmed.length === 1 && timedOut.failed.length === 1 && timedOut.failed[0].reason.startsWith("not tried")
+      ? ok("a send that times out is \"not confirmed\", and the rest of the batch is not tried")
+      : fail(`after a timeout: ${JSON.stringify(timedOut)}`);
+    const { data: unconfirmedRow } = await admin.from("verification_approval_email_outbox").select("status, key_generation")
+      .eq("org_id", org.id).eq("recipient_email", timedOut.unconfirmed[0]?.email).order("review_updated_at", { ascending: false }).limit(1).single();
+    unconfirmedRow?.status === "unconfirmed" ? ok("and is recorded as unconfirmed, not failed") : fail(`the timed-out row is ${unconfirmedRow?.status}`);
+    await staff.client.rpc("admin_requeue_review_emails", { target_org: org.id });
+    const retry = fake([]);
+    await sendReviewDecisionEmails(admin, null, { orgId: org.id, mail: retry.mail, timeoutMs: 300 });
+    const timedOutEmail = timedOut.unconfirmed[0]?.email;
+    keyOf(retry.keys, timedOutEmail) && keyOf(retry.keys, timedOutEmail) === keyOf(hung.keys, timedOutEmail)
+      ? ok("Resend after a timeout uses the SAME key, so the provider drops a second copy")
+      : fail(`keys after a timeout: ${hung.keys} then ${retry.keys}`);
+
+    await decide("needs_information", `Key check two (${stamp}).`);
+    const refused = fake(["refuse", "refuse"]);
+    await sendReviewDecisionEmails(admin, null, { orgId: org.id, mail: refused.mail, timeoutMs: 300 });
+    await staff.client.rpc("admin_requeue_review_emails", { target_org: org.id });
+    const afterRefusal = fake([]);
+    const accepted = await sendReviewDecisionEmails(admin, null, { orgId: org.id, mail: afterRefusal.mail, timeoutMs: 300 });
+    accepted.sent.length === 2 && keyOf(afterRefusal.keys, ownerEmail) && keyOf(afterRefusal.keys, ownerEmail) !== keyOf(refused.keys, ownerEmail)
+      ? ok("after a refusal the retry takes a new key, so the provider's replayed refusal cannot block it")
+      : fail(`keys after a refusal: ${refused.keys} then ${afterRefusal.keys}`);
+  }
+}
+
 console.log(
   failures ? `\n${failures} check(s) failed\n` : "\nAll smoke checks passed\n",
 );

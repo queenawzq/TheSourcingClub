@@ -39,6 +39,8 @@ const ALLOWED_ABSENT = {
   "admin:reviewAssistInput:mock": "live only; only called from the AI panel, which needs reviewAssist",
   // Credits are not in the admin design (rule B: built live only, flagged).
   "admin:companyCredits:mock": "live only; the review page draws no credits card without it",
+  "admin:reviewEmailStatus:mock": "live only; the prototype has no email outbox, so the review page draws no email card without it",
+  "admin:resendReviewEmails:mock": "live only; only called from the email card, which needs reviewEmailStatus",
   "admin:adjustCredits:mock": "live only; only called from the credits card, which needs companyCredits",
   // Clearing test data deletes real rows; the prototype has none to clear.
   "admin:testData:mock": "live test builds only; Settings draws no test-data card without it",
