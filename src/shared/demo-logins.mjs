@@ -21,6 +21,9 @@ export const DEMO_LOGINS = {
   // or change Settings.
   brandMember: { role: "Brand member", name: "Demo Brand (member)", email: "demo-brand-member@example.com" },
   newBrand: { role: "New brand", name: "Fresh Thread Studio", email: "demo-brand-new@example.com" },
+  // Open requests from a second brand that has paid nothing yet, so Browse
+  // RFQs' filters have requests to tell apart, "Payment verified" included.
+  secondBrand: { role: "Brand two", name: "Maple Row Studio", email: "demo-brand-two@example.com" },
   factory: { role: "Factory", name: "Demo Factory", email: "demo-factory@example.com" },
   // A member of Demo Factory with Add update only: it posts step updates but
   // cannot send a quote, invite, or change Settings.
