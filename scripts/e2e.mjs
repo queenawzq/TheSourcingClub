@@ -1429,7 +1429,9 @@ async function main() {
     await waitFor(page, '[data-testid="open-rfq-card"]', 20000);
     await record(page, "Factory browse", "the brand's request, found by a factory that was never invited");
 
-    const cardText = await page.locator('[data-testid="open-rfq-card"]').first().innerText();
+    // By title, not position: best fit ranks the seed's requests with this one.
+    const cardText = await page.evaluate((title) => [...document.querySelectorAll('[data-testid="open-rfq-card"]')]
+      .find((card) => card.innerText.includes(title))?.innerText ?? "", rfqTitle);
     check(cardText.includes(rfqTitle), "the request a brand published minutes ago is visible to a factory");
     // Fit is a per-pair score this list never asks for, so the card shows none
     // rather than a number that came from nowhere.
@@ -1444,7 +1446,8 @@ async function main() {
 
     // The card's affordance is its own View RFQ button, which is how the
     // design draws it.
-    await page.locator('[data-testid="open-rfq-card"] .primary-btn').first().click();
+    await page.evaluate((title) => [...document.querySelectorAll('[data-testid="open-rfq-card"]')]
+      .find((card) => card.innerText.includes(title))?.querySelector(".primary-btn")?.click(), rfqTitle);
     // This vendor has not quoted yet, so the designed page is "RFQ details" —
     // the one with Send quote on it. "View RFQ" is the read-back it gets
     // afterwards.
