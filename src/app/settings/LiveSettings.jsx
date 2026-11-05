@@ -178,6 +178,44 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
 
   useEffect(() => { reload(); }, [reload]);
 
+  // Someone else changed the team while this page is open: an invitation was
+  // accepted or withdrawn, a teammate was removed or left, a co-owner changed
+  // what someone may do. Only the team is read again, since the full reload
+  // also asks Stripe. Deletes carry only the row's key and are not filtered, so
+  // the handler checks the company. The slow re-read is for what sends no
+  // event, an invitation expiring, and for a dropped connection.
+  useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+    let latest = 0;
+    const reread = async () => {
+      const seq = ++latest;
+      const loaded = await Promise.all([listMembers(org.id), listPendingInvitations(org.id)]).catch(() => null);
+      if (cancelled || seq !== latest || !loaded) return;
+      setMembers(loaded[0]);
+      setInvites(loaded[1]);
+    };
+    const soon = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(reread, 300);
+    };
+    const channel = supabase
+      .channel(`team:${org.id}:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "org_members", filter: `org_id=eq.${org.id}` }, (change) => {
+        if (change.eventType !== "DELETE" || !change.old?.org_id || change.old.org_id === org.id) soon();
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "org_invitations", filter: `org_id=eq.${org.id}` }, soon)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "org_invitations", filter: `org_id=eq.${org.id}` }, soon)
+      .subscribe();
+    const slow = window.setInterval(() => { if (!document.hidden) reread(); }, 30000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      window.clearInterval(slow);
+      supabase.removeChannel(channel);
+    };
+  }, [org.id]);
+
   // The drawer stays open on a refusal (false), with the reason in it.
   async function invite({ email, name, title, permissions }) {
     setBusy(true);

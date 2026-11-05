@@ -608,6 +608,11 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
 - **`org_members` is in the Realtime publication.** `AuthProvider` listens
   to the person's own rows: a permission change reaches open screens, and a
   removal shows "You no longer have access to …".
+- **An open Settings page hears the team change** (`LiveSettings`: `org_members`
+  and, from `20261104100200`, `org_invitations`, both in the Realtime
+  publication). It re-reads only the team, because the full reload asks Stripe,
+  and again every 30 s, since an invitation expiring sends no event. An invited
+  person's open page listens by address (`useInvitationsLive`).
 - **Invitations are read through `my_invitation_companies()`.** A plain
   select also returned an owner's own outgoing invitations, and the invited
   company's name was unreadable to someone not in it yet. Signing up with an
