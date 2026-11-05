@@ -10,11 +10,11 @@
  * only in the prototypes at their own URLs, and is reached from there rather
  * than being half-linked from here.
  */
-import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
-import { acceptInvitation, can, createOrg, listMyInvitations, needsPermission } from "../lib/domain/org.js";
+import { acceptInvitation, can, createOrg, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
@@ -465,8 +465,37 @@ function SetNewPassword({ onDone }) {
   );
 }
 
+/**
+ * An invitation to this address arrived or was withdrawn while the page is
+ * open. The slow re-read is for one expiring, which sends no event.
+ */
+function useInvitationsLive(email, reread) {
+  const latest = useRef(reread);
+  latest.current = reread;
+  useEffect(() => {
+    if (!email) return undefined;
+    let timer = null;
+    const soon = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => latest.current(), 300);
+    };
+    const address = email.toLowerCase();
+    const channel = supabase
+      .channel(`my-invitations:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "org_invitations", filter: `email=eq.${address}` }, soon)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "org_invitations", filter: `email=eq.${address}` }, soon)
+      .subscribe();
+    const slow = window.setInterval(() => { if (!document.hidden) latest.current(); }, 60000);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(slow);
+      supabase.removeChannel(channel);
+    };
+  }, [email]);
+}
+
 function ChooseOrgType() {
-  const { user, refreshOrgs, lostAccess, signOut: endSession } = useAuth();
+  const { user, refreshOrgs, lostAccess, dismissLostAccess, signOut: endSession } = useAuth();
   const signOut = () => signOutInto(user?.user_metadata?.account_type ?? portalFromUrl(), endSession);
   // What the signup form already asked. The portal it was filled in decides
   // the side, so someone who signed up here is not asked either question
@@ -485,16 +514,33 @@ function ChooseOrgType() {
   // organisation of their own — the one thing they should not do. The
   // invitation existed in the database and no screen ever showed it.
   const [invitations, setInvitations] = useState([]);
+  // The company they were removed from or left. Kept in the database, because
+  // state in this tab does not survive a reload, and a reload must not read as
+  // a fresh signup.
+  const [departure, setDeparture] = useState(null);
+  // "Start my own instead" is an answer to these invitations, not to any later one.
+  const [skipped, setSkipped] = useState([]);
+  const waiting = invitations.filter((invitation) => !skipped.includes(invitation.id));
+  // Not while joining: the accepted invitation's own event would flash the form.
+  useInvitationsLive(user?.email, () => {
+    if (!busy) listMyInvitations().then(setInvitations).catch(() => {});
+  });
 
   useEffect(() => {
     let cancelled = false;
-    listMyInvitations()
-      .catch(() => [])
-      .then(async (pending) => {
+    Promise.all([
+      listMyInvitations().catch(() => []),
+      // Unknown counts as "has left": asking again costs a click, while a
+      // company created by mistake cannot be taken back.
+      myLastDeparture(user?.id).catch(() => ({ orgName: null, byChoice: false, unknown: true })),
+    ])
+      .then(async ([pending, gone]) => {
         if (cancelled) return;
         setInvitations(pending);
+        if (gone && !gone.unknown) setDeparture(gone);
         // An invitation wins: joining is what an invited person should do.
-        if (pending.length || !answeredKind || !answeredName) {
+        // Creating from the signup answers is only for someone who just signed up.
+        if (pending.length || gone || lostAccess || !answeredKind || !answeredName) {
           setAutoCreating(false);
           return;
         }
@@ -519,6 +565,7 @@ function ChooseOrgType() {
     setError(null);
     try {
       await createOrg(name, kind);
+      dismissLostAccess();
       await refreshOrgs();
     } catch (createError) {
       setError(createError);
@@ -526,16 +573,24 @@ function ChooseOrgType() {
     }
   }
 
-  if (invitations.length) {
+  const goneFrom = departure ? (departure.orgName ?? "your company") : lostAccess;
+  const goneNotice = goneFrom ? (
+    <p className="gate-error" role="status" data-testid="lost-access">
+      {departure?.byChoice ? `You left ${goneFrom}.` : `You no longer have access to ${goneFrom}.`} Join another company or start your own.
+    </p>
+  ) : null;
+
+  if (waiting.length) {
     return (
       <div className="gate">
         <div className="gate-card">
           <p className="gate-eyebrow">Signed in as {user?.email}</p>
+          {goneNotice}
           <h1>You have been invited</h1>
           <p className="gate-note">
             Join an organisation that already exists, rather than starting one of your own.
           </p>
-          {invitations.map((invitation) => (
+          {waiting.map((invitation) => (
             <button
               key={invitation.id}
               type="button"
@@ -559,7 +614,7 @@ function ChooseOrgType() {
           ))}
           {error ? <p className="gate-error">{error.message}</p> : null}
           <div className="gate-row">
-            <button type="button" className="quiet-btn" onClick={() => setInvitations([])}>
+            <button type="button" className="quiet-btn" onClick={() => setSkipped(invitations.map((invitation) => invitation.id))}>
               Start my own organisation instead
             </button>
             <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
@@ -573,11 +628,7 @@ function ChooseOrgType() {
     <div className="gate">
       <form className="gate-card" onSubmit={submit}>
         <p className="gate-eyebrow">Signed in as {user?.email}</p>
-        {lostAccess ? (
-          <p className="gate-error" role="status">
-            You no longer have access to {lostAccess}. Join another company or start your own.
-          </p>
-        ) : null}
+        {goneNotice}
         <h1>Which side are you on?</h1>
         <p className="gate-note">
           This decides what you see. It cannot be changed later without our help,
@@ -857,8 +908,10 @@ function Shell() {
  * signed-in invitation at all; drawn as a small card in the app's style.
  */
 function TeamNotices() {
-  const { lostAccess, dismissLostAccess, refreshOrgs, selectOrg } = useAuth();
+  const { user, lostAccess, dismissLostAccess, refreshOrgs, selectOrg } = useAuth();
   const [invitations, setInvitations] = useState([]);
+  // "Not now" holds for this visit, also when the list is read again.
+  const [notNow, setNotNow] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -868,7 +921,11 @@ function TeamNotices() {
     return () => { cancelled = true; };
   }, []);
 
-  const invitation = invitations[0] ?? null;
+  useInvitationsLive(user?.email, () => {
+    if (!busy) listMyInvitations().then(setInvitations).catch(() => {});
+  });
+
+  const invitation = invitations.find((row) => !notNow.includes(row.id)) ?? null;
   if (!lostAccess && !invitation) return null;
 
   async function join() {
@@ -878,7 +935,7 @@ function TeamNotices() {
       const org = await acceptInvitation(invitation.id);
       await refreshOrgs();
       if (org?.id) selectOrg(org.id);
-      setInvitations((rows) => rows.slice(1));
+      setInvitations((rows) => rows.filter((row) => row.id !== invitation.id));
     } catch (failure) {
       setError(/expired|not found|already used/i.test(failure.message)
         ? "This invitation has expired or was withdrawn. Ask them to send it again."
@@ -905,7 +962,7 @@ function TeamNotices() {
           </p>
           {error ? <p className="tsc-team-notice-error">{error}</p> : null}
           <div className="tsc-team-notice-actions">
-            <button type="button" className="quiet-btn" disabled={busy} onClick={() => setInvitations((rows) => rows.slice(1))}>Not now</button>
+            <button type="button" className="quiet-btn" disabled={busy} onClick={() => setNotNow((ids) => [...ids, invitation.id])}>Not now</button>
             <button type="button" className="primary-btn" disabled={busy} data-testid="join-invited-company" onClick={join}>
               {busy ? "Joining…" : "Join"}
             </button>
