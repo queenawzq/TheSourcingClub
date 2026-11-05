@@ -201,24 +201,6 @@ export async function removeMember(orgId, userId) {
 }
 
 /** Settings → Account: the company's own email, phone and location. */
-export async function getCompanyBasics(orgId) {
-  return unwrap(
-    await supabase.from("org_contact_details").select("email, phone").eq("org_id", orgId).maybeSingle(),
-    "load the company details",
-  );
-}
-
-export async function saveCompanyBasics(orgId, { email, phone, location }) {
-  const { data, error } = await supabase.rpc("save_company_basics", {
-    target_org: orgId, new_email: email ?? null, new_phone: phone ?? null, new_location: location ?? null,
-  });
-  if (error) {
-    if (error.code === "23514") throw new Error("Check the email address and phone number: one of them is not in a form we can save.");
-    throw new Error(teamError(error, "save the company details"));
-  }
-  return data;
-}
-
 /** An org's own pending invitations, for the settings screen. Owners only; RLS enforces it. */
 export async function listPendingInvitations(orgId) {
   return unwrap(

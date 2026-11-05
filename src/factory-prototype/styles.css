@@ -3364,6 +3364,8 @@ body:has(.factory-onboarding-page) {
 
 .factory-profile-modal {
   position: relative;
+  min-height: 0;
+  gap: 16px;
   overflow: auto;
   max-height: calc(100vh - 128px);
   margin: 0;
@@ -3384,7 +3386,7 @@ body:has(.factory-onboarding-page) {
   bottom: -36px;
   align-items: center;
   margin: 0 -40px -36px;
-  min-height: 76px;
+  min-height: 0;
   padding: 12px 40px;
   border-top: 1px solid #eef2f6;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), #fff 24%);

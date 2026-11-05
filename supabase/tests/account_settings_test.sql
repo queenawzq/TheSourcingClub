@@ -1,0 +1,17 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+select plan(4);
+insert into auth.users(id,email) values ('dc000000-0000-0000-0000-000000000001','settings-owner@example.com'),('dc000000-0000-0000-0000-000000000002','settings-other@example.com');
+insert into public.orgs(id,type,name,slug) values ('dc000000-0000-0000-0000-000000000010','factory','Settings Factory','pgtap-settings-factory');
+insert into public.factory_profiles(org_id) values ('dc000000-0000-0000-0000-000000000010');
+insert into public.org_members(org_id,user_id,role) values ('dc000000-0000-0000-0000-000000000010','dc000000-0000-0000-0000-000000000001','owner');
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"dc000000-0000-0000-0000-000000000002","role":"authenticated"}';
+select throws_ok($$select public.save_account_settings('dc000000-0000-0000-0000-000000000010','Changed','123','Shanghai')$$,'42501',null,'Nonowner cannot save company settings');
+set local request.jwt.claims = '{"sub":"dc000000-0000-0000-0000-000000000001","role":"authenticated"}';
+select throws_ok($$select public.save_account_settings('dc000000-0000-0000-0000-000000000010',' ','123','Shanghai')$$,'22023',null,'Empty company name is rejected');
+select lives_ok($$select public.save_account_settings('dc000000-0000-0000-0000-000000000010','Changed','123','Shanghai')$$,'Owner can save account settings');
+reset role;
+select is((select o.name || '/' || c.phone || '/' || f.location from public.orgs o join public.factory_profiles f on f.org_id=o.id join public.company_contact_details c on c.org_id=o.id where o.id='dc000000-0000-0000-0000-000000000010'),'Changed/123/Shanghai','Name phone and location persist together');
+select * from finish();
+rollback;

@@ -2005,11 +2005,11 @@ console.log("\nphase 5 — the home screen, and joining a team");
     target_org: org.id, target_user: joiner.id, new_permissions: ["approve", "releaseFunds"], new_title: "Finance",
   });
   accessError ? fail("an owner changes a member's permissions", accessError) : ok("an owner changes a member's permissions");
-  const { error: basicsError } = await brand.client.rpc("save_company_basics", {
-    target_org: org.id, new_email: `ops-${stamp}@example.com`, new_phone: "+1 555 0100", new_location: null,
+  const { error: basicsError } = await brand.client.rpc("save_account_settings", {
+    target_org: org.id, account_name: org.name, phone: "+1 555 0100", location: "",
   });
   basicsError ? fail("an owner saves the company's details", basicsError) : ok("an owner saves the company's details");
-  const { data: theirDetails } = await losingFactory.from("org_contact_details").select("email").eq("org_id", org.id);
+  const { data: theirDetails } = await losingFactory.from("company_contact_details").select("phone").eq("org_id", org.id);
   (theirDetails ?? []).length === 0 ? ok("another company CANNOT read them")
     : fail("LEAK: another company read a company's contact details");
   const { error: revokeError } = await brand.client.rpc("revoke_invitation", { target_invitation: invited.id });

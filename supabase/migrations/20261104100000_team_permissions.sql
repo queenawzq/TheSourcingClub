@@ -113,27 +113,6 @@ alter table public.org_invitations
   add column invited_name text check (invited_name is null or char_length(invited_name) between 1 and 120),
   add column emailed_at   timestamptz;
 
--- Contact details the company keeps for itself (Settings → Account). Not on
--- `orgs`, which the other side of an order can read: an email or phone shown
--- to a counterparty is exactly what message screening exists to stop.
-create table public.org_contact_details (
-  org_id     uuid primary key references public.orgs (id) on delete cascade,
-  email      text check (email is null or (email = lower(email) and email ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$')),
-  phone      text check (phone is null or char_length(phone) between 3 and 40),
-  updated_at timestamptz not null default now(),
-  updated_by uuid references auth.users (id) on delete set null
-);
-
-alter table public.org_contact_details enable row level security;
-
-create policy org_contact_details_read on public.org_contact_details
-  for select to authenticated
-  using (public.is_org_member(org_id) or public.is_platform_admin());
-
-revoke all on public.org_contact_details from anon, authenticated;
-grant select on public.org_contact_details to authenticated;
-grant all on public.org_contact_details to service_role;
-
 -- ---------------------------------------------------------------------------
 -- Asking
 -- ---------------------------------------------------------------------------
@@ -775,53 +754,45 @@ grant execute on function public.set_member_access(uuid, uuid, text[], text) to 
 grant execute on function public.set_member_role(uuid, uuid, public.org_role) to authenticated;
 grant execute on function public.remove_member(uuid, uuid) to authenticated;
 
--- Settings → Account. The company's name is not here: it is what staff
--- verified, so renaming goes through support.
-create or replace function public.save_company_basics(
-  target_org   uuid,
-  new_email    text,
-  new_phone    text,
-  new_location text
-)
-returns public.org_contact_details
+-- Settings → Account (main's 20261104000800), now answering to the team's
+-- permissions: phone and location take Settings access. The company's name
+-- stays with an owner, so a member's save may only send it back unchanged: it
+-- is what every counterparty reads, and main's rename_factory() says the same.
+create or replace function public.save_account_settings(target_org uuid, account_name text, phone text, location text)
+returns jsonb
 language plpgsql
 security definer
 set search_path = public, pg_temp
 as $$
 declare
-  kind    public.org_type;
-  details public.org_contact_details;
+  company public.orgs;
 begin
   if not public.has_org_permission(target_org, 'settingsAccess') then
     raise exception 'You need Settings access to change the company''s details'
       using errcode = '42501', hint = 'missing_permission:settingsAccess';
   end if;
+  if nullif(btrim(account_name), '') is null then raise exception 'Account name is required' using errcode = '22023'; end if;
+  if length(account_name) > 200 or length($3) > 80 or length($4) > 300 then raise exception 'Account details are too long' using errcode = '22023'; end if;
 
-  select type into kind from public.orgs where id = target_org;
-
-  insert into public.org_contact_details (org_id, email, phone, updated_at, updated_by)
-  values (target_org,
-          nullif(lower(btrim(coalesce(new_email, ''))), ''),
-          nullif(btrim(coalesce(new_phone, '')), ''),
-          now(), auth.uid())
-  on conflict (org_id) do update
-     set email = excluded.email, phone = excluded.phone,
-         updated_at = now(), updated_by = auth.uid()
-  returning * into details;
-
-  if new_location is not null then
-    if kind = 'brand' then
-      update public.brand_profiles set hq_location = nullif(btrim(new_location), '') where org_id = target_org;
-    else
-      update public.factory_profiles set location = nullif(btrim(new_location), '') where org_id = target_org;
-    end if;
+  select * into company from public.orgs where id = target_org;
+  if btrim(account_name) is distinct from company.name and not public.is_org_owner(target_org) then
+    raise exception 'Only a company owner can change the company''s name' using errcode = '42501';
   end if;
-  return details;
+
+  update public.orgs set name = btrim(account_name) where id = target_org returning * into company;
+  insert into public.company_contact_details (org_id, phone) values (target_org, nullif(btrim($3), ''))
+    on conflict (org_id) do update set phone = excluded.phone;
+  if company.type = 'brand' then
+    update public.brand_profiles set hq_location = nullif(btrim($4), '') where org_id = target_org;
+  else
+    update public.factory_profiles set location = nullif(btrim($4), '') where org_id = target_org;
+  end if;
+  return jsonb_build_object('name', company.name, 'phone', coalesce(nullif(btrim($3), ''), ''), 'location', coalesce(nullif(btrim($4), ''), ''));
 end;
 $$;
 
-revoke all on function public.save_company_basics(uuid, text, text, text) from public, anon;
-grant execute on function public.save_company_basics(uuid, text, text, text) to authenticated;
+revoke all on function public.save_account_settings(uuid, text, text, text) from public, anon;
+grant execute on function public.save_account_settings(uuid, text, text, text) to authenticated;
 
 -- A permission changed or a person removed reaches their open screen.
 do $$

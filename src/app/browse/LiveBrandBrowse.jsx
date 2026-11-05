@@ -24,6 +24,7 @@ import {
   toggleFilter,
   vendorCard,
 } from "./vendor-directory-view.js";
+import { useVendorTranslations } from "./useVendorTranslations.js";
 import "./browse.css";
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
@@ -67,7 +68,8 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
     return () => { cancelled = true; };
   }, [org.id]);
 
-  const cards = useMemo(() => (state.data?.vendors ?? []).map((parts) => vendorCard(parts)), [state.data]);
+  const originalCards = useMemo(() => (state.data?.vendors ?? []).map((parts) => vendorCard(parts)), [state.data]);
+  const cards = useVendorTranslations(originalCards, org.id);
   const ofType = useMemo(
     () => cards.filter((card) => (vendorType === "trading" ? card.vendorType === "trading" : card.vendorType === "factory")),
     [cards, vendorType],

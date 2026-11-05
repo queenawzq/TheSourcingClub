@@ -612,8 +612,10 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   select also returned an owner's own outgoing invitations, and the invited
   company's name was unreadable to someone not in it yet. Signing up with an
   invited address no longer creates a company of its own.
-- **Contact details live in `org_contact_details`, never `orgs`**: the other
-  side of an order can read `orgs`.
+- **Settings → Account is `save_account_settings()`**: phone and location need
+  Settings access, the company's name an owner, and the sign-in email is not
+  edited there. The phone lives in `company_contact_details`, never `orgs`: the
+  other side of an order can read `orgs`.
 - **A missing permission greys the action out; it does not hide it**
   (Queena, Nov 4). Fund, Approve and the factory's Send quote stay on screen,
   disabled, and a visible line says which permission is missing and at which

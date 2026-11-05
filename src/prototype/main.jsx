@@ -2492,6 +2492,7 @@ export function SettingsScreen({
   // Live mounts pass these; the prototype passes none and is unchanged.
   team: liveTeam,
   account: liveAccount,
+  onSaveAccount,
   paymentMethods: livePaymentMethods,
   invites: liveInvites,
   onAddPaymentMethod,
@@ -2521,19 +2522,39 @@ export function SettingsScreen({
   onRoleChange,
   onResend,
   onRevoke,
-  onSave,
   canInvite = true,
   grantablePermissions,
   accountLocked = false,
+  nameLocked = false,
   saveNote = "",
   busy = false,
   error = null,
 }) {
+  const settingsRef = useRef(null);
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [saveNotice, setSaveNotice] = useState(null);
+  useEffect(() => {
+    if (!saveNotice) return;
+    const timer = window.setTimeout(() => setSaveNotice(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [saveNotice]);
+  const saveAccount = async () => {
+    if (savingAccount) return;
+    const field = (name) => settingsRef.current?.querySelector(`[name="${name}"]`)?.value ?? "";
+    if (field("new-password") || field("current-password")) { setSaveNotice({ error: true, text: "Password changes are not saved here. Use Forgot password on the sign-in page." }); return; }
+    setSavingAccount(true); setSaveNotice(null);
+    const saveStarted = Date.now();
+    try {
+      if (onSaveAccount) await onSaveAccount({ name: field("account-name"), phone: field("account-phone"), location: field("account-location") });
+      await new Promise((resolve) => window.setTimeout(resolve, Math.max(0, 500 - (Date.now() - saveStarted))));
+      setSaveNotice({ text: "Changes saved" });
+    } catch (failure) { setSaveNotice({ error: true, text: failure.message || "Changes could not be saved" }); }
+    finally { setSavingAccount(false); }
+  };
   const isFactory = accountType === "factory";
-  // Live reads the drawer's and the account card's fields on submit; the
+  // Live reads the drawer's fields on submit; the
   // prototype's controls are never read back.
   const inviteDrawerRef = useRef(null);
-  const accountCardRef = useRef(null);
   const [activeSection, setActiveSection] = useState("account");
   const [inviteEmail, setInviteEmail] = useState("");
   const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
@@ -2639,10 +2660,6 @@ export function SettingsScreen({
     }
     setTeam((current) => current.filter((member) => member.email !== memberEmail));
   };
-  const readAccount = () => {
-    const field = (name) => accountCardRef.current?.querySelector(`[name="${name}"]`)?.value ?? "";
-    return { email: field("accountEmail"), phone: field("accountPhone"), location: field("accountLocation") };
-  };
   const readInvite = () => {
     const drawer = inviteDrawerRef.current;
     return {
@@ -2687,44 +2704,38 @@ export function SettingsScreen({
         </nav>
       </aside>
 
-      <section className="settings-content">
+      <section className="settings-content" ref={settingsRef}>
         <header className="settings-heading">
           <div>
             <p>{isFactory ? (companyType === "trading" ? "Trading company account" : "Factory account") : "Brand account"}</p>
             <h2>Account settings</h2>
           </div>
-          <button
-            className="primary-btn"
-            type="button"
-            disabled={isLive && (busy || !onSave) ? true : undefined}
-            onClick={isLive && onSave ? () => onSave(readAccount()) : undefined}
-          >
-            Save changes
-          </button>
+          <button className="primary-btn" type="button" onClick={saveAccount} disabled={savingAccount || accountLocked} aria-busy={savingAccount}>{savingAccount ? "Saving…" : "Save changes"}</button>
+          {saveNotice && createPortal(<div className="toast settings-save-toast" role={saveNotice.error ? "alert" : "status"}>{saveNotice.text}</div>, document.body)}
         </header>
         {saveNote ? <p className="tsc-team-save-note" role="status">{saveNote}</p> : null}
 
-        <section className="settings-section" id="settings-account" ref={accountCardRef}>
+        <section className="settings-section" id="settings-account">
               <div className="settings-section-header">
                 <h3>Basic information</h3>
                 <p>{isFactory ? "Edit the details brands use for orders, calls, and account verification." : "Edit the details other teams use for orders, calls, and account verification."}</p>
               </div>
               <div className="settings-form-grid">
                 <label>
-                  <span>Account name</span>
-                  <input defaultValue={account.name} readOnly={isLive ? true : undefined} title={isLive ? "To rename your company, contact support: it is the name we verified." : undefined} />
+                  <span>{isFactory ? companyType === "trading" ? "Company name" : "Factory name" : "Brand name"}</span>
+                  <input name="account-name" defaultValue={account.name} readOnly={nameLocked || accountLocked ? true : undefined} title={nameLocked || accountLocked ? "Only an owner can change the company's name" : undefined} />
                 </label>
                 <label>
                   <span>Email</span>
-                  <input defaultValue={account.email} type="email" name={isLive ? "accountEmail" : undefined} readOnly={isLive && accountLocked ? true : undefined} />
+                  <input defaultValue={account.email} type="email" readOnly={onSaveAccount || accountLocked ? true : undefined} title={onSaveAccount || accountLocked ? "Your sign-in email is managed separately" : undefined} />
                 </label>
                 <label>
                   <span>Phone</span>
-                  <input defaultValue={account.phone} name={isLive ? "accountPhone" : undefined} readOnly={isLive && accountLocked ? true : undefined} />
+                  <input name="account-phone" defaultValue={account.phone} readOnly={accountLocked ? true : undefined} />
                 </label>
                 <label>
                   <span>Location</span>
-                  <input defaultValue={account.location} name={isLive ? "accountLocation" : undefined} readOnly={isLive && accountLocked ? true : undefined} />
+                  <input name="account-location" defaultValue={account.location} readOnly={accountLocked ? true : undefined} />
                 </label>
               </div>
             </section>
@@ -2737,11 +2748,11 @@ export function SettingsScreen({
               <div className="settings-form-grid">
                 <label>
                   <span>Current password</span>
-                  <input placeholder="Enter current password" type="password" />
+                  <input name="current-password" placeholder="Enter current password" type="password" />
                 </label>
                 <label>
                   <span>New password</span>
-                  <input placeholder="Create new password" type="password" />
+                  <input name="new-password" placeholder="Create new password" type="password" />
                 </label>
               </div>
             </section>
@@ -4550,7 +4561,10 @@ export function HomeScreen({
   );
 }
 
-function HomeRecommendedFactoryCard({ factory, goTo }) {
+function HomeRecommendedFactoryCard({ factory: originalFactory, goTo }) {
+  const translations = originalFactory.translations ?? {};
+  const text = (value) => translations[value] ?? value;
+  const factory = { ...originalFactory, name: text(originalFactory.name), location: text(originalFactory.location), notes: originalFactory.notes.map(text), products: (originalFactory.products ?? []).map((product) => ({ ...product, name: text(product.name) })) };
   const sampleProducts = (factory.products ?? []).filter((product) => product.image);
   const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
   const updateSampleScroll = (element) => {
@@ -5040,6 +5054,8 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
             ‹ Back to {view.back.label}
           </button>
         </div>
+
+        {live?.translationControls}
 
         <section className="factory-profile-hero">
           <div className="factory-profile-identity">
@@ -7172,7 +7188,18 @@ export function FactoryMarketplaceScreen({ goTo, live = null }) {
  * A live card leaves out what nothing records (match, rating, Club orders),
  * and any button with nothing behind it.
  */
-function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote, live = null }) {
+function MarketplaceFactoryCard({ factory: originalFactory, vendorType = "factory", onQuote, live = null }) {
+  const [showOriginal, setShowOriginal] = useState(false);
+  const translations = originalFactory.translations ?? {};
+  const translated = Object.keys(translations).length > 0;
+  const text = (value) => showOriginal ? value : translations[value] ?? value;
+  const factory = {
+    ...originalFactory,
+    name: text(originalFactory.name),
+    location: text(originalFactory.location),
+    notes: originalFactory.notes.map(text),
+    products: originalFactory.products.map((product) => ({ ...product, name: text(product.name) })),
+  };
   const [sampleScroll, setSampleScroll] = useState({ left: false, right: true });
   const updateSampleScroll = (element) => {
     if (!element) return;
@@ -7273,6 +7300,10 @@ function MarketplaceFactoryCard({ factory, vendorType = "factory", onQuote, live
             <p>{factory.notes[0]}</p>
           </div>
           )}
+          {translated && <div className="vendor-card-translation">
+            <span>{showOriginal ? "Original text" : "Automatically translated to English"}</span>
+            <button type="button" onClick={() => setShowOriginal((current) => !current)}>{showOriginal ? "See English translation" : "See original"}</button>
+          </div>}
         </div>
 
         {(!live || factory.products.length > 0) && (

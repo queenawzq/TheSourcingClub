@@ -15,7 +15,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 
-select plan(95);
+select plan(96);
 
 insert into auth.users (id, email, raw_user_meta_data) values
   ('a2400000-0000-0000-0000-000000000001', 'p24-owner@example.com',     '{"name":"P24 Owner"}'),
@@ -368,7 +368,7 @@ select throws_ok(
   'a member without Settings access CANNOT change the email switches');
 
 select throws_ok(
-  $$select public.save_company_basics('a2400000-0000-0000-0000-0000000000aa', 'ops@example.com', '+44 20 0000 0000', 'Leeds, UK')$$,
+  $$select public.save_account_settings('a2400000-0000-0000-0000-0000000000aa', (select name from public.orgs where id = 'a2400000-0000-0000-0000-0000000000aa'), '+44 20 0000 0000', 'Leeds, UK')$$,
   '42501', null,
   'a member without Settings access CANNOT change the company details');
 
@@ -376,14 +376,19 @@ reset role;
 set local request.jwt.claims = '{"sub":"a2400000-0000-0000-0000-000000000003","email":"p24-settings@example.com","role":"authenticated"}';
 set local role authenticated;
 
+select throws_ok(
+  $$select public.save_account_settings('a2400000-0000-0000-0000-0000000000aa', 'Renamed by a member', '+44 20 0000 0000', 'Leeds, UK')$$,
+  '42501', null,
+  'a member with Settings access CANNOT rename the company');
+
 select lives_ok(
-  $$select public.save_company_basics('a2400000-0000-0000-0000-0000000000aa', 'Ops@Example.com ', '+44 20 0000 0000', 'Leeds, UK')$$,
+  $$select public.save_account_settings('a2400000-0000-0000-0000-0000000000aa', (select name from public.orgs where id = 'a2400000-0000-0000-0000-0000000000aa'), '+44 20 0000 0000', 'Leeds, UK')$$,
   'a member with Settings access saves the company details');
 
 select is(
-  (select email || ' / ' || phone from public.org_contact_details where org_id = 'a2400000-0000-0000-0000-0000000000aa'),
-  'ops@example.com / +44 20 0000 0000',
-  'the details read back as saved, the email lowercased');
+  (select phone from public.company_contact_details where org_id = 'a2400000-0000-0000-0000-0000000000aa'),
+  '+44 20 0000 0000',
+  'the details read back as saved');
 
 select is((select hq_location from public.brand_profiles where org_id = 'a2400000-0000-0000-0000-0000000000aa'),
   'Leeds, UK', 'the location is the profile''s own');
@@ -393,7 +398,7 @@ set local request.jwt.claims = '{"sub":"a2400000-0000-0000-0000-000000000004","e
 set local role authenticated;
 
 select is(
-  (select count(*) from public.org_contact_details where org_id = 'a2400000-0000-0000-0000-0000000000aa'),
+  (select count(*) from public.company_contact_details where org_id = 'a2400000-0000-0000-0000-0000000000aa'),
   0::bigint,
   'the factory on the order CANNOT read the brand''s contact details');
 
@@ -734,9 +739,9 @@ select ok(not has_function_privilege('authenticated', 'public.member_has_permiss
   'member_has_permission (any person''s permissions) is server-only');
 select ok(not has_function_privilege('anon', 'public.has_org_permission(uuid, text)', 'execute'),
   'a signed-out visitor cannot ask about permissions');
-select ok(not has_table_privilege('authenticated', 'public.org_contact_details', 'insert')
-          and not has_table_privilege('authenticated', 'public.org_contact_details', 'update'),
-  'contact details are written only through save_company_basics');
+select ok(not has_table_privilege('authenticated', 'public.company_contact_details', 'insert')
+          and not has_table_privilege('authenticated', 'public.company_contact_details', 'update'),
+  'contact details are written only through save_account_settings');
 select ok(exists (select 1 from pg_publication_tables
                    where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = 'org_members'),
   'a change to the team reaches open screens');

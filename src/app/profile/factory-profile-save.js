@@ -22,7 +22,6 @@ async function saveOverview(org, form, terms) {
   const location = textOrNull(form.location);
   const patch = {
     intro: textOrNull(form.intro),
-    legal_name: textOrNull(form.name),
     founded_year: firstNumber(form.founded),
     website_url: textOrNull(form.website),
     location,
@@ -33,6 +32,7 @@ async function saveOverview(org, form, terms) {
   // clearing the field doesn't erase a code onboarding found.
   const code = countryCodeFrom(location, terms.country ?? []);
   if (code) patch.country_code = code;
+  unwrap(await supabase.rpc("rename_factory", { target_org: org.id, factory_name: form.name }), "save factory name");
   await saveFactoryProfile(org.id, patch);
 }
 
@@ -130,7 +130,6 @@ async function saveTradingSection(org, editor, form, terms) {
     const location = textOrNull(form.location);
     const patch = {
       intro: textOrNull(form.intro),
-      legal_name: textOrNull(form.name),
       founded_year: firstNumber(form.founded),
       website_url: textOrNull(form.website),
       location,
@@ -139,6 +138,7 @@ async function saveTradingSection(org, editor, form, terms) {
     };
     const code = countryCodeFrom(location, terms.country ?? []);
     if (code) patch.country_code = code;
+    unwrap(await supabase.rpc("rename_factory", { target_org: org.id, factory_name: form.name }), "save company name");
     return saveFactoryProfile(org.id, patch);
   }
   if (editor === "commercial") {

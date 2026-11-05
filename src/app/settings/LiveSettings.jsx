@@ -37,8 +37,8 @@ import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { SettingsScreen, factoryAccountPermissionLabels, settingsPermissionLabels } from "../../prototype/main.jsx";
 import {
-  can, getCompanyBasics, inviteMember, listMembers, listPendingInvitations, permissionLabel, removeMember,
-  resendInvitation, revokeInvitation, saveCompanyBasics, setMemberAccess, setMemberRole, teamInviteNotice,
+  can, inviteMember, listMembers, listPendingInvitations, permissionLabel, removeMember,
+  resendInvitation, revokeInvitation, setMemberAccess, setMemberRole, teamInviteNotice,
 } from "../../lib/domain/org.js";
 import { useAuth } from "../../lib/auth.jsx";
 import { useManualPayouts } from "../order/use-manual-payouts.js";
@@ -97,10 +97,9 @@ function sentLabel(createdAt) {
 
 export default function LiveSettings({ org, isFactory, onSignOut }) {
   const { user, refreshOrgs } = useAuth();
+  const [savedAccount, setSavedAccount] = useState(null);
   const [members, setMembers] = useState(null);
-  const [basics, setBasics] = useState(null);
   const [notice, setNotice] = useState(null);
-  const [saveNote, setSaveNote] = useState("");
   const [confirming, setConfirming] = useState(null);
   const [profile, setProfile] = useState(null);
   const [invites, setInvites] = useState([]);
@@ -134,17 +133,18 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
 
   const reload = useCallback(async () => {
     try {
-      const [loadedMembers, loadedProfile, loadedInvites, loadedBasics] = await Promise.all([
+      const [loadedMembers, loadedProfile, loadedInvites] = await Promise.all([
         listMembers(org.id),
         isFactory ? getFactoryProfile(org.id) : getBrandProfile(org.id),
         // Invitations are Settings access's to see; RLS returns none to
         // anyone else, and the screen says why.
         listPendingInvitations(org.id),
-        getCompanyBasics(org.id).catch(() => null),
       ]);
       setProfile(loadedProfile);
+      const company = unwrap(await supabase.from("orgs").select("name").eq("id", org.id).single(), "load account settings");
+      const contact = unwrap(await supabase.from("company_contact_details").select("phone").eq("org_id", org.id).maybeSingle(), "load company contact");
+      setSavedAccount({ name: company.name, phone: contact?.phone ?? "", location: (isFactory ? loadedProfile?.location : loadedProfile?.hq_location) ?? "" });
       setInvites(loadedInvites);
-      setBasics(loadedBasics);
       setMembers(loadedMembers);
       loadCards();
 
@@ -238,20 +238,6 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     }
   }
 
-  async function saveBasics(values) {
-    setBusy(true);
-    setSaveNote("");
-    try {
-      await saveCompanyBasics(org.id, values);
-      await reload();
-      setSaveNote("Saved.");
-    } catch (failure) {
-      setSaveNote(failure.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   // What each confirmation says and does. Its error stays in the dialog.
   async function confirm() {
     const { kind, member, invitation } = confirming;
@@ -340,17 +326,17 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   const owner = (members ?? []).find((member) => member.role === "owner");
   const ownerEmail = owner?.user_profiles?.email ?? "";
   const live = {
-    account: isFactory
+    account: savedAccount ? { ...savedAccount, email: isFactory ? ownerEmail : profile?.business_email || ownerEmail } : isFactory
       ? {
           name: org.name ?? "",
-          email: basics?.email || ownerEmail,
-          phone: basics?.phone ?? "",
+          email: ownerEmail,
+          phone: "",
           location: profile?.location ?? "",
         }
       : {
           name: org.name ?? "",
-          email: basics?.email || profile?.business_email || ownerEmail,
-          phone: basics?.phone ?? "",
+          email: profile?.business_email || ownerEmail,
+          phone: "",
           location: profile?.hq_location ?? "",
         },
     paymentMethods: isFactory
@@ -400,6 +386,11 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           isOwner ? "Owners can do everything; tick what each member may do." : "Only an owner changes what people may do.",
           canSettings ? "" : "Only someone with Settings access invites people and sees invitations.",
         ].filter(Boolean).join(" ")}
+        onSaveAccount={canSettings ? async (details) => {
+          const result = unwrap(await supabase.rpc("save_account_settings", { target_org: org.id, account_name: details.name, phone: details.phone, location: details.location }), "save account settings");
+          setSavedAccount(result);
+          await refreshOrgs();
+        } : undefined}
         companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
         // Where a factory is paid stays with its owners.
         onAddPaymentMethod={isFactory && isOwner ? () => openPayoutFlow("manage") : undefined}
@@ -418,9 +409,9 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         onRemove={(member) => member && setConfirming({ kind: member.id === user?.id ? "leave" : "remove", member })}
         onResend={resend}
         onRevoke={(invitation) => setConfirming({ kind: "revoke", invitation })}
-        onSave={canSettings ? saveBasics : undefined}
         accountLocked={!canSettings}
-        saveNote={saveNote || (canSettings ? "" : "Only someone with Settings access can change these details.")}
+        nameLocked={!isOwner}
+        saveNote={(canSettings ? (isOwner ? "" : "Only an owner can change the company's name.") : "Only someone with Settings access can change these details.")}
         notificationEmails={notificationEmails ?? undefined}
         onNotificationEmailChange={canSettings ? changeNotificationEmail : undefined}
         notificationEmailNotes={emailNotes}
