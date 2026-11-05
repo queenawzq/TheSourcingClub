@@ -13408,6 +13408,12 @@ body:has(.brand-onboarding-page) {
     width: 100%;
   }
 
+  /* The row is stacked here, and the popover opens leftwards from the button
+     (right: 0): with the button on the left it opened off the page. */
+  .settings-payment-menu {
+    margin-left: auto;
+  }
+
   .settings-payment-page-actions .compact-btn,
   .settings-payment-page-card > .compact-btn {
     flex: 1;
