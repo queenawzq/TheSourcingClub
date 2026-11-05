@@ -18,7 +18,17 @@ import { TRADING_CHIP_KINDS, TRADING_SECTIONS } from "./trading-profile-view.js"
 const shortMonth = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 const textOrNull = (value) => String(value ?? "").trim() || null;
 
-async function saveOverview(org, form, terms) {
+/**
+ * The name is the owner's, and only worth a call when it changed: a member's
+ * dialog draws it read-only, and any save of theirs must not depend on it.
+ */
+async function renameIfChanged(org, name, parts) {
+  if (org.role !== "owner") return;
+  if (String(name ?? "").trim() === String(parts.orgName ?? "").trim()) return;
+  unwrap(await supabase.rpc("rename_factory", { target_org: org.id, factory_name: name }));
+}
+
+async function saveOverview(org, form, terms, parts) {
   const location = textOrNull(form.location);
   const patch = {
     intro: textOrNull(form.intro),
@@ -32,7 +42,7 @@ async function saveOverview(org, form, terms) {
   // clearing the field doesn't erase a code onboarding found.
   const code = countryCodeFrom(location, terms.country ?? []);
   if (code) patch.country_code = code;
-  unwrap(await supabase.rpc("rename_factory", { target_org: org.id, factory_name: form.name }), "save factory name");
+  await renameIfChanged(org, form.name, parts);
   await saveFactoryProfile(org.id, patch);
 }
 
@@ -125,7 +135,7 @@ async function saveReferences(org, form, existing) {
  * its onboarding questions write (migration 20260920000500 and the trading
  * taxonomy kinds), and only those.
  */
-async function saveTradingSection(org, editor, form, terms) {
+async function saveTradingSection(org, editor, form, terms, parts) {
   if (editor === "company") {
     const location = textOrNull(form.location);
     const patch = {
@@ -138,7 +148,7 @@ async function saveTradingSection(org, editor, form, terms) {
     };
     const code = countryCodeFrom(location, terms.country ?? []);
     if (code) patch.country_code = code;
-    unwrap(await supabase.rpc("rename_factory", { target_org: org.id, factory_name: form.name }), "save company name");
+    await renameIfChanged(org, form.name, parts);
     return saveFactoryProfile(org.id, patch);
   }
   if (editor === "commercial") {
@@ -178,11 +188,11 @@ export const TRADING_EDITORS = [...TRADING_TEXT_DIALOGS, "references", "banner",
  */
 export async function saveProfileSection(org, editor, form, parts, now = new Date()) {
   const terms = parts.terms ?? {};
-  if (editor === "overview") return saveOverview(org, form, terms);
+  if (editor === "overview") return saveOverview(org, form, terms, parts);
   if (editor === "production") return saveProduction(org, form, terms);
   if (editor === "capacity") return saveCapacityAndTerms(org, form, terms, Boolean(parts.capacity?.capacity), now);
   if (editor === "references") return saveReferences(org, form, parts.references ?? []);
-  if (TRADING_TEXT_DIALOGS.includes(editor)) return saveTradingSection(org, editor, form, terms);
+  if (TRADING_TEXT_DIALOGS.includes(editor)) return saveTradingSection(org, editor, form, terms, parts);
   if (FILE_DIALOGS.includes(editor)) return undefined;
   throw new Error(`The ${editor} section can't be saved yet.`);
 }

@@ -257,6 +257,7 @@ An awarded quote becomes a `production_orders` row in the same transaction, carr
 Things that will bite here specifically:
 
 - **`grant select` and nothing else, on every Phase 3 table.** Not stylistic. An UPDATE policy's `using` clause can gate the state a row comes *from*, but its `with check` cannot stop the same statement writing a confirmation stamp alongside it. A policy gates the transition; it cannot gate the payload. So the RPCs own every write.
+- **`revoke ... from public` does not stop a signed-in account.** Supabase's default privileges grant execute on every new function to `authenticated` by name. A function only other functions should run needs `revoke all ... from public, anon, authenticated` (`20261104002000`); until then `close_order` let any account cancel any order.
 - **A `security definer` function has no policy behind it.** The `or is_platform_admin()` branches on the read policies do not protect `confirm_payment_received`. The admin test is the first statement in each of the three admin RPCs — before any `select`, since checking afterwards leaks existence through `P0002` versus `42501`.
 - **`quotes.deposit_pct` is nullable** and `submit_quote()` does not require it. Uncoalesced, the schedule generator emits milestones totalling only the sample lines, `agree_schedule` refuses that forever, and the order is dead with nothing on screen explaining why.
 - **Compute one side of a percentage split and subtract for the other.** Rounding both independently loses or invents a cent, permanently, on a figure a brand types into a bank transfer.
@@ -610,6 +611,11 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
 - **`org_members` is in the Realtime publication.** `AuthProvider` listens
   to the person's own rows: a permission change reaches open screens, and a
   removal shows "You no longer have access to …".
+- **An open Settings page hears the team change** (`LiveSettings`: `org_members`
+  and, from `20261104100200`, `org_invitations`, both in the Realtime
+  publication). It re-reads only the team, because the full reload asks Stripe,
+  and again every 30 s, since an invitation expiring sends no event. An invited
+  person's open page listens by address (`useInvitationsLive`).
 - **Invitations are read through `my_invitation_companies()`.** A plain
   select also returned an owner's own outgoing invitations, and the invited
   company's name was unreadable to someone not in it yet. Signing up with an
@@ -618,6 +624,20 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   Settings access, the company's name an owner, and the sign-in email is not
   edited there. The phone lives in `company_contact_details`, never `orgs`: the
   other side of an order can read `orgs`.
+- **Someone with no company is not always someone who just signed up**
+  (`20261104100100`). `ChooseOrgType` creates a company from the signup answers
+  only for an account with no `org_member_departures` row. A trigger on
+  `org_members` writes that row on every way out (removed, left, staff deleting
+  the company), so a removed person is told, also after a reload, and nothing is
+  created. A failed read of the row counts as "has left".
+- **A non-owner's save never carries the company's name.** `save_account_settings`
+  takes a null name as "leave it" (their copy goes stale when an owner renames),
+  and `renameIfChanged` calls `rename_factory` only for an owner who changed it.
+  Non-owners see the name read-only with the reason.
+- **Removing someone, or leaving, withdraws the pending invitations they sent**
+  (`remove_member`), or a member about to be removed could invite a second
+  address of their own and come back with those rights. Someone who already
+  accepted stays: they are on the team, and the owner can see them.
 - **A missing permission greys the action out; it does not hide it**
   (Queena, Nov 4). Fund, Approve and the factory's Send quote stay on screen,
   disabled, and a visible line says which permission is missing and at which

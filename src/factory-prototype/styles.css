@@ -11468,3 +11468,17 @@ button.sort-button {
     flex-wrap: wrap;
   }
 }
+
+/* A field the person may read but not change, with the reason under it. */
+.factory-onboarding-field input:read-only {
+  background: #f4f6f9;
+  color: #5b6577;
+}
+
+.factory-profile-field-locked {
+  display: block;
+  margin-top: 6px;
+  color: #5b6577;
+  font-size: 12px;
+  line-height: 16px;
+}

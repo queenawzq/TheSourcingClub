@@ -239,6 +239,18 @@ export async function listMyInvitations() {
   }));
 }
 
+/**
+ * The company this person last left or was removed from, or null. An account
+ * with one of these must never have a company created for it automatically.
+ */
+export async function myLastDeparture(userId) {
+  const row = unwrap(
+    await supabase.from("org_member_departures").select("org_name, by_choice").eq("user_id", userId).maybeSingle(),
+    "load your account",
+  );
+  return row ? { orgName: row.org_name, byChoice: row.by_choice } : null;
+}
+
 export async function acceptInvitation(invitationId) {
   return unwrap(
     await supabase.rpc("accept_invitation", { invitation_id: invitationId }),
