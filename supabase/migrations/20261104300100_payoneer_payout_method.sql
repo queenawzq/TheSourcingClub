@@ -303,6 +303,75 @@ create trigger factory_payout_accounts_payoneer_notice
   for each row execute function public.notify_payoneer_change();
 
 -- ---------------------------------------------------------------------------
+-- Moving the default away from Payoneer tells the company where earnings now
+-- go. Bank to bank stays as it was: this is only about leaving Payoneer.
+--
+-- Deferred, because set_primary_payout_account clears the old default in one
+-- statement and sets the new one in the next: when the Payoneer row loses the
+-- mark, nothing yet says who gained it. At the end of the transaction the
+-- answer is known, whichever order the writes came in, and also when
+-- remove_payout_account has deleted the row since.
+--
+-- A bank account is named by its bank and last four digits, never in full. A
+-- direct update that leaves no default at all is said too: otherwise clearing
+-- it and setting a bank account in a second request would tell nobody.
+-- ---------------------------------------------------------------------------
+create or replace function public.notify_left_payoneer()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  now_paid public.factory_payout_accounts;
+  what text;
+begin
+  if coalesce(auth.role(), '') <> 'authenticated' then
+    return null;
+  end if;
+
+  -- Still paid by Payoneer (it came back, or another Payoneer account took
+  -- over, which notify_payoneer_change has said).
+  if exists (
+    select 1 from public.factory_payout_accounts
+     where org_id = new.org_id and is_primary and method = 'payoneer'
+  ) then
+    return null;
+  end if;
+
+  select * into now_paid from public.factory_payout_accounts
+   where org_id = new.org_id and is_primary
+   order by updated_at desc limit 1;
+
+  if now_paid.id is null then
+    what := format('TSC no longer pays Payoneer account %s, and you have no default payout method.', old.payoneer_email);
+  else
+    what := format('TSC now pays your bank account at %s%s, instead of Payoneer account %s.',
+      now_paid.bank_name,
+      case when now_paid.account_number_last4 is not null
+        then format(' ending %s', now_paid.account_number_last4) else '' end,
+      old.payoneer_email);
+  end if;
+
+  if exists (select 1 from public.orgs where id = new.org_id) then
+    insert into public.notifications (org_id, kind, title, body)
+    values (new.org_id, 'payout_method_changed', 'Your payout methods changed',
+      what || ' If nobody at your company made this change, email operations@contact.sourcing-club.com now.');
+  end if;
+  return null;
+end;
+$$;
+
+revoke all on function public.notify_left_payoneer() from public, anon, authenticated;
+
+create constraint trigger factory_payout_accounts_left_payoneer
+  after update on public.factory_payout_accounts
+  deferrable initially deferred
+  for each row
+  when (old.method = 'payoneer' and old.is_primary and not (new.method = 'payoneer' and new.is_primary))
+  execute function public.notify_left_payoneer();
+
+-- ---------------------------------------------------------------------------
 -- The staff payments board (from 20261023000400). The return type gains
 -- columns, so it is dropped and recreated in this one transaction. Changed:
 -- payout_summary names the Payoneer account; payout_method, payoneer_email

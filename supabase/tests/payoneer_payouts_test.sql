@@ -16,7 +16,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(69);
+select plan(77);
 
 set local session_replication_role = replica;
 
@@ -456,6 +456,16 @@ select is(
   1,
   'the company is told it was removed'
 );
+-- notify_left_payoneer runs at the end of the transaction, and these tests
+-- never commit: asking for it immediately runs what is waiting, then it goes
+-- back to waiting so the next change is seen as a real one would be.
+set constraints public.factory_payout_accounts_left_payoneer immediate;
+set constraints public.factory_payout_accounts_left_payoneer deferred;
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC now pays your bank account at P31 B, instead of Payoneer account other@p31.example.com.%'),
+  1,
+  'removing the default Payoneer account says which bank account TSC now pays'
+);
 select lives_ok(
   $$ insert into public.factory_payout_accounts (org_id, method, payoneer_email) values ('31b00000-0000-0000-0000-0000000000f2', 'payoneer', 'back@p31.example.com') $$,
   'a second Payoneer account can be added'
@@ -468,6 +478,44 @@ select is(
   (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'TSC now pays Payoneer account back@p31.example.com.%'),
   1,
   'the company is told who TSC now pays'
+);
+select lives_ok(
+  $$ insert into public.factory_payout_accounts (org_id, is_primary, bank_name, account_name, account_number_last4) values ('31b00000-0000-0000-0000-0000000000f2', false, 'P31 C', 'P31 Other Ltd', '1234') $$,
+  'a second bank account is added'
+);
+select lives_ok(
+  $$ select public.set_primary_payout_account((select id from public.factory_payout_accounts where bank_name = 'P31 C')) $$,
+  'and the default moves from Payoneer to it'
+);
+set constraints public.factory_payout_accounts_left_payoneer immediate;
+set constraints public.factory_payout_accounts_left_payoneer deferred;
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC now pays your bank account at P31 C ending 1234, instead of Payoneer account back@p31.example.com. If nobody at your company made this change,%'),
+  1,
+  'moving the default from Payoneer to a bank account tells the company where earnings now go'
+);
+select lives_ok(
+  $$ select public.set_primary_payout_account((select id from public.factory_payout_accounts where bank_name = 'P31 B')) $$,
+  'moving the default from one bank account to another'
+);
+set constraints public.factory_payout_accounts_left_payoneer immediate;
+set constraints public.factory_payout_accounts_left_payoneer deferred;
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC now pays your bank account at P31 B,%'),
+  1,
+  'says nothing new: bank to bank stays out of this notice, and only the removal above named P31 B'
+);
+select lives_ok(
+  $$ select public.set_primary_payout_account((select id from public.factory_payout_accounts where payoneer_email = 'back@p31.example.com')) $$,
+  'back on Payoneer'
+);
+update public.factory_payout_accounts set is_primary = false where payoneer_email = 'back@p31.example.com';
+set constraints public.factory_payout_accounts_left_payoneer immediate;
+set constraints public.factory_payout_accounts_left_payoneer deferred;
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC no longer pays Payoneer account back@p31.example.com, and you have no default payout method.%'),
+  1,
+  'clearing the default by a direct update is said too'
 );
 reset role;
 
