@@ -17,6 +17,7 @@ export async function loadRequestTagMetadata(rfqs) {
       .filter((term) => ids.includes(term.id))
       .map((term) => termLabel(term));
     return [rfq.id, {
+      termIds: ids,
       categories: labels("product_category"),
       certifications: labels("certification"),
       services: labels("service"),

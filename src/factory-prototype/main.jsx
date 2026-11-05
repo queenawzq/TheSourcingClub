@@ -6458,11 +6458,17 @@ export function FactoryBrowsePage({
   // Live mounts pass these; the prototype passes none and is unchanged.
   projects: liveProjects,
   emptyNote,
+  live = null,
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersButton = useRef(null);
+  const filtersWereOpen = useRef(false);
   const isTradingCompany = companyType === "trading";
 
   useEffect(() => {
+    // Closing the dialog hands focus back to the button that opened it.
+    if (live && filtersWereOpen.current && !filtersOpen) filtersButton.current?.focus();
+    filtersWereOpen.current = filtersOpen;
     if (!filtersOpen) return undefined;
     const previousOverflow = document.body.style.overflow;
     const closeOnEscape = (event) => {
@@ -6497,10 +6503,11 @@ export function FactoryBrowsePage({
           <div className="directory-filter-header">
             <strong>Filters</strong>
             <div className="marketplace-filter-header-actions">
-              <button type="button">Reset</button>
+              <button type="button" onClick={live?.onReset}>Reset</button>
               <button className="marketplace-filter-close" type="button" onClick={() => setFiltersOpen(false)}>Close</button>
             </div>
           </div>
+          {live ? <FactoryBrowseLiveFilters live={live} /> : (<>
           <FilterGroup title="Production type">
             <FilterCheck label="Cut & sew knits" />
             <FilterCheck checked label="Wovens" />
@@ -6579,6 +6586,8 @@ export function FactoryBrowsePage({
               ? "Projects shown are matched to your supplier network, services, sourcing regions, client spend, and verification status."
               : "Projects shown are matched to your capacity, certifications, region fit, client spend, and payment status."}
           </p>
+          </>)}
+          {live && filtersOpen && live.footer(() => setFiltersOpen(false))}
         </section>
 
         <section className="directory-results" aria-label="Brand project results">
@@ -6589,7 +6598,10 @@ export function FactoryBrowsePage({
             </div>
             <label className="directory-search">
               <SearchIcon />
-              <input placeholder="Search organic cotton, denim, sample-ready..." />
+              <input
+                placeholder="Search organic cotton, denim, sample-ready..."
+                {...(live ? { value: live.search, onChange: (event) => live.onSearch(event.target.value) } : {})}
+              />
             </label>
           </header>
           <div className="directory-summary">
@@ -6603,8 +6615,8 @@ export function FactoryBrowsePage({
                   : "24 open requests"}
               </strong>
               <span>
-                {liveProjects
-                  ? "open to quote right now"
+                {live
+                  ? live.matching
                   : isTradingCompany
                     ? "matching supplier coverage, sourcing services, compliance, and order fit"
                     : "matching wovens, low MOQ, GOTS, and available August capacity"}
@@ -6612,6 +6624,7 @@ export function FactoryBrowsePage({
             </div>
             <div className="directory-summary-actions">
               <button
+                ref={filtersButton}
                 className="filter-button compact-filter-button"
                 type="button"
                 aria-controls="factory-browse-filter-panel"
@@ -6619,14 +6632,14 @@ export function FactoryBrowsePage({
                 aria-haspopup="dialog"
                 onClick={() => setFiltersOpen(true)}
               >
-                Filters
+                {live ? live.buttonLabel : "Filters"}
               </button>
-              <button className="filter-button sort-button" type="button">Sort: Best fit</button>
+              {live ? live.sortControl : <button className="filter-button sort-button" type="button">Sort: Best fit</button>}
             </div>
           </div>
           <div className="directory-card-list">
             {(liveProjects ?? brandProjects).map((project) => (
-              <BrandProjectCard project={project} companyType={companyType} language={language} key={project.title} onViewDetails={onViewDetails} />
+              <BrandProjectCard project={project} companyType={companyType} language={language} key={project.id ?? project.title} onViewDetails={onViewDetails} />
             ))}
             {/* An open marketplace with nothing in it is a real state on a
                 quiet day, and the design has no card for it. */}
@@ -9066,6 +9079,41 @@ function OnboardingChipGroup({ label, options, selected = [], required = false, 
   );
 }
 
+/** Browse RFQs' filter groups, live: the panel comes from the taxonomy (rfq-browse-view.js). */
+function FactoryBrowseLiveFilters({ live }) {
+  return live.panel.filter((group) => group.options.length).map((group) => (
+    <FilterGroup title={group.title} key={group.key}>
+      {group.style === "check" ? group.options.map((option) => (
+        <label className="directory-check" key={option.id}>
+          <input
+            type="checkbox"
+            checked={live.value[group.key].includes(option.id)}
+            onChange={() => live.onToggle(group.key, option.id)}
+          />
+          <span>{option.label}</span>
+        </label>
+      )) : (
+        <div className="directory-chip-grid">
+          {group.options.map((option) => {
+            const on = live.value[group.key].includes(option.id);
+            return (
+              <button
+                className={on ? "directory-chip selected" : "directory-chip"}
+                type="button"
+                aria-pressed={on}
+                key={option.id}
+                onClick={() => live.onToggle(group.key, option.id)}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </FilterGroup>
+  ));
+}
+
 function FilterGroup({ title, children }) {
   return (
     <section className="directory-filter-group">
@@ -9158,11 +9206,14 @@ function BrandProjectCard({ project, companyType = "factory", language, onViewDe
           ) : (
             <p data-no-translate>{project.specialty}</p>
           )}
-          <div className="factory-request-trust">
-            <span className="factory-request-trust-icon" aria-hidden="true">$</span>
-            <strong>Payment verified</strong>
-            <span>{project.trust}</span>
-          </div>
+          {/* A claim about the brand, so it shows only where it is true. */}
+          {(project.paymentVerified ?? true) && (
+            <div className="factory-request-trust">
+              <span className="factory-request-trust-icon" aria-hidden="true">$</span>
+              <strong>Payment verified</strong>
+              <span>{project.trust}</span>
+            </div>
+          )}
           <div className="factory-request-tags">
             <span className="marketplace-tag-label">Request tags</span>
             <div className="tag-row compact-tags">
