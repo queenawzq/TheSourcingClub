@@ -203,6 +203,7 @@ export default function LiveFactoryProfile({ org, page = "profile", editor = nul
 
   const dialogs = {
     editors,
+    nameLocked: org.role !== "owner",
     initialEditor: editor,
     files: fileDialogs(org, parts, reload),
     onSave: async (section, form) => {

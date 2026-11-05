@@ -931,6 +931,7 @@ const factoryMainZhText = {
   "Repeat brands": "复购品牌",
   "Lead time": "交期",
   "Factory name": "工厂名称",
+  "Only an owner can change the name.": "只有所有者才能更改名称。",
   "Year founded": "成立年份",
   "Website URL": "官网",
   "Factory location": "工厂所在地",
@@ -3792,7 +3793,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
               <span>Profile overview</span>
               <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
             </label>
-            <ProfileEditField label="Factory name" value={form.name} onChange={(value) => updateField("name", value)} />
+            <ProfileEditField label="Factory name" value={form.name} onChange={(value) => updateField("name", value)} lockedReason={live?.nameLocked ? "Only an owner can change the name." : ""} />
             <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
             <ProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
             <ProfileEditField label="Factory location" value={form.location} onChange={(value) => updateField("location", value)} />
@@ -3807,7 +3808,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
               <span>Company overview</span>
               <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
             </label>
-            <ProfileEditField label="Company name" value={form.name} onChange={(value) => updateField("name", value)} />
+            <ProfileEditField label="Company name" value={form.name} onChange={(value) => updateField("name", value)} lockedReason={live?.nameLocked ? "Only an owner can change the name." : ""} />
             <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
             <ProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
             <ProfileEditField label="Headquarters" value={form.location} onChange={(value) => updateField("location", value)} />
@@ -4370,11 +4371,12 @@ function FactoryProfileAssetUploadDialog({ asset = null, helper, itemType = "ima
   );
 }
 
-function ProfileEditField({ label, value, onChange }) {
+function ProfileEditField({ label, value, onChange, lockedReason = "" }) {
   return (
     <label className="factory-onboarding-field">
       <span>{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
+      <input value={value} readOnly={lockedReason ? true : undefined} onChange={(event) => onChange(event.target.value)} />
+      {lockedReason ? <small className="factory-profile-field-locked" data-testid="name-locked">{lockedReason}</small> : null}
     </label>
   );
 }
