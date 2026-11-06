@@ -1,4 +1,5 @@
 import { applyPaymentIntent, callerClient, jsonBody, releasePayment, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
 
 /**
  * Read a payment's PaymentIntent back from Stripe and record what it says.
@@ -47,6 +48,7 @@ export default async function handler(request, response) {
       .single();
     return reply(response, 200, payment);
   } catch (failure) {
-    return reply(response, 502, { error: failure.message });
+    logStripeFailure("stripe-sync", failure);
+    return reply(response, 502, { error: sentenceFor(failure, "This payment could not be checked with Stripe just now. Reload the page in a few minutes.") });
   }
 }

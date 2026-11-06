@@ -27,6 +27,9 @@ const SECTIONS = {
 };
 const kindOf = (entityType) => (/brand/i.test(entityType) ? "brand" : /trading/i.test(entityType) ? "trading" : "factory");
 
+const missingFields = (gap) =>
+  String(gap?.detail ?? "").match(/Not filled in: ([^.]+)\./)?.[1].split(", ") ?? [];
+
 /**
  * What a company under review can actually do about an open check. It sees only
  * its onboarding steps until staff decide (src/app/main.jsx): no Settings, so no
@@ -34,7 +37,7 @@ const kindOf = (entityType) => (/brand/i.test(entityType) ? "brand" : /trading/i
  * becomes the one thing it can do there, named by the section it does it in, or
  * null when it can do nothing, and the model is asked only for these.
  */
-export function requestItem(gap, entityType) {
+export function requestItem(gap, entityType, alsoMissing = []) {
   const place = SECTIONS[kindOf(entityType)];
   const { label, result, detail } = gap;
   switch (label) {
@@ -44,17 +47,26 @@ export function requestItem(gap, entityType) {
       if (/empty|0 bytes/i.test(detail)) return `Upload your business registration certificate again: the file we received is empty (${place.verify}).`;
       return null; // On file, waiting for staff.
     case "Company details": {
-      const missing = String(detail ?? "").match(/Not filled in: ([^.]+)\./)?.[1];
+      const missing = missingFields(gap);
       // These fields span sections, and the review card marks each "Not added yet".
-      return missing ? `Fill in your ${missing}: your profile marks each one "Not added yet".` : null;
+      return missing.length
+        ? `Fill in your ${missing.join(", ")}: your profile marks ${missing.length > 1 ? "each one" : "it"} "Not added yet".`
+        : null;
     }
     case "Terms accepted":
       return result === "Missing" ? "Sign the terms, the last step before you send your profile back." : null;
     case "Contact domain":
       // Only the missing website is theirs to fix: member addresses are not.
       return /no website/i.test(detail) ? `Add your company website (${place.details}).` : null;
-    case "Duplicate company signal":
-      return `Check that your legal company name and website are correct (${place.details}).`;
+    case "Duplicate company signal": {
+      // Asking someone to check a field they are also told to fill in reads as a mistake.
+      const toCheck = [["legal name", "legal company name"], ["website", "website"]]
+        .filter(([field]) => !alsoMissing.includes(field))
+        .map(([, words]) => words);
+      return toCheck.length
+        ? `Check that your ${toCheck.join(" and ")} ${toCheck.length > 1 ? "are" : "is"} correct (${place.details}).`
+        : null;
+    }
     case "Certification evidence": {
       const [, claimed, backed] = String(detail ?? "").match(/(\d+) claimed, (\d+) with a document/) ?? [];
       return Number(claimed) > Number(backed) ? `Upload the certificate for each certification you listed (${place.verify}).` : null;
@@ -65,6 +77,25 @@ export function requestItem(gap, entityType) {
     default:
       return null;
   }
+}
+
+/**
+ * The list for all the open checks. Checks overlap: a missing website is both a
+ * gap in Company details and the reason Contact domain could not compare, and
+ * the two read as two requests for one thing. Company details names it, so
+ * Contact domain adds nothing, and is not "not asked" either: it is asked.
+ */
+export function requestItems(gaps, entityType) {
+  const missing = missingFields(gaps.find((gap) => gap.label === "Company details"));
+  const items = [];
+  const notAsked = [];
+  for (const gap of gaps) {
+    if (gap.label === "Contact domain" && missing.includes("website")) continue;
+    const item = requestItem(gap, entityType, missing);
+    if (item) items.push(item);
+    else if (gap.label !== "Duplicate company signal") notAsked.push(gap.label);
+  }
+  return { items: [...new Set(items)].slice(0, 6), notAsked };
 }
 
 // What a company under review has no way to do, should the model ask anyway.
@@ -185,8 +216,7 @@ export default async function handler(request, response) {
     : [];
 
   const entityType = String(body.entityType ?? "").slice(0, 80);
-  const items = [...new Set(gaps.map((gap) => requestItem(gap, entityType)).filter(Boolean))].slice(0, 6);
-  const notAsked = gaps.filter((gap) => !requestItem(gap, entityType)).map((gap) => gap.label);
+  const { items, notAsked } = requestItems(gaps, entityType);
   const leftOut = notAsked.length
     ? `Not asked: ${notAsked.join(", ")}. A company under review cannot change these from its profile.`
     : "";
