@@ -1733,7 +1733,9 @@ function App() {
   return (
     <ReviewLinkGate>
       <AdminGate>
-        <Shell />
+        {/* A new company starts from the loading card: one company's layout is
+            never rendered under another's name. */}
+        <Shell key={activeOrg.id} />
       </AdminGate>
     </ReviewLinkGate>
   );

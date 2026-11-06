@@ -2443,6 +2443,11 @@ export function FactoryDashboardPage({
   // Live: the credits card's line and the invite dialog's, in words the
   // product keeps. The prototype passes neither and keeps the design's copy.
   creditNote, inviteIntro,
+  // Live: drawn in place of the dashboard until the reads have answered. The
+  // prototype passes none.
+  holding,
+  // Live: something later that did not go through, above the dashboard.
+  notice,
 }) {
   const capacityUnits = capacity?.units ?? getCapacityUnitRange(capacityValue);
   const [inviteFactoryOpen, setInviteFactoryOpen] = useState(false);
@@ -2470,6 +2475,7 @@ export function FactoryDashboardPage({
   return (
     <main className="factory-dashboard-page">
       <div className="factory-dashboard-shell">
+        {notice}
         <header className="factory-dashboard-header">
           <h1>{language === "zh" ? `你好，${who}` : `Hi ${who}`}</h1>
           <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">
@@ -2478,7 +2484,7 @@ export function FactoryDashboardPage({
           </button>
         </header>
 
-        <section className="factory-dashboard-grid" aria-label="Factory dashboard overview">
+        {holding ?? <section className="factory-dashboard-grid" aria-label="Factory dashboard overview">
           <div className="factory-dashboard-main-stack">
             {!isNewcomer && (
               <div className="factory-dashboard-metrics">
@@ -2624,7 +2630,7 @@ export function FactoryDashboardPage({
               ))}
             </FactoryDashboardPanel>
           )}
-        </section>
+        </section>}
       </div>
       {inviteFactoryOpen && (
         <InviteFactoryModal language={language} intro={inviteIntro} onInvite={onInviteFactory} onClose={() => setInviteFactoryOpen(false)} />

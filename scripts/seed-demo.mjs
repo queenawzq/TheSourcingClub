@@ -126,7 +126,8 @@ const adminUser = await demoUser(LOGINS.admin);
 const brandMember = await demoUser(LOGINS.brandMember);
 const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
-const demoUsers = { brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, admin: adminUser };
+const switcher = await demoUser(LOGINS.switcher);
+const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -573,6 +574,11 @@ must(await newBrand.client.from("taxonomy_links").insert(await Promise.all(
     subject_type: "brand_profile", subject_id: newBrandOrg.id, org_id: newBrandOrg.id, term_id: await termId(kind, slug),
   })),
 )), "new brand product focus");
+
+// One person in three companies, for switching between their dashboards.
+must(await admin.from("org_members").insert([brandOrg, newBrandOrg, factoryOrg].map((org) => ({
+  org_id: org.id, user_id: switcher.id, role: "member",
+}))), "add the person in three companies");
 
 // A verified trading company, its profile filled in the way the trading
 // onboarding fills it (its own questions, columns and tags), through its own
@@ -1304,6 +1310,7 @@ done. Every login uses the password "${PASSWORD}".
   second brand    ${LOGINS.secondBrand.email}   (five open requests, nothing paid: Browse RFQs' filters)
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory
   other domain    ${LOGINS.otherDomainFactory.email}   (invite it from another demo company: "already has an account")
+  three companies ${LOGINS.switcher.email}   (${LOGINS.brand.name}, ${LOGINS.newBrand.name}, ${LOGINS.factory.name}: the sidebar switches)
   admin           ${LOGINS.admin.email}   ${app.replace("app.html", "admin.html")}
 
   The brand has:
