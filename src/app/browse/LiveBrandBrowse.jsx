@@ -1,5 +1,5 @@
 /**
- * Browse vendors: every published vendor, on the designed marketplace
+ * Browse vendors: every verified, published vendor, on the designed marketplace
  * (`FactoryMarketplaceScreen`, /browse) and the designed directory list
  * (`FactorySearchScreen`, /browse/list), with the same filters, search and
  * ranking on both.
@@ -10,17 +10,24 @@
  * with the vendor ticked; "Message" opens the brand's latest conversation
  * with it, and is left out when there is none, as on the profile. "Save"
  * keeps the vendor on the brand's Saved page.
+ *
+ * The chosen filters, search and sort are kept for the tab (sessionStorage,
+ * per company), so switching between the two layouts keeps them.
  */
 import React, { useEffect, useMemo, useState } from "react";
 import { FactoryMarketplaceScreen, FactorySearchScreen } from "../../prototype/main.jsx";
 import { useRouter } from "../../lib/router.jsx";
 import { loadVendorDirectory } from "../profile/load-profile.js";
 import { useSavedVendors } from "./useSavedVendors.js";
+import BrowseSort from "./BrowseSort.jsx";
 import {
+  SORTS,
   activeFilterCount,
   emptyFilters,
   filterPanel,
   filterVendors,
+  keepKnownFilters,
+  sortVendors,
   toggleFilter,
   vendorCard,
 } from "./vendor-directory-view.js";
@@ -30,8 +37,25 @@ import { can, permissionHint } from "../../lib/domain/org.js";
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
-/** The chosen filters in words, for the list view's summary line. */
-function matchingLine(panel, filters, query) {
+/** This tab's last Browse choices for the company; null when none or unreadable. */
+function readChoices(orgId) {
+  try {
+    return JSON.parse(window.sessionStorage.getItem(`tscBrowse:${orgId}`) ?? "null");
+  } catch {
+    return null;
+  }
+}
+
+function keepChoices(orgId, choices) {
+  try {
+    window.sessionStorage.setItem(`tscBrowse:${orgId}`, JSON.stringify(choices));
+  } catch {
+    // Private mode or full storage: the choices just don't outlive the page.
+  }
+}
+
+/** The chosen filters and order in words, for the line under the count. */
+function matchingLine(panel, filters, query, sort) {
   const byId = new Map([
     ...panel.checks.flatMap((group) => group.options.map((option) => [option.id, option.label])),
     ...panel.priceLevels.map((option) => [option.id, option.label]),
@@ -42,12 +66,14 @@ function matchingLine(panel, filters, query) {
     ...panel.countries.filter((option) => filters.countries.includes(option.id)).map((option) => option.label),
     ...filters.certifications.map((id) => byId.get(id)),
     ...panel.leadTimes.filter((option) => filters.leadTimes.includes(option.id)).map((option) => `${option.label.toLowerCase()} lead`),
+    ...panel.tiers.filter((option) => filters.tiers.includes(option.id)).map((option) => `${option.label} standard`),
     filters.moq ? `MOQ ${filters.moq[0].toLocaleString("en")}-${filters.moq[1].toLocaleString("en")}${filters.moq[1] >= panel.moq.max ? "+" : ""}` : null,
     panel.startWindows.find((option) => option.key === filters.startWindow)?.label,
     panel.quantities.find((option) => option.id === filters.quantity)?.label,
     query.trim() ? `"${query.trim()}"` : null,
   ].filter(Boolean);
-  return words.length ? `matching ${words.join(", ")}` : "every vendor listed on TSC, best fit first";
+  const order = `${(SORTS.find((option) => option.key === sort) ?? SORTS[0]).words} first`;
+  return words.length ? `matching ${words.join(", ")}, ${order}` : `every vendor listed on TSC, ${order}`;
 }
 
 export default function LiveBrandBrowse({ org, user, view = "cards" }) {
@@ -57,8 +83,19 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
   const [vendorType, setVendorType] = useState(
     () => (new URLSearchParams(window.location.search).get("type") === "trading" ? "trading" : "factories"),
   );
-  const [filters, setFilters] = useState(emptyFilters);
-  const [query, setQuery] = useState("");
+  // Restored only for the same tab of vendors; options no longer offered are
+  // dropped against the panel below (keepKnownFilters).
+  const [restored] = useState(() => {
+    const kept = readChoices(org.id);
+    return kept?.vendorType === vendorType ? kept : null;
+  });
+  const [filters, setFilters] = useState(() => restored?.filters ?? emptyFilters());
+  const [query, setQuery] = useState(() => (typeof restored?.query === "string" ? restored.query : ""));
+  const [sort, setSort] = useState(() => (SORTS.some((option) => option.key === restored?.sort) ? restored.sort : "fit"));
+
+  useEffect(() => {
+    keepChoices(org.id, { vendorType, filters, query, sort });
+  }, [org.id, vendorType, filters, query, sort]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,7 +121,9 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
     return <main className="directory-page"><p className="live-profile-loading">Loading vendors…</p></main>;
   }
 
-  const shown = filterVendors(ofType, filters, query);
+  const chosen = keepKnownFilters(filters, panel);
+  const shown = sortVendors(filterVendors(ofType, chosen, query), sort);
+  const filterCount = activeFilterCount(chosen);
   const isTrading = vendorType === "trading";
   const threads = state.data.threads;
   const typeQuery = isTrading ? "?type=trading" : "";
@@ -102,27 +141,40 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
     };
   };
 
+  const summaryText = isTrading ? plural(shown.length, "trading company", "trading companies") : plural(shown.length, "factory", "factories");
   const live = {
     vendorType,
     vendors: shown,
     filters: {
       panel,
-      value: filters,
-      onToggle: (group, id) => setFilters((current) => toggleFilter(current, group, id)),
+      value: chosen,
+      // From the previous state, so two changes in one tick both count.
+      onToggle: (group, id) => setFilters((current) => toggleFilter(keepKnownFilters(current, panel), group, id)),
       onMoq: (range) => setFilters((current) => ({
-        ...current,
+        ...keepKnownFilters(current, panel),
         // The full span is the same as no MOQ filter.
         moq: panel.moq && range[0] <= panel.moq.min && range[1] >= panel.moq.max ? null : range,
       })),
       onReset: () => {
         setFilters(emptyFilters());
         setQuery("");
+        setSort("fit");
       },
+      // Below 1180px the panel is a dialog over the results: its button says
+      // how many filters are on, and its footer how many vendors match.
+      buttonLabel: filterCount ? `Filters · ${filterCount}` : "Filters",
+      footer: (close) => (
+        <div className="browse-filter-footer">
+          <button className="primary-btn" type="button" onClick={close}>Show {summaryText}</button>
+        </div>
+      ),
     },
+    matching: matchingLine(panel, chosen, query, sort),
+    sortControl: <BrowseSort options={SORTS} value={sort} onChange={setSort} />,
     search: query,
     onSearch: setQuery,
-    summary: isTrading ? plural(shown.length, "trading company", "trading companies") : plural(shown.length, "factory", "factories"),
-    empty: activeFilterCount(filters) || query.trim()
+    summary: summaryText,
+    empty: filterCount || query.trim()
       ? "No vendors match these filters. Remove one, or press Reset."
       : `No ${isTrading ? "trading companies" : "factories"} are listed yet.`,
     card,
@@ -140,7 +192,6 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
           goTo={() => {}}
           live={{
             ...live,
-            matching: matchingLine(panel, filters, query),
             onCardsView: () => navigate(`/browse${typeQuery}`),
           }}
         />
