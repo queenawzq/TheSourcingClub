@@ -442,10 +442,6 @@ export default function StripePayoutCard({
 
   // The card's shape while the account is read, so it does not appear late
   // and push the page down.
-  // The form is taller than its dialog: a refusal is brought into view.
-  const manualErrorRef = useRef(null);
-  useEffect(() => { manualErrorRef.current?.scrollIntoView({ block: "nearest" }); }, [manualError]);
-
   if (account === undefined) return renderCard ? <PayoutCardPlaceholder isOwner={isOwner} /> : null;
 
   const closeModal = () => {
@@ -481,6 +477,8 @@ export default function StripePayoutCard({
 
   const setupActions = (
     <>
+      {/* In the footer, beside Save: this form is taller than its dialog, so anywhere else a refusal is out of sight. */}
+      {manualError ? <p className="live-stripe-error payout-modal-refusal" role="alert">{manualError.message}</p> : null}
       <button className="secondary-btn" type="button" onClick={closeModal}>Cancel</button>
       {supported ? (
         <button className="primary-btn" type="button" disabled={busy || !country} onClick={() => setModal("onboarding")}>Continue</button>
@@ -1055,8 +1053,6 @@ export default function StripePayoutCard({
             </>
           ) : <div className="payout-empty-guidance">Select a country to see the available payout method.</div>}
           {supported ? <p className="payout-security-copy">{STRIPE_FORM_NOTE}</p> : null}
-          {/* Beside Save: this form is taller than the dialog, so the top is out of sight when it refuses. */}
-          {manualError ? <p ref={manualErrorRef} className="live-stripe-error" role="alert">{manualError.message}</p> : null}
         </PayoutModal>
       ) : null}
 
