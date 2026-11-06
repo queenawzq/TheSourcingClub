@@ -2,6 +2,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { holdPayouts } from "./_stripe-payouts.js";
+import { logStripeFailure } from "./_stripe-errors.js";
 
 /**
  * Payments held by TSC, through Stripe Connect: the parts every payment route
@@ -391,7 +392,7 @@ export async function releasePayment({ stripe, db, paymentId }) {
       .eq("org_id", payment.production_orders.factory_org_id).single();
     if (fresh.error) throw new Error(fresh.error.message);
     account = fresh.data;
-    if (!account.transfers_active) throw new Error("Payout verification is incomplete.");
+    if (!account.transfers_active) throw Object.assign(new Error("Payout verification is incomplete."), { payoutNotReady: true });
     // A transfer for this payment that reached Stripe but not our database
     // (a crash in between, or a claim that lapsed) is found here and
     // recorded instead.
@@ -480,7 +481,11 @@ export async function releaseOwedTo({ stripe, db, factoryOrgId }) {
   if (error) throw new Error(error.message);
   const results = [];
   for (const payment of owed ?? []) {
-    results.push({ id: payment.id, ...(await releasePayment({ stripe, db, paymentId: payment.id }).catch((failure) => ({ released: false, reason: failure.message }))) });
+    results.push({ id: payment.id, ...(await releasePayment({ stripe, db, paymentId: payment.id }).catch((failure) => {
+      // Read by the factory's page: the raw text stays in the log.
+      logStripeFailure("release-owed", failure, { paymentId: payment.id });
+      return { released: false, reason: "not sent yet" };
+    })) });
   }
   return results;
 }

@@ -1,4 +1,5 @@
 import { callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
 
 /** Save a card for future company billing. */
 export default async function handler(request, response) {
@@ -36,6 +37,7 @@ export default async function handler(request, response) {
     });
     return reply(response, 200, { clientSecret: setup.client_secret });
   } catch (failure) {
-    return reply(response, 502, { error: failure.message });
+    logStripeFailure("stripe-billing-setup", failure);
+    return reply(response, 502, { error: sentenceFor(failure, "The card form could not be opened, so nothing changed. Try again in a few minutes.") });
   }
 }

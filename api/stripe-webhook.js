@@ -1,4 +1,5 @@
 import { applyChargeRefund, applyPaymentIntent, rawBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
+import { logStripeFailure } from "./_stripe-errors.js";
 import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-credits.js";
 
 /**
@@ -63,7 +64,10 @@ export default async function handler(request, response) {
   const { data: claimed, error: claimError } = await db.rpc("claim_stripe_event", {
     event_id: event.id, event_type: event.type,
   });
-  if (claimError) return reply(response, 500, { error: claimError.message });
+  if (claimError) {
+    logStripeFailure("stripe-webhook", claimError, { eventId: event.id });
+    return reply(response, 500, { error: "this event could not be claimed; send it again" });
+  }
   if (!claimed) return reply(response, 200, { received: true, duplicate: true });
 
   try {
@@ -127,6 +131,7 @@ export default async function handler(request, response) {
     return reply(response, 200, { received: true });
   } catch (failure) {
     await db.from("stripe_events").delete().eq("id", event.id);
-    return reply(response, 500, { error: failure.message });
+    logStripeFailure("stripe-webhook", failure, { eventId: event.id });
+    return reply(response, 500, { error: "this event could not be handled; send it again" });
   }
 }
