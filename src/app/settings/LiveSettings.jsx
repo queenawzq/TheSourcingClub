@@ -37,13 +37,14 @@ import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { SettingsScreen, factoryAccountPermissionLabels, settingsPermissionLabels } from "../../prototype/main.jsx";
 import {
-  can, inviteMember, listMembers, listPendingInvitations, permissionLabel, removeMember,
+  can, inviteMember, permissionHint, listMembers, listPendingInvitations, permissionLabel, removeMember,
   resendInvitation, revokeInvitation, setMemberAccess, setMemberRole, teamError, teamInviteNotice,
 } from "../../lib/domain/org.js";
 import { useAuth } from "../../lib/auth.jsx";
 import { useManualPayouts } from "../order/use-manual-payouts.js";
 import { connectAccountFor, connectAction, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
-import { getBrandProfile, getFactoryProfile } from "../../lib/domain/profile.js";
+import { countryCodeFrom, getBrandProfile, getFactoryProfile, saveFactoryProfile } from "../../lib/domain/profile.js";
+import { listTerms } from "../../lib/domain/taxonomy.js";
 import { getNotificationEmails, setNotificationEmail } from "../../lib/domain/notification-preferences.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import StripePayoutCard, { payoutRemovalError } from "../order/StripePayoutCard.jsx";
@@ -355,8 +356,10 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         ? allKeys.filter((key) => key !== "primaryContact" || stored.includes("primaryContact"))
         : stored,
       lockedPermissions: !isOwner ? allKeys : isOwnerRow ? allKeys.filter((key) => key !== "primaryContact") : [],
+      lockedReason: !isOwner ? "Only an owner changes what people may do" : "An owner holds every permission",
       removable: isMe ? !lastOwner : isOwner && !lastOwner,
       removeLabel: isMe ? `Leave ${org.name}` : `Remove ${name}`,
+      removeLockedReason: lastOwner ? "A company always keeps at least one owner" : "Only an owner can remove someone",
       roleActionLabel: isOwner ? (isOwnerRow ? (lastOwner ? null : "Make member") : "Make owner") : null,
     };
   });
@@ -399,9 +402,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   if (!members) return error ? <p className="shell-note" role="alert">{error.message ?? String(error)}</p> : null;
 
   const openPayoutFlow = (action, methodId = null) => setPayoutFlow({ action, methodId, id: Date.now() });
-  const settingsOnly = canSettings ? "" : " Only someone with Settings access can change this.";
-  const emailNotes = Object.fromEntries(Object.entries(isFactory ? FACTORY_EMAIL_NOTES : BRAND_EMAIL_NOTES)
-    .map(([key, text]) => [key, text + settingsOnly]));
+  const emailNotes = isFactory ? FACTORY_EMAIL_NOTES : BRAND_EMAIL_NOTES;
 
   // The switch moves at once; a refused save puts it back and says why.
   async function changeNotificationEmail(category, enabled) {
@@ -420,16 +421,23 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     <>
       <SettingsScreen
         accountType={isFactory ? "factory" : "brand"}
-        permissionsNote={[
-          isOwner ? "Owners can do everything; tick what each member may do." : "Only an owner changes what people may do.",
-          canSettings ? "" : "Only someone with Settings access invites people and sees invitations.",
-        ].filter(Boolean).join(" ")}
+        permissionsNote={isOwner ? "Owners can do everything; tick what each member may do." : ""}
         onSaveAccount={canSettings ? async (details) => {
           // A non-owner's save never carries the name: their copy goes stale
           // when an owner renames the company, and null means "leave it".
           const { data: result, error: refused } = await supabase.rpc("save_account_settings", { target_org: org.id, account_name: isOwner ? details.name : null, phone: details.phone, location: details.location });
           if (refused) throw new Error(refused.code === "22023" ? refused.message : teamError(refused, "save these details"));
           setSavedAccount(result);
+          // The country Browse filters on and matching compares follows the
+          // location, the same reading as the profile dialog and onboarding.
+          if (isFactory) {
+            try {
+              const code = countryCodeFrom(details.location, await listTerms("country"));
+              if (code) await saveFactoryProfile(org.id, { country_code: code });
+            } catch {
+              throw new Error("Your details were saved, but the country could not be updated. Save again to retry.");
+            }
+          }
           await refreshOrgs();
         } : undefined}
         companyType={profile?.vendor_kind === "trading_company" ? "trading" : "factory"}
@@ -437,7 +445,11 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         onAddPaymentMethod={isFactory && isOwner ? () => openPayoutFlow("manage") : undefined}
         onAddBillingMethod={canSettings ? addBillingMethod : undefined}
         onRemoveBillingMethod={canSettings ? removeCard : undefined}
-        billingMethodNote={canSettings ? "" : `Only someone with Settings access at ${org.name || "your company"} can add or remove payment methods.`}
+        billingLocked={canSettings ? "" : permissionHint(org, "settingsAccess")}
+        paymentLocked={isFactory && !isOwner ? "Only an owner can set up or change payouts" : ""}
+        inviteLocked={canSettings ? "" : permissionHint(org, "settingsAccess")}
+        saveLocked={canSettings ? "" : permissionHint(org, "settingsAccess")}
+        notificationEmailsLocked={canSettings ? "" : permissionHint(org, "settingsAccess")}
         onEditPaymentMethod={isFactory && isOwner ? () => openPayoutFlow("edit") : undefined}
         onDeletePaymentMethod={isFactory && isOwner ? (method) => openPayoutFlow("remove", method?.id) : undefined}
         team={team}

@@ -32,7 +32,7 @@ import {
   saveRequest,
   unsaveRequest,
 } from "../../lib/domain/rfq.js";
-import { can, needsPermission } from "../../lib/domain/org.js";
+import { can, permissionHint } from "../../lib/domain/org.js";
 import {
   formatCapacityWindow,
   formatDayRange,
@@ -368,7 +368,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           backLabel={`‹ Back to ${backTarget.label}`}
           onBack={() => navigate(backTarget.path)}
           onSendQuote={verified && mayQuote ? () => navigate(quotePath) : undefined}
-          sendQuoteBlocked={verified && !mayQuote ? needsPermission(org, "rfqFlow") : ""}
+          sendQuoteBlocked={verified && !mayQuote ? permissionHint(org, "rfqFlow") : ""}
         />
       </>
     );
@@ -526,7 +526,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
         onEdit={onEdit}
         onWithdraw={open && myQuote.status === "submitted" ? () => setAsking("withdraw") : undefined}
         // revise_quote and withdraw_quote ask for RFQ flow: grey both out.
-        quoteBlocked={mayQuote ? "" : needsPermission(org, "rfqFlow")}
+        quoteBlocked={mayQuote ? "" : permissionHint(org, "rfqFlow")}
         // A draft was never sent, so the brand has nothing from this vendor yet.
         onMessage={myQuote.status !== "draft" && org?.id ? message : undefined}
       />

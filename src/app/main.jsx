@@ -14,7 +14,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
-import { acceptInvitation, can, createOrg, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
+import { acceptInvitation, can, createOrg, invitationPreview, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
@@ -137,7 +137,7 @@ function portalFromUrl() {
   return portal === "factory" || portal === "vendor" ? "factory" : "brand";
 }
 
-function SignIn() {
+function SignIn({ invitation = null }) {
   const {
     signInWithPassword,
     signUpWithPassword,
@@ -152,9 +152,10 @@ function SignIn() {
   } = useAuth();
 
   const params = new URLSearchParams(window.location.search);
-  const accountType = portalFromUrl();
+  // An invitation decides the kind, whichever portal the link was opened on.
+  const accountType = invitation?.kind ?? portalFromUrl();
 
-  const [mode, setMode] = useState(params.get("mode") === "signup" ? "signup" : "login");
+  const [mode, setMode] = useState(invitation ? (invitation.hasAccount ? "login" : "signup") : params.get("mode") === "signup" ? "signup" : "login");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
   const [resetFor, setResetFor] = useState(null);
@@ -375,6 +376,7 @@ function SignIn() {
   return (
     <AuthScreen
       accountType={accountType}
+      invitation={invitation}
       initialMode={mode}
       busy={busy}
       error={error}
@@ -403,7 +405,7 @@ function SignIn() {
       onAuthenticate={authenticate}
       keepSignedIn={keepSignedIn}
       onKeepSignedInChange={setKeepSignedIn}
-      footer={DemoSignIn && (
+      footer={DemoSignIn && !invitation && (
         <Suspense fallback={null}>
           <DemoSignIn busy={busy} onPick={demoSignIn} />
         </Suspense>
@@ -463,6 +465,128 @@ function SetNewPassword({ onDone }) {
       </form>
     </div>
   );
+}
+
+/**
+ * /app.html?invite=<id>, the button in a team invitation's email. The id says
+ * who was invited to what, so the form never asks for a company or a side.
+ */
+function useInviteLink() {
+  const [id, setId] = useState(() => new URLSearchParams(window.location.search).get("invite"));
+  // undefined while asking; null when the id is unknown; "failed" to try again.
+  const [preview, setPreview] = useState(undefined);
+  const [attempt, setAttempt] = useState(0);
+  // Signing in on the form under "Log in to join X" is the consent to join.
+  // Opening a link while already signed in is not: anyone can send anyone one.
+  const cameThroughForm = useRef(false);
+
+  useEffect(() => {
+    if (!id) return undefined;
+    let cancelled = false;
+    setPreview(undefined);
+    invitationPreview(id).then(
+      (found) => { if (!cancelled) setPreview(found); },
+      () => { if (!cancelled) setPreview("failed"); },
+    );
+    return () => { cancelled = true; };
+  }, [id, attempt]);
+
+  const clear = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("invite");
+    window.history.replaceState(window.history.state, "", url);
+    setId(null);
+  }, []);
+
+  return { id, preview, cameThroughForm, clear, retry: () => setAttempt((count) => count + 1) };
+}
+
+function InviteCard({ title, note, children }) {
+  return (
+    <div className="gate">
+      <div className="gate-card">
+        <h1>{title}</h1>
+        {note ? <p className="gate-note">{note}</p> : null}
+        <div className="gate-row">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** Signed in through the invitation's form: join, and land in the company. */
+function JoinFromLink({ link }) {
+  const { refreshOrgs, selectOrg } = useAuth();
+  const [failed, setFailed] = useState(false);
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    acceptInvitation(link.id).then(async (org) => {
+      await refreshOrgs();
+      if (org?.id) selectOrg(org.id);
+      link.clear();
+    }, () => setFailed(true));
+  }, []);
+
+  if (!failed) return <Loading label={`Joining ${link.preview?.company ?? "the company"}…`} />;
+  return (
+    <InviteCard
+      title="We could not join you to this company"
+      note={`The invitation may have just expired or been withdrawn. Ask ${link.preview?.company ?? "the company"} to send it again.`}
+    >
+      <button type="button" className="primary-btn" onClick={link.clear}>Continue</button>
+    </InviteCard>
+  );
+}
+
+/**
+ * What an invitation's link shows, or null when the normal app should take
+ * over. Nothing here creates a company: the form sends no company name, so
+ * neither signUpWithPassword nor ChooseOrgType has one to create.
+ */
+function inviteLinkScreen(link, status, user, endSession) {
+  if (!link.id || status === "loading") return null;
+  const { preview } = link;
+  const signedIn = status !== "signed-out";
+  const again = preview?.company ? `Ask ${preview.company} to send it again.` : "";
+  const continueButton = (
+    <button type="button" className="primary-btn" onClick={link.clear}>{signedIn ? "Continue" : "Go to log in"}</button>
+  );
+
+  if (preview === undefined) return <Loading label="Checking your invitation…" />;
+  if (preview === "failed") {
+    return (
+      <InviteCard title="We couldn't check this invitation" note="Check your connection and try again.">
+        <button type="button" className="primary-btn" onClick={link.retry}>Try again</button>
+      </InviteCard>
+    );
+  }
+  if (!preview) return <InviteCard title="We couldn't find this invitation" note="The link may be incomplete. Open it again from your email, or ask whoever invited you to send it again.">{continueButton}</InviteCard>;
+  if (preview.state === "expired") return <InviteCard title="This invitation has expired" note={again}>{continueButton}</InviteCard>;
+  if (preview.state === "withdrawn") return <InviteCard title="This invitation was withdrawn" note={again}>{continueButton}</InviteCard>;
+  // Already used: the person only needs to get in.
+  if (preview.state === "accepted") return null;
+
+  if (!signedIn) {
+    link.cameThroughForm.current = true;
+    return <SignIn key={preview.id} invitation={preview} />;
+  }
+  const address = String(user?.email ?? "").toLowerCase();
+  if (address !== preview.email) {
+    return (
+      <InviteCard
+        title={`This invitation is for ${preview.email}`}
+        note={`You're signed in as ${address}. To join ${preview.company}, sign out and use that address.`}
+      >
+        <button type="button" className="primary-btn" onClick={() => { link.cameThroughForm.current = true; endSession(); }}>Sign out and continue</button>
+        <button type="button" className="quiet-btn" onClick={link.clear}>Stay signed in</button>
+      </InviteCard>
+    );
+  }
+  if (link.cameThroughForm.current) return <JoinFromLink link={link} />;
+  // Signed in already, right address: Join is on screen (the card or the banner).
+  return null;
 }
 
 /**
@@ -529,18 +653,19 @@ function ChooseOrgType() {
   useEffect(() => {
     let cancelled = false;
     Promise.all([
-      listMyInvitations().catch(() => []),
+      // A failed read is "don't know": it must not read as "not invited".
+      listMyInvitations().catch(() => null),
       // Unknown counts as "has left": asking again costs a click, while a
       // company created by mistake cannot be taken back.
       myLastDeparture(user?.id).catch(() => ({ orgName: null, byChoice: false, unknown: true })),
     ])
       .then(async ([pending, gone]) => {
         if (cancelled) return;
-        setInvitations(pending);
+        setInvitations(pending ?? []);
         if (gone && !gone.unknown) setDeparture(gone);
         // An invitation wins: joining is what an invited person should do.
         // Creating from the signup answers is only for someone who just signed up.
-        if (pending.length || gone || lostAccess || !answeredKind || !answeredName) {
+        if (!pending || pending.length || gone || lostAccess || !answeredKind || !answeredName) {
           setAutoCreating(false);
           return;
         }
@@ -1484,7 +1609,14 @@ function AdminConsoleRedirect() {
 }
 
 function App() {
-  const { status, error, activeOrg } = useAuth();
+  const { status, error, activeOrg, user, signOut: endSession } = useAuth();
+  const inviteLink = useInviteLink();
+  const inviteScreen = inviteLinkScreen(inviteLink, status, user, endSession);
+  // A link that has done its job leaves the address, so a refresh is ordinary.
+  useEffect(() => {
+    if (!inviteLink.id || status === "loading" || inviteLink.preview === undefined || inviteScreen) return;
+    inviteLink.clear();
+  }, [inviteLink.id, inviteLink.preview, status, Boolean(inviteScreen)]);
   const requestedAuthMode = new URLSearchParams(window.location.search).get("mode");
   const isPublicAuthEntry = requestedAuthMode === "login" || requestedAuthMode === "signup";
 
@@ -1513,6 +1645,7 @@ function App() {
   // succeeds and the provider becomes ready, the normal workspace still wins.
   if (status === "loading" && isPublicAuthEntry) return <SignIn />;
   if (status === "loading") return <Loading label="Checking your session…" />;
+  if (inviteScreen) return inviteScreen;
   if (status === "signed-out") return <SignIn />;
   if (resetting) {
     return (

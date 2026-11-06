@@ -219,7 +219,7 @@ Production, local dev and a preview without a branch use `VITE_SUPABASE_*` (and 
 
 The browser talks to Postgres directly with the publishable key, and **row level security is the entire authorisation layer** — there is no server tier to enforce anything a second time. A mistake in a policy is a data breach, not a bug, which is why `supabase/tests/access_rules_test.sql` is mostly *negative* assertions: a policy that accidentally grants everything still passes every positive test.
 
-Two roles matter. `authenticated` and `anon` hold the publishable key and are fully governed by RLS; `anon` deliberately has no table grants at all, so a signed-out visitor is refused before RLS is consulted. The one exception is `current_legal_documents()`, granted to `anon` so signup can link to the terms before an account exists (see **Legal documents**). `service_role` carries `BYPASSRLS` and is only ever used by server code holding the secret key — never anything bundled into the browser.
+Two roles matter. `authenticated` and `anon` hold the publishable key and are fully governed by RLS; `anon` deliberately has no table grants at all, so a signed-out visitor is refused before RLS is consulted. The exceptions are functions: `current_legal_documents()`, so signup can link to the terms before an account exists (see **Legal documents**), and `invitation_preview()`, so an invitation's link can say what it is for (see **Team & roles**). `service_role` carries `BYPASSRLS` and is only ever used by server code holding the secret key — never anything bundled into the browser.
 
 Migrations are numbered and immutable once pushed. **Merging to `main` applies them to production:** the Vercel production build runs `supabase db push --include-all` after `npm run build` (`scripts/deploy-migrate.mjs`, using the Production-only `SUPABASE_DB_URL`). A failed migration fails the deploy and the previous site stays live. Preview builds never touch the database. Two consequences: every migration must work with the site that is still live while it is applied (add, don't rename or drop in the same change), and a rollback is Vercel's Instant Rollback, since rebuilding an older commit fails once production holds a migration that commit lacks.
 
@@ -475,8 +475,8 @@ links point.
   proves nothing. If the terms fail to load, signing refuses with the reason.
   The prototypes pass no text, so the dialog keeps its designed copy there —
   keep the two in step when either changes.
-- **`current_legal_documents()` is the only thing granted to `anon`**, and it
-  returns only the current text. The table itself stays unreadable to
+- **`current_legal_documents()` is granted to `anon`**, and it returns only the
+  current text. The table itself stays unreadable to
   everyone but staff.
 - Chinese is a separate hand-written field per document, falling back to
   English when blank — never machine-translated, same rule as the taxonomy.
@@ -631,17 +631,32 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
 - **A non-owner's save never carries the company's name.** `save_account_settings`
   takes a null name as "leave it" (their copy goes stale when an owner renames),
   and `renameIfChanged` calls `rename_factory` only for an owner who changed it.
-  Non-owners see the name read-only with the reason.
+  Non-owners see the name read-only: greyed with hover text in the profile
+  dialog, with a sentence in Settings, where the field looks editable.
 - **Removing someone, or leaving, withdraws the pending invitations they sent**
   (`remove_member`), or a member about to be removed could invite a second
   address of their own and come back with those rights. Someone who already
   accepted stays: they are on the team, and the owner can see them.
-- **A missing permission greys the action out; it does not hide it**
-  (Queena, Nov 4). Fund, Approve and the factory's Send quote stay on screen,
-  disabled, and a visible line says which permission is missing and at which
-  company (a tooltip alone never shows on a touch screen). Whole flows a
-  person may not use (the composer, the quote form) say "Not available to
-  you" instead of drawing a form full of disabled inputs.
+- **An invitation's email links to `/app.html?invite=<id>`, and the invitation
+  answers everything** (`useInviteLink` in `src/app/main.jsx`,
+  `20261106100000`). `invitation_preview()` is granted to `anon`: while open it
+  says the company, kind, address, name, title and whether the address has an
+  account; closed, only the state and the company, because a link can be
+  forwarded long after; an unknown or malformed id returns nothing and raises
+  nothing. The form asks no company or side, fixes the address, and joins on
+  submit, since "Log in to join X" is the consent. Opening a link while signed
+  in never joins by itself: the Join card or banner does. No company name is
+  sent, so nothing can create one. **A company invited through `referrals`
+  still gives a name.**
+- **A failed read of a person's invitations is "don't know", never "not
+  invited".** Neither `signUpWithPassword` nor `ChooseOrgType` creates a company
+  on it.
+- **A missing permission greys the action out, with the permission in its hover
+  text and no sentence** (Queena, Nov 4 and 5; a phone gets no reason, which she
+  accepted). Whole flows a person may not use (the composer, the quote form) say
+  "Not available to you" instead of drawing a form full of disabled inputs, and a
+  read-only form that looks editable keeps its sentence (Settings → Basic
+  information).
 
 ### Mock data leaking into the live app
 
