@@ -40,7 +40,7 @@ import {
   can, inviteMember, permissionHint, listMembers, listPendingInvitations, permissionLabel, removeMember,
   resendInvitation, revokeInvitation, setMemberAccess, setMemberRole, teamError, teamInviteNotice,
 } from "../../lib/domain/org.js";
-import { useAuth } from "../../lib/auth.jsx";
+import { MIN_PASSWORD_LENGTH, useAuth } from "../../lib/auth.jsx";
 import { useManualPayouts } from "../order/use-manual-payouts.js";
 import { connectAccountFor, connectAction, listSavedCards, removeSavedCard, startBillingSetup } from "../../lib/domain/stripe.js";
 import { countryCodeFrom, getBrandProfile, getFactoryProfile, saveFactoryProfile } from "../../lib/domain/profile.js";
@@ -299,6 +299,22 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   const makePrimaryPayout = async (account) => { await payouts.makePrimary(account); await reload(); };
 
 
+  // A person's own password: no company permission gates it. Signing in again
+  // is how the current one is checked, since the project doesn't require it on
+  // the update itself (secure_password_change is off).
+  async function changePassword({ current, next }) {
+    if (!current || !next) throw new Error("Enter your current password and a new one.");
+    if (next.length < MIN_PASSWORD_LENGTH) throw new Error(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
+    const { error: wrong } = await supabase.auth.signInWithPassword({ email: user.email, password: current });
+    if (wrong) {
+      throw new Error(wrong.code === "invalid_credentials" ? "Your current password isn't right." : "We could not check your password. Try again.");
+    }
+    const { error: refused } = await supabase.auth.updateUser({ password: next });
+    if (refused) {
+      throw new Error(refused.code === "same_password" ? "That is already your password. Choose a different one." : "We could not change your password. Try again.");
+    }
+  }
+
   async function removeCard(method) {
     setBillingBusy(true);
     setError(null);
@@ -463,6 +479,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         onResend={resend}
         onRevoke={(invitation) => setConfirming({ kind: "revoke", invitation })}
         accountLocked={!canSettings}
+        onChangePassword={changePassword}
         nameLocked={!isOwner}
         saveNote={(canSettings ? (isOwner ? "" : "Only an owner can change the company's name.") : "Only someone with Settings access can change these details.")}
         notificationEmails={notificationEmails ?? undefined}

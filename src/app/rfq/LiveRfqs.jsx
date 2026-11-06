@@ -53,7 +53,7 @@ export default function LiveRfqs({ org, user, isOwner, goTo }) {
           onEditRfq={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/edit` : "/rfqs")}
           onInviteVendors={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/invite` : "/rfqs")}
           onArchiveRfq={(rfq) => setConfirming(rfq)}
-          archiveLocked={isOwner ? "" : "Needs the Quote flow permission"}
+          quoteFlowLocked={isOwner ? "" : "Needs the Quote flow permission"}
         />
       </DataProvider>
       {confirming && createPortal(
