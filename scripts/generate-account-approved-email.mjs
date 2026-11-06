@@ -60,9 +60,7 @@ const needsInformationCopy = {
     status: "ACTION NEEDED · PROFILE IN REVIEW",
     title: "We need a little more information.",
     greeting: (name) => name ? `Hi ${name},` : "Hi,",
-    intro: (company) => `We've reviewed ${company}'s profile and need a few more details to finish verifying it.`,
-    cardEyebrow: "MESSAGE FROM OUR REVIEW TEAM",
-    cardTitle: "What we need from you",
+    cardEyebrow: (company) => `About ${company}`,
     nextTitle: "What happens next",
     nextCopy: "Update your profile with the requested information. Our team will continue the review once you submit your changes.",
     cta: "Update your profile",
@@ -76,9 +74,7 @@ const needsInformationCopy = {
     status: "需要操作 · 资料审核中",
     title: "我们还需要一些补充信息。",
     greeting: (name) => name ? `${name} 你好，` : "你好，",
-    intro: (company) => `我们已查看 ${company} 的资料，还需要一些补充信息才能完成审核。`,
-    cardEyebrow: "审核团队的留言",
-    cardTitle: "需要你提供的信息",
+    cardEyebrow: (company) => `关于 ${company}`,
     nextTitle: "接下来做什么",
     nextCopy: "请按要求更新并提交资料。提交后，我们的团队会继续审核。",
     cta: "更新你的资料",
@@ -195,13 +191,13 @@ function reviewDecisionEmail({
                 <p style="margin:22px 0 10px;font-size:12px;line-height:16px;font-weight:700;color:#5A6B87;text-transform:uppercase;">${escapeHtml(t.eyebrow)}</p>
                 <h1 class="email-title" style="margin:0 0 14px;font-size:34px;line-height:39px;font-weight:800;color:#0B1020;">${escapeHtml(t.title)}</h1>
                 <p style="margin:0 0 8px;font-size:15px;line-height:23px;color:#0B1020;">${escapeHtml(t.greeting(recipientName))}</p>
-                <p style="margin:0;font-size:15px;line-height:23px;color:#5A6B87;">${escapeHtml(t.intro(companyName))}</p>
+                ${t.intro ? `<p style="margin:0;font-size:15px;line-height:23px;color:#5A6B87;">${escapeHtml(t.intro(companyName))}</p>` : ""}
               </td></tr>
 ${declined && !safeNote ? "" : `              <tr><td class="email-pad" style="padding:0 40px 24px;">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#F8FAFC;border:1px solid #D7E0EA;border-radius:8px;">
                   <tr><td style="padding:22px;">
-                    <p style="margin:0 0 6px;font-size:11px;line-height:16px;font-weight:700;color:#5A6B87;text-transform:uppercase;">${escapeHtml(t.cardEyebrow)}</p>
-                    <p style="margin:0 0 5px;font-size:17px;line-height:22px;font-weight:700;color:#0B1020;">${escapeHtml(t.cardTitle)}</p>
+                    <p style="margin:0 0 6px;font-size:11px;line-height:16px;font-weight:700;color:#5A6B87;text-transform:uppercase;">${escapeHtml(typeof t.cardEyebrow === "function" ? t.cardEyebrow(companyName) : t.cardEyebrow)}</p>
+                    ${t.cardTitle ? `<p style="margin:0 0 5px;font-size:17px;line-height:22px;font-weight:700;color:#0B1020;">${escapeHtml(t.cardTitle)}</p>` : ""}
                     ${noteInCard ? `<div style="padding-top:5px;">${reviewNoteHtml(safeNote)}</div>` : `<p style="margin:0;font-size:13px;line-height:19px;color:#5A6B87;">${escapeHtml(t.cardCopy)}</p>`}
                   </td></tr>
                 </table>
@@ -227,8 +223,12 @@ ${declined && !safeNote ? "" : `              <tr><td class="email-pad" style="p
   </body>
 </html>`;
 
-  const noteText = safeNote ? `\n\n${noteInCard ? t.cardTitle : t.noteTitle}:\n${safeNote}` : "";
-  const text = `${t.greeting(recipientName)}\n\n${t.intro(companyName)}${noteText}\n\n${t.nextTitle}\n${t.nextCopy}\n\n${t.cta}: ${loginUrl}\n\n${t.help} ${supportEmail}.\nThe Sourcing Club · ${companyAddress}`;
+  // The note's own summary is the introduction on a request, so the frame adds
+  // none of its own and says only which company it is about.
+  const noteHeading = needsInformation ? t.cardEyebrow(companyName) : noteInCard ? t.cardTitle : t.noteTitle;
+  const noteText = safeNote ? `${noteHeading}:\n${safeNote}` : "";
+  const opening = [t.intro?.(companyName), noteText].filter(Boolean).join("\n\n");
+  const text = `${t.greeting(recipientName)}\n\n${opening}\n\n${t.nextTitle}\n${t.nextCopy}\n\n${t.cta}: ${loginUrl}\n\n${t.help} ${supportEmail}.\nThe Sourcing Club · ${companyAddress}`;
   return { subject: t.subject, html, text };
 }
 
