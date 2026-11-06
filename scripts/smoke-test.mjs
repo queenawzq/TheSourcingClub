@@ -312,8 +312,8 @@ again?.id === org?.id
     .from("org_members")
     .select("role, orgs (id, type, name, slug, is_demo, created_at)");
   if (error) fail("listMyOrgs embed shape", error);
-  else if (data.length === 2) ok(`membership embed returns ${data.length} orgs as ${data[0].role}`);
-  else fail(`expected 2 memberships, got ${data.length}`);
+  else if (data.length === 1) ok(`membership embed returns ${data.length} org as ${data[0].role}`);
+  else fail(`expected 1 membership, got ${data.length}`);
 }
 
 console.log("\naccess rules");
