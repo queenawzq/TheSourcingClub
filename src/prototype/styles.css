@@ -17283,6 +17283,16 @@ button.sort-button {
   }
 }
 
+/* Between the two-column layout below and 1512px, the fixed 246px + 620px + 246px
+   did not fit: the right rail ran past the window, up to 1463px, and the page
+   scrolled sideways. The form gives way, and the rail stays beside it. */
+@media (min-width: 1401px) and (max-width: 1511px) {
+  #root > .app-shell > main.flow-page:not(.wide-flow) {
+    grid-template-columns: 246px minmax(0, 1fr) 246px;
+    padding-right: var(--page-padding-inline);
+  }
+}
+
 @media (min-width: 1181px) and (max-width: 1400px) {
   #root > .app-shell > main.flow-page {
     grid-template-columns: 246px minmax(0, 1fr);
@@ -18780,3 +18790,80 @@ textarea.note-field::placeholder {
 .vendor-card-translation { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-top: 8px; color: #60769b; font-size: 11px; }
 .vendor-card-translation > span { border: 1px solid #d7e0ea; border-radius: 20px; padding: 4px 8px; background: #f6f8fb; font-weight: 600; }
 .vendor-card-translation button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+/* A value too long for its line wraps, inside the rail, rather than pushing the
+   card and the page past the window. The design's short examples still fit on one. */
+.right-rail .metric span {
+  flex: none;
+}
+
+.right-rail .metric strong {
+  min-width: 0;
+  text-align: right;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* On a phone, these flow cards keep to the column they are in. */
+@media (max-width: 760px) {
+  .flow-page .stack {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flow-page .brand-onboarding-chip-group {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .flow-page .brand-onboarding-chip-add-row {
+    min-width: 0;
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .flow-page .brand-onboarding-chip-add-row input {
+    flex: 1 1 120px;
+    min-width: 0;
+  }
+
+  .flow-page .review-service-selector .tag-row button {
+    max-width: 100%;
+    height: auto;
+    white-space: normal;
+    text-align: left;
+  }
+}
+
+@media (max-width: 599px) {
+  .quote-detail-summary .quote-detail-summary-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .quote-detail-summary .quote-detail-summary-top .quote-actions {
+    justify-content: flex-start;
+    justify-self: start;
+  }
+}
+
+/* The narrowest phones: every bottom-bar button stays on screen, and a step's
+   fields take the whole card rather than breaking a word per line. */
+@media (max-width: 480px) {
+  .bottom-bar.bottom-bar {
+    gap: 8px;
+  }
+
+  .bottom-bar .bottom-actions {
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .bottom-bar.bottom-bar button.primary-btn,
+  .bottom-bar.bottom-bar button.secondary-btn {
+    min-width: 0;
+    padding-right: 12px !important;
+    padding-left: 12px !important;
+  }
+
+  .production-step-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
