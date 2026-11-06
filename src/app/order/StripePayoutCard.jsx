@@ -718,7 +718,7 @@ export default function StripePayoutCard({
             </span>
             <strong data-testid="payout-balance">{handFigures.balance ? formatMoney(payoutUsdTotal(handFigures.balance), "USD")
               : handFigures.failed ? "—" : <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />}</strong>
-            {handFigures.pending ? <p className="payout-balance-line" data-testid="payout-pending">{formatMoney(payoutUsdTotal(handFigures.pending), "USD")} pending brand approval <PaymentHelp label="Pending">Held by TSC until the brand approves the step. Once approved, it moves into your balance.</PaymentHelp></p> : null}
+            {handFigures.pending ? <p data-testid="payout-pending">{formatMoney(payoutUsdTotal(handFigures.pending), "USD")} pending brand approval <PaymentHelp label="Pending">Held by TSC until the brand approves the step. Once approved, it moves into your balance.</PaymentHelp></p> : null}
             <p data-testid="payout-how-paid">{payoutSetupLine}</p>
           </> : <>
           <span className="payment-metric-label">{arriving ? "Balance on its way (USD)" : "Available balance (USD)"}
