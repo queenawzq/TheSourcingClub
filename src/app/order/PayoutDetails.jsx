@@ -31,7 +31,7 @@ import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePa
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
-import { availableOn, earningStatus, earningsSummaryFor, factoryAmount, stripeRelevant } from "./payment-summary.mjs";
+import { availableOn, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, stripeRelevant } from "./payment-summary.mjs";
 import "./order.css";
 import "./payout.css";
 
@@ -172,7 +172,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   // paid, from our database). Figures below it wait for that, never for
   // Stripe, so the card settling can only move placeholders.
   const [cardSettled, setCardSettled] = useState(false);
-  const settleCard = useCallback(() => setCardSettled(true), []);
+  const [stripeAccount, setStripeAccount] = useState(null);
+  const settleCard = useCallback((account) => {
+    setStripeAccount(account);
+    setCardSettled(true);
+  }, []);
   // The card reads its account and Stripe again when Earnings is opened
   // again, so its figures wait again rather than show the last answer.
   const leaveEarnings = () => {
@@ -213,7 +217,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     const orders = unwrap(
       await supabase
         .from("production_orders")
-        .select("id, order_number, brand_org_id, orgs!production_orders_brand_org_id_fkey (name)")
+        .select("id, order_number, status, brand_org_id, orgs!production_orders_brand_org_id_fkey (name)")
         .eq("factory_org_id", org.id)
         .order("created_at", { ascending: false }),
       "load your payment orders",
@@ -233,6 +237,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
     }
 
     setEarnings(paymentRows.map((payment) => ({ ...payment, order: orderById.get(payment.order_id) })));
+    setEarningsError(null);
   }, [org.id]);
 
   useEffect(() => {
@@ -249,6 +254,23 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   useEffect(() => {
     loadCards();
   }, [loadCards]);
+
+  // Paid by hand, the figures are the payments' states, which the brand and
+  // staff change: approved, or marked paid out while this page is open. RLS
+  // applies per subscriber. A Stripe-paid factory's figures also need Stripe
+  // read again, so it keeps its page as it was.
+  const handPaid = cardSettled && isHandPaid(stripeAccount, earnings);
+  useEffect(() => {
+    if (!isFactory || !handPaid) return undefined;
+    const refresh = () => loadEarnings().catch(setEarningsError);
+    const channel = supabase
+      .channel(`factory-earnings:${org.id}:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "order_payments" }, refresh)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "order_payments" }, refresh)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "production_orders" }, refresh)
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [isFactory, handPaid, org.id, loadEarnings]);
 
   // After a credit purchase: the balance and ledger, read again.
   // A purchase with a new card also saves that card, so Billing reloads too.
@@ -284,9 +306,11 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const transactionsReady = Boolean(earningsShown) && stripeFigures !== "loading" && stripeFigures !== "slow";
   const earningsSummary = [
     ["Total earnings", summary.total, "Your earnings from funded payments for the selected client, or all clients. Includes payments awaiting approval."],
-    ["Awaiting approval", summary.approval, "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
-    ["Pending", summary.pending, PENDING_HELP],
-    ["Paid out", summary.paid, `${earnings?.some((row) => row.payoneer_payouts) ? "Includes payments TSC sent to your Payoneer account. " : ""}Withdrawals paid out to your bank account, shown as estimated USD equivalents when the bank received another currency. For each client, withdrawals use the oldest available earnings first. Withdrawals still processing are not included.`],
+    ["Awaiting approval", summary.approval, handPaid
+      ? "Funds TSC holds until the brand approves the step. Once approved, they move into your balance."
+      : "Funds waiting for the brand to approve the milestone. Once approved, they move toward your available balance."],
+    [handPaid ? "To be sent" : "Pending", summary.pending, handPaid ? "Approved earnings TSC still has to send you." : PENDING_HELP],
+    ["Paid out", summary.paid, handPaid ? "Payments TSC has sent to your payout account. Each one is listed below." : `${earnings?.some((row) => row.payoneer_payouts) ? "Includes payments TSC sent to your Payoneer account. " : ""}Withdrawals paid out to your bank account, shown as estimated USD equivalents when the bank received another currency. For each client, withdrawals use the oldest available earnings first. Withdrawals still processing are not included.`],
   ];
   const paymentById = new Map((earnings ?? []).map((row) => [row.id, row]));
   const payoutTransactions = (stripeBalance?.payouts ?? []).flatMap((row) => {
@@ -308,9 +332,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         availableOn(row, stripeBalance) ? `Available to withdraw from ${availableOn(row, stripeBalance)}.` : null,
         row.charged_cents ? "Your step amount. TSC's service fee is paid by the brand on top, not taken from your earnings." : null,
         // To-ONE (payment_id is its primary key): an object or null, never an array.
+        heldOnCancelledOrder(row) ? "The order was cancelled, so TSC returns this to the brand. It is not in your figures." : null,
         row.payoneer_payouts ? `Payoneer payment ID ${row.payoneer_payouts.payoneer_payment_id}, sent to ${row.payoneer_payouts.paid_to_email}.` : null,
       ].filter(Boolean).join(" "),
-      status: earningStatus(row, stripeBalance),
+      status: earningStatus(row, stripeBalance, handPaid),
       amount: factoryAmount(row),
       currency: row.currency,
       available: earningStatus(row, stripeBalance) === "Credited to balance",
@@ -327,7 +352,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       available: true,
     })),
   ]
-    .filter((row) => transactionType === "all" || row.type === transactionType)
+    // Paid by hand, no withdrawal can exist, and the filter is not drawn.
+    .filter((row) => handPaid || transactionType === "all" || row.type === transactionType)
     .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
 
   if (!isFactory) {
@@ -389,6 +415,8 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             onBalanceChange={setStripeBalance}
             onBalanceStatus={setStripeStatus}
             onAccountKnown={settleCard}
+            handFigures={earningsError ? { balance: null, pending: null, failed: true } : handPaidFigures(earnings)}
+            earnings={earnings}
             manualAccount={payouts.primary}
             manualAccounts={payouts.accounts ?? []}
             manualEditingId={payouts.editingId}
@@ -427,13 +455,13 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             <div className="payout-transactions-header">
               <div>
                 <h2 id="transactions-heading">Transactions</h2>
-                <p>Earnings added to your balance and withdrawals sent to your bank.</p>
+                <p>{handPaid ? "Each earning, and where TSC sent it." : "Earnings added to your balance and withdrawals sent to your bank."}</p>
               </div>
-              <div className="payout-transaction-filters" role="group" aria-label="Filter transactions">
+              {handPaid ? null : <div className="payout-transaction-filters" role="group" aria-label="Filter transactions">
                 {[["all", "All"], ["earning", "Earnings"], ["withdrawal", "Withdrawals"]].map(([key, label]) => (
                   <button key={key} type="button" className={transactionType === key ? "active" : ""} aria-pressed={transactionType === key} onClick={() => setTransactionType(key)}>{label}</button>
                 ))}
-              </div>
+              </div>}
             </div>
             {!transactionsReady ? (
               <div className="payout-transaction-table">
