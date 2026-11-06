@@ -1361,7 +1361,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             <button className="settings-drawer-close" type="button" aria-label="Close" onClick={() => setRequestOpen(false)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
             <header><div><span>Profile review</span><h2 id="request-info-title">Request more information</h2></div></header>
             <div className="admin-request-message-heading">
-              <div><strong>Message to applicant</strong><span>This exact message will be included in the email and in-app notification.</span></div>
+              <div><strong>Message to applicant</strong><span>This exact message will be included in the email and in-app notification. Start a line with "-" to make a bullet.</span></div>
               <button className="secondary-btn admin-ai-suggest-button" type="button" disabled={requestSuggestionLoading || !onSuggestRequest} onClick={suggestRequest}>
                 {requestSuggestionLoading ? "Drafting…" : "Suggest with AI"}
               </button>

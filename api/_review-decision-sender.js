@@ -62,75 +62,37 @@ const noteBlock = (note, heading) => {
   };
 };
 
-/** The sign-in link for the company's own portal. */
+/**
+ * The link for the company's own portal. `review` says which company the email
+ * is about: it selects that company for someone in two, and explains itself to
+ * anyone signed in as someone else (ReviewLinkGate in src/app/main.jsx). It
+ * grants nothing.
+ */
 function loginUrlFor(row, appUrl) {
-  return row.orgs?.type === "brand" || !row.orgs?.type ? `${appUrl}/app.html` : `${appUrl}/app.html?portal=factory`;
+  const params = new URLSearchParams();
+  if (row.orgs?.type && row.orgs.type !== "brand") params.set("portal", "factory");
+  if (row.org_id) params.set("review", row.org_id);
+  const query = params.toString();
+  return `${appUrl}/app.html${query ? `?${query}` : ""}`;
 }
 
 // Exported (through api/send-review-decision.js) for api/send-test-email.js,
 // so a test is the real message.
 export async function messageFor(row, { appUrl = publicAppUrl() } = {}) {
-  const loginUrl = loginUrlFor(row, appUrl);
-  const company = row.orgs?.name || "your company";
-  const zh = row.locale === "zh";
-  if (row.decision === "approved") {
-    const { accountApprovedEmail } = await loadReviewEmail();
-    return accountApprovedEmail({
-      companyName: company,
-      recipientName: row.recipient_name,
-      locale: row.locale,
-      loginUrl,
-      logoUrl: EMAIL_LOGO_URL,
-      supportEmail: REPLY_TO,
-      companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
-      note: row.note,
-    });
-  }
-  if (row.decision === "needs_information") {
-    const { needsInformationEmail } = await loadReviewEmail();
-    return needsInformationEmail({
-      companyName: company,
-      recipientName: row.recipient_name,
-      locale: row.locale,
-      loginUrl,
-      logoUrl: EMAIL_LOGO_URL,
-      supportEmail: REPLY_TO,
-      companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
-      note: row.note,
-    });
-  }
-  const greeting = row.recipient_name
-    ? (zh ? `${row.recipient_name} 你好，` : `Hi ${row.recipient_name},`)
-    : (zh ? "你好，" : "Hi,");
-
-  const copy = {
-    en: {
-      subject: "We could not verify your profile",
-      lead: `We were unable to verify <strong>${escapeHtml(company)}</strong>'s profile at this time.`,
-      leadText: `We were unable to verify ${company}'s profile at this time.`,
-      noteHeading: "Reason given:",
-      cta: "Log in to The Sourcing Club",
-    },
-    zh: {
-      subject: "你的资料未能通过审核",
-      lead: `我们目前无法通过 <strong>${escapeHtml(company)}</strong> 的资料审核。`,
-      leadText: `我们目前无法通过 ${company} 的资料审核。`,
-      noteHeading: "原因说明：",
-      cta: "登录 The Sourcing Club",
-    },
-  };
-
-  const t = copy[zh ? "zh" : "en"];
-  const note = noteBlock(row.note, t.noteHeading);
-  const sign = zh
-    ? "如有疑问，直接回复这封邮件即可。"
-    : "If you have any questions, just reply to this email.";
-
-  return {
-    subject: t.subject,
-    text: `${greeting}\n\n${t.leadText}\n${note.text}\n${t.cta}: ${loginUrl}\n\n${sign}\n\nThe Sourcing Club`,
-    html: `<p>${escapeHtml(greeting)}</p><p>${t.lead}</p>${note.html}<p><a href="${escapeHtml(loginUrl)}">${escapeHtml(t.cta)}</a></p><p>${escapeHtml(sign)}</p><p>The Sourcing Club</p>`,
-  };
+  const { accountApprovedEmail, declinedEmail, needsInformationEmail } = await loadReviewEmail();
+  const build = row.decision === "approved" ? accountApprovedEmail
+    : row.decision === "needs_information" ? needsInformationEmail
+    : declinedEmail;
+  return build({
+    companyName: row.orgs?.name || "your company",
+    recipientName: row.recipient_name,
+    locale: row.locale,
+    loginUrl: loginUrlFor(row, appUrl),
+    logoUrl: EMAIL_LOGO_URL,
+    supportEmail: REPLY_TO,
+    companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
+    note: row.note,
+  });
 }
 
 /** The email staff get when a company sends its profile back. English: it is read by staff. */

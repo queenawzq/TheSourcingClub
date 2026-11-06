@@ -7564,6 +7564,8 @@ export function FactoryOnboarding({
   completion = null,
   // Live only: a panel drawn after the step's content (matching, on review).
   extra = null,
+  // Live only: drawn at the top of the step (what staff asked for).
+  notice = null,
 }) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
@@ -7620,6 +7622,7 @@ export function FactoryOnboarding({
         onChange={clearFieldError}
         onClick={clearFieldError}
       >
+        {notice}
         {!isLast && (
           <div className="factory-onboarding-card-header">
             {isFirst && <img className="factory-onboarding-label" src="/assets/onboarding-sourcing-club-label-clean.png" alt="" />}
@@ -8233,7 +8236,7 @@ function FactoryOnboardingStep({
     <div className="factory-onboarding-complete">
       <img className="factory-onboarding-success-icon" src={content.icon ?? "/assets/prototype-icons/success.svg"} alt="" />
       <h1>{content.title}</h1>
-      <p>{content.intro}</p>
+      {content.introNode ?? <p>{content.intro}</p>}
       {content.reward !== false && <section className="factory-onboarding-credit-reward">
         <span>{language === "zh" ? "验证奖励" : "Verification reward"}</span>
         <strong>{language === "zh" ? "500 额度" : "500 credits"}</strong>
