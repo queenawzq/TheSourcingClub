@@ -775,6 +775,9 @@ and the backend answers to it rather than the other way round.
 Local emails land in Mailpit at http://127.0.0.1:54324, from
 `supabase/templates/magic_link.html`.
 
+- **A failed connection is said in words, and trying again is safe.** The sign-in screens word every failure they know through `src/shared/auth-messages.mjs` (English, Chinese, or both on the vendor portal when the browser is Chinese and the page is not); `npm run check:auth-messages` runs in the build. Sign-up and log-in stop waiting after 30 s, and an answer arriving later still signs them in. `create_org` gives back the company the same person, name and kind made in the last 10 minutes (`20261106500000`), because a lost reply or a second open tab otherwise makes two. A retry whose "already exists" follows an unanswered sign-up logs in with what was typed.
+- **Failures that never reach the database are counted from our own host** (`api/auth-failure.js`, `auth_connection_failures`, read by SQL). No email, name or IP: step, kind, browser language, country. It sees only people who loaded the page. **The app's own address looks DNS-poisoned in mainland China** (ViewDNS, Nov 6), so a vendor there may never load it.
+
 **Hosted sends rarely.** Supabase rejects custom email templates on a free-tier
 project using the built-in sender, and that sender allows roughly two emails an
 hour. That now only affects password resets rather than every sign-in, but
