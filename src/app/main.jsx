@@ -41,6 +41,7 @@ import { nav as factoryNavItems } from "../factory-prototype/main.jsx";
 import { PrototypeSideNav } from "../shared/ProfileShell.jsx";
 import LiveFactoryHome from "./home/LiveFactoryHome.jsx";
 import { AuthScreen } from "../shared/AuthScreen.jsx";
+import { authErrorLines, authFailure, authLanguages, isNoAnswer } from "../shared/auth-messages.mjs";
 import { DataProvider } from "../lib/data/DataProvider.jsx";
 import { createLiveAdapter } from "./live-adapter.js";
 import LiveBrandOrders from "./order/LiveBrandOrders.jsx";
@@ -220,9 +221,10 @@ function SignIn() {
 
   async function sendReset(email) {
     setBusy(true);
-    const { exists } = await requestPasswordReset(email);
+    const { exists, sent } = await requestPasswordReset(email);
     setBusy(false);
     setResetFor(null);
+    if (!sent) return; // The provider's error says it may not have gone.
     // `exists === null` means the lookup could not answer — unconfigured, rate
     // limited, or down. That is the one case that still gets the old hedged
     // wording, because saying either thing definitely would be a guess.
@@ -494,6 +496,15 @@ function useInvitationsLive(email, reread) {
   }, [email]);
 }
 
+/** A failure on the recovery card, worded like the sign-up form's. Never the browser's own. */
+function companyErrorText(error, kind) {
+  const failure = isNoAnswer(error) ? authFailure("company_network") : error;
+  const zhPage = new URLSearchParams(window.location.search).get("lang") === "zh"
+    || window.localStorage.getItem("factoryLang") === "zh";
+  const languages = authLanguages({ factory: kind === "factory", zhPage, browserLanguages: navigator.languages ?? [] });
+  return authErrorLines(failure, languages)?.join(" ") ?? failure.message;
+}
+
 function ChooseOrgType() {
   const { user, refreshOrgs, lostAccess, dismissLostAccess, signOut: endSession } = useAuth();
   const signOut = () => signOutInto(user?.user_metadata?.account_type ?? portalFromUrl(), endSession);
@@ -612,7 +623,7 @@ function ChooseOrgType() {
               Join {invitation.orgs?.name ?? "the company"}{invitation.title ? ` as ${invitation.title}` : ""}
             </button>
           ))}
-          {error ? <p className="gate-error">{error.message}</p> : null}
+          {error ? <p className="gate-error">{companyErrorText(error, kind)}</p> : null}
           <div className="gate-row">
             <button type="button" className="quiet-btn" onClick={() => setSkipped(invitations.map((invitation) => invitation.id))}>
               Start my own organisation instead
@@ -672,7 +683,7 @@ function ChooseOrgType() {
           {busy ? "Creating…" : "Continue"}
         </button>
 
-        {error ? <p className="gate-error">{error.message}</p> : null}
+        {error ? <p className="gate-error">{companyErrorText(error, kind)}</p> : null}
 
         <button type="button" className="quiet-btn" onClick={signOut}>
           Sign out

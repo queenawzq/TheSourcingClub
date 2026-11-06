@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import "./auth-screen.css";
+import { authErrorLines, authLanguages } from "./auth-messages.mjs";
 
 function GoogleMark() {
   return (
@@ -216,7 +217,7 @@ export function AuthScreen({
             )}
 
             {notice && <p className="auth-notice" role="status">{notice}</p>}
-            {error && <p className="auth-error" role="alert">{error.message ?? String(error)}</p>}
+            {error && <p className="auth-error" role="alert">{(authErrorLines(error, authLanguages({ factory: isFactory && !staff, zhPage: isZh, browserLanguages: navigator.languages ?? [] })) ?? [error.message ?? String(error)]).map((line) => <span key={line} className="auth-error-line">{line}</span>)}</p>}
 
             <button className="auth-submit" type="submit" disabled={busy}>
               {busy ? (isSignup ? (copy?.creating ?? "Creating your account…") : (copy?.loggingIn ?? "Logging in…")) : isSignup ? (copy?.createAccount ?? "Create account") : (copy?.login ?? "Log in")}

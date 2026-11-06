@@ -22,9 +22,31 @@ import { supabase, isConfigured, setKeepSignedIn, isThisTabsSession } from "./su
 import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
+import { authFailure, isNoAnswer } from "../shared/auth-messages.mjs";
 
 /** Mirrors `minimum_password_length` in supabase/config.toml and the design's copy. */
 export const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * How long a sign-up or log-in waits before saying something. A blocked route
+ * drops traffic rather than refusing it, and the button then sat on "Creating
+ * your account…" with no words and no way out. Long enough for a slow route
+ * from China. It stops the wait, not the request: an answer that comes later
+ * still signs them in.
+ */
+const AUTH_WAIT_MS = 30000;
+const TIMED_OUT = "timed out";
+
+function answerInTime(request) {
+  let timer;
+  const expired = new Promise((resolve) => {
+    timer = window.setTimeout(() => resolve({ data: null, error: new Error(TIMED_OUT) }), AUTH_WAIT_MS);
+  });
+  return Promise.race([request, expired]).finally(() => window.clearTimeout(timer));
+}
+
+const alreadyRegistered = (authError) =>
+  authError?.code === "user_already_exists" || /already registered/i.test(authError?.message ?? "");
 
 /**
  * Supabase speaks in codes; a person locked out of their account needs a
@@ -37,20 +59,23 @@ function readable(authError) {
   const code = authError.code ?? "";
   const message = authError.message ?? "";
 
+  if (message === TIMED_OUT) return authFailure("timeout");
+  if (isNoAnswer(authError)) return authFailure("network");
+
   if (code === "invalid_credentials" || /invalid login credentials/i.test(message)) {
-    return new Error("That email and password do not match an account.");
+    return authFailure("invalid_credentials");
   }
-  if (code === "user_already_exists" || /already registered/i.test(message)) {
-    return new Error("An account already exists for that email. Log in instead.");
+  if (alreadyRegistered(authError)) {
+    return authFailure("account_exists");
   }
   if (code === "weak_password" || /password should be at least/i.test(message)) {
-    return new Error(`Use at least ${MIN_PASSWORD_LENGTH} characters.`);
+    return authFailure("short_password", { min: MIN_PASSWORD_LENGTH });
   }
   if (code === "email_not_confirmed") {
-    return new Error("Confirm your email address first — check your inbox.");
+    return authFailure("email_not_confirmed");
   }
   if (code === "over_email_send_rate_limit" || /rate limit/i.test(message)) {
-    return new Error("Too many attempts just now. Wait a minute and try again.");
+    return authFailure("rate_limited");
   }
   return authError instanceof Error ? authError : new Error(message);
 }
@@ -92,6 +117,9 @@ export function AuthProvider({ children }) {
   // own reload, and its "no company yet" then overwrote the company that had
   // just been created, leaving the card up for good.
   const orgLoadSeq = useRef(0);
+  // The address a sign-up got no answer for. The account may exist all the
+  // same: the request can arrive and only the reply be lost.
+  const unansweredSignUp = useRef(null);
 
   // Restore an existing session, then follow every change.
   useEffect(() => {
@@ -314,15 +342,16 @@ export function AuthProvider({ children }) {
         setError(null);
 
         if (password.length < MIN_PASSWORD_LENGTH) {
-          setError(new Error(`Use at least ${MIN_PASSWORD_LENGTH} characters.`));
+          setError(authFailure("short_password", { min: MIN_PASSWORD_LENGTH }));
           return false;
         }
 
         // The signup screen offers no "keep me logged in": a new account stays
         // signed in, in this browser.
         setKeepSignedIn(true);
-        const { data, error: signUpError } = await supabase.auth.signUp({
-          email: email.trim().toLowerCase(),
+        const address = email.trim().toLowerCase();
+        const answered = await answerInTime(supabase.auth.signUp({
+          email: address,
           password,
           options: {
             data: {
@@ -332,16 +361,39 @@ export function AuthProvider({ children }) {
             },
             emailRedirectTo: window.location.origin + window.location.pathname,
           },
-        });
+        }));
+        let data = answered.data;
+        let signUpError = answered.error;
+
+        // The same address again after a sign-up nobody answered: "already
+        // exists" most likely means that first try got through, so the person
+        // is logged in rather than told off for pressing the button twice.
+        // Wrong password: the usual sentence. The card stays away meanwhile,
+        // because the company below uses what they typed this time.
+        const cameBack = alreadyRegistered(signUpError) && unansweredSignUp.current === address;
+        if (cameBack) {
+          setCreatingOrg(true);
+          const loggedIn = await answerInTime(supabase.auth.signInWithPassword({ email: address, password }));
+          if (loggedIn.error) {
+            setCreatingOrg(false);
+          } else {
+            data = loggedIn.data;
+            signUpError = null;
+          }
+        }
+
         if (signUpError) {
-          setError(readable(signUpError));
+          const failure = readable(signUpError);
+          if (failure.kind === "network" || failure.kind === "timeout") unansweredSignUp.current = address;
+          setError(failure);
           return false;
         }
+        unansweredSignUp.current = null;
 
         // With confirmations off this is already a live session. With them on
         // it is not, and there is nothing to create an org with yet.
         if (!data.session) {
-          setError(new Error("Check your email to confirm your address, then log in."));
+          setError(authFailure("confirm_to_continue"));
           return false;
         }
 
@@ -349,16 +401,20 @@ export function AuthProvider({ children }) {
         // creating one of their own as well is the one thing they should not
         // do. The shell's "You have been invited" card asks them instead.
         const invited = await listMyInvitations().catch(() => []);
-        if (companyName?.trim() && !invited.length) {
+        // Coming back, they may already have one: an answer can arrive late.
+        const alreadyHasOne = cameBack && (await listMyOrgs(data.session.user.id).catch(() => [])).length > 0;
+        if (companyName?.trim() && !invited.length && !alreadyHasOne) {
           setCreatingOrg(true);
           try {
             await createOrg(companyName.trim(), accountType === "factory" ? "factory" : "brand");
             await reloadOrgs();
           } catch (orgError) {
-            setError(orgError);
+            setError(isNoAnswer(orgError) ? authFailure("company_network") : orgError);
           } finally {
             setCreatingOrg(false);
           }
+        } else if (cameBack) {
+          setCreatingOrg(false);
         }
         return true;
       },
@@ -376,10 +432,10 @@ export function AuthProvider({ children }) {
         setError(null);
         setKeepSignedIn(keepSignedIn);
 
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { error: signInError } = await answerInTime(supabase.auth.signInWithPassword({
           email: email.trim().toLowerCase(),
           password,
-        });
+        }));
         if (signInError) {
           setError(readable(signInError));
           return false;
@@ -396,8 +452,9 @@ export function AuthProvider({ children }) {
        * is what lets anyone ask whether a company is a customer, one address
        * at a time. /api/account-exists rate-limits per client for that reason.
        *
-       * The reset itself is always requested and its result never inspected —
-       * the lookup decides what we SAY, not what we do. So a lookup that is
+       * The reset itself is always requested, and its result inspected only for
+       * "it never got there" — the lookup decides what we SAY, not what we do.
+       * So a lookup that is
        * unconfigured, rate-limited or simply down degrades to the old neutral
        * message instead of breaking the reset.
        */
@@ -405,9 +462,14 @@ export function AuthProvider({ children }) {
         setError(null);
         const address = email.trim().toLowerCase();
 
-        await supabase.auth.resetPasswordForEmail(address, {
+        const { error: resetError } = await answerInTime(supabase.auth.resetPasswordForEmail(address, {
           redirectTo: `${window.location.origin}${window.location.pathname}?reset=1`,
-        });
+        }));
+        // The one result that is looked at: "on its way" would be untrue.
+        if (resetError && (resetError.message === TIMED_OUT || isNoAnswer(resetError))) {
+          setError(authFailure("reset_network"));
+          return { sent: false, exists: null };
+        }
 
         try {
           const response = await fetch("/api/account-exists", {
@@ -427,7 +489,7 @@ export function AuthProvider({ children }) {
       async updatePassword(password) {
         setError(null);
         if (password.length < MIN_PASSWORD_LENGTH) {
-          setError(new Error(`Use at least ${MIN_PASSWORD_LENGTH} characters.`));
+          setError(authFailure("short_password", { min: MIN_PASSWORD_LENGTH }));
           return false;
         }
         const { error: updateError } = await supabase.auth.updateUser({ password });
@@ -456,7 +518,7 @@ export function AuthProvider({ children }) {
           },
         });
         if (otpError) {
-          setError(otpError);
+          setError(readable(otpError));
           return false;
         }
         return true;
@@ -473,7 +535,7 @@ export function AuthProvider({ children }) {
           type: "email",
         });
         if (verifyError) {
-          setError(verifyError);
+          setError(readable(verifyError));
           return false;
         }
         return true;

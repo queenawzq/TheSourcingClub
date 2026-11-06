@@ -462,6 +462,14 @@
   color: #a8330f;
 }
 
+.auth-error-line {
+  display: block;
+}
+
+.auth-error-line + .auth-error-line {
+  margin-top: 6px;
+}
+
 .auth-notice {
   border: 1px solid #b9cdfb;
   background: #eef3ff;
