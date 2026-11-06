@@ -1423,7 +1423,9 @@ function ReviewLinkGate({ children }) {
 
   useEffect(() => {
     if (!member) return;
-    selectOrg(target);
+    // The onboarding card has no company switcher, so a saved choice would
+    // leave someone in two companies parked on this one.
+    selectOrg(target, { remember: false });
     clearReviewOrgFromUrl();
     setTarget(null);
   }, [member, target, selectOrg]);
