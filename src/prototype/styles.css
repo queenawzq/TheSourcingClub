@@ -12905,6 +12905,11 @@ body:has(.brand-onboarding-page) {
   transition: transform 160ms ease;
 }
 
+.settings-switch input:disabled + span {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .settings-switch input:checked + span {
   background: #1a4df2;
 }

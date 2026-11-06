@@ -12,7 +12,7 @@
  * /api/stripe-credits reads the PaymentIntent back and records it, the same
  * way the webhook does, and the credits appear on the ledger from there.
  *
- * Settings access buys (create_credit_purchase). Anyone else is told
+ * Settings access buys (create_credit_purchase). Anyone else sees it greyed; was told
  * who can.
  */
 import React, { useEffect, useState } from "react";
@@ -71,7 +71,7 @@ export function CreditPurchaseButton({ orgId, orgName, isOwner = false, onPurcha
   if (!isOwner) {
     return (
       <div className="factory-credit-billing-action tsc-credit-buy-action">
-        <p className="tsc-credit-buy-note">Ask someone with Settings access at {orgName || "your company"} to buy credits.</p>
+        <button className="secondary-btn compact-btn" type="button" disabled title="Needs the Settings access permission">Get more credits</button>
       </div>
     );
   }
