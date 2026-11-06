@@ -448,7 +448,7 @@ receives. A new email type needs adding to `TEMPLATES` there and
 `TEST_EMAILS` in `src/admin-prototype/main.jsx`. Password resets are sent by
 Supabase itself and cannot be tested this way.
 
-**A request for more information has a shape** (Queena, Nov 5): a short summary, bullets of what to upload, a friendly close. "Suggest with AI" enforces it after the model (`shapeSuggestion`), and an answer with no list falls back to the note built from the checks. A note is plain text and is stored and sent as typed; `src/shared/review-note.mjs` decides how the HTML email and the app draw it (`- `, `•`, `1.`, `一、`, `（1）`), and `npm run check:review-email` (in the build) pins it, the three decision emails and Test emails' sample.
+**A request for more information has a shape** (Queena, Nov 5): a short summary, bullets of what to upload, a friendly close. "Suggest with AI" writes only the summary and the close: the bullets are ours (`requestItem`), one per open check, because a company under review sees only its onboarding steps, and asked to rephrase them the model moved them to sections they are not in. A check the company can do nothing about (member addresses on the website's domain, a file waiting for staff) is not asked, and staff are told. A decline needs a reason, refused by the database (`20261106200000`). A note is plain text and is stored and sent as typed; `src/shared/review-note.mjs` decides how the HTML email and the app draw it (`- `, `•`, `1.`, `一、`, `（1）`), and `npm run check:review-email` (in the build) pins it, the three decision emails and Test emails' sample.
 
 ### The operations inbox
 
@@ -656,6 +656,10 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
 - **A failed read of a person's invitations is "don't know", never "not
   invited".** Neither `signUpWithPassword` nor `ChooseOrgType` creates a company
   on it.
+- **A person's own password isn't a company setting.** Settings → Password &
+  security has its own "Change password", open to every member whatever their
+  permissions: the current password is checked by signing in again, because
+  `secure_password_change` is off.
 - **A missing permission greys the action out, with the permission in its hover
   text and no sentence** (Queena, Nov 4 and 5; a phone gets no reason, which she
   accepted). Whole flows a person may not use (the composer, the quote form) say

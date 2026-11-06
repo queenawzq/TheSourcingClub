@@ -1380,8 +1380,8 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
           <section className="approve-fund-modal admin-review-modal small" role="dialog" aria-modal="true" aria-labelledby="decline-title">
             <button className="settings-drawer-close" type="button" aria-label="Close" onClick={() => setDeclineOpen(false)}><img src="/assets/prototype-icons/close.svg" alt="" /></button>
             <header><div><span>Final decision</span><h2 id="decline-title">Decline this profile?</h2><p>The applicant will be notified and can contact support if they believe this is an error.</p></div></header>
-            <label className="factory-onboarding-field"><span>Reason</span><textarea value={declineNote} onChange={(event) => setDeclineNote(event.target.value)} placeholder="Explain why this profile cannot be approved..." /></label>
-            <footer><button className="secondary-btn" type="button" onClick={() => setDeclineOpen(false)}>Cancel</button><button className="primary-btn danger-action" type="button" onClick={() => { setDeclineOpen(false); onDecision(profile.id, "Declined", declineNote.trim() || null); setDeclineNote(""); }}>Decline profile</button></footer>
+            <label className="factory-onboarding-field"><span>Reason *</span><textarea value={declineNote} onChange={(event) => setDeclineNote(event.target.value)} placeholder="Explain why this profile cannot be approved..." /></label>
+            <footer><button className="secondary-btn" type="button" onClick={() => setDeclineOpen(false)}>Cancel</button><button className="primary-btn danger-action" type="button" disabled={!declineNote.trim()} title={declineNote.trim() ? undefined : "Write the reason first: the company is told it."} onClick={() => { setDeclineOpen(false); onDecision(profile.id, "Declined", declineNote.trim()); setDeclineNote(""); }}>Decline profile</button></footer>
           </section>
         </div>
       )}
