@@ -1621,6 +1621,7 @@ const TEST_EMAILS = [
   { key: "review-declined", label: "Review decision · Declined", localized: true },
   { key: "review-resubmitted", label: "Review · Company sent its profile back (to staff)" },
   { key: "notification", label: "Notification · New quote", localized: true },
+  { key: "notification-payout-change", label: "Notification · Payout methods changed (always sent)", localized: true },
   { key: "team-invite", label: "Team invitation" },
 ];
 

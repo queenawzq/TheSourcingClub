@@ -16,7 +16,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(77);
+select plan(86);
 
 set local session_replication_role = replica;
 
@@ -516,6 +516,56 @@ select is(
   (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC no longer pays Payoneer account back@p31.example.com, and you have no default payout method.%'),
   1,
   'clearing the default by a direct update is said too'
+);
+reset role;
+
+-- ---------------------- staff's bank note reaches the factory --------------
+select is(
+  (select body from public.notifications where subject_id = '31800000-0000-0000-0000-000000000003' and kind = 'funds_released'),
+  (select format('Sent by bank transfer against %s. TSC''s note: Paid by bank: their Payoneer was closed', o.order_number)
+     from public.order_payments p join public.production_orders o on o.id = p.order_id
+    where p.id = '31800000-0000-0000-0000-000000000003'),
+  'the bell and the email carry the note staff typed'
+);
+select ok(
+  (select body not like '%note%' from public.notifications where subject_id = '31800000-0000-0000-0000-000000000007' and kind = 'funds_released') is not false,
+  'no note typed, none said'
+);
+
+-- ---------------------- the payout alert is always emailed -----------------
+insert into public.user_profiles (id, email) values
+  ('31a00000-0000-0000-0000-000000000004', 'p31-other-owner@example.com')
+on conflict (id) do update set email = excluded.email;
+insert into public.notification_preferences (org_id, rfq_emails, payment_emails, message_emails)
+values ('31b00000-0000-0000-0000-0000000000f2', false, false, false)
+on conflict (org_id) do update set rfq_emails = false, payment_emails = false, message_emails = false;
+
+select is(public.notification_email_category('payout_method_changed'), 'account', 'a payout change has a category of its own');
+select ok(public.notification_email_enabled('31b00000-0000-0000-0000-0000000000f2', 'account'), 'every switch off, and it is still on');
+select ok(not public.notification_email_enabled('31b00000-0000-0000-0000-0000000000f2', 'payments'), 'the switches still work for the rest');
+
+insert into public.notifications (org_id, kind, title, body)
+values ('31b00000-0000-0000-0000-0000000000f2', 'payout_method_changed', 'P31 alert', 'P31 alert body');
+select is(
+  (select count(*)::int from public.notification_email_outbox o join public.notifications n on n.id = o.notification_id
+    where n.org_id = '31b00000-0000-0000-0000-0000000000f2' and n.title = 'P31 alert'
+      and o.category = 'account' and o.status = 'pending' and o.recipient_user_id = '31a00000-0000-0000-0000-000000000004'),
+  1,
+  'it is queued for the member with every switch off'
+);
+select lives_ok($$ select count(*) from public.claim_notification_emails(100) $$, 'claiming the queue');
+select is(
+  (select count(*)::int from public.notification_email_outbox o join public.notifications n on n.id = o.notification_id
+    where n.title = 'P31 alert' and o.status = 'skipped'),
+  0,
+  'and the sender does not skip it as switched off'
+);
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"31a00000-0000-0000-0000-000000000004","role":"authenticated"}', true);
+select throws_ok(
+  $$ select public.set_notification_preference('31b00000-0000-0000-0000-0000000000f2', 'account', false) $$,
+  '22023', 'unknown email setting',
+  'a company cannot turn it off'
 );
 reset role;
 

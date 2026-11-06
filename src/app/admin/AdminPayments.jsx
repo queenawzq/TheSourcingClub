@@ -93,7 +93,7 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
             <span className="admin-sub admin-row-message" role="alert">
               {confirming === "payoneer"
                 ? `Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by Payoneer (${row.payoneer_email}), payment ID ${id}?`
-                : `Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank, not to their Payoneer account?`}
+                : `Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank, not to their Payoneer account? They will read: "${note.trim()}"`}
             </span>
             <button type="button" className="admin-approve" disabled={busy}
                     data-testid="release-payment-confirm"
@@ -118,7 +118,7 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
           </button>
           <button type="button" className="quiet-btn" disabled={busy || !note.trim()}
                   data-testid="release-bank-instead"
-                  title={note.trim() ? undefined : "Add a note saying why it was paid by bank"}
+                  title={note.trim() ? undefined : "Add a note for the factory saying why it was paid by bank"}
                   onClick={() => setConfirming("bank")}>
             Paid by bank instead
           </button>
@@ -139,6 +139,7 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
         <span className="admin-sub admin-row-message" role="alert">
           {`Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank?`}
           {row.payout_summary === "no bank details on file" ? " No bank details are on file." : null}
+          {note.trim() ? ` They will read: "${note.trim()}"` : null}
         </span>
         <button type="button" className="admin-approve" disabled={busy}
                 data-testid="release-payment-confirm"
@@ -197,7 +198,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal }) {
           <input type="text" data-testid="payoneer-payment-id" value={payoneerId} onChange={(event) => setPayoneerId(event.target.value)} />
         </label>
       ) : null}
-      <input type="text" aria-label="Note" placeholder={section === "wire" ? "Note, required to reject" : section === "payout" && paidByPayoneer(row) ? "Note, required if paid by bank" : "Optional note"}
+      <input type="text" aria-label="Note" placeholder={section === "wire" ? "Note, required to reject" : section === "payout" && paidByPayoneer(row) ? "If paid by bank: why. The factory reads it" : section === "payout" && !paidByStripe(row) ? "Bank reference. The factory reads it" : "Optional note"}
              value={note} onChange={(event) => setNote(event.target.value)} />
     </>
   ) : null;

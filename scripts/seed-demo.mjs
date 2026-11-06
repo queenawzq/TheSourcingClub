@@ -1148,7 +1148,7 @@ const poplin = await runningOrder({ title: poplinTitle, brief: "160 organic popl
 const poplinFit = await dueNow(poplin, poplinTitle);
 await funded(poplinFit, CARD);
 await approveOpenStep(poplin, poplinTitle);
-must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Demo data: paid out by bank by staff." }), "release the fit sample");
+must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Wire ref DEMO-1001" }), "release the fit sample");
 await funded(await dueNow(poplin, poplinTitle), CARD);
 // 2. Fit sample funded by card and held while the factory works ("Funded").
 const twillTitle = "Cotton twill overshirt, AW27";

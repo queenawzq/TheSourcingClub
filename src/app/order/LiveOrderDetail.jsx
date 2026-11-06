@@ -170,23 +170,29 @@ function statusLine(milestone, { isFactory, canFund, canApprove, org, factoryNam
     }
     return money;
   }
-  if (approvable(milestone, posted)) {
+  if (approvable(milestone)) {
+    // The brand may approve before the factory posts (Queena, Nov 4), so an
+    // approvable step is not the same as one with something to review: each
+    // side is told which it is.
     const held = payment?.state === "confirmed" ? ` · ${money}` : "";
-    if (isFactory) return `Posted, awaiting the brand's approval${held}`;
-    if (milestone.kind === "approval_and_payment" && !(canApprove && canFund)) {
-      return `Ready for approval by someone with Approve samples and Release funds${held}`;
+    if (isFactory) {
+      return posted
+        ? `Posted, awaiting the brand's approval${held}`
+        : `You can start this step. Nothing posted yet, and the brand can approve without an update${held}`;
     }
-    if (!canApprove) return `Ready for approval by someone with Approve samples${held}`;
-    return `Ready for your approval${held}`;
+    const lacking = milestone.kind === "approval_and_payment" && !(canApprove && canFund)
+      ? "Approve samples and Release funds"
+      : !canApprove ? "Approve samples" : "";
+    if (posted) {
+      return lacking ? `Ready for approval by someone with ${lacking}${held}` : `Ready for your approval${held}`;
+    }
+    return lacking
+      ? `Nothing posted yet. Approving takes someone with ${lacking}${held}`
+      : `Nothing posted yet. You can approve now or wait for ${factoryName || "the factory"}'s update${held}`;
   }
   if (milestone.state === "active") {
-    // The brand approves from the factory's update, so before there is one
-    // it is told what it is waiting for rather than offered an approval.
-    const work = isFactory
-      ? "You can start this step"
-      : milestone.kind === "payment_only"
-        ? "In progress"
-        : `Waiting for ${factoryName || "the factory"}'s first update. You can approve once it posts`;
+    // Only a payment-only step gets here: nothing to approve or post on it.
+    const work = isFactory ? "You can start this step" : "In progress";
     return payment?.state === "confirmed" ? `${work} · ${money}` : work;
   }
   // An upcoming step whose greyed button this viewer could not press even
@@ -228,7 +234,7 @@ function dueBadge(milestone, today = new Date()) {
  * brand's funding. Reminding the other side about your own move is noise.
  */
 const waitingOnOther = (milestone, isFactory, posted) => (isFactory
-  ? approvable(milestone, posted) || ["due", "failed"].includes(milestone.payment?.state)
+  ? (approvable(milestone) && posted) || ["due", "failed"].includes(milestone.payment?.state)
   : milestone.state === "active" && !posted);
 
 /** Brands nudge factories only when the current work is genuinely close. */

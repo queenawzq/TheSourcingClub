@@ -31,7 +31,7 @@ import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePa
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
-import { availableOn, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, stripeRelevant } from "./payment-summary.mjs";
+import { availableOn, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, staffBankNote, stripeRelevant } from "./payment-summary.mjs";
 import "./order.css";
 import "./payout.css";
 
@@ -229,7 +229,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       paymentRows = unwrap(
         await supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id)")
           .in("order_id", orders.map((order) => order.id))
           .order("created_at", { ascending: false }),
         "load your earnings",
@@ -334,6 +334,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
         // To-ONE (payment_id is its primary key): an object or null, never an array.
         heldOnCancelledOrder(row) ? "The order was cancelled, so TSC returns this to the brand. It is not in your figures." : null,
         row.payoneer_payouts ? `Payoneer payment ID ${row.payoneer_payouts.payoneer_payment_id}, sent to ${row.payoneer_payouts.paid_to_email}.` : null,
+        staffBankNote(row) ? `TSC's note: ${staffBankNote(row)}` : null,
       ].filter(Boolean).join(" "),
       status: earningStatus(row, stripeBalance, handPaid),
       amount: factoryAmount(row),
