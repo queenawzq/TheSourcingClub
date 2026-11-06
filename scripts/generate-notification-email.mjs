@@ -282,7 +282,8 @@ export function inviteEmail(invite, env) {
   const inviter = String(invite.inviterName ?? "").trim() || "A company";
   const title = t.title(inviter);
   const note = String(invite.message ?? "").trim().slice(0, 1000);
-  const url = `${env.appUrl}/app.html${kind === "factory" ? "?portal=factory" : ""}`;
+  // The button says "Create your … account", so it opens sign-up, not Log in.
+  const url = `${env.appUrl}/app.html?${kind === "factory" ? "portal=factory&" : ""}mode=signup`;
   const body = [note ? `“${note}”` : null, t.body, t.zh?.(inviter)].filter(Boolean).join("\n\n");
   const why = `You received this because someone at ${inviter} entered this address. If you weren't expecting it, you can ignore it: nothing was set up for you.`;
   const questions = "Questions? Reply to this email, or contact";
@@ -334,14 +335,17 @@ export function teamInviteEmail(invite, env) {
   const zh = kind === "factory"
     ? `${inviter || company} 邀请你加入 ${company} 的 The Sourcing Club 团队。你的权限：${
         (invite.permissions ?? []).map((key) => permissionLabelsZh[key]).filter(Boolean).join("、") || "查看询价、订单和消息"
-      }。请用此邮箱 (${invite.email}) 注册或登录后接受邀请。`
+      }。请点击下方按钮，用此邮箱 (${invite.email}) 设置密码或登录，即可加入。`
     : null;
   const body = [
     `${company} works with ${kind === "factory" ? "brands" : "factories"} on The Sourcing Club${role ? `, and has added you as ${role}` : ""}. ${can}`,
-    `Sign up or log in with this address (${invite.email}) and accept the invitation.${expires ? ` It is open until ${expires}.` : ""}`,
+    `Use the button below to create a password or log in with this address (${invite.email}), and you'll join ${company}.${expires ? ` It is open until ${expires}.` : ""}`,
     zh,
   ].filter(Boolean).join("\n\n");
-  const url = `${env.appUrl}/app.html${kind === "factory" ? "?portal=factory" : ""}`;
+  // The id tells the page who was invited to what. The sample in Test emails has none.
+  const url = invite.id
+    ? `${env.appUrl}/app.html?invite=${invite.id}`
+    : `${env.appUrl}/app.html${kind === "factory" ? "?portal=factory" : ""}`;
   const cta = "Accept the invitation";
   const why = `You received this because someone at ${company} entered this address. If you weren't expecting it, you can ignore it: you will not be added unless you accept.`;
   const questions = "Questions? Reply to this email, or contact";
