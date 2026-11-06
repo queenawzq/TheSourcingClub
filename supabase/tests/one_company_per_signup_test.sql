@@ -27,32 +27,32 @@ set local role authenticated;
 set local request.jwt.claims = '{"sub":"fa010000-0000-0000-0000-000000000001","role":"authenticated"}';
 
 create temporary table occ_first on commit drop as
-  select * from public.create_org('OCC 湖南春天', 'factory');
+  select * from public.create_org('OCC 江南织造', 'factory');
 grant select on occ_first to authenticated;
 
 select is(
-  (public.create_org('OCC 湖南春天', 'factory')).id,
+  (public.create_org('OCC 江南织造', 'factory')).id,
   (select id from occ_first),
   'the same person, name and kind gets the same company back'
 );
 select is(
-  (public.create_org('occ 湖南春天', 'factory')).id,
+  (public.create_org('occ 江南织造', 'factory')).id,
   (select id from occ_first),
   'capitals do not make a second company'
 );
 select is(
-  (public.create_org(E'  OCC 湖南春天　', 'factory')).id,
+  (public.create_org(E'  OCC 江南织造　', 'factory')).id,
   (select id from occ_first),
   'spaces around it, ideographic ones too, do not make a second company'
 );
 select is(
   (select count(*) from public.org_members m join public.orgs o on o.id = m.org_id
-    where m.user_id = 'fa010000-0000-0000-0000-000000000001' and o.name like '%湖南春天%'),
+    where m.user_id = 'fa010000-0000-0000-0000-000000000001' and o.name like '%江南织造%'),
   1::bigint,
   'after all that, one company'
 );
 select isnt(
-  (public.create_org('OCC 湖南春天', 'brand')).id,
+  (public.create_org('OCC 江南织造', 'brand')).id,
   (select id from occ_first),
   'the other kind is a different company'
 );
@@ -65,7 +65,7 @@ select isnt(
 -- Someone else asking for the same name.
 set local request.jwt.claims = '{"sub":"fa010000-0000-0000-0000-000000000002","role":"authenticated"}';
 select isnt(
-  (public.create_org('OCC 湖南春天', 'factory')).id,
+  (public.create_org('OCC 江南织造', 'factory')).id,
   (select id from occ_first),
   'another person NEVER gets someone else''s company back'
 );
@@ -96,7 +96,7 @@ set local session_replication_role = origin;
 set local role authenticated;
 set local request.jwt.claims = '{"sub":"fa010000-0000-0000-0000-000000000001","role":"authenticated"}';
 select isnt(
-  (public.create_org('OCC 湖南春天', 'factory')).id,
+  (public.create_org('OCC 江南织造', 'factory')).id,
   (select id from occ_first),
   'someone who is no longer in the company does NOT get it back'
 );
