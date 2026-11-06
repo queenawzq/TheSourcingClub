@@ -36,6 +36,6 @@ const liveMessage = await messageFor({
 });
 assert.equal(liveMessage.subject, followUp.subject);
 assert.ok(liveMessage.text.includes(note));
-assert.match(liveMessage.html, /What we need from you/);
+assert.match(liveMessage.html, /About Wonder Lab/);
 
 console.log("Transactional email templates and review sender passed.");

@@ -33,6 +33,7 @@ import {
 } from "./vendor-directory-view.js";
 import { useVendorTranslations } from "./useVendorTranslations.js";
 import "./browse.css";
+import { can, permissionHint } from "../../lib/domain/org.js";
 
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 
@@ -134,6 +135,7 @@ export default function LiveBrandBrowse({ org, user, view = "cards" }) {
       href: `/app.html/factories/${vendor.id}?from=browse`,
       onOpen: () => navigate(`/factories/${vendor.id}?from=browse`),
       onQuote: () => navigate(`/rfqs/new?invite=${vendor.id}`),
+      quoteLocked: can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow"),
       onMessage: thread ? () => navigate(`/messages/${thread.id}`) : null,
       save: saveFor(vendor.id),
     };
