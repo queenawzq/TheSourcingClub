@@ -1191,11 +1191,21 @@ await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme w
 // 6. Ningbo Loomworks is in mainland China, where Stripe cannot pay out: its
 //    fit sample is funded and approved, and the payout waits on staff to pay
 //    it by bank ("Payout owed" on the staff payments page).
-must(await secondFactory.client.from("factory_payout_accounts").insert({
-  org_id: secondFactoryOrg.id, label: "Demo account", bank_name: "Demo Bank Ningbo (test data, not a real account)",
-  account_name: LOGINS.secondFactory.name, account_number_last4: "0000", bank_country: "CN",
-  instructions: "Demo data only. Nothing is ever sent to this account.", is_primary: true,
+//    The number is plainly fake: staff "Show number" reads it from Vault.
+must(await secondFactory.client.rpc("save_bank_payout_account", {
+  target_org: secondFactoryOrg.id,
+  bank_name: "Demo Bank Ningbo (test data, not a real account)",
+  account_name: `${LOGINS.secondFactory.name} Co Ltd`,
+  bank_country: "CN", swift: "DEMOCNSH", branch: "Demo Ningbo branch, CNAPS 000000000000",
+  instructions: "Demo data only. Nothing is ever sent to this account.",
+  account_number: "0000 0000 0000 1234", account_number_again: "0000 0000 0000 1234",
 }), "the second factory's payout details");
+// Lakeside Mills saved its bank account when the form took only the last four:
+// its Payments page says TSC can't pay it yet and asks for the full number.
+must(await otherDomainFactory.client.from("factory_payout_accounts").insert({
+  org_id: otherDomainOrg.id, label: "Demo account", bank_name: "Demo Bank Lakeside (test data, not a real account)",
+  account_name: LOGINS.otherDomainFactory.name, account_number_last4: "0000", bank_country: "CN", is_primary: true,
+}), "the last-four-only factory's payout details");
 const seersuckerTitle = "Seersucker camp shirt, AW27";
 const seersucker = await runningOrder({
   title: seersuckerTitle, brief: "180 cotton seersucker camp-collar shirts.", quantity: 180, unitPrice: 1900,

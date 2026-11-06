@@ -147,6 +147,11 @@ const RELEASE_REFUSALS = {
   payout_already_released: "This payout was already marked as paid. Reload the board.",
   payout_own_company: "You belong to this company, so someone else on the staff must record its payout.",
   payout_stripe: "Stripe pays this factory now. Reload the board and retry the payout.",
+  reference_required: "Enter the bank's reference for this transfer.",
+  reference_holds_number: "The factory and the brand can read this. Use the bank's reference, not the account number.",
+  reveal_brand_side: "Your company has an order with this factory, so someone else on the staff must pay it.",
+  reveal_not_owed: "TSC doesn't owe this company a payout by hand, so its number stays hidden.",
+  no_number: "No full account number is on file. Ask the factory to add it on its Payments page.",
 };
 
 function saidToStaff(failure) {
@@ -154,18 +159,41 @@ function saidToStaff(failure) {
   return sentence ? new Error(sentence) : failure;
 }
 
-export async function releasePayment(paymentId, note) {
+export async function releasePayment(paymentId, note, paidToChangedAt = null) {
   try {
     return unwrap(
       await supabase.rpc("release_payment_to_factory", {
         target_payment: paymentId,
         note: note || null,
+        paid_to_changed_at: paidToChangedAt,
       }),
       "release these funds",
     );
   } catch (failure) {
     throw saidToStaff(failure);
   }
+}
+
+/**
+ * One account's full number, for a person about to pay it. The database records
+ * who asked before answering. The caller shows it and forgets it.
+ */
+export async function revealPayoutNumber(accountId) {
+  try {
+    const rows = unwrap(
+      await supabase.rpc("reveal_payout_account_number", { target_account: accountId }),
+      "show this account number",
+    );
+    return rows[0];
+  } catch (failure) {
+    const said = saidToStaff(failure);
+    throw said === failure ? new Error("Couldn't show the number right now. Try again.") : said;
+  }
+}
+
+/** Who looked at which account's number, newest first. */
+export async function payoutNumberRevealLog() {
+  return unwrap(await supabase.rpc("payout_number_reveal_log"), "load who viewed account numbers");
 }
 
 /** Staff sent this payout from TSC's Payoneer account by hand: record it. */

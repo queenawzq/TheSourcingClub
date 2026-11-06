@@ -130,3 +130,11 @@
 .admin-decision .admin-actions { display: flex; gap: 8px; margin-top: 8px; }
 .admin-message-body p { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .admin-table-hint { margin: 0 0 8px; }
+
+/* The staff board's bank details: what a person needs to send the money. */
+.admin-payout-details { display: flex; flex-direction: column; gap: 3px; min-width: 240px; max-width: 340px; margin-top: 6px; white-space: normal; }
+.admin-payout-instructions { overflow-wrap: anywhere; white-space: pre-wrap; }
+.admin-payout-changed { padding: 4px 8px; border: 1px solid var(--danger); border-radius: 8px; color: var(--danger); font-size: 12px; font-weight: 500; }
+.admin-payout-number { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.admin-payout-number code { font-size: 14px; font-weight: 600; letter-spacing: 0.02em; overflow-wrap: anywhere; }
+.admin-payout-number .admin-row-message { flex-basis: 100%; }
