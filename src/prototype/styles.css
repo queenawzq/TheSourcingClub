@@ -8153,6 +8153,13 @@ select {
   background: #f3f7fb;
 }
 
+.project-overflow-menu button:disabled,
+.project-overflow-menu button:disabled:hover {
+  background: transparent;
+  color: #9aa8bc;
+  cursor: not-allowed;
+}
+
 .project-overflow-submenu {
   position: relative;
 }
