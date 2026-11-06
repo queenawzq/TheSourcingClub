@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { EMAIL_LOGO_URL } from "./_email-assets.js";
 // Vercel compiles api/*.js as CommonJS; import the ESM email builder lazily.
 const loadNotificationEmail = () => import("../scripts/generate-notification-email.mjs");
 
@@ -116,7 +117,7 @@ export async function sendDueNotificationEmails(service, request, mail = transpo
   const { notificationEmail } = await loadNotificationEmail();
   const env = {
     appUrl: appUrl(request),
-    logoUrl: `${appUrl(request)}/assets/logo.png`,
+    logoUrl: EMAIL_LOGO_URL,
     supportEmail: REPLY_TO,
     companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
   };

@@ -10,11 +10,11 @@
  * only in the prototypes at their own URLs, and is reached from there rather
  * than being half-linked from here.
  */
-import React, { Suspense, lazy, useCallback, useEffect, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider, useAuth } from "../lib/auth.jsx";
 import { saveMyTimeZone } from "../lib/domain/calls.js";
-import { acceptInvitation, createOrg, listMyInvitations } from "../lib/domain/org.js";
+import { acceptInvitation, can, createOrg, invitationPreview, listMyInvitations, myLastDeparture, needsPermission } from "../lib/domain/org.js";
 import { getBrandProfile, getFactoryProfile, getMyReview } from "../lib/domain/profile.js";
 import BrandOnboarding from "./onboarding/LiveBrandOnboarding.jsx";
 import FactoryOnboarding from "./onboarding/LiveFactoryOnboarding.jsx";
@@ -137,7 +137,7 @@ function portalFromUrl() {
   return portal === "factory" || portal === "vendor" ? "factory" : "brand";
 }
 
-function SignIn() {
+function SignIn({ invitation = null }) {
   const {
     signInWithPassword,
     signUpWithPassword,
@@ -152,9 +152,10 @@ function SignIn() {
   } = useAuth();
 
   const params = new URLSearchParams(window.location.search);
-  const accountType = portalFromUrl();
+  // An invitation decides the kind, whichever portal the link was opened on.
+  const accountType = invitation?.kind ?? portalFromUrl();
 
-  const [mode, setMode] = useState(params.get("mode") === "signup" ? "signup" : "login");
+  const [mode, setMode] = useState(invitation ? (invitation.hasAccount ? "login" : "signup") : params.get("mode") === "signup" ? "signup" : "login");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState(null);
   const [resetFor, setResetFor] = useState(null);
@@ -375,6 +376,7 @@ function SignIn() {
   return (
     <AuthScreen
       accountType={accountType}
+      invitation={invitation}
       initialMode={mode}
       busy={busy}
       error={error}
@@ -403,7 +405,7 @@ function SignIn() {
       onAuthenticate={authenticate}
       keepSignedIn={keepSignedIn}
       onKeepSignedInChange={setKeepSignedIn}
-      footer={DemoSignIn && (
+      footer={DemoSignIn && !invitation && (
         <Suspense fallback={null}>
           <DemoSignIn busy={busy} onPick={demoSignIn} />
         </Suspense>
@@ -465,8 +467,159 @@ function SetNewPassword({ onDone }) {
   );
 }
 
+/**
+ * /app.html?invite=<id>, the button in a team invitation's email. The id says
+ * who was invited to what, so the form never asks for a company or a side.
+ */
+function useInviteLink() {
+  const [id, setId] = useState(() => new URLSearchParams(window.location.search).get("invite"));
+  // undefined while asking; null when the id is unknown; "failed" to try again.
+  const [preview, setPreview] = useState(undefined);
+  const [attempt, setAttempt] = useState(0);
+  // Signing in on the form under "Log in to join X" is the consent to join.
+  // Opening a link while already signed in is not: anyone can send anyone one.
+  const cameThroughForm = useRef(false);
+
+  useEffect(() => {
+    if (!id) return undefined;
+    let cancelled = false;
+    setPreview(undefined);
+    invitationPreview(id).then(
+      (found) => { if (!cancelled) setPreview(found); },
+      () => { if (!cancelled) setPreview("failed"); },
+    );
+    return () => { cancelled = true; };
+  }, [id, attempt]);
+
+  const clear = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("invite");
+    window.history.replaceState(window.history.state, "", url);
+    setId(null);
+  }, []);
+
+  return { id, preview, cameThroughForm, clear, retry: () => setAttempt((count) => count + 1) };
+}
+
+function InviteCard({ title, note, children }) {
+  return (
+    <div className="gate">
+      <div className="gate-card">
+        <h1>{title}</h1>
+        {note ? <p className="gate-note">{note}</p> : null}
+        <div className="gate-row">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/** Signed in through the invitation's form: join, and land in the company. */
+function JoinFromLink({ link }) {
+  const { refreshOrgs, selectOrg } = useAuth();
+  const [failed, setFailed] = useState(false);
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    acceptInvitation(link.id).then(async (org) => {
+      await refreshOrgs();
+      if (org?.id) selectOrg(org.id);
+      link.clear();
+    }, () => setFailed(true));
+  }, []);
+
+  if (!failed) return <Loading label={`Joining ${link.preview?.company ?? "the company"}…`} />;
+  return (
+    <InviteCard
+      title="We could not join you to this company"
+      note={`The invitation may have just expired or been withdrawn. Ask ${link.preview?.company ?? "the company"} to send it again.`}
+    >
+      <button type="button" className="primary-btn" onClick={link.clear}>Continue</button>
+    </InviteCard>
+  );
+}
+
+/**
+ * What an invitation's link shows, or null when the normal app should take
+ * over. Nothing here creates a company: the form sends no company name, so
+ * neither signUpWithPassword nor ChooseOrgType has one to create.
+ */
+function inviteLinkScreen(link, status, user, endSession) {
+  if (!link.id || status === "loading") return null;
+  const { preview } = link;
+  const signedIn = status !== "signed-out";
+  const again = preview?.company ? `Ask ${preview.company} to send it again.` : "";
+  const continueButton = (
+    <button type="button" className="primary-btn" onClick={link.clear}>{signedIn ? "Continue" : "Go to log in"}</button>
+  );
+
+  if (preview === undefined) return <Loading label="Checking your invitation…" />;
+  if (preview === "failed") {
+    return (
+      <InviteCard title="We couldn't check this invitation" note="Check your connection and try again.">
+        <button type="button" className="primary-btn" onClick={link.retry}>Try again</button>
+      </InviteCard>
+    );
+  }
+  if (!preview) return <InviteCard title="We couldn't find this invitation" note="The link may be incomplete. Open it again from your email, or ask whoever invited you to send it again.">{continueButton}</InviteCard>;
+  if (preview.state === "expired") return <InviteCard title="This invitation has expired" note={again}>{continueButton}</InviteCard>;
+  if (preview.state === "withdrawn") return <InviteCard title="This invitation was withdrawn" note={again}>{continueButton}</InviteCard>;
+  // Already used: the person only needs to get in.
+  if (preview.state === "accepted") return null;
+
+  if (!signedIn) {
+    link.cameThroughForm.current = true;
+    return <SignIn key={preview.id} invitation={preview} />;
+  }
+  const address = String(user?.email ?? "").toLowerCase();
+  if (address !== preview.email) {
+    return (
+      <InviteCard
+        title={`This invitation is for ${preview.email}`}
+        note={`You're signed in as ${address}. To join ${preview.company}, sign out and use that address.`}
+      >
+        <button type="button" className="primary-btn" onClick={() => { link.cameThroughForm.current = true; endSession(); }}>Sign out and continue</button>
+        <button type="button" className="quiet-btn" onClick={link.clear}>Stay signed in</button>
+      </InviteCard>
+    );
+  }
+  if (link.cameThroughForm.current) return <JoinFromLink link={link} />;
+  // Signed in already, right address: Join is on screen (the card or the banner).
+  return null;
+}
+
+/**
+ * An invitation to this address arrived or was withdrawn while the page is
+ * open. The slow re-read is for one expiring, which sends no event.
+ */
+function useInvitationsLive(email, reread) {
+  const latest = useRef(reread);
+  latest.current = reread;
+  useEffect(() => {
+    if (!email) return undefined;
+    let timer = null;
+    const soon = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => latest.current(), 300);
+    };
+    const address = email.toLowerCase();
+    const channel = supabase
+      .channel(`my-invitations:${Math.random().toString(36).slice(2)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "org_invitations", filter: `email=eq.${address}` }, soon)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "org_invitations", filter: `email=eq.${address}` }, soon)
+      .subscribe();
+    const slow = window.setInterval(() => { if (!document.hidden) latest.current(); }, 60000);
+    return () => {
+      window.clearTimeout(timer);
+      window.clearInterval(slow);
+      supabase.removeChannel(channel);
+    };
+  }, [email]);
+}
+
 function ChooseOrgType() {
-  const { user, refreshOrgs, signOut: endSession } = useAuth();
+  const { user, refreshOrgs, lostAccess, dismissLostAccess, signOut: endSession } = useAuth();
   const signOut = () => signOutInto(user?.user_metadata?.account_type ?? portalFromUrl(), endSession);
   // What the signup form already asked. The portal it was filled in decides
   // the side, so someone who signed up here is not asked either question
@@ -485,16 +638,34 @@ function ChooseOrgType() {
   // organisation of their own — the one thing they should not do. The
   // invitation existed in the database and no screen ever showed it.
   const [invitations, setInvitations] = useState([]);
+  // The company they were removed from or left. Kept in the database, because
+  // state in this tab does not survive a reload, and a reload must not read as
+  // a fresh signup.
+  const [departure, setDeparture] = useState(null);
+  // "Start my own instead" is an answer to these invitations, not to any later one.
+  const [skipped, setSkipped] = useState([]);
+  const waiting = invitations.filter((invitation) => !skipped.includes(invitation.id));
+  // Not while joining: the accepted invitation's own event would flash the form.
+  useInvitationsLive(user?.email, () => {
+    if (!busy) listMyInvitations().then(setInvitations).catch(() => {});
+  });
 
   useEffect(() => {
     let cancelled = false;
-    listMyInvitations()
-      .catch(() => [])
-      .then(async (pending) => {
+    Promise.all([
+      // A failed read is "don't know": it must not read as "not invited".
+      listMyInvitations().catch(() => null),
+      // Unknown counts as "has left": asking again costs a click, while a
+      // company created by mistake cannot be taken back.
+      myLastDeparture(user?.id).catch(() => ({ orgName: null, byChoice: false, unknown: true })),
+    ])
+      .then(async ([pending, gone]) => {
         if (cancelled) return;
-        setInvitations(pending);
+        setInvitations(pending ?? []);
+        if (gone && !gone.unknown) setDeparture(gone);
         // An invitation wins: joining is what an invited person should do.
-        if (pending.length || !answeredKind || !answeredName) {
+        // Creating from the signup answers is only for someone who just signed up.
+        if (!pending || pending.length || gone || lostAccess || !answeredKind || !answeredName) {
           setAutoCreating(false);
           return;
         }
@@ -519,6 +690,7 @@ function ChooseOrgType() {
     setError(null);
     try {
       await createOrg(name, kind);
+      dismissLostAccess();
       await refreshOrgs();
     } catch (createError) {
       setError(createError);
@@ -526,16 +698,24 @@ function ChooseOrgType() {
     }
   }
 
-  if (invitations.length) {
+  const goneFrom = departure ? (departure.orgName ?? "your company") : lostAccess;
+  const goneNotice = goneFrom ? (
+    <p className="gate-error" role="status" data-testid="lost-access">
+      {departure?.byChoice ? `You left ${goneFrom}.` : `You no longer have access to ${goneFrom}.`} Join another company or start your own.
+    </p>
+  ) : null;
+
+  if (waiting.length) {
     return (
       <div className="gate">
         <div className="gate-card">
           <p className="gate-eyebrow">Signed in as {user?.email}</p>
+          {goneNotice}
           <h1>You have been invited</h1>
           <p className="gate-note">
             Join an organisation that already exists, rather than starting one of your own.
           </p>
-          {invitations.map((invitation) => (
+          {waiting.map((invitation) => (
             <button
               key={invitation.id}
               type="button"
@@ -554,12 +734,12 @@ function ChooseOrgType() {
                 }
               }}
             >
-              Join {invitation.orgs?.name} as {invitation.role}
+              Join {invitation.orgs?.name ?? "the company"}{invitation.title ? ` as ${invitation.title}` : ""}
             </button>
           ))}
           {error ? <p className="gate-error">{error.message}</p> : null}
           <div className="gate-row">
-            <button type="button" className="quiet-btn" onClick={() => setInvitations([])}>
+            <button type="button" className="quiet-btn" onClick={() => setSkipped(invitations.map((invitation) => invitation.id))}>
               Start my own organisation instead
             </button>
             <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
@@ -573,6 +753,7 @@ function ChooseOrgType() {
     <div className="gate">
       <form className="gate-card" onSubmit={submit}>
         <p className="gate-eyebrow">Signed in as {user?.email}</p>
+        {goneNotice}
         <h1>Which side are you on?</h1>
         <p className="gate-note">
           This decides what you see. It cannot be changed later without our help,
@@ -839,8 +1020,81 @@ function Shell() {
       isFactory={isFactory}
       onSignOut={signOut}
     >
+      <TeamNotices />
       <ShellRoutes activeOrg={activeOrg} profile={profile} user={user} isFactory={isFactory} />
     </DesignFrame>
+  );
+}
+
+/**
+ * Two things about this person's teams that can happen while they are in
+ * another company's workspace: they were removed from one (said once), or a
+ * company invited them (Join / Not now). Not in the design, which has no
+ * signed-in invitation at all; drawn as a small card in the app's style.
+ */
+function TeamNotices() {
+  const { user, lostAccess, dismissLostAccess, refreshOrgs, selectOrg } = useAuth();
+  const [invitations, setInvitations] = useState([]);
+  // "Not now" holds for this visit, also when the list is read again.
+  const [notNow, setNotNow] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listMyInvitations().then((rows) => { if (!cancelled) setInvitations(rows); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useInvitationsLive(user?.email, () => {
+    if (!busy) listMyInvitations().then(setInvitations).catch(() => {});
+  });
+
+  const invitation = invitations.find((row) => !notNow.includes(row.id)) ?? null;
+  if (!lostAccess && !invitation) return null;
+
+  async function join() {
+    setBusy(true);
+    setError(null);
+    try {
+      const org = await acceptInvitation(invitation.id);
+      await refreshOrgs();
+      if (org?.id) selectOrg(org.id);
+      setInvitations((rows) => rows.filter((row) => row.id !== invitation.id));
+    } catch (failure) {
+      setError(/expired|not found|already used/i.test(failure.message)
+        ? "This invitation has expired or was withdrawn. Ask them to send it again."
+        : "We could not join you to this company. Try again.");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="tsc-team-notices" role="status">
+      {lostAccess ? (
+        <div className="tsc-team-notice">
+          <p>You no longer have access to {lostAccess}. Everything you worked on there stays with the company.</p>
+          <div className="tsc-team-notice-actions">
+            <button type="button" className="quiet-btn" onClick={dismissLostAccess}>OK</button>
+          </div>
+        </div>
+      ) : null}
+      {invitation ? (
+        <div className="tsc-team-notice">
+          <p>
+            You're invited to join <strong>{invitation.orgs?.name}</strong>
+            {invitation.title ? ` as ${invitation.title}` : ""}.
+          </p>
+          {error ? <p className="tsc-team-notice-error">{error}</p> : null}
+          <div className="tsc-team-notice-actions">
+            <button type="button" className="quiet-btn" disabled={busy} onClick={() => setNotNow((ids) => [...ids, invitation.id])}>Not now</button>
+            <button type="button" className="primary-btn" disabled={busy} data-testid="join-invited-company" onClick={join}>
+              {busy ? "Joining…" : "Join"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -882,10 +1136,12 @@ function navigateFromPrototype(screenKey, navigate) {
 }
 
 function ShellRoutes({ activeOrg, profile, user, isFactory }) {
-  // listMyOrgs folds the membership role onto the org, and several actions
-  // turn on it: awarding a quote, approving a step that releases money, and
-  // recording a payment as sent are all owner-only in the database.
+  // listMyOrgs folds the membership role and permissions onto the org. Payout
+  // setup stays owner-only; everything else turns on a permission
+  // (has_org_permission), and a screen the person may not use says which.
   const isOwner = activeOrg.role === "owner";
+  const mayQuote = can(activeOrg, "rfqFlow");
+  const quoteFlowOnly = (screen) => (mayQuote ? screen : <NeedsPermission org={activeOrg} perm="rfqFlow" />);
   // The ported screens navigate through this. Without it every goTo() from a
   // designed screen throws and silently does nothing — which the orders slice
   // shipped with, undetected, because the walkthrough reached /orders by URL
@@ -912,7 +1168,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
           <LiveRfqs
             org={activeOrg}
             user={user}
-            isOwner={isOwner}
+            isOwner={mayQuote}
             goTo={(next) => navigateFromPrototype(next, navigate)}
           />
         ),
@@ -920,14 +1176,14 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
     {
       path: "/rfqs/new",
       render: () =>
-        isFactory ? <NotForThisSide isFactory /> : (
+        isFactory ? <NotForThisSide isFactory /> : quoteFlowOnly(
           <LiveComposer org={activeOrg} />
         ),
     },
     {
       path: "/rfqs/:id/edit",
       render: (params) =>
-        isFactory ? <NotForThisSide isFactory /> : (
+        isFactory ? <NotForThisSide isFactory /> : quoteFlowOnly(
           <LiveComposer org={activeOrg} rfqId={params.id} />
         ),
     },
@@ -958,7 +1214,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       // design puts it and where its visibility toggle lives. Arriving here
       // from an old link resumes the composer at that step.
       render: (params) =>
-        isFactory ? <NotForThisSide isFactory /> : (
+        isFactory ? <NotForThisSide isFactory /> : quoteFlowOnly(
           <LiveComposer org={activeOrg} rfqId={params.id} />
         ),
     },
@@ -978,13 +1234,13 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/rfqs/:id/quotes/:quoteId/contract",
       render: (params) =>
         isFactory ? <NotForThisSide isFactory /> : (
-          <LiveContract rfqId={params.id} quoteId={params.quoteId} isOwner={isOwner} />
+          <LiveContract rfqId={params.id} quoteId={params.quoteId} isOwner={mayQuote} orgName={activeOrg.name} />
         ),
     },
     {
       path: "/browse/:id/quote",
       render: (params) =>
-        isFactory ? <LiveQuoteForm org={activeOrg} rfqId={params.id} profile={profile} /> : <NotForThisSide isFactory={false} />,
+        isFactory ? quoteFlowOnly(<LiveQuoteForm org={activeOrg} rfqId={params.id} profile={profile} />) : <NotForThisSide isFactory={false} />,
     },
     {
       path: "/saved",
@@ -1010,7 +1266,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
       path: "/browse/:id/quote/review",
       render: (params) =>
         isFactory
-          ? <LiveQuoteReview org={activeOrg} rfqId={params.id} profile={profile} isOwner={isOwner} />
+          ? quoteFlowOnly(<LiveQuoteReview org={activeOrg} rfqId={params.id} profile={profile} isOwner={can(activeOrg, "settingsAccess")} />)
           : <NotForThisSide isFactory={false} />,
     },
     {
@@ -1249,6 +1505,23 @@ function OrderRedirect({ navigate, orderId }) {
   return null;
 }
 
+/**
+ * A screen this person's company has not given them (Quote flow, RFQ flow…):
+ * said in words, with the way back, instead of a form the database refuses.
+ */
+function NeedsPermission({ org, perm }) {
+  const { navigate } = useRouter();
+  return (
+    <main className="home-page">
+      <div className="rfq-page">
+        <button type="button" className="quiet-btn" onClick={() => window.history.length > 1 ? window.history.back() : navigate("/")}>← Back</button>
+        <h1>Not available to you</h1>
+        <p className="muted" data-testid="needs-permission">{needsPermission(org, perm)}</p>
+      </div>
+    </main>
+  );
+}
+
 function NotForThisSide() {
   const { navigate } = useRouter();
   // A previous account's deep link can survive sign-in or an org switch.
@@ -1336,7 +1609,14 @@ function AdminConsoleRedirect() {
 }
 
 function App() {
-  const { status, error, activeOrg } = useAuth();
+  const { status, error, activeOrg, user, signOut: endSession } = useAuth();
+  const inviteLink = useInviteLink();
+  const inviteScreen = inviteLinkScreen(inviteLink, status, user, endSession);
+  // A link that has done its job leaves the address, so a refresh is ordinary.
+  useEffect(() => {
+    if (!inviteLink.id || status === "loading" || inviteLink.preview === undefined || inviteScreen) return;
+    inviteLink.clear();
+  }, [inviteLink.id, inviteLink.preview, status, Boolean(inviteScreen)]);
   const requestedAuthMode = new URLSearchParams(window.location.search).get("mode");
   const isPublicAuthEntry = requestedAuthMode === "login" || requestedAuthMode === "signup";
 
@@ -1365,6 +1645,7 @@ function App() {
   // succeeds and the provider becomes ready, the normal workspace still wins.
   if (status === "loading" && isPublicAuthEntry) return <SignIn />;
   if (status === "loading") return <Loading label="Checking your session…" />;
+  if (inviteScreen) return inviteScreen;
   if (status === "signed-out") return <SignIn />;
   if (resetting) {
     return (

@@ -1103,6 +1103,7 @@ export function FlowShell({
   // Live only: a heading for what actually happened (a bank payment still
   // clearing is not yet "funded").
   heading = null,
+  primaryTitle = "",
 }) {
   const designMeta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
   const baseMeta = heading ? { ...designMeta, ...heading } : designMeta;
@@ -1145,6 +1146,7 @@ export function FlowShell({
           centerAction={centerAction}
           secondaryAction={secondaryAction}
           primaryDisabled={primaryDisabled}
+          primaryTitle={primaryTitle}
         />
       )}
     </main>
@@ -2509,12 +2511,29 @@ export function SettingsScreen({
   // Live only: removes a saved card (the brand's list, the factory's Billing
   // tab), and the line a member reads where an owner gets the buttons.
   onRemoveBillingMethod,
-  billingMethodNote = "",
+  billingLocked = "",
+  paymentLocked = "",
+  inviteLocked = "",
+  saveLocked = "",
+  notificationEmailsLocked = "",
+  onChangePassword,
   // Live only: what each role may do is fixed (owners everything), so the
   // ticks are shown, not edited, and this line says why.
   permissionsNote = "",
   onInvite,
   onRemove,
+  // Live only. Team members carry what this viewer may change on them
+  // (lockedPermissions, removable, removeLabel, roleActionLabel); invites
+  // carry canResend/canRevoke. The prototype passes none of these.
+  onPermissionChange,
+  onRoleChange,
+  onResend,
+  onRevoke,
+  canInvite = true,
+  grantablePermissions,
+  accountLocked = false,
+  nameLocked = false,
+  saveNote = "",
   busy = false,
   error = null,
 }) {
@@ -2526,10 +2545,24 @@ export function SettingsScreen({
     const timer = window.setTimeout(() => setSaveNotice(null), 6000);
     return () => window.clearTimeout(timer);
   }, [saveNotice]);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const changePassword = async () => {
+    const input = (name) => settingsRef.current?.querySelector(`[name="${name}"]`);
+    setChangingPassword(true); setSaveNotice(null);
+    try {
+      await onChangePassword({ current: input("current-password").value, next: input("new-password").value });
+      input("current-password").value = "";
+      input("new-password").value = "";
+      setSaveNotice({ text: "Password changed" });
+    } catch (failure) { setSaveNotice({ error: true, text: failure.message || "Your password could not be changed" }); }
+    finally { setChangingPassword(false); }
+  };
   const saveAccount = async () => {
     if (savingAccount) return;
     const field = (name) => settingsRef.current?.querySelector(`[name="${name}"]`)?.value ?? "";
-    if (field("new-password") || field("current-password")) { setSaveNotice({ error: true, text: "Password changes are not saved here. Use Forgot password on the sign-in page." }); return; }
+    if (onChangePassword) {
+      if (field("new-password")) { setSaveNotice({ error: true, text: "Your new password isn't saved yet. Press Change password under it." }); return; }
+    } else if (field("new-password") || field("current-password")) { setSaveNotice({ error: true, text: "Password changes are not saved here. Use Forgot password on the sign-in page." }); return; }
     setSavingAccount(true); setSaveNotice(null);
     const saveStarted = Date.now();
     try {
@@ -2540,6 +2573,9 @@ export function SettingsScreen({
     finally { setSavingAccount(false); }
   };
   const isFactory = accountType === "factory";
+  // Live reads the drawer's fields on submit; the
+  // prototype's controls are never read back.
+  const inviteDrawerRef = useRef(null);
   const [activeSection, setActiveSection] = useState("account");
   const [inviteEmail, setInviteEmail] = useState("");
   const [isInvitePanelOpen, setIsInvitePanelOpen] = useState(false);
@@ -2640,10 +2676,20 @@ export function SettingsScreen({
   };
   const removeMember = (memberEmail) => {
     if (isLive) {
-      onRemove?.(memberEmail);
+      onRemove?.(team.find((member) => member.email === memberEmail));
       return;
     }
     setTeam((current) => current.filter((member) => member.email !== memberEmail));
+  };
+  const readInvite = () => {
+    const drawer = inviteDrawerRef.current;
+    return {
+      email: inviteEmail.trim(),
+      name: drawer?.querySelector('[name="inviteName"]')?.value.trim() ?? "",
+      title: drawer?.querySelector('[name="inviteTitle"]')?.value ?? "",
+      permissions: Array.from(drawer?.querySelectorAll("input[data-permission]:checked:not(:disabled)") ?? [])
+        .map((input) => input.dataset.permission),
+    };
   };
 
   const settingsNav = [
@@ -2685,9 +2731,10 @@ export function SettingsScreen({
             <p>{isFactory ? (companyType === "trading" ? "Trading company account" : "Factory account") : "Brand account"}</p>
             <h2>Account settings</h2>
           </div>
-          <button className="primary-btn" type="button" onClick={saveAccount} disabled={savingAccount} aria-busy={savingAccount}>{savingAccount ? "Saving…" : "Save changes"}</button>
+          <button className="primary-btn" type="button" onClick={saveAccount} disabled={savingAccount || accountLocked} title={saveLocked || undefined} aria-busy={savingAccount}>{savingAccount ? "Saving…" : "Save changes"}</button>
           {saveNotice && createPortal(<div className="toast settings-save-toast" role={saveNotice.error ? "alert" : "status"}>{saveNotice.text}</div>, document.body)}
         </header>
+        {saveNote ? <p className="tsc-team-save-note" role="status">{saveNote}</p> : null}
 
         <section className="settings-section" id="settings-account">
               <div className="settings-section-header">
@@ -2697,19 +2744,19 @@ export function SettingsScreen({
               <div className="settings-form-grid">
                 <label>
                   <span>{isFactory ? companyType === "trading" ? "Company name" : "Factory name" : "Brand name"}</span>
-                  <input name="account-name" defaultValue={account.name} />
+                  <input name="account-name" defaultValue={account.name} readOnly={nameLocked || accountLocked ? true : undefined} title={nameLocked || accountLocked ? "Only an owner can change the company's name" : undefined} />
                 </label>
                 <label>
                   <span>Email</span>
-                  <input defaultValue={account.email} type="email" readOnly={Boolean(onSaveAccount)} title={onSaveAccount ? "Your sign-in email is managed separately" : undefined} />
+                  <input defaultValue={account.email} type="email" readOnly={onSaveAccount || accountLocked ? true : undefined} title={onSaveAccount || accountLocked ? "The company's contact email. It isn't changed here." : undefined} />
                 </label>
                 <label>
                   <span>Phone</span>
-                  <input name="account-phone" defaultValue={account.phone} />
+                  <input name="account-phone" defaultValue={account.phone} readOnly={accountLocked ? true : undefined} />
                 </label>
                 <label>
                   <span>Location</span>
-                  <input name="account-location" defaultValue={account.location} />
+                  <input name="account-location" defaultValue={account.location} readOnly={accountLocked ? true : undefined} />
                 </label>
               </div>
             </section>
@@ -2729,6 +2776,12 @@ export function SettingsScreen({
                   <input name="new-password" placeholder="Create new password" type="password" />
                 </label>
               </div>
+              {/* Live: a person's own password, so no company permission gates it. */}
+              {onChangePassword ? (
+                <button className="secondary-btn compact-btn tsc-change-password" type="button" disabled={changingPassword} onClick={changePassword}>
+                  {changingPassword ? "Changing…" : "Change password"}
+                </button>
+              ) : null}
             </section>
 
         <section className="settings-section" id="settings-payment">
@@ -2767,10 +2820,9 @@ export function SettingsScreen({
                           ? "Add a bank account to receive released earnings."
                           : "Save a card to use when you purchase credits."}
                       </p>
-                      {paymentTab === "billing" && billingMethodNote ? <p>{billingMethodNote}</p> : null}
                     </div>
-                    {paymentTab === "billing" && onAddBillingMethod ? (
-                      <button className="primary-btn compact-btn" type="button" onClick={onAddBillingMethod}>+ Add payment method</button>
+                    {paymentTab === "billing" && (onAddBillingMethod || billingLocked) ? (
+                      <button className="primary-btn compact-btn" type="button" onClick={onAddBillingMethod} disabled={Boolean(billingLocked) || undefined} title={billingLocked || undefined}>+ Add payment method</button>
                     ) : null}
                   </div>
                 ) : null}
@@ -2821,13 +2873,8 @@ export function SettingsScreen({
                     </div>
                   </div>
                 ))}
-                {paymentTab === "billing" && billingMethodNote && factoryMethods.billing.length > 0 ? (
-                  <div className="settings-payment-page-card">
-                    <div className="settings-payment-page-copy"><p>{billingMethodNote}</p></div>
-                  </div>
-                ) : null}
-                {paymentTab === "earnings" && onAddPaymentMethod ? (
-                  <button className="settings-add-btn" type="button" onClick={onAddPaymentMethod}>Manage payout methods</button>
+                {paymentTab === "earnings" && (onAddPaymentMethod || paymentLocked) ? (
+                  <button className="settings-add-btn" type="button" onClick={onAddPaymentMethod} disabled={Boolean(paymentLocked) || undefined} title={paymentLocked || undefined}>Manage payout methods</button>
                 ) : null}
               </>
             ) : livePaymentMethods?.length === 0 ? (
@@ -2835,10 +2882,9 @@ export function SettingsScreen({
                 <div className="settings-payment-page-copy">
                   <strong>Payment method</strong>
                   <p>Save a card to use when funding production milestones.</p>
-                  {billingMethodNote ? <p>{billingMethodNote}</p> : null}
                 </div>
-                {onAddBillingMethod ? (
-                  <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={onAddBillingMethod}>
+                {onAddBillingMethod || billingLocked ? (
+                  <button className="primary-btn compact-btn" type="button" disabled={busy || Boolean(billingLocked)} title={billingLocked || undefined} onClick={onAddBillingMethod}>
                     {busy ? "Opening…" : "+ Add payment method"}
                   </button>
                 ) : null}
@@ -2854,16 +2900,18 @@ export function SettingsScreen({
                       <small>{method.note}</small>
                     </div>
                     <div className="settings-payment-page-actions">
-                      {method === livePaymentMethods[0] && onAddBillingMethod ? (
-                        <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={onAddBillingMethod}>
+                      {method === livePaymentMethods[0] && (onAddBillingMethod || billingLocked) ? (
+                        <button className="primary-btn compact-btn" type="button" disabled={busy || Boolean(billingLocked)} title={billingLocked || undefined} onClick={onAddBillingMethod}>
                           {busy ? "Opening…" : "+ Add payment method"}
                         </button>
                       ) : null}
-                      {onRemoveBillingMethod ? (
+                      {onRemoveBillingMethod || billingLocked ? (
                         <div className="settings-payment-menu">
                           <button
                             className="settings-menu-btn"
                             type="button"
+                            disabled={Boolean(billingLocked) || undefined}
+                            title={billingLocked || undefined}
                             aria-label={`More options for ${method.name}`}
                             aria-expanded={paymentMenu === (method.id ?? method.name)}
                             onClick={() => setPaymentMenu((open) => open === (method.id ?? method.name) ? null : method.id ?? method.name)}
@@ -2878,11 +2926,6 @@ export function SettingsScreen({
                     </div>
                   </div>
                 ))}
-                {billingMethodNote ? (
-                  <div className="settings-payment-page-card">
-                    <div className="settings-payment-page-copy"><p>{billingMethodNote}</p></div>
-                  </div>
-                ) : null}
               </>
             ) : (
               <>
@@ -2916,7 +2959,9 @@ export function SettingsScreen({
                 <p>{isFactory ? "Control who can quote RFQs, post updates, and act as the primary contact." : "Assign quote flow, sample approvals, fund release, and the primary vendor contact."}</p>
                 {permissionsNote ? <p>{permissionsNote}</p> : null}
               </div>
-              <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
+              {canInvite || inviteLocked ? (
+                <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)} disabled={canInvite ? undefined : true} title={inviteLocked || undefined}>Invite member</button>
+              ) : null}
             </div>
 
             <div className="settings-access-tabs" role="tablist" aria-label="Stakeholder list">
@@ -2957,14 +3002,22 @@ export function SettingsScreen({
                     <div>
                       <strong>{member.name}</strong>
                       <small>{member.role} - {member.email}</small>
+                      {isLive && member.roleActionLabel ? (
+                        <button className="tsc-team-role-btn" type="button" disabled={busy} onClick={() => onRoleChange?.(member)}>
+                          {member.roleActionLabel}
+                        </button>
+                      ) : null}
                     </div>
                     {activePermissionLabels.map((permission) => (
-                      <label className="settings-check" key={permission.key}>
+                      <label className="settings-check" key={permission.key} title={(member.lockedPermissions ?? []).includes(permission.key) ? member.lockedReason : undefined}>
                         <input
                           type="checkbox"
+                          aria-label={isLive ? `${permission.label} for ${member.name}` : undefined}
                           checked={member.permissions.includes(permission.key)}
-                          disabled={Boolean(permissionsNote)}
-                          onChange={() => togglePermission(member.email, permission.key)}
+                          disabled={isLive ? busy || (member.lockedPermissions ?? []).includes(permission.key) : Boolean(permissionsNote)}
+                          onChange={(event) => (isLive
+                            ? onPermissionChange?.(member, permission.key, event.target.checked)
+                            : togglePermission(member.email, permission.key))}
                         />
                         <span>{permission.label}</span>
                       </label>
@@ -2972,8 +3025,9 @@ export function SettingsScreen({
                     <button
                       className="settings-remove-member-btn"
                       type="button"
-                      aria-label={`Remove ${member.name}`}
-                      disabled={isFactory ? member.role === "Owner" : undefined}
+                      aria-label={isLive && member.removeLabel ? member.removeLabel : `Remove ${member.name}`}
+                      disabled={isLive ? busy || !member.removable : isFactory ? member.role === "Owner" : undefined}
+                      title={isLive && !member.removable ? member.removeLockedReason : undefined}
                       onClick={() => removeMember(member.email)}
                     >
                       <img src="/assets/prototype-icons/trash.svg" alt="" />
@@ -2991,15 +3045,24 @@ export function SettingsScreen({
                 </div>
                 {pendingInvites.length === 0 && (
                   <div className="settings-invited-row" role="row">
-                    <small>No pending invites</small>
+                    <small>{inviteLocked ? "Only someone with Settings access sees invitations." : "No pending invites"}</small>
                   </div>
                 )}
                 {pendingInvites.map((invite) => (
-                  <div className="settings-invited-row" role="row" key={invite.email}>
+                  <div className="settings-invited-row" role="row" key={invite.id ?? invite.email}>
                     <strong>{invite.email}</strong>
                     <span>{invite.role}</span>
                     <small>{invite.sent}</small>
-                    <button className="secondary-btn compact-btn" type="button">Resend</button>
+                    {isLive ? (
+                      <span className="tsc-team-invite-actions">
+                        <button className="secondary-btn compact-btn" type="button" disabled={busy || !invite.canResend} onClick={() => onResend?.(invite)}>Resend</button>
+                        {invite.canRevoke ? (
+                          <button className="tsc-team-revoke-btn" type="button" disabled={busy} aria-label={`Withdraw the invitation to ${invite.email}`} onClick={() => onRevoke?.(invite)}>Withdraw</button>
+                        ) : null}
+                      </span>
+                    ) : (
+                      <button className="secondary-btn compact-btn" type="button">Resend</button>
+                    )}
                   </div>
                 ))}
               </div>
@@ -3009,7 +3072,7 @@ export function SettingsScreen({
         {isInvitePanelOpen && createPortal((
           <div className="settings-drawer-layer" role="presentation">
             <button className="settings-drawer-scrim" type="button" aria-label="Close invite panel" onClick={() => setIsInvitePanelOpen(false)} />
-            <aside className="settings-drawer" aria-label="Invite stakeholder">
+            <aside className="settings-drawer" aria-label="Invite stakeholder" ref={inviteDrawerRef}>
               <header>
                 <div>
                   <h3>Invite member</h3>
@@ -3022,7 +3085,7 @@ export function SettingsScreen({
               <div className="settings-drawer-form">
                 <label>
                   <span>Name</span>
-                  <input placeholder="Full name" />
+                  <input placeholder="Full name" name={isLive ? "inviteName" : undefined} />
                 </label>
                 <label>
                   <span>Email</span>
@@ -3031,14 +3094,14 @@ export function SettingsScreen({
                 <label>
                   <span>Role</span>
                   {isFactory ? (
-                    <select defaultValue="Stakeholder">
+                    <select defaultValue="Stakeholder" name={isLive ? "inviteTitle" : undefined}>
                       <option value="Stakeholder">Stakeholder</option>
                       <option value="Production lead">Production lead</option>
                       <option value="Finance">Finance</option>
                       <option value="Viewer">Viewer</option>
                     </select>
                   ) : (
-                    <select defaultValue="Stakeholder">
+                    <select defaultValue="Stakeholder" name={isLive ? "inviteTitle" : undefined}>
                       <option>Stakeholder</option>
                       <option>Founder</option>
                       <option>Production lead</option>
@@ -3051,7 +3114,13 @@ export function SettingsScreen({
                   <legend>Authority</legend>
                   {activePermissionLabels.map((permission) => (
                     <label key={permission.key}>
-                      <input type="checkbox" defaultChecked={permission.key === (isFactory ? "addUpdate" : "approve")} />
+                      <input
+                        type="checkbox"
+                        defaultChecked={permission.key === (isFactory ? "addUpdate" : "approve")}
+                        data-permission={isLive ? permission.key : undefined}
+                        aria-label={isLive ? permission.label : undefined}
+                        disabled={isLive && grantablePermissions && !grantablePermissions.includes(permission.key) ? true : undefined}
+                      />
                       <span>
                         <strong>{permission.label}</strong>
                         {permission.detail && <small>{permission.detail}</small>}
@@ -3071,7 +3140,8 @@ export function SettingsScreen({
                   onClick={async () => {
                     if (isLive) {
                       if (!inviteEmail.includes("@")) return;
-                      await onInvite?.(inviteEmail.trim());
+                      // Live keeps the drawer open when the invitation is refused.
+                      if ((await onInvite?.(readInvite())) === false) return;
                     }
                     setInviteEmail("");
                     setIsInvitePanelOpen(false);
@@ -3100,14 +3170,14 @@ export function SettingsScreen({
                       per-member permissions yet to narrow it to. */}
                   <span>{notificationEmailNotes?.[key] ?? (notificationEmails ? "Emails every member of your company." : "Send email notifications to members with matching authority.")}</span>
                 </div>
-                <label className="settings-switch">
+                <label className="settings-switch" title={notificationEmailsLocked || undefined}>
                   {notificationEmails ? (
                     <input
                       type="checkbox"
                       aria-label={label}
                       data-notification-email={key}
                       checked={notificationEmails[key] !== false}
-                      disabled={busy}
+                      disabled={busy || Boolean(notificationEmailsLocked)}
                       onChange={(event) => onNotificationEmailChange?.(key, event.target.checked)}
                     />
                   ) : <input type="checkbox" defaultChecked />}
@@ -4260,6 +4330,7 @@ export function HomeScreen({
   goTo,
   onOpenActivity,
   // Live mounts pass these; the prototype passes none and is unchanged.
+  createQuoteLocked = "",
   orgName,
   attention,
   factories,
@@ -4350,7 +4421,7 @@ export function HomeScreen({
           <button className="pill" type="button">Find a denim vendor with MOQ under 500</button>
           <button className="pill" type="button">Show me vendors with GOTS certification</button>
           <button className="pill" type="button">What do I still need for verification?</button>
-          <button className="pill" type="button" onClick={() => goTo("describe")}>Start a new project</button>
+          <button className="pill" type="button" onClick={() => goTo("describe")} disabled={Boolean(createQuoteLocked) || undefined} title={createQuoteLocked || undefined}>Start a new project</button>
         </div>
       </section>
       )}
@@ -4379,7 +4450,7 @@ export function HomeScreen({
                   <p>Build a clear request, find matching factories, and compare quotes.</p>
                 </div>
                 <div className="home-new-brand-actions">
-                  <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Create new quote</button>
+                  <button className="primary-btn" type="button" onClick={() => goTo("describe")} disabled={Boolean(createQuoteLocked) || undefined} title={createQuoteLocked || undefined}>Create new quote</button>
                   <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse vendors</button>
                 </div>
               </section>
@@ -4435,7 +4506,7 @@ export function HomeScreen({
                   <h3>Find your next production partner</h3>
                   <p>Browse verified vendors or create a request to receive comparable quotes.</p>
                   <div>
-                    <button className="primary-btn compact-btn" type="button" onClick={() => goTo("describe")}>Create quote request</button>
+                    <button className="primary-btn compact-btn" type="button" onClick={() => goTo("describe")} disabled={Boolean(createQuoteLocked) || undefined} title={createQuoteLocked || undefined}>Create quote request</button>
                     <button className="secondary-btn compact-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse vendors</button>
                   </div>
                 </div>
@@ -4557,7 +4628,7 @@ function HomeRecommendedFactoryCard({ factory: originalFactory, goTo }) {
           </div>
           <div className="factory-actions home-recommended-card-actions">
             {factory.onMessage !== null && <button className="save-pill button-like-action" type="button" onClick={factory.onMessage}>Message</button>}
-            <button className="primary-btn" type="button" onClick={() => (factory.onRequestQuote ? factory.onRequestQuote() : goTo("describe"))}>Request quote</button>
+            <button className="primary-btn" type="button" onClick={() => (factory.onRequestQuote ? factory.onRequestQuote() : goTo("describe"))} disabled={Boolean(factory.quoteLocked) || undefined} title={factory.quoteLocked || undefined}>Request quote</button>
           </div>
         </div>
 
@@ -5032,7 +5103,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
               </button>
             ) : view.onSave && <button className="secondary-btn" type="button" onClick={live ? view.onSave : undefined}>Save factory</button>}
             {view.onMessage && <button className="secondary-btn" type="button" onClick={live ? view.onMessage : undefined}>Message</button>}
-            {view.onRequestQuote && <button className="primary-btn" type="button" onClick={view.onRequestQuote}>Request quote</button>}
+            {view.onRequestQuote && <button className="primary-btn" type="button" onClick={view.onRequestQuote} disabled={Boolean(view.quoteLocked) || undefined} title={view.quoteLocked || undefined}>Request quote</button>}
           </div>
         </section>
 
@@ -5087,7 +5158,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
                   <span>{view.location}</span>
                 </div>
               </div>
-              <button className="primary-btn" type="button" onClick={live ? view.contact.onClick : undefined}>{view.contact.label}</button>
+              <button className="primary-btn" type="button" onClick={live ? view.contact.onClick : undefined} disabled={Boolean(view.contact.quoteLocked) || undefined} title={view.contact.quoteLocked || undefined}>{view.contact.label}</button>
             </section>
 
             <section className="factory-profile-card">
@@ -6855,7 +6926,7 @@ function DirectoryFactoryCard({ factory, onQuote, live = null }) {
               {live.save.saved ? "Saved" : "Save"}
             </button>
           )}
-          <button className="primary-btn" type="button" onClick={live.onQuote}>Request quote</button>
+          <button className="primary-btn" type="button" onClick={live.onQuote} disabled={Boolean(live.quoteLocked) || undefined} title={live.quoteLocked || undefined}>Request quote</button>
         </div>
         {factory.tags.length > 0 && (
           <div className="tag-row compact-tags directory-tags">
@@ -7222,7 +7293,7 @@ function MarketplaceFactoryCard({ factory: originalFactory, vendorType = "factor
               </button>
             )}
             {live.onMessage && <button className="secondary-btn marketplace-message-action" type="button" onClick={live.onMessage}>Message</button>}
-            <button className="primary-btn" type="button" onClick={live.onQuote}>Request quote</button>
+            <button className="primary-btn" type="button" onClick={live.onQuote} disabled={Boolean(live.quoteLocked) || undefined} title={live.quoteLocked || undefined}>Request quote</button>
           </div>
         ) : (
         <div className="marketplace-factory-actions">
@@ -7442,7 +7513,7 @@ function SavedFactoryCard({ factory, goTo, live = null }) {
         {live ? (
           <div className="saved-factory-actions">
             {live.onMessage && <button className="secondary-btn" type="button" onClick={live.onMessage}>Message</button>}
-            {live.onQuote && <button className="primary-btn" type="button" onClick={live.onQuote}>Request quote</button>}
+            {live.onQuote && <button className="primary-btn" type="button" onClick={live.onQuote} disabled={Boolean(live.quoteLocked) || undefined} title={live.quoteLocked || undefined}>Request quote</button>}
           </div>
         ) : (
         <div className="saved-factory-actions">
@@ -7528,6 +7599,7 @@ export function RfqsScreen({
   onEditRfq,
   onInviteVendors,
   onArchiveRfq,
+  quoteFlowLocked = "",
 }) {
   const [activeTab, setActiveTab] = useState("active");
   const [rfqTabs, setRfqTabs] = useState([
@@ -7622,7 +7694,7 @@ export function RfqsScreen({
           <h1>Quotes</h1>
           <p>Track live vendor quote requests, compare responses, and move selected quotes toward contract terms.</p>
         </div>
-        <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Create new quote</button>
+        <button className="primary-btn" type="button" onClick={() => goTo("describe")} disabled={Boolean(quoteFlowLocked) || undefined} title={quoteFlowLocked || undefined}>Create new quote</button>
       </header>
 
       <section className="rfqs-controls" aria-label="Quote filters">
@@ -7761,6 +7833,7 @@ export function RfqsScreen({
               onEdit={onEditRfq}
               onInvite={onInviteVendors}
               onArchive={onArchiveRfq}
+              quoteFlowLocked={quoteFlowLocked}
               key={rfq.id ?? rfq.title}
             />
           ))
@@ -7770,7 +7843,7 @@ export function RfqsScreen({
   );
 }
 
-function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, onArchive }) {
+function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, onArchive, quoteFlowLocked = "" }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   // Defaulted: a live mount that supplies fewer cells than the design draws
@@ -7836,11 +7909,11 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, o
                 {/* A request that is awarded or cancelled can no longer be
                     edited or widened; live cards say so with archivable. */}
                 {rfq.archivable !== false && (
-                  <button type="button" role="menuitem" onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
+                  <button type="button" role="menuitem" disabled={Boolean(quoteFlowLocked) || undefined} title={quoteFlowLocked || undefined} onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
                 )}
-                <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate quote</button>
+                <button type="button" role="menuitem" disabled={Boolean(quoteFlowLocked) || undefined} title={quoteFlowLocked || undefined} onClick={() => goTo("describe")}>Duplicate quote</button>
                 {rfq.archivable !== false && (
-                  <button type="button" role="menuitem" onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
+                  <button type="button" role="menuitem" disabled={Boolean(quoteFlowLocked) || undefined} title={quoteFlowLocked || undefined} onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
                 )}
                 {/* Live, archiving cancels the request; a request that is
                     already awarded or cancelled has nothing left to archive. */}
@@ -7848,6 +7921,8 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, o
                   <button
                     type="button"
                     role="menuitem"
+                    disabled={Boolean(quoteFlowLocked) || undefined}
+                    title={quoteFlowLocked || undefined}
                     onClick={() => {
                       setMenuOpen(false);
                       onArchive?.(rfq);
@@ -7903,6 +7978,8 @@ export function ProjectsScreen({
   // Live passes this: "Reorder style" starts a new draft request from the
   // order. The prototype keeps the design's jump to the contract screen.
   onReorder = null,
+  // Live only: why this person may not start one ("" or absent when they may).
+  reorderLocked = "",
   live = false,
   // Live passes the company's saved tabs (src/app/order/useOrderTabs.js); the
   // prototype passes nothing and keeps its tabs in local state, as drawn.
@@ -8220,6 +8297,7 @@ export function ProjectsScreen({
               onViewOrder={onViewOrder}
               setSelectedReorderProject={setSelectedReorderProject}
               onReorder={onReorder}
+              reorderLocked={reorderLocked}
               key={project.id ?? project.title}
             />
           ))
@@ -8230,7 +8308,7 @@ export function ProjectsScreen({
 }
 
 
-function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, cancelAction = null, onViewOrder, setSelectedReorderProject = null, onReorder = null }) {
+function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, cancelAction = null, onViewOrder, setSelectedReorderProject = null, onReorder = null, reorderLocked = "" }) {
   const projectFacts = [
     ["Current step", project.currentStep],
     ["Next due", project.nextDue]
@@ -8255,6 +8333,8 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
                 <button
                   type="button"
                   role="menuitem"
+                  disabled={Boolean(reorderLocked) || undefined}
+                  title={reorderLocked || undefined}
                   onClick={() => {
                     close();
                     if (onReorder) {
@@ -8381,6 +8461,7 @@ export function ProjectDetailScreen({
   onInitiateDispute,
   onRemind,
   onManageMilestones,
+  manageMilestonesLocked = "",
   onDialogClose,
   // Live only: a banner above the money strip while a cancellation is
   // proposed (or once the order is cancelled), and the order-level menu.
@@ -8483,8 +8564,8 @@ export function ProjectDetailScreen({
                   />
                 ))}
               </div>
-              {(!isLive || onManageMilestones) && (
-                <button className="secondary-btn manage-milestones" type="button" onClick={onManageMilestones}>
+              {(!isLive || onManageMilestones || manageMilestonesLocked) && (
+                <button className="secondary-btn manage-milestones" type="button" onClick={onManageMilestones} disabled={Boolean(manageMilestonesLocked) || undefined} title={manageMilestonesLocked || undefined}>
                   Manage milestones
                 </button>
               )}
@@ -11141,7 +11222,7 @@ function AcceptedQuoteField({ label, value, readOnly = false }) {
   );
 }
 
-function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null, secondaryAction = null, primaryDisabled = false }) {
+function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null, secondaryAction = null, primaryDisabled = false, primaryTitle = "" }) {
   return (
     <footer className={canBack ? "bottom-bar has-back" : "bottom-bar no-back"}>
       {canBack && (
@@ -11153,7 +11234,7 @@ function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", cen
         <div className="bottom-meta-group">
           {centerText && <span className="bottom-meta">{centerText}</span>}
           {centerAction && (
-            <button className="secondary-btn compact-btn" type="button" disabled={centerAction.disabled} onClick={centerAction.onClick}>
+            <button className="secondary-btn compact-btn" type="button" disabled={centerAction.disabled} title={centerAction.title || undefined} onClick={centerAction.onClick}>
               {centerAction.label}
             </button>
           )}
@@ -11166,7 +11247,7 @@ function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", cen
           </button>
         )}
         {primaryLabel && (
-          <button className="primary-btn" type="button" onClick={onNext} disabled={primaryDisabled || undefined}>
+          <button className="primary-btn" type="button" onClick={onNext} disabled={primaryDisabled || undefined} title={primaryTitle || undefined}>
             {primaryLabel}
           </button>
         )}

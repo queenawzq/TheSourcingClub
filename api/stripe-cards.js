@@ -7,10 +7,10 @@ import { callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused 
  * customer. This lists them, and removes one.
  *
  *   list    any member of the company: [{ id, brand, last4, expMonth, expYear }]
- *   remove  an owner only, and only a card saved to this company's customer
+ *   remove  Settings access only, and only a card saved to this company's customer
  *
  * Who may ask is decided by the database as the CALLER (is_org_member,
- * is_org_owner). Listing never creates a customer: a company that has never
+ * has_org_permission). Listing never creates a customer: a company that has never
  * paid or saved a card simply has none.
  */
 export default async function handler(request, response) {
@@ -30,11 +30,11 @@ export default async function handler(request, response) {
 
   const [member, owner] = await Promise.all([
     caller.rpc("is_org_member", { target_org: orgId }),
-    caller.rpc("is_org_owner", { target_org: orgId }),
+    caller.rpc("has_org_permission", { target_org: orgId, perm: "settingsAccess" }),
   ]);
   if (tokenRefused(member) || tokenRefused(owner)) return reply(response, 401, { error: "sign in is required" });
   if (!member.data) return reply(response, 403, { error: "only a member of this company can see its saved cards" });
-  if (action === "remove" && !owner.data) return reply(response, 403, { error: "only a company owner can remove a saved card" });
+  if (action === "remove" && !owner.data) return reply(response, 403, { error: "only someone with Settings access at the company can remove a saved card" });
 
   try {
     const { data: saved } = await db.from("stripe_customers").select("stripe_customer_id").eq("org_id", orgId).maybeSingle();

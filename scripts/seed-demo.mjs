@@ -122,8 +122,9 @@ const newBrand = await demoUser(LOGINS.newBrand);
 const tradingCompany = await demoUser(LOGINS.tradingCompany);
 const adminUser = await demoUser(LOGINS.admin);
 const brandMember = await demoUser(LOGINS.brandMember);
+const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
-const demoUsers = { brand, brandMember, factory, secondFactory, newFactory, returnedFactory, newBrand, tradingCompany, otherDomainFactory, admin: adminUser };
+const demoUsers = { brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, tradingCompany, otherDomainFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -132,15 +133,26 @@ if (unseeded.length) {
 }
 const demoUserIds = Object.values(demoUsers).map((user) => user.id);
 
-// The companies only demo users belong to. A company someone else is also a
-// member of (a tester who invited a demo login) is left alone.
+// The companies a demo login started: its first member is that login. Someone
+// real may since have joined one through an invitation, and it is still a demo
+// company. A company someone else started (a tester who invited a demo login)
+// is left alone, whatever role that login now holds.
 const memberships = must(await admin.from("org_members").select("org_id").in("user_id", demoUserIds), "demo memberships");
 const candidates = [...new Set(memberships.map((m) => m.org_id))];
 const everyone = candidates.length
-  ? must(await admin.from("org_members").select("org_id, user_id").in("org_id", candidates), "their members")
+  ? must(await admin.from("org_members").select("org_id, user_id, created_at").in("org_id", candidates).order("created_at"), "their members")
   : [];
 const demoOrgIds = candidates.filter((org) =>
-  everyone.filter((m) => m.org_id === org).every((m) => demoUserIds.includes(m.user_id)));
+  demoUserIds.includes(everyone.find((m) => m.org_id === org)?.user_id));
+
+// People who joined a demo company leave it first, so they are told they no
+// longer have access. Only this membership goes: their account and any company
+// of their own stay.
+const outsiders = everyone.filter((m) => demoOrgIds.includes(m.org_id) && !demoUserIds.includes(m.user_id));
+for (const { org_id: orgId, user_id: userId } of outsiders) {
+  must(await admin.from("org_members").delete().eq("org_id", orgId).eq("user_id", userId), "remove an outside member from a demo company");
+}
+if (outsiders.length) console.log(`removed ${outsiders.length} outside members from demo companies`);
 
 // Orders keep their request, quote and both companies from being deleted, so
 // they go first; deleting the companies then takes their requests, quotes,
@@ -164,9 +176,23 @@ must(await admin.from("platform_admins").upsert({ user_id: adminUser.id, note: "
 
 const brandOrg = must(await brand.client.rpc("create_org", { org_name: LOGINS.brand.name, org_kind: "brand" }), "create brand org");
 const factoryOrg = must(await factory.client.rpc("create_org", { org_name: LOGINS.factory.name, org_kind: "factory" }), "create factory org");
-// Demo Brand's member: every order of Demo Brand's, and none of an owner's
-// buttons that move money.
-must(await admin.from("org_members").insert({ org_id: brandOrg.id, user_id: brandMember.id, role: "member" }), "add the brand's member");
+// Demo Brand's member: every order of Demo Brand's, Approve samples only, so
+// none of the buttons that move money, choose a quote or change the team.
+must(await admin.from("org_members").insert({
+  org_id: brandOrg.id, user_id: brandMember.id, role: "member", permissions: ["approve"], title: "Production lead",
+}), "add the brand's member");
+// Demo Factory's member: Add update only, so it posts on steps but cannot
+// send a quote.
+must(await admin.from("org_members").insert({
+  org_id: factoryOrg.id, user_id: factoryMember.id, role: "member", permissions: ["addUpdate"], title: "Production lead",
+}), "add the factory's member");
+// An invitation waiting on Demo Brand's Invited tab, made the way Settings
+// makes one (as the owner, through the guard), so it reads back as a person
+// would have typed it. A reserved address: it is never emailed.
+must(await brand.client.from("org_invitations").insert({
+  org_id: brandOrg.id, email: "demo-brand-finance@example.com",
+  invited_name: "Jordan Finance", title: "Finance", permissions: ["approve", "releaseFunds"],
+}), "invite a teammate to the brand");
 
 // Onboarded and verified, so both land on the dashboard rather than the
 // onboarding flow or the "in review" card.
@@ -699,6 +725,21 @@ await sendQuote(secondFactory, secondFactoryOrg, shirting, {
   answer: "For three months, with a deposit on the fabric.",
 });
 
+// Open to every vendor and quoted by none: the factory's RFQ details page and
+// its Send quote only show on a request it has not quoted yet.
+await publishRequest({
+  title: "Linen camp shirt, SS27",
+  brief: "200 men's camp-collar shirts in washed linen. Fit sample before bulk.",
+  quantity: 200,
+  colours: [["Natural", 120], ["Olive", 80]],
+  material: "Washed linen, 150 gsm",
+  samples: "Fit sample before bulk",
+  extra: "Corozo buttons. We supply the woven labels.",
+  month: "2027-04-01",
+  tags: [["product_category", "tops"], ["region", "portugal"]],
+  question: "Can you dye the olive to our lab dip?",
+});
+
 // A conversation, so the request card's third metric is a real number.
 const thread = must(await brand.client.rpc("open_rfq_thread", { target_rfq: shirting.id, factory_org: factoryOrg.id }), "thread");
 const threadId = thread?.id ?? thread;
@@ -1138,8 +1179,9 @@ console.log(`
 done. Every login uses the password "${PASSWORD}".
 
   brand           ${LOGINS.brand.email}   ${app}
-  brand member    ${LOGINS.brandMember.email}   (Demo Brand, not an owner)
+  brand member    ${LOGINS.brandMember.email}   (Demo Brand, Approve samples only)
   factory         ${LOGINS.factory.email}   ${app}?portal=factory
+  factory member  ${LOGINS.factoryMember.email}   (Demo Factory, Add update only)
   second factory  ${LOGINS.secondFactory.email}   (a competing quote)
   new factory     ${LOGINS.newFactory.email}   (waiting for verification)
   returned factory ${LOGINS.returnedFactory.email}   (asked for more information, a long note)

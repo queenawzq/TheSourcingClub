@@ -2434,7 +2434,7 @@ function App() {
 }
 
 export function FactoryDashboardPage({
-  companyType = "factory", dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onInviteFactory, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity,
+  companyType = "factory", dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, purchaseCreditsLocked = "", onInviteFactory, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity,
   // Live mounts pass these; the prototype passes none and is unchanged.
   orgName, rfqs, projects, metrics, capacity, attention, unreadCount,
   // Live: the company's upcoming calls. The design draws its card only on
@@ -2532,7 +2532,7 @@ export function FactoryDashboardPage({
                 <p>{creditNote ?? creditCardCopy.description}</p>
               </div>
               <div className="factory-dashboard-credit-actions">
-                <button className="primary-btn compact-btn" type="button" onClick={onPurchaseCredits}>{creditCardCopy.purchase}</button>
+                <button className="primary-btn compact-btn" type="button" onClick={onPurchaseCredits} disabled={Boolean(purchaseCreditsLocked) || undefined} title={purchaseCreditsLocked || undefined}>{creditCardCopy.purchase}</button>
                 <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteFactoryOpen(true)}>{creditCardCopy.invite}</button>
               </div>
             </section>
@@ -3213,8 +3213,8 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
         </div>
       </div>
       {/* In the factory's own preview this shows what brands will press. */}
-      <button className="primary-btn" type="button" onClick={live?.contact?.onClick} title={live && !live.publicView ? "Brands use this to message you" : undefined}>{live?.contact?.label ?? "Contact factory"}</button>
-      {live?.onRequestQuote && live?.contact?.label !== "Request quote" && <button className="secondary-btn" type="button" onClick={live.onRequestQuote}>Request quote</button>}
+      <button className="primary-btn" type="button" onClick={live?.contact?.onClick} disabled={Boolean(live?.contact?.quoteLocked) || undefined} title={live?.contact?.quoteLocked || (live && !live.publicView ? "Brands use this to message you" : undefined)}>{live?.contact?.label ?? "Contact factory"}</button>
+      {live?.onRequestQuote && live?.contact?.label !== "Request quote" && <button className="secondary-btn" type="button" onClick={live.onRequestQuote} disabled={Boolean(live.quoteLocked) || undefined} title={live.quoteLocked || undefined}>Request quote</button>}
     </section>
   );
 
@@ -3792,7 +3792,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
               <span>Profile overview</span>
               <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
             </label>
-            <ProfileEditField label="Factory name" value={form.name} onChange={(value) => updateField("name", value)} />
+            <ProfileEditField label="Factory name" value={form.name} onChange={(value) => updateField("name", value)} lockedReason={live?.nameLocked ? "Only an owner can change the name." : ""} />
             <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
             <ProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
             <ProfileEditField label="Factory location" value={form.location} onChange={(value) => updateField("location", value)} />
@@ -3807,7 +3807,7 @@ function FactoryProfileEditModal({ editor, data, live = null, onClose, onSave })
               <span>Company overview</span>
               <textarea value={form.intro} onChange={(event) => updateField("intro", event.target.value)} />
             </label>
-            <ProfileEditField label="Company name" value={form.name} onChange={(value) => updateField("name", value)} />
+            <ProfileEditField label="Company name" value={form.name} onChange={(value) => updateField("name", value)} lockedReason={live?.nameLocked ? "Only an owner can change the name." : ""} />
             <ProfileEditField label="Year founded" value={form.founded} onChange={(value) => updateField("founded", value)} />
             <ProfileEditField label="Website URL" value={form.website} onChange={(value) => updateField("website", value)} />
             <ProfileEditField label="Headquarters" value={form.location} onChange={(value) => updateField("location", value)} />
@@ -4370,11 +4370,11 @@ function FactoryProfileAssetUploadDialog({ asset = null, helper, itemType = "ima
   );
 }
 
-function ProfileEditField({ label, value, onChange }) {
+function ProfileEditField({ label, value, onChange, lockedReason = "" }) {
   return (
     <label className="factory-onboarding-field">
       <span>{label}</span>
-      <input value={value} onChange={(event) => onChange(event.target.value)} />
+      <input value={value} readOnly={lockedReason ? true : undefined} title={lockedReason || undefined} data-testid={lockedReason ? "name-locked" : undefined} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -5901,7 +5901,9 @@ function FactoryRfqCard({ rfq, language, onViewRequest, onEditQuote, customTabs 
 
 // `onMessage` is live only: it opens this vendor's conversation with the
 // brand. The prototype passes none and the status card is exactly as drawn.
-export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, backLabel = "‹ Back to RFQs", onEdit, onWithdraw, quote, status, priceTotal, onMessage }) {
+// quoteBlocked (live only): why this person cannot change the quote; Edit and
+// Withdraw grey out and the reason is shown under them.
+export function FactoryReadOnlyRfqPage({ project, companyType = "factory", language, onBack, backLabel = "‹ Back to RFQs", onEdit, onWithdraw, quote, status, priceTotal, onMessage, quoteBlocked }) {
   return (
     <main className="factory-detail-page factory-submit-page factory-rfq-read-page">
       <div className="factory-submit-content">
@@ -5917,12 +5919,12 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
           {onWithdraw ? (
             <div className="factory-rfq-read-actions">
               {onEdit !== null && (
-                <button className="secondary-btn" type="button" onClick={onEdit}>Edit quote</button>
+                <button className="secondary-btn" type="button" onClick={onEdit} disabled={Boolean(quoteBlocked) || undefined} title={quoteBlocked || undefined}>Edit quote</button>
               )}
-              <button className="secondary-btn" type="button" data-testid="withdraw-quote" onClick={onWithdraw}>Withdraw quote</button>
+              <button className="secondary-btn" type="button" data-testid="withdraw-quote" onClick={onWithdraw} disabled={Boolean(quoteBlocked) || undefined} title={quoteBlocked || undefined}>Withdraw quote</button>
             </div>
           ) : onEdit !== null && (
-            <button className="secondary-btn factory-rfq-edit-btn" type="button" onClick={onEdit}>Edit quote</button>
+            <button className="secondary-btn factory-rfq-edit-btn" type="button" onClick={onEdit} disabled={Boolean(quoteBlocked) || undefined} title={quoteBlocked || undefined}>Edit quote</button>
           )}
         </header>
 
@@ -9311,6 +9313,9 @@ export function FactoryProjectDetail({
   backLabel = "‹ Back to explore",
   onSendQuote,
   // Live mounts pass these; the prototype passes none and is unchanged.
+  // sendQuoteBlocked: why this person cannot send a quote; the button greys
+  // out and the reason is shown under it.
+  sendQuoteBlocked,
   brief,
   details,
   materials,
@@ -9439,7 +9444,7 @@ export function FactoryProjectDetail({
               </span>
             )}
             <div className="factory-side-actions">
-              <button className="primary-btn" type="button" onClick={onSendQuote}>Send quote</button>
+              <button className="primary-btn" type="button" onClick={onSendQuote} disabled={Boolean(sendQuoteBlocked) || undefined} title={sendQuoteBlocked || undefined}>Send quote</button>
               <button className="secondary-btn" type="button" onClick={onToggleSave}>
                 {saved ? "Saved" : "Save request"}
               </button>
@@ -9858,7 +9863,7 @@ function FactoryMilestoneItem({ milestone, index, onAddUpdate, live = false, sho
             className="secondary-btn"
             type="button"
             disabled={updateDisabled || undefined}
-            title={updateDisabled ? "Available when this milestone opens" : undefined}
+            title={updateDisabled ? (milestone.updateDisabledReason || "Available when this milestone opens") : undefined}
             onClick={() => onAddUpdate(milestone)}
           >Add update</button>
         )}

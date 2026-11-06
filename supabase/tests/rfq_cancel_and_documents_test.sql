@@ -26,11 +26,12 @@ insert into public.orgs (id, type, name, slug) values
   ('d8000000-0000-0000-0000-0000000000f1', 'factory', 'P8 Invited',  'pgtap8-invited'),
   ('d8000000-0000-0000-0000-0000000000f2', 'factory', 'P8 Stranger', 'pgtap8-stranger');
 
-insert into public.org_members (org_id, user_id, role) values
-  ('d8000000-0000-0000-0000-00000000000b', 'c8000000-0000-0000-0000-000000000001', 'owner'),
-  ('d8000000-0000-0000-0000-00000000000b', 'c8000000-0000-0000-0000-000000000004', 'member'),
-  ('d8000000-0000-0000-0000-0000000000f1', 'c8000000-0000-0000-0000-000000000002', 'owner'),
-  ('d8000000-0000-0000-0000-0000000000f2', 'c8000000-0000-0000-0000-000000000003', 'owner');
+insert into public.org_members (org_id, user_id, role, permissions) values
+  ('d8000000-0000-0000-0000-00000000000b', 'c8000000-0000-0000-0000-000000000001', 'owner', null),
+  -- Approve samples only: cancelling a request is Quote flow.
+  ('d8000000-0000-0000-0000-00000000000b', 'c8000000-0000-0000-0000-000000000004', 'member', '{approve}'),
+  ('d8000000-0000-0000-0000-0000000000f1', 'c8000000-0000-0000-0000-000000000002', 'owner', null),
+  ('d8000000-0000-0000-0000-0000000000f2', 'c8000000-0000-0000-0000-000000000003', 'owner', null);
 
 insert into public.factory_profiles (org_id, country_code, moq, published_at, verification_status) values
   ('d8000000-0000-0000-0000-0000000000f1', 'PT', 100, now(), 'verified'),

@@ -18,7 +18,7 @@ import { useRouter } from "../../lib/router.jsx";
 import { useQuoteReview } from "./useQuoteReview.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 
-export default function LiveContract({ rfqId, quoteId, isOwner }) {
+export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
   const { navigate } = useRouter();
   const { state, error: loadError } = useQuoteReview(rfqId);
   const [busy, setBusy] = useState(false);
@@ -53,8 +53,12 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
       : found.raw.status !== "submitted"
         ? `This quote was ${found.raw.status}.`
         : !isOwner
-          ? "Only an owner of your company can choose a quote, because choosing creates the production order."
+          ? "Needs the Quote flow permission"
           : null;
+  // Missing Quote flow greys the button out, with the permission on hover; the
+  // other reasons leave nothing to press and stay in the banner.
+  const permissionBlock = Boolean(blocked) && Boolean(found) && state.rfq.status === "open"
+    && found.raw.status === "submitted" && !isOwner;
 
   async function award() {
     if (busy || blocked || attachmentLock.current || files === null) return;
@@ -128,7 +132,10 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
       onBack={back}
       onNext={award}
       busy={busy || savingAttachments}
-      primaryLabel={blocked || files === null ? "" : busy ? "Creating production steps…" : "Create production steps"}
+      // Any block but a missing permission leaves nothing to press at all.
+      primaryLabel={(blocked && !permissionBlock) || files === null ? "" : busy ? "Creating production steps…" : "Create production steps"}
+      primaryDisabled={Boolean(blocked)}
+      primaryTitle={permissionBlock ? blocked : ""}
       rail={found ? {
         vendor: {
           initials: found.view.initials,
@@ -138,7 +145,7 @@ export default function LiveContract({ rfqId, quoteId, isOwner }) {
         },
       } : null}
     >
-      {blocked && <p className="composer-error" role="status" data-testid="contract-blocked">{blocked}</p>}
+      {blocked && !permissionBlock && <p className="composer-error" role="status" data-testid="contract-blocked">{blocked}</p>}
       {found && (
         <ContractScreen
           terms={{ ...found.view, title: state.request.title, brief: state.request.brief }}
