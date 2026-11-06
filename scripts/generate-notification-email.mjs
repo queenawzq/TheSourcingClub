@@ -282,7 +282,8 @@ export function inviteEmail(invite, env) {
   const inviter = String(invite.inviterName ?? "").trim() || "A company";
   const title = t.title(inviter);
   const note = String(invite.message ?? "").trim().slice(0, 1000);
-  const url = `${env.appUrl}/app.html${kind === "factory" ? "?portal=factory" : ""}`;
+  // The button says "Create your … account", so it opens sign-up, not Log in.
+  const url = `${env.appUrl}/app.html?${kind === "factory" ? "portal=factory&" : ""}mode=signup`;
   const body = [note ? `“${note}”` : null, t.body, t.zh?.(inviter)].filter(Boolean).join("\n\n");
   const why = `You received this because someone at ${inviter} entered this address. If you weren't expecting it, you can ignore it: nothing was set up for you.`;
   const questions = "Questions? Reply to this email, or contact";
