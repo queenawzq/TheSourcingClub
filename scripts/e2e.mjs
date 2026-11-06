@@ -2338,8 +2338,9 @@ async function main() {
       await page.waitForTimeout(4000);
       await page.goto(`${APP}/payout`);
       await waitFor(page, '[data-testid="payout-balance"]', 25000);
-      check(/by payoneer/i.test(await page.locator('[data-testid="payout-balance"]').innerText()),
-        "the factory's card says it is paid by Payoneer");
+      check(/^\$/.test((await page.locator('[data-testid="payout-balance"]').innerText()).trim())
+        && /payoneer/i.test(await page.locator('[data-testid="payout-how-paid"]').innerText()),
+        "the factory's card shows its balance and says it is paid by Payoneer");
       await waitFor(page, ".payout-transaction-row", 25000);
       const payoneerEarnings = await page.locator(".payout-transaction-table").innerText();
       check(payoneerEarnings.includes(payoneerId) && /paid by payoneer/i.test(payoneerEarnings),

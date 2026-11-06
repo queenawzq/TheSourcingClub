@@ -1188,7 +1188,8 @@ await funded(await dueNow(seersucker, seersuckerTitle), CARD);
 await approveOpenStep(seersucker, seersuckerTitle, secondFactory);
 // 7. Kowloon Sourcing Partners is in Hong Kong and paid through Payoneer, by
 //    hand from TSC's Payoneer account: one fit sample paid out with its
-//    payment ID, one approved and waiting on staff ("Payout owed").
+//    payment ID, one approved and waiting on staff ("Payout owed"), and one
+//    funded and waiting for the brand, so its card shows balance and pending.
 must(await tradingCompany.client.from("factory_payout_accounts").insert({
   org_id: tradingOrg.id, method: "payoneer", payoneer_email: "kowloon-payouts@example.com", bank_country: "HK", is_primary: true,
 }), "the trading company's Payoneer account");
@@ -1210,6 +1211,12 @@ const tencel = await runningOrder({
 });
 await funded(await dueNow(tencel, tencelTitle), CARD);
 await approveOpenStep(tencel, tencelTitle, tradingCompany);
+const cordTitle = "Cotton cord trousers, AW27";
+const cord = await runningOrder({
+  title: cordTitle, brief: "90 cotton cord trousers, garment-dyed.", quantity: 90, unitPrice: 2800,
+  vendor: tradingCompany, vendorOrg: tradingOrg,
+});
+await funded(await dueNow(cord, cordTitle), CARD);
 
 // Dates on the steps not done yet, as a brand sets them on "Production
 // steps", so "Next due" on the dashboard and the orders list, and each step's

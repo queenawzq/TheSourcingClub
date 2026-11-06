@@ -1,5 +1,6 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
 import { payoutUsdTotal } from "../../lib/payout-display.mjs";
+import { isHandPaid } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "../../lib/supabase.js";
@@ -184,6 +185,8 @@ export default function StripePayoutCard({
   onBalanceChange,
   onBalanceStatus,
   onAccountKnown,
+  handFigures,
+  earnings,
   manualAccount,
   manualAccounts = manualAccount ? [manualAccount] : [],
   manualEditingId = null,
@@ -401,7 +404,7 @@ export default function StripePayoutCard({
   // Once the card knows how the factory is paid it has its final shape, and
   // the page can draw the figures below it without the card moving them.
   useEffect(() => {
-    if (account !== undefined) onAccountKnown?.();
+    if (account !== undefined) onAccountKnown?.(account);
   }, [account, onAccountKnown]);
 
   // A read that is merely slow is not a failure: after a while, say so.
@@ -683,13 +686,42 @@ export default function StripePayoutCard({
     }
   }
 
+  // Only the page's Earnings card passes figures; Settings mounts this for its dialogs.
+  const handPaid = Boolean(handFigures) && isHandPaid(account, earnings);
+  // Only an owner reads the balance; for anyone else it is not "in progress".
+  const payoutSetupLine = account?.transfers_active
+    // The account is known a moment before its balance arrives:
+    // that is loading, and only a real failure says it failed.
+    ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : "Only a company owner can view the withdrawable balance."
+    : account?.details_submitted
+      ? "Payout verification in progress"
+      : account
+        ? isOwner ? "Finish setup to receive earnings." : "Payout setup on Stripe is not finished yet."
+        // Where Stripe cannot pay out, staff pay the saved bank account.
+        : isPayoneer(manualAccount)
+          ? <>Payoneer account {manualAccount.payoneer_email} on file. TSC sends your balance to it by hand, from TSC's Payoneer business account.</>
+        : manualAccount && manualComplete(manualAccount)
+          ? <>Bank details on file{manualAccount.account_number_last4 ? ` (account ending in ${manualAccount.account_number_last4})` : ""}. TSC sends your balance to this account by bank transfer. <OperationsContact /></>
+          : manualAccount
+            ? "Your bank details are incomplete. Add the bank and the account name so TSC can pay you."
+            : isOwner ? "Add a payout method to receive earnings" : "No payout method yet.";
+
   return (
     <>
       {renderCard ? <section className="live-payout-method-card live-stripe-payout-card" data-testid="stripe-payout-card">
         <div className="live-payout-balance">
-          {/* Paid by bank, the factory has no balance anywhere: TSC sends each
-              released payment, so the card says how it is paid instead. */}
-          <span className="payment-metric-label">{!account && manualAccount ? "Payouts" : arriving ? "Balance on its way (USD)" : "Available balance (USD)"}
+          {handPaid ? <>
+            {/* Paid by hand, nothing rests in Stripe: the figures are the
+                payments' own states, the same as the staff board's. */}
+            <span className="payment-metric-label">Balance (USD)
+              <PaymentHelp label="Balance">Approved earnings TSC still has to send you, across all clients.</PaymentHelp>
+            </span>
+            <strong data-testid="payout-balance">{handFigures.balance ? formatMoney(payoutUsdTotal(handFigures.balance), "USD")
+              : handFigures.failed ? "—" : <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />}</strong>
+            {handFigures.pending ? <p className="payout-balance-line" data-testid="payout-pending">{formatMoney(payoutUsdTotal(handFigures.pending), "USD")} pending brand approval <PaymentHelp label="Pending">Held by TSC until the brand approves the step. Once approved, it moves into your balance.</PaymentHelp></p> : null}
+            <p data-testid="payout-how-paid">{payoutSetupLine}</p>
+          </> : <>
+          <span className="payment-metric-label">{arriving ? "Balance on its way (USD)" : "Available balance (USD)"}
             {arriving
               ? <PaymentHelp label="Balance on its way">{PENDING_HELP}</PaymentHelp>
               : <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp>}
@@ -698,7 +730,7 @@ export default function StripePayoutCard({
             // A placeholder the size of the amount, so the card does not
             // jump when Stripe answers (a sentence said "checking" before).
             : balanceWaiting ? <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />
-            : !account && manualAccount ? isPayoneer(manualAccount) ? "By Payoneer" : "By bank transfer" : "—"}</strong>
+            : "—"}</strong>
           {balanceStatus === "loading" && balanceWaiting ? (
             <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
           ) : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
@@ -708,23 +740,8 @@ export default function StripePayoutCard({
               : pending > 0
               ? <>{formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></>
               : "Earnings stay in your balance until you withdraw them."
-            // Only an owner reads the balance; for anyone else it is not "in progress".
-            : account?.transfers_active
-              // The account is known a moment before its balance arrives:
-              // that is loading, and only a real failure says it failed.
-              ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : "Only a company owner can view the withdrawable balance."
-              : account?.details_submitted
-                ? "Payout verification in progress"
-                : account
-                  ? isOwner ? "Finish setup to receive earnings." : "Payout setup on Stripe is not finished yet."
-                  // Where Stripe cannot pay out, staff pay the saved bank account.
-                  : isPayoneer(manualAccount)
-                    ? <>Payoneer account {manualAccount.payoneer_email} on file. TSC pays your released earnings to it by hand, from TSC's Payoneer business account.</>
-                  : manualAccount && manualComplete(manualAccount)
-                    ? <>Bank details on file{manualAccount.account_number_last4 ? ` (account ending in ${manualAccount.account_number_last4})` : ""}. TSC pays your released earnings to this account by bank transfer. <OperationsContact /></>
-                    : manualAccount
-                      ? "Your bank details are incomplete. Add the bank and the account name so TSC can pay you."
-                      : isOwner ? "Add a payout method to receive earnings" : "No payout method yet."}</p>}
+            : payoutSetupLine}</p>}
+          </>}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
             <p>Your previous payout account has funds remaining or returned after the upgrade.</p>
             {recoveryAvailable > 0 && balance.recovery.payoutsEnabled ? <button className="secondary-btn compact-btn" disabled={busy} onClick={() => {
