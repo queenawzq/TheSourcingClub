@@ -2058,9 +2058,11 @@ async function main() {
     await waitFor(page, '[data-field="payout_bank_name"]', 10000);
     await page.locator('[data-field="payout_bank_name"]').fill("Banco de Porto");
     await page.locator('[data-field="payout_account_name"]').fill(factoryName);
-    await page.locator('[data-field="payout_account_number_last4"]').fill("4417");
+    await page.locator('[data-field="payout_account_number"]').fill("0000000000004417");
+    await page.locator('[data-field="payout_account_number_again"]').fill("0000000000004417");
     await page.locator('[data-field="payout_swift"]').fill("BCOMPTPL");
-    await record(page, "Bank details for manual payouts", "no full account number is asked for, or stored");
+    await page.locator('[data-field="payout_branch"]').fill("001 002");
+    await record(page, "Bank details for manual payouts", "the whole number, typed twice; only the last four come back");
 
     await clickButton(page, "save payout method");
     await page.waitForTimeout(2500);
@@ -2281,6 +2283,9 @@ async function main() {
     check(/pay by bank/i.test(owedSection), "with the factory's bank details to pay it by hand");
     await record(page, "The payments board", "a required step: staff have no org to notify");
 
+    // Marking it needs the bank's reference, typed into this order's row.
+    await page.locator(`[data-section="payout"] tr[data-payment]`, { hasText: bornOrder.order_number })
+      .locator('[data-testid="bank-reference"]').fill(`E2E-WIRE-${stamp}`);
     // This order's row: the board also holds the demo data's own rows.
     const paidOwnRow = await page.evaluate((orderNumber) => {
       const button = [...document.querySelectorAll('[data-section="payout"] [data-testid="release-payment"]')]

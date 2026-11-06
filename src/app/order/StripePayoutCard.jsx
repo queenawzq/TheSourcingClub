@@ -11,6 +11,7 @@ import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 import StripeConnectEmbed from "./StripeConnectEmbed.jsx";
 import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import { payoneerEmail, validPayoneerEmail } from "./use-manual-payouts.js";
+import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
 const names = new Intl.DisplayNames(["en"], { type: "region" });
@@ -26,6 +27,9 @@ const countryName = (code) => (code && code !== NOT_LISTED ? names.of(code) ?? c
 
 const OPERATIONS_EMAIL = "operations@contact.sourcing-club.com";
 
+// Must stay true: reveal_payout_account_number() is what makes it so.
+const BANK_NUMBER_NOTE = "Only TSC staff can see your full account number, and only when TSC owes you a payout and needs it to pay you. Each time, we record who looked. Your team sees only the last four digits. Brands never see it.";
+
 // Said wherever Stripe's embedded forms open. They stay on this page and may
 // show TSC's registered company name rather than The Sourcing Club. Only an
 // Express account (made before 2026-10-30) also asks for a code in a small
@@ -37,14 +41,8 @@ const EXPRESS_FORM_NOTE = "Stripe, TSC's payment partner, holds your company and
 /** A plain letter, not Payoneer's logo: using that needs their permission. */
 const PAYONEER_MARK = <strong>P</strong>;
 
-const manualComplete = (row) => isPayoneer(row) || Boolean(row?.bank_name?.trim() && row?.account_name?.trim());
+const manualComplete = (row) => isPayoneer(row) || Boolean(row?.bank_name?.trim() && row?.account_name?.trim() && row?.number_changed_at);
 const isPayoneer = (row) => row?.method === "payoneer";
-
-function OperationsContact() {
-  return (
-    <>Before your first payout, TSC operations will email you from <a href={`mailto:${OPERATIONS_EMAIL}`}>{OPERATIONS_EMAIL}</a> to confirm the full transfer details.</>
-  );
-}
 
 const SLOW_BALANCE_MS = 8000;
 const BALANCE_STATUS_TEXT = {
@@ -193,7 +191,6 @@ export default function StripePayoutCard({
   onStartManual,
   onMakePrimaryManual,
   manualForm,
-  manualFields,
   onManualFieldChange,
   onManualMethodChange,
   onSaveManual,
@@ -445,6 +442,10 @@ export default function StripePayoutCard({
 
   // The card's shape while the account is read, so it does not appear late
   // and push the page down.
+  // The form is taller than its dialog: a refusal is brought into view.
+  const manualErrorRef = useRef(null);
+  useEffect(() => { manualErrorRef.current?.scrollIntoView({ block: "nearest" }); }, [manualError]);
+
   if (account === undefined) return renderCard ? <PayoutCardPlaceholder isOwner={isOwner} /> : null;
 
   const closeModal = () => {
@@ -458,6 +459,11 @@ export default function StripePayoutCard({
   // Staff cannot pay a bank with no name, an account with no holder, or a
   // country nobody named; a country not listed is named in the instructions.
   const notListed = country === NOT_LISTED;
+  const bankFields = bankFieldsFor(notListed ? null : country);
+  const editingBank = manualAccounts.find((row) => row.id === manualEditingId) ?? null;
+  const hasStoredNumber = Boolean(editingBank?.number_changed_at);
+  const typedNumber = normalBankNumber(manualForm?.account_number);
+  const numberMismatch = typedNumber !== normalBankNumber(manualForm?.account_number_again) && Boolean(manualForm?.account_number_again);
   const payoneerForm = manualForm?.method === "payoneer";
   const payoneerMismatch = payoneerForm && manualForm.payoneer_email_confirm
     && payoneerEmail(manualForm.payoneer_email) !== payoneerEmail(manualForm.payoneer_email_confirm);
@@ -467,6 +473,9 @@ export default function StripePayoutCard({
       country
       && manualForm?.bank_name?.trim()
       && manualForm?.account_name?.trim()
+      && validSwift(manualForm?.swift)
+      && (!bankFields.branch.required || manualForm?.branch?.trim())
+      && (typedNumber ? validBankNumber(typedNumber) && !numberMismatch : hasStoredNumber && !numberMismatch)
       && (!notListed || manualForm?.instructions?.trim()),
     );
 
@@ -484,7 +493,6 @@ export default function StripePayoutCard({
     </>
   );
 
-  const manualRequired = new Set(["bank_name", "account_name"]);
   const editingManual = manualAccounts.find((row) => row.id === manualEditingId) ?? null;
   const payoneerFieldsContent = (
     <div className="payout-manual-fields">
@@ -506,22 +514,44 @@ export default function StripePayoutCard({
   const manualFieldsContent = (
     <div className="payout-manual-fields">
       <div className="payout-form-grid">
-        {manualFields.map(([key, label, placeholder]) => (
-          <label key={key}>
-            <span>{label}{manualRequired.has(key) ? " (required)" : ""}</span>
-            <input data-field={`payout_${key}`} value={manualForm[key]} placeholder={placeholder} required={manualRequired.has(key)} onChange={onManualFieldChange(key)} />
-          </label>
-        ))}
+        <label>
+          <span>Account holder (required)</span>
+          <input data-field="payout_account_name" value={manualForm.account_name} placeholder="Exactly as your bank has it" required onChange={onManualFieldChange("account_name")} />
+        </label>
+        <label>
+          <span>Bank (required)</span>
+          <input data-field="payout_bank_name" value={manualForm.bank_name} placeholder="Your bank's name" required onChange={onManualFieldChange("bank_name")} />
+        </label>
+        <label>
+          <span>{bankFields.numberLabel}{hasStoredNumber ? "" : " (required)"}</span>
+          <input data-field="payout_account_number" autoComplete="off" spellCheck={false} value={manualForm.account_number} required={!hasStoredNumber} onChange={onManualFieldChange("account_number")}
+                 placeholder={hasStoredNumber ? `Ending ${editingBank.account_number_last4}. Type a new number only to change it` : "Every digit, as your bank shows it"} />
+        </label>
+        <label>
+          <span>Re-enter it{hasStoredNumber && !typedNumber ? "" : " (required)"}</span>
+          <input data-field="payout_account_number_again" autoComplete="off" spellCheck={false} value={manualForm.account_number_again} required={!hasStoredNumber || Boolean(typedNumber)} onChange={onManualFieldChange("account_number_again")} />
+        </label>
+        <label>
+          <span>SWIFT / BIC (required)</span>
+          <input data-field="payout_swift" value={manualForm.swift} placeholder="8 or 11 characters" required onChange={onManualFieldChange("swift")} />
+        </label>
+        <label>
+          <span>{bankFields.branch.label}{bankFields.branch.required ? " (required)" : ""}</span>
+          <input data-field="payout_branch" value={manualForm.branch} placeholder={bankFields.branch.placeholder} required={Boolean(bankFields.branch.required)} onChange={onManualFieldChange("branch")} />
+        </label>
       </div>
+      {numberMismatch ? <p className="live-stripe-error" role="alert">The two account numbers don't match.</p> : null}
+      {typedNumber && !validBankNumber(typedNumber) ? <p className="live-stripe-error" role="alert">Enter the account number with letters and digits only, 5 to 34 characters.</p> : null}
+      {manualForm.swift && !validSwift(manualForm.swift) ? <p className="live-stripe-error" role="alert">A SWIFT / BIC is 8 or 11 letters and digits.</p> : null}
       <label className="payout-textarea-field">
         <span>{notListed ? "Bank country and transfer instructions (required)" : "Additional transfer instructions"}</span>
         <textarea data-field="payout_instructions" rows={3} value={manualForm.instructions} required={notListed} onChange={onManualFieldChange("instructions")}
-                  placeholder={notListed ? "Your bank's country, and any intermediary bank" : "Intermediary bank or transfer instructions"} />
+                  placeholder={notListed ? "Your bank's country, and any intermediary bank. Not your account number" : "Intermediary bank or transfer instructions. Not your account number"} />
       </label>
       {!manualReady ? (
-        <p className="payout-security-copy">Add the bank and the account name{notListed ? ", and name your bank's country," : ""} to save.</p>
+        <p className="payout-security-copy">Fill in every field marked required{notListed ? ", and name your bank's country," : ""} to save.</p>
       ) : null}
-      <p className="payout-security-copy">For security, add only the last four digits of the account number here. <OperationsContact /></p>
+      <p className="payout-security-copy">{BANK_NUMBER_NOTE}</p>
     </div>
   );
 
@@ -701,9 +731,9 @@ export default function StripePayoutCard({
         : isPayoneer(manualAccount)
           ? <>Payoneer account {manualAccount.payoneer_email} on file. TSC sends your balance to it by hand, from TSC's Payoneer business account.</>
         : manualAccount && manualComplete(manualAccount)
-          ? <>Bank details on file{manualAccount.account_number_last4 ? ` (account ending in ${manualAccount.account_number_last4})` : ""}. TSC sends your balance to this account by bank transfer. <OperationsContact /></>
+          ? <>Bank details on file (account ending in {manualAccount.account_number_last4}). TSC sends your balance to this account by bank transfer.</>
           : manualAccount
-            ? "Your bank details are incomplete. Add the bank and the account name so TSC can pay you."
+            ? isOwner ? "TSC can't pay this account yet: add the full account number." : "TSC can't pay this account yet: ask a company owner to add the full account number."
             : isOwner ? "Add a payout method to receive earnings" : "No payout method yet.";
 
   return (
@@ -829,7 +859,7 @@ export default function StripePayoutCard({
                 </div>
                 <div className="payout-method-name">{isPayoneer(row)
                   ? <><strong>Payoneer</strong><span>{row.payoneer_email}</span></>
-                  : <><strong>{manualLabel(row)}</strong><span>{row.bank_name || "Manual bank transfer"}</span></>}</div>
+                  : <><strong>{manualLabel(row)}</strong><span>{row.bank_name || "Manual bank transfer"}{row.number_changed_at ? "" : ". TSC can't pay this yet: add the full account number"}</span></>}</div>
                 {row.is_primary ? <span className="payout-method-default">Default</span> : null}
                 <div className="payout-method-menu">
                   <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${manualLabelInSentence(row)}`} aria-expanded={methodMenu === row.id} disabled={manualBusy} onClick={() => setMethodMenu((open) => open === row.id ? null : row.id)}>...</button>
@@ -973,7 +1003,6 @@ export default function StripePayoutCard({
 
       {modal === "setup" ? (
         <PayoutModal title={manualEditingId ? isPayoneer(editingManual) ? "Edit Payoneer account" : "Edit bank account" : manualAccounts.length ? "Add a payout method" : "Set up payout method"} eyebrow="Payments" onClose={closeModal} actions={setupActions}>
-          {manualError ? <p className="live-stripe-error" role="alert">{manualError.message}</p> : null}
           <p className="payout-modal-intro">Choose where your company is registered. We’ll show the payout method available for that country.</p>
           <label className="payout-country-field">
             <span>Company country</span>
@@ -1026,6 +1055,8 @@ export default function StripePayoutCard({
             </>
           ) : <div className="payout-empty-guidance">Select a country to see the available payout method.</div>}
           {supported ? <p className="payout-security-copy">{STRIPE_FORM_NOTE}</p> : null}
+          {/* Beside Save: this form is taller than the dialog, so the top is out of sight when it refuses. */}
+          {manualError ? <p ref={manualErrorRef} className="live-stripe-error" role="alert">{manualError.message}</p> : null}
         </PayoutModal>
       ) : null}
 
