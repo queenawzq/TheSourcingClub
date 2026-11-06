@@ -1,0 +1,256 @@
+import { EMAIL_LOGO_URL } from "./_email-assets.js";
+import { emailTransport, publicAppUrl, sendOneEmail } from "./_notification-sender.js";
+// Vercel compiles api/*.js as CommonJS; import the ESM email builder lazily.
+const loadReviewEmail = () => import("../scripts/generate-account-approved-email.mjs");
+
+/**
+ * Sends the review emails: a decision to every member of the company
+ * (verification_approval_email_outbox), and a company's resubmission to staff
+ * (review_resubmission_email_outbox). Shared by api/send-review-decision
+ * (staff's kick after a decision, and "Resend email"), api/review-resubmitted
+ * (the company's kick) and api/cron-daily (the retry for everything).
+ *
+ * The database decides what is due (claim_review_*): the current decision
+ * only, current members only, at most five attempts. This file only sends, and
+ * records each outcome in words staff can read: the provider's own message is
+ * logged, never stored or shown.
+ */
+
+// Replies land in the operations inbox (forwarded by api/inbound-email.js),
+// not at the noreply sender, which has no mailbox.
+const REPLY_TO = process.env.SUPPORT_EMAIL ?? "operations@contact.sourcing-club.com";
+// Resend's free plan allows two requests a second.
+const RESEND_SPACING_MS = 550;
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Staff wait on this answer after a decision, so a provider that never answers
+// must not hold the screen. Tests pass a shorter one.
+const SEND_TIMEOUT_MS = 10_000;
+class SendTimeout extends Error {}
+const withinTime = (promise, ms) => {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => { timer = setTimeout(() => reject(new SendTimeout("timed out")), ms); }),
+  ]).finally(() => clearTimeout(timer));
+};
+
+/** Where staff are told that a company sent its profile back. */
+export function reviewAlertAddress() {
+  return process.env.REVIEW_ALERT_EMAIL?.trim() || process.env.SUPPORT_EMAIL?.trim() || "operations@contact.sourcing-club.com";
+}
+
+const escapeHtml = (value) => String(value ?? "")
+  .replaceAll("&", "&amp;")
+  .replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;")
+  .replaceAll('"', "&quot;")
+  .replaceAll("'", "&#039;");
+
+/**
+ * The note is what the reviewer actually wrote to the company. On
+ * needs_information it is the whole point of the email — the database refuses
+ * that decision without one — so it is quoted rather than summarised.
+ */
+const noteBlock = (note, heading) => {
+  const trimmed = String(note ?? "").trim();
+  if (!trimmed) return { text: "", html: "" };
+  return {
+    text: `\n${heading}\n${trimmed}\n`,
+    html: `<p><strong>${escapeHtml(heading)}</strong></p><blockquote style="margin:0 0 16px;padding:8px 16px;border-left:3px solid #d5d5d5;color:#333;white-space:pre-wrap;">${escapeHtml(trimmed)}</blockquote>`,
+  };
+};
+
+/**
+ * The link for the company's own portal. `review` says which company the email
+ * is about: it selects that company for someone in two, and explains itself to
+ * anyone signed in as someone else (ReviewLinkGate in src/app/main.jsx). It
+ * grants nothing.
+ */
+function loginUrlFor(row, appUrl) {
+  const params = new URLSearchParams();
+  if (row.orgs?.type && row.orgs.type !== "brand") params.set("portal", "factory");
+  if (row.org_id) params.set("review", row.org_id);
+  const query = params.toString();
+  return `${appUrl}/app.html${query ? `?${query}` : ""}`;
+}
+
+// Exported (through api/send-review-decision.js) for api/send-test-email.js,
+// so a test is the real message.
+export async function messageFor(row, { appUrl = publicAppUrl() } = {}) {
+  const { accountApprovedEmail, declinedEmail, needsInformationEmail } = await loadReviewEmail();
+  const build = row.decision === "approved" ? accountApprovedEmail
+    : row.decision === "needs_information" ? needsInformationEmail
+    : declinedEmail;
+  return build({
+    companyName: row.orgs?.name || "your company",
+    recipientName: row.recipient_name,
+    locale: row.locale,
+    loginUrl: loginUrlFor(row, appUrl),
+    logoUrl: EMAIL_LOGO_URL,
+    supportEmail: REPLY_TO,
+    companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
+    note: row.note,
+  });
+}
+
+/** The email staff get when a company sends its profile back. English: it is read by staff. */
+export function resubmissionAlertMessage({ orgId, orgName, orgType, note }, { appUrl = publicAppUrl() } = {}) {
+  const kind = orgType === "brand" ? "brand" : "vendor";
+  const company = orgName || "A company";
+  const reviewUrl = `${appUrl}/admin.html?screen=review&profile=${encodeURIComponent(orgId ?? "")}`;
+  const request = noteBlock(note, "What we had asked for:");
+  return {
+    subject: `${company} sent its profile back for review`,
+    text: `${company} (${kind}) has updated its profile and sent it back for review.\n${request.text}\nOpen the review: ${reviewUrl}\n\nThe Sourcing Club`,
+    html: `<p><strong>${escapeHtml(company)}</strong> (${kind}) has updated its profile and sent it back for review.</p>${request.html}<p><a href="${escapeHtml(reviewUrl)}">Open the review</a></p><p>The Sourcing Club</p>`,
+  };
+}
+
+/**
+ * The provider's idempotency key for a row. It changes only when
+ * key_generation does, which is only after a definite refusal: the provider
+ * replays a key's first answer for 24 hours, errors included, so a refused
+ * email needs a new key to be tried again; but a send whose outcome is unknown
+ * (a timeout) must keep its key, so that if the first one did go out the
+ * provider drops the retry instead of delivering a second copy.
+ */
+export function reviewEmailKey(row) {
+  return row.resubmitted_at
+    ? `review-resubmitted-${row.org_id}-${row.resubmitted_at}-${row.key_generation ?? 0}`
+    : `review-${row.decision}-${row.org_id}-${row.recipient_user_id}-${row.review_updated_at}-${row.key_generation ?? 0}`;
+}
+
+/**
+ * What a failed send means, in words staff can act on (the provider's own
+ * message goes to the log only):
+ *   timeout      unconfirmed: it may have been delivered; same key next time
+ *   unreachable  failed: nothing reached the provider; same key is safe
+ *   refused      failed: the provider answered; next time needs a new key
+ * `down` says the rest of the batch should not wait for the same answer.
+ */
+export function classifySendError(error) {
+  const text = String(error?.message ?? error ?? "");
+  if (error instanceof SendTimeout) {
+    return { outcome: "unconfirmed", reason: "the email service did not confirm it in time, so it may still arrive", newKey: false, down: true };
+  }
+  if (error?.name === "TypeError" || /fetch failed|ECONN|ETIMEDOUT|ENOTFOUND|network/i.test(text)) {
+    return { outcome: "failed", reason: "the email service could not be reached", newKey: false, down: true };
+  }
+  return { outcome: "failed", reason: "the email service did not accept it", newKey: true, down: false };
+}
+
+const NOT_TRIED = "not tried: the email service was not answering";
+
+/**
+ * Sends what is due for one company (`orgId`) or for every company (no orgId).
+ * Rows are only claimed when there is a way to send them, so on a site with no
+ * email set up they wait in the queue untouched.
+ * @returns {{ configured, sent: string[], skipped, failed, unconfirmed: {email, reason}[] }}
+ */
+export async function sendReviewDecisionEmails(service, request, { orgId = null, max = 25, mail = emailTransport(), timeoutMs = SEND_TIMEOUT_MS } = {}) {
+  const result = { configured: false, sent: [], skipped: [], failed: [], unconfirmed: [] };
+  if (!mail) return result;
+  result.configured = true;
+
+  const { data: rows, error } = await service.rpc("claim_review_decision_emails", { target_org: orgId, max_rows: max });
+  if (error) throw new Error("the review email queue could not be read");
+
+  const appUrl = publicAppUrl(request);
+  // Once the service has not answered, the rest of the batch is not tried:
+  // each would wait the full timeout for the same answer.
+  let down = false;
+  for (const [index, row] of (rows ?? []).entries()) {
+    const finish = (outcome, provider = null, errorText = null, newKey = false) => service.rpc("finish_review_decision_email", {
+      target_org: row.org_id,
+      target_user: row.recipient_user_id,
+      row_decision: row.decision,
+      row_review_updated_at: row.review_updated_at,
+      outcome,
+      provider,
+      error_text: errorText,
+      new_key: newKey,
+    });
+    if (down) {
+      await finish("failed", null, NOT_TRIED);
+      result.failed.push({ email: row.recipient_email, reason: NOT_TRIED });
+      continue;
+    }
+    try {
+      if (mail.name === "resend" && index > 0) await wait(RESEND_SPACING_MS);
+      const message = await messageFor({ ...row, orgs: { name: row.org_name, type: row.org_type } }, { appUrl });
+      const delivery = await withinTime(sendOneEmail({ key: reviewEmailKey(row), to: row.recipient_email, message }, mail), timeoutMs);
+      if (!delivery.sent) {
+        const reason = delivery.reason === "reserved_address"
+          ? "a test address that cannot receive email"
+          : "email is not set up on this site";
+        await finish("skipped", null, reason);
+        result.skipped.push({ email: row.recipient_email, reason });
+        continue;
+      }
+      await finish("sent", delivery.providerId ?? null);
+      result.sent.push(row.recipient_email);
+    } catch (sendError) {
+      console.error("review email:", row.recipient_email, sendError?.message ?? sendError);
+      const failure = classifySendError(sendError);
+      if (failure.down) down = true;
+      await finish(failure.outcome, null, failure.reason, failure.newKey);
+      result[failure.outcome].push({ email: row.recipient_email, reason: failure.reason });
+    }
+  }
+  return result;
+}
+
+/**
+ * Sends the staff alerts that are due, for one company or all.
+ * @returns {{ configured, sent: number, skipped: number, failed: number }}
+ */
+export async function sendResubmissionAlerts(service, request, { orgId = null, max = 25, mail = emailTransport(), timeoutMs = SEND_TIMEOUT_MS } = {}) {
+  const result = { configured: false, sent: 0, skipped: 0, failed: 0, unconfirmed: 0 };
+  if (!mail) return result;
+  result.configured = true;
+
+  const { data: rows, error } = await service.rpc("claim_review_resubmission_emails", { target_org: orgId, max_rows: max });
+  if (error) throw new Error("the staff alert queue could not be read");
+
+  const appUrl = publicAppUrl(request);
+  const to = reviewAlertAddress();
+  let down = false;
+  for (const [index, row] of (rows ?? []).entries()) {
+    const finish = (outcome, provider = null, errorText = null, newKey = false) => service.rpc("finish_review_resubmission_email", {
+      target_org: row.org_id,
+      row_resubmitted_at: row.resubmitted_at,
+      outcome,
+      provider,
+      error_text: errorText,
+      new_key: newKey,
+    });
+    if (down) {
+      await finish("failed", null, NOT_TRIED);
+      result.failed += 1;
+      continue;
+    }
+    try {
+      if (mail.name === "resend" && index > 0) await wait(RESEND_SPACING_MS);
+      const message = resubmissionAlertMessage({
+        orgId: row.org_id, orgName: row.org_name, orgType: row.org_type, note: row.note,
+      }, { appUrl });
+      const delivery = await withinTime(sendOneEmail({ key: reviewEmailKey(row), to, message }, mail), timeoutMs);
+      if (!delivery.sent) {
+        await finish("skipped", null, "the staff address cannot receive email");
+        result.skipped += 1;
+        continue;
+      }
+      await finish("sent", delivery.providerId ?? null);
+      result.sent += 1;
+    } catch (sendError) {
+      console.error("review resubmission alert:", sendError?.message ?? sendError);
+      const failure = classifySendError(sendError);
+      if (failure.down) down = true;
+      await finish(failure.outcome, null, failure.reason, failure.newKey);
+      result[failure.outcome] += 1;
+    }
+  }
+  return result;
+}

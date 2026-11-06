@@ -3258,6 +3258,8 @@ export function BrandOnboarding({
   completionPending = false,
   // Live only: a panel drawn after the step's content (matching, on review).
   extra = null,
+  // Live only: drawn at the top of the step (what staff asked for).
+  notice = null,
   // The published terms and their full page. Absent, the designed copy shows.
   terms,
   fullTerms,
@@ -3324,6 +3326,7 @@ export function BrandOnboarding({
       </header>
 
       <section className={`brand-onboarding-card ${current.type}`} aria-label={current.title} onInput={clearFieldError} onChange={clearFieldError}>
+        {notice}
         {current.type !== "complete" && (
           <header className="brand-onboarding-card-header">
             {isFirst && <img className="brand-onboarding-label" src="/assets/onboarding-sourcing-club-label-clean.png" alt="" />}
@@ -3725,7 +3728,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
     <div className="brand-onboarding-complete">
       <img className="brand-onboarding-success-icon" src={content.icon ?? "/assets/prototype-icons/success.svg"} alt="" />
       <h1>{content.title}</h1>
-      <p>{content.intro}</p>
+      {content.introNode ?? <p>{content.intro}</p>}
       {content.reward !== false && <section className="brand-onboarding-discount-reward">
         <span>Welcome discount</span>
         <strong>$50 discount</strong>

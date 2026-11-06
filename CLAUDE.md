@@ -120,6 +120,8 @@ screens below — each held back for a stated reason, not a backlog entry:
 - **`AdminPayments`.** No designed payments board, and some payments only a
   person can move: staff have no org and cannot be notified (see **Payments**).
 - The brand's own **`RfqDetail`** — no designed counterpart yet.
+- **"This link is for another account"** (`ReviewLinkGate`, `src/app/main.jsx`). No design draws it. A review email's button carries `review=<company id>`: a member lands on that company, and anyone else signed in here (staff, another company's person) is told, instead of landing on their own pages without a word. It uses the finish card's classes, and it only explains; it grants nothing.
+- **"What we asked for"** (`ReviewRequestPanel`). No design draws it: the request stays on screen on every step while a company updates its profile, through onboarding's optional `notice` prop.
 - **The matching panels** (`src/app/matching/`: the factory's matching
   profile, the composer's "Factory match details", staff evidence review).
   No design draws them yet, and they show only while matching v2 is on (off
@@ -201,6 +203,7 @@ npm run check:dates   # fails on a date column read as an instant, in New York a
 npm run check:prototype  # the prototype must still render with NO database
 npm run check:messages   # the contact-detail patterns: hits and near-misses
 npm run check:auth       # "Keep me logged in" across tabs (runs in build)
+npm run check:review-email  # the review note's shape, its parser and the decision emails (runs in build)
 npm run taxonomy      # regenerate migration 007 from the seed JSON
 npm run seed:demo     # demo companies with fixed logins; run again to reset them
 ```
@@ -444,6 +447,8 @@ real send — Queena's designed onboarding emails from
 receives. A new email type needs adding to `TEMPLATES` there and
 `TEST_EMAILS` in `src/admin-prototype/main.jsx`. Password resets are sent by
 Supabase itself and cannot be tested this way.
+
+**A request for more information has a shape** (Queena, Nov 5): a short summary, bullets of what to upload, a friendly close. "Suggest with AI" writes only the summary and the close: the bullets are ours (`requestItem`), one per open check, because a company under review sees only its onboarding steps, and asked to rephrase them the model moved them to sections they are not in. A check the company can do nothing about (member addresses on the website's domain, a file waiting for staff) is not asked, and staff are told. A decline needs a reason, refused by the database (`20261106200000`). A note is plain text and is stored and sent as typed; `src/shared/review-note.mjs` decides how the HTML email and the app draw it (`- `, `•`, `1.`, `一、`, `（1）`), and `npm run check:review-email` (in the build) pins it, the three decision emails and Test emails' sample.
 
 ### The operations inbox
 
