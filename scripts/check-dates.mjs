@@ -117,7 +117,7 @@ async function formatters() {
     const { toProjectCard } = await load("/src/app/live-adapter.js");
     const { brandPaymentsView } = await load("/src/app/payments/brand-payments-view.js");
     const { validUntilOf } = await load("/src/app/quote/quote-view.js");
-    const { formatCapacityWindow } = await load("/src/lib/domain/quote.js");
+    const { capacityWindowProblem, formatCapacityWindow, parseCapacityWindow } = await load("/src/lib/domain/quote.js");
     const { notificationTitle } = await load("/src/shared/notification-text.mjs");
 
     const calendar = dateFrom("2026-10-26");
@@ -146,6 +146,45 @@ async function formatters() {
     expect("quote: capacity window",
       formatCapacityWindow({ capacity_window_start: "2026-11-01", capacity_window_end: "2026-11-30" }, new Date(2026, 9, 1)),
       "Nov 1 - Nov 30");
+
+    // What the form takes as a window is read back whole; anything else is refused.
+    const nov = new Date(2026, 10, 6);
+    for (const [typed, start, end, units] of [
+      ["Jan 5 - Mar 1, 2027", "2027-01-05", "2027-03-01", null],
+      ["Dec 20 - Jan 15 · 300 units", "2026-12-20", "2027-01-15", 300],
+      ["Dec 12-30", "2026-12-12", "2026-12-30", null],
+      ["Dec 12 to Jan 3", "2026-12-12", "2027-01-03", null],
+      ["2027-01-05 - 2027-03-01", "2027-01-05", "2027-03-01", null],
+      ["2027年1月5日至3月1日 · 300件", "2027-01-05", "2027-03-01", 300],
+      ["12月12日至30日", "2026-12-12", "2026-12-30", null],
+      ["12月12日-1月3日，４２０件", "2026-12-12", "2027-01-03", 420],
+      ["２０２７年１月５日到２０２７年３月１日", "2027-01-05", "2027-03-01", null],
+    ]) {
+      expect(`window kept: ${typed}`, capacityWindowProblem(typed, nov), null);
+      const parsed = parseCapacityWindow(typed, nov);
+      expect(`window read: ${typed}`, [parsed.capacity_window_start, parsed.capacity_window_end, parsed.capacity_window_units].join(), [start, end, units].join());
+      const back = formatCapacityWindow(parsed, nov);
+      const again = parseCapacityWindow(back, nov);
+      expect(`window reads back: ${back}`, [again.capacity_window_start, again.capacity_window_end, again.capacity_window_units].join(), [start, end, units].join());
+    }
+    for (const [typed, why] of [
+      ["Jan to Feb 2027", "format"],
+      ["1月到2月", "format"],
+      ["2027年1月至2月", "format"],
+      ["Q1 2027", "format"],
+      ["soon", "format"],
+      ["300 units", "format"],
+      ["Dec 12-30 · partner confirmed", "format"],
+      ["Dec 12 - Dec 30 maybe later", "format"],
+      ["Dec 1, Dec 5, Dec 9", "format"],
+      ["Feb 30 - Mar 3, 2027", "format"],
+      ["13月5日", "format"],
+      ["", "format"],
+      ["Jan 5 - Mar 1", "past"],
+      ["1月5日至3月1日", "past"],
+    ]) {
+      expect(`window refused: ${typed}`, capacityWindowProblem(typed, nov), why);
+    }
 
     // The daily job runs at 07:00 UTC and wrote "in 3 days" for a step due
     // Nov 5. It is still Nov 1 in Los Angeles, and the 2nd everywhere else.

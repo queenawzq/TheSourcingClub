@@ -16,6 +16,15 @@ import { emailTransport, sendDueNotificationEmails, serviceClient } from "./_not
  * _notification-sender.js, shared with the daily job (api/cron-daily).
  */
 
+function tokenSubject(token) {
+  try {
+    const payload = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"));
+    return typeof payload?.sub === "string" && payload.sub ? payload.sub : null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function handler(request, response) {
   if (request.method !== "POST" && request.method !== "GET") {
     response.status(405).json({ sent: 0, error: "method not allowed" });
@@ -38,9 +47,21 @@ export default async function handler(request, response) {
       response.status(401).json({ sent: 0, error: "sign in is required" });
       return;
     }
-    const caller = createClient(supabaseUrl, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: who, error: whoError } = await caller.auth.getUser(authorization.slice(7));
-    if (whoError || !who?.user) {
+    // Asked of the database, with the caller's own token, as api/screen-message
+    // does. Not auth.getUser(): that asks whether the session is still alive,
+    // and one signed out elsewhere keeps a token the database accepts for up to
+    // an hour. Its writes were saved and their emails sat queued until the
+    // daily job, because this kick answered 401 with nobody to tell.
+    const token = authorization.slice(7);
+    const subject = tokenSubject(token);
+    const caller = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: me, error: whoError } = subject
+      ? await caller.from("user_profiles").select("id").eq("id", subject).maybeSingle()
+      : { data: null, error: true };
+    if (whoError || !me) {
       response.status(401).json({ sent: 0, error: "sign in is required" });
       return;
     }

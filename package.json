@@ -1,7 +1,7 @@
 {
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "node scripts/check-css-tokens.mjs && node scripts/check-dates.mjs && node scripts/check-adapters.mjs && node scripts/check-message-patterns.mjs && node scripts/check-calls.mjs && node scripts/check-auth-storage.mjs && node scripts/check-review-email.mjs && node scripts/check-earnings.mjs && node scripts/check-stripe-errors.mjs && node scripts/check-dashboard.mjs && vite build && cp script.js dist/script.js && cp -R assets/* dist/assets/",
+    "build": "node scripts/check-css-tokens.mjs && node scripts/check-dates.mjs && node scripts/check-adapters.mjs && node scripts/check-message-patterns.mjs && node scripts/check-calls.mjs && node scripts/check-auth-storage.mjs && node scripts/check-auth-messages.mjs && node scripts/check-review-email.mjs && node scripts/check-earnings.mjs && node scripts/check-stripe-errors.mjs && node scripts/check-dashboard.mjs && vite build && cp script.js dist/script.js && cp -R assets/* dist/assets/",
     "emails": "node scripts/generate-onboarding-emails.mjs",
     "emails:approved": "node scripts/generate-account-approved-email.mjs",
     "emails:test": "node scripts/test-transactional-emails.mjs",
@@ -19,6 +19,7 @@
     "check:dashboard": "node scripts/check-dashboard.mjs",
     "check:messages": "node scripts/check-message-patterns.mjs",
     "check:auth": "node scripts/check-auth-storage.mjs",
+    "check:auth-messages": "node scripts/check-auth-messages.mjs",
     "check:calls": "node scripts/check-calls.mjs",
     "check:earnings": "node scripts/check-earnings.mjs",
     "check:stripe-errors": "node scripts/check-stripe-errors.mjs",

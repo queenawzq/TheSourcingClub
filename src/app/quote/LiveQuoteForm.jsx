@@ -25,6 +25,7 @@ import {
   getLatestQuote,
   getMaterialLines,
   getSampleLines,
+  capacityWindowProblem,
   parseCapacityWindow,
   saveQuote,
   setMaterialLines,
@@ -62,7 +63,7 @@ function priceRange(text, { days = false } = {}) {
   if (!match) return { min: null, max: null };
   const first = Number(match[1].replace(/,/g, ""));
   const second = match[2] == null ? first : Number(match[2].replace(/,/g, ""));
-  const scale = days && /^\s*(?:weeks?|wks?)\b/i.test(said.slice(match.index + match[0].length)) ? 7 : 1;
+  const scale = days && /^\s*(?:weeks?\b|wks?\b|周|週|星期|个星期|個星期)/i.test(said.slice(match.index + match[0].length)) ? 7 : 1;
   // Days are stored whole.
   const value = (amount) => (days ? Math.round(amount * scale) : amount);
   return { min: value(Math.min(first, second)), max: value(Math.max(first, second)) };
@@ -103,12 +104,36 @@ function depositPctFrom(slug) {
   return null;
 }
 
-function missingQuoteFields(values, terms) {
+/** "2 months" has no fixed number of days, and read as a figure it stored 2 days. */
+const IN_MONTHS = /\d\s*(?:months?\b|mos?\b|个月|個月)/i;
+
+const WINDOW_EXAMPLE = "“Jan 5 - Mar 1, 2027 · 300 units”";
+
+/** The sentence for a window that cannot be kept; the form's words for it name the field. */
+function windowRefusal(values, companyType) {
+  const problem = capacityWindowProblem(values.capacityWindow);
+  if (!problem) return null;
+  const field = companyType === "trading" ? "partner production window" : "open capacity window";
+  return problem === "past"
+    ? `${field} (those dates have passed; write the year, like ${WINDOW_EXAMPLE})`
+    : `${field} (write the first and last day, like ${WINDOW_EXAMPLE})`;
+}
+
+/** The form is English; someone typing Chinese gets the same refusal they can read. */
+function windowRefusalZh(values) {
+  if (!capacityWindowProblem(values.capacityWindow)) return "";
+  if (!(navigator.languages ?? []).some((language) => /^zh\b/i.test(language))) return "";
+  return " 可接单时间窗口无法识别，请写明开始和结束日期，例如：2027年1月5日至3月1日 · 300件。";
+}
+
+function missingQuoteFields(values, terms, companyType) {
   const missing = [];
   if (!(firstNumber(values.unitPrice) > 0)) missing.push("unit price");
   if (!(firstNumber(values.quantity) > 0)) missing.push("production quantity");
   if (!(firstNumber(values.leadTime) > 0)) missing.push("bulk lead time");
-  if (!String(values.capacityWindow ?? "").trim()) missing.push("open capacity window");
+  else if (IN_MONTHS.test(values.leadTime)) missing.push("bulk lead time (write days or weeks, like “30-35 days”)");
+  const refusal = windowRefusal(values, companyType);
+  if (refusal) missing.push(refusal);
   const paymentTerms = String(values.paymentTerms ?? "").trim();
   if (!paymentTerms) {
     missing.push("payment terms");
@@ -125,6 +150,12 @@ function missingQuoteFields(values, terms) {
   // morning).
   const todayInDatabase = new Date().toISOString().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(validUntil) || validUntil < todayInDatabase) missing.push("quote valid until");
+  // Not required, but read the same way as the lead time.
+  for (const key of Object.keys(values)) {
+    if (/^sample\.\d+\.timing$/.test(key) && IN_MONTHS.test(values[key] ?? "")) {
+      missing.push(`${values[`sample.${key.split(".")[1]}.stage`]?.trim() || "sample"} timing (write days or weeks, like “10-14 days”)`);
+    }
+  }
   return missing;
 }
 
@@ -273,9 +304,10 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
    */
   async function saveAndReview(values) {
     if (busy || !quote) return;
-    const missing = missingQuoteFields(values, terms);
+    const companyType = profile?.vendor_kind === "trading_company" ? "trading" : "factory";
+    const missing = missingQuoteFields(values, terms, companyType);
     if (missing.length) {
-      setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.`));
+      setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.${windowRefusalZh(values)}`));
       return;
     }
     setBusy(true);
@@ -299,6 +331,12 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     try {
       await persist(values);
       setDraftState("saved");
+      // Saved, but the window stays only on this screen: say so rather than
+      // have it vanish when the draft is reopened.
+      if (String(values.capacityWindow ?? "").trim()) {
+        const refusal = windowRefusal(values, profile?.vendor_kind === "trading_company" ? "trading" : "factory");
+        if (refusal) setError(new Error(`Draft saved, except this field, which was not kept: ${refusal}.${windowRefusalZh(values)}`));
+      }
     } catch (failure) {
       setError(failure);
       setDraftState(null);
