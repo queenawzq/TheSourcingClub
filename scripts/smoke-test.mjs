@@ -279,13 +279,33 @@ if (orgError) fail("create_org RPC", orgError);
 else ok(`created ${org.name} (${org.slug}), type ${org.type}`);
 
 const factory = await signedInUser(`factory-${stamp}@example.com`);
-const { data: dupe } = await brand.client.rpc("create_org", {
+// One person asking twice gets the same company (a lost reply, a second tab);
+// another person with the same name gets their own, with a numbered slug.
+const { data: again } = await brand.client.rpc("create_org", {
   org_name: ORG_NAME,
   org_kind: "brand",
 });
-dupe?.slug === `${ORG_SLUG}-2`
-  ? ok("a duplicate name gets a numbered slug")
-  : fail(`expected slug ${ORG_SLUG}-2, got ${dupe?.slug}`);
+again?.id === org?.id
+  ? ok("the same person asking again gets the same company")
+  : fail(`expected company ${org?.id} back, got ${again?.id}`);
+{
+  const namesake = await signedInUser(`namesake-${stamp}@example.com`);
+  const { data: dupe } = await namesake.client.rpc("create_org", {
+    org_name: ORG_NAME,
+    org_kind: "brand",
+  });
+  dupe?.slug === `${ORG_SLUG}-2`
+    ? ok("a duplicate name from another person gets a numbered slug")
+    : fail(`expected slug ${ORG_SLUG}-2, got ${dupe?.slug}`);
+
+  const twice = await signedInUser(`twice-${stamp}@example.com`);
+  const atOnce = await Promise.all(
+    [1, 2].map(() => twice.client.rpc("create_org", { org_name: `Twice ${stamp}`, org_kind: "factory" })),
+  );
+  atOnce[0].data?.id && atOnce[0].data.id === atOnce[1].data?.id
+    ? ok("two calls at once make one company")
+    : fail("two calls at once", atOnce.map((answer) => answer.error ?? answer.data?.id));
+}
 
 {
   const { data, error } = await brand.client
