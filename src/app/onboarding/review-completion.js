@@ -13,6 +13,9 @@
  *   declined          → the reason and who to write to; no button
  *   anything else     → null: the designed "You're all set" card, unchanged
  */
+import { createElement } from "react";
+import ReviewNote from "../../shared/ReviewNote.jsx";
+
 const OPERATIONS_EMAIL = "operations@contact.sourcing-club.com";
 const WARNING_ICON = "/assets/prototype-icons/circle-warning.svg";
 
@@ -33,6 +36,8 @@ const COPY = {
   },
 };
 
+const noteNode = (note, extra) => createElement(ReviewNote, { note: [note, extra].filter(Boolean).join("\n\n") });
+
 export function reviewCompletion(review, { language = "en", onUpdate } = {}) {
   const copy = COPY[language] ?? COPY.en;
   if (review?.state === "needs_information") {
@@ -40,7 +45,7 @@ export function reviewCompletion(review, { language = "en", onUpdate } = {}) {
       // The title is the designed copy in Chinese; the notification's own
       // title is English.
       title: language === "en" ? review.title || copy.needsTitle : copy.needsTitle,
-      intro: review.message || copy.needsFallback,
+      introNode: noteNode(review.message || copy.needsFallback),
       icon: WARNING_ICON,
       reward: false,
       cta: copy.needsCta,
@@ -50,7 +55,7 @@ export function reviewCompletion(review, { language = "en", onUpdate } = {}) {
   if (review?.state === "declined") {
     return {
       title: language === "en" ? review.title || copy.declinedTitle : copy.declinedTitle,
-      intro: [review.message, copy.contact].filter(Boolean).join("\n\n"),
+      introNode: noteNode(review.message, copy.contact),
       icon: WARNING_ICON,
       reward: false,
     };

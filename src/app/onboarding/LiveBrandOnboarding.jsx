@@ -27,6 +27,7 @@ import { BrandOnboarding, onboardingFieldName } from "../../prototype/main.jsx";
 import { listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
 import { completeOnboarding, getSelectedTerms, resubmitForReview, saveBrandProfile } from "../../lib/domain/profile.js";
 import { reviewCompletion } from "./review-completion.js";
+import ReviewRequestPanel from "./ReviewRequestPanel.jsx";
 import { inviteMember } from "../../lib/domain/org.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
 import {
@@ -382,6 +383,7 @@ export default function LiveBrandOnboarding({ org, user, onComplete, onSignOut, 
       terms={signable.sections}
       fullTerms={signable.full}
       completionPending
+      notice={resubmitting && review?.message ? <ReviewRequestPanel note={review.message} language="en" /> : null}
       completion={reviewCompletion(review, {
         language: "en",
         onUpdate: () => {

@@ -757,3 +757,44 @@ body {
   .settings-invited-table:has(.tsc-team-invite-actions) .tsc-team-invite-actions { justify-content: flex-start; }
 }
 .tsc-team-confirm > p { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 20px; }
+
+/* A reviewer's note: the finish card, and the panel kept on screen while a
+   company updates its profile. Same words as the email (review-note.mjs). */
+.tsc-review-note { text-align: left; }
+.tsc-review-note p,
+.tsc-review-note li { margin: 0; white-space: normal; overflow-wrap: anywhere; }
+.tsc-review-note p + p,
+.tsc-review-note p + ul,
+.tsc-review-note p + ol,
+.tsc-review-note ul + p,
+.tsc-review-note ol + p,
+.tsc-review-note ul + ul,
+.tsc-review-note ol + ol { margin-top: 12px; }
+.tsc-review-note ul,
+.tsc-review-note ol { margin: 0; padding-left: 22px; list-style-position: outside; }
+.tsc-review-note ul { list-style-type: disc; }
+.tsc-review-note ol { list-style-type: decimal; }
+.tsc-review-note li { display: list-item; }
+.tsc-review-note li + li { margin-top: 6px; }
+.tsc-review-request {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid #f2b253;
+  border-radius: 8px;
+  background: #fff7e8;
+  font-size: 14px;
+  line-height: 21px;
+}
+.brand-onboarding-complete .tsc-review-note,
+.factory-onboarding-complete .tsc-review-note {
+  width: 100%;
+  max-width: 478px;
+  justify-self: center;
+  color: #45556c;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+}
+.tsc-review-note li { font-size: inherit; line-height: inherit; color: inherit; }

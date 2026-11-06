@@ -470,10 +470,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
           <section className="billing-method-empty">
             <div>
               <strong>Billing methods</strong>
-              <p>{canSettings ? "Save a card to use when you buy credits." : "Only someone with Settings access at your company can add or remove billing methods."}</p>
+              <p>Save a card to use when you buy credits.</p>
               {billingSaved ? <span className="live-payment-notice">Payment method added.</span> : null}
             </div>
-            {canSettings ? <button className="primary-btn compact-btn" type="button" disabled={billingBusy || !STRIPE_PUBLISHABLE_KEY} onClick={addBillingMethod}>{billingBusy ? "Opening…" : "+ Add payment method"}</button> : null}
+            <button className="primary-btn compact-btn" type="button" disabled={!canSettings || billingBusy || !STRIPE_PUBLISHABLE_KEY} title={canSettings ? undefined : "Needs the Settings access permission"} onClick={addBillingMethod}>{billingBusy ? "Opening…" : "+ Add payment method"}</button>
           </section>
           {cardsError ? <p className="projects-empty projects-error" role="alert">{cardsError.message}</p>
             : !STRIPE_PUBLISHABLE_KEY ? <p className="projects-empty">Card payments are not set up on this site yet.</p>

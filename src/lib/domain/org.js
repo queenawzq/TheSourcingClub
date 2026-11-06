@@ -78,6 +78,8 @@ export function can(org, perm) {
 }
 
 /** The sentence a screen shows instead of a control the person may not use. */
+export const permissionHint = (org, perm) => `Needs the ${permissionLabel(perm, org?.type)} permission`;
+
 export function needsPermission(org, perm) {
   const kind = org?.type === "factory" ? "factory" : "brand";
   return `You need the ${permissionLabel(perm, kind)} permission at ${org?.name ?? "your company"} for this. An owner can give it to you in Settings.`;
@@ -249,6 +251,21 @@ export async function myLastDeparture(userId) {
     "load your account",
   );
   return row ? { orgName: row.org_name, byChoice: row.by_choice } : null;
+}
+
+/**
+ * What an invitation's email link says, before anyone has signed in. Null for
+ * an id that is unknown or malformed; a closed one carries only its state and
+ * company (invitation_preview).
+ */
+export async function invitationPreview(invitationId) {
+  const rows = unwrap(await supabase.rpc("invitation_preview", { invitation_id: invitationId }), "check this invitation");
+  const row = rows?.[0];
+  if (!row) return null;
+  return {
+    id: invitationId, state: row.state, company: row.company_name, kind: row.company_kind,
+    email: row.email, name: row.invited_name, title: row.title, hasAccount: row.has_account,
+  };
 }
 
 export async function acceptInvitation(invitationId) {

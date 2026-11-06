@@ -53,11 +53,10 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
       : found.raw.status !== "submitted"
         ? `This quote was ${found.raw.status}.`
         : !isOwner
-          ? `Only someone with Quote flow at ${orgName || "your company"} can choose a quote. An owner can give it to you in Settings.`
+          ? "Needs the Quote flow permission"
           : null;
-  // Missing Quote flow is said beside the greyed-out button, in the bottom
-  // bar's own neutral text; the other reasons leave nothing to press and stay
-  // in the banner.
+  // Missing Quote flow greys the button out, with the permission on hover; the
+  // other reasons leave nothing to press and stay in the banner.
   const permissionBlock = Boolean(blocked) && Boolean(found) && state.rfq.status === "open"
     && found.raw.status === "submitted" && !isOwner;
 
@@ -133,11 +132,10 @@ export default function LiveContract({ rfqId, quoteId, isOwner, orgName }) {
       onBack={back}
       onNext={award}
       busy={busy || savingAttachments}
-      // Missing Quote flow greys the button out (the reason is the line
-      // below); any other block leaves nothing to press at all.
+      // Any block but a missing permission leaves nothing to press at all.
       primaryLabel={(blocked && !permissionBlock) || files === null ? "" : busy ? "Creating production steps…" : "Create production steps"}
       primaryDisabled={Boolean(blocked)}
-      centerText={permissionBlock ? blocked : ""}
+      primaryTitle={permissionBlock ? blocked : ""}
       rail={found ? {
         vendor: {
           initials: found.view.initials,
