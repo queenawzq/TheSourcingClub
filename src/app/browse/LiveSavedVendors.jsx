@@ -16,6 +16,7 @@ import { initialsOf } from "../profile/factory-profile-view.js";
 import { loadVendorDirectory } from "../profile/load-profile.js";
 import { filterVendors, emptyFilters, vendorCard } from "./vendor-directory-view.js";
 import "./browse.css";
+import { can, permissionHint } from "../../lib/domain/org.js";
 
 /** A saved vendor the brand can no longer read: its name only. */
 const unlistedCard = (row) => ({
@@ -96,6 +97,7 @@ export default function LiveSavedVendors({ org }) {
               onOpen: () => navigate(`/factories/${vendor.id}?from=saved`),
               onMessage: thread ? () => navigate(`/messages/${thread.id}`) : null,
               onQuote: () => navigate(`/rfqs/new?invite=${vendor.id}`),
+              quoteLocked: can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow"),
             };
           },
         }}

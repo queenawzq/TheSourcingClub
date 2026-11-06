@@ -2434,7 +2434,7 @@ function App() {
 }
 
 export function FactoryDashboardPage({
-  companyType = "factory", dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, onInviteFactory, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity,
+  companyType = "factory", dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, purchaseCreditsLocked = "", onInviteFactory, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity,
   // Live mounts pass these; the prototype passes none and is unchanged.
   orgName, rfqs, projects, metrics, capacity, attention, unreadCount,
   // Live: the company's upcoming calls. The design draws its card only on
@@ -2538,7 +2538,7 @@ export function FactoryDashboardPage({
                 <p>{creditNote ?? creditCardCopy.description}</p>
               </div>
               <div className="factory-dashboard-credit-actions">
-                <button className="primary-btn compact-btn" type="button" onClick={onPurchaseCredits}>{creditCardCopy.purchase}</button>
+                <button className="primary-btn compact-btn" type="button" onClick={onPurchaseCredits} disabled={Boolean(purchaseCreditsLocked) || undefined} title={purchaseCreditsLocked || undefined}>{creditCardCopy.purchase}</button>
                 <button className="secondary-btn compact-btn" type="button" onClick={() => setInviteFactoryOpen(true)}>{creditCardCopy.invite}</button>
               </div>
             </section>

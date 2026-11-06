@@ -38,6 +38,7 @@ import { useMessagesChanged } from "../message/use-unread.js";
 import { useActivity } from "./use-activity.jsx";
 import HomeHolding, { HomeNotice, useHomeNotice } from "./HomeHolding.jsx";
 import { brandHasHistory, homeLayout, withinCap } from "./home-layout.mjs";
+import { can, permissionHint } from "../../lib/domain/org.js";
 
 /**
  * A recommended vendor as the designed dashboard card. Like the invite
@@ -45,7 +46,7 @@ import { brandHasHistory, homeLayout, withinCap } from "./home-layout.mjs";
  * request to score against yet), a rating, and an order count a brand may
  * not read. A new brand has no conversations, so there is no Message.
  */
-function toRecommendedCard(vendor, navigate) {
+function toRecommendedCard(vendor, navigate, quoteLocked = "") {
   const name = vendor.orgs?.name ?? "Vendor";
   return {
     // The card's key: two vendors can share a name.
@@ -70,6 +71,7 @@ function toRecommendedCard(vendor, navigate) {
     onOpenProfile: () => navigate(`/factories/${vendor.org_id}?from=dashboard`),
     onMessage: null,
     onRequestQuote: () => navigate(`/rfqs/new?invite=${vendor.org_id}`),
+    quoteLocked,
   };
 }
 
@@ -284,7 +286,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
     setAttempt((value) => value + 1);
   };
 
-  const recommendedCards = useMemo(() => recommended.map((vendor) => toRecommendedCard(vendor, navigate)), [recommended, navigate]);
+  const recommendedCards = useMemo(() => recommended.map((vendor) => toRecommendedCard(vendor, navigate, can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow"))), [recommended, navigate, org]);
   const translatedRecommended = useVendorTranslations(recommendedCards, org.id);
 
   return (
@@ -301,6 +303,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
           : null}
         factories={translatedRecommended}
         goTo={goTo}
+        createQuoteLocked={can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow")}
         onOpenActivity={openActivity}
         orgName={org.name}
         attention={attention}

@@ -16,7 +16,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(77);
+select plan(97);
 
 set local session_replication_role = replica;
 
@@ -459,8 +459,8 @@ select is(
 -- notify_left_payoneer runs at the end of the transaction, and these tests
 -- never commit: asking for it immediately runs what is waiting, then it goes
 -- back to waiting so the next change is seen as a real one would be.
-set constraints public.factory_payout_accounts_left_payoneer immediate;
-set constraints public.factory_payout_accounts_left_payoneer deferred;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
   (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC now pays your bank account at P31 B, instead of Payoneer account other@p31.example.com.%'),
   1,
@@ -487,35 +487,157 @@ select lives_ok(
   $$ select public.set_primary_payout_account((select id from public.factory_payout_accounts where bank_name = 'P31 C')) $$,
   'and the default moves from Payoneer to it'
 );
-set constraints public.factory_payout_accounts_left_payoneer immediate;
-set constraints public.factory_payout_accounts_left_payoneer deferred;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
   (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC now pays your bank account at P31 C ending 1234, instead of Payoneer account back@p31.example.com. If nobody at your company made this change,%'),
   1,
   'moving the default from Payoneer to a bank account tells the company where earnings now go'
 );
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC now pays your bank account at P31 C%'),
+  1,
+  'and says it once: the bank notice does not repeat it'
+);
 select lives_ok(
-  $$ select public.set_primary_payout_account((select id from public.factory_payout_accounts where bank_name = 'P31 B')) $$,
+  $$ insert into public.factory_payout_accounts (org_id, is_primary, bank_name, account_name, account_number_last4) values ('31b00000-0000-0000-0000-0000000000f2', false, 'P31 D', 'P31 Other Ltd', '5678') $$,
+  'a third bank account is added'
+);
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like '%P31 D%'),
+  0,
+  'adding a bank account that is not the default says nothing'
+);
+select lives_ok(
+  $$ select public.set_primary_payout_account((select id from public.factory_payout_accounts where bank_name = 'P31 D')) $$,
   'moving the default from one bank account to another'
 );
-set constraints public.factory_payout_accounts_left_payoneer immediate;
-set constraints public.factory_payout_accounts_left_payoneer deferred;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
-  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC now pays your bank account at P31 B,%'),
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body = 'TSC now pays your bank account at P31 D ending 5678. If nobody at your company made this change, email operations@contact.sourcing-club.com now.'),
   1,
-  'says nothing new: bank to bank stays out of this notice, and only the removal above named P31 B'
+  'bank to bank tells the company, once, by bank and last four'
+);
+select is(
+  (select public.notification_email_category(kind) from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'TSC now pays your bank account at P31 D%'),
+  'account',
+  'and it is the kind that is always emailed'
+);
+select lives_ok(
+  $$ select public.set_primary_payout_account((select id from public.factory_payout_accounts where bank_name = 'P31 D')) $$,
+  'choosing the account that is already the default'
+);
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'TSC now pays your bank account at P31 D%'),
+  1,
+  'changes nothing and says nothing'
+);
+update public.factory_payout_accounts set account_number_last4 = '9999' where bank_name = 'P31 D';
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'The bank account TSC pays changed: it is now P31 D ending 9999, in the name of P31 Other Ltd.%'),
+  1,
+  'editing the default bank account in place is the same swap, and is said'
+);
+update public.factory_payout_accounts set swift = 'P31XUS33' where bank_name = 'P31 D';
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like 'The bank account TSC pays changed: it is now P31 D ending 9999,%'),
+  2,
+  'so is changing only its SWIFT code, which is where the money goes too'
+);
+update public.factory_payout_accounts set account_number_last4 = '1111' where bank_name = 'P31 C';
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and body like '%ending 1111%'),
+  0,
+  'editing one that is not the default says nothing'
+);
+update public.factory_payout_accounts set is_primary = false where bank_name = 'P31 D';
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC no longer pays your bank account at P31 D ending 9999, and you have no default payout method.%'),
+  1,
+  'clearing a default bank account is said, so a two-step swap cannot pass unnoticed'
+);
+update public.factory_payout_accounts set is_primary = true where bank_name = 'P31 C';
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
+select is(
+  (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC now pays your bank account at P31 C ending 1111.%'),
+  1,
+  'and so is the next one taking it'
 );
 select lives_ok(
   $$ select public.set_primary_payout_account((select id from public.factory_payout_accounts where payoneer_email = 'back@p31.example.com')) $$,
   'back on Payoneer'
 );
 update public.factory_payout_accounts set is_primary = false where payoneer_email = 'back@p31.example.com';
-set constraints public.factory_payout_accounts_left_payoneer immediate;
-set constraints public.factory_payout_accounts_left_payoneer deferred;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice immediate;
+set constraints public.factory_payout_accounts_left_payoneer, public.factory_payout_accounts_default_bank_notice deferred;
 select is(
   (select count(*)::int from public.notifications where org_id = '31b00000-0000-0000-0000-0000000000f2' and kind = 'payout_method_changed' and body like 'TSC no longer pays Payoneer account back@p31.example.com, and you have no default payout method.%'),
   1,
   'clearing the default by a direct update is said too'
+);
+reset role;
+
+-- ---------------------- staff's bank note reaches the factory --------------
+select is(
+  (select body from public.notifications where subject_id = '31800000-0000-0000-0000-000000000003' and kind = 'funds_released'),
+  (select format('Sent by bank transfer against %s. TSC''s note: Paid by bank: their Payoneer was closed', o.order_number)
+     from public.order_payments p join public.production_orders o on o.id = p.order_id
+    where p.id = '31800000-0000-0000-0000-000000000003'),
+  'the bell and the email carry the note staff typed'
+);
+select ok(
+  (select body not like '%note%' from public.notifications where subject_id = '31800000-0000-0000-0000-000000000007' and kind = 'funds_released') is not false,
+  'no note typed, none said'
+);
+
+-- ---------------------- the payout alert is always emailed -----------------
+insert into public.user_profiles (id, email) values
+  ('31a00000-0000-0000-0000-000000000004', 'p31-other-owner@example.com')
+on conflict (id) do update set email = excluded.email;
+insert into public.notification_preferences (org_id, rfq_emails, payment_emails, message_emails)
+values ('31b00000-0000-0000-0000-0000000000f2', false, false, false)
+on conflict (org_id) do update set rfq_emails = false, payment_emails = false, message_emails = false;
+
+select is(public.notification_email_category('payout_method_changed'), 'account', 'a payout change has a category of its own');
+select ok(public.notification_email_enabled('31b00000-0000-0000-0000-0000000000f2', 'account'), 'every switch off, and it is still on');
+select ok(not public.notification_email_enabled('31b00000-0000-0000-0000-0000000000f2', 'payments'), 'the switches still work for the rest');
+
+insert into public.notifications (org_id, kind, title, body)
+values ('31b00000-0000-0000-0000-0000000000f2', 'payout_method_changed', 'P31 alert', 'P31 alert body');
+select is(
+  (select count(*)::int from public.notification_email_outbox o join public.notifications n on n.id = o.notification_id
+    where n.org_id = '31b00000-0000-0000-0000-0000000000f2' and n.title = 'P31 alert'
+      and o.category = 'account' and o.status = 'pending' and o.recipient_user_id = '31a00000-0000-0000-0000-000000000004'),
+  1,
+  'it is queued for the member with every switch off'
+);
+select lives_ok($$ select count(*) from public.claim_notification_emails(100) $$, 'claiming the queue');
+select is(
+  (select count(*)::int from public.notification_email_outbox o join public.notifications n on n.id = o.notification_id
+    where n.title = 'P31 alert' and o.status = 'skipped'),
+  0,
+  'and the sender does not skip it as switched off'
+);
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"31a00000-0000-0000-0000-000000000004","role":"authenticated"}', true);
+select throws_ok(
+  $$ select public.set_notification_preference('31b00000-0000-0000-0000-0000000000f2', 'account', false) $$,
+  '22023', 'unknown email setting',
+  'a company cannot turn it off'
 );
 reset role;
 

@@ -52,6 +52,7 @@ const TEMPLATES = {
   "review-declined": (locale, name) => review("declined", locale, name, SAMPLE_NOTE),
   "review-resubmitted": () => resubmissionAlertMessage({ orgId: "00000000-0000-4000-8000-000000000000", orgName: "Sample Factory Ltd.", orgType: "factory", note: SAMPLE_NOTE }, { appUrl: appUrl() }),
   "notification": (locale, name) => sampleNotification(locale, name),
+  "notification-payout-change": (locale, name) => samplePayoutChange(locale, name),
   "team-invite": (locale, name) => sampleTeamInvite(name),
 };
 
@@ -70,6 +71,26 @@ async function sampleTeamInvite(name) {
     expiresAt: new Date(Date.now() + 14 * 86400000).toISOString(),
   }, {
     appUrl: app,
+    logoUrl: EMAIL_LOGO_URL,
+    supportEmail: REPLY_TO,
+    companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
+  });
+}
+
+// The alert everyone at a factory gets when its payout methods change.
+async function samplePayoutChange(locale, name) {
+  const { notificationEmail } = await import("../scripts/generate-notification-email.mjs");
+  return notificationEmail({
+    locale,
+    recipient_name: name,
+    org_name: "Sample Factory Ltd.",
+    org_type: "factory",
+    category: "account",
+    kind: "payout_method_changed",
+    title: "Your payout methods changed",
+    body: "Payoneer account sample@example.com was added. If nobody at your company made this change, email operations@contact.sourcing-club.com now.",
+  }, {
+    appUrl: appUrl(),
     logoUrl: EMAIL_LOGO_URL,
     supportEmail: REPLY_TO,
     companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
