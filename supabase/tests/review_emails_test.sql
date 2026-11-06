@@ -19,7 +19,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(42);
+select plan(45);
 
 create function pg_temp.age_outbox() returns void language sql as $$
   update public.verification_approval_email_outbox
@@ -394,6 +394,25 @@ select is(
   'one email to staff, naming the company and the request it answered'
 );
 reset role;
+
+-- A decline needs a reason (20261106200000).
+set local request.jwt.claims = '{"sub":"c5800000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select throws_ok(
+  $$select public.admin_review_decision('d5800000-0000-0000-0000-0000000000f1', 'declined', null)$$,
+  '22023', null, 'a decline with no reason is refused'
+);
+select throws_ok(
+  $$select public.admin_review_decision_with_tier('d5800000-0000-0000-0000-0000000000f1', 'declined', '   ', null, null)$$,
+  '22023', null, 'and one of spaces, through the path the screen uses'
+);
+reset role;
+select is(
+  (select count(*)::int from public.org_reviews
+    where org_id = 'd5800000-0000-0000-0000-0000000000f1' and state = 'declined' and coalesce(btrim(note), '') = ''),
+  0,
+  'a refused decline records nothing'
+);
 
 select * from finish();
 rollback;
