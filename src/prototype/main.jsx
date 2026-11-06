@@ -4331,6 +4331,9 @@ export function HomeScreen({
   showSearch = true,
   onViewRfq,
   onViewProject,
+  // Live: drawn in place of either layout until the reads have answered. The
+  // prototype passes none.
+  holding,
 }) {
   const isNewcomer = dashboardState === "newcomer";
   const [inviteBrandOpen, setInviteBrandOpen] = useState(false);
@@ -4407,7 +4410,7 @@ export function HomeScreen({
         </div>
       </section>
       )}
-      {isNewcomer ? (
+      {holding ?? (isNewcomer ? (
         <>
           <div className="home-recommendations-layout">
             <section className="home-recommended-factories">
@@ -4551,7 +4554,7 @@ export function HomeScreen({
             </div>
           </section>
         </>
-      )}
+      ))}
       {inviteBrandOpen && (
         <InviteBrandModal onInvite={savings?.onInvite} intro={savings?.inviteIntro} message={savings?.inviteMessage} onClose={() => setInviteBrandOpen(false)} />
       )}

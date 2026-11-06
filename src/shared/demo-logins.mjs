@@ -38,5 +38,8 @@ export const DEMO_LOGINS = {
   // answered with "already has an account" instead of "your own email
   // domain", which the database checks first.
   otherDomainFactory: { role: "Factory, other domain", name: "Lakeside Mills", email: "demo-lakeside@example.net" },
+  // One person in three companies, each a different dashboard: switching in the
+  // sidebar goes from orders to nothing yet to a factory's.
+  switcher: { role: "Three companies, to switch between", name: "Demo Switcher", email: "demo-switcher@example.com" },
   admin: { role: "Admin", name: "Demo Admin", email: "demo-admin@example.com", admin: true },
 };
