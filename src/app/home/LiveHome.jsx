@@ -37,7 +37,7 @@ import { useDashboardCalls } from "../message/use-calls.js";
 import { useMessagesChanged } from "../message/use-unread.js";
 import { useActivity } from "./use-activity.jsx";
 import HomeHolding, { HomeNotice, useHomeNotice } from "./HomeHolding.jsx";
-import { brandHasHistory, homeLayout, withinCap } from "./home-layout.mjs";
+import { brandHasHistory, followRead, homeLayout, withinCap } from "./home-layout.mjs";
 
 /**
  * A recommended vendor as the designed dashboard card. Like the invite
@@ -179,13 +179,21 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
     isFactory,
     onError: () => setNotice("That didn't go through. Check your connection and try again."),
   });
-  const [recommended, setRecommended] = useState([]);
+  const [vendors, setVendors] = useState({ list: [], answered: false });
+  const recommended = vendors.list;
   // What became of the invite just sent, on the Savings card it came from.
   const [inviteSent, setInviteSent] = useState(null);
   const { calls, zones, now, loaded: callsLoaded } = useDashboardCalls(org.id);
 
   useEffect(() => {
     let cancelled = false;
+    // Slower than the cap, the page draws without them and they fill their
+    // panel when they come. On a slow line that is the usual case, not a failure.
+    const vendorsRead = isFactory ? Promise.resolve([]) : loadRecommendedVendors(org.id).catch((failure) => {
+      console.warn("recommended vendors", failure?.message);
+      return [];
+    });
+    const stopFollowing = followRead(vendorsRead, setVendors);
     Promise.all([
       dashboardSnapshot(org.id),
       listRfqs(org.id),
@@ -193,14 +201,10 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
       listThreads(org.id),
       savingsFor(org.id),
       listArchivedOrderIds(org.id),
-      // Read with the rest so the first full paint is the final one. Without
-      // them the dashboard still draws: Browse finds the same vendors.
-      isFactory ? [] : withinCap(loadRecommendedVendors(org.id).catch((failure) => {
-        console.warn("recommended vendors", failure?.message);
-        return [];
-      }), []),
+      // Waited for with the rest, so the first full paint is usually the final one.
+      withinCap(vendorsRead, null),
     ])
-      .then(async ([snapshot, rfqs, orders, threads, savings, archivedIds, vendors]) => {
+      .then(async ([snapshot, rfqs, orders, threads, savings, archivedIds]) => {
         // The snapshot owes step amounts; the brand pays each with the
         // service fee on top, as its Payments page and the Fund screen say.
         // Same payments as payments_due_cents: due or failed.
@@ -214,7 +218,6 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
             (messagesByRfq.get(thread.rfq_id) ?? 0) + (Number(thread.message_count) || 0),
           );
         }
-        setRecommended(vendors);
         setState({
           snapshot,
           owed,
@@ -237,7 +240,10 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         console.warn("dashboard", failure?.message);
         setFailed(true);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      stopFollowing();
+    };
   }, [org.id, isFactory, attempt]);
 
   // "N unread messages" moves while the dashboard is open, as the bell does.
@@ -300,6 +306,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
           ? <HomeHolding failed={layout === "failed"} onRetry={retry} />
           : null}
         factories={translatedRecommended}
+        vendorsPending={!vendors.answered}
         goTo={goTo}
         onOpenActivity={openActivity}
         orgName={org.name}
