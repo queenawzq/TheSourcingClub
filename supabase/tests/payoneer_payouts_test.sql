@@ -315,8 +315,8 @@ select is(
   'and no Payoneer payout is recorded for it'
 );
 select lives_ok(
-  $$ select public.release_payment_to_factory('31800000-0000-0000-0000-000000000007') $$,
-  'a bank-paid factory still needs no note'
+  $$ select public.release_payment_to_factory('31800000-0000-0000-0000-000000000007', 'BANK-REF-7') $$,
+  'a bank-paid factory is marked with its reference'
 );
 select throws_ok(
   $$ select public.release_payment_to_factory('31800000-0000-0000-0000-000000000007', 'from a stale tab') $$,
@@ -600,8 +600,8 @@ select is(
   'the bell and the email carry the note staff typed'
 );
 select ok(
-  (select body not like '%note%' from public.notifications where subject_id = '31800000-0000-0000-0000-000000000007' and kind = 'funds_released') is not false,
-  'no note typed, none said'
+  (select body like '%BANK-REF-7%' from public.notifications where subject_id = '31800000-0000-0000-0000-000000000007' and kind = 'funds_released'),
+  'and the factory reads it'
 );
 
 -- ---------------------- the payout alert is always emailed -----------------
