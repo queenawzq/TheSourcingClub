@@ -2516,6 +2516,7 @@ export function SettingsScreen({
   inviteLocked = "",
   saveLocked = "",
   notificationEmailsLocked = "",
+  onChangePassword,
   // Live only: what each role may do is fixed (owners everything), so the
   // ticks are shown, not edited, and this line says why.
   permissionsNote = "",
@@ -2544,10 +2545,24 @@ export function SettingsScreen({
     const timer = window.setTimeout(() => setSaveNotice(null), 6000);
     return () => window.clearTimeout(timer);
   }, [saveNotice]);
+  const [changingPassword, setChangingPassword] = useState(false);
+  const changePassword = async () => {
+    const input = (name) => settingsRef.current?.querySelector(`[name="${name}"]`);
+    setChangingPassword(true); setSaveNotice(null);
+    try {
+      await onChangePassword({ current: input("current-password").value, next: input("new-password").value });
+      input("current-password").value = "";
+      input("new-password").value = "";
+      setSaveNotice({ text: "Password changed" });
+    } catch (failure) { setSaveNotice({ error: true, text: failure.message || "Your password could not be changed" }); }
+    finally { setChangingPassword(false); }
+  };
   const saveAccount = async () => {
     if (savingAccount) return;
     const field = (name) => settingsRef.current?.querySelector(`[name="${name}"]`)?.value ?? "";
-    if (field("new-password") || field("current-password")) { setSaveNotice({ error: true, text: "Password changes are not saved here. Use Forgot password on the sign-in page." }); return; }
+    if (onChangePassword) {
+      if (field("new-password")) { setSaveNotice({ error: true, text: "Your new password isn't saved yet. Press Change password under it." }); return; }
+    } else if (field("new-password") || field("current-password")) { setSaveNotice({ error: true, text: "Password changes are not saved here. Use Forgot password on the sign-in page." }); return; }
     setSavingAccount(true); setSaveNotice(null);
     const saveStarted = Date.now();
     try {
@@ -2761,6 +2776,12 @@ export function SettingsScreen({
                   <input name="new-password" placeholder="Create new password" type="password" />
                 </label>
               </div>
+              {/* Live: a person's own password, so no company permission gates it. */}
+              {onChangePassword ? (
+                <button className="secondary-btn compact-btn tsc-change-password" type="button" disabled={changingPassword} onClick={changePassword}>
+                  {changingPassword ? "Changing…" : "Change password"}
+                </button>
+              ) : null}
             </section>
 
         <section className="settings-section" id="settings-payment">
@@ -4309,6 +4330,7 @@ export function HomeScreen({
   goTo,
   onOpenActivity,
   // Live mounts pass these; the prototype passes none and is unchanged.
+  createQuoteLocked = "",
   orgName,
   attention,
   factories,
@@ -4399,7 +4421,7 @@ export function HomeScreen({
           <button className="pill" type="button">Find a denim vendor with MOQ under 500</button>
           <button className="pill" type="button">Show me vendors with GOTS certification</button>
           <button className="pill" type="button">What do I still need for verification?</button>
-          <button className="pill" type="button" onClick={() => goTo("describe")}>Start a new project</button>
+          <button className="pill" type="button" onClick={() => goTo("describe")} disabled={Boolean(createQuoteLocked) || undefined} title={createQuoteLocked || undefined}>Start a new project</button>
         </div>
       </section>
       )}
@@ -4428,7 +4450,7 @@ export function HomeScreen({
                   <p>Build a clear request, find matching factories, and compare quotes.</p>
                 </div>
                 <div className="home-new-brand-actions">
-                  <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Create new quote</button>
+                  <button className="primary-btn" type="button" onClick={() => goTo("describe")} disabled={Boolean(createQuoteLocked) || undefined} title={createQuoteLocked || undefined}>Create new quote</button>
                   <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse vendors</button>
                 </div>
               </section>
@@ -4484,7 +4506,7 @@ export function HomeScreen({
                   <h3>Find your next production partner</h3>
                   <p>Browse verified vendors or create a request to receive comparable quotes.</p>
                   <div>
-                    <button className="primary-btn compact-btn" type="button" onClick={() => goTo("describe")}>Create quote request</button>
+                    <button className="primary-btn compact-btn" type="button" onClick={() => goTo("describe")} disabled={Boolean(createQuoteLocked) || undefined} title={createQuoteLocked || undefined}>Create quote request</button>
                     <button className="secondary-btn compact-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse vendors</button>
                   </div>
                 </div>
@@ -7577,7 +7599,7 @@ export function RfqsScreen({
   onEditRfq,
   onInviteVendors,
   onArchiveRfq,
-  archiveLocked = "",
+  quoteFlowLocked = "",
 }) {
   const [activeTab, setActiveTab] = useState("active");
   const [rfqTabs, setRfqTabs] = useState([
@@ -7672,7 +7694,7 @@ export function RfqsScreen({
           <h1>Quotes</h1>
           <p>Track live vendor quote requests, compare responses, and move selected quotes toward contract terms.</p>
         </div>
-        <button className="primary-btn" type="button" onClick={() => goTo("describe")}>Create new quote</button>
+        <button className="primary-btn" type="button" onClick={() => goTo("describe")} disabled={Boolean(quoteFlowLocked) || undefined} title={quoteFlowLocked || undefined}>Create new quote</button>
       </header>
 
       <section className="rfqs-controls" aria-label="Quote filters">
@@ -7811,7 +7833,7 @@ export function RfqsScreen({
               onEdit={onEditRfq}
               onInvite={onInviteVendors}
               onArchive={onArchiveRfq}
-              archiveLocked={archiveLocked}
+              quoteFlowLocked={quoteFlowLocked}
               key={rfq.id ?? rfq.title}
             />
           ))
@@ -7821,7 +7843,7 @@ export function RfqsScreen({
   );
 }
 
-function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, onArchive, archiveLocked = "" }) {
+function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, onArchive, quoteFlowLocked = "" }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   // Defaulted: a live mount that supplies fewer cells than the design draws
@@ -7887,11 +7909,11 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, o
                 {/* A request that is awarded or cancelled can no longer be
                     edited or widened; live cards say so with archivable. */}
                 {rfq.archivable !== false && (
-                  <button type="button" role="menuitem" disabled={Boolean(archiveLocked) || undefined} title={archiveLocked || undefined} onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
+                  <button type="button" role="menuitem" disabled={Boolean(quoteFlowLocked) || undefined} title={quoteFlowLocked || undefined} onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
                 )}
-                <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate quote</button>
+                <button type="button" role="menuitem" disabled={Boolean(quoteFlowLocked) || undefined} title={quoteFlowLocked || undefined} onClick={() => goTo("describe")}>Duplicate quote</button>
                 {rfq.archivable !== false && (
-                  <button type="button" role="menuitem" disabled={Boolean(archiveLocked) || undefined} title={archiveLocked || undefined} onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
+                  <button type="button" role="menuitem" disabled={Boolean(quoteFlowLocked) || undefined} title={quoteFlowLocked || undefined} onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
                 )}
                 {/* Live, archiving cancels the request; a request that is
                     already awarded or cancelled has nothing left to archive. */}
@@ -7899,8 +7921,8 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, o
                   <button
                     type="button"
                     role="menuitem"
-                    disabled={Boolean(archiveLocked) || undefined}
-                    title={archiveLocked || undefined}
+                    disabled={Boolean(quoteFlowLocked) || undefined}
+                    title={quoteFlowLocked || undefined}
                     onClick={() => {
                       setMenuOpen(false);
                       onArchive?.(rfq);

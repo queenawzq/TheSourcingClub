@@ -36,6 +36,7 @@ import { dashboardCalls, inviteAttention } from "../message/live-calls.js";
 import { useDashboardCalls } from "../message/use-calls.js";
 import { useMessagesChanged } from "../message/use-unread.js";
 import { useActivity } from "./use-activity.jsx";
+import { can, permissionHint } from "../../lib/domain/org.js";
 
 /**
  * A recommended vendor as the designed dashboard card. Like the invite
@@ -280,6 +281,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
         dashboardState={rfqs.length || projects.length ? "active" : "newcomer"}
         factories={translatedRecommended}
         goTo={goTo}
+        createQuoteLocked={can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow")}
         onOpenActivity={openActivity}
         orgName={org.name}
         attention={attention}
