@@ -14,6 +14,7 @@ import React, { useState } from "react";
 import { ProjectsScreen } from "../../prototype/main.jsx";
 import { DataProvider } from "../../lib/data/DataProvider.jsx";
 import { duplicateRfqFromOrder } from "../../lib/domain/rfq.js";
+import { can, permissionHint } from "../../lib/domain/org.js";
 import { useRouter } from "../../lib/router.jsx";
 import { createLiveAdapter } from "../live-adapter.js";
 import useOrderCancel from "./useOrderCancel.jsx";
@@ -47,7 +48,7 @@ export default function LiveBrandOrders({ org, user, goTo, onViewOrder }) {
         <p className="projects-empty projects-error" role="alert">{(reorderError || cancelStore.error).message}</p>
       )}
       <DataProvider adapter={createLiveAdapter({ org, isFactory: false, user })}>
-        <ProjectsScreen goTo={goTo} onViewOrder={onViewOrder} onReorder={reorder} live tabStore={tabStore} cancelStore={cancelStore} />
+        <ProjectsScreen goTo={goTo} onViewOrder={onViewOrder} onReorder={reorder} reorderLocked={can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow")} live tabStore={tabStore} cancelStore={cancelStore} />
       </DataProvider>
       {cancelStore.dialog}
     </main>
