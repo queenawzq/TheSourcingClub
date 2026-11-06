@@ -8062,6 +8062,8 @@ export function ProjectsScreen({
   // Live passes this: "Reorder style" starts a new draft request from the
   // order. The prototype keeps the design's jump to the contract screen.
   onReorder = null,
+  // Live only: why this person may not start one ("" or absent when they may).
+  reorderLocked = "",
   live = false,
   // Live passes the company's saved tabs (src/app/order/useOrderTabs.js); the
   // prototype passes nothing and keeps its tabs in local state, as drawn.
@@ -8379,6 +8381,7 @@ export function ProjectsScreen({
               onViewOrder={onViewOrder}
               setSelectedReorderProject={setSelectedReorderProject}
               onReorder={onReorder}
+              reorderLocked={reorderLocked}
               key={project.id ?? project.title}
             />
           ))
@@ -8389,7 +8392,7 @@ export function ProjectsScreen({
 }
 
 
-function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, cancelAction = null, onViewOrder, setSelectedReorderProject = null, onReorder = null }) {
+function ProjectListCard({ project, goTo, actionLabel = "View details", customTabs = [], isFiled = null, onToggleTab = null, archiveAction = undefined, cancelAction = null, onViewOrder, setSelectedReorderProject = null, onReorder = null, reorderLocked = "" }) {
   const projectFacts = [
     ["Current step", project.currentStep],
     ["Next due", project.nextDue]
@@ -8414,6 +8417,8 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
                 <button
                   type="button"
                   role="menuitem"
+                  disabled={Boolean(reorderLocked) || undefined}
+                  title={reorderLocked || undefined}
                   onClick={() => {
                     close();
                     if (onReorder) {

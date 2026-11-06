@@ -2918,6 +2918,7 @@ button {
   font-size: 13px;
   font-weight: 600;
   line-height: 18px;
+  overflow-wrap: anywhere;
 }
 
 .brand-profile-redesign .factory-profile-status-meter {
@@ -8151,6 +8152,13 @@ select {
 
 .project-overflow-menu button:hover {
   background: #f3f7fb;
+}
+
+.project-overflow-menu button:disabled,
+.project-overflow-menu button:disabled:hover {
+  background: transparent;
+  color: #9aa8bc;
+  cursor: not-allowed;
 }
 
 .project-overflow-submenu {

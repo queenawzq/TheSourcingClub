@@ -3219,8 +3219,8 @@ export function FactoryManufacturingProfilePage({ language, onViewCompletion, li
         </div>
       </div>
       {/* In the factory's own preview this shows what brands will press. */}
-      <button className="primary-btn" type="button" onClick={live?.contact?.onClick} title={live && !live.publicView ? "Brands use this to message you" : undefined}>{live?.contact?.label ?? "Contact factory"}</button>
-      {live?.onRequestQuote && live?.contact?.label !== "Request quote" && <button className="secondary-btn" type="button" onClick={live.onRequestQuote}>Request quote</button>}
+      <button className="primary-btn" type="button" onClick={live?.contact?.onClick} disabled={Boolean(live?.contact?.quoteLocked) || undefined} title={live?.contact?.quoteLocked || (live && !live.publicView ? "Brands use this to message you" : undefined)}>{live?.contact?.label ?? "Contact factory"}</button>
+      {live?.onRequestQuote && live?.contact?.label !== "Request quote" && <button className="secondary-btn" type="button" onClick={live.onRequestQuote} disabled={Boolean(live.quoteLocked) || undefined} title={live.quoteLocked || undefined}>Request quote</button>}
     </section>
   );
 

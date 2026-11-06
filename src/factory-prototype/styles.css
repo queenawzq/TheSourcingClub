@@ -4294,6 +4294,7 @@ body:has(.factory-onboarding-page) {
   color: #0b1020;
   font-size: 13px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 

@@ -1,4 +1,5 @@
 import { applyPaymentIntent, callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
 
 /**
  * The brand starts paying for a step: returns the client secret the Stripe
@@ -139,7 +140,8 @@ export default async function handler(request, response) {
 
     return reply(response, 200, { clientSecret: intent.client_secret, ...details });
   } catch (failure) {
-    return reply(response, 502, { error: failure.message });
+    logStripeFailure("stripe-checkout", failure);
+    return reply(response, 502, { error: sentenceFor(failure, "The payment form could not be opened, and nothing was charged. Try again in a few minutes.") });
   }
 }
 
