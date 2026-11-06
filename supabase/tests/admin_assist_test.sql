@@ -228,8 +228,11 @@ select ok(position('P22 Unstamped' in public.admin_review_assist_input('d2200000
 select is((select c ->> 'result' from jsonb_array_elements(public.admin_review_assist_input('d2200000-0000-0000-0000-00000000000e') -> 'existing_checks') c
             where c ->> 'check' = 'Duplicate company signal'),
   'Review', 'though the check still says there is one');
+-- Run as the owner: nothing signed in may call this directly (20261104002000).
+reset role;
 select ok(position('P22 Unstamped' in public.org_verification_checks('d2200000-0000-0000-0000-00000000000e')::text) > 0,
   '(the reviewer''s own check does name it, so the test above means something)');
+set local role authenticated;
 select throws_ok($$select public.admin_review_assist_input('00000000-0000-0000-0000-000000000000')$$,
   'P0002', null, 'staff are told when the company does not exist');
 
