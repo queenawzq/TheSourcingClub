@@ -111,6 +111,7 @@ export default async function handler(request, response) {
       key: `team-invite-${invite.id}-${new Date(invite.expires_at).getTime()}`,
       to: invite.email,
       message: teamInviteEmail({
+        id: invite.id,
         companyName: org?.name,
         kind: org?.type,
         inviterName: inviter?.full_name,

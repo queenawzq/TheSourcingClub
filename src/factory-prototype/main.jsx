@@ -931,7 +931,6 @@ const factoryMainZhText = {
   "Repeat brands": "复购品牌",
   "Lead time": "交期",
   "Factory name": "工厂名称",
-  "Only an owner can change the name.": "只有所有者才能更改名称。",
   "Year founded": "成立年份",
   "Website URL": "官网",
   "Factory location": "工厂所在地",
@@ -2444,6 +2443,11 @@ export function FactoryDashboardPage({
   // Live: the credits card's line and the invite dialog's, in words the
   // product keeps. The prototype passes neither and keeps the design's copy.
   creditNote, inviteIntro,
+  // Live: drawn in place of the dashboard until the reads have answered. The
+  // prototype passes none.
+  holding,
+  // Live: something later that did not go through, above the dashboard.
+  notice,
 }) {
   const capacityUnits = capacity?.units ?? getCapacityUnitRange(capacityValue);
   const [inviteFactoryOpen, setInviteFactoryOpen] = useState(false);
@@ -2471,6 +2475,7 @@ export function FactoryDashboardPage({
   return (
     <main className="factory-dashboard-page">
       <div className="factory-dashboard-shell">
+        {notice}
         <header className="factory-dashboard-header">
           <h1>{language === "zh" ? `你好，${who}` : `Hi ${who}`}</h1>
           <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">
@@ -2479,7 +2484,7 @@ export function FactoryDashboardPage({
           </button>
         </header>
 
-        <section className="factory-dashboard-grid" aria-label="Factory dashboard overview">
+        {holding ?? <section className="factory-dashboard-grid" aria-label="Factory dashboard overview">
           <div className="factory-dashboard-main-stack">
             {!isNewcomer && (
               <div className="factory-dashboard-metrics">
@@ -2625,7 +2630,7 @@ export function FactoryDashboardPage({
               ))}
             </FactoryDashboardPanel>
           )}
-        </section>
+        </section>}
       </div>
       {inviteFactoryOpen && (
         <InviteFactoryModal language={language} intro={inviteIntro} onInvite={onInviteFactory} onClose={() => setInviteFactoryOpen(false)} />
@@ -4375,8 +4380,7 @@ function ProfileEditField({ label, value, onChange, lockedReason = "" }) {
   return (
     <label className="factory-onboarding-field">
       <span>{label}</span>
-      <input value={value} readOnly={lockedReason ? true : undefined} onChange={(event) => onChange(event.target.value)} />
-      {lockedReason ? <small className="factory-profile-field-locked" data-testid="name-locked">{lockedReason}</small> : null}
+      <input value={value} readOnly={lockedReason ? true : undefined} title={lockedReason || undefined} data-testid={lockedReason ? "name-locked" : undefined} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -5921,14 +5925,13 @@ export function FactoryReadOnlyRfqPage({ project, companyType = "factory", langu
           {onWithdraw ? (
             <div className="factory-rfq-read-actions">
               {onEdit !== null && (
-                <button className="secondary-btn" type="button" onClick={onEdit} disabled={Boolean(quoteBlocked) || undefined}>Edit quote</button>
+                <button className="secondary-btn" type="button" onClick={onEdit} disabled={Boolean(quoteBlocked) || undefined} title={quoteBlocked || undefined}>Edit quote</button>
               )}
-              <button className="secondary-btn" type="button" data-testid="withdraw-quote" onClick={onWithdraw} disabled={Boolean(quoteBlocked) || undefined}>Withdraw quote</button>
+              <button className="secondary-btn" type="button" data-testid="withdraw-quote" onClick={onWithdraw} disabled={Boolean(quoteBlocked) || undefined} title={quoteBlocked || undefined}>Withdraw quote</button>
             </div>
           ) : onEdit !== null && (
-            <button className="secondary-btn factory-rfq-edit-btn" type="button" onClick={onEdit} disabled={Boolean(quoteBlocked) || undefined}>Edit quote</button>
+            <button className="secondary-btn factory-rfq-edit-btn" type="button" onClick={onEdit} disabled={Boolean(quoteBlocked) || undefined} title={quoteBlocked || undefined}>Edit quote</button>
           )}
-          {quoteBlocked && (onWithdraw || onEdit !== null) && <p className="muted factory-rfq-read-blocked" data-testid="quote-blocked">{quoteBlocked}</p>}
         </header>
 
         <div className="factory-submit-layout factory-rfq-read-layout">
@@ -7580,6 +7583,8 @@ export function FactoryOnboarding({
   completion = null,
   // Live only: a panel drawn after the step's content (matching, on review).
   extra = null,
+  // Live only: drawn at the top of the step (what staff asked for).
+  notice = null,
 }) {
   const cardRef = useRef(null);
   const copy = companyType === "trading" ? tradingOnboardingCopy[language] : onboardingCopy[language];
@@ -7636,6 +7641,7 @@ export function FactoryOnboarding({
         onChange={clearFieldError}
         onClick={clearFieldError}
       >
+        {notice}
         {!isLast && (
           <div className="factory-onboarding-card-header">
             {isFirst && <img className="factory-onboarding-label" src="/assets/onboarding-sourcing-club-label-clean.png" alt="" />}
@@ -8249,7 +8255,7 @@ function FactoryOnboardingStep({
     <div className="factory-onboarding-complete">
       <img className="factory-onboarding-success-icon" src={content.icon ?? "/assets/prototype-icons/success.svg"} alt="" />
       <h1>{content.title}</h1>
-      <p>{content.intro}</p>
+      {content.introNode ?? <p>{content.intro}</p>}
       {content.reward !== false && <section className="factory-onboarding-credit-reward">
         <span>{language === "zh" ? "验证奖励" : "Verification reward"}</span>
         <strong>{language === "zh" ? "500 额度" : "500 credits"}</strong>
@@ -9498,12 +9504,11 @@ export function FactoryProjectDetail({
               </span>
             )}
             <div className="factory-side-actions">
-              <button className="primary-btn" type="button" onClick={onSendQuote} disabled={Boolean(sendQuoteBlocked) || undefined}>Send quote</button>
+              <button className="primary-btn" type="button" onClick={onSendQuote} disabled={Boolean(sendQuoteBlocked) || undefined} title={sendQuoteBlocked || undefined}>Send quote</button>
               <button className="secondary-btn" type="button" onClick={onToggleSave}>
                 {saved ? "Saved" : "Save request"}
               </button>
             </div>
-            {sendQuoteBlocked && <p className="muted" data-testid="send-quote-blocked">{sendQuoteBlocked}</p>}
           </section>
 
           <section className="factory-side-card">

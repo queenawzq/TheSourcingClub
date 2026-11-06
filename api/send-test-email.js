@@ -35,13 +35,20 @@ function appUrl() {
 }
 
 const SAMPLE_NOTE = "This is a sample note from a reviewer. In a real email it is whatever the reviewer wrote.";
+// A request for more information has a shape: a summary, what to upload, a
+// friendly close. The sample shows it, so a test can check the bullets.
+// `check:review-email` pins that both parse into a list.
+export const SAMPLE_REQUEST = {
+  en: "Your profile is nearly complete, but a few items are still missing.\n\n- A current business registration certificate showing your legal name\n- Your company website, added under Factory details\n- A short walkthrough video of your production floor\n\nWe look forward to receiving these.",
+  zh: "你的资料已基本完成，但还缺少以下几项。\n\n- 最新的营业执照，需显示公司法定名称\n- 公司网站，请填写在工厂详情中\n- 一段生产车间的短视频\n\n期待收到你的资料。",
+};
 
 const TEMPLATES = {
   "onboarding-brand": async () => (await loadOnboardingEmail())("brand", sampleOnboarding("Sample Brand Co.", "/app.html")),
   "onboarding-factory": async () => (await loadOnboardingEmail())("factory", sampleOnboarding("Sample Factory Ltd.", "/app.html?portal=factory")),
   "onboarding-trading-company": async () => (await loadOnboardingEmail())("trading-company", sampleOnboarding("Sample Trading Co.", "/app.html?portal=factory")),
   "review-approved": (locale, name) => review("approved", locale, name, ""),
-  "review-needs-information": (locale, name) => review("needs_information", locale, name, SAMPLE_NOTE),
+  "review-needs-information": (locale, name) => review("needs_information", locale, name, SAMPLE_REQUEST[locale === "zh" ? "zh" : "en"]),
   "review-declined": (locale, name) => review("declined", locale, name, SAMPLE_NOTE),
   "review-resubmitted": () => resubmissionAlertMessage({ orgId: "00000000-0000-4000-8000-000000000000", orgName: "Sample Factory Ltd.", orgType: "factory", note: SAMPLE_NOTE }, { appUrl: appUrl() }),
   "notification": (locale, name) => sampleNotification(locale, name),

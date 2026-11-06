@@ -1441,6 +1441,10 @@
   margin-top: -4px;
 }
 
+.admin-review-modal .admin-request-message textarea {
+  min-height: 220px;
+}
+
 .admin-request-ai-error {
   margin: -8px 0 0;
   color: #c83030;

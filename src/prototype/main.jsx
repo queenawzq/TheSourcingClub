@@ -1103,6 +1103,7 @@ export function FlowShell({
   // Live only: a heading for what actually happened (a bank payment still
   // clearing is not yet "funded").
   heading = null,
+  primaryTitle = "",
 }) {
   const designMeta = screenMeta[screen] ?? { step: 0, title: "", description: "", cta: "Continue" };
   const baseMeta = heading ? { ...designMeta, ...heading } : designMeta;
@@ -1145,6 +1146,7 @@ export function FlowShell({
           centerAction={centerAction}
           secondaryAction={secondaryAction}
           primaryDisabled={primaryDisabled}
+          primaryTitle={primaryTitle}
         />
       )}
     </main>
@@ -2509,7 +2511,11 @@ export function SettingsScreen({
   // Live only: removes a saved card (the brand's list, the factory's Billing
   // tab), and the line a member reads where an owner gets the buttons.
   onRemoveBillingMethod,
-  billingMethodNote = "",
+  billingLocked = "",
+  paymentLocked = "",
+  inviteLocked = "",
+  saveLocked = "",
+  notificationEmailsLocked = "",
   // Live only: what each role may do is fixed (owners everything), so the
   // ticks are shown, not edited, and this line says why.
   permissionsNote = "",
@@ -2710,7 +2716,7 @@ export function SettingsScreen({
             <p>{isFactory ? (companyType === "trading" ? "Trading company account" : "Factory account") : "Brand account"}</p>
             <h2>Account settings</h2>
           </div>
-          <button className="primary-btn" type="button" onClick={saveAccount} disabled={savingAccount || accountLocked} aria-busy={savingAccount}>{savingAccount ? "Saving…" : "Save changes"}</button>
+          <button className="primary-btn" type="button" onClick={saveAccount} disabled={savingAccount || accountLocked} title={saveLocked || undefined} aria-busy={savingAccount}>{savingAccount ? "Saving…" : "Save changes"}</button>
           {saveNotice && createPortal(<div className="toast settings-save-toast" role={saveNotice.error ? "alert" : "status"}>{saveNotice.text}</div>, document.body)}
         </header>
         {saveNote ? <p className="tsc-team-save-note" role="status">{saveNote}</p> : null}
@@ -2793,10 +2799,9 @@ export function SettingsScreen({
                           ? "Add a bank account to receive released earnings."
                           : "Save a card to use when you purchase credits."}
                       </p>
-                      {paymentTab === "billing" && billingMethodNote ? <p>{billingMethodNote}</p> : null}
                     </div>
-                    {paymentTab === "billing" && onAddBillingMethod ? (
-                      <button className="primary-btn compact-btn" type="button" onClick={onAddBillingMethod}>+ Add payment method</button>
+                    {paymentTab === "billing" && (onAddBillingMethod || billingLocked) ? (
+                      <button className="primary-btn compact-btn" type="button" onClick={onAddBillingMethod} disabled={Boolean(billingLocked) || undefined} title={billingLocked || undefined}>+ Add payment method</button>
                     ) : null}
                   </div>
                 ) : null}
@@ -2848,13 +2853,8 @@ export function SettingsScreen({
                     </div>
                   </div>
                 ))}
-                {paymentTab === "billing" && billingMethodNote && factoryMethods.billing.length > 0 ? (
-                  <div className="settings-payment-page-card">
-                    <div className="settings-payment-page-copy"><p>{billingMethodNote}</p></div>
-                  </div>
-                ) : null}
-                {paymentTab === "earnings" && onAddPaymentMethod ? (
-                  <button className="settings-add-btn" type="button" onClick={onAddPaymentMethod}>Manage payout methods</button>
+                {paymentTab === "earnings" && (onAddPaymentMethod || paymentLocked) ? (
+                  <button className="settings-add-btn" type="button" onClick={onAddPaymentMethod} disabled={Boolean(paymentLocked) || undefined} title={paymentLocked || undefined}>Manage payout methods</button>
                 ) : null}
               </>
             ) : livePaymentMethods?.length === 0 ? (
@@ -2862,10 +2862,9 @@ export function SettingsScreen({
                 <div className="settings-payment-page-copy">
                   <strong>Payment method</strong>
                   <p>Save a card to use when funding production milestones.</p>
-                  {billingMethodNote ? <p>{billingMethodNote}</p> : null}
                 </div>
-                {onAddBillingMethod ? (
-                  <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={onAddBillingMethod}>
+                {onAddBillingMethod || billingLocked ? (
+                  <button className="primary-btn compact-btn" type="button" disabled={busy || Boolean(billingLocked)} title={billingLocked || undefined} onClick={onAddBillingMethod}>
                     {busy ? "Opening…" : "+ Add payment method"}
                   </button>
                 ) : null}
@@ -2881,16 +2880,18 @@ export function SettingsScreen({
                       <small>{method.note}</small>
                     </div>
                     <div className="settings-payment-page-actions">
-                      {method === livePaymentMethods[0] && onAddBillingMethod ? (
-                        <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={onAddBillingMethod}>
+                      {method === livePaymentMethods[0] && (onAddBillingMethod || billingLocked) ? (
+                        <button className="primary-btn compact-btn" type="button" disabled={busy || Boolean(billingLocked)} title={billingLocked || undefined} onClick={onAddBillingMethod}>
                           {busy ? "Opening…" : "+ Add payment method"}
                         </button>
                       ) : null}
-                      {onRemoveBillingMethod ? (
+                      {onRemoveBillingMethod || billingLocked ? (
                         <div className="settings-payment-menu">
                           <button
                             className="settings-menu-btn"
                             type="button"
+                            disabled={Boolean(billingLocked) || undefined}
+                            title={billingLocked || undefined}
                             aria-label={`More options for ${method.name}`}
                             aria-expanded={paymentMenu === (method.id ?? method.name)}
                             onClick={() => setPaymentMenu((open) => open === (method.id ?? method.name) ? null : method.id ?? method.name)}
@@ -2905,11 +2906,6 @@ export function SettingsScreen({
                     </div>
                   </div>
                 ))}
-                {billingMethodNote ? (
-                  <div className="settings-payment-page-card">
-                    <div className="settings-payment-page-copy"><p>{billingMethodNote}</p></div>
-                  </div>
-                ) : null}
               </>
             ) : (
               <>
@@ -2943,8 +2939,8 @@ export function SettingsScreen({
                 <p>{isFactory ? "Control who can quote RFQs, post updates, and act as the primary contact." : "Assign quote flow, sample approvals, fund release, and the primary vendor contact."}</p>
                 {permissionsNote ? <p>{permissionsNote}</p> : null}
               </div>
-              {canInvite ? (
-                <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)}>Invite member</button>
+              {canInvite || inviteLocked ? (
+                <button className="primary-btn compact-btn" type="button" onClick={() => setIsInvitePanelOpen(true)} disabled={canInvite ? undefined : true} title={inviteLocked || undefined}>Invite member</button>
               ) : null}
             </div>
 
@@ -2993,7 +2989,7 @@ export function SettingsScreen({
                       ) : null}
                     </div>
                     {activePermissionLabels.map((permission) => (
-                      <label className="settings-check" key={permission.key}>
+                      <label className="settings-check" key={permission.key} title={(member.lockedPermissions ?? []).includes(permission.key) ? member.lockedReason : undefined}>
                         <input
                           type="checkbox"
                           aria-label={isLive ? `${permission.label} for ${member.name}` : undefined}
@@ -3011,6 +3007,7 @@ export function SettingsScreen({
                       type="button"
                       aria-label={isLive && member.removeLabel ? member.removeLabel : `Remove ${member.name}`}
                       disabled={isLive ? busy || !member.removable : isFactory ? member.role === "Owner" : undefined}
+                      title={isLive && !member.removable ? member.removeLockedReason : undefined}
                       onClick={() => removeMember(member.email)}
                     >
                       <img src="/assets/prototype-icons/trash.svg" alt="" />
@@ -3028,7 +3025,7 @@ export function SettingsScreen({
                 </div>
                 {pendingInvites.length === 0 && (
                   <div className="settings-invited-row" role="row">
-                    <small>No pending invites</small>
+                    <small>{inviteLocked ? "Only someone with Settings access sees invitations." : "No pending invites"}</small>
                   </div>
                 )}
                 {pendingInvites.map((invite) => (
@@ -3153,14 +3150,14 @@ export function SettingsScreen({
                       per-member permissions yet to narrow it to. */}
                   <span>{notificationEmailNotes?.[key] ?? (notificationEmails ? "Emails every member of your company." : "Send email notifications to members with matching authority.")}</span>
                 </div>
-                <label className="settings-switch">
+                <label className="settings-switch" title={notificationEmailsLocked || undefined}>
                   {notificationEmails ? (
                     <input
                       type="checkbox"
                       aria-label={label}
                       data-notification-email={key}
                       checked={notificationEmails[key] !== false}
-                      disabled={busy}
+                      disabled={busy || Boolean(notificationEmailsLocked)}
                       onChange={(event) => onNotificationEmailChange?.(key, event.target.checked)}
                     />
                   ) : <input type="checkbox" defaultChecked />}
@@ -3241,6 +3238,8 @@ export function BrandOnboarding({
   completionPending = false,
   // Live only: a panel drawn after the step's content (matching, on review).
   extra = null,
+  // Live only: drawn at the top of the step (what staff asked for).
+  notice = null,
   // The published terms and their full page. Absent, the designed copy shows.
   terms,
   fullTerms,
@@ -3307,6 +3306,7 @@ export function BrandOnboarding({
       </header>
 
       <section className={`brand-onboarding-card ${current.type}`} aria-label={current.title} onInput={clearFieldError} onChange={clearFieldError}>
+        {notice}
         {current.type !== "complete" && (
           <header className="brand-onboarding-card-header">
             {isFirst && <img className="brand-onboarding-label" src="/assets/onboarding-sourcing-club-label-clean.png" alt="" />}
@@ -3708,7 +3708,7 @@ function BrandOnboardingStep({ content, step, onEditSection, optionsByLabel, val
     <div className="brand-onboarding-complete">
       <img className="brand-onboarding-success-icon" src={content.icon ?? "/assets/prototype-icons/success.svg"} alt="" />
       <h1>{content.title}</h1>
-      <p>{content.intro}</p>
+      {content.introNode ?? <p>{content.intro}</p>}
       {content.reward !== false && <section className="brand-onboarding-discount-reward">
         <span>Welcome discount</span>
         <strong>$50 discount</strong>
@@ -4331,6 +4331,9 @@ export function HomeScreen({
   showSearch = true,
   onViewRfq,
   onViewProject,
+  // Live: drawn in place of either layout until the reads have answered. The
+  // prototype passes none.
+  holding,
 }) {
   const isNewcomer = dashboardState === "newcomer";
   const [inviteBrandOpen, setInviteBrandOpen] = useState(false);
@@ -4407,7 +4410,7 @@ export function HomeScreen({
         </div>
       </section>
       )}
-      {isNewcomer ? (
+      {holding ?? (isNewcomer ? (
         <>
           <div className="home-recommendations-layout">
             <section className="home-recommended-factories">
@@ -4551,7 +4554,7 @@ export function HomeScreen({
             </div>
           </section>
         </>
-      )}
+      ))}
       {inviteBrandOpen && (
         <InviteBrandModal onInvite={savings?.onInvite} intro={savings?.inviteIntro} message={savings?.inviteMessage} onClose={() => setInviteBrandOpen(false)} />
       )}
@@ -7655,6 +7658,7 @@ export function RfqsScreen({
   onEditRfq,
   onInviteVendors,
   onArchiveRfq,
+  archiveLocked = "",
 }) {
   const [activeTab, setActiveTab] = useState("active");
   const [rfqTabs, setRfqTabs] = useState([
@@ -7888,6 +7892,7 @@ export function RfqsScreen({
               onEdit={onEditRfq}
               onInvite={onInviteVendors}
               onArchive={onArchiveRfq}
+              archiveLocked={archiveLocked}
               key={rfq.id ?? rfq.title}
             />
           ))
@@ -7897,7 +7902,7 @@ export function RfqsScreen({
   );
 }
 
-function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, onArchive }) {
+function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, onArchive, archiveLocked = "" }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   // Defaulted: a live mount that supplies fewer cells than the design draws
@@ -7963,11 +7968,11 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, o
                 {/* A request that is awarded or cancelled can no longer be
                     edited or widened; live cards say so with archivable. */}
                 {rfq.archivable !== false && (
-                  <button type="button" role="menuitem" onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
+                  <button type="button" role="menuitem" disabled={Boolean(archiveLocked) || undefined} title={archiveLocked || undefined} onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
                 )}
                 <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate quote</button>
                 {rfq.archivable !== false && (
-                  <button type="button" role="menuitem" onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
+                  <button type="button" role="menuitem" disabled={Boolean(archiveLocked) || undefined} title={archiveLocked || undefined} onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
                 )}
                 {/* Live, archiving cancels the request; a request that is
                     already awarded or cancelled has nothing left to archive. */}
@@ -7975,6 +7980,8 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, o
                   <button
                     type="button"
                     role="menuitem"
+                    disabled={Boolean(archiveLocked) || undefined}
+                    title={archiveLocked || undefined}
                     onClick={() => {
                       setMenuOpen(false);
                       onArchive?.(rfq);
@@ -8508,6 +8515,7 @@ export function ProjectDetailScreen({
   onInitiateDispute,
   onRemind,
   onManageMilestones,
+  manageMilestonesLocked = "",
   onDialogClose,
   // Live only: a banner above the money strip while a cancellation is
   // proposed (or once the order is cancelled), and the order-level menu.
@@ -8610,8 +8618,8 @@ export function ProjectDetailScreen({
                   />
                 ))}
               </div>
-              {(!isLive || onManageMilestones) && (
-                <button className="secondary-btn manage-milestones" type="button" onClick={onManageMilestones}>
+              {(!isLive || onManageMilestones || manageMilestonesLocked) && (
+                <button className="secondary-btn manage-milestones" type="button" onClick={onManageMilestones} disabled={Boolean(manageMilestonesLocked) || undefined} title={manageMilestonesLocked || undefined}>
                   Manage milestones
                 </button>
               )}
@@ -11268,7 +11276,7 @@ function AcceptedQuoteField({ label, value, readOnly = false }) {
   );
 }
 
-function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null, secondaryAction = null, primaryDisabled = false }) {
+function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", centerAction = null, secondaryAction = null, primaryDisabled = false, primaryTitle = "" }) {
   return (
     <footer className={canBack ? "bottom-bar has-back" : "bottom-bar no-back"}>
       {canBack && (
@@ -11280,7 +11288,7 @@ function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", cen
         <div className="bottom-meta-group">
           {centerText && <span className="bottom-meta">{centerText}</span>}
           {centerAction && (
-            <button className="secondary-btn compact-btn" type="button" disabled={centerAction.disabled} onClick={centerAction.onClick}>
+            <button className="secondary-btn compact-btn" type="button" disabled={centerAction.disabled} title={centerAction.title || undefined} onClick={centerAction.onClick}>
               {centerAction.label}
             </button>
           )}
@@ -11293,7 +11301,7 @@ function BottomBar({ canBack, onBack, onNext, primaryLabel, centerText = "", cen
           </button>
         )}
         {primaryLabel && (
-          <button className="primary-btn" type="button" onClick={onNext} disabled={primaryDisabled || undefined}>
+          <button className="primary-btn" type="button" onClick={onNext} disabled={primaryDisabled || undefined} title={primaryTitle || undefined}>
             {primaryLabel}
           </button>
         )}

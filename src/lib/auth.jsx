@@ -327,9 +327,11 @@ export function AuthProvider({ children }) {
       lostAccess,
       dismissLostAccess: () => setLostAccess(null),
 
-      selectOrg(orgId) {
+      // `remember: false` is for a link that says which company it is about:
+      // this page opens on it, and the next visit opens where the person left off.
+      selectOrg(orgId, { remember = true } = {}) {
         setActiveOrgId(orgId);
-        window.localStorage.setItem("tscActiveOrg", orgId);
+        if (remember) window.localStorage.setItem("tscActiveOrg", orgId);
       },
 
       /**
@@ -421,10 +423,11 @@ export function AuthProvider({ children }) {
         // Someone signing up from a teammate's invitation joins that company;
         // creating one of their own as well is the one thing they should not
         // do. The shell's "You have been invited" card asks them instead.
-        const invited = await listMyInvitations().catch(() => []);
+        // A failed read is "don't know", not "not invited": ChooseOrgType asks.
+        const invited = await listMyInvitations().catch(() => null);
         // Coming back, they may already have one: an answer can arrive late.
         const alreadyHasOne = cameBack && (await listMyOrgs(data.session.user.id).catch(() => [])).length > 0;
-        if (companyName?.trim() && !invited.length && !alreadyHasOne) {
+        if (companyName?.trim() && invited && !invited.length && !alreadyHasOne) {
           setCreatingOrg(true);
           try {
             await createOrg(companyName.trim(), accountType === "factory" ? "factory" : "brand");

@@ -259,6 +259,11 @@
   font-size: 14px;
 }
 
+.auth-field input:read-only {
+  background: #f4f6f9;
+  color: #5b6577;
+}
+
 .auth-field input:focus {
   border-color: #174df2;
   box-shadow: 0 0 0 3px rgba(23, 77, 242, 0.1);

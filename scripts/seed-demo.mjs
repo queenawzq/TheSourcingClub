@@ -126,7 +126,8 @@ const adminUser = await demoUser(LOGINS.admin);
 const brandMember = await demoUser(LOGINS.brandMember);
 const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
-const demoUsers = { brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, admin: adminUser };
+const switcher = await demoUser(LOGINS.switcher);
+const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -573,6 +574,11 @@ must(await newBrand.client.from("taxonomy_links").insert(await Promise.all(
     subject_type: "brand_profile", subject_id: newBrandOrg.id, org_id: newBrandOrg.id, term_id: await termId(kind, slug),
   })),
 )), "new brand product focus");
+
+// One person in three companies, for switching between their dashboards.
+must(await admin.from("org_members").insert([brandOrg, newBrandOrg, factoryOrg].map((org) => ({
+  org_id: org.id, user_id: switcher.id, role: "member",
+}))), "add the person in three companies");
 
 // A verified trading company, its profile filled in the way the trading
 // onboarding fills it (its own questions, columns and tags), through its own
@@ -1188,7 +1194,8 @@ await funded(await dueNow(seersucker, seersuckerTitle), CARD);
 await approveOpenStep(seersucker, seersuckerTitle, secondFactory);
 // 7. Kowloon Sourcing Partners is in Hong Kong and paid through Payoneer, by
 //    hand from TSC's Payoneer account: one fit sample paid out with its
-//    payment ID, one approved and waiting on staff ("Payout owed").
+//    payment ID, one approved and waiting on staff ("Payout owed"), and one
+//    funded and waiting for the brand, so its card shows balance and pending.
 must(await tradingCompany.client.from("factory_payout_accounts").insert({
   org_id: tradingOrg.id, method: "payoneer", payoneer_email: "kowloon-payouts@example.com", bank_country: "HK", is_primary: true,
 }), "the trading company's Payoneer account");
@@ -1210,6 +1217,12 @@ const tencel = await runningOrder({
 });
 await funded(await dueNow(tencel, tencelTitle), CARD);
 await approveOpenStep(tencel, tencelTitle, tradingCompany);
+const cordTitle = "Cotton cord trousers, AW27";
+const cord = await runningOrder({
+  title: cordTitle, brief: "90 cotton cord trousers, garment-dyed.", quantity: 90, unitPrice: 2800,
+  vendor: tradingCompany, vendorOrg: tradingOrg,
+});
+await funded(await dueNow(cord, cordTitle), CARD);
 
 // Dates on the steps not done yet, as a brand sets them on "Production
 // steps", so "Next due" on the dashboard and the orders list, and each step's
@@ -1297,6 +1310,7 @@ done. Every login uses the password "${PASSWORD}".
   second brand    ${LOGINS.secondBrand.email}   (five open requests, nothing paid: Browse RFQs' filters)
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory
   other domain    ${LOGINS.otherDomainFactory.email}   (invite it from another demo company: "already has an account")
+  three companies ${LOGINS.switcher.email}   (${LOGINS.brand.name}, ${LOGINS.newBrand.name}, ${LOGINS.factory.name}: the sidebar switches)
   admin           ${LOGINS.admin.email}   ${app.replace("app.html", "admin.html")}
 
   The brand has:

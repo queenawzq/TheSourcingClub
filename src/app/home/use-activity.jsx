@@ -48,7 +48,8 @@ export function useActivity(orgId, { isFactory, description, onError }) {
   onErrorRef.current = onError;
 
   const refreshCount = useCallback(
-    () => countUnreadNotifications(orgId).then(setUnreadCount, (failure) => onErrorRef.current?.(failure)),
+    // A missing badge is not worth a message on the dashboard.
+    () => countUnreadNotifications(orgId).then(setUnreadCount, (failure) => console.warn("unread count", failure?.message)),
     [orgId],
   );
 

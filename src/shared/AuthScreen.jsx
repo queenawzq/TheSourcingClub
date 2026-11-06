@@ -58,6 +58,10 @@ export function AuthScreen({
   // as the form; the prototypes pass neither and the box is its own.
   keepSignedIn,
   onKeepSignedInChange,
+  // Live, from an invitation's email link: { company, email, name }. The
+  // invitation answers who and where, so no company is asked for and the address
+  // is fixed. The prototypes pass none.
+  invitation = null,
 }) {
   const [mode, setMode] = useState(initialMode);
   const [showPassword, setShowPassword] = useState(false);
@@ -167,8 +171,8 @@ export function AuthScreen({
         <div className="auth-card">
           <header className="auth-card-header">
             <span className="auth-account-pill">{staff ? "For platform staff" : copy?.accountPill ?? (isFactory ? "For vendors" : "For brands")}</span>
-            <h2>{staff ? "Admin sign-in" : copy ? (isSignup ? copy.signupTitle : copy.loginTitle) : (isSignup ? `Create your ${audienceLabel} account` : "Welcome back")}</h2>
-            <p>{staff ? "Sign in with your staff account to open the operations workspace." : copy ? (isSignup ? copy.signupIntro : copy.loginIntro) : (isSignup ? `Set up your ${audienceLabel} workspace and continue to your profile.` : `Log in to continue to your ${audienceLabel} workspace.`)}</p>
+            <h2>{invitation ? (isSignup ? (isZh ? `加入 ${invitation.company}` : `Join ${invitation.company}`) : (isZh ? `登录以加入 ${invitation.company}` : `Log in to join ${invitation.company}`)) : staff ? "Admin sign-in" : copy ? (isSignup ? copy.signupTitle : copy.loginTitle) : (isSignup ? `Create your ${audienceLabel} account` : "Welcome back")}</h2>
+            <p>{invitation ? (isSignup ? (isZh ? "设置密码即可加入，之后用此邮箱登录。" : "Create a password to join. You'll log in with this address.") : (isZh ? "登录您的账户即可加入。" : "Log in to your account to join.")) : staff ? "Sign in with your staff account to open the operations workspace." : copy ? (isSignup ? copy.signupIntro : copy.loginIntro) : (isSignup ? `Set up your ${audienceLabel} workspace and continue to your profile.` : `Log in to continue to your ${audienceLabel} workspace.`)}</p>
           </header>
 
           {googleEnabled && (
@@ -184,21 +188,21 @@ export function AuthScreen({
 
           <form className="auth-form" onSubmit={submit}>
             {isSignup && (
-              <div className="auth-field-row">
+              <div className={invitation ? undefined : "auth-field-row"}>
                 <label className="auth-field">
                   <span>{copy?.name ?? "Your name"}</span>
-                  <input type="text" name="fullName" placeholder={copy?.namePlaceholder ?? "Your full name"} autoComplete="name" required />
+                  <input type="text" name="fullName" defaultValue={invitation?.name ?? undefined} placeholder={copy?.namePlaceholder ?? "Your full name"} autoComplete="name" required />
                 </label>
-                <label className="auth-field">
+                {!invitation && <label className="auth-field">
                   <span>{copy?.company ?? (isFactory ? "Company name" : "Brand name")}</span>
                   <input type="text" name="companyName" placeholder={copy?.companyPlaceholder ?? (isFactory ? "Your company" : "Your brand")} autoComplete="organization" required />
-                </label>
+                </label>}
               </div>
             )}
 
             <label className="auth-field">
               <span>{copy?.email ?? "Work email"}</span>
-              <input type="email" name="email" placeholder="you@company.com" autoComplete="email" required />
+              <input type="email" name="email" {...(invitation ? { defaultValue: invitation.email, readOnly: true } : {})} placeholder="you@company.com" autoComplete="email" required />
             </label>
 
             <label className="auth-field">
@@ -256,7 +260,7 @@ export function AuthScreen({
           <a className="auth-portal-switch" href="/app.html">
             Not staff? <strong>Go to the main app</strong>
           </a>
-        ) : (
+        ) : invitation ? null : (
           <a className="auth-portal-switch" href={otherPortal}>
             {copy?.brandPortalPrompt ?? (isFactory ? "Looking for the brand portal?" : "Are you a factory or trading company?")} <strong>{copy?.switchPortal ?? "Switch portal"}</strong>
           </a>
