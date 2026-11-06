@@ -45,6 +45,26 @@ function answerInTime(request) {
   return Promise.race([request, expired]).finally(() => window.clearTimeout(timer));
 }
 
+/**
+ * Tell our own host that the database's did not answer. Those failures reach
+ * nothing else we own, so without this nobody could count them. Goes without
+ * waiting, carries no address, and never affects the screen.
+ */
+function reportNoAnswer(stage, authError, portal) {
+  const kind = authError?.message === TIMED_OUT ? "timeout" : isNoAnswer(authError) ? "network" : null;
+  if (!kind) return;
+  try {
+    navigator.sendBeacon?.("/api/auth-failure", new Blob([JSON.stringify({
+      stage,
+      kind,
+      portal: portal ?? (new URLSearchParams(window.location.search).get("portal") ? "factory" : "brand"),
+      language: navigator.language,
+    })], { type: "application/json" }));
+  } catch {
+    // Never surfaces.
+  }
+}
+
 const alreadyRegistered = (authError) =>
   authError?.code === "user_already_exists" || /already registered/i.test(authError?.message ?? "");
 
@@ -383,6 +403,7 @@ export function AuthProvider({ children }) {
         }
 
         if (signUpError) {
+          reportNoAnswer("signup", signUpError, accountType);
           const failure = readable(signUpError);
           if (failure.kind === "network" || failure.kind === "timeout") unansweredSignUp.current = address;
           setError(failure);
@@ -409,6 +430,7 @@ export function AuthProvider({ children }) {
             await createOrg(companyName.trim(), accountType === "factory" ? "factory" : "brand");
             await reloadOrgs();
           } catch (orgError) {
+            reportNoAnswer("company", orgError, accountType);
             setError(isNoAnswer(orgError) ? authFailure("company_network") : orgError);
           } finally {
             setCreatingOrg(false);
@@ -437,6 +459,7 @@ export function AuthProvider({ children }) {
           password,
         }));
         if (signInError) {
+          reportNoAnswer("login", signInError);
           setError(readable(signInError));
           return false;
         }
@@ -467,6 +490,7 @@ export function AuthProvider({ children }) {
         }));
         // The one result that is looked at: "on its way" would be untrue.
         if (resetError && (resetError.message === TIMED_OUT || isNoAnswer(resetError))) {
+          reportNoAnswer("reset", resetError);
           setError(authFailure("reset_network"));
           return { sent: false, exists: null };
         }
@@ -518,6 +542,7 @@ export function AuthProvider({ children }) {
           },
         });
         if (otpError) {
+          reportNoAnswer("code", otpError);
           setError(readable(otpError));
           return false;
         }
@@ -535,6 +560,7 @@ export function AuthProvider({ children }) {
           type: "email",
         });
         if (verifyError) {
+          reportNoAnswer("code", verifyError);
           setError(readable(verifyError));
           return false;
         }
