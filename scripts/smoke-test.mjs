@@ -1665,7 +1665,7 @@ console.log("\nnotification emails");
     ["rfq", "quote_received"], ["rfq", "rfq_invited"], ["order", "order_created"],
     ["milestone", "milestone_submitted"], ["payment", "payment_due"], ["thread", "message"],
     ["capacity", "capacity_reminder"], ["milestone", "milestone_due_soon"], ["rfq", "rfq_matched"],
-    ["credits", "credits_granted"], ["credits", "credits_adjusted"], ["org", "verification_needs_information"], ["referral", "referral_joined"], ["unknown", "x"],
+    ["credits", "credits_granted"], ["credits", "credits_adjusted"], ["org", "verification_needs_information"], ["referral", "referral_joined"], ["unknown", "x"], ["unknown", "payout_method_changed"],
   ].flatMap(([subject_type, kind]) => [true, false].map((isFactory) => [{
     subject_type, kind, subject_id: "00000000-0000-0000-0000-000000000001", order_id: "00000000-0000-0000-0000-000000000002",
   }, isFactory]));

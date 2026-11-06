@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   awaitingApproval, earningStatus, earningsSummaryFor, handPaidFigures, heldOnCancelledOrder, isHandPaid, toBeSent,
+  staffBankNote,
 } from "../src/app/order/payment-summary.mjs";
 
 const usd = (rows) => rows.reduce((sum, row) => sum + row.amount, 0);
@@ -54,6 +55,15 @@ assert.equal(earningStatus(approved, null, false), "Pending", "a Stripe factory'
 assert.equal(earningStatus(held, null, true), "Awaiting approval");
 assert.equal(earningStatus(earnings.find((row) => row.id === "held-cancelled"), null, true), "Order cancelled");
 assert.equal(earningStatus(earnings.find((row) => row.id === "paid"), null, true), "Paid by Payoneer");
+
+// Staff's bank note reaches the factory only if a person typed one.
+const bankPaid = { state: "released", released_by: "staff", released_note: " Wire ref HSBC-7788 " };
+assert.equal(staffBankNote(bankPaid), "Wire ref HSBC-7788", "a typed note is shown, trimmed");
+assert.equal(staffBankNote({ ...bankPaid, released_note: null }), null, "no note, nothing shown");
+assert.equal(staffBankNote({ state: "released", released_by: null, stripe_transfer_id: "tr_1", released_note: "Paid out through Stripe." }), null, "Stripe's own sentence is not staff's note");
+assert.equal(staffBankNote({ ...bankPaid, released_by: null }), null, "written by nobody: not staff's note");
+assert.equal(staffBankNote({ ...bankPaid, payoneer_payouts: { payoneer_payment_id: "X" } }), null, "a Payoneer row says its ID instead");
+assert.equal(staffBankNote({ ...bankPaid, state: "confirmed" }), null, "not paid yet");
 
 // Who is paid by hand. Loading earnings (null) does not count as Stripe-paid.
 const transferred = [pay("t", 5, "released", { stripe_transfer_id: "tr_1" })];
