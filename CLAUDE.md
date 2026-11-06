@@ -656,6 +656,10 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
 - **A failed read of a person's invitations is "don't know", never "not
   invited".** Neither `signUpWithPassword` nor `ChooseOrgType` creates a company
   on it.
+- **A person's own password isn't a company setting.** Settings → Password &
+  security has its own "Change password", open to every member whatever their
+  permissions: the current password is checked by signing in again, because
+  `secure_password_change` is off.
 - **A missing permission greys the action out, with the permission in its hover
   text and no sentence** (Queena, Nov 4 and 5; a phone gets no reason, which she
   accepted). Whole flows a person may not use (the composer, the quote form) say

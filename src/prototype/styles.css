@@ -12905,6 +12905,10 @@ body:has(.brand-onboarding-page) {
   transition: transform 160ms ease;
 }
 
+.tsc-change-password {
+  margin-top: 12px;
+}
+
 .settings-switch input:disabled + span {
   opacity: 0.45;
   cursor: not-allowed;
