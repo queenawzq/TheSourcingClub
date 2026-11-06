@@ -96,6 +96,29 @@ check("a missing website is asked for", /website.*Factory details/.test(asked("C
 check("a brand is sent to its own sections", /Trust/.test(asked("Business registration", "Missing", "", "Brand")));
 check("a trading company has no walkthrough section", !/walkthrough/i.test(asked("Production evidence", "Missing", "0 files", "Trading company")));
 check("missing fields are named", /Fill in your website, MOQ/.test(asked("Company details", "Review", "Not filled in: website, MOQ.")));
+check("one missing field reads as one", asked("Company details", "Review", "Not filled in: website.") === 'Fill in your website: your profile marks it "Not added yet".', asked("Company details", "Review", "Not filled in: website."));
+check("several missing fields read as several", /marks each one/.test(asked("Company details", "Review", "Not filled in: MOQ, website. Onboarding was never submitted.")));
+
+// The re-test on the preview: the website was asked for twice, from two checks.
+const NO_WEBSITE = { label: "Contact domain", result: "Missing", detail: "No website was given, so member addresses cannot be compared against one." };
+const companyGap = (fields) => ({ label: "Company details", result: "Review", detail: `Not filled in: ${fields}.` });
+const DUPLICATE = { label: "Duplicate company signal", result: "Review", detail: "Shares a legal name or website domain with at least one other company on the platform." };
+const twice = suggest.requestItems([companyGap("website"), NO_WEBSITE], "Factory");
+check("a missing website is one bullet", twice.items.length === 1 && twice.items[0].includes("website"), twice.items);
+check("the merged check is not reported as not asked", twice.notAsked.length === 0, twice.notAsked);
+const order = suggest.requestItems([NO_WEBSITE, companyGap("MOQ, website")], "Factory");
+check("it is one bullet in either order, the other fields kept", order.items.length === 1 && /MOQ, website/.test(order.items[0]), order.items);
+const alone = suggest.requestItems([NO_WEBSITE], "Factory");
+check("the website is still asked for when only Contact domain says so", alone.items.length === 1 && /website/.test(alone.items[0]), alone.items);
+const other = suggest.requestItems([companyGap("MOQ"), NO_WEBSITE], "Factory");
+check("a website no field names keeps its own bullet", other.items.length === 2, other.items);
+const checked = suggest.requestItems([companyGap("website"), DUPLICATE], "Factory");
+check("the website is not asked for again by the duplicate check", checked.items.filter((item) => /website/.test(item)).length === 1 && checked.items.some((item) => /legal company name is correct/.test(item)), checked.items);
+const full = suggest.requestItems([DUPLICATE], "Factory");
+check("the duplicate check names both when both are filled in", /legal company name and website are correct/.test(full.items[0] ?? ""), full.items);
+const notTheirs = suggest.requestItems([{ label: "Contact domain", result: "Review", detail: "No member address uses acme.com." }], "Factory");
+check("what the company cannot do is still reported as not asked", notTheirs.notAsked.join() === "Contact domain" && !notTheirs.items.length, notTheirs);
+
 const invented = await suggest.shapeSuggestion("We also need a team member email address on the acme.com domain.\n\nWe look forward to it.", ITEMS);
 check("a sentence asking for what the company cannot do goes", !/team member/.test(invented), invented);
 
