@@ -2748,7 +2748,7 @@ export function SettingsScreen({
                 </label>
                 <label>
                   <span>Email</span>
-                  <input defaultValue={account.email} type="email" readOnly={onSaveAccount || accountLocked ? true : undefined} title={onSaveAccount || accountLocked ? "Your sign-in email is managed separately" : undefined} />
+                  <input defaultValue={account.email} type="email" readOnly={onSaveAccount || accountLocked ? true : undefined} title={onSaveAccount || accountLocked ? "The company's contact email. It isn't changed here." : undefined} />
                 </label>
                 <label>
                   <span>Phone</span>
@@ -4628,7 +4628,7 @@ function HomeRecommendedFactoryCard({ factory: originalFactory, goTo }) {
           </div>
           <div className="factory-actions home-recommended-card-actions">
             {factory.onMessage !== null && <button className="save-pill button-like-action" type="button" onClick={factory.onMessage}>Message</button>}
-            <button className="primary-btn" type="button" onClick={() => (factory.onRequestQuote ? factory.onRequestQuote() : goTo("describe"))}>Request quote</button>
+            <button className="primary-btn" type="button" onClick={() => (factory.onRequestQuote ? factory.onRequestQuote() : goTo("describe"))} disabled={Boolean(factory.quoteLocked) || undefined} title={factory.quoteLocked || undefined}>Request quote</button>
           </div>
         </div>
 
@@ -5103,7 +5103,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
               </button>
             ) : view.onSave && <button className="secondary-btn" type="button" onClick={live ? view.onSave : undefined}>Save factory</button>}
             {view.onMessage && <button className="secondary-btn" type="button" onClick={live ? view.onMessage : undefined}>Message</button>}
-            {view.onRequestQuote && <button className="primary-btn" type="button" onClick={view.onRequestQuote}>Request quote</button>}
+            {view.onRequestQuote && <button className="primary-btn" type="button" onClick={view.onRequestQuote} disabled={Boolean(view.quoteLocked) || undefined} title={view.quoteLocked || undefined}>Request quote</button>}
           </div>
         </section>
 
@@ -5158,7 +5158,7 @@ export function BrandFactoryProfileScreen({ goTo, live = null }) {
                   <span>{view.location}</span>
                 </div>
               </div>
-              <button className="primary-btn" type="button" onClick={live ? view.contact.onClick : undefined}>{view.contact.label}</button>
+              <button className="primary-btn" type="button" onClick={live ? view.contact.onClick : undefined} disabled={Boolean(view.contact.quoteLocked) || undefined} title={view.contact.quoteLocked || undefined}>{view.contact.label}</button>
             </section>
 
             <section className="factory-profile-card">
@@ -6926,7 +6926,7 @@ function DirectoryFactoryCard({ factory, onQuote, live = null }) {
               {live.save.saved ? "Saved" : "Save"}
             </button>
           )}
-          <button className="primary-btn" type="button" onClick={live.onQuote}>Request quote</button>
+          <button className="primary-btn" type="button" onClick={live.onQuote} disabled={Boolean(live.quoteLocked) || undefined} title={live.quoteLocked || undefined}>Request quote</button>
         </div>
         {factory.tags.length > 0 && (
           <div className="tag-row compact-tags directory-tags">
@@ -7293,7 +7293,7 @@ function MarketplaceFactoryCard({ factory: originalFactory, vendorType = "factor
               </button>
             )}
             {live.onMessage && <button className="secondary-btn marketplace-message-action" type="button" onClick={live.onMessage}>Message</button>}
-            <button className="primary-btn" type="button" onClick={live.onQuote}>Request quote</button>
+            <button className="primary-btn" type="button" onClick={live.onQuote} disabled={Boolean(live.quoteLocked) || undefined} title={live.quoteLocked || undefined}>Request quote</button>
           </div>
         ) : (
         <div className="marketplace-factory-actions">
@@ -7513,7 +7513,7 @@ function SavedFactoryCard({ factory, goTo, live = null }) {
         {live ? (
           <div className="saved-factory-actions">
             {live.onMessage && <button className="secondary-btn" type="button" onClick={live.onMessage}>Message</button>}
-            {live.onQuote && <button className="primary-btn" type="button" onClick={live.onQuote}>Request quote</button>}
+            {live.onQuote && <button className="primary-btn" type="button" onClick={live.onQuote} disabled={Boolean(live.quoteLocked) || undefined} title={live.quoteLocked || undefined}>Request quote</button>}
           </div>
         ) : (
         <div className="saved-factory-actions">

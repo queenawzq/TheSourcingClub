@@ -44,7 +44,7 @@ import { can, permissionHint } from "../../lib/domain/org.js";
  * request to score against yet), a rating, and an order count a brand may
  * not read. A new brand has no conversations, so there is no Message.
  */
-function toRecommendedCard(vendor, navigate) {
+function toRecommendedCard(vendor, navigate, quoteLocked = "") {
   const name = vendor.orgs?.name ?? "Vendor";
   return {
     // The card's key: two vendors can share a name.
@@ -69,6 +69,7 @@ function toRecommendedCard(vendor, navigate) {
     onOpenProfile: () => navigate(`/factories/${vendor.org_id}?from=dashboard`),
     onMessage: null,
     onRequestQuote: () => navigate(`/rfqs/new?invite=${vendor.org_id}`),
+    quoteLocked,
   };
 }
 
@@ -268,7 +269,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
     return () => { cancelled = true; };
   }, [org.id, isFactory, state.loaded]);
 
-  const recommendedCards = useMemo(() => recommended.map((vendor) => toRecommendedCard(vendor, navigate)), [recommended, navigate]);
+  const recommendedCards = useMemo(() => recommended.map((vendor) => toRecommendedCard(vendor, navigate, can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow"))), [recommended, navigate, org]);
   const translatedRecommended = useVendorTranslations(recommendedCards, org.id);
 
   return (
