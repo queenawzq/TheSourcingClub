@@ -135,15 +135,26 @@ if (unseeded.length) {
 }
 const demoUserIds = Object.values(demoUsers).map((user) => user.id);
 
-// The companies only demo users belong to. A company someone else is also a
-// member of (a tester who invited a demo login) is left alone.
+// The companies a demo login started: its first member is that login. Someone
+// real may since have joined one through an invitation, and it is still a demo
+// company. A company someone else started (a tester who invited a demo login)
+// is left alone, whatever role that login now holds.
 const memberships = must(await admin.from("org_members").select("org_id").in("user_id", demoUserIds), "demo memberships");
 const candidates = [...new Set(memberships.map((m) => m.org_id))];
 const everyone = candidates.length
-  ? must(await admin.from("org_members").select("org_id, user_id").in("org_id", candidates), "their members")
+  ? must(await admin.from("org_members").select("org_id, user_id, created_at").in("org_id", candidates).order("created_at"), "their members")
   : [];
 const demoOrgIds = candidates.filter((org) =>
-  everyone.filter((m) => m.org_id === org).every((m) => demoUserIds.includes(m.user_id)));
+  demoUserIds.includes(everyone.find((m) => m.org_id === org)?.user_id));
+
+// People who joined a demo company leave it first, so they are told they no
+// longer have access. Only this membership goes: their account and any company
+// of their own stay.
+const outsiders = everyone.filter((m) => demoOrgIds.includes(m.org_id) && !demoUserIds.includes(m.user_id));
+for (const { org_id: orgId, user_id: userId } of outsiders) {
+  must(await admin.from("org_members").delete().eq("org_id", orgId).eq("user_id", userId), "remove an outside member from a demo company");
+}
+if (outsiders.length) console.log(`removed ${outsiders.length} outside members from demo companies`);
 
 // Orders keep their request, quote and both companies from being deleted, so
 // they go first; deleting the companies then takes their requests, quotes,
