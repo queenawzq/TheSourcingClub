@@ -190,8 +190,13 @@
 .active-schedule-editor {
   display: grid;
   gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
   width: min(100%, 760px);
   margin: 0 auto;
+}
+
+.active-schedule-editor .stack {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .active-schedule-header {
