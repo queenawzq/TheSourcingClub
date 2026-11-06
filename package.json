@@ -24,6 +24,7 @@
     "check:earnings": "node scripts/check-earnings.mjs",
     "check:stripe-errors": "node scripts/check-stripe-errors.mjs",
     "check:bank-number": "node scripts/check-bank-number.mjs",
+    "check:e2e-exit": "node scripts/check-e2e-exit.mjs",
     "check:screen": "node scripts/check-message-screen.mjs"
   },
   "dependencies": {
