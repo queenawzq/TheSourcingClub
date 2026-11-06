@@ -114,6 +114,12 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
   const productionMax = figures.productionSubtotalMaxCents ?? 0;
 
   async function send() {
+    // The form refuses this, but an older draft can still arrive here without one.
+    if (!quote.capacity_window_start) {
+      const field = profile?.vendor_kind === "trading_company" ? "partner production window" : "open capacity window";
+      setError(new Error(`Go back and add the ${field} before sending. Write the first and last day, like “Jan 5 - Mar 1, 2027 · 300 units”.`));
+      return;
+    }
     if (busy) return;
     setBusy(true);
     setError(null);

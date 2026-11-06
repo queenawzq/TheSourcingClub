@@ -406,8 +406,26 @@ const realDay = ({ year, month, day }) => {
   return at.getFullYear() === year && at.getMonth() === month && at.getDate() === day;
 };
 
+/**
+ * Chinese keyboards, into the form the parser reads: full-width digits and
+ * punctuation, 2027年1月5日, 8月12日至30日, 300件.
+ */
+const MONTH_NAMES = MONTHS.map((month) => month[0].toUpperCase() + month.slice(1));
+function normalizeWindow(text) {
+  const monthName = (month) => MONTH_NAMES[Number(month) - 1] ?? "?";
+  return String(text ?? "")
+    .normalize("NFKC")
+    .replace(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*[日号號]?/g, (_, year, month, day) => `${monthName(month)} ${day}, ${year}`)
+    .replace(/(\d{1,2})\s*月\s*(\d{1,2})\s*[日号號]?\s*(?:至|到|[-–—~])\s*(\d{1,2})\s*[日号號]/g, (_, month, a, b) => `${monthName(month)} ${a}-${b}`)
+    .replace(/(\d{1,2})\s*月\s*(\d{1,2})\s*[日号號]?/g, (_, month, day) => `${monthName(month)} ${day}`)
+    .replace(/(\d[\d,]*)\s*(?:件|个|個|套)/g, "$1 units")
+    .replace(/\s*(?:至|到|~)\s*|\s+(?:to|until|through|thru)\s+/gi, " - ")
+    .replace(/[，、；。]/g, " ")
+    .trim();
+}
+
 export function parseCapacityWindow(text, now = new Date()) {
-  const said = String(text ?? "").trim();
+  const said = normalizeWindow(text);
   if (!said) return { capacity_window_start: null, capacity_window_end: null, capacity_window_units: null };
 
   // The dates in the order the vendor wrote them; `year` is null where it was
@@ -442,13 +460,39 @@ export function parseCapacityWindow(text, now = new Date()) {
   }
 
   // A units figure, but never one of the numbers already claimed by a date.
-  const units = said.match(/(\d[\d,]*)\s*(?:units?|pcs|pieces)/i);
+  const units = said.replace(WINDOW_DATES, " ").match(/(\d[\d,]*)\s*(?:units?|pcs|pieces)/i);
 
   return {
     capacity_window_start: start && realDay(start) ? calendarDay(start) : null,
     capacity_window_end: end && realDay(end) ? calendarDay(end) : null,
     capacity_window_units: units ? Number(units[1].replace(/,/g, "")) : null,
   };
+}
+
+/**
+ * Why this window cannot be kept as typed, or null when it can. The field reads
+ * back exactly what is stored, so anything the parser would leave behind ("Jan
+ * to Feb 2027", "partner confirmed", a third date) is refused, not dropped.
+ * A window already over is refused too: with no year written, "Jan 5 - Mar 1"
+ * in November means this year's, which is not what the vendor meant.
+ */
+export function capacityWindowProblem(text, now = new Date()) {
+  const said = normalizeWindow(text);
+  if (!said) return "format";
+  const dates = [...said.matchAll(WINDOW_DATES)];
+  const dayCount = dates.reduce((total, match) => total + (match[6] ? 2 : 1), 0);
+  if (!dayCount || dayCount > 2) return "format";
+  const leftover = said
+    .replace(WINDOW_DATES, " ")
+    .replace(/\d[\d,]*\s*(?:units?|pcs|pieces)/gi, " ")
+    .replace(/\b(?:from|and)\b/gi, " ")
+    .replace(/[-–—·•,;:/()\s]/g, "");
+  if (leftover) return "format";
+  const parsed = parseCapacityWindow(said, now);
+  if (!parsed.capacity_window_start || (dayCount === 2 && !parsed.capacity_window_end)) return "format";
+  const today = calendarDay({ year: now.getFullYear(), month: now.getMonth(), day: now.getDate() });
+  if ((parsed.capacity_window_end ?? parsed.capacity_window_start) < today) return "past";
+  return null;
 }
 
 /**

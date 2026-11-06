@@ -115,6 +115,22 @@ function requireKeepChoice(keepSignedIn) {
   }
 }
 
+/**
+ * A session ended from outside this tab (another tab signed out, or the auth
+ * server dropped it): the sign-in screen reads the portal from the address, and
+ * only this tab's own Log out wrote it there, so a vendor landed on the brand's
+ * login. What it was working in is still known at this moment. Nothing to do
+ * after this tab's own Log out, which has already emptied the list.
+ */
+function keepPortalInAddress(orgs, activeOrgId) {
+  const org = orgs.find((row) => row.id === activeOrgId) ?? orgs[0];
+  if (!org) return;
+  const url = new URL(window.location.href);
+  if (org.type === "factory") url.searchParams.set("portal", "factory");
+  else url.searchParams.delete("portal");
+  window.history.replaceState(window.history.state, "", url);
+}
+
 export function AuthProvider({ children }) {
   // `undefined` means Supabase has not finished restoring the browser session
   // yet; `null` means that restoration finished and there is no signed-in
@@ -191,7 +207,10 @@ export function AuthProvider({ children }) {
       // and refresh. A tab signed in without "Keep me logged in" holds its
       // own session, and must not turn into whoever signed in next door.
       if (!isThisTabsSession(nextSession)) return;
-      if (!nextSession) closeCallWindowsForSignOut();
+      if (!nextSession) {
+        closeCallWindowsForSignOut();
+        keepPortalInAddress(orgsRef.current, activeOrgIdRef.current);
+      }
       finishRestore(nextSession);
     });
 
@@ -287,6 +306,8 @@ export function AuthProvider({ children }) {
   const [lostAccess, setLostAccess] = useState(null);
   const orgsRef = useRef(orgs);
   orgsRef.current = orgs;
+  const activeOrgIdRef = useRef(activeOrgId);
+  activeOrgIdRef.current = activeOrgId;
 
   // A permission changed, or this person was removed, while the app is open:
   // the database already refuses them, and the screen follows. Realtime

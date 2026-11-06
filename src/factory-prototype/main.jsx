@@ -10581,6 +10581,7 @@ function FactoryQuoteSections({ companyType = "factory", language = "en", readOn
             name="capacityWindow"
             label={companyType === "trading" ? "Partner production window *" : "Open capacity window *"}
             value={values?.capacityWindow ?? (values ? "" : (companyType === "trading" ? "Aug 12-30 · partner confirmed" : "Aug 12-30 · 420 units"))}
+            placeholder="e.g. Jan 5 - Mar 1, 2027 · 300 units"
             {...reviewFieldProps}
           />
           <QuoteField
