@@ -348,8 +348,9 @@ export function AuthProvider({ children }) {
         // Someone signing up from a teammate's invitation joins that company;
         // creating one of their own as well is the one thing they should not
         // do. The shell's "You have been invited" card asks them instead.
-        const invited = await listMyInvitations().catch(() => []);
-        if (companyName?.trim() && !invited.length) {
+        // A failed read is "don't know", not "not invited": ChooseOrgType asks.
+        const invited = await listMyInvitations().catch(() => null);
+        if (companyName?.trim() && invited && !invited.length) {
           setCreatingOrg(true);
           try {
             await createOrg(companyName.trim(), accountType === "factory" ? "factory" : "brand");

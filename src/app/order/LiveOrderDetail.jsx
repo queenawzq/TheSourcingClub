@@ -24,7 +24,7 @@ import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
 import { StepUpdatesModal } from "../../shared/StepUpdatesModal.jsx";
 import { getOrder, orderActivity } from "../../lib/domain/order.js";
-import { can, needsPermission } from "../../lib/domain/org.js";
+import { can, permissionHint } from "../../lib/domain/org.js";
 import {
   approveMilestone,
   listMilestones,
@@ -82,9 +82,8 @@ const permissionWords = (missing) => missing.join(" and ");
  * Live it depends on the state the row is in and which side is looking: a
  * factory never approves its own work, it posts updates from the row's menu.
  * A brand member without the permission the action asks for still sees it,
- * greyed out, and the status line says which permission (Queena, Nov 4): a
- * hidden button reads as a missing feature, and a tooltip alone never shows
- * on a touch screen.
+ * greyed out, with the permission in its hover text (Queena, Nov 4 and 5): a
+ * hidden button reads as a missing feature.
  */
 function actionFor(milestone, viewer) {
   const { isFactory } = viewer;
@@ -152,10 +151,8 @@ function paymentLine(payment, isFactory, kind) {
 }
 
 /** Stripe's failure reasons end in a full stop; a sentence joined after one must not double it. */
-const withoutFullStop = (text) => text.replace(/[.\s]+$/, "");
-
 /** The sentence under a step's title, from its own state and its payment's. */
-function statusLine(milestone, { isFactory, canFund, canApprove, org, factoryName, posted }) {
+function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, posted }) {
   const payment = milestone.payment;
   const money = paymentLine(payment, isFactory, milestone.kind);
 
@@ -164,20 +161,13 @@ function statusLine(milestone, { isFactory, canFund, canApprove, org, factoryNam
   }
   // Funding comes before the work, so an unfunded step says so first.
   if (["due", "processing", "failed", "sent"].includes(payment?.state) && milestone.state !== "pending") {
-    // Without Release funds there is no "Fund milestone" (actionFor): say why.
-    if (!isFactory && !canFund && (payment.state === "due" || payment.state === "failed")) {
-      return `${withoutFullStop(money)}. Only someone with Release funds at ${org?.name || "your company"} can pay for it`;
-    }
     return money;
   }
   if (approvable(milestone, posted)) {
     const held = payment?.state === "confirmed" ? ` · ${money}` : "";
     if (isFactory) return `Posted, awaiting the brand's approval${held}`;
-    if (milestone.kind === "approval_and_payment" && !(canApprove && canFund)) {
-      return `Ready for approval by someone with Approve samples and Release funds${held}`;
-    }
-    if (!canApprove) return `Ready for approval by someone with Approve samples${held}`;
-    return `Ready for your approval${held}`;
+    const mayApprove = canApprove && (milestone.kind !== "approval_and_payment" || canFund);
+    return `${mayApprove ? "Ready for your approval" : "Ready for approval"}${held}`;
   }
   if (milestone.state === "active") {
     // The brand approves from the factory's update, so before there is one
@@ -188,17 +178,6 @@ function statusLine(milestone, { isFactory, canFund, canApprove, org, factoryNam
         ? "In progress"
         : `Waiting for ${factoryName || "the factory"}'s first update. You can approve once it posts`;
     return payment?.state === "confirmed" ? `${work} · ${money}` : work;
-  }
-  // An upcoming step whose greyed button this viewer could not press even
-  // once it opens: say so here, where a touch screen can read it.
-  if (milestone.state === "pending" && !isFactory) {
-    const { kind } = actionFor(milestone, { isFactory, canFund, canApprove });
-    const missing = kind ? missingFor(milestone, kind, { canFund, canApprove }) : [];
-    if (missing.length) {
-      const verb = kind === "fund" ? "pay for" : "approve";
-      const who = `Only someone with ${permissionWords(missing)} at ${org?.name || "your company"} can ${verb} it`;
-      return money ? `${withoutFullStop(money)}. ${who}` : `Upcoming. ${who}`;
-    }
   }
   return money;
 }
@@ -527,9 +506,6 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       // someone starts work unpaid.
       meta: [
         statusLine(milestone, { ...viewer, posted }),
-        // Add update stays on the factory's row, greyed out (Queena, Nov 4);
-        // this is the reason a touch screen can read.
-        noUpdatePermission ? `Only someone with Add update at ${org?.name || "your company"} can post updates on it` : null,
         milestone.due_on ? `due ${day(milestone.due_on)}` : null,
       ].filter(Boolean).join(" · "),
       ...(hasDispute ? { dueStatus: "Dispute opened", dueTone: "danger" } : dueBadge(milestone)),
@@ -689,7 +665,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         vendor={{ ...counterparty, onMessage: () => navigate(`/orders/${orderId}/messages`), onCancel: proposeCancel }}
         // Release funds pays (begin_payment_checkout); anyone else stays on the order.
         onFund={viewer.canFund ? (paymentId) => navigate(`/orders/${orderId}/payments/${paymentId}`) : undefined}
-        locked={viewer.canSetSteps ? "" : needsPermission(org, "rfqFlow")}
+        locked={viewer.canSetSteps ? "" : permissionHint(org, "rfqFlow")}
         banner={cancelBanner}
         dialog={cancel.dialog}
       />
@@ -736,6 +712,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         }))}
         onRemind={remind}
         onManageMilestones={viewer.canSetSteps ? () => navigate(`/orders/${orderId}/schedule`) : undefined}
+        manageMilestonesLocked={viewer.canSetSteps ? "" : permissionHint(org, "rfqFlow")}
         // A refusal belongs to the dialog it happened in, not the next one.
         onDialogClose={() => setDialogError(null)}
         banner={cancelBanner}

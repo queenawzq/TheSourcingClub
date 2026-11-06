@@ -1717,13 +1717,12 @@ async function main() {
     const { data: openQuote } = await db.from("quotes").select("id")
       .eq("rfq_id", publishedRfq.id).eq("factory_org_id", factoryOrg.id).eq("status", "submitted").single();
     await page.goto(`${APP}/rfqs/${publishedRfq.id}/quotes/${openQuote.id}/contract`);
-    // Said beside the greyed-out button, in the bottom bar.
-    await waitFor(page, ".bottom-bar .bottom-meta", 25000);
-    const contractRefusal = await page.locator(".bottom-bar .bottom-meta").innerText();
-    check(/only someone with quote flow/i.test(contractRefusal) && contractRefusal.includes(brandName),
-      `the contract says who can choose a quote (${contractRefusal.trim()})`);
+    // Greyed out, with the permission on hover.
+    await waitFor(page, ".bottom-bar .primary-btn", 25000);
     const awardButton = await page.evaluate(() => [...document.querySelectorAll(".bottom-bar .primary-btn")]
-      .map((button) => ({ label: button.innerText.trim(), disabled: button.disabled })));
+      .map((button) => ({ label: button.innerText.trim(), disabled: button.disabled, title: button.title })));
+    check(awardButton.some((button) => /quote flow/i.test(button.title)),
+      "the contract's greyed button names the permission on hover");
     check(awardButton.some((button) => /create production steps/i.test(button.label) && button.disabled)
       && !awardButton.some((button) => /create production steps/i.test(button.label) && !button.disabled),
       `and "Create production steps" is greyed out, not hidden (${JSON.stringify(awardButton)})`);
@@ -2097,18 +2096,18 @@ async function main() {
     await signIn(page, teammateEmail, "Teammate on the order");
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-row"]', 25000);
-    const releaseSentence = `Only someone with Release funds at ${brandName}`;
     // Fund stays on the row either way (Queena, Nov 4): greyed out without
-    // the permission, pressable with it.
+    // the permission, pressable with it. No sentence says why, only the hover
+    // text (Queena, Nov 5).
     const fundButtons = () => page.evaluate(() => [...document.querySelectorAll('[data-testid="milestone-action"]')]
       .filter((button) => /^fund milestone$/i.test(button.innerText.trim()))
       .map((button) => ({ disabled: button.disabled, title: button.title })));
     const fundOffered = async () => (await fundButtons()).some((button) => !button.disabled);
     const fundGreyed = async () => (await fundButtons()).some((button) => button.disabled && /Release funds/.test(button.title));
-    const sentenceShown = async () => (await page.locator("body").innerText()).includes(releaseSentence);
-    check(await within(page, sentenceShown) !== null && !(await fundOffered()) && (await fundGreyed()),
-      "without Release funds the due step says who can pay it, and its Fund is greyed out, not hidden");
-    await record(page, "No Release funds", "Fund greyed out, the step says who can pay it");
+    check(await within(page, fundGreyed) !== null && !(await fundOffered())
+      && !(await page.locator("body").innerText()).includes("Only someone with"),
+      "without Release funds the due step's Fund is greyed out, not hidden, with no sentence");
+    await record(page, "No Release funds", "Fund greyed out, permission on hover");
 
     const access = (permissions) => brandOwner.client.rpc("set_member_access", {
       target_org: brandOrg.id, target_user: teammate.userId, new_permissions: permissions, new_title: "Production lead",
@@ -2120,7 +2119,7 @@ async function main() {
     await record(page, "Release funds given", "Fund milestone, live");
 
     const { error: takeError } = await access(["approve"]);
-    const sentenceAfter = await within(page, async () => !(await fundOffered()) && (await fundGreyed()) && (await sentenceShown()));
+    const sentenceAfter = await within(page, async () => !(await fundOffered()) && (await fundGreyed()));
     check(!takeError && sentenceAfter !== null,
       `the owner takes it away: Fund greys out and the sentence returns (${sentenceAfter} ms${takeError ? `, ${takeError.message}` : ""})`);
 
@@ -4079,10 +4078,10 @@ async function main() {
     if (await page.locator(".factory-rfq-detail-page").count()) {
       const sendQuote = await page.evaluate(() => [...document.querySelectorAll(".factory-side-actions button")]
         .find((button) => /^send quote$/i.test(button.innerText.trim()))?.disabled ?? null);
-      const blocked = await page.locator('[data-testid="send-quote-blocked"]').count()
-        ? await page.locator('[data-testid="send-quote-blocked"]').innerText() : "";
+      const blocked = await page.evaluate(() => [...document.querySelectorAll(".factory-side-actions button")]
+        .find((button) => /^send quote$/i.test(button.innerText.trim()))?.title ?? "");
       check(sendQuote === true && blocked.includes("RFQ flow"),
-        `without RFQ flow, Send quote is greyed out and says why (${blocked.trim() || "no sentence"})`);
+        `without RFQ flow, Send quote is greyed out, the permission on hover (${blocked.trim() || "no hover text"})`);
       await record(page, "No RFQ flow: Send quote", "greyed out, the permission named");
     } else {
       console.log("  · Send quote not drawn: this factory already quoted the request (read-back page)");
