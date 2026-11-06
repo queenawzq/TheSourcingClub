@@ -1429,7 +1429,9 @@ async function main() {
     await waitFor(page, '[data-testid="open-rfq-card"]', 20000);
     await record(page, "Factory browse", "the brand's request, found by a factory that was never invited");
 
-    const cardText = await page.locator('[data-testid="open-rfq-card"]').first().innerText();
+    // By title, not position: best fit ranks the seed's requests with this one.
+    const cardText = await page.evaluate((title) => [...document.querySelectorAll('[data-testid="open-rfq-card"]')]
+      .find((card) => card.innerText.includes(title))?.innerText ?? "", rfqTitle);
     check(cardText.includes(rfqTitle), "the request a brand published minutes ago is visible to a factory");
     // Fit is a per-pair score this list never asks for, so the card shows none
     // rather than a number that came from nowhere.
@@ -1444,7 +1446,8 @@ async function main() {
 
     // The card's affordance is its own View RFQ button, which is how the
     // design draws it.
-    await page.locator('[data-testid="open-rfq-card"] .primary-btn').first().click();
+    await page.evaluate((title) => [...document.querySelectorAll('[data-testid="open-rfq-card"]')]
+      .find((card) => card.innerText.includes(title))?.querySelector(".primary-btn")?.click(), rfqTitle);
     // This vendor has not quoted yet, so the designed page is "RFQ details" —
     // the one with Send quote on it. "View RFQ" is the read-back it gets
     // afterwards.
@@ -2302,6 +2305,64 @@ async function main() {
     check(paidOut.state === "released", "the payment is paid out");
     check(Boolean(paidOut.released_by), "and stamped with which member of staff did it");
 
+    // ================= PAYONEER, BY HAND =================
+    // Needs the demo data (Kowloon, seed-demo.mjs). Nothing calls Payoneer.
+    console.log("\nPAYONEER, BY HAND");
+    const kowloonOwed = await page.evaluate(() => [...document.querySelectorAll('[data-section="payout"] tr')]
+      .some((row) => row.innerText.includes("kowloon-payouts@example.com")));
+    if (!kowloonOwed) {
+      console.log("  (no demo data on this database: skipped)");
+    } else {
+      const markDisabled = await page.evaluate(() => [...document.querySelectorAll('[data-section="payout"] tr')]
+        .find((row) => row.innerText.includes("kowloon-payouts@example.com"))
+        ?.querySelector('[data-testid="release-payoneer"]')?.disabled);
+      check(markDisabled === true, "staff cannot mark a Payoneer payout without its payment ID");
+      const payoneerId = `E2E-PO-${stamp}`;
+      await page.locator('[data-testid="payoneer-payment-id"]').first().fill(payoneerId);
+      await page.locator('[data-testid="release-payoneer"]').first().click();
+      await page.locator('[data-testid="release-payment-confirm"]').first().click();
+      await page.waitForTimeout(3500);
+      const { data: recorded } = await db.from("payoneer_payouts")
+        .select("paid_to_email").eq("payoneer_payment_id", payoneerId).single();
+      check(recorded?.paid_to_email === "kowloon-payouts@example.com", "the payout is recorded with the email paid");
+      await record(page, "Paid out by Payoneer", "staff pay from TSC's Payoneer account, then record the ID");
+
+      await signOutFully(page);
+      // A demo login, so the demo password rather than this run's.
+      await page.goto(portalUrl("factory"));
+      await waitFor(page, 'input[name="email"]', 30000);
+      await page.locator('input[name="email"]').first().fill("demo-trading@example.com");
+      await page.locator('input[name="password"]').first().fill("demo password 8");
+      await clickButton(page, "log in");
+      await page.waitForTimeout(4000);
+      await page.goto(`${APP}/payout`);
+      await waitFor(page, '[data-testid="payout-balance"]', 25000);
+      check(/^\$/.test((await page.locator('[data-testid="payout-balance"]').innerText()).trim())
+        && /payoneer/i.test(await page.locator('[data-testid="payout-how-paid"]').innerText()),
+        "the factory's card shows its balance and says it is paid by Payoneer");
+      await waitFor(page, ".payout-transaction-row", 25000);
+      const payoneerEarnings = await page.locator(".payout-transaction-table").innerText();
+      check(payoneerEarnings.includes(payoneerId) && /paid by payoneer/i.test(payoneerEarnings),
+        "its earnings say so, with the reference");
+
+      await page.locator('[data-testid="add-payout-method"]').click();
+      await clickButton(page, "add payout method");
+      await page.locator('[data-testid="payout-use-payoneer"]').click();
+      await page.locator('[data-field="payout_payoneer_email"]').fill("e2e-second@example.com");
+      await page.locator('[data-field="payout_payoneer_email_confirm"]').fill("e2e-typo@example.com");
+      check(await page.evaluate(() => document.querySelector('[data-testid="save-payout"]')?.disabled === true), "two different emails cannot be saved");
+      await page.locator('[data-field="payout_payoneer_email_confirm"]').fill("e2e-second@example.com");
+      await page.locator('[data-testid="save-payout"]').click();
+      await page.waitForTimeout(2500);
+      const { data: added } = await db.from("factory_payout_accounts")
+        .select("id, method").eq("payoneer_email", "e2e-second@example.com").single();
+      check(added?.method === "payoneer", "a second Payoneer account is saved");
+      await db.from("factory_payout_accounts").delete().eq("id", added.id);
+
+      await signOutFully(page);
+      await signIn(page, adminEmail, "Admin paying out");
+    }
+
     // ================= AND THE FACTORY SEES IT PAID =================
     console.log("\nAND THE FACTORY SEES IT PAID");
     await signOutFully(page);
@@ -2432,11 +2493,22 @@ async function main() {
     check(openedGap >= 0 && openedGap < 4, `the conversation opens at its newest message (${openedGap}px from it)`);
     if (sent.body_translated) {
       check(readerSees.includes(factoryLine), "received messages show the original first");
-      const bubble = page.locator(".message-bubble").filter({ hasText: factoryLine });
-      await bubble.getByRole("button", { name: "Translate to English", exact: true }).click();
-      check((await bubble.innerText()).includes(sent.body_translated), "the English translation appears on request");
-      await bubble.getByRole("button", { name: "Show Original", exact: true }).click();
-      check((await bubble.innerText()).includes(factoryLine), "Show Original restores the received text");
+      // Stagehand's locator has no filter() or getByRole(): reach into the bubble from the page.
+      const inBubble = (name) => page.evaluate(([line, label]) => {
+        const bubble = [...document.querySelectorAll(".message-bubble")].find((node) =>
+          [...node.querySelectorAll("button")].some((button) => button.textContent.trim() === label)
+          && (label === "Translate to English" ? node.textContent.includes(line) : true));
+        const button = [...(bubble?.querySelectorAll("button") ?? [])].find((node) => node.textContent.trim() === label);
+        button?.click();
+        return Boolean(button);
+      }, [factoryLine, name]);
+      const bubbleText = () => eachText(page, ".message-bubble").then((texts) => texts.join("\n"));
+      check(await inBubble("Translate to English"), "the received message offers a translation");
+      await page.waitForTimeout(500);
+      check((await bubbleText()).includes(sent.body_translated), "the English translation appears on request");
+      check(await inBubble("Show Original"), "and offers the original back");
+      await page.waitForTimeout(500);
+      check((await bubbleText()).includes(factoryLine), "Show Original restores the received text");
     } else {
       check(readerSees.includes(factoryLine.slice(0, 8)),
         "with no translation available, the brand sees exactly what was written");
@@ -3464,13 +3536,15 @@ async function main() {
     // vendors already chosen.
     const chosenName = await page.evaluate(() => document.querySelector(".invite-selection-factory-card.selected h3")?.textContent);
     await page.locator(".invite-selection-factory-card.selected a.marketplace-factory-profile-link").first().click();
-    await waitFor(page, ".brand-factory-public-profile .factory-profile-hero", 20000);
+    await waitFor(page, ".brand-vendor-profile-navigation", 20000);
+    await waitFor(page, ".factory-profile-hero", 20000);
     await record(page, "A vendor's profile, from the invite step", "the brand's designed view of the vendor, real data");
-    const brandViewText = await page.locator(".brand-factory-public-profile").innerText();
+    const brandViewText = await page.evaluate(() => document.querySelector("main")?.innerText ?? document.body.innerText);
     check(brandViewText.includes(chosenName) && brandViewText.includes("Back to vendor selection"),
       "it is that vendor's profile, with the design's way back to the selection");
-    check(!/Atelier Minho|Club Standard|4\.9|Club orders/.test(brandViewText),
-      "none of the design's example vendor, and no order count a brand can't know");
+    // "Club orders" is real now: main's public_factory_metrics (20261104001000).
+    check(!/Atelier Minho|4\.9/.test(brandViewText),
+      "none of the design's example vendor");
     await clickButton(page, "back to vendor selection");
     await waitFor(page, ".invite-results", 15000);
     const stillChosen = await page.evaluate(() => [...document.querySelectorAll(".invite-selection-factory-card.selected h3")].map((h) => h.textContent));
@@ -3717,9 +3791,10 @@ async function main() {
     await waitFor(page, ".factory-profile-hero", 20000);
     const savedProfile = await page.locator(".factory-profile-page").innerText();
     check(savedProfile.includes("Back to saved vendors") && /\bSaved\b/.test(savedProfile), "its profile says Saved, with the way back to Saved");
-    await page.evaluate(() => [...document.querySelectorAll(".factory-profile-actions button")].find((button) => button.textContent === "Saved")?.click());
+    // A manufacturer's page (main's c3fb426) draws it in the banner; a trading company's in the actions.
+    await page.evaluate(() => [...document.querySelectorAll(".factory-profile-actions button, .factory-profile-banner-edit")].find((button) => button.textContent.trim() === "Saved")?.click());
     await page.waitForTimeout(1500);
-    const unsaved = await page.evaluate(() => [...document.querySelectorAll(".factory-profile-actions button")].map((button) => button.textContent));
+    const unsaved = await page.evaluate(() => [...document.querySelectorAll(".factory-profile-actions button, .factory-profile-banner-edit")].map((button) => button.textContent.trim()));
     check(unsaved.includes("Save factory"), "pressing Saved removes it (Save factory again)");
     await clickButton(page, "back to saved vendors");
     await waitFor(page, ".saved-shell", 15000);

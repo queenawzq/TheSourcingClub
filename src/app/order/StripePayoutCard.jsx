@@ -1,5 +1,6 @@
 import { balanceCurrency } from "../../lib/payout-currency.mjs";
 import { payoutUsdTotal } from "../../lib/payout-display.mjs";
+import { isHandPaid } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { supabase } from "../../lib/supabase.js";
@@ -9,6 +10,7 @@ import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
 import PaymentHelp, { PENDING_HELP } from "./PaymentHelp.jsx";
 import StripeConnectEmbed from "./StripeConnectEmbed.jsx";
 import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
+import { payoneerEmail, validPayoneerEmail } from "./use-manual-payouts.js";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
 const names = new Intl.DisplayNames(["en"], { type: "region" });
@@ -32,7 +34,11 @@ const STRIPE_FORM_NOTE = "Stripe, TSC's payment partner, securely verifies your 
 const EXPRESS_FORM_NOTE = "Stripe, TSC's payment partner, holds your company and bank details. It may ask you to confirm with a code in a small Stripe window, and may show TSC's registered company name.";
 
 /** Where staff pay by bank, everything they need to pay it. */
-const manualComplete = (row) => Boolean(row?.bank_name?.trim() && row?.account_name?.trim());
+/** A plain letter, not Payoneer's logo: using that needs their permission. */
+const PAYONEER_MARK = <strong>P</strong>;
+
+const manualComplete = (row) => isPayoneer(row) || Boolean(row?.bank_name?.trim() && row?.account_name?.trim());
+const isPayoneer = (row) => row?.method === "payoneer";
 
 function OperationsContact() {
   return (
@@ -179,6 +185,8 @@ export default function StripePayoutCard({
   onBalanceChange,
   onBalanceStatus,
   onAccountKnown,
+  handFigures,
+  earnings,
   manualAccount,
   manualAccounts = manualAccount ? [manualAccount] : [],
   manualEditingId = null,
@@ -187,6 +195,7 @@ export default function StripePayoutCard({
   manualForm,
   manualFields,
   onManualFieldChange,
+  onManualMethodChange,
   onSaveManual,
   onDeleteManual,
   manualBusy,
@@ -218,6 +227,8 @@ export default function StripePayoutCard({
   const [removing, setRemoving] = useState(null);
   const [handover, setHandover] = useState(null);
   const [methodNotice, setMethodNotice] = useState(null);
+  // Said once the person leaves the field, not at the first letter they type.
+  const [payoneerEmailLeft, setPayoneerEmailLeft] = useState(false);
   const [removeError, setRemoveError] = useState(null);
   // TSC's own add and remove (an account TSC manages): which account a
   // Replace removes once the new one is added, which account becomes the
@@ -393,7 +404,7 @@ export default function StripePayoutCard({
   // Once the card knows how the factory is paid it has its final shape, and
   // the page can draw the figures below it without the card moving them.
   useEffect(() => {
-    if (account !== undefined) onAccountKnown?.();
+    if (account !== undefined) onAccountKnown?.(account);
   }, [account, onAccountKnown]);
 
   // A read that is merely slow is not a failure: after a while, say so.
@@ -447,12 +458,17 @@ export default function StripePayoutCard({
   // Staff cannot pay a bank with no name, an account with no holder, or a
   // country nobody named; a country not listed is named in the instructions.
   const notListed = country === NOT_LISTED;
-  const manualReady = Boolean(
-    country
-    && manualForm?.bank_name?.trim()
-    && manualForm?.account_name?.trim()
-    && (!notListed || manualForm?.instructions?.trim()),
-  );
+  const payoneerForm = manualForm?.method === "payoneer";
+  const payoneerMismatch = payoneerForm && manualForm.payoneer_email_confirm
+    && payoneerEmail(manualForm.payoneer_email) !== payoneerEmail(manualForm.payoneer_email_confirm);
+  const manualReady = payoneerForm
+    ? Boolean(country && validPayoneerEmail(manualForm.payoneer_email) && manualForm.payoneer_email_confirm && !payoneerMismatch)
+    : Boolean(
+      country
+      && manualForm?.bank_name?.trim()
+      && manualForm?.account_name?.trim()
+      && (!notListed || manualForm?.instructions?.trim()),
+    );
 
   const setupActions = (
     <>
@@ -469,6 +485,24 @@ export default function StripePayoutCard({
   );
 
   const manualRequired = new Set(["bank_name", "account_name"]);
+  const editingManual = manualAccounts.find((row) => row.id === manualEditingId) ?? null;
+  const payoneerFieldsContent = (
+    <div className="payout-manual-fields">
+      <div className="payout-form-grid">
+        <label>
+          <span>Payoneer account email (required)</span>
+          <input type="email" autoComplete="off" data-field="payout_payoneer_email" value={manualForm?.payoneer_email ?? ""} required onBlur={() => setPayoneerEmailLeft(true)} onChange={onManualFieldChange("payoneer_email")} placeholder="The email you sign in to Payoneer with" />
+        </label>
+        <label>
+          <span>Re-enter the email (required)</span>
+          <input type="email" autoComplete="off" data-field="payout_payoneer_email_confirm" value={manualForm?.payoneer_email_confirm ?? ""} required onChange={onManualFieldChange("payoneer_email_confirm")} />
+        </label>
+      </div>
+      {payoneerMismatch ? <p className="live-stripe-error" role="alert">The two email addresses don't match.</p> : null}
+      {payoneerEmailLeft && manualForm?.payoneer_email && !validPayoneerEmail(manualForm.payoneer_email) ? <p className="live-stripe-error" role="alert">Enter a valid email address for your Payoneer account.</p> : null}
+      <p className="payout-security-copy">TSC pays your released earnings to this Payoneer account by hand, from TSC's Payoneer business account. TSC is not connected to your Payoneer account and never sees its sign-in or balance.</p>
+    </div>
+  );
   const manualFieldsContent = (
     <div className="payout-manual-fields">
       <div className="payout-form-grid">
@@ -592,8 +626,17 @@ export default function StripePayoutCard({
   }
 
   // Add (blank) or Edit (that account): the parent holds the form.
+  // One notice at a time, and only about what just happened.
+  const openManage = () => {
+    setMethodNotice(null);
+    setRemoveError(null);
+    setModal("manage");
+  };
+
   const openManual = (row) => {
     setManualError(null);
+    setMethodNotice(null);
+    setPayoneerEmailLeft(false);
     onStartManual?.(row);
     setModal("setup");
   };
@@ -611,7 +654,7 @@ export default function StripePayoutCard({
     setManualError(null);
     try {
       await onMakePrimaryManual?.(row);
-      setMethodNotice(`TSC now pays ${methodLabel({ type: "bank_account", last4: row.account_number_last4 }).toLowerCase()}.`);
+      setMethodNotice(`TSC now pays ${manualLabelInSentence(row)}.`);
     } catch (failure) {
       setManualError(failure);
     }
@@ -627,7 +670,9 @@ export default function StripePayoutCard({
   const manualSuccessor = removingManual?.is_primary && otherManual.length
     ? otherManual.find((row) => row.id === promoteId) ?? otherManual[0]
     : null;
-  const manualLabel = (row) => methodLabel({ type: "bank_account", last4: row.account_number_last4 });
+  const manualLabel = (row) => (isPayoneer(row) ? `Payoneer account ${row.payoneer_email}` : methodLabel({ type: "bank_account", last4: row.account_number_last4 }));
+  // In a sentence. An email and the name Payoneer keep their case.
+  const manualLabelInSentence = (row) => (isPayoneer(row) ? manualLabel(row) : manualLabel(row).toLowerCase());
 
   async function removeManualMethod() {
     setRemoveError(null);
@@ -641,13 +686,42 @@ export default function StripePayoutCard({
     }
   }
 
+  // Only the page's Earnings card passes figures; Settings mounts this for its dialogs.
+  const handPaid = Boolean(handFigures) && isHandPaid(account, earnings);
+  // Only an owner reads the balance; for anyone else it is not "in progress".
+  const payoutSetupLine = account?.transfers_active
+    // The account is known a moment before its balance arrives:
+    // that is loading, and only a real failure says it failed.
+    ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : "Only a company owner can view the withdrawable balance."
+    : account?.details_submitted
+      ? "Payout verification in progress"
+      : account
+        ? isOwner ? "Finish setup to receive earnings." : "Payout setup on Stripe is not finished yet."
+        // Where Stripe cannot pay out, staff pay the saved bank account.
+        : isPayoneer(manualAccount)
+          ? <>Payoneer account {manualAccount.payoneer_email} on file. TSC sends your balance to it by hand, from TSC's Payoneer business account.</>
+        : manualAccount && manualComplete(manualAccount)
+          ? <>Bank details on file{manualAccount.account_number_last4 ? ` (account ending in ${manualAccount.account_number_last4})` : ""}. TSC sends your balance to this account by bank transfer. <OperationsContact /></>
+          : manualAccount
+            ? "Your bank details are incomplete. Add the bank and the account name so TSC can pay you."
+            : isOwner ? "Add a payout method to receive earnings" : "No payout method yet.";
+
   return (
     <>
       {renderCard ? <section className="live-payout-method-card live-stripe-payout-card" data-testid="stripe-payout-card">
         <div className="live-payout-balance">
-          {/* Paid by bank, the factory has no balance anywhere: TSC sends each
-              released payment, so the card says how it is paid instead. */}
-          <span className="payment-metric-label">{!account && manualAccount ? "Payouts" : arriving ? "Balance on its way (USD)" : "Available balance (USD)"}
+          {handPaid ? <>
+            {/* Paid by hand, nothing rests in Stripe: the figures are the
+                payments' own states, the same as the staff board's. */}
+            <span className="payment-metric-label">Balance (USD)
+              <PaymentHelp label="Balance">Approved earnings TSC still has to send you, across all clients.</PaymentHelp>
+            </span>
+            <strong data-testid="payout-balance">{handFigures.balance ? formatMoney(payoutUsdTotal(handFigures.balance), "USD")
+              : handFigures.failed ? "—" : <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />}</strong>
+            {handFigures.pending ? <p data-testid="payout-pending">{formatMoney(payoutUsdTotal(handFigures.pending), "USD")} pending brand approval <PaymentHelp label="Pending">Held by TSC until the brand approves the step. Once approved, it moves into your balance.</PaymentHelp></p> : null}
+            <p data-testid="payout-how-paid">{payoutSetupLine}</p>
+          </> : <>
+          <span className="payment-metric-label">{arriving ? "Balance on its way (USD)" : "Available balance (USD)"}
             {arriving
               ? <PaymentHelp label="Balance on its way">{PENDING_HELP}</PaymentHelp>
               : <PaymentHelp label="Available balance">Money you can withdraw to your bank now. This is your overall balance across all clients.</PaymentHelp>}
@@ -656,7 +730,7 @@ export default function StripePayoutCard({
             // A placeholder the size of the amount, so the card does not
             // jump when Stripe answers (a sentence said "checking" before).
             : balanceWaiting ? <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />
-            : !account && manualAccount ? "By bank transfer" : "—"}</strong>
+            : "—"}</strong>
           {balanceStatus === "loading" && balanceWaiting ? (
             <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
           ) : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
@@ -666,21 +740,8 @@ export default function StripePayoutCard({
               : pending > 0
               ? <>{formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} pending <PaymentHelp label="Pending balance">{PENDING_HELP}</PaymentHelp></>
               : "Earnings stay in your balance until you withdraw them."
-            // Only an owner reads the balance; for anyone else it is not "in progress".
-            : account?.transfers_active
-              // The account is known a moment before its balance arrives:
-              // that is loading, and only a real failure says it failed.
-              ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : "Only a company owner can view the withdrawable balance."
-              : account?.details_submitted
-                ? "Payout verification in progress"
-                : account
-                  ? isOwner ? "Finish setup to receive earnings." : "Payout setup on Stripe is not finished yet."
-                  // Where Stripe cannot pay out, staff pay the saved bank account.
-                  : manualAccount && manualComplete(manualAccount)
-                    ? <>Bank details on file{manualAccount.account_number_last4 ? ` (account ending in ${manualAccount.account_number_last4})` : ""}. TSC pays your released earnings to this account by bank transfer. <OperationsContact /></>
-                    : manualAccount
-                      ? "Your bank details are incomplete. Add the bank and the account name so TSC can pay you."
-                      : isOwner ? "Add a payout method to receive earnings" : "No payout method yet."}</p>}
+            : payoutSetupLine}</p>}
+          </>}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
             <p>Your previous payout account has funds remaining or returned after the upgrade.</p>
             {recoveryAvailable > 0 && balance.recovery.payoutsEnabled ? <button className="secondary-btn compact-btn" disabled={busy} onClick={() => {
@@ -702,14 +763,14 @@ export default function StripePayoutCard({
               setWithdrawal({ amount: available, currency: currency.toLowerCase(), requestId: crypto.randomUUID() });
               setModal("withdraw");
             }}>Withdraw to bank</button>
-            <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("manage")}>Manage payout method</button>
+            <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={openManage}>Manage payout method</button>
             </>
           ) : account ? (
             <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>
           ) : manualAccount && !manualComplete(manualAccount) ? (
             <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => openManual(manualAccount)}>Complete bank details</button>
           ) : (
-            <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => (manualAccount ? setModal("manage") : openManual(null))}>{manualAccount ? "Manage payout method" : "Add payout method"}</button>
+            <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => (manualAccount ? openManage() : openManual(null))}>{manualAccount ? "Manage payout method" : "Add payout method"}</button>
           )
           : <button className="primary-btn compact-btn" type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? "Manage payout method" : "Add payout method"}</button>}
         </div>
@@ -764,12 +825,14 @@ export default function StripePayoutCard({
             )) : manualAccounts.length ? manualAccounts.map((row) => (
               <article className="payout-method-row" key={row.id}>
                 <div className="payout-bank-icon" aria-hidden="true">
-                  <svg viewBox="0 0 24 24"><path d="M3 9h18M5 9v8m4-8v8m6-8v8m4-8v8M3 18h18M12 3l9 4H3l9-4Z" /></svg>
+                  {isPayoneer(row) ? PAYONEER_MARK : <svg viewBox="0 0 24 24"><path d="M3 9h18M5 9v8m4-8v8m6-8v8m4-8v8M3 18h18M12 3l9 4H3l9-4Z" /></svg>}
                 </div>
-                <div className="payout-method-name"><strong>{methodLabel({ type: "bank_account", last4: row.account_number_last4 })}</strong><span>{row.bank_name || "Manual bank transfer"}</span></div>
+                <div className="payout-method-name">{isPayoneer(row)
+                  ? <><strong>Payoneer</strong><span>{row.payoneer_email}</span></>
+                  : <><strong>{manualLabel(row)}</strong><span>{row.bank_name || "Manual bank transfer"}</span></>}</div>
                 {row.is_primary ? <span className="payout-method-default">Default</span> : null}
                 <div className="payout-method-menu">
-                  <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${methodLabel({ type: "bank_account", last4: row.account_number_last4 }).toLowerCase()}`} aria-expanded={methodMenu === row.id} disabled={manualBusy} onClick={() => setMethodMenu((open) => open === row.id ? null : row.id)}>...</button>
+                  <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${manualLabelInSentence(row)}`} aria-expanded={methodMenu === row.id} disabled={manualBusy} onClick={() => setMethodMenu((open) => open === row.id ? null : row.id)}>...</button>
                   {methodMenu === row.id ? (
                     <div className="payout-method-popover" role="menu">
                       <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); openManual(row); }}>Edit method</button>
@@ -792,7 +855,7 @@ export default function StripePayoutCard({
           {methodNotice && modal === "manage" ? <p className="live-payment-notice" role="status">{methodNotice}</p> : null}
           {account
             ? !managed ? <p className="payout-security-copy">Your existing bank details stay with Stripe. Complete the payout upgrade to manage bank accounts directly on TSC.</p> : null
-            : manualAccounts.length > 1 ? <p className="payout-security-copy">TSC pays your default bank account. To have another one paid, choose “Make default” on it.</p> : null}
+            : manualAccounts.length > 1 ? <p className="payout-security-copy">TSC pays your default payout method. To have another one paid, choose “Make default” on it.</p> : null}
           {manualError ? <p className="live-stripe-error" role="alert">{manualError.message}</p> : null}
         </PayoutModal>
       ) : null}
@@ -846,8 +909,8 @@ export default function StripePayoutCard({
       {modal === "remove" && removingManual ? (
         <PayoutModal
           title={manualRemovalRefusal
-            ? `${methodLabel({ type: "bank_account", last4: removingManual.account_number_last4 })} can’t be removed yet`
-            : `Remove ${methodLabel({ type: "bank_account", last4: removingManual.account_number_last4 }).toLowerCase()}?`}
+            ? `${manualLabel(removingManual)} can’t be removed yet`
+            : `Remove ${manualLabelInSentence(removingManual)}?`}
           eyebrow="Payments"
           onClose={closeModal}
           actions={manualRemovalRefusal
@@ -856,7 +919,7 @@ export default function StripePayoutCard({
         >
           <p className="payout-modal-intro" data-testid="payout-remove-reason">{manualRemovalRefusal
             ?? (manualSuccessor
-              ? `TSC will pay your released earnings to ${manualLabel(manualSuccessor).toLowerCase()}${manualSuccessor.bank_name ? ` (${manualSuccessor.bank_name})` : ""} from now on.`
+              ? `TSC will pay your released earnings to ${manualLabelInSentence(manualSuccessor)}${manualSuccessor.bank_name ? ` (${manualSuccessor.bank_name})` : ""} from now on.`
               : removingManual.is_primary
                 ? "This is your only payout method. TSC will hold your released earnings until you add another one, then pay them to it."
                 : "TSC will no longer keep these details. Your earnings still go to your default account.")}</p>
@@ -909,7 +972,7 @@ export default function StripePayoutCard({
       ) : null}
 
       {modal === "setup" ? (
-        <PayoutModal title={manualEditingId ? "Edit bank account" : manualAccounts.length ? "Add a payout method" : "Set up payout method"} eyebrow="Payments" onClose={closeModal} actions={setupActions}>
+        <PayoutModal title={manualEditingId ? isPayoneer(editingManual) ? "Edit Payoneer account" : "Edit bank account" : manualAccounts.length ? "Add a payout method" : "Set up payout method"} eyebrow="Payments" onClose={closeModal} actions={setupActions}>
           {manualError ? <p className="live-stripe-error" role="alert">{manualError.message}</p> : null}
           <p className="payout-modal-intro">Choose where your company is registered. We’ll show the payout method available for that country.</p>
           <label className="payout-country-field">
@@ -931,9 +994,35 @@ export default function StripePayoutCard({
                 {notListed
                   ? "Stripe pays out only to companies in the US, Canada, the UK, Switzerland and the EEA."
                   : `Stripe can’t pay out to companies in ${countryName(country)}.`}
-                {" "}Add your bank account and TSC pays your released earnings to it by bank transfer.
+                {" "}{manualEditingId
+                  ? isPayoneer(editingManual)
+                    ? "TSC pays your released earnings to your Payoneer account by hand."
+                    : "Add your bank account and TSC pays your released earnings to it by bank transfer."
+                  : "Choose how TSC pays your released earnings. TSC sends each payment by hand."}
               </p></div>
-              {manualFieldsContent}
+              {manualEditingId ? null : (
+                <div className="payout-method-options" role="group" aria-label="Payout method">
+                  <article className="payout-method-option">
+                    <div className="payout-option-icon payout-bank-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><path d="M3 9h18M5 9v8m4-8v8m6-8v8m4-8v8M3 18h18M12 3l9 4H3l9-4Z" /></svg>
+                    </div>
+                    <div className="payout-option-copy">
+                      <div className="payout-option-title"><strong>Bank account</strong></div>
+                      <p>TSC sends a bank transfer to your account.</p>
+                    </div>
+                    <button className={payoneerForm ? "secondary-btn compact-btn" : "primary-btn compact-btn"} type="button" aria-pressed={!payoneerForm} data-testid="payout-use-bank" onClick={() => { setManualError(null); onManualMethodChange?.("bank"); }}>{payoneerForm ? "Use bank account" : "Selected"}</button>
+                  </article>
+                  <article className="payout-method-option">
+                    <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{PAYONEER_MARK}</div>
+                    <div className="payout-option-copy">
+                      <div className="payout-option-title"><strong>Payoneer</strong></div>
+                      <p>TSC sends a payment to your Payoneer account, using its email.</p>
+                    </div>
+                    <button className={payoneerForm ? "primary-btn compact-btn" : "secondary-btn compact-btn"} type="button" aria-pressed={payoneerForm} data-testid="payout-use-payoneer" onClick={() => { setManualError(null); onManualMethodChange?.("payoneer"); }}>{payoneerForm ? "Selected" : "Use Payoneer"}</button>
+                  </article>
+                </div>
+              )}
+              {payoneerForm ? payoneerFieldsContent : manualFieldsContent}
             </>
           ) : <div className="payout-empty-guidance">Select a country to see the available payout method.</div>}
           {supported ? <p className="payout-security-copy">{STRIPE_FORM_NOTE}</p> : null}
