@@ -99,7 +99,7 @@ const mockAdapter = {
     sendTestEmail: () => ({ sent: true, to: "operations@thesourcingclub.com" }),
     runDailyJobs: () => ({ reminders: { capacity_reminders: 2, due_soon: 1 }, emails: { sent: 3, skipped: 0, failed: 0, configured: true } }),
     suggestReviewRequest: ({ companyName }) => ({
-      message: `Hi ${companyName} team,\n\nThank you for submitting your profile. Before we can complete the review, please upload the missing supporting document and confirm its current scope and validity. You can add it from your company profile.\n\nThank you,\nThe Sourcing Club`,
+      message: `${companyName}'s profile is nearly complete, but one item is still missing.\n\n- The missing supporting document, with its current scope and validity\n\nWe look forward to receiving it.`,
       error: null,
     }),
     decideReview: (id, status, _note, tier) => {

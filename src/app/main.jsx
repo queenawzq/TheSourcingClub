@@ -132,6 +132,18 @@ function signOutInto(kind, signOut) {
   return signOut();
 }
 
+/** The company a review email is about (`review=`). Anything else is ignored. */
+function reviewOrgFromUrl() {
+  const id = new URLSearchParams(window.location.search).get("review");
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id ?? "") ? id : null;
+}
+
+function clearReviewOrgFromUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("review");
+  window.history.replaceState(window.history.state, "", url);
+}
+
 function portalFromUrl() {
   const portal = new URLSearchParams(window.location.search).get("portal");
   return portal === "factory" || portal === "vendor" ? "factory" : "brand";
@@ -156,7 +168,7 @@ function SignIn() {
 
   const [mode, setMode] = useState(params.get("mode") === "signup" ? "signup" : "login");
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState(null);
+  const [notice, setNotice] = useState(() => (reviewOrgFromUrl() ? "Sign in to see what we need from you." : null));
   const [resetFor, setResetFor] = useState(null);
   // The address a sign-in code was emailed to, and so the code-entry screen.
   const [codeFor, setCodeFor] = useState(null);
@@ -1397,6 +1409,46 @@ function NeedsPermission({ org, perm }) {
   );
 }
 
+/**
+ * A review email's button carries the company it is about. For a member, that
+ * company is selected, whichever was active. Anyone else signed in here (staff
+ * in the console, another company's person) is told, instead of landing on
+ * their own pages with no word of why. No design draws this; see CLAUDE.md.
+ * It only explains: what the person can read is still up to the database.
+ */
+function ReviewLinkGate({ children }) {
+  const { orgs, selectOrg, signOut, user } = useAuth();
+  const [target, setTarget] = useState(reviewOrgFromUrl);
+  const member = Boolean(target && orgs.some((org) => org.id === target));
+
+  useEffect(() => {
+    if (!member) return;
+    selectOrg(target);
+    clearReviewOrgFromUrl();
+    setTarget(null);
+  }, [member, target, selectOrg]);
+
+  if (!target || member) return children;
+  return (
+    <main className="brand-onboarding-page">
+      <header className="brand-onboarding-topbar">
+        <img src="/assets/logo.svg" alt="The Sourcing Club" />
+      </header>
+      <section className="brand-onboarding-card complete" aria-label="This link is for another account">
+        <div className="brand-onboarding-complete">
+          <img className="brand-onboarding-success-icon" src="/assets/prototype-icons/circle-warning.svg" alt="" />
+          <h1>This link is for another account</h1>
+          <p>It was sent to a company you are not signed in to. You are signed in as {user?.email}.</p>
+        </div>
+        <footer className="brand-onboarding-actions">
+          <button className="secondary-btn" type="button" onClick={() => { clearReviewOrgFromUrl(); setTarget(null); }}>Stay signed in as me</button>
+          <button className="primary-btn" type="button" onClick={() => signOutInto(portalFromUrl(), signOut)}>Log out and continue</button>
+        </footer>
+      </section>
+    </main>
+  );
+}
+
 function NotForThisSide() {
   const { navigate } = useRouter();
   // A previous account's deep link can survive sign-in or an org switch.
@@ -1527,7 +1579,7 @@ function App() {
     );
   }
   // Reachable before an org exists, and deliberately so.
-  if (status === "no-org") return <AdminGate noOrg><ChooseOrgType /></AdminGate>;
+  if (status === "no-org") return <ReviewLinkGate><AdminGate noOrg><ChooseOrgType /></AdminGate></ReviewLinkGate>;
   if (status === "error") {
     return (
       <div className="gate">
@@ -1544,9 +1596,11 @@ function App() {
   if (!activeOrg) return <Loading label="Loading your account…" />;
 
   return (
-    <AdminGate>
-      <Shell />
-    </AdminGate>
+    <ReviewLinkGate>
+      <AdminGate>
+        <Shell />
+      </AdminGate>
+    </ReviewLinkGate>
   );
 }
 
