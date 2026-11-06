@@ -42,7 +42,7 @@ check(homeLayout({ hasHistory: true }) === "loading", "no status is not an answe
 check(!brandHasHistory([], []), "a brand with nothing is new");
 check(!brandHasHistory([{ status: "draft" }], []), "a brand with only a draft is new: nobody has seen it");
 check(brandHasHistory([{ status: "open" }], []), "a published request counts");
-check(brandHasHistory([{ status: "closed" }], []), "a closed request still counts: it is not their first");
+check(brandHasHistory([{ status: "awarded" }], []), "an awarded request still counts: it is not their first");
 check(brandHasHistory([{ status: "cancelled" }], []), "a cancelled request still counts");
 check(brandHasHistory([], [{ id: "archived order" }]), "any order counts, archived or not");
 check(!factoryHasHistory([], false), "a vendor with nothing is new");

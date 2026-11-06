@@ -2447,6 +2447,8 @@ export function FactoryDashboardPage({
   // Live: drawn in place of the dashboard until the reads have answered. The
   // prototype passes none.
   holding,
+  // Live: something later that did not go through, above the dashboard.
+  notice,
 }) {
   const capacityUnits = capacity?.units ?? getCapacityUnitRange(capacityValue);
   const [inviteFactoryOpen, setInviteFactoryOpen] = useState(false);
@@ -2474,6 +2476,7 @@ export function FactoryDashboardPage({
   return (
     <main className="factory-dashboard-page">
       <div className="factory-dashboard-shell">
+        {notice}
         <header className="factory-dashboard-header">
           <h1>{language === "zh" ? `你好，${who}` : `Hi ${who}`}</h1>
           <button className="activity-icon-btn" type="button" onClick={onOpenActivity} aria-label="Open activity">

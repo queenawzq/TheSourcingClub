@@ -22,7 +22,7 @@ export function homeLayout({ status, hasHistory }) {
 
 /**
  * A brand is new until it has published something or has an order. A draft is
- * not yet anything anyone else has seen. Closed requests and archived orders
+ * not yet anything anyone else has seen. Cancelled requests and archived orders
  * still count: "YOUR FIRST QUOTE" would not be true.
  */
 export function brandHasHistory(rfqs, orders) {

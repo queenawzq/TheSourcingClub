@@ -312,7 +312,6 @@ export default function LiveFactoryHome({ org, profile }) {
 
   return (
     <>
-    <HomeNotice text={notice} />
     {drawer && (
       <FactoryCapacityDrawer
         language="en"
@@ -325,6 +324,7 @@ export default function LiveFactoryHome({ org, profile }) {
     <FactoryDashboardPage
       companyType={isTrading ? "trading" : "factory"}
       dashboardState={layout}
+      notice={<HomeNotice text={notice} />}
       language="en"
       orgName={org.name}
       creditBalance={credits ?? 0}
