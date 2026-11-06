@@ -187,7 +187,7 @@ export function AuthScreen({
 
           <form className="auth-form" onSubmit={submit}>
             {isSignup && (
-              <div className="auth-field-row">
+              <div className={invitation ? undefined : "auth-field-row"}>
                 <label className="auth-field">
                   <span>{copy?.name ?? "Your name"}</span>
                   <input type="text" name="fullName" defaultValue={invitation?.name ?? undefined} placeholder={copy?.namePlaceholder ?? "Your full name"} autoComplete="name" required />

@@ -3006,6 +3006,7 @@ export function SettingsScreen({
                       type="button"
                       aria-label={isLive && member.removeLabel ? member.removeLabel : `Remove ${member.name}`}
                       disabled={isLive ? busy || !member.removable : isFactory ? member.role === "Owner" : undefined}
+                      title={isLive && !member.removable ? member.removeLockedReason : undefined}
                       onClick={() => removeMember(member.email)}
                     >
                       <img src="/assets/prototype-icons/trash.svg" alt="" />
@@ -7886,11 +7887,11 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, o
                 {/* A request that is awarded or cancelled can no longer be
                     edited or widened; live cards say so with archivable. */}
                 {rfq.archivable !== false && (
-                  <button type="button" role="menuitem" onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
+                  <button type="button" role="menuitem" disabled={Boolean(archiveLocked) || undefined} title={archiveLocked || undefined} onClick={() => (onEdit ? onEdit(rfq) : goTo("review"))}>Edit quote</button>
                 )}
                 <button type="button" role="menuitem" onClick={() => goTo("describe")}>Duplicate quote</button>
                 {rfq.archivable !== false && (
-                  <button type="button" role="menuitem" onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
+                  <button type="button" role="menuitem" disabled={Boolean(archiveLocked) || undefined} title={archiveLocked || undefined} onClick={() => (onInvite ? onInvite(rfq) : goTo("invite"))}>Invite more vendors</button>
                 )}
                 {/* Live, archiving cancels the request; a request that is
                     already awarded or cancelled has nothing left to archive. */}
