@@ -206,6 +206,7 @@ npm run check:messages   # the contact-detail patterns: hits and near-misses
 npm run check:auth       # "Keep me logged in" across tabs (runs in build)
 npm run check:review-email  # the review note's shape, its parser and the decision emails (runs in build)
 npm run check:bank-number  # the full bank number stays off our server, and every fake is plainly fake (runs in build)
+npm run check:e2e-exit   # an e2e that stops halfway exits non-zero and says so (needs the stack and dev server)
 npm run check:dashboard  # no dashboard draws a layout before its reads answer (runs in build)
 npm run taxonomy      # regenerate migration 007 from the seed JSON
 npm run seed:demo     # demo companies with fixed logins; run again to reset them
