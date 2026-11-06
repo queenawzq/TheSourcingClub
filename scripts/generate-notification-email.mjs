@@ -25,6 +25,8 @@ const escapeHtml = (value) => String(value ?? "")
 /** Same answers as notificationLink() in src/shared/notification-link.mjs. */
 export function notificationPath(notification, { isFactory }) {
   const { subject_type: type, subject_id: id } = notification;
+  // A payout change names no subject; the methods are on the factory's Payments page.
+  if (notification.kind === "payout_method_changed" && isFactory) return "/payout";
   if (!id) return null;
   if (type === "rfq" && !isFactory && ["quote_received", "quote_withdrawn"].includes(notification.kind)) {
     return `/rfqs/${id}/quotes`;
@@ -115,6 +117,7 @@ const copy = {
       rfq: (isFactory) => (isFactory ? "New RFQ matches" : "New quote activity"),
       payments: () => "Payment and approval requests",
       messages: () => "Messages and call invites",
+      account: () => "Account security",
     },
     greeting: (name) => (name ? `Hi ${name},` : "Hi,"),
     lead: (company) => `There is an update for ${company} on The Sourcing Club.`,
@@ -122,6 +125,8 @@ const copy = {
     ctaFallback: "Open The Sourcing Club",
     why: (company, setting) =>
       `You’re receiving this because ${company} has “${setting}” emails turned on. Any member can turn them off in Settings → Notifications.`,
+    whyAlways: (company) =>
+      `Everyone at ${company} gets this email when its payout methods change, so a change nobody made is noticed. It cannot be turned off.`,
     questions: "Questions? Reply to this email or contact",
   },
   zh: {
@@ -129,6 +134,7 @@ const copy = {
       rfq: (isFactory) => (isFactory ? "新的匹配询价" : "新的报价动态"),
       payments: () => "付款与审批请求",
       messages: () => "消息与通话邀请",
+      account: () => "账户安全",
     },
     greeting: (name) => (name ? `${name} 你好，` : "你好，"),
     lead: (company) => `${company} 在 The Sourcing Club 有一条新动态。`,
@@ -229,7 +235,7 @@ export function notificationEmail(row, env) {
   // Dates in the recipient's saved zone, named; UTC, named, when unknown.
   const title = notificationTitle(row, { timeZone: row.time_zone || "UTC" }).trim() || t.lead(company);
   const body = notificationBody(row, { timeZone: row.time_zone || "UTC", withZone: true, locale }).trim();
-  const why = t.why(company, setting);
+  const why = row.category === "account" ? t.whyAlways(company) : t.why(company, setting);
 
   const text = [
     t.greeting(row.recipient_name),

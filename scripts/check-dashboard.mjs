@@ -18,7 +18,8 @@ import { createServer } from "vite";
 import react from "@vitejs/plugin-react";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { brandHasHistory, factoryHasHistory, homeLayout, withinCap } from "../src/app/home/home-layout.mjs";
+import { readFileSync } from "node:fs";
+import { brandHasHistory, factoryHasHistory, followRead, homeLayout, withinCap } from "../src/app/home/home-layout.mjs";
 
 let failures = 0;
 let checks = 0;
@@ -50,6 +51,45 @@ check(factoryHasHistory([], true), "a quote from any month counts: the layout mu
 check(factoryHasHistory([{ id: "order" }], false), "an order counts");
 check(await withinCap(new Promise(() => {}), "fallback", 5) === "fallback", "a read that never answers cannot hold the dashboard up");
 check(await withinCap(Promise.resolve("answer"), "fallback", 5) === "answer", "a read that answers is used");
+
+// ---- A read past the cap: the page draws without it, and its answer is still used ----
+const after = (ms, value) => new Promise((resolve) => setTimeout(() => resolve(value), ms));
+const following = (read, giveUpMs) => {
+  const seen = { state: { list: [], answered: false } };
+  const stop = followRead(read, (next) => {
+    seen.state = typeof next === "function" ? next(seen.state) : next;
+  }, giveUpMs);
+  return { seen, stop };
+};
+{
+  const slow = after(20, ["late vendor"]);
+  check(await withinCap(slow, null, 5) === null, "vendors over the cap: the page draws without them");
+  const late = following(after(20, ["late vendor"]), 1000);
+  await after(5);
+  check(late.seen.state.answered === false, "still waiting after the cap: the panel may not say it has nothing");
+  await after(30);
+  check(late.seen.state.answered && late.seen.state.list[0] === "late vendor", "the late answer fills the panel");
+  late.stop();
+
+  const silent = following(new Promise(() => {}), 5);
+  await after(15);
+  check(silent.seen.state.answered && silent.seen.state.list.length === 0, "a read that never answers stops saying it is looking");
+  silent.stop();
+
+  const afterGivingUp = following(after(15, ["very late"]), 5);
+  await after(30);
+  check(afterGivingUp.seen.state.list[0] === "very late", "an answer after giving up is still used");
+  afterGivingUp.stop();
+
+  const left = following(after(10, ["other company's"]), 1000);
+  left.stop();
+  await after(20);
+  check(left.seen.state.list.length === 0, "a page that moved on takes no answer: one company's vendors never reach another");
+}
+// The mount has to use it: a server render runs no effects, so this is by name.
+const liveHome = readFileSync(new URL("../src/app/home/LiveHome.jsx", import.meta.url), "utf8");
+check(liveHome.includes("followRead(vendorsRead, setVendors)"), "LiveHome follows its vendors past the cap");
+check(liveHome.includes("vendorsPending={!vendors.answered}"), "LiveHome tells the panel it is still waiting");
 
 // ---- The first paint of the real mounts ----
 const store = { getItem: () => null, setItem() {}, removeItem() {} };
@@ -121,6 +161,23 @@ try {
   const brandActive = render(createElement(HomeScreen, { dashboardState: "active", goTo() {} }));
   check(brandNew.includes("home-new-brand-card") && brandNew.includes("Maison Rue"), "prototype: the brand's new layout, with its examples");
   check(brandActive.includes("home-dashboard-grid") && brandActive.includes("home-active-orders"), "prototype: the brand's working dashboard");
+
+  // The vendor panel says "nothing here" only once the answer is in.
+  const NOTHING_HERE = "Find your next production partner";
+  const card = { id: "v", initials: "V", name: "Check Vendor", location: "Porto", trust: "", match: "", rating: "", orders: "", stats: [], notes: [""], products: [] };
+  const vendorPanel = (dashboardState, props) => render(createElement(HomeScreen, { dashboardState, goTo() {}, attention: [], rfqs: [], projects: [], ...props }));
+  const waiting = vendorPanel("active", { factories: [], vendorsPending: true });
+  check(waiting.includes("Finding vendors") && !waiting.includes(NOTHING_HERE), "working dashboard, vendors late: says it is looking, not that there are none");
+  const none = vendorPanel("active", { factories: [] });
+  check(none.includes(NOTHING_HERE) && !none.includes("Finding vendors"), "working dashboard, answered with none: the design's box");
+  const arrived = vendorPanel("active", { factories: [card] });
+  check(arrived.includes("Check Vendor") && !arrived.includes(NOTHING_HERE) && !arrived.includes("Finding vendors"), "working dashboard, late answer in: the vendor's card");
+  const newWaiting = vendorPanel("newcomer", { factories: [], vendorsPending: true });
+  check(newWaiting.includes("Finding vendors") && newWaiting.includes("Ready to start sourcing"), "new brand, vendors late: says it is looking");
+  const newArrived = vendorPanel("newcomer", { factories: [card] });
+  check(newArrived.includes("Check Vendor") && !newArrived.includes("Finding vendors"), "new brand, late answer in: the vendor's card");
+  check(!brandActive.includes("Finding vendors") && !brandNew.includes("Finding vendors"), "prototype: never says it is looking");
+
   const factoryNew = render(createElement(FactoryDashboardPage, { dashboardState: "newcomer", language: "en" }));
   const factoryActive = render(createElement(FactoryDashboardPage, { dashboardState: "active", language: "en" }));
   check(factoryNew.includes("factory-dashboard-grid") && !factoryNew.includes("factory-dashboard-metrics"), "prototype: the factory's new layout");

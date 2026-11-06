@@ -1685,7 +1685,7 @@ console.log("\nnotification emails");
     ["rfq", "quote_received"], ["rfq", "rfq_invited"], ["order", "order_created"],
     ["milestone", "milestone_submitted"], ["payment", "payment_due"], ["thread", "message"],
     ["capacity", "capacity_reminder"], ["milestone", "milestone_due_soon"], ["rfq", "rfq_matched"],
-    ["credits", "credits_granted"], ["credits", "credits_adjusted"], ["org", "verification_needs_information"], ["referral", "referral_joined"], ["unknown", "x"],
+    ["credits", "credits_granted"], ["credits", "credits_adjusted"], ["org", "verification_needs_information"], ["referral", "referral_joined"], ["unknown", "x"], ["unknown", "payout_method_changed"],
   ].flatMap(([subject_type, kind]) => [true, false].map((isFactory) => [{
     subject_type, kind, subject_id: "00000000-0000-0000-0000-000000000001", order_id: "00000000-0000-0000-0000-000000000002",
   }, isFactory]));
@@ -2380,7 +2380,7 @@ console.log("\nadmin — AI help for reviewers, and clearing test data");
   unknownNote.status === 404 && !unknownNote.message && brandNote.status === 403
     ? ok("\"Suggest with AI\" refuses a company that does not exist, and anyone but staff")
     : fail("the request note for an unknown company", { unknownNote, brandNote: brandNote.status });
-  noModelNote.message?.includes("No business registration document") && /not set up on this site/.test(noModelNote.notice)
+  noModelNote.message?.includes("Upload your business registration certificate") && /not set up on this site/.test(noModelNote.notice)
     && /refused this site's key/.test(refusedNote.notice) && refusedNote.message
     && ![noModelNote.message, refusedNote.message].some((message) => message.includes(`Rival Mill ${stamp}`))
     ? ok("\"Suggest with AI\" without a model builds the note from the checks, says why, and names no other company")

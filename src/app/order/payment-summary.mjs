@@ -103,6 +103,16 @@ export function earningStatus(row, balance, handPaid = false) {
   return balance.pendingEarnings?.some((pending) => pending.paymentId === row.id) ? "Pending" : "Credited to balance";
 }
 
+/**
+ * What staff typed when they marked this paid by bank, for the factory to find
+ * the transfer by. A person's note only: Stripe's own payouts write a sentence
+ * of their own into the same column, with nobody in released_by.
+ */
+export function staffBankNote(row) {
+  if (row.state !== "released" || row.stripe_transfer_id || row.payoneer_payouts || !row.released_by) return null;
+  return row.released_note?.trim() || null;
+}
+
 /** When Stripe makes an earning still pending withdrawable: its day, read as a day. */
 export function availableOn(row, balance) {
   const day = balance?.pendingEarnings?.find((pending) => pending.paymentId === row.id)?.available_on;

@@ -31,6 +31,7 @@ import { useMessagesChanged } from "../message/use-unread.js";
 import { useActivity } from "./use-activity.jsx";
 import HomeHolding, { HomeNotice, useHomeNotice } from "./HomeHolding.jsx";
 import { factoryHasHistory, homeLayout } from "./home-layout.mjs";
+import { can, permissionHint } from "../../lib/domain/org.js";
 
 const MONTH = new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -344,6 +345,7 @@ export default function LiveFactoryHome({ org, profile }) {
       calls={dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall, now })}
       onUpdateCapacity={onUpdateCapacity}
       onPurchaseCredits={() => navigate("/payout?tab=credits")}
+      purchaseCreditsLocked={can(org, "settingsAccess") ? "" : permissionHint(org, "settingsAccess")}
       creditNote={FACTORY_CREDIT_NOTE}
       inviteIntro={FACTORY_INVITE_INTRO}
       // The Credits tab says what became of it, under the invite's own row.

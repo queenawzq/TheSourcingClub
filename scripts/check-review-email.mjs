@@ -46,6 +46,8 @@ check("English is not", !reviewNoteHtml("- licence").includes("lang="));
 const note = "Nearly there.\n\n- Registration\n- Website\n\nWe look forward to it.";
 const options = { companyName: "A & B Ltd", recipientName: "", locale: "en", loginUrl: "https://tsc.test/app.html", note };
 const needs = needsInformationEmail(options);
+check("the request has one introduction: the note's", !/We've reviewed|What we need from you/.test(needs.html + needs.text), needs.text);
+check("the request still says which company", needs.text.includes("About A & B Ltd") && /About A &amp; B Ltd/.test(needs.html));
 check("the request has a real list", /<ul[^>]*>.*Registration.*Website.*<\/ul>/s.test(needs.html));
 check("the request's text part is exactly as typed", needs.text.includes(note));
 check("the request is in the designed frame", needs.html.includes("email-shell") && needs.html.includes("<img"));
@@ -72,12 +74,30 @@ for (const locale of ["en", "zh"]) {
 check("Test emails sends the sample for a request", /needs_information", locale, name, SAMPLE_REQUEST/.test(testEmails));
 
 const suggest = await import("../api/suggest-review-request.js");
-const answer = await suggest.shapeSuggestion("Hello,\n\nNearly there.\n\n1. Licence\n2. Website\n\nWe look forward to it.\n\nWarm regards,\nThe Sourcing Club");
-check("a model's greeting and sign-off go, its list stays", answer === "Nearly there.\n\n- Licence\n- Website\n\nWe look forward to it.", answer);
-check("a model's paragraph is refused", (await suggest.shapeSuggestion("Please upload your licence and add your website.")) === null);
-check("a missing close is filled", (await suggest.shapeSuggestion("- Licence")).endsWith("We look forward to receiving these."));
-const summaryKept = await suggest.shapeSuggestion("Hi team, your licence could not be read.\n\n- Licence");
+const ITEMS = ["Upload your licence (Verification)."];
+const answer = await suggest.shapeSuggestion("Hello,\n\nNearly there.\n\n1. A list it was told not to write\n\nWe look forward to it.\n\nWarm regards,\nThe Sourcing Club", ITEMS);
+check("the list is ours; the greeting, its list and the sign-off go", answer === "Nearly there.\n\n- Upload your licence (Verification).\n\nWe look forward to it.", answer);
+check("a missing summary and close are filled", (await suggest.shapeSuggestion("- Licence", ITEMS)) === "We need a few more details to finish reviewing your profile.\n\n- Upload your licence (Verification).\n\nWe look forward to receiving these.");
+const summaryKept = await suggest.shapeSuggestion("Hi team, your licence could not be read.\n\nThanks for this.", ITEMS);
 check("a summary that starts with Hi stays", summaryKept.startsWith("Hi team, your licence could not be read."), summaryKept);
+
+// F15: a company under review sees only its onboarding steps, so nothing else may be asked.
+const asked = (label, result, detail, type = "Factory") => suggest.requestItem({ label, result, detail }, type);
+for (const [why, item] of [
+  ["a member address on the domain", asked("Contact domain", "Review", "No member address uses acme.com.")],
+  ["a public-provider address", asked("Contact domain", "Review", "Every member address uses a public email provider, so nothing corroborates acme.com.")],
+  ["no address on file", asked("Contact domain", "Missing", "No member email address is on file, so a decision cannot be sent.")],
+  ["a registration waiting for staff", asked("Business registration", "Review", "Uploaded 06 Nov 2026. Not yet reviewed. Contents are not checked against any registry.")],
+  ["terms already signed", asked("Terms accepted", "Clear", "Signed")],
+  ["certificates all on file", asked("Certification evidence", "Review", "2 claimed, 2 with a document, 0 already verified.")],
+  ["a check nobody mapped", asked("A new check", "Missing", "Something")],
+]) check(`the company is not asked about ${why}`, item === null, item);
+check("a missing website is asked for", /website.*Factory details/.test(asked("Contact domain", "Missing", "No website was given, so member addresses cannot be compared against one.")));
+check("a brand is sent to its own sections", /Trust/.test(asked("Business registration", "Missing", "", "Brand")));
+check("a trading company has no walkthrough section", !/walkthrough/i.test(asked("Production evidence", "Missing", "0 files", "Trading company")));
+check("missing fields are named", /Fill in your website, MOQ/.test(asked("Company details", "Review", "Not filled in: website, MOQ.")));
+const invented = await suggest.shapeSuggestion("We also need a team member email address on the acme.com domain.\n\nWe look forward to it.", ITEMS);
+check("a sentence asking for what the company cannot do goes", !/team member/.test(invented), invented);
 
 if (failures) {
   console.error(`\ncheck:review-email: ${failures} failed`);
