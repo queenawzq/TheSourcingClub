@@ -1,4 +1,5 @@
 import { callerClient, jsonBody, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
+import { logStripeFailure, sentenceFor } from "./_stripe-errors.js";
 
 /**
  * A company's saved cards: every brand payment saves the card it was paid
@@ -62,7 +63,8 @@ export default async function handler(request, response) {
     await stripe.paymentMethods.detach(method.id);
     return reply(response, 200, { removed: method.id });
   } catch (failure) {
-    return reply(response, 502, { error: failure.message });
+    logStripeFailure("stripe-cards", failure);
+    return reply(response, 502, { error: sentenceFor(failure, "Your saved cards could not be read or changed just now. Try again in a few minutes.") });
   }
 }
 

@@ -1,3 +1,4 @@
+import { logStripeFailure, payoutSentenceForStaff } from "./_stripe-errors.js";
 import { callerClient, jsonBody, releasePayment, reply, serviceClient, stripeFrom, tokenRefused } from "./_stripe.js";
 
 /**
@@ -33,6 +34,13 @@ export default async function handler(request, response) {
   try {
     return reply(response, 200, await releasePayment({ stripe, db, paymentId }));
   } catch (failure) {
-    return reply(response, 502, { released: false, reason: failure.message });
+    logStripeFailure("stripe-release", failure, { paymentId });
+    // Staff get what to do next. Anyone else who can read the payment asked for
+    // a payout they can do nothing more about, and it stays owed.
+    const { data: staff } = await caller.rpc("is_platform_admin");
+    return reply(response, 502, {
+      released: false,
+      reason: staff ? payoutSentenceForStaff(failure) : "The payout could not be sent yet. It stays owed, and TSC retries it.",
+    });
   }
 }
