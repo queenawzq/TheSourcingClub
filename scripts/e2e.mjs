@@ -1085,7 +1085,8 @@ async function main() {
       await page.goto(`${ADMIN}?screen=rfqs`);
       await page.waitForTimeout(3500);
       const openRow = await page.evaluate((title) => [...document.querySelectorAll("tr")]
-        .find((row) => row.innerText.includes(title))?.innerText ?? "", openRequest.title);
+        // Not its "(reorder)" from an earlier run on this database: same words, invite-only.
+        .find((row) => row.innerText.includes(title) && !row.innerText.includes(`${title} (reorder)`))?.innerText ?? "", openRequest.title);
       check(/open to all vendors/i.test(openRow), `an open request says it is open to all, not how many were invited (${openRow.replace(/\s+/g, " ").slice(0, 80)})`);
     }
 
