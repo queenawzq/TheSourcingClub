@@ -8,6 +8,10 @@
   padding: 40px 24px 80px;
 }
 
+/* The payments board's rows carry bank details and buttons: give them the width. */
+.admin-payments-page { max-width: 1440px; }
+.admin-payments-page td:first-child, .admin-payments-page td:nth-child(5) { white-space: nowrap; }
+.admin-payments-page .admin-actions { min-width: 180px; }
 .admin h1 { margin: 0 0 8px; font-size: 22px; line-height: 28px; font-weight: 700; }
 .admin h2 { margin: 32px 0 12px; font-size: 17px; font-weight: 700; }
 

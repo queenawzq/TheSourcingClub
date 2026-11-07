@@ -171,7 +171,8 @@ function BankDetails({ row, onViewed }) {
   const country = row.payout_country ? bankCountry.of(row.payout_country.trim()) : null;
   return (
     <span className="admin-payout-details">
-      <strong>Pay by bank</strong>
+      <strong>{row.wise_recipient_type ? "Pay by Wise, or by bank" : "Pay by bank"}</strong>
+      {row.factory_stripe_ready ? <span className="admin-sub" data-testid="no-stripe-charge">No card charge on this payment, so Stripe can't pay it. Pay by bank and mark it.</span> : null}
       {row.payout_changed_recently ? (
         <span className="admin-payout-changed" data-testid="payout-changed">{`Bank details changed ${agoWords(row.payout_changed_at)}. Look twice before paying.`}</span>
       ) : null}
@@ -530,8 +531,10 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
             : null}
           {section === "payout" && paidByBank(row) && !narrow ? <BankDetails row={row} onViewed={onViewed} /> : null}
           {section === "payout" && !paidByBank(row) ? (
-            <span className="admin-sub">
-              {paidByStripe(row) ? "pay out through Stripe" : paidByPaypal(row) ? `pay by PayPal: ${row.paypal_email}` : `pay by Payoneer: ${row.payoneer_email}`}
+            <span className="admin-payout-details">
+              <strong>{paidByStripe(row) ? "Pay by Stripe" : paidByPaypal(row) ? "Pay by PayPal" : "Pay by Payoneer"}</strong>
+              {paidByPaypal(row) ? <span className="admin-sub">{row.paypal_email}</span> : null}
+              {paidByPayoneer(row) ? <span className="admin-sub">{row.payoneer_email}</span> : null}
             </span>
           ) : null}
           {section === "payout" && (paidByPayoneer(row) || paidByPaypal(row)) ? <FactoryContact row={row} /> : null}
@@ -581,7 +584,7 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
         <>
         {/* Above the table, not its <caption>: .admin-sub is display: block,
             which squeezed a caption into the first column. */}
-        <p className="admin-sub admin-section-caption">{caption}</p>
+        {caption ? <p className="admin-sub admin-section-caption">{caption}</p> : null}
         <div className="admin-scroll">
           <table>
             <thead>
@@ -729,49 +732,48 @@ export default function AdminPayments() {
   ) : null;
 
   return (
-    <div className="admin">
+    <div className="admin admin-payments-page">
       {header}
 
       <h1>Payments</h1>
-      <p className="admin-intro">
-        Brands pay TSC through Stripe, by card, and TSC holds the money until
-        the brand approves the step. Approving pays a factory with a Stripe account on its own.
-        Stripe can't pay out to some countries (mainland China, Hong Kong…): pay those factories
-        here with Wise or PayPal, or by bank and mark them paid out. Check each payment.
-      </p>
 
       {error ? <p className="admin-error">{error.message}</p> : null}
       {notice ? <p className="admin-sub" role="status">{notice}</p> : null}
 
       <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine}
-               empty="Every approved payment has been paid out."
-               caption="The brand approved these steps (on a cancelled order too, if it approved before the cancellation). Pay with Wise or PayPal, retry a Stripe payout, or pay by bank and mark it paid out." />
+               empty="Every approved payment has been paid out." />
       {sections.refunded.length ? (
         <Section id="refunded" title="Refunded after payout" rows={sections.refunded} {...shared}
                  empty=""
                  caption="The brand's payment was refunded in Stripe after the factory was paid. TSC no longer holds this money: recover it from the factory by hand." />
       ) : null}
+      {sections.wire.length ? (
       <Section id="wire" title="Bank-wire claims" rows={sections.wire} {...shared}
-               empty="No bank-wire claims."
-               caption="Made on the old site before payments moved to Stripe. Check the account, then confirm." />
+               empty="No bank-wire claims." />
+      ) : null}
+      {sections.failed.length ? (
       <Section id="failed" title="Failed" rows={sections.failed} {...shared}
-               empty="No failed payments."
-               caption="These did not go through, or were refunded. The brand pays again from the order; nothing to do here." />
+               empty="No failed payments." />
+      ) : null}
+      {sections.clearing.length ? (
       <Section id="clearing" title="Payments processing" rows={sections.clearing} {...shared}
-               empty="No payments processing."
-               caption="Stripe is still confirming these. The factory starts when they go through." />
+               empty="No payments processing." />
+      ) : null}
+      {sections.held.length ? (
       <Section id="held" title="Held" rows={sections.held} {...shared}
-               empty="Nothing held."
-               caption="Funded, waiting for the brand to approve the step." />
+               empty="Nothing held." />
+      ) : null}
+      {sections.cancelled.length ? (
       <Section id="cancelled" title="Held on cancelled orders" rows={sections.cancelled} {...shared}
                empty="No money held on cancelled orders."
                caption="The order was cancelled with this money held. Refund it in Stripe; the row leaves once Stripe reports the refund." />
+      ) : null}
 
+      {views.length === 0 ? null : (
       <section data-section="views">
         <h2>Who viewed account numbers ({views.length})</h2>
-        {views.length === 0 ? <p className="admin-sub">Nobody has viewed an account number.</p> : (
+        {(
           <>
-          <p className="admin-sub admin-section-caption">Every time someone on the staff shows a factory's full account number. Nobody can edit or remove this list here.</p>
           <div className="admin-scroll">
             <table>
               <thead><tr><th>When</th><th>Who</th><th>Company</th><th>Account</th></tr></thead>
@@ -790,6 +792,7 @@ export default function AdminPayments() {
           </>
         )}
       </section>
+      )}
     </div>
   );
 }

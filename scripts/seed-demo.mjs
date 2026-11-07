@@ -34,6 +34,7 @@
  *
  * It refuses the production project outright.
  */
+import Stripe from "stripe";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
@@ -1146,6 +1147,26 @@ async function funded(payment, [type, label]) {
     target_payment: payment.id, charge: null, method_type: type, method_label: label, received: total,
   }), "a payment held by TSC");
 }
+/**
+ * Funded with a real test charge, so Stripe can pay this one out: a transfer
+ * draws on its charge, and funded()'s has none. Without a test key it is funded()
+ * and the board says it needs paying by bank.
+ */
+async function fundedByStripe(payment, method) {
+  const key = process.env.STRIPE_SECRET_KEY ?? "";
+  if (!key.startsWith("sk_test_")) return funded(payment, method);
+  const stripe = new Stripe(key);
+  const total = await charged(payment);
+  const intent = await stripe.paymentIntents.create({
+    amount: total, currency: "usd", payment_method: "pm_card_visa", confirm: true,
+    automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+    transfer_group: payment.order_id, metadata: { payment_id: payment.id },
+  });
+  must(await admin.rpc("attach_payment_intent", { target_payment: payment.id, payment_intent: intent.id, charged: total }), "the real test charge");
+  return must(await admin.rpc("record_payment_funded", {
+    target_payment: payment.id, charge: intent.latest_charge, method_type: method[0], method_label: method[1], received: total,
+  }), "a payment held by TSC, charged in Stripe");
+}
 /** The factory posts on the open step and the brand approves it (it must be funded). */
 async function approveOpenStep(order, title, vendor = factory) {
   const step = must(await admin.from("order_milestones").select("id")
@@ -1166,7 +1187,7 @@ const poplinFit = await dueNow(poplin, poplinTitle);
 await funded(poplinFit, CARD);
 await approveOpenStep(poplin, poplinTitle);
 must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Wire ref DEMO-1001" }), "release the fit sample");
-await funded(await dueNow(poplin, poplinTitle), CARD);
+await fundedByStripe(await dueNow(poplin, poplinTitle), CARD);
 // 2. Fit sample funded by card and held while the factory works ("Funded").
 const twillTitle = "Cotton twill overshirt, AW27";
 const twill = await runningOrder({ title: twillTitle, brief: "140 cotton twill overshirts, garment-dyed.", quantity: 140, unitPrice: 2900 });
