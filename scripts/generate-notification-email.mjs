@@ -152,6 +152,17 @@ const copy = {
  * The designed frame: logo, white card with the blue bar, eyebrow, greeting,
  * title, body, one button, footer. Shared by every email built here.
  */
+/**
+ * The inbox's preview line: the body's first paragraph, cut short. Never the
+ * whole body hidden again, and no zero-width padding after it: hidden copy of
+ * the message and runs of invisible characters are both spam-filter signals
+ * (an invite Gmail filed in Spam had both, Nov 6).
+ */
+function preheaderOf(body, title) {
+  const first = String(body || title || "").split(/\n/)[0].trim();
+  return first.length > 140 ? `${first.slice(0, 139).trimEnd()}…` : first;
+}
+
 function emailHtml({ locale, title, eyebrow, greeting, body, url, cta, why, questions }, env) {
   return `<!doctype html>
 <html lang="${locale}">
@@ -170,7 +181,7 @@ function emailHtml({ locale, title, eyebrow, greeting, body, url, cta, why, ques
     </style>
   </head>
   <body style="margin:0;padding:0;background:#F1F4F8;color:#0B1020;font-family:'Satoshi',Arial,Helvetica,sans-serif;">
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(body || title)}&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(preheaderOf(body, title))}</div>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#F1F4F8;">
       <tr>
         <td align="center" style="padding:36px 14px;">
