@@ -18,7 +18,7 @@
  * It is not a way to sign in without a password.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { supabase, isConfigured, setKeepSignedIn, isThisTabsSession } from "./supabase.js";
+import { supabase, isConfigured, sentTwice, setKeepSignedIn, isThisTabsSession } from "./supabase.js";
 import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
@@ -413,7 +413,7 @@ export function AuthProvider({ children }) {
         // is logged in rather than told off for pressing the button twice.
         // Wrong password: the usual sentence. The card stays away meanwhile,
         // because the company below uses what they typed this time.
-        const cameBack = alreadyRegistered(signUpError) && unansweredSignUp.current === address;
+        const cameBack = alreadyRegistered(signUpError) && (sentTwice("/auth/v1/signup") || unansweredSignUp.current === address);
         if (cameBack) {
           setCreatingOrg(true);
           const loggedIn = await answerInTime(supabase.auth.signInWithPassword({ email: address, password }));

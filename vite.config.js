@@ -122,6 +122,16 @@ export default defineConfig(({ command, mode }) => ({
     __PREVIEW_SUPABASE__: JSON.stringify(previewSupabase(mode)),
     __DEMO_SIGN_IN__: JSON.stringify(demoSignIn(command))
   },
+  server: {
+    proxy: {
+      // What /sb/<project> is on Vercel (vercel.json), for a local stack.
+      "/sb/local": {
+        target: process.env.SB_PROXY_TARGET || loadEnv(mode, process.cwd(), "VITE_").VITE_SUPABASE_URL || "http://127.0.0.1:54321",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/sb\/local/, ""),
+      },
+    },
+  },
   build: {
     rollupOptions: {
       // The app is NOT built on Netlify, deliberately.
