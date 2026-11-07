@@ -160,12 +160,17 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
             id: account.id,
             label: account.is_primary ? "Default" : "Payoneer",
             name: "Payoneer",
-            note: `${account.payoneer_email} · paid by TSC by hand`,
+            note: account.payoneer_email,
+          } : account.method === "paypal" ? {
+            id: account.id,
+            label: account.is_primary ? "Default" : "PayPal",
+            name: "PayPal",
+            note: account.paypal_email,
           } : {
             id: account.id,
             label: account.is_primary ? "Default" : "Bank account",
             name: `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}`,
-            note: account.number_changed_at ? "Manual bank transfer" : "TSC can't pay this account yet: its full account number is missing",
+            note: account.number_changed_at ? "" : "Add the full account number",
           })));
         }
       }
@@ -503,7 +508,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           onMakePrimaryManual={makePrimaryPayout}
           manualForm={payouts.form}
           onManualFieldChange={payouts.setField}
-          onManualMethodChange={payouts.setMethod}
+          onSavePaypal={async () => { await payouts.savePaypal(); await reload(); }}
+          onSaveWise={async (details) => { await payouts.saveWise(details); await reload(); }}
           onSaveManual={savePayout}
           onDeleteManual={removePayout}
           manualBusy={payouts.busy}

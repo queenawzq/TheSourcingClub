@@ -4,7 +4,6 @@ import { chooseRecipientType, formFromRequirements } from "./_wise-requirements-
 const TIMEOUT_MS = 6000;
 const QUOTE_LIFE_MS = 10 * 60 * 1000;
 const QUOTE_AMOUNT = 1000;
-const LANGUAGES = { zh: "zh-CN", en: "en" };
 
 // A quote is only what Wise needs in order to answer. Kept while warm, so a
 // form opened twice asks once.
@@ -50,9 +49,10 @@ function nested(flat) {
 }
 
 /**
- * The fields a factory's bank form asks for, from Wise, in the reader's
- * language. Any failure answers `unavailable`, never an error to show: the
- * page then draws the snapshot it carries, so the form is never blank.
+ * The fields a factory's bank form asks for, from Wise, labelled in English and
+ * Chinese, both Wise's own words. Any failure answers `unavailable`, never an
+ * error to show: the page then draws the snapshot it carries, so the form is
+ * never blank.
  */
 export default async function handler(request, response) {
   if (request.method !== "POST") return reply(response, 405, { error: "method not allowed" });
@@ -67,24 +67,30 @@ export default async function handler(request, response) {
     return reply(response, 200, { unavailable: true });
   }
 
-  const { language, country, details } = jsonBody(request);
+  const { country, details } = jsonBody(request);
   const knownCountry = /^[A-Z]{2}$/.test(country ?? "") ? country : null;
   try {
     const id = await quoteId(env);
-    const said = LANGUAGES[language] ?? LANGUAGES.en;
-    const first = await wise(`/v1/quotes/${id}/account-requirements`, { language: said }, env);
-    const type = chooseRecipientType(first);
+    const type = chooseRecipientType(await wise(`/v1/quotes/${id}/account-requirements`, { language: "en" }, env));
     if (!type) return reply(response, 200, { unavailable: true });
     // Wise adds and drops fields once the country is known, so ask again with
     // what is already settled (legal type, country, and any select that said so).
     const seed = formFromRequirements(type, knownCountry);
     const settled = { ...(seed?.fixed ?? {}), ...(details && typeof details === "object" ? details : {}) };
-    const refined = await wise(`/v1/quotes/${id}/account-requirements`, {
-      method: "POST", language: said, body: { type: type.type, details: nested(settled) },
+    const refined = (language) => wise(`/v1/quotes/${id}/account-requirements`, {
+      method: "POST", language, body: { type: type.type, details: nested(settled) },
     }, env);
-    const form = formFromRequirements(refined.find?.((item) => item.type === type.type) ?? type, knownCountry);
+    const [english, chinese] = await Promise.all([refined("en"), refined("zh-CN").catch(() => [])]);
+    const form = formFromRequirements(english.find?.((item) => item.type === type.type) ?? type, knownCountry);
     if (!form) return reply(response, 200, { unavailable: true });
-    return reply(response, 200, { ...form, currency: env.WISE_PAYOUT_CURRENCY, source: "wise" });
+    const inChinese = formFromRequirements(chinese.find?.((item) => item.type === type.type), knownCountry);
+    const labels = Object.fromEntries((inChinese?.fields ?? []).map((field) => [field.key, field.label]));
+    return reply(response, 200, {
+      ...form,
+      fields: form.fields.map((field) => ({ ...field, labelZh: labels[field.key] })),
+      currency: env.WISE_PAYOUT_CURRENCY,
+      source: "wise",
+    });
   } catch (failure) {
     console.error("wise-requirements", failure?.name, failure?.message);
     return reply(response, 200, { unavailable: true });
