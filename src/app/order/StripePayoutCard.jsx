@@ -37,9 +37,15 @@ const BANK_ICON = <svg viewBox="0 0 24 24"><path d="M3 9h18M5 9v8m4-8v8m6-8v8m4-
 /** Where a factory has a choice, and the words for that list in both languages where it reads Chinese. */
 const listWords = (country) => (readsChinese(country) ? {
   title: "Add a withdrawal method 添加提现方式", bank: "Bank transfer 银行转账", setUp: "Set up 设置", country: "Country 国家/地区",
+  methods: "Withdrawal methods 提现方式", add: "Add withdrawal method 添加提现方式", toReceive: "Add a withdrawal method to receive earnings. 请添加提现方式以接收收入。",
+  edit: "Edit method 编辑", makeDefault: "Make default 设为默认", remove: "Remove method 移除", back: "Back 返回", done: "Done 完成",
+  saved: "Withdrawal method saved. 提现方式已保存。", removed: "Withdrawal method removed. 提现方式已移除。",
   recommended: (name) => `Recommended for ${name} ${{ CN: "中国推荐", HK: "香港推荐", TW: "台湾推荐" }[country]}`,
 } : {
   title: "Add a withdrawal method", bank: "Bank transfer", setUp: "Set up", country: "Country",
+  methods: "Withdrawal methods", add: "Add withdrawal method", toReceive: "Add a withdrawal method to receive earnings.",
+  edit: "Edit method", makeDefault: "Make default", remove: "Remove method", back: "Back", done: "Done",
+  saved: "Withdrawal method saved.", removed: "Withdrawal method removed.",
   recommended: (name) => `Recommended for ${name}`,
 });
 
@@ -681,7 +687,7 @@ export default function StripePayoutCard({
     try {
       await onDeleteManual?.(removingManual, manualSuccessor);
       setModal(null);
-      setMethodNotice("Withdrawal method removed.");
+      setMethodNotice(listWords(country).removed);
     } catch (failure) {
       // Said in the dialog, where the factory is looking.
       setRemoveError(failure);
@@ -691,6 +697,7 @@ export default function StripePayoutCard({
   // Only the page's Earnings card passes figures; Settings mounts this for its dialogs.
   const handPaid = Boolean(handFigures) && isHandPaid(account, earnings);
   // Only an owner reads the balance; for anyone else it is not "in progress".
+  const cardWords = listWords(country);
   const payoutSetupLine = account?.transfers_active
     // The account is known a moment before its balance arrives:
     // that is loading, and only a real failure says it failed.
@@ -703,9 +710,10 @@ export default function StripePayoutCard({
           ? manualLabel(manualAccount)
           : manualAccount
             ? isOwner ? "Add your full account number." : "Ask a company owner to add the full account number."
-            : isOwner ? "Add a withdrawal method to receive earnings." : "No withdrawal method yet.";
+            : isOwner ? cardWords.toReceive : "No withdrawal method yet.";
   // Owed money that bounced: what this person must do next, on the card.
   const failedLine = !problem ? null : isOwner || !problem.fixable ? problem.line : "Ask a company owner to check the withdrawal details.";
+  const failedLineZh = !problem || !readsChinese(country) ? null : isOwner || !problem.fixable ? problem.zh : "请联系公司所有者检查提现信息。";
 
   return (
     <>
@@ -745,8 +753,8 @@ export default function StripePayoutCard({
               setModal("withdraw");
             }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a>.</p>}
           </div> : null}
-          {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}</p> : null}
-          {manualSaved && !failedLine ? <p className="live-payment-notice">Withdrawal method saved.</p> : null}
+          {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}{failedLineZh ? ` ${failedLineZh}` : ""}</p> : null}
+          {manualSaved && !failedLine ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested.</p> : null}
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
@@ -761,16 +769,16 @@ export default function StripePayoutCard({
               setModal("withdraw");
             }}>Withdraw to bank</button>
             {account.payouts_enabled ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
-            <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={openManage}>Withdrawal methods</button>
+            <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={openManage}>{cardWords.methods}</button>
             </>
           ) : account ? (
             <button className="primary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>
           ) : manualAccount && !manualComplete(manualAccount) ? (
             <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => openManual(manualAccount)}>Add account number</button>
           ) : (
-            <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => (manualAccount ? openManage() : openManual(null))}>{manualAccount ? "Withdrawal methods" : "Add withdrawal method"}</button>
+            <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => (manualAccount ? openManage() : openManual(null))}>{manualAccount ? cardWords.methods : cardWords.add}</button>
           )
-          : <button className="primary-btn compact-btn" type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? "Withdrawal methods" : "Add withdrawal method"}</button>}
+          : <button className="primary-btn compact-btn" type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? cardWords.methods : cardWords.add}</button>}
         </div>
       </section> : null}
 
@@ -786,13 +794,13 @@ export default function StripePayoutCard({
 
       {modal === "manage" ? (
         <PayoutModal
-          title="Withdrawal methods"
+          title={cardWords.methods}
           onClose={closeModal}
-          actions={<button className="secondary-btn" type="button" onClick={closeModal}>Done</button>}
+          actions={<button className="secondary-btn" type="button" onClick={closeModal}>{cardWords.done}</button>}
         >
           <div className="payout-methods-heading">
             {/* Add always adds: a new method sits beside the others. */}
-            <button className="secondary-btn compact-btn" type="button" disabled={busy || manualBusy} onClick={() => (account ? setModal("add") : openManual(null))}>+ Add withdrawal method</button>
+            <button className="secondary-btn compact-btn" type="button" disabled={busy || manualBusy} onClick={() => (account ? setModal("add") : openManual(null))}>+ {cardWords.add}</button>
           </div>
           <div className="payout-method-list">
             {account ? providerMethodRows.map((method) => (
@@ -829,9 +837,9 @@ export default function StripePayoutCard({
                   <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${manualLabel(row)}`} aria-expanded={methodMenu === row.id} disabled={manualBusy} onClick={() => setMethodMenu((open) => open === row.id ? null : row.id)}>...</button>
                   {methodMenu === row.id ? (
                     <div className="payout-method-popover" role="menu">
-                      {isPayoneer(row) ? null : <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); openManual(row); }}>Edit method</button>}
-                      {!row.is_primary ? <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); makePrimary(row); }}>Make default</button> : null}
-                      <button className="danger" type="button" role="menuitem" onClick={() => { setMethodMenu(null); setRemovingManual(row); setPromoteId(null); setRemoveError(null); setModal("remove"); }}>Remove method</button>
+                      {isPayoneer(row) ? null : <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); openManual(row); }}>{cardWords.edit}</button>}
+                      {!row.is_primary ? <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); makePrimary(row); }}>{cardWords.makeDefault}</button> : null}
+                      <button className="danger" type="button" role="menuitem" onClick={() => { setMethodMenu(null); setRemovingManual(row); setPromoteId(null); setRemoveError(null); setModal("remove"); }}>{cardWords.remove}</button>
                     </div>
                   ) : null}
                 </div>
@@ -977,6 +985,8 @@ export default function StripePayoutCard({
                 )}
               </div>
             </> : null}
+            {/* To the list when there is one; a first method came from the page. */}
+            <button className="secondary-btn compact-btn payout-back" type="button" onClick={() => (renderCard && (account || manualAccounts.length) ? setModal("manage") : closeModal())}>{words.back}</button>
           </PayoutModal>
         );
       })() : null}

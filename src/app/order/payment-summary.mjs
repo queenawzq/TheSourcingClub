@@ -173,11 +173,11 @@ export function withdrawalProblem(earnings, method) {
     .find((latest) => latest?.status === "failed" || (latest && waitingOnDetails(latest)));
   if (!attempt) return null;
   const amount = (Number(attempt.amount_cents) / 100).toLocaleString("en-US", { style: "currency", currency: attempt.currency ?? "USD" });
-  if (sentToOldAddress(attempt, method)) return { fixable: false, line: `Your payment of ${amount} is waiting. ${WILL_RESEND}.` };
-  if (waitingOnDetails(attempt)) return { fixable: true, line: `Your payment of ${amount} is waiting. ${askFor(attempt)}.` };
+  if (sentToOldAddress(attempt, method)) return { fixable: false, line: `Your payment of ${amount} is waiting. ${WILL_RESEND}.`, zh: `您的 ${amount} 付款正在等待处理，TSC 将重新发送。` };
+  if (waitingOnDetails(attempt)) return { fixable: true, line: `Your payment of ${amount} is waiting. ${askFor(attempt)}.`, zh: `您的 ${amount} 付款正在等待处理，请检查您的提现信息。` };
   if (detailsChangedSince(attempt, method)) return null;
   const fixable = Boolean(attempt.asked_to_check) || attempt.failure_code === "details_rejected";
-  return { fixable, line: `A withdrawal failed. ${failureNote(attempt)}.` };
+  return { fixable, line: `A withdrawal failed. ${failureNote(attempt)}.`, zh: fixable ? "提现失败，请检查您的提现信息。" : "提现失败，TSC 将重试。" };
 }
 
 /**

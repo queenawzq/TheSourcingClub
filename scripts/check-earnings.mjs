@@ -104,6 +104,7 @@ assert.equal(usd(handPaidFigures([{ ...unfunded[0], provider_payouts: [attempt("
 const named = [pay("named", 500, "confirmed", { ...APPROVED, provider_payouts: [attempt("n", "failed", { failure_code: "details_rejected", amount_cents: 500, asked_to_check: "Check your SWIFT code" })] })];
 assert.equal(withdrawalRows(named)[0].note, "Check your SWIFT code");
 assert.equal(withdrawalProblem(named)?.line, "A withdrawal failed. Check your SWIFT code.");
+assert.equal(withdrawalProblem(named)?.zh, "提现失败，请检查您的提现信息。", "a reader in China reads it in both languages");
 assert.equal(withdrawalRows(named, { details_changed_at: "2026-11-05T00:00:00Z" })[0].note, null, "fixed since: the row stops asking, and stays failed");
 assert.equal(withdrawalRows(named, { details_changed_at: "2026-11-05T00:00:00Z" })[0].failed, true);
 const moneyFigures = handPaidFigures(money);

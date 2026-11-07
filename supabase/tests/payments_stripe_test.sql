@@ -21,7 +21,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(109);
+select plan(110);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures: a brand (owner + member), a factory, a stranger brand, an admin,
@@ -684,6 +684,17 @@ select is(
      from public.order_payments where id = pg_temp.p18_pay('order_b', 'Fit sample, round 1')),
   row('cancelled', true)::text,
   'money held on a cancelled order and refunded in Stripe is cancelled');
+
+-- The bell says what the card will be charged: the step plus the fee, 7% on
+-- this order (order_d's steps are edited after their notices, so not those).
+select is(
+  (select count(*) from public.notifications n
+    join public.order_payments p on p.id = n.subject_id
+   where n.kind = 'payment_due'
+     and p.id in (pg_temp.p18_pay('order_a', 'Fit sample'), pg_temp.p18_pay('order_a', 'Balance'))
+     and n.title like public.format_money(p.amount_cents + public.payment_fee_cents(p.id), p.currency) || ' is due on %'),
+  2::bigint,
+  'a due notice names the amount with the fee');
 
 select * from finish();
 rollback;
