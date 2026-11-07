@@ -103,19 +103,23 @@ async function wiseBalance(wise, currency) {
 }
 
 export async function wisePreview({ wise, caller, db, row, cnyConfirmed }) {
+  // First: Wise marks the balance route unavailable on a quote larger than the
+  // balance (seen on the sandbox), and "short by" is the sentence staff can act on.
+  const balance = await wiseBalance(wise, row.currency);
+  const shortByCents = Math.max(0, Number(row.amount_cents) - balance.balanceCents);
+  if (shortByCents > 0) return { shortByCents, feeCents: null, arrivesCents: null, arrivesCurrency: row.wise_currency, nothingLeft: false, ...balance };
   const recipientId = await ensureWiseRecipient({
     caller, db, wise, accountId: row.payout_account_id, existingId: row.wise_recipient_id, cnyConfirmed,
   });
   const quote = await wise.quote({
     sourceCurrency: row.currency, targetCurrency: row.wise_currency, sourceCents: row.amount_cents, recipientId,
   });
-  const balance = await wiseBalance(wise, row.currency);
   return {
     feeCents: quote.feeCents,
     arrivesCents: quote.arrivesCents,
     arrivesCurrency: quote.arrivesCurrency,
     nothingLeft: quote.arrivesCents <= 0,
-    shortByCents: Math.max(0, Number(row.amount_cents) - balance.balanceCents),
+    shortByCents,
     ...balance,
   };
 }

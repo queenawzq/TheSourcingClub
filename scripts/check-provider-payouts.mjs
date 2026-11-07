@@ -228,6 +228,11 @@ const pay = (wise, db, extra = {}) => wisePay({ wise, caller: db.caller, db, row
   assert.match(answer.sentence, /short by \$600\.00/);
   assert.equal(fake.state.transfers.size, 0, "no transfer made");
   assert.equal(db.payout.status, "failed", "ended, so the next press is a new attempt");
+  // Short at the preview: said with the amount, before Wise can refuse the quote.
+  const fake3 = fakeWise({ balance: 400 }); const db3 = fakeDb();
+  const seen = await wisePreview({ wise: wiseFrom(WISE_ENV, fake3.fetchImpl), caller: db3.caller, db: db3, row, cnyConfirmed: true });
+  assert.equal(seen.shortByCents, 60000);
+  assert.equal(db3.reads, 0, "the number isn't read for a payment that can't go");
   // Short when funding: the transfer stands and can be funded again.
   const fake2 = fakeWise({ fund: "short" }); const db2 = fakeDb();
   const answer2 = await pay(wiseFrom(WISE_ENV, fake2.fetchImpl), db2);

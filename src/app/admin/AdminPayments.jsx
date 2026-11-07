@@ -259,7 +259,7 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
           {attempt.in_progress && pending ? `Being paid by ${attempt.requested_by_email ?? "staff"}…`
             : attempt.staff_sentence
             || (pending ? "We don't know yet if this went. Press again: it can't pay twice."
-              : `With ${name}: ${(attempt.provider_status ?? "processing").replaceAll("_", " ")}.`)}
+              : `With ${name}: ${(attempt.provider_status ?? "processing").replaceAll("_", " ").toLowerCase()}.`)}
         </span>
         {attempt.received_minor != null && attempt.received_currency
           ? <span className="admin-sub">{`Arrives ${moneyIn(attempt.received_minor, attempt.received_currency)}${attempt.fee_minor != null ? `, ${name} fee ${moneyIn(attempt.fee_minor, row.currency)}` : ""}`}</span>
@@ -314,7 +314,7 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
         {said}
         <span className="admin-sub admin-row-message" role="alert">
           {provider === "wise"
-            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}? Wise fee ${moneyIn(preview.feeCents, row.currency)}. Arrives ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)}.`
+            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}?${preview.feeCents == null ? "" : ` Wise fee ${moneyIn(preview.feeCents, row.currency)}. Arrives ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)}.`}`
             : `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.paypal_email} by PayPal?`}
         </span>
         {short ? (
@@ -341,6 +341,12 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
     <>
       {said}
       {lastFailed}
+      {problem?.kind === "details_rejected" ? (
+        <button type="button" className="quiet-btn" disabled={working} data-testid="provider-tell-factory"
+                onClick={() => run(() => tellFactoryToFixDetails(provider, row, problem.message, statement))}>
+          Tell the factory to fix its details
+        </button>
+      ) : null}
       <button type="button" className="admin-approve" disabled={working || (provider === "wise" && !row.payout_has_number)} data-testid={`pay-with-${provider}`}
               title={provider === "wise" && !row.payout_has_number ? "No full account number on file" : undefined}
               onClick={() => {

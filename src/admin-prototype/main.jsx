@@ -314,7 +314,7 @@ function Overview({ profiles, rfqRows, quoteRows, metrics, onReview, onNavigate,
               confidence score, and platform staff have no org and so cannot be
               notified of anything — a payment sits at 'sent' until a human
               opens the queue, and this count is the only prompt that exists. */}
-          <MetricCard label="Payments awaiting confirmation" value={metrics.paymentsAwaitingConfirmation ?? 0} note="Nothing else will chase these" tone="red" href={metrics.paymentsHref} linkLabel="Open payments" />
+          <MetricCard label="Payments owed" value={metrics.paymentsAwaitingConfirmation ?? 0} tone="red" href={metrics.paymentsHref} linkLabel="Open payments" />
         </div>
 
         <section className="admin-overview-grid">
