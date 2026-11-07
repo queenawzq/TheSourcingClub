@@ -989,7 +989,7 @@ function Shell() {
     const channel = supabase
       .channel(`review:${activeOrg.id}:${Math.random().toString(36).slice(2)}`)
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `org_id=eq.${activeOrg.id}` }, (change) => {
-        if (String(change.new?.kind ?? "").startsWith("verification_")) loadProfile();
+        if (change.timed || String(change.new?.kind ?? "").startsWith("verification_")) loadProfile();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };

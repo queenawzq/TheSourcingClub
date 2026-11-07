@@ -16,6 +16,25 @@
     {
       "source": "/app.html/(.*)",
       "destination": "/app.html"
+    },
+    {
+      "source": "/sb/wxzliajdtwekqdvwzqfb/:path*",
+      "destination": "https://wxzliajdtwekqdvwzqfb.supabase.co/:path*"
+    },
+    {
+      "source": "/sb/lafsvocxthdoryezikdb/:path*",
+      "destination": "https://lafsvocxthdoryezikdb.supabase.co/:path*"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/sb/(.*)",
+      "headers": [
+        {
+          "key": "x-vercel-enable-rewrite-caching",
+          "value": "0"
+        }
+      ]
     }
   ],
   "crons": [
