@@ -37,10 +37,9 @@ export const DEMO_LOGINS = {
   // On another email domain than every other login, so an invite to it is
   // answered with "already has an account" instead of "your own email
   // domain", which the database checks first.
-  otherDomainFactory: { role: "Factory, other domain", name: "Lakeside Mills", email: "demo-lakeside@example.net" },
-  // Mainland China, where Stripe cannot pay out: one paid through PayPal, and
-  // one with money waiting and no withdrawal method yet, to set one up.
-  chinaPaypalFactory: { role: "Factory in China, PayPal", name: "Suzhou Test Silk", email: "demo-factory-paypal@example.com" },
+  otherDomainFactory: { role: "Factory in China, PayPal; other domain", name: "Lakeside Mills", email: "demo-lakeside@example.net" },
+  // Mainland China, where Stripe cannot pay out, with money waiting and no
+  // withdrawal method yet, to set one up.
   chinaNewFactory: { role: "Factory in China, nothing set up", name: "Hangzhou Test Knit", email: "demo-factory-china@example.com" },
   // One person in three companies, each a different dashboard: switching in the
   // sidebar goes from orders to nothing yet to a factory's.
