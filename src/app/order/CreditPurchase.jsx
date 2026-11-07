@@ -255,7 +255,7 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
               <span>Card number</span>
               <div className="tsc-stripe-input">
                 <CardNumberElement
-                  options={{ ...CARD_ELEMENT_OPTIONS, showIcon: true }}
+                  options={{ ...CARD_ELEMENT_OPTIONS, showIcon: true, disableLink: true }}
                   onChange={(event) => setNewCardComplete((current) => ({ ...current, number: event.complete }))}
                 />
               </div>
@@ -323,7 +323,7 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
       error={problem}
       description={checkout
         ? `${creditsLabel(checkout.credits)} for ${amount}, paid by card. The credits are added as soon as the payment goes through.`
-        : "Choose a pack or enter a custom amount. 10 credits = $1. Minimum 50 credits."}
+        : "10 credits = $1."}
       customMinimumCredits={50}
       customRateCents={10}
       continueLabel={checkout ? (busy ? "Paying…" : `Pay ${amount}`) : busy ? "Starting…" : undefined}

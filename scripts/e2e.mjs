@@ -1655,11 +1655,11 @@ async function main() {
     });
     check(Number(quoteSubtotal) === 26000, `the samples subtotal is computed from the rows (${quoteSubtotal})`);
 
-    // Revising a sent quote: the confirmation's "Back to edit quote" asks
+    // Revising a sent quote: the confirmation's "Revise quote" asks
     // first, because editing takes the quote out of the brand's comparison
     // until it is sent again — for a second charge. It used to open the form
     // on the sent row, which could not save.
-    await clickButton(page, "back to edit quote");
+    await clickButton(page, "revise quote");
     await waitFor(page, '[data-testid="revise-quote-dialog"]', 15000);
     const reviseText = await page.locator('[data-testid="revise-quote-dialog"]').innerText();
     check(/25 credits/.test(reviseText), "editing a sent quote says what sending it again costs first");

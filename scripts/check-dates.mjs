@@ -22,6 +22,28 @@ import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
+import { deliveryMonthFrom } from "../src/app/rfq/delivery-month.mjs";
+
+// A month with no year is the next one, whenever it is written.
+{
+  const november = new Date(2026, 10, 7);
+  const said = (text, today = november) => deliveryMonthFrom(text, today);
+  const wrong = [
+    [said("Delivery by April"), "2027-04-01"],
+    [said("by November"), "2026-11-01"],
+    [said("bulk by late December"), "2026-12-01"],
+    [said("April 2028"), "2028-04-01"],
+    [said("April 2026"), "2026-04-01"], // what was typed stays
+    [said("Sample in August, bulk by late September"), "2027-08-01"],
+    [said("as soon as possible"), null],
+    [said("by April", new Date(2027, 0, 15)), "2027-04-01"],
+    [said("by January", new Date(2027, 0, 15)), "2027-01-01"],
+  ].filter(([got, want]) => got !== want);
+  if (wrong.length) {
+    console.error(`dates: delivery months wrong: ${JSON.stringify(wrong)}`);
+    process.exit(1);
+  }
+}
 
 const ZONES = ["America/New_York", "America/Los_Angeles", "Asia/Shanghai", "Pacific/Kiritimati"];
 const zone = process.env.CHECK_DATES_ZONE;

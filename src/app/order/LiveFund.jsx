@@ -350,7 +350,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
                       <span>Card number</span>
                       <div className="tsc-stripe-input">
                         <CardNumberElement
-                          options={{ ...CARD_ELEMENT_OPTIONS, showIcon: true }}
+                          options={{ ...CARD_ELEMENT_OPTIONS, showIcon: true, disableLink: true }}
                           onChange={(event) => setNewCardComplete((current) => ({ ...current, number: event.complete }))}
                         />
                       </div>

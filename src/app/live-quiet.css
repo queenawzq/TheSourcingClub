@@ -21,6 +21,10 @@
 .production-schedule-helper,
 .billing-history-page .payout-transactions-header p,
 .quote-compare-modal .brand-profile-modal-header p,
+.factory-update-modal:has(#factory-update-title) > header p,
+.factory-credit-card-header p,
+.factory-ready-card-header p,
+.review-service-selector > small,
 
 /* Dashboards. */
 .home-panel-header p,
@@ -140,7 +144,9 @@
 }
 
 /* A vendor's whole name, not one cut by its badge. */
-.home-recommended-invite-card .factory-name-row h3 {
+.home-recommended-invite-card .factory-name-row h3,
+.home-dashboard-vendor-grid .factory-name-row h3,
+.home-recommended-factory-grid .factory-name-row h3 {
   overflow: visible;
   white-space: normal;
   text-overflow: clip;
@@ -261,4 +267,18 @@
 .quote-compare-table td:last-child {
   width: auto !important;
   min-width: 180px !important;
+}
+
+/* Roles & access: every column inside the card at a laptop's width. */
+@media (min-width: 900px) {
+  .brand-settings-page .settings-permission-row {
+    grid-template-columns: minmax(150px, 1fr) repeat(5, minmax(84px, 0.8fr)) 28px !important;
+  }
+  .factory-settings-page .settings-permission-row {
+    grid-template-columns: minmax(150px, 1fr) repeat(4, minmax(100px, 0.8fr)) 28px !important;
+  }
+  .settings-permission-row > div:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
 }

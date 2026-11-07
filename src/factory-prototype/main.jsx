@@ -10761,7 +10761,7 @@ export function FactoryQuoteSent({
     <main className="factory-detail-page factory-submit-page factory-sent-page">
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header factory-sent-header">
-          <button className="text-link" type="button" onClick={onBack}>{tx("‹ Back to edit quote")}</button>
+          <button className="text-link" type="button" onClick={onBack}>{sent?.backLabel ?? tx("‹ Back to edit quote")}</button>
           <h1>{tx("Quote sent successfully")}</h1>
           <p>{tx(companyType === "trading"
             ? "Your quote is now visible to the brand. They can compare it with other supplier quotes, message you, or choose your quote for contract terms."
@@ -10772,7 +10772,7 @@ export function FactoryQuoteSent({
           <section className="success-card factory-sent-card">
             <span className="success-mark">✓</span>
             <div className="success-copy">
-              <h2>{project.brand} {tx("quote submitted")}</h2>
+              <h2>{sent?.heading ?? <>{project.brand} {tx("quote submitted")}</>}</h2>
               <p>{tx(companyType === "trading"
                 ? "The brand will see your unit price, sample plan, production timing, confirmed partner window and company notes in their quote comparison view."
                 : "The brand will see your unit price, sample plan, production timing, open capacity and factory notes in their quote comparison view.")}</p>
@@ -10799,7 +10799,7 @@ export function FactoryQuoteSent({
                 : `${project.brand || "Maison Rue"} has been notified. Your quote appears on their comparison page with your factory notes and assumptions.`)}</p>
               <div className="factory-status-facts">
                 <ProfileDetailPair label="Brand" value={project.brand} />
-                <ProfileDetailPair label="Quote due" value={sent?.quoteDue ?? "Jul 24"} />
+                {sent?.quoteDue === "" ? null : <ProfileDetailPair label="Quote due" value={sent?.quoteDue ?? "Jul 24"} />}
                 <ProfileDetailPair label="Shown total" value={sent?.total ?? "$5,780"} />
               </div>
             </section>

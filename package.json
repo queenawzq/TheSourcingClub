@@ -19,6 +19,7 @@
     "check:review-email": "node scripts/check-review-email.mjs",
     "check:dashboard": "node scripts/check-dashboard.mjs",
     "check:schedule-draft": "node scripts/check-schedule-draft.mjs",
+    "check:vendor-page": "node scripts/check-vendor-page.mjs",
     "check:messages": "node scripts/check-message-patterns.mjs",
     "check:auth": "node scripts/check-auth-storage.mjs",
     "check:auth-messages": "node scripts/check-auth-messages.mjs",
