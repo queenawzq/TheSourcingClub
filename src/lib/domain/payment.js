@@ -244,3 +244,23 @@ export function chargedCents(payment) {
 export function orderFeeBps(order) {
   return Number(order?.order_total_cents ?? 0) >= 500000 ? 500 : 700;
 }
+
+/**
+ * Staff: the Stripe payout account of each order's factory, for owed rows that
+ * have no withdrawal method on file. Keyed by order id; orders whose factory
+ * never started Stripe are left out.
+ */
+export async function factoryStripeSetup(orderIds) {
+  if (!orderIds.length) return new Map();
+  const orders = unwrap(
+    await supabase.from("production_orders").select("id, factory_org_id").in("id", orderIds),
+    "load the orders' factories",
+  );
+  const orgIds = [...new Set(orders.map((order) => order.factory_org_id))];
+  const accounts = unwrap(
+    await supabase.from("stripe_connect_accounts").select("org_id, details_submitted, transfers_active").in("org_id", orgIds),
+    "load the factories' Stripe accounts",
+  );
+  const byOrg = new Map(accounts.map((account) => [account.org_id, account]));
+  return new Map(orders.filter((order) => byOrg.has(order.factory_org_id)).map((order) => [order.id, byOrg.get(order.factory_org_id)]));
+}

@@ -37,7 +37,7 @@ const PAYPAL_FAILURES = {
   REVERSED: "This payment was reversed. Check why in PayPal before paying again.",
 };
 
-export const PAYPAL_UNCLAIMED = "Not claimed: this address has no PayPal account yet. Ask the factory to open one at this address and the payment completes. Or cancel it here or in PayPal, then press Refresh, and pay again once the factory has fixed its address. If nobody claims it, it returns to TSC after 30 days.";
+export const PAYPAL_UNCLAIMED = "Not claimed: no PayPal account at this address. Ask the factory to open one, or cancel and pay again. Returns to TSC after 30 days.";
 
 export function paypalFrom(env = process.env, fetchImpl = fetch) {
   const base = apiBase(env, "PAYPAL_API_BASE", LABEL);
