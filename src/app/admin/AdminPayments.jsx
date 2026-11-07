@@ -504,7 +504,7 @@ export default function AdminPayments() {
 
   const header = (
     <header className="admin-bar">
-      <span className="shell-mark">The Sourcing Club</span>
+      <span className="shell-mark admin-payments-logo"><img src="/assets/logo.svg" alt="The Sourcing Club" /></span>
       <span className="admin-sub">{user?.email}</span>
       <button type="button" className="quiet-btn" onClick={() => navigate("/admin")}>All tools</button>
       <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
