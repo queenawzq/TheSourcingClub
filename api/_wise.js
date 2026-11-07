@@ -1,4 +1,4 @@
-import { PayoutFailure, apiBase, cents, decimal, timedCall } from "./_payout-provider.js";
+import { PayoutFailure, apiBase, cents, decimal, isFieldKey, timedCall } from "./_payout-provider.js";
 
 /**
  * Wise, for staff's Pay with Wise. Server only: the token is never bundled.
@@ -40,6 +40,9 @@ const WISE_FAILURES = {
 
 export const WISE_ISSUE = "Wise has stopped this transfer until an issue is cleared. Open it in Wise to see what it needs.";
 
+/** Wise's keys for the fields it refused, the same ones as wise_details. */
+export const refusedFields = (errors) => [...new Set((errors ?? []).map((e) => e?.path).filter(isFieldKey))];
+
 export function wiseFrom(env = process.env, fetchImpl = fetch) {
   const base = apiBase(env, "WISE_API_BASE", LABEL);
   const token = env.WISE_API_TOKEN;
@@ -67,7 +70,12 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
   function refused(answer, doing) {
     const errors = answer.body?.errors ?? [];
     const said = errors.map((e) => e.message).filter(Boolean).join(" ");
-    return new PayoutFailure("refused", said ? `Wise refused this: ${said}` : `Wise refused to ${doing}.`, { status: answer.status, detail: errors.map((e) => e.code).join(",") });
+    return new PayoutFailure("refused", said ? `Wise refused this: ${said}` : `Wise refused to ${doing}.`, {
+      status: answer.status,
+      detail: errors.map((e) => e.code).join(","),
+      // The field's key only: an error's arguments repeat the value typed.
+      fields: refusedFields(errors),
+    });
   }
 
   return {

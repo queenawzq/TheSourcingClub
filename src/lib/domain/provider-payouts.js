@@ -28,6 +28,7 @@ async function call(provider, body) {
   if (!response.ok) {
     const failure = new Error(result.error || `This didn't get an answer (${response.status}), so we don't know yet if it went. Press Refresh.`);
     failure.kind = result.kind ?? null;
+    failure.fields = result.fields ?? [];
     failure.unsure = result.unsure ?? false;
     throw failure;
   }
@@ -43,8 +44,8 @@ export const payByProvider = (provider, row, cnyConfirmed = false) => call(provi
 
 export const cancelProviderPayout = (provider, paymentId) => call(provider, { action: "cancel", paymentId });
 
-export const tellFactoryToFixDetails = (provider, row, sentence, cnyConfirmed = false) => call(provider, {
-  action: "tell", paymentId: row.payment_id, paidToChangedAt: row.payout_changed_at, sentence, cnyConfirmed,
+export const tellFactoryToFixDetails = (provider, row, sentence, cnyConfirmed = false, fields = []) => call(provider, {
+  action: "tell", paymentId: row.payment_id, paidToChangedAt: row.payout_changed_at, sentence, cnyConfirmed, fields,
 });
 
 /** Read back what can still change. Previews can't receive a webhook, so the board asks. */

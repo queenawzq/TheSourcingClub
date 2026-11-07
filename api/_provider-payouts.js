@@ -1,5 +1,5 @@
 import { ensureWiseRecipient } from "./_wise-recipient.js";
-import { PayoutFailure, withoutSecrets } from "./_payout-provider.js";
+import { PayoutFailure, isFieldKey, withoutSecrets } from "./_payout-provider.js";
 import { callerClient, jsonBody, reply, serviceClient, tokenRefused } from "./_stripe.js";
 
 /**
@@ -196,7 +196,7 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
   }
 }
 
-export async function tellFactoryDetails({ caller, db, paymentId, changedAt, which, cnyConfirmed, sentence }) {
+export async function tellFactoryDetails({ caller, db, paymentId, changedAt, which, cnyConfirmed, sentence, fields = [] }) {
   const claim = await must(caller.rpc("claim_provider_payout", {
     target_payment: paymentId, which, paid_to_changed_at: changedAt, cny_confirmed: Boolean(cnyConfirmed),
   }));
@@ -204,6 +204,12 @@ export async function tellFactoryDetails({ caller, db, paymentId, changedAt, whi
     failure: "details_rejected", raw_status: "details_rejected", sentence,
     tell_factory: which === "paypal" ? CHECK_PAYPAL : CHECK_BANK,
   });
+  // Which fields it can name to the factory. The factory has already been told, so this can't undo that.
+  const named = (Array.isArray(fields) ? fields : []).filter(isFieldKey).slice(0, 10);
+  if (named.length) {
+    const { error } = await db.from("provider_payouts").update({ details_fields: named }).eq("id", claim.payout_id);
+    if (error) log("details_fields", error, { paymentId });
+  }
   return { done: "failed" };
 }
 
@@ -346,10 +352,10 @@ export function payoutRoute({ provider, build, label, settings }) {
       if (action === "cancel") return reply(response, 200, await cancelAttempt({ client, caller, db, paymentId }));
 
       if (action === "tell") {
-        const { sentence } = jsonBody(request);
+        const { sentence, fields } = jsonBody(request);
         return reply(response, 200, await tellFactoryDetails({
           caller, db, paymentId, which: provider, changedAt: paidToChangedAt, cnyConfirmed,
-          sentence: String(sentence ?? "The factory was told to check its details.").slice(0, 300),
+          sentence: String(sentence ?? "The factory was told to check its details.").slice(0, 300), fields,
         }));
       }
 
@@ -375,6 +381,7 @@ export function payoutRoute({ provider, build, label, settings }) {
         error: known ? failure.message : `${label} didn't answer as expected. Press Refresh to see where this is.`,
         kind: known ? failure.kind : "unknown",
         unsure: known ? failure.unsure : true,
+        fields: known ? failure.fields ?? [] : [],
       });
     }
   };
