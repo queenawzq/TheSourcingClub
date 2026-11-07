@@ -4014,6 +4014,9 @@ async function main() {
 
     await page.goto(APP);
     await waitFor(page, ".home-stack", 25000);
+    // The frame draws first and "Loading your dashboard…" holds its place, so
+    // wait for the content; if it never comes, the checks below say so.
+    await waitFor(page, ".home-active-rfqs, .home-active-orders, .home-new-brand-card", 25000).catch(() => {});
     await record(page, "Brand home", "what needs you, before anything else");
 
     const homeText = await page.locator(".home-stack").innerText();
