@@ -36,7 +36,7 @@ import {
   remindMilestone,
 } from "../../lib/domain/milestone.js";
 import { brandSummary } from "../../lib/domain/rfq.js";
-import { requestRelease } from "../../lib/domain/stripe.js";
+import { connectAccountFor, requestRelease } from "../../lib/domain/stripe.js";
 import { downloadDocument, urlFor } from "../../lib/domain/documents.js";
 import { getContractAttachments } from "../../lib/domain/contract-attachments.js";
 import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
@@ -134,7 +134,7 @@ function actionFor(milestone, viewer) {
  * brand approves the step, then pays the factory; a payment-only step (a
  * deposit or balance) has nothing to approve and is paid out once funded.
  */
-function paymentLine(payment, isFactory, kind) {
+function paymentLine(payment, isFactory, kind, needsMethod = null) {
   switch (payment?.state) {
     case "due":
       return isFactory ? "Awaiting funding from the brand" : "Awaiting funding";
@@ -151,7 +151,8 @@ function paymentLine(payment, isFactory, kind) {
         : "You have marked this sent — awaiting our confirmation";
     case "confirmed":
       // The factory's one word for this money, the same as on Payments.
-      if (isFactory) return earningStatus(payment);
+      // Approved money with nowhere to go: what the factory must do, as on its dashboard.
+      if (isFactory) return payment.release_requested_at && needsMethod ? `${earningStatus(payment)} · ${needsMethod}` : earningStatus(payment);
       if (!payment.release_requested_at) return "Funded";
       return kind === "payment_only" ? "Funded" : "Approved";
     case "released":
@@ -163,9 +164,9 @@ function paymentLine(payment, isFactory, kind) {
 
 /** Stripe's failure reasons end in a full stop; a sentence joined after one must not double it. */
 /** The sentence under a step's title, from its own state and its payment's. */
-function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, posted }) {
+function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, posted, needsMethod }) {
   const payment = milestone.payment;
-  const money = paymentLine(payment, isFactory, milestone.kind);
+  const money = paymentLine(payment, isFactory, milestone.kind, needsMethod);
 
   if (milestone.state === "complete") {
     return payment?.state === "confirmed" || payment?.state === "released" ? `Done · ${money}` : "Done";
@@ -272,6 +273,20 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const [updates, setUpdates] = useState([]);
   const [activity, setActivity] = useState([]);
   const [charges, setCharges] = useState(null);
+  // A factory TSC has no way to pay: no withdrawal method and no Stripe account
+  // that takes transfers. A failed read says nothing rather than something wrong.
+  const [noMethod, setNoMethod] = useState(false);
+  useEffect(() => {
+    if (!isFactory) return undefined;
+    let cancelled = false;
+    Promise.all([
+      supabase.from("factory_payout_accounts").select("id", { count: "exact", head: true }).eq("org_id", org.id),
+      connectAccountFor(org.id),
+    ]).then(([methods, stripeAccount]) => {
+      if (!cancelled && !methods.error) setNoMethod(methods.count === 0 && !stripeAccount?.transfers_active);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isFactory, org.id]);
   const [requestFiles, setRequestFiles] = useState([]);
   const [photoUrls, setPhotoUrls] = useState({});
   const [location, setLocation] = useState("");
@@ -489,6 +504,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     canApprove: can(org, "approve"),
     canUpdate: can(org, "addUpdate"),
     canSetSteps: can(org, "rfqFlow"),
+    needsMethod: noMethod ? (isOwner ? "Add a withdrawal method" : "Ask a company owner to add a withdrawal method") : null,
   };
   // The brand's figures with the fee (brandCharges); the factory's are the
   // summary's step amounts.
