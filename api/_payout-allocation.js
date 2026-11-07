@@ -74,7 +74,7 @@ export function allocatePayouts(transactions, payments) {
       // Payout fees reduce the balance but are not money paid to the bank.
       if (Math.abs(tx.net) > amount) consume(currency, Math.abs(tx.net) - amount);
       withdrawals.set(sourceId(tx.source), { id: sourceId(tx.source), amount, currency,
-        status: source?.status, created: tx.created, arrival_date: source?.arrival_date,
+        status: source?.status, created: tx.created, arrival_date: source?.arrival_date, destination: typeof source?.destination === "string" ? source.destination : source?.destination?.id ?? null,
         parts, returned: false });
     } else if (["payout_failure", "payout_cancel"].includes(tx.type) && tx.net > 0) {
       const withdrawal = withdrawals.get(sourceId(tx.source));
