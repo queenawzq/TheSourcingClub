@@ -12,8 +12,8 @@ import { PayoutFailure, apiBase, cents, decimal, timedCall } from "./_payout-pro
  * customerTransactionId is the idempotency key. Tested on the sandbox: the same
  * key returns the same transfer, also with a different quote.
  *
- * The bank number passes through createRecipient() on its way to Wise and goes
- * nowhere else: it isn't logged, returned or stored (check:bank-number pins it).
+ * The bank number reaches this file only inside createRecipient()'s details, from
+ * api/_wise-recipient.js. It isn't logged, returned or stored.
  */
 
 const LABEL = "Wise";
@@ -44,6 +44,7 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
   const profile = env.WISE_PROFILE_ID;
   const payoutCurrency = env.WISE_PAYOUT_CURRENCY;
   if (!base || !token || !profile || !payoutCurrency) return null;
+  const appUrl = base.replace("//api.", "//");
 
   async function call(method, path, body) {
     const answer = await timedCall({
@@ -70,9 +71,10 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
   return {
     provider: "wise",
     payoutCurrency,
-    /** Where a person opens a transfer: the app's address, from the API's. */
-    transferUrl: (id) => `${base.replace("//api.", "//")}/transactions/activities/by-resource/TRANSFER/${id}`,
-    balancesUrl: () => `${base.replace("//api.", "//")}/balances`,
+    /** The app's address, from the API's. */
+    appUrl,
+    transferUrl: (id) => `${appUrl}/transactions/activities/by-resource/TRANSFER/${id}`,
+    balancesUrl: () => `${appUrl}/balances`,
 
     /** { cents, currency } for one currency, or cents 0 when there's no balance in it. */
     async balance(currency) {
@@ -82,25 +84,23 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
       return { cents: row ? cents(row.amount?.value) : 0, currency };
     },
 
-    /** Which recipient type this country and currency takes, and whether the CNY statement is on it. */
-    async requirements(quoteId) {
-      const answer = await call("GET", `/v1/quotes/${quoteId}/account-requirements`);
-      if (answer.status >= 300) throw refused(answer, "say what it needs");
-      return answer.body ?? [];
-    },
-
-    async createRecipient({ type, accountHolderName, details }) {
+    /** A refusal here is about what the factory typed, so it is theirs to fix. */
+    async createRecipient({ type, currency, accountHolderName, details }) {
       const answer = await call("POST", "/v1/accounts", {
-        profile: Number(profile), currency: payoutCurrency, type, accountHolderName, details,
+        profile: Number(profile), currency, type, accountHolderName, details,
       });
-      if (answer.status >= 300) throw refused(answer, "accept these bank details");
-      return answer.body.id;
+      if (answer.status >= 300) {
+        const failure = refused(answer, "accept these bank details");
+        failure.kind = "details_rejected";
+        throw failure;
+      }
+      return String(answer.body.id);
     },
 
     /** The fee and what arrives depend on the recipient, so one is always named. */
-    async quote({ sourceCurrency, sourceCents, recipientId }) {
+    async quote({ sourceCurrency, targetCurrency = payoutCurrency, sourceCents, recipientId }) {
       const answer = await call("POST", `/v3/profiles/${profile}/quotes`, {
-        sourceCurrency, targetCurrency: payoutCurrency, sourceAmount: Number(decimal(sourceCents)),
+        sourceCurrency, targetCurrency, sourceAmount: Number(decimal(sourceCents)),
         targetAccount: recipientId, payOut: "BANK_TRANSFER", preferredPayIn: "BALANCE",
       });
       if (answer.status >= 300) throw refused(answer, "quote this payment");
@@ -112,7 +112,7 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
         id: answer.body.id,
         feeCents: cents(option.fee?.total),
         arrivesCents: cents(option.targetAmount),
-        arrivesCurrency: payoutCurrency,
+        arrivesCurrency: targetCurrency,
         rate: answer.body.rate ?? null,
       };
     },
@@ -159,35 +159,4 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
       return { raw: answer.body.status };
     },
   };
-}
-
-/**
- * The recipient Wise wants, from the requirement list and what the factory
- * typed: only the fields Wise asks for today, every required one present or
- * refused by name before Wise is called.
- *
- * `values` is the factory's answers by Wise's own keys ("address.city", ...).
- */
-export function recipientFrom(requirement, values) {
-  const details = {};
-  let holder = null;
-  const missing = [];
-  for (const field of requirement.fields ?? []) {
-    for (const group of field.group ?? []) {
-      const value = values[group.key];
-      if (value === undefined || value === null || value === "") {
-        if (group.required) missing.push(field.name);
-        continue;
-      }
-      if (group.key === "accountHolderName") { holder = value; continue; }
-      const path = group.key.split(".");
-      let at = details;
-      for (const part of path.slice(0, -1)) at = at[part] ??= {};
-      at[path.at(-1)] = value;
-    }
-  }
-  if (missing.length) {
-    throw new PayoutFailure("details_missing", `The factory's bank details are missing: ${missing.join(", ")}. Ask the factory to add them on its Payments page.`);
-  }
-  return { type: requirement.type, accountHolderName: holder, details };
 }
