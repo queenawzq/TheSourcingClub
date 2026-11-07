@@ -133,7 +133,7 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
       title="Add a bank account"
       onClose={busy ? () => {} : onClose}
       actions={<>
-        <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Cancel</button>
+        <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Back</button>
         <button className="primary-btn" type="button" data-testid="save-bank-account" disabled={!stripe || !ready || busy} onClick={save}>{busy ? "Adding…" : "Add bank account"}</button>
       </>}
     >
@@ -214,7 +214,7 @@ function CardForm({ org, currency, onAdded, onClose }) {
       title="Add a debit card"
       onClose={busy ? () => {} : onClose}
       actions={<>
-        <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Cancel</button>
+        <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Back</button>
         <button className="primary-btn" type="button" data-testid="save-payout-card" disabled={!stripe || !ready || busy} onClick={save}>{busy ? "Adding…" : "Add debit card"}</button>
       </>}
     >

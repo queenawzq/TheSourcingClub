@@ -126,7 +126,7 @@ const copy = {
     why: (company, setting) =>
       `You’re receiving this because ${company} has “${setting}” emails turned on. Any member can turn them off in Settings → Notifications.`,
     whyAlways: (company) =>
-      `Everyone at ${company} gets this email because it is about how the company is paid. It cannot be turned off.`,
+      `Sent to everyone at ${company}.`,
     questions: "Questions? Reply to this email or contact",
   },
   zh: {
@@ -141,7 +141,7 @@ const copy = {
     cta: "在 The Sourcing Club 中查看",
     ctaFallback: "打开 The Sourcing Club",
     whyAlways: (company) =>
-      `这封邮件与 ${company} 的收款方式有关，公司所有成员都会收到，且无法关闭。`,
+      `已发送给 ${company} 的所有成员。`,
     why: (company, setting) =>
       `你收到这封邮件，是因为 ${company} 开启了“${setting}”邮件通知。任何成员都可以在 设置 → 通知 中关闭。`,
     questions: "有问题？直接回复此邮件，或联系",

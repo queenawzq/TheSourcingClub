@@ -731,7 +731,7 @@ export default function StripePayoutCard({
           ) : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
             ? [
               // Paid, and not in the balance yet. Not a withdrawal: it has no row until one is made.
-              pending > 0 ? `${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} ${arrivesOn ? `available ${arrivesOn}` : "not available yet"}` : null,
+              pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} ${arrivesOn ? `available ${arrivesOn}` : "not available yet"}` : null,
               // Orders are in USD; an account is credited in its own currency.
               currency !== "USD" ? `Paid in ${currency}` : null,
               account?.transfers_active && !account.payouts_enabled ? "Finish setup to withdraw" : null,

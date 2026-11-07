@@ -151,8 +151,9 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           setPayoutMethods(connected.length ? connected.map((method) => ({
             id: method.id,
             label: method.default ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Debit card" : "Bank account",
-            name: `${method.type === "card" ? "Debit card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`,
-            note: [method.name, method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
+            // The words Payments uses for this account; never a bank name as Stripe holds it.
+            name: `${method.type === "card" ? "Debit card" : "Bank"}${method.last4 ? ` ····${method.last4}` : ""}`,
+            note: [method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
           })) : [{ label: "Connected", name: "Withdrawal account" }]);
         } else {
           setPayoutMethods(manualAccounts.map((account) => (account.method === "payoneer" ? {

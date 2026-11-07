@@ -22,6 +22,7 @@ import { listTermsByKind } from "../../lib/domain/taxonomy.js";
 import { CAPACITY_LEVELS, availableRange, capacityWindow, minutesPerPieceFor, monthKey } from "../../lib/domain/capacity.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { supabase } from "../../lib/supabase.js";
+import { connectAccountFor } from "../../lib/domain/stripe.js";
 import { useRouter } from "../../lib/router.jsx";
 import { toProjectCard } from "../live-adapter.js";
 import { browserTimeZone } from "../../lib/domain/calls.js";
@@ -182,6 +183,24 @@ export default function LiveFactoryHome({ org, profile }) {
 
   const onUpdateCapacity = openCapacityDrawer;
 
+  // Money it can't receive: asked for only once all three reads say so, and only
+  // of an owner, who alone can add a method. It holds nothing else on the page up.
+  const [noWayToBePaid, setNoWayToBePaid] = useState(false);
+  useEffect(() => {
+    if (org.role !== "owner") return undefined;
+    let cancelled = false;
+    Promise.all([
+      supabase.from("factory_payout_accounts").select("id", { count: "exact", head: true }).eq("org_id", org.id),
+      connectAccountFor(org.id),
+      supabase.from("order_payments").select("id, production_orders!inner (factory_org_id, status)", { count: "exact", head: true })
+        .eq("state", "confirmed").eq("production_orders.factory_org_id", org.id).neq("production_orders.status", "cancelled"),
+    ]).then(([methods, stripeAccount, money]) => {
+      if (cancelled || methods.error || money.error) return;
+      setNoWayToBePaid(methods.count === 0 && !stripeAccount?.transfers_active && money.count > 0);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [org.id, org.role]);
+
   useEffect(() => {
     let cancelled = false;
     // Re-reading after a save keeps the dashboard that is already drawn.
@@ -263,6 +282,16 @@ export default function LiveFactoryHome({ org, profile }) {
       action: "View checklist",
       // The checklist is the profile's completion page.
       onAction: () => navigate("/profile/completion"),
+    });
+  }
+  if (noWayToBePaid) {
+    attention.push({
+      type: "Payment",
+      tone: "danger",
+      title: "Add a withdrawal method",
+      meta: "",
+      action: "Add",
+      onAction: () => navigate("/payout"),
     });
   }
   if (!isTrading && !capacity.set) {

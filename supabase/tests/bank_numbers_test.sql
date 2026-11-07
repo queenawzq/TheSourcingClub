@@ -402,7 +402,7 @@ select lives_ok($$ select public.release_payment_to_factory('66800000-0000-0000-
 select throws_ok($$ select public.release_payment_to_factory('66800000-0000-0000-0000-000000000001', 'WIRE-REF-1') $$, '22023', 'that payout was already marked as paid', 'once');
 
 reset role;
-select is((select body from public.notifications where subject_id = '66800000-0000-0000-0000-000000000001' and kind = 'funds_released'), 'Sent by bank transfer against P66-1. TSC''s note: WIRE-REF-1', 'the factory reads the reference');
+select is((select body from public.notifications where subject_id = '66800000-0000-0000-0000-000000000001' and kind = 'funds_released'), 'Sent by bank transfer against P66 mill (P66-1). TSC''s note: WIRE-REF-1', 'the factory reads the reference');
 select is((select paid_to_holder || ' ' || paid_to_bank || ' ' || paid_to_last4 || ' ' || reference from public.bank_payouts where payment_id = '66800000-0000-0000-0000-000000000001'), 'P66 Mill Co Ltd P66 Bank 1234 WIRE-REF-1', 'and the record says where it went');
 
 select pg_temp.act_as(3); set local role authenticated;

@@ -146,7 +146,7 @@ reset role; set local role service_role;
 select is(public.claim_payment_release('78f00000-0000-0000-0000-000000000001'), null, 'Stripe''s claim refuses too');
 select lives_ok($$ select public.finish_provider_payout((select id from public.provider_payouts where payment_id = '78f00000-0000-0000-0000-000000000001'), 'paid', null, 'outgoing_payment_sent', null, 660000, 'CNY') $$, 'the provider says it went');
 select is((select state::text from public.order_payments where id = '78f00000-0000-0000-0000-000000000001'), 'released', 'paid and released are one step');
-select is((select body from public.notifications where subject_id = '78f00000-0000-0000-0000-000000000001' and kind = 'funds_released'), 'Sent to Demo Bank ending 1234 against P78-1.', 'the factory is told, no provider named');
+select is((select body from public.notifications where subject_id = '78f00000-0000-0000-0000-000000000001' and kind = 'funds_released'), 'Sent to Demo Bank ending 1234 against P78 request (P78-1).', 'the factory is told, no provider named');
 select lives_ok($$ select public.finish_provider_payout((select id from public.provider_payouts where payment_id = '78f00000-0000-0000-0000-000000000001'), 'paid') $$, 'said twice');
 select is((select count(*)::int from public.notifications where subject_id = '78f00000-0000-0000-0000-000000000001' and kind = 'funds_released'), 1, 'told once');
 
