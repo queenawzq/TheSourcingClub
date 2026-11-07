@@ -1,6 +1,7 @@
 import { applyChargeRefund, applyPaymentIntent, rawBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
 import { logStripeFailure } from "./_stripe-errors.js";
 import { connectNeedsNotice } from "./_connect-needs.js";
+import { emailTransport, sendDueNotificationEmails } from "./_notification-sender.js";
 import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-credits.js";
 
 /**
@@ -127,6 +128,12 @@ export default async function handler(request, response) {
           if (notice) {
             const { error: noticeError } = await db.from("notifications").insert({ org_id: orgId, ...notice });
             if (noticeError) throw new Error(noticeError.message);
+            // Nobody signed in wrote anything, so nothing else sends the
+            // queue until the daily job: send it now. A failure here is left
+            // to that job, never a reason to handle the event again.
+            if (emailTransport()) {
+              await sendDueNotificationEmails(db, request).catch((failure) => console.error("stripe-webhook: email queue", failure?.message));
+            }
           }
           if (saved?.transfers_active) await releaseOwedTo({ stripe, db, factoryOrgId: orgId });
         }
