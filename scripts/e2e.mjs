@@ -1505,7 +1505,10 @@ async function main() {
     // read-back of a quote that did not exist.
     await waitForHeading(page, "rfq details", 25000);
     const detailText = await page.locator(".factory-detail-page").innerText();
-    check(/Request match/i.test(detailText), "the request match panel is on the designed detail screen");
+    // No fit label to a factory about itself (Nov 7, dfc37e9): the panel and
+    // any match figure stay off the live screen, and so does the design's copy.
+    check(!/Request match|\d+% match|match the brand request/i.test(detailText),
+      "no request match panel or figure is shown to the factory about itself");
     check(detailText.includes(brandName), "the brand behind the request is named from the database");
     check(!/Maison Rue/.test(detailText), "and the design's example brand is nowhere on it");
     check((await page.locator(".factory-side-actions .primary-btn").count()) === 1,
