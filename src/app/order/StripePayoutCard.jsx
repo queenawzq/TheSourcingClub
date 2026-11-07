@@ -706,7 +706,9 @@ export default function StripePayoutCard({
             ? isOwner ? "Add your full account number." : "Ask a company owner to add the full account number."
             : isOwner ? "Add a withdrawal method to receive earnings." : "No withdrawal method yet.";
   // Owed money that bounced: what this person must do next, on the card.
-  const failedLine = failed ? (isOwner || failed.failure_code !== "details_rejected" ? `A withdrawal failed. ${failureNote(failed)}.` : "A withdrawal failed. Ask a company owner to check the details.") : null;
+  // Once the details have changed since, there is nothing more to ask of them.
+  const failureOpen = failed && !(failed.failure_code === "details_rejected" && manualAccount?.details_changed_at > failed.created_at);
+  const failedLine = failureOpen ? (isOwner || failed.failure_code !== "details_rejected" ? `A withdrawal failed. ${failureNote(failed)}.` : "A withdrawal failed. Ask a company owner to check the details.") : null;
 
   return (
     <>
@@ -801,7 +803,7 @@ export default function StripePayoutCard({
                 </div>
                 <div className="payout-method-name">
                   <strong>{methodLabel(method)}</strong>
-                  {method.name ? <span>{method.name}</span> : null}
+                  {method.name && !/stripe/i.test(method.name) ? <span>{method.name}</span> : null}
                 </div>
                 {method.default ? <span className="payout-method-default">Default</span> : null}
                 <div className="payout-method-menu">

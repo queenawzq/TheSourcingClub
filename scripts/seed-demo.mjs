@@ -1243,7 +1243,7 @@ const hopsackFit = await dueNow(hopsack, hopsackTitle);
 await funded(hopsackFit, CARD);
 await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
 must(await adminUser.client.rpc("release_payment_to_factory", {
-  target_payment: hopsackFit.id, note: "Paid by bank instead, reference DEMO-20260001",
+  target_payment: hopsackFit.id, note: "DEMO-20260001",
 }), "mark the blazer's fit sample paid");
 const tencelTitle = "Tencel wrap dress, AW27";
 const tencel = await runningOrder({
