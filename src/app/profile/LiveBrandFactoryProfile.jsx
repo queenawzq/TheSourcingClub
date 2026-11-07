@@ -30,7 +30,7 @@ import { can, permissionHint } from "../../lib/domain/org.js";
 const FALLBACK = { browse: "/browse", saved: "/saved", dashboard: "/", quotes: "/rfqs", order: "/orders", invite: "/rfqs" };
 
 function Frame({ children }) {
-  return <div>{children}</div>;
+  return <main className="factory-profile-page brand-profile-page">{children}</main>;
 }
 
 /**

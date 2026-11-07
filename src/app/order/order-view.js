@@ -184,9 +184,7 @@ export function describeOrderContract({ order, milestones, incoterm, paymentTerm
     workDetails: [
       ["Contract title", title],
       ["Scope of work", order.agreed_scope || order.rfqs?.brief || "As described in the request."],
-      ["Approvals, revisions, and delivery", approvals.length
-        ? `The brand signs off ${approvals.join(", ")} before the next step opens.`
-        : "No step needs the brand's sign-off."],
+      ["Approvals", approvals.length ? approvals.join(", ") : "None"],
     ],
     acceptedQuote: [
       [counterpartyLabel, factoryLine],
@@ -201,8 +199,6 @@ export function describeOrderContract({ order, milestones, incoterm, paymentTerm
     paymentTerms: [
       ["Payment split", paymentTerm || `${order.deposit_pct}% deposit · ${order.balance_pct}% balance`],
       ["Sample payment", order.sample_subtotal_cents ? `Samples quoted at ${money(order.sample_subtotal_cents)}` : "No paid samples"],
-      ["Milestone release", "A paid step becomes due once the brand approves it, or when it opens if it needs no approval."],
-      ["Release rule", "The next step opens once TSC confirms the payment has arrived."],
       ["Shipping / incoterms", incoterm || "Not stated in the quote"],
     ],
     attachments: (attachments ?? []).map((doc) => doc.file_name),
@@ -232,8 +228,6 @@ export function kindFor(type, originalKind) {
   return originalKind === "payment_only" ? "payment_only" : "approval_and_payment";
 }
 
-const PAID_ON_OPEN = "Paid when this step opens: there is nothing for the brand to approve first.";
-
 /** A step's amount as the design's steps screen writes it: "$1,656", cents only when there are some ("$12.50"). */
 export function stepAmount(cents, currency) {
   return formatMoney(cents, currency, { whole: cents % 100 === 0 });
@@ -252,7 +246,7 @@ export function scheduleRows(milestones) {
     // Shown as the design's steps write money ("$1,656"); toCents reads it back.
     amount: milestone.amount_cents ? stepAmount(milestone.amount_cents, milestone.currency ?? undefined) : "",
     due_on: milestone.due_on ?? "",
-    note: milestone.kind === "payment_only" ? PAID_ON_OPEN : "",
+    note: "",
   }));
 }
 
@@ -261,7 +255,6 @@ export function editRow(row, patch) {
   const next = { ...row, ...patch };
   if (patch.type) {
     next.kind = kindFor(patch.type, row.originalKind);
-    next.note = next.kind === "payment_only" ? PAID_ON_OPEN : "";
     // The database refuses an amount on a step that carries no money.
     if (patch.type !== PAID_RELEASE) next.amount = "";
   }

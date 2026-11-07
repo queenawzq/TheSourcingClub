@@ -55,17 +55,16 @@ const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 // What each email switch covers (notification_email_category), since the
 // designed labels name only part of it. Every member with an email gets them,
 // whatever their permissions.
-const EVERY_MEMBER = "Emails every member of your company.";
 const SHARED_EMAIL_NOTES = {
-  payments: `Payments, steps to approve, steps due soon and changes to your orders. ${EVERY_MEMBER}`,
-  messages: `New messages (at most one email per conversation every 6 hours) and call invites. ${EVERY_MEMBER}`,
+  payments: `Payments, steps to approve, steps due soon and changes to your orders.`,
+  messages: `New messages (at most one email per conversation every 6 hours) and call invites.`,
 };
 const FACTORY_EMAIL_NOTES = {
-  rfq: `Requests that match you or invite you, decisions on your quotes, and capacity reminders. ${EVERY_MEMBER}`,
+  rfq: `Requests that match you or invite you, decisions on your quotes, and capacity reminders.`,
   ...SHARED_EMAIL_NOTES,
 };
 const BRAND_EMAIL_NOTES = {
-  rfq: `Quotes sent or withdrawn on your requests. ${EVERY_MEMBER}`,
+  rfq: `Quotes sent or withdrawn on your requests.`,
   ...SHARED_EMAIL_NOTES,
 };
 
@@ -165,7 +164,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
             id: account.id,
             label: account.is_primary ? "Default" : "Bank account",
             name: `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}`,
-            note: account.number_changed_at ? "Manual bank transfer" : "TSC can't pay this account yet: its full account number is missing",
+            note: account.number_changed_at ? "Bank transfer" : "TSC can't pay this account yet: its full account number is missing",
           })));
         }
       }
@@ -434,7 +433,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     <>
       <SettingsScreen
         accountType={isFactory ? "factory" : "brand"}
-        permissionsNote={isOwner ? "Owners can do everything; tick what each member may do." : ""}
+        permissionsNote={isOwner ? null : ""}
         onSaveAccount={canSettings ? async (details) => {
           // A non-owner's save never carries the name: their copy goes stale
           // when an owner renames the company, and null means "leave it".
@@ -525,7 +524,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
       {billingSecret ? (
         <BillingMethodFlow
           clientSecret={billingSecret}
-          intro={isFactory ? undefined : "Save a card to use when funding production milestones."}
+          intro={undefined}
           onClose={() => setBillingSecret(null)}
           onSaved={() => { setBillingSecret(null); loadCards(); }}
         />

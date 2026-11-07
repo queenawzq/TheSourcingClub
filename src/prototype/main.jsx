@@ -1124,11 +1124,11 @@ export function FlowShell({
 
   return (
     <main className={`flow-page${["invite", "quotes", "quoteDetail"].includes(screen) ? " wide-flow" : ""}${actionFlow}${reviewFlow}`}>
-      <JourneyRail current={meta.step} isMilestoneFunding={Boolean(fundingMilestone)} />
+      <JourneyRail current={meta.step} isMilestoneFunding={Boolean(fundingMilestone)} fundingStep={fundingMilestone?.railStep} />
       <section className="flow-content">
         {screen !== "quoteDetail" && (
           <header className="flow-header">
-            <p className="eyebrow">VENDOR QUOTE REQUEST</p>
+            <p className="eyebrow">{meta.eyebrow ?? "VENDOR QUOTE REQUEST"}</p>
             <h1>{meta.title}</h1>
             <p>{meta.description || "Move this quote request forward with the next project detail."}</p>
           </header>
@@ -4016,10 +4016,10 @@ function BrandAssetUploadCard({ title, helper, accept, fileAccept = "image/*,.pd
   );
 }
 
-function JourneyRail({ current, isMilestoneFunding = false }) {
+function JourneyRail({ current, isMilestoneFunding = false, fundingStep = null }) {
   const journeySteps = steps.map((step, index) =>
     index === steps.length - 1 && isMilestoneFunding
-      ? { ...step, title: "Fund payment" }
+      ? { ...step, title: "Fund payment", meta: fundingStep ?? step.meta }
       : step
   );
 
@@ -4960,7 +4960,7 @@ function HomeRfqMiniCard({ rfq, goTo, onOpen }) {
           <span>Quotes received</span>
           <strong>{quotesReceived[0]}</strong>
         </div>
-        <div>
+        <div hidden={invitedCount[0] === null}>
           <span>Invited</span>
           <strong>{invitedCount[0]}</strong>
         </div>
@@ -7940,7 +7940,7 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, o
     ["Invited", invitedCount[0]],
     ["Messages", messageCount[0]],
     ["Quote due", quoteDue]
-  ];
+  ].filter(([, value]) => value !== null);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -8477,7 +8477,7 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
           </div>
           <p className="project-description">{project.description}</p>
           <div className="project-status-row">
-            <span><strong>Current status:</strong> {project.statusDetail}</span>
+            {project.statusDetail && <span><strong>Current status:</strong> {project.statusDetail}</span>}
           </div>
           <ProjectProgress progress={project.progress} steps={project.steps} />
         </aside>
@@ -8783,7 +8783,7 @@ function ProjectFilesPanel({ files: liveFiles, onOpenFile }) {
       <h2>Files</h2>
       <div className="project-detail-file-list" data-testid={liveFiles ? "order-files" : undefined}>
         {liveFiles && !files.length && (
-          <p className="muted">No files yet. The request's attachments and photos posted on a step appear here.</p>
+          <p className="muted">No files yet.</p>
         )}
         {files.map((file) => (
           <button className="project-detail-file-row" type="button" key={file.id} onClick={() => onOpenFile?.(file)}>
@@ -9964,6 +9964,7 @@ function matchTierClass(value) {
 }
 
 function quoteFitClass(type) {
+  if (type === "Not a fit") return "quote-fit tradeoff-fit";
   if (type === "Strong fit") return "quote-fit strong-fit";
   if (type === "Great fit" || type === "Good fit") return "quote-fit good-fit";
   return "quote-fit tradeoff-fit";
@@ -11097,10 +11098,12 @@ export function FundScreen({ fundingMilestone, goTo, setFundingMilestone, live =
             <input type="checkbox" {...agreeBox(0, true)} />
             <span>{live?.agreements?.[0] ?? "I understand funds are only released after I approve the payment."}</span>
           </label>
+          {live?.agreements?.length === 1 ? null : (
           <label>
             <input type="checkbox" {...agreeBox(1, false)} />
             <span>{live?.agreements?.[1] ?? "TSC may hold funds until the payment is approved or disputed."}</span>
           </label>
+          )}
         </section>
       </Card>
     </div>
@@ -11130,6 +11133,7 @@ export function SuccessScreen({ goTo, live = null }) {
             )}
           </p>
         </div>
+        {live && !live.next ? null : (
         <section className="success-next-panel">
           <h3>What happens next</h3>
           <p>
@@ -11141,6 +11145,7 @@ export function SuccessScreen({ goTo, live = null }) {
             )}
           </p>
         </section>
+        )}
         <div className="success-actions">
           <button className="primary-btn" type="button" onClick={live ? live.onDashboard : goToDashboard}>
             {live?.dashboardLabel ?? "Go to dashboard"}

@@ -103,21 +103,20 @@ function actionFor(milestone, viewer) {
   if (isFactory) return none;
   // A paid step is funded before the work; a payment that came back is paid
   // again the same way. Release funds pays (begin_payment_checkout).
-  if (payment?.state === "due" || payment?.state === "failed") return button("Fund milestone", "fund");
+  if (payment?.state === "due" || payment?.state === "failed") return button("Fund step", "fund");
   // approve_milestone refuses a paid step until its money is held.
   if (payment && milestone.kind === "approval_and_payment" && payment.state !== "confirmed") return none;
   if (approvable(milestone)) {
     // approve_milestone asks for Approve samples, and Release funds too on a
     // paying step.
-    return button(milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve", "approve");
+    return button("Approve", "approve");
   }
   // Keep the next action visible on every upcoming step. The database still
   // owns sequencing, so a future CTA is disabled until that step opens rather
   // than disappearing and leaving the schedule without a clear action.
   if (milestone.state === "pending") {
-    if (milestone.kind === "payment_only" && payment?.state === "not_due") return button("Fund milestone", "fund", true);
-    if (milestone.kind === "approval_and_payment") return button("Approve fund", "approve", true);
-    if (milestone.kind === "approval_only") return button("Approve", "approve", true);
+    if (milestone.kind === "payment_only" && payment?.state === "not_due") return button("Fund step", "fund", true);
+    if (milestone.kind === "approval_and_payment" || milestone.kind === "approval_only") return button("Approve", "approve", true);
   }
   return none;
 }
@@ -141,10 +140,10 @@ function paymentLine(payment, isFactory, kind) {
         ? "Payment claimed, awaiting our confirmation"
         : "You have marked this sent — awaiting our confirmation";
     case "confirmed":
-      if (!payment.release_requested_at) return "Funded: held by TSC";
-      return kind === "payment_only" ? "Funded: payout on its way" : "Approved: payout on its way";
+      if (!payment.release_requested_at) return "Funded";
+      return kind === "payment_only" ? "Funded" : "Approved";
     case "released":
-      return "Paid out";
+      return "Paid";
     default:
       return "";
   }
@@ -170,14 +169,12 @@ function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, po
     const held = payment?.state === "confirmed" ? ` · ${money}` : "";
     if (isFactory) {
       return posted
-        ? `Posted, awaiting the brand's approval${held}`
-        : `You can start this step. Nothing posted yet, and the brand can approve without an update${held}`;
+        ? `Awaiting the brand's approval${held}`
+        : `Nothing posted yet${held}`;
     }
     const mayApprove = canApprove && (milestone.kind !== "approval_and_payment" || canFund);
     if (posted) return `${mayApprove ? "Ready for your approval" : "Ready for approval"}${held}`;
-    return mayApprove
-      ? `Nothing posted yet. You can approve now or wait for ${factoryName || "the factory"}'s update${held}`
-      : `Nothing posted yet${held}`;
+    return `Nothing posted yet${held}`;
   }
   if (milestone.state === "active") {
     // Only a payment-only step gets here: nothing to approve or post on it.

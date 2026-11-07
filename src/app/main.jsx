@@ -46,8 +46,8 @@ import { DataProvider } from "../lib/data/DataProvider.jsx";
 import { createLiveAdapter } from "./live-adapter.js";
 import LiveBrandOrders from "./order/LiveBrandOrders.jsx";
 import LiveFactoryOrders from "./order/LiveFactoryOrders.jsx";
-import PaymentInstructions from "./order/PaymentInstructions.jsx";
 import LiveFund from "./order/LiveFund.jsx";
+import "./live-quiet.css";
 import PayoutDetails from "./order/PayoutDetails.jsx";
 import AdminPayments from "./admin/AdminPayments.jsx";
 import AdminMessages from "./admin/AdminMessages.jsx";
@@ -869,8 +869,11 @@ function activeNavFor(path, isFactory) {
   if (path.startsWith("/team")) return "Settings";
   if (isFactory && path.startsWith("/browse")) return "Browse RFQs";
   if (isFactory && path.startsWith("/saved")) return "Saved";
-  // A brand's profile sits under Saved, as in the design.
-  if (isFactory && path.startsWith("/brands")) return "Saved";
+  // A brand's profile sits under Saved, as in the design, unless it was opened from elsewhere.
+  if (isFactory && path.startsWith("/brands")) {
+    const from = new URLSearchParams(window.location.search).get("from");
+    return from === "order" ? "Production orders" : from === "rfq" ? "RFQs" : "Saved";
+  }
   if (isFactory && path.startsWith("/payout")) return "Payments";
   if (isFactory && path.startsWith("/rfqs")) return "RFQs";
   // A vendor's profile sits under Browse vendors, as in the design.
@@ -1460,7 +1463,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
             <LiveFund
               orderId={params.id}
               paymentId={params.pid}
-              fallback={<main className="home-page"><PaymentInstructions orderId={params.id} paymentId={params.pid} /></main>}
+              fallback={<LiveBrandPaymentDetail orderId={params.id} paymentId={params.pid} />}
             />
           ),
     },
