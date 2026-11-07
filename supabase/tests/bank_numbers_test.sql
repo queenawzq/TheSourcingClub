@@ -148,7 +148,8 @@ select is(
     where n.nspname = 'public'
       and p.prosrc ~ 'payout_number_plain|decrypted_secrets|vault\.'),
   array['guard_payout_account_fields', 'payout_number_forget_secret', 'payout_number_plain',
-        'payout_text_holds_number', 'reveal_payout_account_number', 'save_bank_payout_account'],
+        'payout_text_holds_number', 'payout_wise_recipient', 'reveal_payout_account_number',
+        'save_bank_payout_account', 'save_wise_payout_account'],
   'only these functions decrypt or touch Vault: a new one fails here'
 );
 select is(
@@ -156,7 +157,7 @@ select is(
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and p.prosrc ~ 'payout_number_reveals'),
-  array['admin_payment_board', 'payout_number_reveal_log', 'reveal_payout_account_number'],
+  array['admin_payment_board', 'payout_number_reveal_log', 'payout_wise_recipient', 'reveal_payout_account_number'],
   'only these read or write the record of who looked'
 );
 select ok(not has_function_privilege('authenticated', 'public.payout_number_plain(uuid)', 'execute'), 'nobody signed in may call the decrypting function');
