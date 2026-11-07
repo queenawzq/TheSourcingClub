@@ -10,8 +10,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  awaitingApproval, earningStatus, earningsSummaryFor, handPaidFigures, heldOnCancelledOrder, isHandPaid, toBeSent,
-  staffBankNote,
+  awaitingApproval, earningStatus, earningsSummaryFor, factoryAmount, failedWithdrawal, handPaidFigures, heldOnCancelledOrder, isHandPaid, toBeSent,
+  staffBankNote, withdrawalRows,
 } from "../src/app/order/payment-summary.mjs";
 
 const usd = (rows) => rows.reduce((sum, row) => sum + row.amount, 0);
@@ -37,7 +37,7 @@ assert.equal(usd(hand.balance), 600, "balance is approved and not sent, also whe
 
 const summary = earningsSummaryFor(earnings, null, "All clients");
 assert.equal(usd(summary.approval), usd(hand.pending), "Awaiting approval is the card's pending");
-assert.equal(usd(summary.pending), usd(hand.balance), "To be sent is the card's balance");
+assert.equal(usd(summary.pending), usd(hand.balance), "the strip's Pending is the card's balance while nothing is being sent");
 assert.equal(usd(summary.paid), 1600, "Paid out is what TSC sent");
 assert.equal(usd(summary.total), usd(hand.balance) + usd(hand.pending) + usd(summary.paid), "total = balance + pending + paid out");
 
@@ -50,11 +50,41 @@ for (const row of earnings) {
 // The words, in each branch.
 const held = earnings.find((row) => row.id === "held");
 const approved = earnings.find((row) => row.id === "approved");
-assert.equal(earningStatus(approved, null, true), "To be sent");
-assert.equal(earningStatus(approved, null, false), "Pending", "a Stripe factory's approved row keeps its word");
-assert.equal(earningStatus(held, null, true), "Awaiting approval");
-assert.equal(earningStatus(earnings.find((row) => row.id === "held-cancelled"), null, true), "Order cancelled");
-assert.equal(earningStatus(earnings.find((row) => row.id === "paid"), null, true), "Paid by Payoneer");
+assert.equal(earningStatus(approved, null), "Pending");
+assert.equal(earningStatus(held, null), "Awaiting approval");
+assert.equal(earningStatus(earnings.find((row) => row.id === "held-cancelled"), null), "Order cancelled");
+assert.equal(earningStatus(earnings.find((row) => row.id === "paid"), null), "Paid");
+
+// Every payment sent has its own withdrawal row, and the figures still add up:
+// on All, an earning and its withdrawal net to what is still owed or held.
+const attempt = (id, status, extra = {}) => ({ id, provider: "wise", status, paid_to: "Demo Bank ending 0001", amount_cents: 300, created_at: "2026-11-02T00:00:00Z", failure_code: null, paid_at: null, ...extra });
+const money = [
+  pay("sending", 300, "confirmed", { ...APPROVED, provider_payouts: [attempt("a", "processing")] }),
+  pay("bounced", 500, "confirmed", { ...APPROVED, provider_payouts: [attempt("b", "failed", { failure_code: "details_rejected", amount_cents: 500 })] }),
+  pay("wise-paid", 700, "released", { provider_payouts: [attempt("c", "paid", { amount_cents: 700, paid_at: "2026-11-03T00:00:00Z" })] }),
+  pay("retried-paid", 900, "released", { provider_payouts: [attempt("d", "failed", { failure_code: "other", amount_cents: 900 }), attempt("e", "paid", { amount_cents: 900, paid_at: "2026-11-03T00:00:00Z" })] }),
+  pay("by-bank", 1100, "released", { released_by: "staff", released_note: "Wire 77", bank_payouts: { paid_to_bank: "Demo Bank", paid_to_last4: "0001" } }),
+  pay("by-payoneer", 1300, "released", { payoneer_payouts: { payoneer_payment_id: "X", paid_to_email: "a@example.com" } }),
+  pay("by-stripe", 1500, "released", { stripe_transfer_id: "tr_9" }),
+  pay("waiting", 1700, "confirmed"),
+];
+const rows = withdrawalRows(money);
+const sentOut = rows.filter((row) => !row.failed).reduce((sum, row) => sum - row.amount, 0);
+assert.equal(sentOut, 300 + 700 + 900 + 1100 + 1300, "each payment sent is one withdrawal; Stripe's come from Stripe; failures never count");
+assert.equal(rows.filter((row) => row.failed).length, 2, "a failed attempt keeps its row");
+assert.equal(rows.find((row) => row.id === "provider-a").status, "Processing");
+assert.equal(rows.find((row) => row.id === "provider-b").note, "Check your bank details", "a refused account says what to do");
+assert.equal(rows.find((row) => row.id === "provider-d").note, "TSC will try again", "and one the factory can't fix says so");
+assert.ok(rows.every((row) => !/\b\d{5,}\b/.test(row.meta ?? "")), "no row carries a number");
+assert.equal(failedWithdrawal(money)?.id, "b", "the card raises a failure on money still owed");
+assert.equal(failedWithdrawal(money.filter((row) => row.id !== "bounced")), null, "not one since retried and paid");
+const moneyFigures = handPaidFigures(money);
+assert.equal(usd(moneyFigures.onItsWay), 300, "being sent is on its way");
+assert.equal(usd(moneyFigures.balance), 500, "a failed one is owed again");
+const moneySummary = earningsSummaryFor(money.filter((row) => row.id !== "by-stripe"), null, "All clients");
+assert.equal(usd(moneySummary.pending), usd(moneyFigures.balance) + usd(moneyFigures.onItsWay), "Pending is balance + on its way");
+assert.equal(usd(moneySummary.total), usd(moneySummary.approval) + usd(moneySummary.pending) + usd(moneySummary.paid), "total = awaiting + pending + paid out");
+assert.equal(factoryAmount(money[0]), 300);
 
 // Staff's bank note reaches the factory only if a person typed one.
 const bankPaid = { state: "released", released_by: "staff", released_note: " Wire ref HSBC-7788 " };
@@ -91,5 +121,14 @@ for (const rule of [
 // A hand-paid card never goes back to saying how it is paid in place of a figure.
 const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
 assert.ok(!/"By Payoneer"|"By bank transfer"/.test(card), "the card's headline is the balance");
+
+// Queena: a factory never reads Stripe, "by hand" or an upgrade it did not ask for.
+for (const file of ["StripePayoutCard.jsx", "PayoutDetails.jsx", "PayoutSetupSteps.jsx", "AddPayoutMethodForm.jsx", "payment-summary.mjs"]) {
+  const code = readFileSync(new URL(`../src/app/order/${file}`, import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  for (const [, text] of code.matchAll(/(?:>|["'`])([^<>"'`{}]*\b(?:Stripe|by hand|Upgrade payout)\b[^<>"'`{}]*)(?:<|["'`])/g)) {
+    assert.ok(/^(?:[./\w@-]+|\s*)$/.test(text) && !/\s/.test(text.trim()), `${file} says "${text.trim()}" to a factory`);
+  }
+}
 
 console.log("earnings figures: every state in one place, adding up, same rules as the board");

@@ -33,6 +33,7 @@ for (const path of walk("api")) {
 const ALLOWED_IN_SRC = new Set([
   "src/app/order/use-manual-payouts.js",
   "src/app/order/StripePayoutCard.jsx",
+  "src/app/order/PayoutSetupSteps.jsx",
   "src/lib/domain/payment.js",
   "src/app/admin/AdminPayments.jsx",
   // Stripe's own path: Stripe.js tokenises the number in the browser (CLAUDE.md, Payments).
