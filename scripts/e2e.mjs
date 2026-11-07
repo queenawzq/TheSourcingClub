@@ -1925,7 +1925,9 @@ async function main() {
     // The brand's builder is the designed "Production steps" stage, and its
     // buttons are the design's own: Save changes, and Continue to funding,
     // which confirms the steps. Only the brand sets them (design review).
-    await waitFor(page, '[data-testid="schedule-hint"]', 25000);
+    // The hint speaks only once there are unsaved changes; none yet.
+    check((await page.locator('[data-testid="schedule-hint"]').innerText()).trim() === "",
+      "with no unsaved changes the builder's hint says nothing");
     check(!/agree to this schedule/i.test(await page.locator("body").innerText()),
       "there is no \"Agree to this schedule\" any more");
     await clickButton(page, "continue to funding");
