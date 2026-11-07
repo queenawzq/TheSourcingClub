@@ -2452,7 +2452,7 @@ async function main() {
       check((await owedRow(kowloonEmail)).buttons["release-payment"] === undefined, "a PayPal row doesn't offer Mark paid by bank: there are no bank details to send to");
       const paidByHandReference = `E2E-PP-${stamp}`;
       const staffClient = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });
-      await staffClient.auth.signInWithPassword({ email: "demo-admin@example.com", password: "demo password 8" });
+      await staffClient.auth.signInWithPassword({ email: adminEmail, password: PASSWORD });
       await staffClient.rpc("release_payment_to_factory", { target_payment: paypalRow.paymentId, note: paidByHandReference });
       const { data: markedByHand } = await db.from("order_payments")
         .select("state, released_note").eq("id", paypalRow.paymentId).single();
