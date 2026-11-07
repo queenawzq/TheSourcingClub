@@ -624,7 +624,7 @@ set local request.jwt.claims = '{"sub":"c3000000-0000-0000-0000-000000000005","e
 set local role authenticated;
 
 select throws_ok(
-  $$select public.release_payment_to_factory((select pay_id from p3p))$$,
+  $$select public.release_payment_to_factory((select pay_id from p3p), 'WIRE-REF-P3')$$,
   '22023',
   null,
   'funds cannot be released before the payment is confirmed'
@@ -681,7 +681,7 @@ select throws_ok(
 );
 
 select lives_ok(
-  $$select public.release_payment_to_factory((select pay_id from p3p))$$,
+  $$select public.release_payment_to_factory((select pay_id from p3p), 'WIRE-REF-P3')$$,
   'the admin releases the funds'
 );
 

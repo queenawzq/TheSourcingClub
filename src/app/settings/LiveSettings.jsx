@@ -50,14 +50,6 @@ import { supabase, unwrap } from "../../lib/supabase.js";
 import StripePayoutCard, { payoutRemovalError } from "../order/StripePayoutCard.jsx";
 import { BillingMethodFlow } from "../order/PayoutDetails.jsx";
 
-const PAYOUT_FIELDS = [
-  ["bank_name", "Bank", "Your bank's name"],
-  ["account_name", "Account name", "As it appears on the account"],
-  ["account_number_last4", "Last 4 digits", "1234"],
-  ["swift", "SWIFT / BIC", "8 or 11 characters"],
-  ["iban", "IBAN", "Only if your bank uses one"],
-];
-
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 
 // What each email switch covers (notification_email_category), since the
@@ -173,7 +165,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
             id: account.id,
             label: account.is_primary ? "Default" : "Bank account",
             name: `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}`,
-            note: "Manual bank transfer",
+            note: account.number_changed_at ? "Manual bank transfer" : "TSC can't pay this account yet: its full account number is missing",
           })));
         }
       }
@@ -510,7 +502,6 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           onStartManual={payouts.startEdit}
           onMakePrimaryManual={makePrimaryPayout}
           manualForm={payouts.form}
-          manualFields={PAYOUT_FIELDS}
           onManualFieldChange={payouts.setField}
           onManualMethodChange={payouts.setMethod}
           onSaveManual={savePayout}

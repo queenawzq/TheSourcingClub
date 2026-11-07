@@ -36,10 +36,10 @@
  * database (or reads the payment as the caller, for the Stripe routes) before
  * it touches a row, so this page cannot grant itself anything.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../lib/auth.jsx";
 import {
-  confirmPaymentReceived, paymentBoard, rejectPaymentSent, releasePayment, releasePaymentByPayoneer,
+  confirmPaymentReceived, paymentBoard, payoutNumberRevealLog, rejectPaymentSent, releasePayment, releasePaymentByPayoneer, revealPayoutNumber,
 } from "../../lib/domain/payment.js";
 import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
@@ -61,6 +61,122 @@ const ROW_TIME = {
 
 const paidByStripe = (row) => row.factory_stripe_ready && row.stripe_payment_intent_id;
 const paidByPayoneer = (row) => !paidByStripe(row) && row.payout_method === "payoneer";
+const paidByBank = (row) => !paidByStripe(row) && !paidByPayoneer(row);
+
+const REVEAL_SHOWN_MS = 60000;
+const REFERENCE_MIN = 3;
+const bankCountry = new Intl.DisplayNames(["en"], { type: "region" });
+
+/** "today", "1 day ago"… from the time the database gave. Whether it counts as recent is its word too. */
+function agoWords(value) {
+  const days = Math.floor((Date.now() - new Date(value).getTime()) / 86400000);
+  return days < 1 ? "today" : days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
+/** The number stays here, in this one cell, until it hides. Never on the row, never stored. */
+function AccountNumber({ row, onViewed }) {
+  const [shown, setShown] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const timer = useRef(null);
+  const hide = useCallback(() => {
+    clearTimeout(timer.current);
+    setShown(null);
+    setCopied(false);
+  }, []);
+  useEffect(() => () => clearTimeout(timer.current), []);
+
+  async function reveal() {
+    setBusy(true);
+    setProblem(null);
+    try {
+      const answer = await revealPayoutNumber(row.payout_account_id);
+      onViewed?.();
+      if (answer.changed_at !== row.payout_changed_at) {
+        setProblem("These details changed since this page loaded. Reload the page and check them.");
+        return;
+      }
+      setShown(answer);
+      timer.current = setTimeout(hide, REVEAL_SHOWN_MS);
+    } catch (failure) {
+      setProblem(failure.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(shown.account_number);
+      setCopied(true);
+    } catch {
+      setProblem("Your browser refused to copy it. Select it and copy it by hand.");
+    }
+  }
+
+  return (
+    <span className="admin-payout-number">
+      {shown ? (
+        <>
+          <code data-testid="revealed-number">{shown.account_number}</code>
+          <button type="button" className="quiet-btn" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
+          <button type="button" className="quiet-btn" onClick={hide}>Hide</button>
+        </>
+      ) : (
+        <>
+          <span>{`Account ····${row.payout_last4 ?? ""}`}</span>
+          <button type="button" className="quiet-btn" disabled={busy} data-testid="reveal-number" title="Your name is recorded each time" onClick={reveal}>
+            {busy ? "Showing…" : "Show number"}
+          </button>
+        </>
+      )}
+      {problem ? <span className="admin-error admin-row-message" role="alert" data-testid="reveal-refusal">{problem}</span> : null}
+    </span>
+  );
+}
+
+function FactoryContact({ row }) {
+  const parts = [row.contact_name, row.contact_phone].filter((part) => part && part.trim());
+  return row.contact_email || parts.length ? (
+    <span className="admin-sub">
+      {"Contact: "}
+      {parts.length ? `${parts.join(", ")}, ` : null}
+      {row.contact_email ? <a href={`mailto:${row.contact_email}`}>{row.contact_email}</a> : null}
+    </span>
+  ) : <span className="admin-sub">No contact on file for this company.</span>;
+}
+
+/** Everything staff need to send the money, on the row. */
+function BankDetails({ row, onViewed }) {
+  if (!row.payout_account_id) {
+    return (
+      <span className="admin-payout-details">
+        <span className="admin-error">No bank details on file. Ask the factory to add them on its Payments page.</span>
+        <FactoryContact row={row} />
+      </span>
+    );
+  }
+  const country = row.payout_country ? bankCountry.of(row.payout_country.trim()) : null;
+  return (
+    <span className="admin-payout-details">
+      <strong>Pay by bank</strong>
+      {row.payout_changed_recently ? (
+        <span className="admin-payout-changed" data-testid="payout-changed">{`Bank details changed ${agoWords(row.payout_changed_at)}. Look twice before paying.`}</span>
+      ) : null}
+      <span className="admin-sub">{`Holder: ${row.payout_holder || "not given"}`}</span>
+      <span className="admin-sub">{`Bank: ${row.payout_bank || "not given"}${country ? `, ${country}` : ""}`}</span>
+      {row.payout_branch ? <span className="admin-sub">{`Branch: ${row.payout_branch}`}</span> : null}
+      <span className="admin-sub">{`SWIFT: ${row.payout_swift || "not given"}`}</span>
+      {row.payout_has_number
+        ? <AccountNumber row={row} onViewed={onViewed} />
+        : <span className="admin-error" data-testid="no-full-number">No full account number on file, so TSC can't pay this yet. Ask the factory to add it on its Payments page.</span>}
+      {row.payout_instructions ? <span className="admin-sub admin-payout-instructions">{`Instructions: ${row.payout_instructions}`}</span> : null}
+      <FactoryContact row={row} />
+      {row.last_viewed_at ? <span className="admin-sub">{`Number last viewed by ${row.last_viewed_by ?? "staff"}, ${when(row.last_viewed_at)}`}</span> : null}
+    </span>
+  );
+}
 
 function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
   const said = refusal ? <span className="admin-error admin-row-message" role="alert" data-testid="payment-refusal">{refusal.message}</span> : null;
@@ -138,8 +254,9 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
       <>
         <span className="admin-sub admin-row-message" role="alert">
           {`Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank?`}
-          {row.payout_summary === "no bank details on file" ? " No bank details are on file." : null}
-          {note.trim() ? ` They will read: "${note.trim()}"` : null}
+          {row.payout_account_id ? ` To ${row.payout_holder || "no holder given"}, ${row.payout_bank}, ending ${row.payout_last4 ?? "unknown"}.` : " No bank details are on file."}
+          {row.payout_account_id && !row.payout_has_number ? " TSC has no full number for this account." : null}
+          {` They will read: "${note.trim()}"`}
         </span>
         <button type="button" className="admin-approve" disabled={busy}
                 data-testid="release-payment-confirm"
@@ -154,9 +271,9 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
     ) : (
       <>
       {said}
-      <button type="button" className="admin-approve" disabled={busy}
+      <button type="button" className="admin-approve" disabled={busy || note.trim().length < REFERENCE_MIN}
               data-testid="release-payment"
-              title="Pay the factory by bank transfer first, then mark it here"
+              title={note.trim().length < REFERENCE_MIN ? "Enter the bank's reference for this transfer" : "Pay the factory by bank transfer first, then mark it here"}
               onClick={() => setConfirming("bank")}>
         Mark paid out by bank
       </button>
@@ -185,7 +302,7 @@ function useNarrow() {
 
 const ACTS = new Set(["wire", "payout"]);
 
-function Row({ row, section, onDecide, busy, narrow, refusal }) {
+function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
   const [note, setNote] = useState("");
   const [payoneerId, setPayoneerId] = useState("");
   const acts = ACTS.has(section);
@@ -198,8 +315,15 @@ function Row({ row, section, onDecide, busy, narrow, refusal }) {
           <input type="text" data-testid="payoneer-payment-id" value={payoneerId} onChange={(event) => setPayoneerId(event.target.value)} />
         </label>
       ) : null}
-      <input type="text" aria-label="Note" placeholder={section === "wire" ? "Note, required to reject" : section === "payout" && paidByPayoneer(row) ? "If paid by bank: why. The factory reads it" : section === "payout" && !paidByStripe(row) ? "Bank reference. The factory reads it" : "Optional note"}
-             value={note} onChange={(event) => setNote(event.target.value)} />
+      {section === "payout" && paidByBank(row) ? (
+        <label className="admin-sub">
+          Bank reference (required). The factory and the brand can read it
+          <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
+        </label>
+      ) : (
+        <input type="text" aria-label="Note" placeholder={section === "wire" ? "Note, required to reject" : section === "payout" && paidByPayoneer(row) ? "If paid by bank: why. The factory reads it" : "Optional note"}
+               value={note} onChange={(event) => setNote(event.target.value)} />
+      )}
     </>
   ) : null;
   const buttons = <Actions row={row} section={section} note={note} payoneerId={payoneerId} onDecide={onDecide} busy={busy} refusal={refusal} />;
@@ -230,15 +354,13 @@ function Row({ row, section, onDecide, busy, narrow, refusal }) {
           {(section === "failed" || section === "refunded") && row.failure_reason
             ? <span className="admin-sub">{row.failure_reason}</span>
             : null}
-          {section === "payout" ? (
+          {section === "payout" && paidByBank(row) && !narrow ? <BankDetails row={row} onViewed={onViewed} /> : null}
+          {section === "payout" && !paidByBank(row) ? (
             <span className="admin-sub">
-              {paidByStripe(row)
-                ? "pay out through Stripe"
-                : paidByPayoneer(row)
-                  ? `pay by Payoneer: ${row.payoneer_email}`
-                  : `pay by bank: ${row.payout_summary}`}
+              {paidByStripe(row) ? "pay out through Stripe" : `pay by Payoneer: ${row.payoneer_email}`}
             </span>
           ) : null}
+          {section === "payout" && paidByPayoneer(row) ? <FactoryContact row={row} /> : null}
           {section === "refunded" && row.payoneer_payment_id
             ? <span className="admin-sub">{`paid by Payoneer, payment ID ${row.payoneer_payment_id}`}</span>
             : null}
@@ -263,6 +385,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal }) {
             {/* Pinned to the left edge and no wider than the screen, so the
                 note and buttons stay in view however the table is scrolled. */}
             <div style={{ position: "sticky", left: 0, maxWidth: "calc(100vw - 80px)" }}>
+              {section === "payout" && paidByBank(row) ? <BankDetails row={row} onViewed={onViewed} /> : null}
               {noteInput}
               <div className="admin-actions" style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>{buttons}</div>
             </div>
@@ -273,7 +396,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal }) {
   );
 }
 
-function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal }) {
+function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed }) {
   return (
     <section data-section={id}>
       <h2>{title} ({rows.length})</h2>
@@ -304,7 +427,7 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
             <tbody>
               {rows.map((row) => (
                 <Row key={row.payment_id} row={row} section={id} onDecide={onDecide} busy={busyId === row.payment_id}
-                     narrow={narrow} refusal={refusal?.paymentId === row.payment_id ? refusal.failure : null} />
+                     narrow={narrow} refusal={refusal?.paymentId === row.payment_id ? refusal.failure : null} onViewed={onViewed} />
               ))}
             </tbody>
           </table>
@@ -341,10 +464,13 @@ export default function AdminPayments() {
   // page may be a screen away from where staff are looking.
   const [refusal, setRefusal] = useState(null);
   const narrow = useNarrow();
+  const [views, setViews] = useState([]);
 
   const load = useCallback(async () => {
     try {
-      setRows(await paymentBoard());
+      const [board, viewLog] = await Promise.all([paymentBoard(), payoutNumberRevealLog()]);
+      setRows(board);
+      setViews(viewLog);
       setError(null);
     } catch (failure) {
       setError(failure);
@@ -367,7 +493,7 @@ export default function AdminPayments() {
           : `${row.order_number}: not paid out. ${result.reason ?? ""}`);
       } else if (decision === "payoneer") {
         await releasePaymentByPayoneer(row.payment_id, { paidTo: row.payoneer_email, payoneerPaymentId: payoneerId, note });
-      } else await releasePayment(row.payment_id, note);
+      } else await releasePayment(row.payment_id, note, row.payout_changed_at ?? null);
       await load();
     } catch (failure) {
       setRefusal({ paymentId: row.payment_id, failure });
@@ -378,7 +504,7 @@ export default function AdminPayments() {
 
   const header = (
     <header className="admin-bar">
-      <span className="shell-mark">The Sourcing Club</span>
+      <span className="shell-mark admin-payments-logo"><img src="/assets/logo.svg" alt="The Sourcing Club" /></span>
       <span className="admin-sub">{user?.email}</span>
       <button type="button" className="quiet-btn" onClick={() => navigate("/admin")}>All tools</button>
       <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
@@ -390,7 +516,7 @@ export default function AdminPayments() {
   }
 
   const sections = boardSections(rows);
-  const shared = { onDecide: decide, busyId, narrow, refusal };
+  const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load };
 
   return (
     <div className="admin">
@@ -431,6 +557,30 @@ export default function AdminPayments() {
       <Section id="cancelled" title="Held on cancelled orders" rows={sections.cancelled} {...shared}
                empty="No money held on cancelled orders."
                caption="The order was cancelled with this money held. Refund it in Stripe; the row leaves once Stripe reports the refund." />
+
+      <section data-section="views">
+        <h2>Who viewed account numbers ({views.length})</h2>
+        {views.length === 0 ? <p className="admin-sub">Nobody has viewed an account number.</p> : (
+          <>
+          <p className="admin-sub admin-section-caption">Every time someone on the staff shows a factory's full account number. Nobody can edit or remove this list here.</p>
+          <div className="admin-scroll">
+            <table>
+              <thead><tr><th>When</th><th>Who</th><th>Company</th><th>Account</th></tr></thead>
+              <tbody>
+                {views.map((view) => (
+                  <tr key={`${view.account_id}-${view.revealed_at}`}>
+                    <td>{when(view.revealed_at)}</td>
+                    <td>{view.staff_email ?? "—"}</td>
+                    <td>{view.org_name}</td>
+                    <td>{`${view.bank_name ?? "Bank"} ····${view.last4 ?? ""}`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          </>
+        )}
+      </section>
     </div>
   );
 }
