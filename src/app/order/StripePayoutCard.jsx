@@ -698,11 +698,14 @@ export default function StripePayoutCard({
   const handPaid = Boolean(handFigures) && isHandPaid(account, earnings);
   // Only an owner reads the balance; for anyone else it is not "in progress".
   const cardWords = listWords(country);
+  // Something is due on a set-up account (the webhook also emails this):
+  // the factory must act, so it is never "in progress".
+  const needsMore = Boolean(account?.details_submitted && account.requirements_due?.length);
   const payoutSetupLine = account?.transfers_active
     // The account is known a moment before its balance arrives:
     // that is loading, and only a real failure says it failed.
     ? isOwner ? BALANCE_STATUS_TEXT[balanceStatus] ?? "" : "Only a company owner can see the available balance."
-    : account?.details_submitted
+    : account?.details_submitted && !needsMore
       ? "Verification in progress"
       : account
         ? isOwner ? "Finish setup to receive earnings." : "Ask a company owner to finish setup."
@@ -742,7 +745,7 @@ export default function StripePayoutCard({
               pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} ${arrivesOn ? `available ${arrivesOn}` : "not available yet"}` : null,
               // Orders are in USD; an account is credited in its own currency.
               currency !== "USD" ? `Paid in ${currency}` : null,
-              account?.transfers_active && !account.payouts_enabled ? "Finish setup to withdraw" : null,
+              account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
             ].filter(Boolean).join(" · ")
             : payoutSetupLine}</p>}
           </>}
@@ -768,7 +771,7 @@ export default function StripePayoutCard({
               setWithdrawal({ amount: available, currency: currency.toLowerCase(), requestId: crypto.randomUUID() });
               setModal("withdraw");
             }}>Withdraw to bank</button>
-            {account.payouts_enabled ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
+            {account.payouts_enabled && !needsMore ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
             <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={openManage}>{cardWords.methods}</button>
             </>
           ) : account ? (

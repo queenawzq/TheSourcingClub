@@ -1,5 +1,6 @@
 import { applyChargeRefund, applyPaymentIntent, rawBody, releaseOwedTo, reply, saveConnectAccount, serviceClient, stripeFrom } from "./_stripe.js";
 import { logStripeFailure } from "./_stripe-errors.js";
+import { connectNeedsNotice } from "./_connect-needs.js";
 import { applyCreditPurchaseIntent, applyCreditPurchaseRefund } from "./stripe-credits.js";
 
 /**
@@ -109,14 +110,24 @@ export default async function handler(request, response) {
       }
       case "account.updated": {
         const account = event.data.object;
-        const { data: known } = await db
+        const { data: known, error: knownError } = await db
           .from("stripe_connect_accounts")
-          .select("org_id")
+          .select("org_id, details_submitted, payouts_enabled, transfers_active, requirements_due")
           .eq("stripe_account_id", account.id)
           .maybeSingle();
+        if (knownError) throw new Error(knownError.message);
         const orgId = known?.org_id ?? account.metadata?.org_id;
         if (orgId) {
           const saved = await saveConnectAccount(db, orgId, account);
+          // Said after the save, and only for the account TSC pays (saved is
+          // null for a retired or still-onboarding replacement). A repeat of
+          // this event is refused by claim_stripe_event; a later event with
+          // the same state finds nothing new against the saved row.
+          const notice = saved ? connectNeedsNotice(known, account) : null;
+          if (notice) {
+            const { error: noticeError } = await db.from("notifications").insert({ org_id: orgId, ...notice });
+            if (noticeError) throw new Error(noticeError.message);
+          }
           if (saved?.transfers_active) await releaseOwedTo({ stripe, db, factoryOrgId: orgId });
         }
         break;
