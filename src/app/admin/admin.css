@@ -43,6 +43,9 @@
 }
 .admin tbody tr:last-child td { border-bottom: 0; }
 
+.admin-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 18px; color: var(--text-muted); max-width: 420px; }
+.admin td .admin-check input { width: 16px; height: 16px; min-width: 16px; margin: 1px 0 0; padding: 0; accent-color: var(--primary); flex: none; }
+.admin-payments-page .admin-actions .admin-row-message { white-space: normal; }
 .admin td input {
   height: 32px;
   width: 100%;

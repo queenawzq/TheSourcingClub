@@ -2446,17 +2446,14 @@ async function main() {
       await pressInOwedRow(kowloonEmail, "Cancel");
       check(await owedRowShows(kowloonEmail, "pay-with-paypal") !== null, "Cancel goes back, and nothing moved");
 
-      // Paid another way: staff mark it by hand, with a reference.
-      check((await owedRow(kowloonEmail)).buttons["release-payment"] === true, "marking it paid by hand needs a reference");
+      // A PayPal factory has no bank details, so the board doesn't offer marking
+      // it paid by bank. The database still allows it: that's how the withdrawal
+      // row with its reference gets here for the factory's side below.
+      check((await owedRow(kowloonEmail)).buttons["release-payment"] === undefined, "a PayPal row doesn't offer Mark paid by bank: there are no bank details to send to");
       const paidByHandReference = `E2E-PP-${stamp}`;
-      const handIndex = await page.evaluate((text) => [...document.querySelectorAll('[data-section="payout"] [data-testid="bank-reference"]')]
-        .findIndex((input) => input.closest("tr")?.innerText.includes(text)), kowloonEmail);
-      await page.locator('[data-section="payout"] [data-testid="bank-reference"]').nth(handIndex).fill(paidByHandReference);
-      await page.waitForTimeout(300);
-      await pressInOwedRow(kowloonEmail, "release-payment");
-      await owedRowShows(kowloonEmail, "release-payment-confirm");
-      await pressInOwedRow(kowloonEmail, "release-payment-confirm");
-      await page.waitForTimeout(3500);
+      const staffClient = createClient(process.env.SUPABASE_URL ?? stack.API_URL, process.env.SUPABASE_ANON_KEY ?? stack.ANON_KEY ?? stack.PUBLISHABLE_KEY, { auth: { persistSession: false } });
+      await staffClient.auth.signInWithPassword({ email: "demo-admin@example.com", password: "demo password 8" });
+      await staffClient.rpc("release_payment_to_factory", { target_payment: paypalRow.paymentId, note: paidByHandReference });
       const { data: markedByHand } = await db.from("order_payments")
         .select("state, released_note").eq("id", paypalRow.paymentId).single();
       check(markedByHand?.state === "released" && markedByHand?.released_note === paidByHandReference,

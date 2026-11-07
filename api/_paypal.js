@@ -31,13 +31,13 @@ export const PAYPAL_ITEM_STATES = {
 
 const PAYPAL_FAILURES = {
   FAILED: "PayPal couldn't pay this. Check the factory's PayPal address, then pay again.",
-  RETURNED: "Nobody claimed this in 30 days, so PayPal returned it to TSC. Check the factory's PayPal address, then pay again.",
+  RETURNED: "PayPal returned this to TSC: nothing arrived. Check the factory's PayPal address, then pay again.",
   BLOCKED: "PayPal blocked this payment. Check why in PayPal before paying again.",
   REFUNDED: "This payment was refunded to TSC. Check why in PayPal before paying again.",
   REVERSED: "This payment was reversed. Check why in PayPal before paying again.",
 };
 
-export const PAYPAL_UNCLAIMED = "This address has no PayPal account yet, so the money waits there. It returns to TSC after 30 days if nobody claims it. Ask the factory to check its address, or cancel and pay again.";
+export const PAYPAL_UNCLAIMED = "Not claimed: this address has no PayPal account yet. Ask the factory to open one at this address and the payment completes. Or cancel it here or in PayPal, then press Refresh, and pay again once the factory has fixed its address. If nobody claims it, it returns to TSC after 30 days.";
 
 export function paypalFrom(env = process.env, fetchImpl = fetch) {
   const base = apiBase(env, "PAYPAL_API_BASE", LABEL);
@@ -88,6 +88,8 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
 
   return {
     provider: "paypal",
+    /** The app's address, from the API's. */
+    appUrl: base.replace("//api-m.", "//www."),
 
     /** Same key, same batch: a repeat answers with the original's id. */
     async pay({ key, email, amountCents, currency, reference }) {

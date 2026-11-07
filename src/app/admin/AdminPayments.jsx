@@ -66,6 +66,8 @@ const paidByPayoneer = (row) => !paidByStripe(row) && row.payout_method === "pay
 const paidByPaypal = (row) => !paidByStripe(row) && row.payout_method === "paypal";
 const paidByBank = (row) => !paidByStripe(row) && !paidByPayoneer(row) && !paidByPaypal(row);
 const paidByWise = (row) => paidByBank(row) && Boolean(row.wise_recipient_type);
+/** Marking paid by bank is for a bank account TSC can actually send to. */
+const canMarkByBank = (row) => paidByBank(row) && Boolean(row.payout_account_id) && row.payout_has_number;
 /** Which provider the server pays this row through, if any. */
 const providerFor = (row) => (paidByWise(row) ? "wise" : paidByPaypal(row) ? "paypal" : null);
 const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal" };
@@ -194,7 +196,7 @@ function BankDetails({ row, onViewed }) {
  * Pay with Wise, Pay with PayPal, and everything that can happen after. What it
  * shows comes from the attempt the database holds, so a reload shows the same.
  */
-function ProviderPay({ row, attempt, wise, onChanged }) {
+function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
   const provider = providerFor(row);
   const name = PROVIDER_NAME[provider];
   const needsStatement = provider === "wise" && row.wise_currency === "CNY";
@@ -203,21 +205,25 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
   const [preview, setPreview] = useState(null);
   const [working, setWorking] = useState(false);
   const [problem, setProblem] = useState(null);
+  // What the last press found, when the row itself would look unchanged.
+  const [heard, setHeard] = useState(null);
   // A double click lands before the button can grey out. The database would
   // refuse the second press anyway, but its refusal would then sit on the row.
   const running = useRef(false);
 
-  async function run(action) {
+  async function run(action, sayAfter) {
     if (running.current) return;
     running.current = true;
     setWorking(true);
     setProblem(null);
+    setHeard(null);
     try {
-      await action();
+      const answer = await action();
       setStep(null);
       setStatement(false);
       setPreview(null);
       await onChanged();
+      setHeard(sayAfter?.(answer) ?? null);
     } catch (failure) {
       setProblem(failure);
       await onChanged();
@@ -243,7 +249,16 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
     }
   }
 
-  const said = problem ? <span className="admin-error admin-row-message" role="alert" data-testid="provider-refusal">{problem.message}</span> : null;
+  // A refusal is about the details it was given: once they change, it's over.
+  useEffect(() => { setProblem(null); setHeard(null); }, [row.payout_changed_at]);
+
+  const clock = () => new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const said = (
+    <>
+      {problem ? <span className="admin-error admin-row-message" role="alert" data-testid="provider-refusal">{problem.message}</span> : null}
+      {heard ? <span className="admin-sub admin-row-message" role="status" data-testid="provider-heard">{heard}</span> : null}
+    </>
+  );
   const live = attempt?.status === "processing";
 
   if (live) {
@@ -262,16 +277,19 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
               : `With ${name}: ${(attempt.provider_status ?? "processing").replaceAll("_", " ").toLowerCase()}.`)}
         </span>
         {attempt.received_minor != null && attempt.received_currency
-          ? <span className="admin-sub">{`Arrives ${moneyIn(attempt.received_minor, attempt.received_currency)}${attempt.fee_minor != null ? `, ${name} fee ${moneyIn(attempt.fee_minor, row.currency)}` : ""}`}</span>
+          ? <span className="admin-sub" data-testid="provider-quote">{`Quoted: arrives ${moneyIn(attempt.received_minor, attempt.received_currency)}${attempt.fee_minor != null ? ` after ${name}'s fee of ${moneyIn(attempt.fee_minor, row.currency)}` : ""}`}</span>
           : null}
         {transferUrl ? <a className="admin-sub" href={transferUrl} target="_blank" rel="noreferrer" data-testid="open-in-wise">Open in Wise</a> : null}
+        {unclaimed && paypal?.appUrl ? <a className="admin-sub" href={paypal.appUrl} target="_blank" rel="noreferrer" data-testid="open-in-paypal">Open PayPal</a> : null}
         {waiting || (pending && !attempt.in_progress) ? (
           <button type="button" className="admin-approve" disabled={working || attempt.in_progress} data-testid="provider-press-again"
-                  onClick={() => run(() => payByProvider(provider, row, needsStatement))}>
-            {working ? "Paying…" : waiting ? "Fund again" : "Press again"}
+                  onClick={() => run(() => payByProvider(provider, row, needsStatement), (answer) => (
+                    answer?.done === "funding_refused" ? `Tried at ${clock()}: Wise still won't fund this from here. Fund it in Wise, then press Refresh.`
+                      : answer?.sentence ? `Tried at ${clock()}.` : null))}>
+            {working ? "Trying…" : waiting ? "Try funding again" : "Press again"}
           </button>
         ) : null}
-        <button type="button" className="quiet-btn" disabled={working} data-testid="provider-refresh" onClick={() => run(() => syncProvider(provider))}>Refresh</button>
+        <button type="button" className="quiet-btn" disabled={working} data-testid="provider-refresh" onClick={() => run(() => syncProvider(provider), () => `Checked at ${clock()}.`)}>{working ? "Checking…" : "Refresh"}</button>
         {(waiting || unclaimed || (pending && !attempt.in_progress) || (attempt.stage === "sent" && attempt.staff_sentence)) ? (
           <button type="button" className="admin-reject" disabled={working || attempt.in_progress} data-testid="provider-cancel"
                   onClick={() => run(() => cancelProviderPayout(provider, row.payment_id))}>
@@ -282,16 +300,17 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
     );
   }
 
-  const lastFailed = ["failed", "cancelled"].includes(attempt?.status) && attempt.staff_sentence
+  const fixedSince = attempt?.updated_at && row.payout_changed_at && new Date(row.payout_changed_at) > new Date(attempt.updated_at);
+  const lastFailed = ["failed", "cancelled"].includes(attempt?.status) && attempt.staff_sentence && !fixedSince
     ? <span className="admin-error admin-row-message" data-testid="provider-last-failure">{attempt.staff_sentence}</span> : null;
 
   if (step === "statement") {
     return (
       <>
         {said}
-        <label className="admin-sub admin-row-message">
+        <label className="admin-check admin-row-message">
           <input type="checkbox" data-testid="cny-statement" checked={statement} onChange={(event) => setStatement(event.target.checked)} />
-          {` ${CNY_STATEMENT}`}
+          <span>{CNY_STATEMENT}</span>
         </label>
         <button type="button" className="admin-approve" disabled={working || !statement} data-testid="provider-continue" onClick={review}>
           {working ? "Checking…" : "Continue"}
@@ -361,7 +380,7 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
   );
 }
 
-function Actions({ row, section, note, payoneerId, onDecide, busy, refusal, attempt, wise, onChanged }) {
+function Actions({ row, section, note, payoneerId, onDecide, busy, refusal, attempt, wise, paypal, onChanged }) {
   const said = refusal ? <span className="admin-error admin-row-message" role="alert" data-testid="payment-refusal">{refusal.message}</span> : null;
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
@@ -426,9 +445,9 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal, atte
     }
     const provider = providerFor(row);
     if (provider && attempt?.status === "processing") {
-      return <ProviderPay row={row} attempt={attempt} wise={wise} onChanged={onChanged} />;
+      return <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
     }
-    const pay = provider ? <ProviderPay row={row} attempt={attempt} wise={wise} onChanged={onChanged} /> : null;
+    const pay = provider ? <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} /> : null;
     return paidByStripe(row) ? (
       <>
       {said}
@@ -442,8 +461,7 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal, atte
       <>
         <span className="admin-sub admin-row-message" role="alert">
           {`Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank?`}
-          {row.payout_account_id ? ` To ${row.payout_holder || "no holder given"}, ${row.payout_bank}, ending ${row.payout_last4 ?? "unknown"}.` : " No bank details are on file."}
-          {row.payout_account_id && !row.payout_has_number ? " TSC has no full number for this account." : null}
+          {` To ${row.payout_holder || row.factory_name}, ${row.payout_bank}, ending ${row.payout_last4}.`}
           {` They will read: "${note.trim()}"`}
         </span>
         <button type="button" className="admin-approve" disabled={busy}
@@ -460,12 +478,14 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal, atte
       <>
       {said}
       {pay}
+      {canMarkByBank(row) ? (
       <button type="button" className={pay ? "quiet-btn" : "admin-approve"} disabled={busy || note.trim().length < REFERENCE_MIN}
               data-testid="release-payment"
               title={note.trim().length < REFERENCE_MIN ? "Enter the bank's reference for this transfer" : "Pay the factory by bank transfer first, then mark it here"}
               onClick={() => setConfirming("bank")}>
         Mark paid out by bank
       </button>
+      ) : null}
       </>
     );
   }
@@ -473,7 +493,7 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal, atte
 }
 
 /** Below this width the action cells move to a line of their own. */
-const NARROW = "(max-width: 760px)";
+const NARROW = "(max-width: 1180px)";
 
 const narrowQuery = () => (typeof window !== "undefined" && window.matchMedia ? window.matchMedia(NARROW) : null);
 
@@ -491,7 +511,7 @@ function useNarrow() {
 
 const ACTS = new Set(["wire", "payout"]);
 
-function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt, wise, onChanged }) {
+function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt, wise, paypal, onChanged }) {
   const [note, setNote] = useState("");
   const [payoneerId, setPayoneerId] = useState("");
   const acts = ACTS.has(section);
@@ -505,7 +525,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
           <input type="text" data-testid="payoneer-payment-id" value={payoneerId} onChange={(event) => setPayoneerId(event.target.value)} />
         </label>
       ) : null}
-      {providerLive ? null : section === "payout" && (paidByBank(row) || paidByPaypal(row)) ? (
+      {providerLive || (section === "payout" && !paidByStripe(row) && !paidByPayoneer(row) && !canMarkByBank(row)) ? null : section === "payout" && paidByBank(row) ? (
         <label className="admin-sub">
           {providerFor(row) ? "If you paid by bank instead: the bank's reference. " : "Bank reference (required). "}The factory and the brand can read it
           <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
@@ -516,7 +536,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
       )}
     </>
   ) : null;
-  const buttons = <Actions row={row} section={section} note={note} payoneerId={payoneerId} onDecide={onDecide} busy={busy} refusal={refusal} attempt={attempt} wise={wise} onChanged={onChanged} />;
+  const buttons = <Actions row={row} section={section} note={note} payoneerId={payoneerId} onDecide={onDecide} busy={busy} refusal={refusal} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
 
   return (
     <>
@@ -588,7 +608,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
   );
 }
 
-function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed, attempts, wise, onChanged, above }) {
+function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed, attempts, wise, paypal, onChanged, above }) {
   return (
     <section data-section={id}>
       <h2>{title} ({rows.length})</h2>
@@ -621,7 +641,7 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
               {rows.map((row) => (
                 <Row key={row.payment_id} row={row} section={id} onDecide={onDecide} busy={busyId === row.payment_id}
                      narrow={narrow} refusal={refusal?.paymentId === row.payment_id ? refusal.failure : null} onViewed={onViewed}
-                     attempt={attempts?.get(row.payment_id) ?? null} wise={wise} onChanged={onChanged} />
+                     attempt={attempts?.get(row.payment_id) ?? null} wise={wise} paypal={paypal} onChanged={onChanged} />
               ))}
             </tbody>
           </table>
@@ -662,6 +682,7 @@ export default function AdminPayments() {
   const [attempts, setAttempts] = useState(() => new Map());
   // TSC's Wise balance, or why there isn't one to show.
   const [wise, setWise] = useState(null);
+  const [paypal, setPaypal] = useState(null);
 
   const load = useCallback(async () => {
     try {
@@ -677,17 +698,24 @@ export default function AdminPayments() {
 
   /** Read back from Wise and PayPal: a preview can't receive a webhook. Each says its own failure. */
   const readBack = useCallback(async () => {
-    const [fromWise] = await Promise.allSettled([syncProvider("wise"), syncProvider("paypal")]);
+    const [fromWise, fromPaypal] = await Promise.allSettled([syncProvider("wise"), syncProvider("paypal")]);
     if (fromWise.status === "fulfilled") {
       const answer = fromWise.value;
       setWise({ balanceCents: answer.balanceCents, currency: answer.balanceCurrency, appUrl: answer.appUrl, balancesUrl: answer.balancesUrl });
     } else {
       setWise({ problem: fromWise.reason.message });
     }
+    if (fromPaypal.status === "fulfilled") setPaypal({ appUrl: fromPaypal.value.appUrl });
     await load();
   }, [load]);
 
   useEffect(() => { load().then(readBack); }, [load, readBack]);
+
+  // A factory can fix its details while this page is open.
+  useEffect(() => {
+    const timer = setInterval(load, 30000);
+    return () => clearInterval(timer);
+  }, [load]);
 
   // While money is on its way, keep reading: nobody else can tell staff.
   const anyLive = [...attempts.values()].some((attempt) => attempt.status === "processing");
@@ -734,7 +762,7 @@ export default function AdminPayments() {
   }
 
   const sections = boardSections(rows);
-  const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, onChanged: readBack };
+  const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged: readBack };
   const owedByWise = sections.payout.filter((row) => paidByWise(row) && attempts.get(row.payment_id)?.status !== "processing")
     .reduce((sum, row) => sum + Number(row.amount_cents), 0);
   const wiseShort = wise?.balanceCents != null ? Math.max(0, owedByWise - wise.balanceCents) : 0;
