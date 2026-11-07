@@ -2279,10 +2279,17 @@ async function main() {
     await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory, funded", "factory");
     await page.goto(`${APP}/orders/${bornOrder.id}`);
     await waitFor(page, '[data-testid="milestone-row"]', 25000);
-    // TSC's holding it is the word "Funded" now (the Nov 6 fix list).
+    // The factory's word for this money is "Awaiting approval", as on its
+    // Payments page (fd9b1b7); that TSC holds it is on the strip and the activity.
     const heldText = await page.locator('[data-testid="milestone-row"]').first().innerText();
-    check(/\bfunded\b/i.test(heldText) && !/awaiting funding/i.test(heldText),
-      "the same step that said \"awaiting funding\" now says it is funded");
+    check(/awaiting approval/i.test(heldText) && !/awaiting funding/i.test(heldText),
+      "the same step that said \"awaiting funding\" now awaits the brand's approval");
+    let heldPage = "";
+    for (let tries = 0; tries < 40 && !/funded for .*held by TSC/i.test(heldPage); tries += 1) {
+      await page.waitForTimeout(250);
+      heldPage = await page.locator("body").innerText();
+    }
+    check(/funded for .*held by TSC/i.test(heldPage), "and the order activity says the money is funded and held by TSC");
     await record(page, "Funded", "the factory can rely on money TSC holds, not on the brand's word");
 
     // ================= THE BRAND APPROVES, AND TSC PAYS OUT =================
@@ -3934,7 +3941,9 @@ async function main() {
     await waitFor(page, ".saved-factory-card", 20000);
     await record(page, "Saved vendors", "the vendors this brand saved, on the designed Saved page");
     const savedText = await page.locator(".saved-shell").innerText();
-    check(savedText.includes(factoryName) && savedText.includes(brandName), "Saved lists that vendor, under the brand's own name");
+    // The sentence naming the brand under the heading is off the live app (7f78be1).
+    check(savedText.includes(factoryName), "Saved lists that vendor");
+    check((await page.locator("body").innerText()).includes(brandName), "in the brand's own account");
     check(!/Maison Rue|Atelier Minho|96%|Club orders/.test(savedText), "none of the design's example brand, vendors or scores");
 
     await page.evaluate(() => document.querySelector(".saved-factory-card a.marketplace-factory-profile-link")?.click());
@@ -4120,8 +4129,12 @@ async function main() {
     await clickButton(page, "cancel order");
     await proposeIn("Season dropped");
     await waitFor(page, '[data-testid="cancel-notice"][data-state="mine"]', 15000);
-    check(/waiting for/i.test(await page.locator('[data-testid="cancel-notice"]').innerText()),
-      "proposed from the order page, the brand is shown it is waiting on the factory");
+    // The sentence about waiting is gone (29009ab): the banner says what was
+    // proposed, with the reason, and Withdraw is the only thing left to do.
+    const ownNotice = await page.locator('[data-testid="cancel-notice"]').innerText();
+    check(/you proposed cancelling/i.test(ownNotice) && /season dropped/i.test(ownNotice) && /withdraw/i.test(ownNotice),
+      "proposed from the order page, the brand is shown its proposal and its reason, with Withdraw");
+    check(!/\baccept\b|keep (the )?order/i.test(ownNotice), "and no answer of its own to give: that is the factory's");
     await record(page, "Waiting on the factory", "the banner the proposing side sees, with Withdraw");
 
     await signOutFully(page);
