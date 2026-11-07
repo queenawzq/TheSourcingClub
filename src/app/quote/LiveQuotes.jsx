@@ -48,7 +48,7 @@ export default function LiveQuotes({ rfqId }) {
     return (
       <FlowShell screen="quotes" canBack onBack={() => navigate(`/rfqs/${rfqId}/invite`)} primaryLabel="">
         <p className="projects-empty" data-testid="quotes-empty">
-          No quotes yet. Vendors you invited will appear here as they reply.
+          No quotes yet.
         </p>
       </FlowShell>
     );
@@ -76,8 +76,8 @@ export default function LiveQuotes({ rfqId }) {
         ? (raw.orgs?.factory_profiles?.trust_tier ?? "basic") : "",
       fit: "",
       response: "",
-      fitType: fit?.label ?? "Potential fit",
-      fitSummary: fit ? `${fit.score}% match to this request` : "Profile suitability for this request",
+      fitType: fit?.label ?? "",
+      fitSummary: fit ? `${fit.score}% match` : "",
       factoryNote: view.notes,
       price: view.price || "—",
       quoteQuantity: view.quantity || "—",

@@ -21,6 +21,10 @@ import "../notifications.css";
 
 const DRAWER_LIMIT = 100;
 
+// The title says what happened. The body stays where it carries something the
+// title can't: what someone wrote, a reason, or what went wrong.
+const WORDS_MATTER = /^(message|payment_failed|verification_|order_cancel|cancel|call_|milestone_update|payout_|referral_|credits_)/;
+
 /** A notification as a row of the designed Activity drawer. */
 function toActivityItem(notification) {
   return {
@@ -28,7 +32,7 @@ function toActivityItem(notification) {
     notification,
     type: activityType(notification.kind),
     title: notificationTitle(notification),
-    meta: notificationBody(notification),
+    meta: WORDS_MATTER.test(notification.kind) ? notificationBody(notification) : "",
     time: timeAgo(notification.created_at),
     unread: !notification.read_at,
   };

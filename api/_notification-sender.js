@@ -23,9 +23,12 @@ const RESEND_SPACING_MS = 550;
 const RESERVED = /@(?:[^@]+\.)?(?:example\.(?:com|net|org)|[^@]+\.(?:test|example|invalid|localhost))$/i;
 
 function appUrl(request) {
+  // A preview's email opens that preview, whatever PUBLIC_APP_URL says: the
+  // invitation it carries exists only in the preview's database.
+  const previewHost = process.env.VERCEL_ENV === "preview" && (process.env.VERCEL_BRANCH_URL || process.env.VERCEL_URL);
+  if (previewHost) return `https://${previewHost}`;
   const configured = process.env.PUBLIC_APP_URL?.trim();
   if (configured) return configured.replace(/\/$/, "");
-  if (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   const productionHost = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
   if (productionHost) return `https://${productionHost.replace(/^https?:\/\//, "").replace(/\/$/, "")}`;
   if (!process.env.VERCEL && request?.headers?.host) return `http://${request.headers.host}`;

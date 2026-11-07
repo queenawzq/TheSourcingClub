@@ -8,6 +8,10 @@
  * takes it from production, as scripts/generate-account-approved-email.mjs
  * and generate-onboarding-emails.mjs already default to.
  *
+ * From `sourcing-club.com`, the sending domain's own site (same Vercel
+ * project, same file), not `*.vercel.app`: a shared host that does not match
+ * the From domain is a phishing signal to Gmail's filter.
+ *
  * The leading underscore keeps Vercel from serving this file as a route.
  */
-export const EMAIL_LOGO_URL = "https://the-sourcing-club.vercel.app/assets/logo.png";
+export const EMAIL_LOGO_URL = "https://sourcing-club.com/assets/logo.png";

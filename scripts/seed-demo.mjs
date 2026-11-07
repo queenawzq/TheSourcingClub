@@ -34,12 +34,37 @@
  *
  * It refuses the production project outright.
  */
+import Stripe from "stripe";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createClient } from "@supabase/supabase-js";
 import { DEMO_LOGINS as LOGINS, DEMO_PASSWORD as PASSWORD } from "../src/shared/demo-logins.mjs";
 import { dateIn, zonedTime } from "../src/shared/call-time.mjs";
 import { checkCallText } from "../api/screen-call-text.js";
+
+// A demo document that shows something when it is opened: its own name.
+function demoPdf(name) {
+  const title = name.replace(/\.pdf$/, "").replace(/[()\\]/g, "");
+  const stream = `BT /F1 18 Tf 40 700 Td (${title}) Tj 0 -28 Td /F1 11 Tf (Demo document. Not a real record.) Tj ET`;
+  const objects = [
+    "<</Type/Catalog/Pages 2 0 R>>",
+    "<</Type/Pages/Count 1/Kids[3 0 R]>>",
+    "<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>",
+    `<</Length ${stream.length}>>\nstream\n${stream}\nendstream`,
+    "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => {
+    const at = body.length;
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return at;
+  });
+  const xref = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+    + offsets.map((at) => `${String(at).padStart(10, "0")} 00000 n \n`).join("")
+    + `trailer<</Size ${objects.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
+  return new TextEncoder().encode(body);
+}
 
 const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
 
@@ -126,8 +151,9 @@ const adminUser = await demoUser(LOGINS.admin);
 const brandMember = await demoUser(LOGINS.brandMember);
 const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
+const chinaNewFactory = await demoUser(LOGINS.chinaNewFactory);
 const switcher = await demoUser(LOGINS.switcher);
-const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, admin: adminUser };
+const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -291,10 +317,7 @@ const [oekoTex] = must(await factory.client.from("factory_certifications").inser
 {
   const name = "OEKO-TEX certificate.pdf";
   const path = `${factoryOrg.id}/certificate/${crypto.randomUUID()}-${name.replace(/\s+/g, "-")}`;
-  const bytes = new TextEncoder().encode(
-    "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n"
-    + "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 120]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
-  );
+  const bytes = demoPdf(name);
   must(await factory.client.storage.from("org-private").upload(path, bytes, { contentType: "application/pdf" }), `upload ${name}`);
   const certificate = must(await factory.client.from("documents").insert({
     org_id: factoryOrg.id, kind: "certificate", bucket: "org-private", storage_path: path,
@@ -307,10 +330,10 @@ const [oekoTex] = must(await factory.client.from("factory_certifications").inser
   // leaves it, so the verification dialog has a file to show.
   const registrationName = "Business registration.pdf";
   const registrationPath = `${factoryOrg.id}/business_registration/${crypto.randomUUID()}-Business-registration.pdf`;
-  must(await factory.client.storage.from("org-private").upload(registrationPath, bytes, { contentType: "application/pdf" }), `upload ${registrationName}`);
+  must(await factory.client.storage.from("org-private").upload(registrationPath, demoPdf(registrationName), { contentType: "application/pdf" }), `upload ${registrationName}`);
   must(await admin.from("documents").insert({
     org_id: factoryOrg.id, kind: "business_registration", bucket: "org-private", storage_path: registrationPath,
-    file_name: registrationName, mime_type: "application/pdf", size_bytes: bytes.length, status: "verified",
+    file_name: registrationName, mime_type: "application/pdf", size_bytes: demoPdf(registrationName).length, status: "verified",
     reviewed_at: new Date().toISOString(),
   }), `record ${registrationName}`);
 }
@@ -385,10 +408,7 @@ must(await brand.client.from("org_invitations").insert({
 {
   const name = "Business registration.pdf";
   const path = `${brandOrg.id}/business_registration/${crypto.randomUUID()}-Business-registration.pdf`;
-  const bytes = new TextEncoder().encode(
-    "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n"
-    + "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 120]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
-  );
+  const bytes = demoPdf(name);
   must(await brand.client.storage.from("org-private").upload(path, bytes, { contentType: "application/pdf" }), `upload brand ${name}`);
   must(await admin.from("documents").insert({
     org_id: brandOrg.id, kind: "business_registration", bucket: "org-private", storage_path: path,
@@ -491,21 +511,38 @@ must(await admin.from("factory_certifications").insert({
 // every other demo login. The invite guard refuses a company's own email
 // domain before it says whether an address has an account, so this is the
 // one address a demo company can invite and be told "already has a Sourcing
-// Club account". Not published: it is not one of Browse's factories.
+// Club account". Published, so a brand can invite it. In mainland China, and
+// paid through PayPal (below).
 const otherDomainOrg = must(await otherDomainFactory.client.rpc("create_org", { org_name: LOGINS.otherDomainFactory.name, org_kind: "factory" }), "create other-domain factory org");
 must(await admin.from("factory_profiles").upsert({
   org_id: otherDomainOrg.id,
-  country_code: "GB",
-  location: "Bradford, UK",
+  country_code: "CN",
+  location: "Suzhou, China",
   moq: 300,
   typical_lead_days: 42,
   intro: "Worsted and woollen cloth, 300-metre minimums.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "verified",
+  trust_tier: "verified",
+  published_at: new Date().toISOString(),
 }), "other-domain factory profile");
+must(await otherDomainFactory.client.from("taxonomy_links").insert(await Promise.all(secondFactoryTags.map(async ([kind, slug]) => ({
+  subject_type: "factory_profile", subject_id: otherDomainOrg.id, org_id: otherDomainOrg.id, term_id: await termId(kind, slug),
+})))), "other-domain factory tags");
 must(await admin.from("credit_ledger").insert({
   org_id: otherDomainOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",
 }), "other-domain factory credits");
+// A verified, published factory in mainland China with no withdrawal method yet: its money waits until it sets one up (its order is below).
+const chinaNewOrg = must(await chinaNewFactory.client.rpc("create_org", { org_name: LOGINS.chinaNewFactory.name, org_kind: "factory" }), "create the new China factory");
+must(await admin.from("factory_profiles").upsert({
+  org_id: chinaNewOrg.id, country_code: "CN", location: "Hangzhou, China", moq: 200, typical_lead_days: 35,
+  intro: "Knitwear, small runs.", onboarding_completed_at: new Date().toISOString(), verification_status: "verified",
+  trust_tier: "verified", published_at: new Date().toISOString(),
+}), "the new China factory's profile");
+must(await chinaNewFactory.client.from("taxonomy_links").insert(await Promise.all(secondFactoryTags.map(async ([kind, slug]) => ({
+  subject_type: "factory_profile", subject_id: chinaNewOrg.id, org_id: chinaNewOrg.id, term_id: await termId(kind, slug),
+})))), "the new China factory's tags");
+must(await admin.from("credit_ledger").insert({ org_id: chinaNewOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified" }), "the new China factory's credits");
 // A factory staff sent back: "Needs information" with the kind of note staff
 // actually write, a paragraph and a list, long enough that its finish card
 // must grow to hold it. The decision goes through the admin's own call, so
@@ -532,7 +569,7 @@ const RETURNED_NOTE = [
   "3. Your monthly capacity in units for woven shirting, so brands can see whether you can take their order.",
   "4. A website or a public listing for the company, so we can match the legal name to the business.",
   "",
-  "Once these are on your profile, finish onboarding again and it comes straight back to us. If anything here is unclear, reply to this email and we will help.",
+  "Once these are on your profile, finish onboarding again and it comes straight back to us.",
 ].join("\n");
 must(await adminUser.client.rpc("admin_review_decision_with_tier", {
   target_org: returnedFactoryOrg.id, decision: "needs_information", note: RETURNED_NOTE, risk: null, tier: null,
@@ -886,8 +923,8 @@ await deliverMessage(must(await admin.from("messages").insert({
 
 await deliverMessage(must(await admin.from("messages").insert({
   thread_id: orderThread?.id ?? orderThread, sender_org_id: brandOrg.id, sender_user_id: brand.id,
-  body: "谢谢，我们今天会检查试衣样。", body_lang: "zh",
-  body_translated: "Thank you, we will review the fit sample today.",
+  body: "颜色方面请再发一张照片。", body_lang: "zh",
+  body_translated: "Please send one more photo of the colour.",
   body_translated_lang: "en", translated_by: "demo-fixture",
 }).select("id").single(), "brand translated message"), "deliver the brand translated message");
 
@@ -1016,7 +1053,7 @@ for (const request of openRequests) {
     ...request,
     by: { client: secondBrand.client, org: secondBrandOrg },
     colours: [["Natural", request.quantity]],
-    material: "As in the brief.",
+    material: "Organic cotton poplin, 120 gsm",
     samples: "Fit sample before bulk.",
     extra: "",
     question: "What is your earliest start date?",
@@ -1097,13 +1134,6 @@ await orderWithCancelProposed({
 // are real database states with nothing at Stripe behind them. Paying a
 // "Due" or "Failed" one on a test site goes through Stripe test mode for real.
 console.log("payments");
-// Where staff would pay Demo Factory by bank if it had no Stripe account.
-// Plainly not a real account.
-must(await factory.client.from("factory_payout_accounts").insert({
-  org_id: factoryOrg.id, label: "Demo account", bank_name: "Demo Bank (test data, not a real account)",
-  account_name: "Demo Factory", account_number_last4: "0000", bank_country: "PT",
-  instructions: "Demo data only. Nothing is ever sent to this account.", is_primary: true,
-}), "the factory's payout details");
 async function runningOrder({ title, brief, quantity, unitPrice, vendor = factory, vendorOrg = factoryOrg }) {
   const rfq = await publishRequest({
     title, brief, quantity,
@@ -1146,6 +1176,38 @@ async function funded(payment, [type, label]) {
     target_payment: payment.id, charge: null, method_type: type, method_label: label, received: total,
   }), "a payment held by TSC");
 }
+/**
+ * Funded with a real test charge, so Stripe can pay this one out: a transfer
+ * draws on its charge, and funded()'s has none. The key is the shell's, else
+ * .env.local's. Without a test key it is funded(), and it says so.
+ */
+function stripeTestKey() {
+  let key = process.env.STRIPE_SECRET_KEY ?? "";
+  if (!key) {
+    try {
+      key = readFileSync(".env.local", "utf8").match(/^STRIPE_SECRET_KEY=["']?([^"'\s]+)/m)?.[1] ?? "";
+    } catch { /* no .env.local: the shell is the only place to look */ }
+  }
+  return key.startsWith("sk_test_") ? key : "";
+}
+async function fundedByStripe(payment, method) {
+  const key = stripeTestKey();
+  if (!key) {
+    console.warn("NO STRIPE TEST KEY: this payment has no charge, so if Demo Factory is linked to Stripe, approving it ends in \"Stripe can't pay this\". Set STRIPE_SECRET_KEY before a demo.");
+    return funded(payment, method);
+  }
+  const stripe = new Stripe(key);
+  const total = await charged(payment);
+  const intent = await stripe.paymentIntents.create({
+    amount: total, currency: "usd", payment_method: "pm_card_visa", confirm: true,
+    automatic_payment_methods: { enabled: true, allow_redirects: "never" },
+    transfer_group: payment.order_id, metadata: { payment_id: payment.id },
+  });
+  must(await admin.rpc("attach_payment_intent", { target_payment: payment.id, payment_intent: intent.id, charged: total }), "the real test charge");
+  return must(await admin.rpc("record_payment_funded", {
+    target_payment: payment.id, charge: intent.latest_charge, method_type: method[0], method_label: method[1], received: total,
+  }), "a payment held by TSC, charged in Stripe");
+}
 /** The factory posts on the open step and the brand approves it (it must be funded). */
 async function approveOpenStep(order, title, vendor = factory) {
   const step = must(await admin.from("order_milestones").select("id")
@@ -1158,7 +1220,7 @@ async function approveOpenStep(order, title, vendor = factory) {
 
 // 1. Fit sample funded by card, approved and paid to the factory ("Paid";
 //    by hand, as staff do for a factory with no Stripe account), then the
-//    bulk deposit funded by card: a payment-only step, so it is owed to the
+//    bulk deposit funded by card (a real test charge): a payment-only step, so it is owed to the
 //    factory at once and waits on staff ("Funded", payout pending).
 const poplinTitle = "Organic poplin shirt, AW27";
 const poplin = await runningOrder({ title: poplinTitle, brief: "160 organic poplin shirts, relaxed fit.", quantity: 160, unitPrice: 2600 });
@@ -1166,11 +1228,13 @@ const poplinFit = await dueNow(poplin, poplinTitle);
 await funded(poplinFit, CARD);
 await approveOpenStep(poplin, poplinTitle);
 must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Wire ref DEMO-1001" }), "release the fit sample");
-await funded(await dueNow(poplin, poplinTitle), CARD);
+await fundedByStripe(await dueNow(poplin, poplinTitle), CARD);
 // 2. Fit sample funded by card and held while the factory works ("Funded").
 const twillTitle = "Cotton twill overshirt, AW27";
 const twill = await runningOrder({ title: twillTitle, brief: "140 cotton twill overshirts, garment-dyed.", quantity: 140, unitPrice: 2900 });
-await funded(await dueNow(twill, twillTitle), CARD);
+// A real test charge, because Demo Factory is the one Stripe pays: approving this
+// must pay it out, and a payment with no charge can't be.
+await fundedByStripe(await dueNow(twill, twillTitle), CARD);
 // 3. Fit sample paid by bank before payments became card only, still
 //    clearing ("Processing"): how such a payment reads.
 const ribTitle = "Merino rib tank, AW27";
@@ -1189,23 +1253,28 @@ await failed(chinoFit, "Your card was declined.");
 const denimTitle = "Washed denim jacket, AW27";
 await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme washed.", quantity: 90, unitPrice: 4800 });
 // 6. Ningbo Loomworks is in mainland China, where Stripe cannot pay out: its
-//    fit sample is funded and approved, and the payout waits on staff to pay
-//    it by bank ("Payout owed" on the staff payments page).
-//    The number is plainly fake: staff "Show number" reads it from Vault.
-must(await secondFactory.client.rpc("save_bank_payout_account", {
+//    fit sample is funded and approved, and waits on staff: "Pay with Wise",
+//    or by bank ("Payout owed" on the staff payments page). Saved through the
+//    form's own function; the number is plainly fake, in Vault.
+must(await secondFactory.client.rpc("save_wise_payout_account", {
   target_org: secondFactoryOrg.id,
-  bank_name: "Demo Bank Ningbo (test data, not a real account)",
-  account_name: `${LOGINS.secondFactory.name} Co Ltd`,
-  bank_country: "CN", swift: "DEMOCNSH", branch: "Demo Ningbo branch, CNAPS 000000000000",
-  instructions: "Demo data only. Nothing is ever sent to this account.",
+  bank_name: "Ningbo Test Bank",
+  recipient_type: "chinese_local_business",
+  currency: "CNY",
+  details: {
+    legalType: "BUSINESS", accountHolderName: `${LOGINS.secondFactory.name} Co Ltd`, swiftCode: "BKCHCNBJ",
+    "address.country": "CN", "address.city": "Ningbo", "address.firstLine": "1 Test Road",
+  },
+  number_key: "accountNumber",
   account_number: "0000 0000 0000 1234", account_number_again: "0000 0000 0000 1234",
 }), "the second factory's payout details");
-// Lakeside Mills saved its bank account when the form took only the last four:
-// its Payments page says TSC can't pay it yet and asks for the full number.
+// Lakeside Mills is in mainland China and paid through PayPal.
+// PAYPAL_TEST_RECEIVER is a real sandbox account, without which PayPal holds the
+// money as unclaimed and it never reaches "paid".
 must(await otherDomainFactory.client.from("factory_payout_accounts").insert({
-  org_id: otherDomainOrg.id, label: "Demo account", bank_name: "Demo Bank Lakeside (test data, not a real account)",
-  account_name: LOGINS.otherDomainFactory.name, account_number_last4: "0000", bank_country: "CN", is_primary: true,
-}), "the last-four-only factory's payout details");
+  org_id: otherDomainOrg.id, method: "paypal",
+  paypal_email: process.env.PAYPAL_TEST_RECEIVER?.trim().toLowerCase() || "lakeside-payouts@example.net", is_primary: true,
+}), "Lakeside's PayPal account");
 const seersuckerTitle = "Seersucker camp shirt, AW27";
 const seersucker = await runningOrder({
   title: seersuckerTitle, brief: "180 cotton seersucker camp-collar shirts.", quantity: 180, unitPrice: 1900,
@@ -1213,13 +1282,13 @@ const seersucker = await runningOrder({
 });
 await funded(await dueNow(seersucker, seersuckerTitle), CARD);
 await approveOpenStep(seersucker, seersuckerTitle, secondFactory);
-// 7. Kowloon Sourcing Partners is in Hong Kong and paid through Payoneer, by
-//    hand from TSC's Payoneer account: one fit sample paid out with its
-//    payment ID, one approved and waiting on staff ("Payout owed"), and one
-//    funded and waiting for the brand, so its card shows balance and pending.
+// 7. Kowloon Sourcing Partners is in Hong Kong and paid through PayPal: one fit
+//    sample marked paid by staff, one approved and waiting on staff ("Payout
+//    owed"), and one funded and waiting for the brand, so its card shows
+//    balance and Awaiting approval.
 must(await tradingCompany.client.from("factory_payout_accounts").insert({
-  org_id: tradingOrg.id, method: "payoneer", payoneer_email: "kowloon-payouts@example.com", bank_country: "HK", is_primary: true,
-}), "the trading company's Payoneer account");
+  org_id: tradingOrg.id, method: "paypal", paypal_email: "kowloon-payouts@example.com", bank_country: "HK", is_primary: true,
+}), "the trading company's PayPal account");
 const hopsackTitle = "Linen hopsack blazer, AW27";
 const hopsack = await runningOrder({
   title: hopsackTitle, brief: "120 linen hopsack blazers, half lined.", quantity: 120, unitPrice: 4200,
@@ -1228,9 +1297,9 @@ const hopsack = await runningOrder({
 const hopsackFit = await dueNow(hopsack, hopsackTitle);
 await funded(hopsackFit, CARD);
 await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
-must(await adminUser.client.rpc("release_payment_by_payoneer", {
-  target_payment: hopsackFit.id, paid_to: "kowloon-payouts@example.com", payoneer_payment_id: "DEMO-PO-20260001",
-}), "pay the blazer's fit sample by Payoneer");
+must(await adminUser.client.rpc("release_payment_to_factory", {
+  target_payment: hopsackFit.id, note: "DEMO-20260001",
+}), "mark the blazer's fit sample paid");
 const tencelTitle = "Tencel wrap dress, AW27";
 const tencel = await runningOrder({
   title: tencelTitle, brief: "150 Tencel wrap dresses, garment-washed.", quantity: 150, unitPrice: 3100,
@@ -1244,6 +1313,20 @@ const cord = await runningOrder({
   vendor: tradingCompany, vendorOrg: tradingOrg,
 });
 await funded(await dueNow(cord, cordTitle), CARD);
+// 8. Lakeside Mills (China, PayPal) has an approved fit sample waiting on staff.
+//    Hangzhou Test Knit (China) has one too and no withdrawal method: its money
+//    waits until it sets one up.
+for (const [title, person, org] of [
+  ["Silk charmeuse blouse, AW27", otherDomainFactory, otherDomainOrg],
+  ["Merino crew knit, AW27", chinaNewFactory, chinaNewOrg],
+]) {
+  const order = await runningOrder({
+    title, brief: "100 pieces, test order.", quantity: 100, unitPrice: 3000,
+    vendor: person, vendorOrg: org,
+  });
+  await funded(await dueNow(order, title), CARD);
+  await approveOpenStep(order, title, person);
+}
 
 // Dates on the steps not done yet, as a brand sets them on "Production
 // steps", so "Next due" on the dashboard and the orders list, and each step's
@@ -1317,6 +1400,16 @@ must(await admin.from("notification_email_outbox")
   .eq("status", "pending"), "skip the seed's own emails");
 
 const app = isLocal ? "http://127.0.0.1:5173/app.html" : "<the site>/app.html";
+// A bell reading 79 says the seed was busy, not that anything needs looking at.
+// Each demo company keeps its five newest unread; the rest stay in the list, read.
+const demoMembers = must(await admin.from("org_members").select("org_id").in("user_id", demoUserIds), "demo companies");
+for (const orgId of new Set(demoMembers.map((member) => member.org_id))) {
+  const unread = must(await admin.from("notifications").select("id").eq("org_id", orgId).is("read_at", null)
+    .order("created_at", { ascending: false }), "unread notifications");
+  const older = unread.slice(5).map((row) => row.id);
+  if (older.length) must(await admin.from("notifications").update({ read_at: new Date().toISOString() }).in("id", older).select("id"), "mark older notifications read");
+}
+
 console.log(`
 done. Every login uses the password "${PASSWORD}".
 
@@ -1330,7 +1423,8 @@ done. Every login uses the password "${PASSWORD}".
   new brand       ${LOGINS.newBrand.email}   (no requests yet: recommended factories)
   second brand    ${LOGINS.secondBrand.email}   (five open requests, nothing paid: Browse RFQs' filters)
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory
-  other domain    ${LOGINS.otherDomainFactory.email}   (invite it from another demo company: "already has an account")
+  other domain    ${LOGINS.otherDomainFactory.email}   (China, PayPal; invite it from another demo company: "already has an account")
+  China, new      ${LOGINS.chinaNewFactory.email}   (money waiting, no withdrawal method yet)
   three companies ${LOGINS.switcher.email}   (${LOGINS.brand.name}, ${LOGINS.newBrand.name}, ${LOGINS.factory.name}: the sidebar switches)
   admin           ${LOGINS.admin.email}   ${app.replace("app.html", "admin.html")}
 

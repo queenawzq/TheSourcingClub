@@ -42,7 +42,7 @@ export async function listPaymentsForOrders(orderIds) {
   return unwrap(
     await supabase
       .from("order_payments")
-      .select(`${PAYMENT_COLUMNS}, order_milestones (title, sort, due_on)`)
+      .select(`${PAYMENT_COLUMNS}, order_milestones (title, sort, due_on, kind)`)
       .in("order_id", orderIds)
       .order("created_at"),
     "load your payments",
@@ -53,7 +53,7 @@ export async function getPayment(orderId, paymentId) {
   return unwrap(
     await supabase
       .from("order_payments")
-      .select(`${PAYMENT_COLUMNS}, order_milestones (title, kind, state)`)
+      .select(`${PAYMENT_COLUMNS}, order_milestones (title, kind, state, due_on)`)
       // Scoped to the order for the same reason getMilestone is.
       .eq("order_id", orderId)
       .eq("id", paymentId)

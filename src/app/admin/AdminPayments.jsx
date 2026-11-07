@@ -12,10 +12,11 @@
  *   Payout owed      approved and not paid out, on an active order or one
  *                    cancelled after the approval. "Retry payout" when the
  *                    factory has a Stripe account that can take transfers and
- *                    the money came through Stripe; otherwise staff pay by
- *                    bank or from TSC's Payoneer business account, by hand
- *                    (mainland China, Hong Kong… where Stripe cannot pay out;
- *                    nothing here calls Payoneer), and mark it paid out.
+ *                    the money came through Stripe. "Pay with Wise" or "Pay with
+ *                    PayPal" when the factory's method is one of those: the
+ *                    server pays and the board reads back where it is. Paying by
+ *                    bank by hand and marking it stays as the fallback, and
+ *                    Payoneer rows saved before keep their manual path.
  *   Refunded after payout
  *                    the brand's money was refunded in Stripe after the
  *                    factory was paid: TSC paid out money it no longer holds,
@@ -41,12 +42,14 @@ import { useAuth } from "../../lib/auth.jsx";
 import {
   confirmPaymentReceived, paymentBoard, payoutNumberRevealLog, rejectPaymentSent, releasePayment, releasePaymentByPayoneer, revealPayoutNumber,
 } from "../../lib/domain/payment.js";
+import { cancelProviderPayout, payByProvider, previewWise, providerAttempts, syncProvider, tellFactoryToFixDetails } from "../../lib/domain/provider-payouts.js";
 import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import "./admin.css";
 
-const when = (value) => (value ? new Date(value).toLocaleString() : "—");
+const WHEN = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
+const when = (value) => (value ? WHEN.format(new Date(value)) : "—");
 
 /** The row's own date for the section it is in. */
 const ROW_TIME = {
@@ -61,7 +64,23 @@ const ROW_TIME = {
 
 const paidByStripe = (row) => row.factory_stripe_ready && row.stripe_payment_intent_id;
 const paidByPayoneer = (row) => !paidByStripe(row) && row.payout_method === "payoneer";
-const paidByBank = (row) => !paidByStripe(row) && !paidByPayoneer(row);
+const paidByPaypal = (row) => !paidByStripe(row) && row.payout_method === "paypal";
+const paidByBank = (row) => !paidByStripe(row) && !paidByPayoneer(row) && !paidByPaypal(row);
+const paidByWise = (row) => paidByBank(row) && Boolean(row.wise_recipient_type);
+/** Stripe's account is ready but this payment has no charge to pay from, and the factory has no details here. */
+const stripeCantPay = (row) => paidByBank(row) && row.factory_stripe_ready && !row.payout_account_id;
+/**
+ * Marking paid by bank is for a bank account TSC can actually send to, or for
+ * the row above, which has no other way off the board.
+ */
+const canMarkByBank = (row) => paidByBank(row) && ((Boolean(row.payout_account_id) && row.payout_has_number) || stripeCantPay(row));
+/** Which provider the server pays this row through, if any. */
+const providerFor = (row) => (paidByWise(row) ? "wise" : paidByPaypal(row) ? "paypal" : null);
+const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal" };
+
+/** Wise's own words. Whether they are true for a USD order is John's question. */
+const CNY_STATEMENT = "I confirm the contract and invoice for this payment are denominated in CNY and understand that the payment might be rejected otherwise.";
+const moneyIn = (minor, currency) => new Intl.NumberFormat("en-US", { style: "currency", currency }).format(Number(minor) / 100);
 
 const REVEAL_SHOWN_MS = 60000;
 const REFERENCE_MIN = 3;
@@ -148,11 +167,20 @@ function FactoryContact({ row }) {
 }
 
 /** Everything staff need to send the money, on the row. */
-function BankDetails({ row, onViewed }) {
+function BankDetails({ row, onViewed, lastView }) {
+  if (stripeCantPay(row)) {
+    return (
+      <span className="admin-payout-details" data-testid="stripe-cant-pay">
+        <span className="admin-error">Stripe can't pay this: the payment has no card charge. This factory is paid through Stripe, so there are no bank details here.</span>
+        <span className="admin-sub">Ask the factory for a bank account, send the money, then mark it with the bank's reference.</span>
+        <FactoryContact row={row} />
+      </span>
+    );
+  }
   if (!row.payout_account_id) {
     return (
       <span className="admin-payout-details">
-        <span className="admin-error">No bank details on file. Ask the factory to add them on its Payments page.</span>
+        <span className="admin-error">No withdrawal method on file. Ask the factory to add one on its Payments page.</span>
         <FactoryContact row={row} />
       </span>
     );
@@ -160,7 +188,8 @@ function BankDetails({ row, onViewed }) {
   const country = row.payout_country ? bankCountry.of(row.payout_country.trim()) : null;
   return (
     <span className="admin-payout-details">
-      <strong>Pay by bank</strong>
+      <strong>{row.wise_recipient_type ? "Pay by Wise, or by bank" : "Pay by bank"}</strong>
+      {row.factory_stripe_ready ? <span className="admin-sub" data-testid="no-stripe-charge">No card charge on this payment, so Stripe can't pay it. Pay by bank and mark it.</span> : null}
       {row.payout_changed_recently ? (
         <span className="admin-payout-changed" data-testid="payout-changed">{`Bank details changed ${agoWords(row.payout_changed_at)}. Look twice before paying.`}</span>
       ) : null}
@@ -173,12 +202,203 @@ function BankDetails({ row, onViewed }) {
         : <span className="admin-error" data-testid="no-full-number">No full account number on file, so TSC can't pay this yet. Ask the factory to add it on its Payments page.</span>}
       {row.payout_instructions ? <span className="admin-sub admin-payout-instructions">{`Instructions: ${row.payout_instructions}`}</span> : null}
       <FactoryContact row={row} />
-      {row.last_viewed_at ? <span className="admin-sub">{`Number last viewed by ${row.last_viewed_by ?? "staff"}, ${when(row.last_viewed_at)}`}</span> : null}
+      {row.last_viewed_at ? <span className="admin-sub">{`${lastView?.how === "sent_to_wise" ? "Number last sent to Wise by" : "Number last viewed by"} ${row.last_viewed_by ?? "staff"}, ${when(row.last_viewed_at)}`}</span> : null}
     </span>
   );
 }
 
-function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
+/**
+ * Pay with Wise, Pay with PayPal, and everything that can happen after. What it
+ * shows comes from the attempt the database holds, so a reload shows the same.
+ */
+function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
+  const provider = providerFor(row);
+  const name = PROVIDER_NAME[provider];
+  const needsStatement = provider === "wise" && row.wise_currency === "CNY";
+  const [step, setStep] = useState(null); // null | "statement" | "confirm"
+  const [statement, setStatement] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [working, setWorking] = useState(false);
+  const [problem, setProblem] = useState(null);
+  // What the last press found, when the row itself would look unchanged.
+  const [heard, setHeard] = useState(null);
+  // A double click lands before the button can grey out. The database would
+  // refuse the second press anyway, but its refusal would then sit on the row.
+  const running = useRef(false);
+
+  async function run(action, sayAfter) {
+    if (running.current) return;
+    running.current = true;
+    setWorking(true);
+    setProblem(null);
+    setHeard(null);
+    try {
+      const answer = await action();
+      setStep(null);
+      setStatement(false);
+      setPreview(null);
+      await onChanged();
+      setHeard(sayAfter?.(answer) ?? null);
+    } catch (failure) {
+      setProblem(failure);
+      await onChanged();
+    } finally {
+      running.current = false;
+      setWorking(false);
+    }
+  }
+
+  async function review() {
+    if (running.current) return;
+    running.current = true;
+    setWorking(true);
+    setProblem(null);
+    try {
+      setPreview(await previewWise(row.payment_id, statement));
+      setStep("confirm");
+    } catch (failure) {
+      setProblem(failure);
+    } finally {
+      running.current = false;
+      setWorking(false);
+    }
+  }
+
+  // A refusal is about the details it was given: once they change, it's over.
+  useEffect(() => { setProblem(null); setHeard(null); }, [row.payout_changed_at]);
+
+  const clock = () => new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const said = (
+    <>
+      {problem ? <span className="admin-error admin-row-message" role="alert" data-testid="provider-refusal">{problem.message}</span> : null}
+      {heard ? <span className="admin-sub admin-row-message" role="status" data-testid="provider-heard">{heard}</span> : null}
+    </>
+  );
+  const live = attempt?.status === "processing";
+
+  if (live) {
+    const transferUrl = provider === "wise" && attempt.provider_ref && wise?.appUrl
+      ? `${wise.appUrl}/transactions/activities/by-resource/TRANSFER/${attempt.provider_ref}` : null;
+    const pending = attempt.stage === "claimed";
+    const waiting = attempt.stage === "awaiting_funding";
+    const unclaimed = attempt.provider_status === "UNCLAIMED";
+    // The money stays at the address it went to, whatever the factory says now.
+    const movedOn = unclaimed && attempt.paid_to !== row.paypal_email;
+    return (
+      <>
+        {said}
+        {movedOn ? <span className="admin-error admin-row-message" data-testid="provider-moved-on">{`Sent to ${attempt.paid_to}. The factory now uses ${row.paypal_email ?? "another method"}. Cancel this, then pay again.`}</span> : null}
+        <span className="admin-sub admin-row-message" role="status" data-testid="provider-status" data-stage={attempt.stage}>
+          {attempt.in_progress && pending ? `Being paid by ${attempt.requested_by_email ?? "staff"}…`
+            : attempt.staff_sentence
+            || (pending ? "We don't know yet if this went. Press again: it can't pay twice."
+              : `With ${name}: ${(attempt.provider_status ?? "processing").replaceAll("_", " ").toLowerCase()}.`)}
+        </span>
+        {attempt.received_minor != null && attempt.received_currency
+          ? <span className="admin-sub" data-testid="provider-quote">{`Quoted: arrives ${moneyIn(attempt.received_minor, attempt.received_currency)}${attempt.fee_minor != null ? ` after ${name}'s fee of ${moneyIn(attempt.fee_minor, row.currency)}` : ""}`}</span>
+          : null}
+        {transferUrl ? <a className="admin-sub" href={transferUrl} target="_blank" rel="noreferrer" data-testid="open-in-wise">Open in Wise</a> : null}
+        {unclaimed && paypal?.appUrl ? <a className="admin-sub" href={paypal.appUrl} target="_blank" rel="noreferrer" data-testid="open-in-paypal">Open PayPal</a> : null}
+        {waiting || (pending && !attempt.in_progress) ? (
+          <button type="button" className="admin-approve" disabled={working || attempt.in_progress} data-testid="provider-press-again"
+                  onClick={() => run(() => payByProvider(provider, row, needsStatement), (answer) => (
+                    answer?.done === "funding_refused" ? `Tried at ${clock()}: Wise still won't fund this from here. Fund it in Wise, then press Refresh.`
+                      : answer?.sentence ? `Tried at ${clock()}.` : null))}>
+            {working ? "Trying…" : waiting ? "Try funding again" : "Press again"}
+          </button>
+        ) : null}
+        <button type="button" className="quiet-btn" disabled={working} data-testid="provider-refresh" onClick={() => run(() => syncProvider(provider), () => `Checked at ${clock()}.`)}>{working ? "Checking…" : "Refresh"}</button>
+        {(waiting || unclaimed || (pending && !attempt.in_progress && provider !== "paypal") || (attempt.stage === "sent" && attempt.staff_sentence)) ? (
+          <button type="button" className="admin-reject" disabled={working || attempt.in_progress} data-testid="provider-cancel"
+                  onClick={() => run(() => cancelProviderPayout(provider, row.payment_id))}>
+            {provider === "wise" ? "Cancel transfer" : "Cancel payment"}
+          </button>
+        ) : null}
+      </>
+    );
+  }
+
+  const fixedSince = attempt?.updated_at && row.payout_changed_at && new Date(row.payout_changed_at) > new Date(attempt.updated_at);
+  const lastFailed = ["failed", "cancelled"].includes(attempt?.status) && attempt.staff_sentence && !fixedSince
+    ? <span className="admin-error admin-row-message" data-testid="provider-last-failure">{attempt.staff_sentence}</span> : null;
+
+  if (step === "statement") {
+    return (
+      <>
+        {said}
+        <label className="admin-check admin-row-message">
+          <input type="checkbox" data-testid="cny-statement" checked={statement} onChange={(event) => setStatement(event.target.checked)} />
+          <span>{CNY_STATEMENT}</span>
+        </label>
+        <button type="button" className="admin-approve" disabled={working || !statement} data-testid="provider-continue" onClick={review}>
+          {working ? "Checking…" : "Continue"}
+        </button>
+        <button type="button" className="admin-reject" disabled={working} onClick={() => { setStep(null); setProblem(null); }}>Cancel</button>
+        {problem?.kind === "details_rejected" ? (
+          <button type="button" className="quiet-btn" disabled={working} data-testid="provider-tell-factory"
+                  onClick={() => run(() => tellFactoryToFixDetails(provider, row, problem.message, statement, problem.fields))}>
+            Tell the factory to fix its details
+          </button>
+        ) : null}
+      </>
+    );
+  }
+
+  if (step === "confirm") {
+    const short = preview.shortByCents > 0;
+    return (
+      <>
+        {said}
+        <span className="admin-sub admin-row-message" role="alert">
+          {provider === "wise"
+            ? `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.payout_holder || row.factory_name}, ${row.payout_bank} ending ${row.payout_last4 ?? "unknown"}?${preview.feeCents == null ? "" : ` Wise fee ${moneyIn(preview.feeCents, row.currency)}. Arrives ${moneyIn(preview.arrivesCents, preview.arrivesCurrency)}.`}`
+            : `Send ${moneyIn(row.amount_cents, row.currency)} to ${row.paypal_email} by PayPal?`}
+        </span>
+        {short ? (
+          <span className="admin-error admin-row-message" data-testid="wise-short">
+            {`Wise balance ${moneyIn(preview.balanceCents, row.currency)} is short by ${moneyIn(preview.shortByCents, row.currency)}. Top up TSC's Wise balance, then press Check again. `}
+            <a href={preview.balancesUrl} target="_blank" rel="noreferrer">Open Wise</a>
+          </span>
+        ) : null}
+        {preview.nothingLeft ? <span className="admin-error admin-row-message">Wise's fee is more than this payment, so nothing would arrive. Pay it another way.</span> : null}
+        {short ? (
+          <button type="button" className="quiet-btn" disabled={working} data-testid="provider-check-again" onClick={review}>Check again</button>
+        ) : (
+          <button type="button" className="admin-approve" disabled={working || preview.nothingLeft} data-testid="provider-confirm"
+                  onClick={() => run(() => payByProvider(provider, row, needsStatement))}>
+            {working ? "Paying…" : "Yes, pay"}
+          </button>
+        )}
+        <button type="button" className="admin-reject" disabled={working} onClick={() => { setStep(null); setPreview(null); }}>Cancel</button>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {said}
+      {lastFailed}
+      {problem?.kind === "details_rejected" ? (
+        <button type="button" className="quiet-btn" disabled={working} data-testid="provider-tell-factory"
+                onClick={() => run(() => tellFactoryToFixDetails(provider, row, problem.message, statement, problem.fields))}>
+          Tell the factory to fix its details
+        </button>
+      ) : null}
+      <button type="button" className="admin-approve" disabled={working || (provider === "wise" && !row.payout_has_number)} data-testid={`pay-with-${provider}`}
+              title={provider === "wise" && !row.payout_has_number ? "No full account number on file" : undefined}
+              onClick={() => {
+                setProblem(null);
+                if (provider === "paypal") { setPreview({}); setStep("confirm"); }
+                else if (needsStatement) setStep("statement");
+                else review();
+              }}>
+        {`Pay with ${name}`}
+      </button>
+    </>
+  );
+}
+
+function Actions({ row, section, note, payoneerId, onDecide, busy, refusal, attempt, wise, paypal, onChanged }) {
   const said = refusal ? <span className="admin-error admin-row-message" role="alert" data-testid="payment-refusal">{refusal.message}</span> : null;
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
@@ -241,6 +461,11 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
         </>
       );
     }
+    const provider = providerFor(row);
+    if (provider && attempt?.status === "processing") {
+      return <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
+    }
+    const pay = provider ? <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} /> : null;
     return paidByStripe(row) ? (
       <>
       {said}
@@ -254,8 +479,7 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
       <>
         <span className="admin-sub admin-row-message" role="alert">
           {`Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank?`}
-          {row.payout_account_id ? ` To ${row.payout_holder || "no holder given"}, ${row.payout_bank}, ending ${row.payout_last4 ?? "unknown"}.` : " No bank details are on file."}
-          {row.payout_account_id && !row.payout_has_number ? " TSC has no full number for this account." : null}
+          {row.payout_account_id ? ` To ${row.payout_holder || row.factory_name}, ${row.payout_bank}, ending ${row.payout_last4}.` : null}
           {` They will read: "${note.trim()}"`}
         </span>
         <button type="button" className="admin-approve" disabled={busy}
@@ -271,12 +495,15 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
     ) : (
       <>
       {said}
-      <button type="button" className="admin-approve" disabled={busy || note.trim().length < REFERENCE_MIN}
+      {pay}
+      {canMarkByBank(row) ? (
+      <button type="button" className={pay ? "quiet-btn" : "admin-approve"} disabled={busy || note.trim().length < REFERENCE_MIN}
               data-testid="release-payment"
               title={note.trim().length < REFERENCE_MIN ? "Enter the bank's reference for this transfer" : "Pay the factory by bank transfer first, then mark it here"}
               onClick={() => setConfirming("bank")}>
         Mark paid out by bank
       </button>
+      ) : null}
       </>
     );
   }
@@ -284,7 +511,7 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
 }
 
 /** Below this width the action cells move to a line of their own. */
-const NARROW = "(max-width: 760px)";
+const NARROW = "(max-width: 1180px)";
 
 const narrowQuery = () => (typeof window !== "undefined" && window.matchMedia ? window.matchMedia(NARROW) : null);
 
@@ -302,10 +529,12 @@ function useNarrow() {
 
 const ACTS = new Set(["wire", "payout"]);
 
-function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
+function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt, wise, paypal, onChanged, views }) {
+  const lastView = views?.find((view) => view.account_id === row.payout_account_id && view.revealed_at === row.last_viewed_at);
   const [note, setNote] = useState("");
   const [payoneerId, setPayoneerId] = useState("");
   const acts = ACTS.has(section);
+  const providerLive = attempt?.status === "processing" && providerFor(row);
 
   const noteInput = acts ? (
     <>
@@ -315,9 +544,9 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
           <input type="text" data-testid="payoneer-payment-id" value={payoneerId} onChange={(event) => setPayoneerId(event.target.value)} />
         </label>
       ) : null}
-      {section === "payout" && paidByBank(row) ? (
+      {providerLive || (section === "payout" && !paidByStripe(row) && !paidByPayoneer(row) && !canMarkByBank(row)) ? null : section === "payout" && paidByBank(row) ? (
         <label className="admin-sub">
-          Bank reference (required). The factory and the brand can read it
+          {providerFor(row) ? "If you paid by bank instead: the bank's reference. " : "Bank reference (required). "}The factory and the brand can read it
           <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
         </label>
       ) : (
@@ -326,7 +555,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
       )}
     </>
   ) : null;
-  const buttons = <Actions row={row} section={section} note={note} payoneerId={payoneerId} onDecide={onDecide} busy={busy} refusal={refusal} />;
+  const buttons = <Actions row={row} section={section} note={note} payoneerId={payoneerId} onDecide={onDecide} busy={busy} refusal={refusal} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} />;
 
   return (
     <>
@@ -354,13 +583,15 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
           {(section === "failed" || section === "refunded") && row.failure_reason
             ? <span className="admin-sub">{row.failure_reason}</span>
             : null}
-          {section === "payout" && paidByBank(row) && !narrow ? <BankDetails row={row} onViewed={onViewed} /> : null}
+          {section === "payout" && paidByBank(row) && !narrow ? <BankDetails row={row} onViewed={onViewed} lastView={lastView} /> : null}
           {section === "payout" && !paidByBank(row) ? (
-            <span className="admin-sub">
-              {paidByStripe(row) ? "pay out through Stripe" : `pay by Payoneer: ${row.payoneer_email}`}
+            <span className="admin-payout-details">
+              <strong>{paidByStripe(row) ? "Pay by Stripe" : paidByPaypal(row) ? "Pay by PayPal" : "Pay by Payoneer"}</strong>
+              {paidByPaypal(row) ? <span className="admin-sub">{attempt?.status === "processing" ? attempt.paid_to : row.paypal_email}</span> : null}
+              {paidByPayoneer(row) ? <span className="admin-sub">{row.payoneer_email}</span> : null}
             </span>
           ) : null}
-          {section === "payout" && paidByPayoneer(row) ? <FactoryContact row={row} /> : null}
+          {section === "payout" && (paidByPayoneer(row) || paidByPaypal(row)) ? <FactoryContact row={row} /> : null}
           {section === "refunded" && row.payoneer_payment_id
             ? <span className="admin-sub">{`paid by Payoneer, payment ID ${row.payoneer_payment_id}`}</span>
             : null}
@@ -385,7 +616,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
             {/* Pinned to the left edge and no wider than the screen, so the
                 note and buttons stay in view however the table is scrolled. */}
             <div style={{ position: "sticky", left: 0, maxWidth: "calc(100vw - 80px)" }}>
-              {section === "payout" && paidByBank(row) ? <BankDetails row={row} onViewed={onViewed} /> : null}
+              {section === "payout" && paidByBank(row) ? <BankDetails row={row} onViewed={onViewed} lastView={lastView} /> : null}
               {noteInput}
               <div className="admin-actions" style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>{buttons}</div>
             </div>
@@ -396,17 +627,18 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
   );
 }
 
-function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed }) {
+function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed, attempts, wise, paypal, onChanged, above, views }) {
   return (
     <section data-section={id}>
       <h2>{title} ({rows.length})</h2>
+      {above}
       {rows.length === 0 ? (
         <p className="admin-sub">{empty}</p>
       ) : (
         <>
         {/* Above the table, not its <caption>: .admin-sub is display: block,
             which squeezed a caption into the first column. */}
-        <p className="admin-sub admin-section-caption">{caption}</p>
+        {caption ? <p className="admin-sub admin-section-caption">{caption}</p> : null}
         <div className="admin-scroll">
           <table>
             <thead>
@@ -426,8 +658,9 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
             </thead>
             <tbody>
               {rows.map((row) => (
-                <Row key={row.payment_id} row={row} section={id} onDecide={onDecide} busy={busyId === row.payment_id}
-                     narrow={narrow} refusal={refusal?.paymentId === row.payment_id ? refusal.failure : null} onViewed={onViewed} />
+                <Row views={views} key={row.payment_id} row={row} section={id} onDecide={onDecide} busy={busyId === row.payment_id}
+                     narrow={narrow} refusal={refusal?.paymentId === row.payment_id ? refusal.failure : null} onViewed={onViewed}
+                     attempt={attempts?.get(row.payment_id) ?? null} wise={wise} paypal={paypal} onChanged={onChanged} />
               ))}
             </tbody>
           </table>
@@ -465,19 +698,51 @@ export default function AdminPayments() {
   const [refusal, setRefusal] = useState(null);
   const narrow = useNarrow();
   const [views, setViews] = useState([]);
+  const [attempts, setAttempts] = useState(() => new Map());
+  // TSC's Wise balance, or why there isn't one to show.
+  const [wise, setWise] = useState(null);
+  const [paypal, setPaypal] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      const [board, viewLog] = await Promise.all([paymentBoard(), payoutNumberRevealLog()]);
+      const [board, viewLog, tried] = await Promise.all([paymentBoard(), payoutNumberRevealLog(), providerAttempts()]);
       setRows(board);
       setViews(viewLog);
+      setAttempts(new Map(tried.map((attempt) => [attempt.payment_id, attempt])));
       setError(null);
     } catch (failure) {
       setError(failure);
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  /** Read back from Wise and PayPal: a preview can't receive a webhook. Each says its own failure. */
+  const readBack = useCallback(async () => {
+    const [fromWise, fromPaypal] = await Promise.allSettled([syncProvider("wise"), syncProvider("paypal")]);
+    if (fromWise.status === "fulfilled") {
+      const answer = fromWise.value;
+      setWise({ balanceCents: answer.balanceCents, currency: answer.balanceCurrency, appUrl: answer.appUrl, balancesUrl: answer.balancesUrl });
+    } else {
+      setWise({ problem: fromWise.reason.message });
+    }
+    if (fromPaypal.status === "fulfilled") setPaypal({ appUrl: fromPaypal.value.appUrl });
+    await load();
+  }, [load]);
+
+  useEffect(() => { load().then(readBack); }, [load, readBack]);
+
+  // A factory can fix its details while this page is open.
+  useEffect(() => {
+    const timer = setInterval(load, 30000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  // While money is on its way, keep reading: nobody else can tell staff.
+  const anyLive = [...attempts.values()].some((attempt) => attempt.status === "processing");
+  useEffect(() => {
+    if (!anyLive) return undefined;
+    const timer = setInterval(readBack, 30000);
+    return () => clearInterval(timer);
+  }, [anyLive, readBack]);
 
   async function decide(row, decision, note, payoneerId) {
     setBusyId(row.payment_id);
@@ -516,61 +781,70 @@ export default function AdminPayments() {
   }
 
   const sections = boardSections(rows);
-  const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load };
+  const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged: readBack, views };
+  const owedByWise = sections.payout.filter((row) => paidByWise(row) && attempts.get(row.payment_id)?.status !== "processing")
+    .reduce((sum, row) => sum + Number(row.amount_cents), 0);
+  const wiseShort = wise?.balanceCents != null ? Math.max(0, owedByWise - wise.balanceCents) : 0;
+  const wiseLine = wise ? (
+    <p className={wise.problem || wiseShort ? "admin-error" : "admin-sub"} data-testid="wise-balance">
+      {wise.problem ?? `Wise balance: ${moneyIn(wise.balanceCents, wise.currency)}.`}
+      {wiseShort ? ` Short by ${moneyIn(wiseShort, wise.currency)} for what's owed. Top up TSC's Wise balance. ` : " "}
+      {wise.balancesUrl ? <a href={wise.balancesUrl} target="_blank" rel="noreferrer">Open Wise</a> : null}
+    </p>
+  ) : null;
 
   return (
-    <div className="admin">
+    <div className="admin admin-payments-page">
       {header}
 
       <h1>Payments</h1>
-      <p className="admin-intro">
-        Brands pay TSC through Stripe, by card, and TSC holds the money until
-        the brand approves the step. Approving pays a factory with a Stripe account on its own.
-        Stripe can't pay out to some countries (mainland China, Hong Kong…): those factories are
-        paid by hand, by bank transfer or from TSC's Payoneer business account, and marked paid out
-        here. Nothing here sends money or calls Payoneer.
-      </p>
 
       {error ? <p className="admin-error">{error.message}</p> : null}
       {notice ? <p className="admin-sub" role="status">{notice}</p> : null}
 
-      <Section id="payout" title="Payout owed" rows={sections.payout} {...shared}
-               empty="Every approved payment has been paid out."
-               caption="The brand approved these steps (on a cancelled order too, if it approved before the cancellation). Retry a Stripe payout, or pay by bank or Payoneer by hand and mark it paid out." />
+      <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine}
+               empty="Every approved payment has been paid out." />
       {sections.refunded.length ? (
         <Section id="refunded" title="Refunded after payout" rows={sections.refunded} {...shared}
                  empty=""
                  caption="The brand's payment was refunded in Stripe after the factory was paid. TSC no longer holds this money: recover it from the factory by hand." />
       ) : null}
+      {sections.wire.length ? (
       <Section id="wire" title="Bank-wire claims" rows={sections.wire} {...shared}
-               empty="No bank-wire claims."
-               caption="Made on the old site before payments moved to Stripe. Check the account, then confirm." />
+               empty="No bank-wire claims." />
+      ) : null}
+      {sections.failed.length ? (
       <Section id="failed" title="Failed" rows={sections.failed} {...shared}
-               empty="No failed payments."
-               caption="These did not go through, or were refunded. The brand pays again from the order; nothing to do here." />
+               empty="No failed payments." />
+      ) : null}
+      {sections.clearing.length ? (
       <Section id="clearing" title="Payments processing" rows={sections.clearing} {...shared}
-               empty="No payments processing."
-               caption="Stripe is still confirming these. The factory starts when they go through." />
+               empty="No payments processing." />
+      ) : null}
+      {sections.held.length ? (
       <Section id="held" title="Held" rows={sections.held} {...shared}
-               empty="Nothing held."
-               caption="Funded, waiting for the brand to approve the step." />
+               empty="Nothing held." />
+      ) : null}
+      {sections.cancelled.length ? (
       <Section id="cancelled" title="Held on cancelled orders" rows={sections.cancelled} {...shared}
                empty="No money held on cancelled orders."
                caption="The order was cancelled with this money held. Refund it in Stripe; the row leaves once Stripe reports the refund." />
+      ) : null}
 
-      <section data-section="views">
-        <h2>Who viewed account numbers ({views.length})</h2>
-        {views.length === 0 ? <p className="admin-sub">Nobody has viewed an account number.</p> : (
+      {views.length === 0 ? null : (
+      <details className="admin-views-fold" data-section="views">
+        <summary>Number views ({views.length})</summary>
+        {(
           <>
-          <p className="admin-sub admin-section-caption">Every time someone on the staff shows a factory's full account number. Nobody can edit or remove this list here.</p>
           <div className="admin-scroll">
             <table>
-              <thead><tr><th>When</th><th>Who</th><th>Company</th><th>Account</th></tr></thead>
+              <thead><tr><th>When</th><th>Who</th><th>What</th><th>Company</th><th>Account</th></tr></thead>
               <tbody>
                 {views.map((view) => (
                   <tr key={`${view.account_id}-${view.revealed_at}`}>
                     <td>{when(view.revealed_at)}</td>
                     <td>{view.staff_email ?? "—"}</td>
+                    <td>{view.how === "sent_to_wise" ? "Sent to Wise" : "Show number"}</td>
                     <td>{view.org_name}</td>
                     <td>{`${view.bank_name ?? "Bank"} ····${view.last4 ?? ""}`}</td>
                   </tr>
@@ -580,7 +854,8 @@ export default function AdminPayments() {
           </div>
           </>
         )}
-      </section>
+      </details>
+      )}
     </div>
   );
 }

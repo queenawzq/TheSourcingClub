@@ -28,6 +28,13 @@ import App from "../../admin-prototype/main.jsx";
 import { reservedEmailNotice } from "../../shared/reserved-email.mjs";
 import "../shell.css";
 import "./console-live.css";
+import "../live-quiet.css";
+
+// Staff's two boards live outside this page; the sidebar has to reach them.
+const STAFF_PAGES = [
+  { label: "Payments", icon: "billing", href: "/app.html/admin/payments" },
+  { label: "Messages", icon: "messages", href: "/app.html/admin/messages" },
+];
 
 function Gate({ title, children }) {
   return (
@@ -132,6 +139,8 @@ function AdminConsole() {
         // Staff have no org, so nothing can notify them; the design's bell
         // and its count of 5 had nothing behind them.
         showNotifications={false}
+        extraNav={STAFF_PAGES}
+        onSignOut={signOut}
         validateThresholds={thresholdProblem}
       />
     </DataProvider>

@@ -594,7 +594,7 @@ reset role;
 -- ---------------------- staff's bank note reaches the factory --------------
 select is(
   (select body from public.notifications where subject_id = '31800000-0000-0000-0000-000000000003' and kind = 'funds_released'),
-  (select format('Sent by bank transfer against %s. TSC''s note: Paid by bank: their Payoneer was closed', o.order_number)
+  (select format('Sent by bank transfer against P31 mill (%s). TSC''s note: Paid by bank: their Payoneer was closed', o.order_number)
      from public.order_payments p join public.production_orders o on o.id = p.order_id
     where p.id = '31800000-0000-0000-0000-000000000003'),
   'the bell and the email carry the note staff typed'

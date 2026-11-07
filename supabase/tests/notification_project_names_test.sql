@@ -20,7 +20,7 @@ insert into public.notifications(id,org_id,order_id,kind,title,body) values
 select is((select title from notifications where id='ef310000-0000-0000-0000-000000000006'),
  'Factory invited you to a call about Linen overshirt, SS27 (TSC-PROJECT-NAME-TEST)','call titles name the project before the number');
 select is((select body from notifications where id='ef310000-0000-0000-0000-000000000006'),
- 'Review TSC-PROJECT-NAME-TEST.','notification body text is preserved');
+ 'Review Linen overshirt, SS27 (TSC-PROJECT-NAME-TEST).','the body names the order too: it is what the email says');
 select is((select title from notifications where id='ef310000-0000-0000-0000-000000000007'),
  'Factory invited you to a call about Linen overshirt, SS27','request-only notifications keep their existing name');
 select is((select body from notifications where id='ef310000-0000-0000-0000-000000000007'),null::text,'null bodies remain null');

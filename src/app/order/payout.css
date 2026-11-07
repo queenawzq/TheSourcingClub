@@ -86,9 +86,22 @@
 .brand-transaction-filters select { height: 42px; padding: 0 34px 0 14px; border: 1px solid #dbe3ed; border-radius: 7px; background: #fff url("/assets/prototype-icons/dropdown.svg") no-repeat calc(100% - 12px) center / 16px 16px; color: #0b1223; font: inherit; font-size: 14px; font-weight: 500; appearance: none; }
 
 .payout-modal-layer { place-items: center; padding: 24px; }
-.brand-profile-modal.payout-modal { width: min(640px, calc(100vw - 40px)); max-height: calc(100vh - 48px); overflow: auto; padding: 30px 32px 0; border-radius: 16px; }
+/* Header and footer stay in sight; only the middle scrolls. */
+.brand-profile-modal.payout-modal { display: flex; flex-direction: column; width: min(560px, calc(100vw - 40px)); max-height: calc(100vh - 48px); overflow: hidden; padding: 24px 28px 0; border-radius: 16px; }
+.payout-modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -28px; padding-left: 28px !important; padding-right: 28px !important; }
+/* The row's menu has room in the dialog instead of being cut off by its scroll. */
+.payout-modal-body:has(.payout-method-popover) { padding-bottom: 104px; }
+.payout-amount-failed { color: var(--text-muted); text-decoration: line-through; }
+.payout-recommended { margin: 0; color: var(--text); font-size: 15px; font-weight: 700; line-height: 21px; }
+.payout-back { justify-self: start; }
+.payout-form-stack { display: grid; gap: 14px; }
+.payout-form-stack label { display: grid; gap: 6px; }
+.payout-form-stack label > span { color: var(--text); font-size: 13px; font-weight: 700; }
+.payout-form-stack input, .payout-form-stack select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--text); font: inherit; outline: none; }
+.payout-form-stack input:focus, .payout-form-stack select:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(18, 82, 255, .14); }
+.payout-form-stack small { font-size: 12px; line-height: 16px; }
 .payout-modal-header > span { color: var(--blue); font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
-.payout-modal-header h2 { margin: 5px 44px 0 0; color: var(--text); font-size: 28px; line-height: 36px; }
+.payout-modal-header h2 { margin: 0 44px 0 0; color: var(--text); font-size: 22px; line-height: 30px; }
 .payout-modal-body { display: grid; gap: 20px; padding: 12px 0 28px; }
 .payout-modal-intro, .payout-security-copy { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 20px; }
 
@@ -112,9 +125,9 @@
 
 .payout-manual-fields { display: grid; gap: 16px; }
 .payout-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-.payout-methods-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.payout-methods-heading { display: flex; align-items: center; justify-content: flex-end; gap: 18px; }
 .payout-method-list { display: grid; gap: 10px; overflow: visible; }
-.payout-method-row { position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto auto; gap: 14px; align-items: center; min-height: 78px; padding: 15px 16px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
+.payout-method-row { position: relative; display: grid; grid-template-columns: 42px minmax(0, 1fr) auto auto; gap: 14px; align-items: center; min-height: 64px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: #fff; }
 .payout-bank-icon { display: grid; width: 42px; height: 42px; place-items: center; border: 1px solid #e3e9f1; border-radius: 10px; background: #f7f9fc; color: #60769b; }
 .payout-bank-icon svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .payout-method-name { display: grid; gap: 3px; min-width: 0; }
@@ -129,7 +142,7 @@
 .payout-method-popover button:hover { background: #f3f7fb; }
 .payout-method-popover button.danger { color: #b93824; }
 .payout-method-options { overflow: hidden; border: 1px solid var(--border); border-radius: 12px; }
-.payout-method-option { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-height: 112px; padding: 18px 16px; border-top: 1px solid var(--border); background: #fff; }
+.payout-method-option { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 14px; align-items: center; min-height: 72px; padding: 14px 16px; border-top: 1px solid var(--border); background: #fff; }
 .payout-method-option:first-child { border-top: 0; }
 .payout-method-option.recommended { background: #fbfdff; }
 .payout-option-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 10px; }
@@ -152,7 +165,7 @@
 .payout-amount-choice label > span { display: flex; flex: 1; justify-content: space-between; gap: 16px; }
 .payout-amount-choice small { color: var(--text-muted); font-size: 14px; }
 
-.payout-modal .brand-profile-modal-actions { position: sticky; bottom: 0; margin: 0 -32px; padding: 16px 32px; border-top: 1px solid var(--border); background: #fff; }
+.payout-modal .brand-profile-modal-actions { flex: none; margin: 0 -28px; padding: 14px 28px; border-top: 1px solid var(--border); background: #fff; }
 
 /* Stripe's embedded payout forms: wider than a plain dialog, since Stripe
    lays out its own two-column fields, and as tall as they need. */

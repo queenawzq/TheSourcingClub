@@ -43,13 +43,15 @@ const isClosedOrder = (project) => project.state === "completed" || project.stat
  * Their filing is kept, so unarchiving puts them back where they were.
  */
 export function rowsForTab(rows, tabKey, membership = null, archived = null) {
-  if (tabKey === "archived") return rows.filter((project) => archived?.has(project.id));
-  const kept = archived?.size ? rows.filter((project) => !archived.has(project.id)) : rows;
+  // The "Cancelled" tab (key "archived", Queena's rename of Oct 25) is every
+  // cancelled order; nobody has to put one there by hand.
+  if (tabKey === "archived") return rows.filter((project) => project.state === "cancelled");
+  const live = rows.filter((project) => project.state !== "cancelled");
   if (membership && tabKey !== "active" && tabKey !== "closed") {
     const filed = membership.get(tabKey);
-    return kept.filter((project) => filed?.has(project.id));
+    return live.filter((project) => filed?.has(project.id));
   }
-  return kept.filter((project) => (tabKey === "closed" ? isClosedOrder(project) : !isClosedOrder(project)));
+  return live.filter((project) => (tabKey === "closed" ? isClosedOrder(project) : !isClosedOrder(project)));
 }
 
 /**
@@ -67,12 +69,8 @@ export function withArchivedTab(tabs) {
  * nothing to archive.
  */
 export function archiveActionFor(store, project) {
-  if (!store) return undefined;
-  if (store.archived.has(project.id)) {
-    return { label: "Unarchive order", run: () => store.unarchive(project.id) };
-  }
-  if (isClosedOrder(project)) return { label: "Archive order", run: () => store.archive(project.id) };
-  return null;
+  // Live there is nothing to do by hand: a cancelled order is under Cancelled.
+  return store ? null : undefined;
 }
 
 /**

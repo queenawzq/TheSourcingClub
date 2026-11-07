@@ -35,12 +35,7 @@ export default function CancelOrderDialog({ mode = "propose", title, counterpart
         <header>
           <p>{proposing ? "Cancel order" : "Accept cancellation"}</p>
           <h2 id="order-cancel-title">{proposing ? `Cancel ${title}?` : `Cancel ${title} as ${other} proposed?`}</h2>
-          <span>
-            {proposing
-              ? `${other} has to accept before anything changes. Until then the order carries on, and you can withdraw the proposal.`
-              : "This closes the order for both sides and cannot be undone."}
-            {" "}{CANCEL_CONSEQUENCES}
-          </span>
+          {proposing ? null : <span>This closes the order for both sides and cannot be undone.</span>}
         </header>
         {proposing ? (
           <label className="approve-fund-note">
@@ -48,7 +43,7 @@ export default function CancelOrderDialog({ mode = "propose", title, counterpart
             <textarea
               rows={3}
               name="cancel-reason"
-              placeholder={`Why you want to cancel. ${other} sees this.`}
+              placeholder={`${other} sees this.`}
               value={text}
               onChange={(event) => setText(event.target.value)}
             />

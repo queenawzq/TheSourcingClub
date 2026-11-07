@@ -142,7 +142,8 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
       // A bank-wire claim from before payments moved to Stripe.
       case "payment_sent": return `${who(row.actor_org_id)} marked ${paid(row)} sent for ${step}`;
       case "payment_processing": return `The payment for ${step} is processing`;
-      case "payment_failed": return `The payment for ${step} did not go through`;
+      // The card is the brand's business: to the factory the step is simply not funded yet.
+      case "payment_failed": return viewerOrgId === order.factory_org_id ? null : `The payment for ${step} did not go through`;
       case "payment_confirmed": return `${paid(row)} funded for ${step}, held by TSC`;
       case "payment_released": return `TSC paid out ${money(row.detail)} for ${step}`;
       case "payment_refunded": return `The payment for ${step} was refunded to the brand`;
@@ -150,6 +151,8 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
       case "schedule_agreed": return `${who(row.actor_org_id)} confirmed the production steps`;
       case "order_activated": return "Production started";
       case "cancellation_proposed": return `${who(row.actor_org_id)} proposed cancelling`;
+      case "cancellation_declined": return `${who(row.actor_org_id)} kept the order`;
+      case "cancellation_withdrawn": return `${who(row.actor_org_id)} withdrew the proposal`;
       case "order_completed": return "Order completed";
       case "order_cancelled": return "Order cancelled";
       case "order_created": return `Order ${row.detail ?? ""} created`.replace(/\s+/g, " ").trim();
@@ -184,9 +187,7 @@ export function describeOrderContract({ order, milestones, incoterm, paymentTerm
     workDetails: [
       ["Contract title", title],
       ["Scope of work", order.agreed_scope || order.rfqs?.brief || "As described in the request."],
-      ["Approvals, revisions, and delivery", approvals.length
-        ? `The brand signs off ${approvals.join(", ")} before the next step opens.`
-        : "No step needs the brand's sign-off."],
+      ["Approvals", approvals.length ? approvals.join(", ") : "None"],
     ],
     acceptedQuote: [
       [counterpartyLabel, factoryLine],
@@ -195,14 +196,12 @@ export function describeOrderContract({ order, milestones, incoterm, paymentTerm
       ["Samples", order.sample_subtotal_cents ? money(order.sample_subtotal_cents) : "None"],
       ["Bulk lead", order.bulk_lead_time_days ? `${order.bulk_lead_time_days} days` : "—"],
       ...(capacity ? [["Capacity", capacity]] : []),
-      ["Terms", `${order.deposit_pct}/${order.balance_pct}`],
+      ["Terms", order.balance_pct ? `${order.deposit_pct}/${order.balance_pct}` : "Paid in full"],
       ["Quote total", money(order.order_total_cents)],
     ],
     paymentTerms: [
       ["Payment split", paymentTerm || `${order.deposit_pct}% deposit · ${order.balance_pct}% balance`],
       ["Sample payment", order.sample_subtotal_cents ? `Samples quoted at ${money(order.sample_subtotal_cents)}` : "No paid samples"],
-      ["Milestone release", "A paid step becomes due once the brand approves it, or when it opens if it needs no approval."],
-      ["Release rule", "The next step opens once TSC confirms the payment has arrived."],
       ["Shipping / incoterms", incoterm || "Not stated in the quote"],
     ],
     attachments: (attachments ?? []).map((doc) => doc.file_name),
@@ -232,8 +231,6 @@ export function kindFor(type, originalKind) {
   return originalKind === "payment_only" ? "payment_only" : "approval_and_payment";
 }
 
-const PAID_ON_OPEN = "Paid when this step opens: there is nothing for the brand to approve first.";
-
 /** A step's amount as the design's steps screen writes it: "$1,656", cents only when there are some ("$12.50"). */
 export function stepAmount(cents, currency) {
   return formatMoney(cents, currency, { whole: cents % 100 === 0 });
@@ -252,7 +249,7 @@ export function scheduleRows(milestones) {
     // Shown as the design's steps write money ("$1,656"); toCents reads it back.
     amount: milestone.amount_cents ? stepAmount(milestone.amount_cents, milestone.currency ?? undefined) : "",
     due_on: milestone.due_on ?? "",
-    note: milestone.kind === "payment_only" ? PAID_ON_OPEN : "",
+    note: "",
   }));
 }
 
@@ -261,7 +258,6 @@ export function editRow(row, patch) {
   const next = { ...row, ...patch };
   if (patch.type) {
     next.kind = kindFor(patch.type, row.originalKind);
-    next.note = next.kind === "payment_only" ? PAID_ON_OPEN : "";
     // The database refuses an amount on a step that carries no money.
     if (patch.type !== PAID_RELEASE) next.amount = "";
   }
@@ -283,6 +279,36 @@ export function newRow(rows) {
     due_on: "",
     note: "",
   };
+}
+
+/**
+ * What the database will refuse in these steps, in the person's words, before
+ * they press anything. Empty when there is nothing to fix.
+ */
+export function scheduleProblem(rows) {
+  for (const [index, row] of rows.entries()) {
+    if (!String(row.title ?? "").trim()) return `Step ${index + 1} needs a name`;
+    if ((row.type ?? typeOf(row.kind)) === PAID_RELEASE && !toCents(row.amount)) return `Step ${index + 1} needs an amount`;
+  }
+  return "";
+}
+
+/** A refused save as a sentence: "update the milestones: step 6 needs a title" → "Step 6 needs a title". */
+export function refusalSentence(message) {
+  const words = String(message ?? "").replace(/^(save the schedule|update the milestones): /, "");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * The steps' bottom bar, which is on screen wherever the page is scrolled, so
+ * what stops a save is said there: what to fix, else the last refusal, else
+ * the total against the order's.
+ */
+export function scheduleBar({ problem, error, total, orderTotal, currency, until }) {
+  if (problem) return problem;
+  if (error) return refusalSentence(error.message);
+  const text = `Steps total ${formatMoney(total, currency)} of ${formatMoney(orderTotal, currency)}`;
+  return total === orderTotal ? text : `${text}: these have to match before you can ${until}`;
 }
 
 /** Move one schedule row by swapping its stored position with its neighbour. */

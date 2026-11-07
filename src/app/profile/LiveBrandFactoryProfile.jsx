@@ -29,8 +29,14 @@ import { can, permissionHint } from "../../lib/domain/org.js";
 /** Where the back link goes when there is no in-app page to go back to. */
 const FALLBACK = { browse: "/browse", saved: "/saved", dashboard: "/", quotes: "/rfqs", order: "/orders", invite: "/rfqs" };
 
+/**
+ * Beside the sidebar, for what draws no page of its own: loading, a failure and
+ * the trading company's design. The manufacturer's design is its own `main`,
+ * and a second one around it applies the sidebar's offset twice.
+ * `npm run check:vendor-page`.
+ */
 function Frame({ children }) {
-  return <div>{children}</div>;
+  return <main className="factory-profile-page brand-profile-page">{children}</main>;
 }
 
 /**
@@ -125,8 +131,9 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
   const requestQuote = onRequestQuote ?? (() => navigate(`/rfqs/new?invite=${vendorOrgId}`));
   const message = state.thread ? () => navigate(`/messages/${state.thread.id}`) : null;
 
+  const Page = isTrading ? Frame : React.Fragment;
   return (
-    <Frame>
+    <Page>
       <ProfileComponent
         language="en"
         live={{
@@ -177,6 +184,6 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
         </section>
       </div>}
       {saveError && <p className="live-profile-error" role="alert">Couldn't update your saved vendors: {saveError.message}</p>}
-    </Frame>
+    </Page>
   );
 }

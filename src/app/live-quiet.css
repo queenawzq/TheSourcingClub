@@ -1,0 +1,286 @@
+/*
+ * What the live app leaves out of the design.
+ *
+ * Queena's rule (Nov 6): a screen keeps a figure, a label, an action, an error
+ * or what this person must do next. Her prototypes keep their intro sentences;
+ * the two live entries (app.html, admin.html) import this file, and only they
+ * do, so the prototypes are unchanged and deleting a rule brings a sentence
+ * back. `npm run check:quiet` fails if a rule here could hide an input, a
+ * button, a heading or an error.
+ *
+ * Live code's own sentences are not here: they were removed where they are
+ * written. Layout fixes for the same screens are at the end.
+ */
+
+/* Page intros. */
+.rfqs-header > div > p,
+.flow-header > p:not(.eyebrow),
+.factory-detail-header > p,
+.quote-detail-header > p,
+.quote-detail-section > p.muted,
+.production-schedule-helper,
+.billing-history-page .payout-transactions-header p,
+.quote-compare-modal .brand-profile-modal-header p,
+.factory-update-modal:has(#factory-update-title) > header p,
+.factory-credit-card-header p,
+.factory-ready-card-header p,
+.review-service-selector > small,
+
+/* Dashboards. */
+.home-panel-header p,
+.home-new-brand-copy > p:not(.eyebrow),
+.factory-dashboard-panel > header p,
+
+/* Activity drawer. */
+.activity-drawer-header p,
+
+/* Browse and Saved. */
+.directory-filter-group > p,
+
+/* Settings. The second paragraph of a header says why a member can't act. */
+.settings-section-header p:first-of-type,
+.settings-payment-page-copy p,
+
+/* Profiles. */
+.factory-profile-section-header p,
+.factory-profile-status-track + p,
+
+/* The factory's quote. */
+.factory-submit-section > p,
+.factory-material-cost-heading p,
+.factory-submit-reminder,
+.factory-status-card > p,
+.factory-sent-card .success-copy p,
+
+/* Contract and comparing quotes. */
+.accepted-reminder,
+.quote-action-flow .field-help,
+.quote-compare-topbar > div:first-child > span,
+
+/* Admin. */
+.admin-header p,
+.rfqs-header.admin-header p,
+.admin-page .rfqs-header p,
+.admin-confidence-card > p,
+.admin-decision-card > h2 + p {
+  display: none;
+}
+
+/* A request with no reference image draws nothing, not a box saying so. */
+.factory-request-visuals:has(> .factory-request-visual-placeholder) {
+  display: none;
+}
+
+/* The rail's "What should production steps cover?" card. */
+.right-rail .card:has(.production-step-guidance-list),
+.right-rail section:has(> .production-step-guidance-list) {
+  display: none;
+}
+
+/* Where a card or line ended up with nothing to say. */
+.quote-fit:empty,
+.home-attention-copy p:empty,
+.factory-attention-copy p:empty,
+.activity-drawer-item p:empty,
+.save-card-note:empty {
+  display: none;
+}
+
+/* Needs your attention, with nothing in it. */
+.home-attention-grid:empty,
+.home-panel-header.compact:has(+ .home-attention-grid:empty),
+.home-attention:not(:has(.home-panel-header + :not(.home-attention-grid:empty))):has(.home-attention-grid:empty),
+.factory-dashboard-panel-list:empty,
+.factory-brand-messages-panel > header:has(+ .factory-dashboard-panel-list:empty),
+.factory-brand-messages-panel:not(:has(> :not(header, .factory-dashboard-panel-list))):has(> .factory-dashboard-panel-list:empty) {
+  display: none;
+}
+
+/* Discount codes can't be applied to a payment yet: the Payments tab bar is
+   only Payments and Discounts, so it goes until they can. */
+.billing-page-shell .billing-tabs {
+  display: none;
+}
+
+/* ---- Layout ---- */
+
+/* Needs your attention grows with the page; its cards fit their text. */
+.home-attention-grid {
+  max-height: none;
+  overflow: visible;
+}
+.home-attention-card,
+.factory-attention-card {
+  height: auto;
+  min-height: 0;
+}
+
+/* The whole transaction row is the link. */
+.brand-payment-transactions .payout-transaction-row {
+  position: relative;
+}
+.brand-payment-transactions .payout-transaction-row:hover {
+  background: #f6f8fb;
+}
+.brand-payment-transactions .brand-transaction-view::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+/* A failed payment's reason reads as an error. */
+.brand-payment-transactions .payout-transaction-row:has(.payout-status-failed) .payout-transaction-details span {
+  color: #c0392b;
+}
+.brand-payment-failure {
+  color: #c0392b !important;
+}
+
+/* "Waiting for production steps", above the narrowed order list. */
+.live-orders-narrowed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+/* A vendor's whole name, not one cut by its badge. */
+.home-recommended-invite-card .factory-name-row h3,
+.home-dashboard-vendor-grid .factory-name-row h3,
+.home-recommended-factory-grid .factory-name-row h3 {
+  overflow: visible;
+  white-space: normal;
+  text-overflow: clip;
+}
+
+.brand-payment-pay-again {
+  display: block;
+}
+
+/* A panel's header without its sentence. */
+.factory-dashboard-panel > header {
+  min-height: 0;
+}
+
+/* Settings: Change password is a button, not a banner. */
+.settings-page-shell #settings-security button.secondary-btn {
+  width: auto;
+}
+
+/* "Not a fit", on the factory's side. The design system's tradeoff tier. */
+.factory-project-fit.tradeoff {
+  border-color: #f0a58f;
+  background: #fff1ec;
+  color: #b4441f;
+}
+
+/* A phone gets the whole width: the rail folds to a menu button, and opens
+   over the page as the design's expanded nav does. */
+@media (max-width: 760px) {
+  :root {
+    --nav-collapsed-page-offset: 0px;
+  }
+  .side-nav.collapsed {
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+  .side-nav.collapsed > :not(.collapse-toggle) {
+    display: none !important;
+  }
+  .side-nav.collapsed .collapse-toggle {
+    position: fixed !important;
+    top: 12px;
+    left: 12px;
+    z-index: 60;
+    width: 40px;
+    height: 40px;
+    border: 1px solid #d7e0ea;
+    border-radius: 10px;
+    background: #fff;
+  }
+  #root > .app-shell > .side-nav.collapsed + main,
+  #root > .app-shell.nav-collapsed > main {
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding-top: 64px !important;
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+  /* The bottom bar too. */
+  #root > .app-shell.nav-collapsed .bottom-bar {
+    left: 0 !important;
+    width: 100% !important;
+  }
+  /* Titles above their buttons, not cut beside them. */
+  .shared-card-header,
+  .shared-responsive-card > .shared-card-heading,
+  .home-rfq-card,
+  .rfq-card-top {
+    flex-wrap: wrap;
+  }
+  .shared-card-heading,
+  .rfq-title-row,
+  .rfq-main {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .shared-card-heading h2,
+  .shared-card-heading h3,
+  .rfq-main h2 {
+    overflow: visible !important;
+    white-space: normal !important;
+    text-overflow: clip !important;
+  }
+}
+
+/* Compare quotes: every column on the page at a laptop's width, the total
+   readable as the figure it is. Narrower screens scroll inside the table. */
+.quote-compare-modal {
+  width: calc(100vw - 48px) !important;
+}
+.quote-compare-table {
+  min-width: 1120px !important;
+  font-size: 13px;
+}
+.quote-compare-table th,
+.quote-compare-table td {
+  padding: 12px 8px !important;
+  min-width: 0 !important;
+}
+/* A figure stays whole. */
+.quote-compare-table td:nth-child(2),
+.quote-compare-table td:nth-child(3),
+.quote-compare-table td:nth-child(4),
+.quote-compare-table td:nth-child(5),
+.quote-compare-table td:nth-child(6),
+.quote-compare-table td:nth-child(12) {
+  white-space: nowrap;
+}
+.quote-compare-table td:nth-child(12) {
+  font-weight: 700;
+}
+.quote-compare-table td:last-child {
+  width: auto !important;
+  min-width: 180px !important;
+}
+
+/* Roles & access: every column inside the card at a laptop's width. */
+@media (min-width: 900px) {
+  .brand-settings-page .settings-permission-row {
+    grid-template-columns: minmax(150px, 1fr) repeat(5, minmax(84px, 0.8fr)) 28px !important;
+  }
+  .factory-settings-page .settings-permission-row {
+    grid-template-columns: minmax(150px, 1fr) repeat(4, minmax(100px, 0.8fr)) 28px !important;
+  }
+  .settings-permission-row > div:first-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
