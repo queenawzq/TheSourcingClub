@@ -32,6 +32,7 @@ import {
 import { FlowShell, FundScreen, SuccessScreen } from "../../prototype/main.jsx";
 import { getOrder } from "../../lib/domain/order.js";
 import { getPayment, listPayments } from "../../lib/domain/payment.js";
+import { cardReason, plainCardReason } from "../../shared/card-words.mjs";
 import { STRIPE_PUBLISHABLE_KEY, startCheckout, syncPayment, withCardAdvice } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
 import { useAuth } from "../../lib/auth.jsx";
@@ -202,10 +203,7 @@ function amounts(checkout, currency) {
  * What a brand reads when Stripe.js refuses the card. Its message for a
  * failed bank check already says "try again", which the screen adds too.
  */
-function cardProblem(error) {
-  if (error.code === "payment_intent_authentication_failure") return "Your bank did not confirm this payment, so nothing was charged.";
-  return error.message || "The payment did not go through.";
-}
+const cardProblem = cardReason;
 
 function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage, order, factory }) {
   const stripe = useStripe();
@@ -217,7 +215,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
   const [newCardComplete, setNewCardComplete] = useState({ number: false, expiry: false, cvc: false });
   const [postalCode, setPostalCode] = useState("");
   const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState(payment.state === "failed" ? payment.failure_reason || "The last payment did not go through." : null);
+  const [problem, setProblem] = useState(payment.state === "failed" ? plainCardReason(payment.failure_reason) : null);
   const [done, setDone] = useState(null);
 
   const figures = amounts(checkout, checkout.currency ?? payment.currency);
@@ -258,7 +256,7 @@ function Fund({ payment, isFirst, paymentOnly, rail, checkout, onBack, onMessage
       // A failed 3-D Secure check comes back as an intent, not an error: it
       // wants a payment method again. Nothing was charged, so say so here.
       if (synced?.state === "failed" || intent?.status === "requires_payment_method" || intent?.status === "canceled") {
-        setProblem(synced?.failure_reason || intent?.last_payment_error?.message || "The payment did not go through.");
+        setProblem(synced?.failure_reason ? plainCardReason(synced.failure_reason) : cardReason(intent?.last_payment_error));
         return;
       }
       if (intent?.status === "requires_action" && intent.next_action?.type === "verify_with_microdeposits") {

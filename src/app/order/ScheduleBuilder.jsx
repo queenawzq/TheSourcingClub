@@ -39,7 +39,13 @@ export function BrandSchedule({ order, milestones, reload, vendor, onBack, onFun
       {/* Live only: an open proposal to cancel sits above the steps. */}
       {banner}
       <MilestonesScreen live={draft} />
-      <p className="muted production-schedule-helper" data-testid="schedule-hint">{locked ? "" : draft.hint}</p>
+      <p className="muted schedule-draft-hint" data-testid="schedule-hint">{locked ? "" : draft.hint}</p>
+      {draft.changedElsewhere && (
+        <p className="composer-note" role="status" data-testid="schedule-changed">
+          Someone else changed these steps. Saving replaces their changes.{" "}
+          <button className="text-link" type="button" onClick={draft.takeSaved}>Use their steps</button>
+        </p>
+      )}
       {draft.error && <p className="composer-error" role="alert">{draft.error.message}</p>}
       {dialog}
     </FlowShell>

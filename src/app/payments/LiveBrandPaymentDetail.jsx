@@ -1,3 +1,4 @@
+import { plainCardReason } from "../../shared/card-words.mjs";
 import React, { useEffect, useMemo, useState } from "react";
 import { getOrder } from "../../lib/domain/order.js";
 import { can, permissionHint } from "../../lib/domain/org.js";
@@ -28,7 +29,7 @@ function activityDate(payment) {
 function failureLine(payment) {
   if (payment.state !== "failed") return null;
   return payment.failure_reason
-    ? `The payment was not completed: ${payment.failure_reason}`
+    ? `The payment was not completed: ${plainCardReason(payment.failure_reason)}`
     : "The payment was not completed.";
 }
 

@@ -18,6 +18,7 @@
  * soonest due first, then the rest newest first. A step not reached yet counts
  * only in "Remaining".
  */
+import { plainCardReason } from "../../shared/card-words.mjs";
 import { chargedCents, orderFeeBps } from "../../lib/domain/payment.js";
 import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
@@ -85,7 +86,7 @@ export function brandPaymentsView({ orders, payments, vendor = ALL_VENDORS }) {
         title: payment.order_milestones?.title || "Payment",
         client: vendorOf(order),
         date: day(payment.state === "due" ? (payment.order_milestones?.due_on ?? payment.due_at ?? movedAt(payment)) : movedAt(payment)),
-        meta: `${orderTitle}${payment.state === "failed" && payment.failure_reason ? ` · ${payment.failure_reason}` : ""}`,
+        meta: `${orderTitle}${payment.state === "failed" && payment.failure_reason ? ` · ${plainCardReason(payment.failure_reason)}` : ""}`,
         status: paymentStatusWord(payment),
         state: payment.state,
         amount: formatMoney(chargedCents(payment), payment.currency),

@@ -318,6 +318,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
           ? <HomeHolding failed={layout === "failed"} onRetry={retry} />
           : null}
         factories={translatedRecommended}
+        newcomerVendorWords={{ title: "Recommended vendors", browse: "Browse vendors" }}
         vendorsPending={!vendors.answered}
         goTo={goTo}
         createQuoteLocked={can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow")}
