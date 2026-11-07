@@ -9494,8 +9494,9 @@ export function FactoryProjectDetail({
 
         <aside className="factory-detail-side factory-detail-top-side">
           <section className="factory-side-card project-fit-card">
-            <h2>Request match</h2>
-            <p>{match?.summary ?? (companyType === "trading" ? "Your supplier coverage, woven sourcing experience, and low-MOQ support match the brand request." : "Your August capacity and low-MOQ woven experience match the brand request.")}</p>
+            {/* Live: a vendor the brand invited, or one with no score, reads no match. */}
+            {!(match && !match.summary) && <h2>Request match</h2>}
+            {!(match && !match.summary) && <p>{match?.summary ?? (companyType === "trading" ? "Your supplier coverage, woven sourcing experience, and low-MOQ support match the brand request." : "Your August capacity and low-MOQ woven experience match the brand request.")}</p>}
             {/* The band comes from match_score_rfq() live. A vendor whose
                 profile cannot be scored gets no badge rather than a guess. */}
             {(match ? match.label : "Strong fit") && (
@@ -10017,7 +10018,7 @@ function AddUpdateModal({ language, milestone, onClose, onPost, live = null }) {
   const fileInput = useRef(null);
   const previewUrls = useRef(new Set());
   const isZh = language === "zh";
-  const milestoneTitle = isZh ? translateFactoryMainText(milestone.title) : milestone.title.toLowerCase();
+  const milestoneTitle = isZh ? translateFactoryMainText(milestone.title) : live ? milestone.title : milestone.title.toLowerCase();
   const brand = live?.counterparty || "Maison Rue";
 
   useEffect(() => () => {

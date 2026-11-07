@@ -109,6 +109,12 @@ function actionFor(milestone, viewer) {
   // approve_milestone refuses a paid step until its money is held.
   if (payment && milestone.kind === "approval_and_payment" && payment.state !== "confirmed") return none;
   if (approvable(milestone)) {
+    // An update-only step has nothing to sign off, but only the brand closing
+    // it moves the order on (approve_milestone), so it is closed in those
+    // words, and is not the main action until the factory has posted.
+    if (milestone.kind === "progress_only") {
+      return { ...button("Mark done", "approve"), tone: viewer.posted ? "primary" : "secondary" };
+    }
     // approve_milestone asks for Approve samples, and Release funds too on a
     // paying step.
     return button("Approve", "approve");
@@ -173,6 +179,7 @@ function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, po
     // approvable step is not the same as one with something to review: each
     // side is told which it is.
     const held = payment?.state === "confirmed" ? ` · ${money}` : "";
+    if (milestone.kind === "progress_only") return posted ? "Update posted" : "Nothing posted yet";
     if (isFactory) {
       if (!posted) return `Nothing posted yet${held}`;
       // Funded, the payment's word already says it: one, not the same thing twice.
@@ -523,7 +530,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       releaseAmount: milestone.amount_cents ? money(milestone.amount_cents) : "",
       description: milestone.description ?? "",
       reviewItem: stepUpdates.length
-        ? `${stepUpdates.length} ${stepUpdates.length === 1 ? "update" : "updates"}, ${fileCount} ${fileCount === 1 ? "file" : "files"} posted on this step`
+        ? `${stepUpdates.length} ${stepUpdates.length === 1 ? "update" : "updates"}${fileCount ? `, ${fileCount} ${fileCount === 1 ? "file" : "files"}` : ""} posted on this step`
         : "Nothing posted on this step yet",
       ...reminder,
       // Discussion remains open after approval, including completed orders.

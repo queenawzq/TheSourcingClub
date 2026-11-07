@@ -29,7 +29,7 @@ import { supabase, unwrap } from "../../lib/supabase.js";
 import { briefGenerationEnabled, generateBrief } from "../../lib/domain/brief.js";
 import { categoryTermIds, fieldsFromBrief, fillBlanks, quantityLine } from "./brief-fields.js";
 import { addCustomTerm, listLinks, listTermsByKind, setLinks, termLabel } from "../../lib/domain/taxonomy.js";
-import { linkedLabels, mentionsLabel, monthLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
+import { linkedLabels, mentionsLabel, monthLine, priceLine, quantityLine as resumedQuantityLine, sourcingChoice } from "./resume-fields.js";
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 
@@ -211,9 +211,7 @@ export default function LiveComposer({ org, rfqId }) {
           material: row.material_notes ?? "",
           samples: row.sample_notes ?? "",
           timeline: monthLine(row.target_delivery_month),
-          price: row.target_unit_price_min_cents
-            ? `$${(row.target_unit_price_min_cents / 100).toFixed(0)}-$${((row.target_unit_price_max_cents ?? row.target_unit_price_min_cents) / 100).toFixed(0)}`
-            : "",
+          price: priceLine(row.target_unit_price_min_cents, row.target_unit_price_max_cents),
           category: linkedLabels(linked, byKind.product_category),
           certifications: linkedLabels(linked, byKind.certification),
           services: linkedLabels(linked, byKind.service),
@@ -672,7 +670,9 @@ export default function LiveComposer({ org, rfqId }) {
       // Scored against this request by match_score_rfq(); blank when the
       // vendor's profile has too little in it to score.
       matching: vendor.matching,
-      fit: vendor.matchPercent === null ? "" : `${Math.round(vendor.matchPercent)}%${vendor.matching?.status === "needs_confirmation" ? " provisional" : ""}`,
+      // No figure for the factory a reorder repeats (it made this), or for a
+      // score of nothing, which says only that the facts didn't line up.
+      fit: !vendor.matchPercent || vendor.org_id === reorder?.factoryOrgId ? "" : `${Math.round(vendor.matchPercent)}%${vendor.matching?.status === "needs_confirmation" ? " provisional" : ""}`,
       // Nothing records a rating or a vendor's order count a brand may read;
       // "" tells the card to leave both out rather than print an example.
       rating: "",

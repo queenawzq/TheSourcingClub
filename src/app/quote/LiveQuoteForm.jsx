@@ -147,7 +147,7 @@ function missingQuoteFields(values, terms, companyType) {
   } else if (!paymentTermFrom(terms.payment_term ?? [], paymentTerms)) {
     missing.push("payment terms (try “30/70”, “paid in full”, or “Net 30”)");
   }
-  if (!incotermFrom(terms.incoterm ?? [], values.incoterms)) missing.push("shipping terms (try EXW, FOB or DDP 例如 EXW、FOB、DDP)");
+  if (!incotermFrom(terms.incoterm ?? [], values.incoterms)) missing.push("shipping terms (try EXW, FOB or DDP)");
   const validUntil = String(values.validUntil ?? "").trim();
   // The same test the database makes, on the same day: submit_quote() and
   // award_quote() refuse a valid_until before current_date, which is the UTC

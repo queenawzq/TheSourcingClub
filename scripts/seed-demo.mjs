@@ -42,6 +42,30 @@ import { DEMO_LOGINS as LOGINS, DEMO_PASSWORD as PASSWORD } from "../src/shared/
 import { dateIn, zonedTime } from "../src/shared/call-time.mjs";
 import { checkCallText } from "../api/screen-call-text.js";
 
+// A demo document that shows something when it is opened: its own name.
+function demoPdf(name) {
+  const title = name.replace(/\.pdf$/, "").replace(/[()\\]/g, "");
+  const stream = `BT /F1 18 Tf 40 700 Td (${title}) Tj 0 -28 Td /F1 11 Tf (Demo document. Not a real record.) Tj ET`;
+  const objects = [
+    "<</Type/Catalog/Pages 2 0 R>>",
+    "<</Type/Pages/Count 1/Kids[3 0 R]>>",
+    "<</Type/Page/Parent 2 0 R/MediaBox[0 0 612 792]/Contents 4 0 R/Resources<</Font<</F1 5 0 R>>>>>>",
+    `<</Length ${stream.length}>>\nstream\n${stream}\nendstream`,
+    "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>",
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = objects.map((object, index) => {
+    const at = body.length;
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    return at;
+  });
+  const xref = body.length;
+  body += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+    + offsets.map((at) => `${String(at).padStart(10, "0")} 00000 n \n`).join("")
+    + `trailer<</Size ${objects.length + 1}/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
+  return new TextEncoder().encode(body);
+}
+
 const PRODUCTION_REF = "wxzliajdtwekqdvwzqfb";
 
 function localStack() {
@@ -293,10 +317,7 @@ const [oekoTex] = must(await factory.client.from("factory_certifications").inser
 {
   const name = "OEKO-TEX certificate.pdf";
   const path = `${factoryOrg.id}/certificate/${crypto.randomUUID()}-${name.replace(/\s+/g, "-")}`;
-  const bytes = new TextEncoder().encode(
-    "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n"
-    + "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 120]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
-  );
+  const bytes = demoPdf(name);
   must(await factory.client.storage.from("org-private").upload(path, bytes, { contentType: "application/pdf" }), `upload ${name}`);
   const certificate = must(await factory.client.from("documents").insert({
     org_id: factoryOrg.id, kind: "certificate", bucket: "org-private", storage_path: path,
@@ -309,10 +330,10 @@ const [oekoTex] = must(await factory.client.from("factory_certifications").inser
   // leaves it, so the verification dialog has a file to show.
   const registrationName = "Business registration.pdf";
   const registrationPath = `${factoryOrg.id}/business_registration/${crypto.randomUUID()}-Business-registration.pdf`;
-  must(await factory.client.storage.from("org-private").upload(registrationPath, bytes, { contentType: "application/pdf" }), `upload ${registrationName}`);
+  must(await factory.client.storage.from("org-private").upload(registrationPath, demoPdf(registrationName), { contentType: "application/pdf" }), `upload ${registrationName}`);
   must(await admin.from("documents").insert({
     org_id: factoryOrg.id, kind: "business_registration", bucket: "org-private", storage_path: registrationPath,
-    file_name: registrationName, mime_type: "application/pdf", size_bytes: bytes.length, status: "verified",
+    file_name: registrationName, mime_type: "application/pdf", size_bytes: demoPdf(registrationName).length, status: "verified",
     reviewed_at: new Date().toISOString(),
   }), `record ${registrationName}`);
 }
@@ -387,10 +408,7 @@ must(await brand.client.from("org_invitations").insert({
 {
   const name = "Business registration.pdf";
   const path = `${brandOrg.id}/business_registration/${crypto.randomUUID()}-Business-registration.pdf`;
-  const bytes = new TextEncoder().encode(
-    "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n"
-    + "3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 120]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n",
-  );
+  const bytes = demoPdf(name);
   must(await brand.client.storage.from("org-private").upload(path, bytes, { contentType: "application/pdf" }), `upload brand ${name}`);
   must(await admin.from("documents").insert({
     org_id: brandOrg.id, kind: "business_registration", bucket: "org-private", storage_path: path,

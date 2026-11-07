@@ -104,6 +104,12 @@ four kinds: Paid release → `approval_and_payment`, Approval only →
 balance (`payment_only`) read as Paid release and keep their kind unless the
 type is changed (`order-view.js`).
 
+**An update-only step still takes the brand to close it.** `approve_milestone`
+is the only thing that completes a `progress_only` step, and the chain waits
+for it, so the button stays: "Mark done", secondary until the factory has
+posted (`actionFor`). The factory's notice still says "was approved": changing
+it needs a migration.
+
 **Everything a brand or a vendor touches is on the design**, except the
 screens below — each held back for a stated reason, not a backlog entry:
 
