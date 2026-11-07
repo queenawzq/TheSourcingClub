@@ -209,7 +209,7 @@ export default function LiveBrowse({ org, profile }) {
         companyType={isTrading ? "trading" : "factory"}
         language="en"
         projects={projects}
-        emptyNote={rfqs.length ? "No open requests match these filters. Remove one, or press Reset." : undefined}
+        emptyNote={rfqs.length ? "No open requests match these filters." : "No open requests right now."}
         live={{
           panel,
           value: chosen,

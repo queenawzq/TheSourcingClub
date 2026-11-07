@@ -4345,6 +4345,8 @@ export function HomeScreen({
   // Live mounts hide what they have nothing for. The prototype passes
   // neither and keeps the design's examples: a $50 discount and two calls.
   showSavings = true,
+  // Live says "vendors" on both layouts.
+  newcomerVendorWords = null,
   showCalls = true,
   // Live: the company's upcoming calls, drawn by the designed card.
   calls,
@@ -4439,10 +4441,10 @@ export function HomeScreen({
             <section className="home-recommended-factories">
               <header className="home-panel-header">
                 <div>
-                  <h2>Recommended factories</h2>
+                  <h2>{newcomerVendorWords?.title ?? "Recommended factories"}</h2>
                   <p>A few trusted partners that match {who}’s product focus and order size.</p>
                 </div>
-                <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse all vendors</button>
+                <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>{newcomerVendorWords?.browse ?? "Browse all vendors"}</button>
               </header>
               {vendorsPending ? <p className="projects-empty" role="status">Finding vendors for you…</p> : (
               <div className="home-recommended-factory-grid">
@@ -7684,6 +7686,8 @@ export function RfqsScreen({
   onInviteVendors,
   onArchiveRfq,
   quoteFlowLocked = "",
+  // Live's shorter empty lists; the prototype keeps its sentences.
+  emptyNotes = null,
 }) {
   const [activeTab, setActiveTab] = useState("active");
   const [rfqTabs, setRfqTabs] = useState([
@@ -7910,10 +7914,10 @@ export function RfqsScreen({
         ) : !activeRfqsForTab.length ? (
           <p className="projects-empty" data-testid="rfqs-empty">
             {rfqSearch.trim() ? "No requests match." : activeTab === "drafts"
-              ? "No drafts. A request is saved here as soon as you start writing one."
+              ? (emptyNotes?.drafts ?? "No drafts. A request is saved here as soon as you start writing one.")
               : activeTab === "closed"
                 ? "Nothing closed yet."
-                : "No open requests. Post one and factories can start quoting."}
+                : (emptyNotes?.open ?? "No open requests. Post one and factories can start quoting.")}
           </p>
         ) : (
           activeRfqsForTab.map((rfq) => (
@@ -8374,7 +8378,7 @@ export function ProjectsScreen({
               ? "No cancelled orders."
               : activeTab !== "active"
               ? "No orders in this tab yet. Add one from an order's ··· menu."
-              : "No production orders yet. One appears here when a quote is awarded."}
+              : live ? "No production orders yet." : "No production orders yet. One appears here when a quote is awarded."}
           </p>
         ) : (
           ordersForTab.map((project) => (

@@ -6328,7 +6328,7 @@ export function FactoryProjectsPage({
                 ? "No cancelled orders."
                 : activeTab !== "active"
                 ? "No orders in this tab yet. Add one from an order's ··· menu."
-                : "No production orders yet. One appears here when a brand awards you a quote."}
+                : live ? "No production orders yet." : "No production orders yet. One appears here when a brand awards you a quote."}
             </p>
           ) : (
             ordersForTab.map((project) => (

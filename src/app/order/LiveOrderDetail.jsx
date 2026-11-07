@@ -19,6 +19,7 @@
  * (migration 20261023000300). The factory is paid the step amount and keeps
  * reading the summary.
  */
+import { plainCardReason } from "../../shared/card-words.mjs";
 import { earningStatus } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
@@ -134,7 +135,9 @@ function paymentLine(payment, isFactory, kind) {
     case "processing":
       return "Payment processing";
     case "failed":
-      return `Payment failed: ${payment.failure_reason || "the payment did not go through"}`;
+      // The card is the brand's business: to the factory the step is simply
+      // not funded yet.
+      return isFactory ? "Awaiting funding from the brand" : `Payment failed: ${plainCardReason(payment.failure_reason)}`;
     case "sent":
       // A bank-wire claim from before payments moved to Stripe.
       return isFactory

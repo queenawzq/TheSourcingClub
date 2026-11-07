@@ -20,6 +20,7 @@
 .quote-detail-section > p.muted,
 .production-schedule-helper,
 .billing-history-page .payout-transactions-header p,
+.quote-compare-modal .brand-profile-modal-header p,
 
 /* Dashboards. */
 .home-panel-header p,
@@ -229,4 +230,35 @@
     white-space: normal !important;
     text-overflow: clip !important;
   }
+}
+
+/* Compare quotes: every column on the page at a laptop's width, the total
+   readable as the figure it is. Narrower screens scroll inside the table. */
+.quote-compare-modal {
+  width: calc(100vw - 48px) !important;
+}
+.quote-compare-table {
+  min-width: 1120px !important;
+  font-size: 13px;
+}
+.quote-compare-table th,
+.quote-compare-table td {
+  padding: 12px 8px !important;
+  min-width: 0 !important;
+}
+/* A figure stays whole. */
+.quote-compare-table td:nth-child(2),
+.quote-compare-table td:nth-child(3),
+.quote-compare-table td:nth-child(4),
+.quote-compare-table td:nth-child(5),
+.quote-compare-table td:nth-child(6),
+.quote-compare-table td:nth-child(12) {
+  white-space: nowrap;
+}
+.quote-compare-table td:nth-child(12) {
+  font-weight: 700;
+}
+.quote-compare-table td:last-child {
+  width: auto !important;
+  min-width: 180px !important;
 }

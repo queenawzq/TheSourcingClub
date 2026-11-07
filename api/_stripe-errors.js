@@ -4,11 +4,13 @@
  *
  * Stripe's own messages are written for developers, and an authentication
  * failure quotes the end of the secret key. So nothing from a failure reaches
- * a response unless it is written here. The one exception is a card or bank
- * refusal, whose words are written for the person holding that card.
+ * a response unless it is written here, a card's refusal included
+ * (_card-words.js).
  *
  * The leading underscore keeps Vercel from serving this file.
  */
+
+import { cardReason } from "./_card-words.js";
 
 const OPERATIONS = "operations@contact.sourcing-club.com";
 
@@ -35,7 +37,7 @@ const OUTAGE = new Set(["StripeConnectionError", "StripeAPIError", "StripeRateLi
  * words of that route; it is used for anything without a sentence of its own.
  */
 export function sentenceFor(failure, fallback) {
-  if (failure?.type === "StripeCardError" && failure.message) return withoutKeys(failure.message);
+  if (failure?.type === "StripeCardError") return cardReason(failure);
   if (OUR_SETUP.has(failure?.type)) {
     return `Payments have a problem on TSC's side, so nothing changed. Email ${OPERATIONS} and we'll sort it out.`;
   }

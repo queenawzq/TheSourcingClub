@@ -35,11 +35,7 @@ export default function CancelOrderDialog({ mode = "propose", title, counterpart
         <header>
           <p>{proposing ? "Cancel order" : "Accept cancellation"}</p>
           <h2 id="order-cancel-title">{proposing ? `Cancel ${title}?` : `Cancel ${title} as ${other} proposed?`}</h2>
-          <span>
-            {proposing
-              ? `${other} has to accept before anything changes.`
-              : "This closes the order for both sides and cannot be undone."}
-          </span>
+          {proposing ? null : <span>This closes the order for both sides and cannot be undone.</span>}
         </header>
         {proposing ? (
           <label className="approve-fund-note">

@@ -142,7 +142,8 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
       // A bank-wire claim from before payments moved to Stripe.
       case "payment_sent": return `${who(row.actor_org_id)} marked ${paid(row)} sent for ${step}`;
       case "payment_processing": return `The payment for ${step} is processing`;
-      case "payment_failed": return `The payment for ${step} did not go through`;
+      // The card is the brand's business: to the factory the step is simply not funded yet.
+      case "payment_failed": return viewerOrgId === order.factory_org_id ? null : `The payment for ${step} did not go through`;
       case "payment_confirmed": return `${paid(row)} funded for ${step}, held by TSC`;
       case "payment_released": return `TSC paid out ${money(row.detail)} for ${step}`;
       case "payment_refunded": return `The payment for ${step} was refunded to the brand`;
