@@ -49,6 +49,17 @@ create table public.provider_payout_attempts (
   updated_at timestamptz not null default now()
 );
 
+-- An attempt that never reached a provider (short balance, cancelled, refused
+-- before a transfer existed) is staff's business. Nothing happened to the
+-- factory's money, so it isn't a Withdrawals row for the factory to read.
+alter table public.provider_payouts drop constraint provider_payouts_status_check,
+  add constraint provider_payouts_status_check check (status in ('processing', 'paid', 'failed', 'cancelled'));
+
+drop policy provider_payouts_read on public.provider_payouts;
+create policy provider_payouts_read on public.provider_payouts
+  for select to authenticated
+  using ((public.is_org_member(factory_org_id) and status <> 'cancelled') or public.is_platform_admin());
+
 alter table public.provider_payout_attempts enable row level security;
 revoke all on public.provider_payout_attempts from public, anon, authenticated;
 grant select, insert, update on public.provider_payout_attempts to service_role;
@@ -396,6 +407,11 @@ begin
       values (o.factory_org_id, 'payout_method_changed', 'payment', p.id, o.id, tell_factory,
         format('Your payment of %s is waiting. %s.', public.format_money(p.amount_cents, p.currency), tell_factory));
     end if;
+  elsif outcome = 'cancelled' then
+    if live.status <> 'processing' then
+      return;
+    end if;
+    update public.provider_payouts x set status = 'cancelled', updated_at = now() where x.id = live.id;
   else
     raise exception 'unknown outcome' using errcode = '22023';
   end if;

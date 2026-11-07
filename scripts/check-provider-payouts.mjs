@@ -104,7 +104,7 @@ function fakeDb({ recipient = null } = {}) {
     claim(which) {
       if (this.leased) return { error: { hint: "payout_in_progress" } };
       if (this.payout?.status === "paid") return { error: { hint: "payout_already_released" } };
-      if (!this.payout || this.payout.status === "failed") {
+      if (!this.payout || ["failed", "cancelled"].includes(this.payout.status)) {
         this.payout = { id: `p${this.finished.length + 1}`, key: `key-${this.finished.length + 1}`, status: "processing", provider: which, provider_ref: null, stage: "claimed" };
       }
       this.leased = true;
@@ -227,7 +227,7 @@ const pay = (wise, db, extra = {}) => wisePay({ wise, caller: db.caller, db, row
   assert.equal(answer.done, "short_balance");
   assert.match(answer.sentence, /short by \$600\.00/);
   assert.equal(fake.state.transfers.size, 0, "no transfer made");
-  assert.equal(db.payout.status, "failed", "ended, so the next press is a new attempt");
+  assert.equal(db.payout.status, "cancelled", "ended before Wise, so the factory sees nothing and the next press is a new attempt");
   // Short at the preview: said with the amount, before Wise can refuse the quote.
   const fake3 = fakeWise({ balance: 400 }); const db3 = fakeDb();
   const seen = await wisePreview({ wise: wiseFrom(WISE_ENV, fake3.fetchImpl), caller: db3.caller, db: db3, row, cnyConfirmed: true });
@@ -252,7 +252,7 @@ const pay = (wise, db, extra = {}) => wisePay({ wise, caller: db.caller, db, row
   const fake = fakeWise({ failNext: [{ match: "POST /v1/transfers", status: 422, body: { errors: [{ code: "x", message: "Bad reference." }] } }] }); const db = fakeDb({ recipient: "900" });
   const wise = wiseFrom(WISE_ENV, fake.fetchImpl);
   await assert.rejects(pay(wise, db), /Wise refused this: Bad reference/);
-  assert.equal(db.payout.status, "failed");
+  assert.equal(db.payout.status, "cancelled");
   await pay(wise, db);
   assert.equal(db.payout.key, "key-2", "new attempt, new key");
   assert.equal(fake.state.funded, 1);
@@ -284,7 +284,7 @@ const pay = (wise, db, extra = {}) => wisePay({ wise, caller: db.caller, db, row
   await pay(wise, db);
   await cancelAttempt({ client: wise, caller: db.caller, db, paymentId: "x" });
   assert.equal(fake.state.byId.get("5000").status, "cancelled");
-  assert.equal(db.payout.status, "failed");
+  assert.equal(db.payout.status, "cancelled");
 }
 {
   // Wise holds a transfer with an open issue: staff are told; the factory isn't asked to do anything.
@@ -334,8 +334,7 @@ const paypalPress = (paypal, db) => paypalPay({ paypal, caller: db.caller, db, p
 {
   const fake = fakePaypal({ refuse: { status: 422, body: { name: "INSUFFICIENT_FUNDS" } } }); const db = fakeDb();
   await assert.rejects(paypalPress(paypalFrom(PAYPAL_ENV, fake.fetchImpl), db), /balance is too low/);
-  assert.equal(db.payout.status, "failed");
-  assert.equal(db.finished[0].failure, "other", "staff's to fix, not the factory's");
+  assert.equal(db.payout.status, "cancelled", "staff's to fix, and nothing the factory sees");
 }
 {
   const fake = fakePaypal({ refuse: { status: 400, body: { name: "VALIDATION_ERROR", details: [{ field: "items[0].receiver" }] } } }); const db = fakeDb();

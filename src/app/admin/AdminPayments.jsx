@@ -282,7 +282,7 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
     );
   }
 
-  const lastFailed = attempt?.status === "failed" && attempt.staff_sentence
+  const lastFailed = ["failed", "cancelled"].includes(attempt?.status) && attempt.staff_sentence
     ? <span className="admin-error admin-row-message" data-testid="provider-last-failure">{attempt.staff_sentence}</span> : null;
 
   if (step === "statement") {

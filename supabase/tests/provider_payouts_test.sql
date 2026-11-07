@@ -8,7 +8,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(41);
+select plan(45);
 
 set local session_replication_role = replica;
 
@@ -157,6 +157,15 @@ select is((select state::text from public.order_payments where id = '78f00000-00
 -- After a certain failure, a new attempt has a new key.
 reset role; select pg_temp.act_as(5); set local role authenticated;
 select isnt((pg_temp.press() ->> 'key')::uuid, (select attempt_key from first_key), 'a new attempt never replays the old key');
+
+-- An attempt that never reached a provider is staff's: the factory doesn't read it.
+reset role; set local role service_role;
+select lives_ok($$ select public.finish_provider_payout((select id from public.provider_payouts where payment_id = '78f00000-0000-0000-0000-000000000001' and status = 'processing'), 'cancelled', null, 'short_balance', 'short') $$, 'cancelled before any provider call');
+select is((select state::text from public.order_payments where id = '78f00000-0000-0000-0000-000000000001'), 'confirmed', 'still owed');
+reset role; select pg_temp.act_as(1); set local role authenticated;
+select is((select count(*)::int from public.provider_payouts where status = 'cancelled' and factory_org_id = '78b00000-0000-0000-0000-0000000000f1'), 0, 'the factory reads no cancelled attempt');
+reset role; select pg_temp.act_as(5); set local role authenticated;
+select is((select count(*)::int from public.provider_payouts where status = 'cancelled' and factory_org_id = '78b00000-0000-0000-0000-0000000000f1'), 1, 'staff do');
 
 -- --- The brand reads none of it ------------------------------------------------
 reset role; select pg_temp.act_as(3); set local role authenticated;

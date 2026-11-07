@@ -77,8 +77,8 @@ export async function applyStatus({ db, payoutId, status, wasPaid = false, tellO
     return "failed";
   }
   if (status.state === "cancelled") {
-    await finish(db, payoutId, "failed", { failure: "other", raw_status: status.raw, sentence: "Cancelled in Wise. Nothing was sent." });
-    return "failed";
+    await finish(db, payoutId, "cancelled", { raw_status: status.raw, sentence: "Cancelled in Wise. Nothing was sent." });
+    return "cancelled";
   }
   if (wasPaid) return "paid";
   await record(db, payoutId, {
@@ -136,7 +136,7 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
       const balance = await wise.balance(claim.currency);
       if (balance.cents < Number(claim.amount_cents)) {
         const sentence = `Wise balance is short by ${money(Number(claim.amount_cents) - balance.cents, claim.currency)}. Top up TSC's Wise balance, then pay again.`;
-        await finish(db, payoutId, "failed", { failure: "other", raw_status: "short_balance", sentence });
+        await finish(db, payoutId, "cancelled", { raw_status: "short_balance", sentence });
         return { done: "short_balance", sentence };
       }
       const recipientId = await ensureWiseRecipient({
@@ -149,7 +149,7 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
       });
       if (quote.arrivesCents <= 0) {
         const sentence = "Wise's fee is more than this payment, so nothing would arrive. Pay it another way.";
-        await finish(db, payoutId, "failed", { failure: "other", raw_status: "nothing_left", sentence });
+        await finish(db, payoutId, "cancelled", { raw_status: "nothing_left", sentence });
         return { done: "nothing_left", sentence };
       }
       await record(db, payoutId, { new_quote: quote.id, new_fee: quote.feeCents, keep_lease: true });
@@ -188,7 +188,7 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
     // and the next press gets a new key rather than replaying this answer.
     const again = await db.from("provider_payouts").select("provider_ref").eq("id", payoutId).maybeSingle();
     if (!again.data?.provider_ref) {
-      await finish(db, payoutId, "failed", { failure: "other", raw_status: failure.kind ?? "refused", sentence: failure.message });
+      await finish(db, payoutId, "cancelled", { raw_status: failure.kind ?? "refused", sentence: failure.message });
     } else {
       await record(db, payoutId, { sentence: failure.message });
     }
@@ -233,10 +233,13 @@ export async function paypalPay({ paypal, caller, db, paymentId, changedAt }) {
     const again = await db.from("provider_payouts").select("provider_ref").eq("id", payoutId).maybeSingle();
     if (!again.data?.provider_ref) {
       const invalid = /address isn't valid/.test(failure.message);
-      await finish(db, payoutId, "failed", {
-        failure: invalid ? "details_rejected" : "other", raw_status: failure.kind ?? "refused", sentence: failure.message,
-        tell_factory: invalid ? CHECK_PAYPAL : null,
-      });
+      if (invalid) {
+        await finish(db, payoutId, "failed", {
+          failure: "details_rejected", raw_status: failure.kind ?? "refused", sentence: failure.message, tell_factory: CHECK_PAYPAL,
+        });
+      } else {
+        await finish(db, payoutId, "cancelled", { raw_status: failure.kind ?? "refused", sentence: failure.message });
+      }
     } else {
       await record(db, payoutId, { sentence: failure.message });
     }
@@ -264,7 +267,7 @@ export async function cancelAttempt({ client, caller, db, paymentId }) {
         await client.cancel(held.provider_ref);
       }
     }
-    await finish(db, payoutId, "failed", { failure: "other", raw_status: "cancelled", sentence: "Cancelled. Nothing was sent." });
+    await finish(db, payoutId, "cancelled", { raw_status: "cancelled", sentence: "Cancelled. Nothing was sent." });
     return { done: "cancelled" };
   } catch (failure) {
     // What the row says stays what it said: the payment is still where it was.
