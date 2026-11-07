@@ -432,7 +432,7 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
       };
     }
     return {
-      title: isFirst ? "Payment received" : `${step} funded`,
+      title: "Payment received",
       message: `${total} was charged to ${ending(payment.payment_method_label)}.`,
       next: null,
     };
@@ -441,13 +441,14 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
   return (
     <FlowShell
       screen="success"
+      canBack={false}
       fundingMilestone={{ title: step, amount: total, railStep: step }}
       heading={!paid ? {
         eyebrow: "FUND",
         title: "Payment on its way",
       } : {
         eyebrow: "FUND",
-        title: isFirst ? "First payment funded" : `${step} funded`,
+        title: `${step} funded`,
       }}
       onBack={onBack}
       onNext={onBack}
@@ -469,7 +470,7 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
       <SuccessScreen
         live={{
           ...copy,
-          dashboardLabel: "Go to the order",
+          dashboardLabel: null,
           onDashboard: onBack,
           onMessage,
         }}

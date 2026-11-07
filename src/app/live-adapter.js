@@ -218,6 +218,7 @@ export function toRfqCard(rfq, messageCount = 0) {
   return {
     id: rfq.id,
     title: rfq.title || "Untitled request",
+    deadline: rfq.quote_deadline ?? null,
     date: `${rfq.published_at ? "Posted" : "Started"} ${DAY.format(new Date(posted))}${due}`,
     description: rfq.brief ?? "",
     tags,

@@ -651,6 +651,7 @@ export default function LiveComposer({ org, rfqId }) {
         <InviteSuccessScreen
           selectedFactories={invited}
           openToAll={openToAll}
+          liveLine={`Sent to ${invited.length} vendor${invited.length === 1 ? "" : "s"}${openToAll ? ", and open to all vendors" : ""}.`}
           goTo={(next) => navigate(next === "quotes" ? `/rfqs/${draftId}/quotes` : "/")}
         />
       </FlowShell>
@@ -733,6 +734,9 @@ export default function LiveComposer({ org, rfqId }) {
         centerText={`${selectedVendors.length} selected · ${shaped.length} available`}
         onBack={() => setStep("review")}
         onNext={publish}
+        // Published with nobody invited, no vendor could ever see the request.
+        primaryDisabled={!openToAll && selectedVendors.length === 0}
+        primaryTitle={!openToAll && selectedVendors.length === 0 ? "Choose a vendor, or open it to all vendors" : ""}
       >
         {matchingV2 && (() => {
           // Each invite card carries its own match explanation; this panel holds
@@ -770,7 +774,6 @@ export default function LiveComposer({ org, rfqId }) {
         })()}
         <InviteScreen
           vendors={shaped}
-          filters={requestFilters(values)}
           selectedFactories={selectedVendors}
           setSelectedFactories={(next)=>{setMatchingAcknowledged(false);setSelectedVendors(next);}}
           openToAll={openToAll}

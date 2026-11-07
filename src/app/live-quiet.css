@@ -47,8 +47,10 @@
 .factory-status-card > p,
 .factory-sent-card .success-copy p,
 
-/* Contract. */
+/* Contract and comparing quotes. */
 .accepted-reminder,
+.quote-action-flow .field-help,
+.quote-compare-topbar > div:first-child > span,
 
 /* Admin. */
 .admin-header p,
@@ -69,6 +71,7 @@
 }
 
 /* Where a card or line ended up with nothing to say. */
+.quote-fit:empty,
 .home-attention-copy p:empty,
 .factory-attention-copy p:empty,
 .activity-drawer-item p:empty,
@@ -200,6 +203,11 @@
     padding-top: 64px !important;
     padding-left: 16px !important;
     padding-right: 16px !important;
+  }
+  /* The bottom bar too. */
+  #root > .app-shell.nav-collapsed .bottom-bar {
+    left: 0 !important;
+    width: 100% !important;
   }
   /* Titles above their buttons, not cut beside them. */
   .shared-card-header,
