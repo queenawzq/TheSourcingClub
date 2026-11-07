@@ -2318,8 +2318,10 @@ async function main() {
     await page.locator('[data-testid="milestone-action"]').first().click();
     await waitFor(page, ".approve-fund-modal textarea", 10000);
     const dialogText = await page.locator(".approve-fund-modal").innerText();
-    check(/releases .* held by TSC to /i.test(dialogText),
-      "the dialog says approving releases the money TSC holds to the factory");
+    // Its title is the release since the expert pass dropped the sentence: the
+    // step's amount, not the $99.75 the brand paid with the fee.
+    check(/Release \$95\.00 for fit sample/i.test(dialogText) && !dialogText.includes("$99.75"),
+      "the dialog says approving releases the step's amount, without the fee");
     await page.locator(".approve-fund-modal textarea").first().click();
     await page.type("Fit approved, go ahead with bulk.");
     await record(page, "Approve dialog", "the designed dialog: approving releases what TSC holds");
