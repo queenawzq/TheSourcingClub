@@ -2754,6 +2754,47 @@ async function main() {
     check(sendSeen.ms !== null && sendSeen.bubbles === 1 && sendSeen.box === "",
       `pressing Send empties the box and draws the message once, at once (${sendSeen.ms} ms, ${sendSeen.bubbles} bubble)`);
 
+    // One send is one message, whatever the network does (20261107560000).
+    // Chromium resends a POST by itself when a connection closes before the
+    // reply; on production one message was saved seven times. Here the page's
+    // next message insert reaches the database twice, byte for byte, and the
+    // page is given the second answer, as it would be after a resend.
+    const resentLine = `Sent once, reached the server twice (${runWord}).`;
+    await page.evaluate(() => {
+      const real = window.fetch;
+      window.__insertSentTwice = false;
+      window.fetch = async (input, init) => {
+        const url = String(input?.url ?? input);
+        if (init?.method === "POST" && /\/rest\/v1\/messages(\?|$)/.test(url)) {
+          window.fetch = real;
+          window.__insertSentTwice = true;
+          await real(input, init);
+          return real(input, init);
+        }
+        return real(input, init);
+      };
+    });
+    await page.locator('.message-composer textarea').fill(resentLine);
+    await page.locator('[data-testid="send-message"]').click();
+    let resentRows = [];
+    const resentStarted = Date.now();
+    while (Date.now() - resentStarted < 10000) {
+      const { data } = await db.from("messages").select("id, delivery").eq("thread_id", runThread.id).eq("body", resentLine);
+      resentRows = data ?? [];
+      if (resentRows.some((row) => row.delivery !== "checking")) break;
+      await page.waitForTimeout(250);
+    }
+    await page.waitForTimeout(1500);
+    const resentSeen = await page.evaluate((line) => ({
+      twice: window.__insertSentTwice,
+      bubbles: [...document.querySelectorAll(".message-bubble")].filter((bubble) => bubble.textContent.includes(line)).length,
+      failed: document.body.textContent.includes("send it again"),
+    }), resentLine);
+    check(resentSeen.twice && resentRows.length === 1,
+      `an insert the network delivers twice saves one message (${resentRows.length} row${resentRows.length === 1 ? "" : "s"}${resentSeen.twice ? "" : ", the insert was never sent twice"})`);
+    check(resentSeen.bubbles === 1 && !resentSeen.failed,
+      `and the sender sees it once, as sent (${resentSeen.bubbles} bubble${resentSeen.failed ? ", marked failed" : ""}, ${resentRows[0]?.delivery})`);
+
     // The factory writes from somewhere else; the brand's page is not reloaded.
     const factoryClient = createClient(
       process.env.SUPABASE_URL ?? stack.API_URL,
