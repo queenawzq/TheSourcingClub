@@ -24,6 +24,19 @@ export const FUND_IN_WISE = "Transfer created. Fund it in Wise.";
 export const CHECK_BANK = "Check your bank details";
 export const CHECK_PAYPAL = "Check your PayPal address";
 
+/**
+ * Which detail Wise refused, in our words: the factory reads these, and Wise's
+ * own sentence stays on the board. A refusal naming none asks for the lot.
+ */
+const CHECK_DETAIL = [
+  [/swift|\bbic\b/i, "Check your SWIFT code"],
+  [/iban|account ?number|accountNumber/i, "Check your account number"],
+  [/holder|account ?name|full ?name|legal ?name/i, "Check the account holder's name"],
+  [/address|city|post ?code|postal|state/i, "Check your address"],
+  [/bank ?name|branch/i, "Check your bank name"],
+];
+export const checkWords = (sentence) => CHECK_DETAIL.find(([pattern]) => pattern.test(sentence ?? ""))?.[1] ?? CHECK_BANK;
+
 const DB_WORDS = {
   payout_in_progress: "This is already being paid. Wait a moment, then press Refresh.",
   payout_already_released: "This payout was already paid. Reload the board.",
@@ -202,7 +215,7 @@ export async function tellFactoryDetails({ caller, db, paymentId, changedAt, whi
   }));
   await finish(db, claim.payout_id, "failed", {
     failure: "details_rejected", raw_status: "details_rejected", sentence,
-    tell_factory: which === "paypal" ? CHECK_PAYPAL : CHECK_BANK,
+    tell_factory: which === "paypal" ? CHECK_PAYPAL : checkWords(sentence),
   });
   return { done: "failed" };
 }

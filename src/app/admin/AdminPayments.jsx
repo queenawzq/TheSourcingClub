@@ -267,9 +267,12 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
     const pending = attempt.stage === "claimed";
     const waiting = attempt.stage === "awaiting_funding";
     const unclaimed = attempt.provider_status === "UNCLAIMED";
+    // The money stays at the address it went to, whatever the factory says now.
+    const movedOn = unclaimed && attempt.paid_to !== row.paypal_email;
     return (
       <>
         {said}
+        {movedOn ? <span className="admin-error admin-row-message" data-testid="provider-moved-on">{`Sent to ${attempt.paid_to}. The factory now uses ${row.paypal_email ?? "another method"}. Cancel this, then pay again.`}</span> : null}
         <span className="admin-sub admin-row-message" role="status" data-testid="provider-status" data-stage={attempt.stage}>
           {attempt.in_progress && pending ? `Being paid by ${attempt.requested_by_email ?? "staff"}…`
             : attempt.staff_sentence
@@ -568,7 +571,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
           {section === "payout" && !paidByBank(row) ? (
             <span className="admin-payout-details">
               <strong>{paidByStripe(row) ? "Pay by Stripe" : paidByPaypal(row) ? "Pay by PayPal" : "Pay by Payoneer"}</strong>
-              {paidByPaypal(row) ? <span className="admin-sub">{row.paypal_email}</span> : null}
+              {paidByPaypal(row) ? <span className="admin-sub">{attempt?.status === "processing" ? attempt.paid_to : row.paypal_email}</span> : null}
               {paidByPayoneer(row) ? <span className="admin-sub">{row.payoneer_email}</span> : null}
             </span>
           ) : null}

@@ -20,8 +20,13 @@ export const awaitingApproval = (row) => row.state === "confirmed" && !row.relea
 export const toBeSent = (row) => row.state === "confirmed" && Boolean(row.release_requested_at);
 /** Provider attempts, as the embed gives them: a list, or nothing for a brand. */
 const attempts = (row) => row.provider_payouts ?? [];
-/** A payment Wise or PayPal is sending now. Still owed until it is paid. */
-export const onItsWay = (row) => toBeSent(row) && attempts(row).some((attempt) => attempt.status === "processing");
+/**
+ * Money that has left TSC and is moving. A Wise transfer nobody has funded has
+ * not left, and PayPal holding a payment for an address with no account is not
+ * moving: both are still the factory's balance.
+ */
+const moving = (attempt) => attempt.status === "processing" && Boolean(attempt.money_left_at) && !attempt.details_asked_at;
+export const onItsWay = (row) => toBeSent(row) && attempts(row).some(moving);
 export const heldOnCancelledOrder = (row) => row.state === "confirmed" && !row.release_requested_at && row.order?.status === "cancelled";
 
 /**
@@ -40,8 +45,8 @@ export const isHandPaid = (account, earnings) => !account?.transfers_active && !
 
 /**
  * The card's figures for a factory paid by hand, across all clients. Balance is
- * approved and nobody is sending it yet; on its way is being sent; pending is
- * waiting for the brand. Balance + on its way is the strip's Pending.
+ * approved and not moving yet; on its way has left TSC; pending is waiting for
+ * the brand. Balance + on its way is the strip's Pending.
  * Null until the earnings answer.
  */
 export function handPaidFigures(earnings) {
@@ -55,39 +60,24 @@ export function handPaidFigures(earnings) {
 }
 
 /**
- * The four figures over the Transactions list. Each is a list of amounts by
- * currency when known, undefined while a source it needs has not answered
- * (the page draws a placeholder), and null when it cannot be known (Stripe
- * failed, or only an owner may read the balance). Never a partial figure:
- * Pending and Paid out computed before Stripe answered showed one amount,
- * then jumped to another.
+ * The four figures over the Transactions list: each earning in exactly one of
+ * Awaiting approval, Pending and Paid out, by the word on its own row, so they
+ * add up to Total earnings for whoever reads them. All from the payments, in the
+ * orders' currency, never from Stripe: what a factory later moved from its
+ * Stripe balance to its bank is a withdrawal, not a second kind of paid. Each is
+ * undefined until the earnings answer.
  */
-export function earningsSummaryFor(earnings, balance, client) {
+export function earningsSummaryFor(earnings, client) {
   if (!earnings) return { total: undefined, approval: undefined, pending: undefined, paid: undefined };
   const all = client === "All clients";
-  const byId = new Map(earnings.map((row) => [row.id, row]));
   const selected = (row) => all || row?.order?.brand_org_id === client;
   const funded = earnings.filter((row) => ["confirmed", "released"].includes(row.state) && !heldOnCancelledOrder(row) && selected(row));
   const amounts = (rows) => currencyTotals(rows.map((row) => ({ amount: factoryAmount(row), currency: row.currency })));
-  // Paid out with no Stripe transfer: TSC sent it by bank (where Stripe cannot
-  // pay out), whether the brand paid by card or by an old bank wire.
-  const bankPaid = earnings.filter((row) => row.state === "released" && !row.stripe_transfer_id && selected(row));
-  const paid = balance?.payouts?.filter((row) => row.paid) || [];
-  const paidAmounts = paid.flatMap((row) => all
-    ? [{ amount: row.amount, currency: row.currency }]
-    : row.allocations.filter((part) => selected(byId.get(part.paymentId)))
-      .map((part) => ({ amount: part.amount, currency: row.currency })));
-  // Whether Stripe matters is the account's question, whichever client is selected.
-  const stripeFigure = (figure) => (!stripeRelevant(earnings) || balance ? figure() : balance);
   return {
     total: amounts(funded),
     approval: amounts(funded.filter(awaitingApproval)),
-    // Approved and not sent yet, whoever reads it. What Stripe is still
-    // processing has been paid: it is on the card as money on its way.
     pending: amounts(funded.filter(toBeSent)),
-    paid: stripeFigure(() => currencyTotals([
-      ...paidAmounts, ...bankPaid.map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
-    ])),
+    paid: amounts(funded.filter((row) => row.state === "released")),
   };
 }
 
@@ -95,8 +85,8 @@ export function earningsSummaryFor(earnings, balance, client) {
  * Where one earning stands: Awaiting approval, Pending, Paid. The one word for
  * this money, on Payments and the factory's order page, whoever reads it: it
  * comes from the payment alone, never from Stripe's answer, which only an owner
- * can read. Money Stripe is still processing is Paid here and "on its way" on
- * the card. How it was sent is on its withdrawal row.
+ * can read. Money Stripe is still clearing is Paid here and on the strip; the
+ * card says when it can be withdrawn. How it was sent is on its withdrawal row.
  */
 export function earningStatus(row) {
   if (heldOnCancelledOrder(row)) return "Order cancelled";
@@ -114,7 +104,17 @@ export const waitingOnDetails = (attempt) => attempt.status === "processing" && 
 const askFor = (attempt) => FAILURE_NOTE.details_rejected[attempt.provider];
 
 /** What a failed attempt asks of this person, or nothing they can do. */
-export const failureNote = (attempt) => FAILURE_NOTE[attempt.failure_code]?.[attempt.provider] ?? "TSC will try again";
+export const failureNote = (attempt) => attempt.asked_to_check ?? FAILURE_NOTE[attempt.failure_code]?.[attempt.provider] ?? "TSC will try again";
+
+/**
+ * PayPal holds this payment for the address it was sent to, and the factory has
+ * since moved on from that address: the money does not follow it. Asking again
+ * would be wrong, and so would saying it is on its way. Staff take it back and
+ * pay again (the board says so).
+ */
+const sentToOldAddress = (attempt, method) => waitingOnDetails(attempt) && Boolean(method)
+  && (method.paypal_email ?? "").toLowerCase() !== (attempt.paid_to ?? "").toLowerCase();
+const WILL_RESEND = "TSC will send it again";
 
 const when = (row) => row.released_at || row.confirmed_at || row.created_at;
 
@@ -122,18 +122,19 @@ const when = (row) => row.released_at || row.confirmed_at || row.created_at;
  * A payment sent by anything but Stripe, as rows of its own: one per Wise or
  * PayPal attempt, or one for what staff marked paid by hand. Stripe's own
  * withdrawals come from Stripe. A failed one is drawn struck through: that money
- * never left.
+ * never left. An attempt that has not left TSC yet is no withdrawal: that money
+ * is on the row of its earning, and staff may still take it back.
  */
-export function withdrawalRows(earnings) {
+export function withdrawalRows(earnings, method = null) {
   return (earnings ?? []).flatMap((row) => {
     const owner = { brandOrgId: row.order?.brand_org_id, currency: row.currency };
-    const tried = attempts(row).map((attempt) => ({
+    const tried = attempts(row).filter((attempt) => attempt.status !== "processing" || attempt.money_left_at).map((attempt) => ({
       ...owner,
       id: `provider-${attempt.id}`,
       date: attempt.paid_at || attempt.created_at,
       title: attempt.provider === "paypal" ? "PayPal" : "Bank transfer",
       meta: attempt.paid_to,
-      note: attempt.status === "failed" ? failureNote(attempt) : waitingOnDetails(attempt) ? askFor(attempt) : null,
+      note: attempt.status === "failed" ? failureNote(attempt) : sentToOldAddress(attempt, method) ? WILL_RESEND : waitingOnDetails(attempt) ? askFor(attempt) : null,
       status: waitingOnDetails(attempt) ? "Waiting" : WITHDRAWAL_STATUS[attempt.status],
       failed: attempt.status === "failed",
       amount: -Number(attempt.amount_cents),
@@ -147,7 +148,7 @@ export function withdrawalRows(earnings) {
       date: when(row),
       title: payoneer ? "Payoneer" : "Bank transfer",
       meta: payoneer ? payoneer.paid_to_email
-        : bank?.paid_to_bank ? `${bank.paid_to_bank}${bank.paid_to_last4 ? ` ····${bank.paid_to_last4}` : ""}` : "",
+        : bank?.paid_to_bank ? `${bank.paid_to_bank}${bank.paid_to_last4 ? ` ending ${bank.paid_to_last4}` : ""}` : "",
       note: payoneer ? `Reference ${payoneer.payoneer_payment_id}` : staffBankNote(row) ? `Reference ${staffBankNote(row)}` : null,
       status: "Completed",
       failed: false,
@@ -158,23 +159,21 @@ export function withdrawalRows(earnings) {
 
 /**
  * What the card must raise, in the bell's words: the newest attempt on a payment
- * still owed, if it failed or is waiting on the factory's details. Nothing once
- * the details have changed since it asked.
+ * still owed, if it failed or is waiting on the factory's details. A failed one
+ * stops asking once the details change; nothing was sent, so nothing is left to
+ * say. A waiting one still has the money at the old address.
  */
 export function withdrawalProblem(earnings, method) {
   const attempt = (earnings ?? []).filter(toBeSent)
     .map((row) => [...attempts(row)].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0])
     .find((latest) => latest?.status === "failed" || (latest && waitingOnDetails(latest)));
   if (!attempt) return null;
-  const asked = attempt.details_asked_at ?? attempt.updated_at ?? attempt.created_at;
-  const fixable = attempt.failure_code === "details_rejected" || waitingOnDetails(attempt);
-  if (fixable && method?.details_changed_at && new Date(method.details_changed_at) > new Date(asked)) return null;
-  return {
-    fixable,
-    line: waitingOnDetails(attempt)
-      ? `Your payment of ${(Number(attempt.amount_cents) / 100).toLocaleString("en-US", { style: "currency", currency: attempt.currency ?? "USD" })} is waiting. ${askFor(attempt)}.`
-      : `A withdrawal failed. ${failureNote(attempt)}.`,
-  };
+  const amount = (Number(attempt.amount_cents) / 100).toLocaleString("en-US", { style: "currency", currency: attempt.currency ?? "USD" });
+  if (sentToOldAddress(attempt, method)) return { fixable: false, line: `Your payment of ${amount} is waiting. ${WILL_RESEND}.` };
+  if (waitingOnDetails(attempt)) return { fixable: true, line: `Your payment of ${amount} is waiting. ${askFor(attempt)}.` };
+  const fixable = Boolean(attempt.asked_to_check) || attempt.failure_code === "details_rejected";
+  if (fixable && method?.details_changed_at && new Date(method.details_changed_at) > new Date(attempt.updated_at ?? attempt.created_at)) return null;
+  return { fixable, line: `A withdrawal failed. ${failureNote(attempt)}.` };
 }
 
 /**

@@ -65,26 +65,24 @@ test("the ledger is fully paginated and the database query is factory-scoped", a
   assert.equal(result.payouts.length, 30);
   assert.equal(result.payouts.reduce((s, p) => s + p.allocations[0].amount, 0), 3000);
 });
-test("client summaries include only their allocated paid withdrawals; account balance stays separate", () => {
+test("each client's figures are its own payments, whatever Stripe says", () => {
   const rows = [
     { id: "a", state: "released", amount_cents: 1000, charged_cents: 1100, currency: "USD", stripe_transfer_id: "tr_a", order: { brand_org_id: "brand-a" } },
     { id: "b", state: "confirmed", amount_cents: 2000, currency: "USD", order: { brand_org_id: "brand-b" } },
   ];
-  const balance = { pendingEarnings: [{ paymentId: "a" }], payouts: [{ paid: true, amount: 200, currency: "EUR", allocations: [{ paymentId: "a", amount: 100 }] }] };
-  const a = earningsSummaryFor(rows, balance, "brand-a");
+  const a = earningsSummaryFor(rows, "brand-a");
   assert.deepEqual(a.total, [{ currency: "USD", amount: 1000 }]);
-  assert.deepEqual(a.pending, [], "paid through Stripe is not Pending: the card has it as on its way");
-  assert.deepEqual(a.paid, [{ currency: "EUR", amount: 100 }]);
-  assert.deepEqual(earningsSummaryFor(rows, balance, "brand-b").approval, [{ currency: "USD", amount: 2000 }]);
-  assert.deepEqual(earningsSummaryFor(rows, balance, "brand-b").paid, []);
-  assert.deepEqual(earningsSummaryFor(rows, balance, "All clients").paid, [{ currency: "EUR", amount: 200 }]);
-  assert.equal(earningsSummaryFor(rows, null, "brand-a").paid, null);
+  assert.deepEqual(a.pending, [], "paid through Stripe is not Pending");
+  assert.deepEqual(a.paid, [{ currency: "USD", amount: 1000 }], "it is Paid out, in the order's currency");
+  assert.deepEqual(earningsSummaryFor(rows, "brand-b").approval, [{ currency: "USD", amount: 2000 }]);
+  assert.deepEqual(earningsSummaryFor(rows, "brand-b").paid, []);
+  assert.deepEqual(earningsSummaryFor(rows, "All clients").paid, [{ currency: "USD", amount: 1000 }]);
 });
 test("a card payment TSC paid out by bank counts as paid out, and never as a balance", () => {
   const rows = [
     { id: "bank", state: "released", amount_cents: 6500, charged_cents: 6955, stripe_transfer_id: null, currency: "USD", order: { brand_org_id: "brand-a" } },
   ];
-  assert.deepEqual(earningsSummaryFor(rows, null, "All clients").paid, [{ currency: "USD", amount: 6500 }]);
+  assert.deepEqual(earningsSummaryFor(rows, "All clients").paid, [{ currency: "USD", amount: 6500 }]);
   assert.equal(earningStatus(rows[0]), "Paid");
 });
 test("an earning Stripe is still processing is pending, not credited to the balance", () => {
@@ -94,30 +92,20 @@ test("an earning Stripe is still processing is pending, not credited to the bala
   assert.equal(earningStatus({ state: "confirmed" }), "Awaiting approval");
 });
 test("before the earnings are read, every figure is unknown, never zero", () => {
-  assert.deepEqual(earningsSummaryFor(null, undefined, "All clients"), { total: undefined, approval: undefined, pending: undefined, paid: undefined });
-  assert.deepEqual(earningsSummaryFor(null, { payouts: [] }, "All clients").total, undefined);
+  assert.deepEqual(earningsSummaryFor(null, "All clients"), { total: undefined, approval: undefined, pending: undefined, paid: undefined });
 });
-test("Paid out waits for Stripe only when TSC paid an earning through it", () => {
-  const stripe = [
+test("the figures never wait for Stripe and add up; only the withdrawals do", () => {
+  const rows = [
     { id: "s", state: "released", amount_cents: 6500, stripe_transfer_id: "tr_s", currency: "USD", order: { brand_org_id: "brand-a" } },
     { id: "r", state: "confirmed", amount_cents: 1000, release_requested_at: "x", currency: "USD", order: { brand_org_id: "brand-b" } },
     { id: "b", state: "released", amount_cents: 300, stripe_transfer_id: null, currency: "USD", order: { brand_org_id: "brand-b" } },
   ];
-  // Still loading: unknown, not the bank or database part alone.
-  const loading = earningsSummaryFor(stripe, undefined, "All clients");
-  assert.deepEqual(loading.total, [{ currency: "USD", amount: 7800 }]);
-  assert.deepEqual(loading.pending, [{ currency: "USD", amount: 1000 }], "Pending needs only the payments, so it never waits");
-  assert.equal(loading.paid, undefined);
-  // Even for a client with no Stripe earnings: the account's withdrawals may still be its.
-  assert.equal(earningsSummaryFor(stripe, undefined, "brand-b").paid, undefined);
-  // Could not be read: shown as such.
-  assert.equal(earningsSummaryFor(stripe, null, "All clients").paid, null);
-  assert.equal(stripeRelevant(stripe), true);
-  // Bank-paid only, or paid nothing through Stripe yet: never waits.
-  const bank = stripe.slice(1);
-  assert.equal(stripeRelevant(bank), false);
-  assert.deepEqual(earningsSummaryFor(bank, undefined, "All clients").pending, [{ currency: "USD", amount: 1000 }]);
-  assert.deepEqual(earningsSummaryFor(bank, undefined, "All clients").paid, [{ currency: "USD", amount: 300 }]);
-  assert.deepEqual(earningsSummaryFor([], undefined, "All clients").paid, []);
+  const all = earningsSummaryFor(rows, "All clients");
+  assert.deepEqual(all.total, [{ currency: "USD", amount: 7800 }]);
+  assert.deepEqual(all.pending, [{ currency: "USD", amount: 1000 }]);
+  assert.deepEqual(all.paid, [{ currency: "USD", amount: 6800 }]);
+  assert.equal(stripeRelevant(rows), true);
+  assert.equal(stripeRelevant(rows.slice(1)), false);
+  assert.deepEqual(earningsSummaryFor([], "All clients").paid, []);
   assert.equal(stripeRelevant(null), false);
 });

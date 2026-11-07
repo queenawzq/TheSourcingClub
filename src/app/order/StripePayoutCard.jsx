@@ -338,8 +338,8 @@ export default function StripePayoutCard({
   const currency = balanceCurrency(balance);
   const available = amountIn(balance?.available, currency);
   const pending = amountIn(balance?.pending, currency);
-  // Nothing to withdraw yet, but money on its way: that is the balance to
-  // show, with the day it can be withdrawn, rather than a bare 0.00.
+  // Nothing to withdraw yet, but money coming: that is the balance to show,
+  // with the day it can be withdrawn, rather than a bare 0.00.
   const arriving = Boolean(balance) && available <= 0 && pending > 0;
   const recoveryCurrency = balanceCurrency(balance?.recovery);
   const recoveryAvailable = amountIn(balance?.recovery?.available, recoveryCurrency);
@@ -730,8 +730,8 @@ export default function StripePayoutCard({
             <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
           ) : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
             ? [
-              // Paid, and still on its way to the balance: the figure and its day.
-              pending > 0 ? `${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} on its way${arrivesOn ? ` · ${arrivesOn}` : ""}` : null,
+              // Paid, and not in the balance yet. Not a withdrawal: it has no row until one is made.
+              pending > 0 ? `${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} ${arrivesOn ? `available ${arrivesOn}` : "not available yet"}` : null,
               // Orders are in USD; an account is credited in its own currency.
               currency !== "USD" ? `Paid in ${currency}` : null,
               account?.transfers_active && !account.payouts_enabled ? "Finish setup to withdraw" : null,

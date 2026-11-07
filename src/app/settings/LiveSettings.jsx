@@ -153,7 +153,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
             label: method.default ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Debit card" : "Bank account",
             name: `${method.type === "card" ? "Debit card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`,
             note: [method.name, method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
-          })) : [{ label: "Connected", name: "Payout account", note: "Managed securely through your connected payout account." }]);
+          })) : [{ label: "Connected", name: "Withdrawal account" }]);
         } else {
           setPayoutMethods(manualAccounts.map((account) => (account.method === "payoneer" ? {
             id: account.id,

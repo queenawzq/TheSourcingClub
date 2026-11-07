@@ -143,7 +143,7 @@ export async function payoutsOnTheirWay(stripe, accountId) {
 export async function removePayoutMethod(stripe, accountId, { methodId, promoteId }) {
   const { data } = await stripe.accounts.listExternalAccounts(accountId, { limit: 20 });
   const target = data.find((method) => method.id === methodId);
-  if (!target) throw new PayoutMethodRefusal("That payout method is no longer listed. It may have been removed already.");
+  if (!target) throw new PayoutMethodRefusal("That withdrawal method is no longer listed. It may have been removed already.");
   const onItsWay = (await payoutsOnTheirWay(stripe, accountId)).find((payout) => payout.destination === methodId);
   if (onItsWay) throw new PayoutMethodRefusal("A withdrawal is on its way to this account. You can remove it once it arrives.");
   if (target.default_for_currency) {
@@ -151,8 +151,8 @@ export async function removePayoutMethod(stripe, accountId, { methodId, promoteI
     const next = sameCurrency.find((method) => method.id === promoteId) ?? sameCurrency[0];
     if (!next) {
       throw new PayoutMethodRefusal(data.length <= 1
-        ? "Stripe keeps one payout method on file. Add the new one first, then remove this one."
-        : `This is your only ${target.currency.toUpperCase()} payout method. Add another ${target.currency.toUpperCase()} one first, then remove this one.`);
+        ? "One withdrawal method must stay on file. Add the new one first, then remove this one."
+        : `This is your only ${target.currency.toUpperCase()} withdrawal method. Add another ${target.currency.toUpperCase()} one first, then remove this one.`);
     }
     await stripe.accounts.updateExternalAccount(accountId, next.id, { default_for_currency: true });
   }

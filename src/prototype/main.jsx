@@ -2875,7 +2875,7 @@ export function SettingsScreen({
                   </div>
                 ))}
                 {paymentTab === "earnings" && (onAddPaymentMethod || paymentLocked) ? (
-                  <button className="settings-add-btn" type="button" onClick={onAddPaymentMethod} disabled={Boolean(paymentLocked) || undefined} title={paymentLocked || undefined}>Manage payout methods</button>
+                  <button className="settings-add-btn" type="button" onClick={onAddPaymentMethod} disabled={Boolean(paymentLocked) || undefined} title={paymentLocked || undefined}>Withdrawal methods</button>
                 ) : null}
               </>
             ) : livePaymentMethods?.length === 0 ? (

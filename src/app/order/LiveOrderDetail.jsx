@@ -171,9 +171,9 @@ function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, po
     // side is told which it is.
     const held = payment?.state === "confirmed" ? ` · ${money}` : "";
     if (isFactory) {
-      return posted
-        ? `Awaiting the brand's approval${held}`
-        : `Nothing posted yet${held}`;
+      if (!posted) return `Nothing posted yet${held}`;
+      // Funded, the payment's word already says it: one, not the same thing twice.
+      return held ? money : "Awaiting the brand's approval";
     }
     const mayApprove = canApprove && (milestone.kind !== "approval_and_payment" || canFund);
     if (posted) return `${mayApprove ? "Ready for your approval" : "Ready for approval"}${held}`;

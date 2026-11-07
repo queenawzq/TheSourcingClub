@@ -22,7 +22,7 @@ const COLUMNS = "id, is_primary, method, payoneer_email, paypal_email, wise_reci
 
 // The database's refusals, in the owner's words. No raise there carries a value.
 const SAVE_REFUSALS = {
-  payout_owner_only: "Only a company owner can change payout methods.",
+  payout_owner_only: "Only a company owner can change withdrawal methods.",
   bank_details_missing: "Add the account holder and the bank so TSC can pay you.",
   swift_format: "A SWIFT / BIC is 8 or 11 letters and digits.",
   country_missing: "Name your bank's country in the instructions.",
@@ -33,7 +33,7 @@ const SAVE_REFUSALS = {
   number_in_field: "Your account number belongs only in the account number field.",
   name_not_latin: "Enter the name on the account in English letters.",
   wise_form_invalid: "Couldn't save your bank details right now. Nothing changed. Try again.",
-  payout_not_bank: "That payout method is not a bank account.",
+  payout_not_bank: "That withdrawal method is not a bank account.",
 };
 
 export const blankPayout = (row) => ({

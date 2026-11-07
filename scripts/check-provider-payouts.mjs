@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { paypalFrom, PAYPAL_UNCLAIMED } from "../api/_paypal.js";
-import { cancelAttempt, FUND_IN_WISE, paypalPay, syncAttempts, wisePay, wisePreview } from "../api/_provider-payouts.js";
+import { cancelAttempt, checkWords, FUND_IN_WISE, paypalPay, syncAttempts, wisePay, wisePreview } from "../api/_provider-payouts.js";
 import { PayoutFailure, withoutSecrets } from "../api/_payout-provider.js";
 import { wiseFrom, WISE_STATES } from "../api/_wise.js";
 import { ensureWiseRecipient, recipientBody } from "../api/_wise-recipient.js";
@@ -310,6 +310,10 @@ const paypalPress = (paypal, db) => paypalPay({ paypal, caller: db.caller, db, p
   assert.equal(answer.done, "paid", "SUCCESS on the item is paid");
   assert.equal(db.payout.status, "paid");
 }
+// The factory is told which detail, in our words, never Wise's.
+assert.equal(checkWords("Wise refused this: Please enter a valid SWIFT code."), "Check your SWIFT code");
+assert.equal(checkWords("Wise refused this: Account number is not valid."), "Check your account number");
+assert.equal(checkWords("Wise refused this: Something else entirely."), "Check your bank details");
 {
   // The batch says SUCCESS and the item UNCLAIMED: not paid, said, factory told once.
   const fake = fakePaypal({ item: "UNCLAIMED" }); const db = fakeDb();

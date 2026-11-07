@@ -55,14 +55,12 @@ const cardBrand = (brand) => (brand ? brand.charAt(0).toUpperCase() + brand.slic
 const cardExpiry = (card) => (card.expMonth && card.expYear ? `Expires ${String(card.expMonth).padStart(2, "0")}/${card.expYear}` : "");
 
 /**
- * What a factory paid through Stripe is told under its figures while Stripe
- * has not given them: slow (the placeholders stay), failed, or not readable
- * by anyone but an owner. Our own figures never wait for any of these.
+ * What a factory paid through Stripe is told while Stripe has not given its
+ * withdrawals: slow, or failed. The figures are the payments' own and never wait.
  */
 const STRIPE_FIGURES_TEXT = {
   slow: "Still loading.",
-  failed: "Couldn't load Paid out and withdrawals. Try again shortly.",
-  owner: "Only a company owner can see Paid out and withdrawals.",
+  failed: "Couldn't load withdrawals. Try again shortly.",
 };
 
 /** A grey bar where a figure will be, sized like it; nothing is guessed. */
@@ -225,7 +223,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       paymentRows = unwrap(
         await supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, details_asked_at, created_at, updated_at, paid_at)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, details_asked_at, money_left_at, asked_to_check, created_at, updated_at, paid_at)")
           .in("order_id", orders.map((order) => order.id))
           .order("created_at", { ascending: false }),
         "load your earnings",
@@ -289,14 +287,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
   const visibleEarnings = client === "All clients"
     ? fundedEarnings
     : fundedEarnings.filter((row) => row.order?.brand_org_id === client);
-  // Earnings are the orders' amounts, in the order's currency; Paid out is
-  // what reached the bank, in the currency Stripe paid it in. Neither is
-  // converted into the other, so an empty figure is a zero in the earnings'
-  // currency, and a strip holding two currencies says why.
   const earningsShown = cardSettled || accountsError ? earnings : null;
-  const summary = earningsSummaryFor(earningsShown, stripeBalance, client);
-  // Whether the Stripe-read figures (Pending, Paid out, withdrawals) wait for
-  // Stripe at all, and if so, what to say while they cannot be shown.
+  const summary = earningsSummaryFor(earningsShown, client);
+  // Whether the withdrawals wait for Stripe at all, and if so, what to say
+  // while they cannot be shown. Only an owner reads them.
   const needsStripe = stripeRelevant(earningsShown);
   const stripeFigures = !needsStripe || stripeBalance ? null
     : stripeBalance === undefined ? (stripeStatus === "slow" ? "slow" : "loading")
@@ -329,7 +323,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       currency: row.currency,
       available: earningStatus(row) === "Paid",
     })),
-    ...withdrawalRows(visibleEarnings).map((row) => ({
+    ...withdrawalRows(visibleEarnings, payouts.primary).map((row) => ({
       ...row,
       type: "withdrawal",
       available: !row.failed,
@@ -438,7 +432,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             {earningsSummary.map(([label, amounts], index) => (
               <div className={`metric${index === 0 ? " highlight" : ""}`} key={label}>
                 <strong>{amounts === undefined ? <FigurePlaceholder label={label} />
-                  : amounts === null ? "—" : <span className="payment-currency-value">{formatMoney(payoutUsdTotal(amounts, stripeBalance?.displayFx), "USD")}</span>}</strong>
+                  : <span className="payment-currency-value">{formatMoney(payoutUsdTotal(amounts, stripeBalance?.displayFx), "USD")}</span>}</strong>
                 <span className="payment-metric-label">{label}</span>
               </div>
             ))}
@@ -477,7 +471,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
                 ))}
               </div>
             ) : <p className="projects-empty">{transactionType === "withdrawal"
-              ? stripeFigures ? "Couldn't load withdrawals. Try again shortly." : "No withdrawals yet."
+              ? stripeFigures === "owner" ? "Only a company owner can see these." : stripeFigures ? "Couldn't load withdrawals. Try again shortly." : "No withdrawals yet."
               : "No transactions yet."}</p>}
           </section>
           </>}

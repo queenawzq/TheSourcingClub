@@ -8,7 +8,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(45);
+select plan(51);
 
 set local session_replication_role = replica;
 
@@ -153,12 +153,21 @@ select is((select count(*)::int from public.notifications where subject_id = '78
 -- It came back after it went: owed again, and the factory is told otherwise.
 select lives_ok($$ select public.finish_provider_payout((select id from public.provider_payouts where payment_id = '78f00000-0000-0000-0000-000000000001'), 'failed', 'details_rejected', 'bounced_back', 'returned', null, null, 'Check your bank details') $$, 'the transfer bounces');
 select is((select state::text from public.order_payments where id = '78f00000-0000-0000-0000-000000000001'), 'confirmed', 'owed again');
+select is((select asked_to_check from public.provider_payouts where payment_id = '78f00000-0000-0000-0000-000000000001' and status = 'failed' order by created_at desc limit 1), 'Check your bank details', 'the row keeps what the bell asked');
 
 -- After a certain failure, a new attempt has a new key.
 reset role; select pg_temp.act_as(5); set local role authenticated;
 select isnt((pg_temp.press() ->> 'key')::uuid, (select attempt_key from first_key), 'a new attempt never replays the old key');
 
 -- An attempt that never reached a provider is staff's: the factory doesn't read it.
+-- Money has left only once a provider says so: an unfunded transfer has not.
+reset role; set local role service_role;
+select lives_ok($$ select public.record_provider_attempt((select id from public.provider_payouts where payment_id = '78f00000-0000-0000-0000-000000000001' and status = 'processing'), 'awaiting_funding', 'T-1') $$, 'a transfer nobody has funded');
+select is((select money_left_at from public.provider_payouts where payment_id = '78f00000-0000-0000-0000-000000000001' and status = 'processing'), null, 'has not left');
+select lives_ok($$ select public.record_provider_attempt((select id from public.provider_payouts where payment_id = '78f00000-0000-0000-0000-000000000001' and status = 'processing'), 'sent') $$, 'funded');
+select isnt((select money_left_at from public.provider_payouts where payment_id = '78f00000-0000-0000-0000-000000000001' and status = 'processing'), null, 'it has');
+select ok(pg_get_functiondef('public.record_payment_released(uuid, text)'::regprocedure) !~* 'stripe account', 'the email on a Stripe payout does not say Stripe');
+
 reset role; set local role service_role;
 select lives_ok($$ select public.finish_provider_payout((select id from public.provider_payouts where payment_id = '78f00000-0000-0000-0000-000000000001' and status = 'processing'), 'cancelled', null, 'short_balance', 'short') $$, 'cancelled before any provider call');
 select is((select state::text from public.order_payments where id = '78f00000-0000-0000-0000-000000000001'), 'confirmed', 'still owed');
