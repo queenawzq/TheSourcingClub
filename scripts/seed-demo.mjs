@@ -126,10 +126,9 @@ const adminUser = await demoUser(LOGINS.admin);
 const brandMember = await demoUser(LOGINS.brandMember);
 const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
-const chinaPaypalFactory = await demoUser(LOGINS.chinaPaypalFactory);
 const chinaNewFactory = await demoUser(LOGINS.chinaNewFactory);
 const switcher = await demoUser(LOGINS.switcher);
-const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaPaypalFactory, chinaNewFactory, admin: adminUser };
+const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -493,12 +492,13 @@ must(await admin.from("factory_certifications").insert({
 // every other demo login. The invite guard refuses a company's own email
 // domain before it says whether an address has an account, so this is the
 // one address a demo company can invite and be told "already has a Sourcing
-// Club account". Not published: it is not one of Browse's factories.
+// Club account". Not published: it is not one of Browse's factories. In
+// mainland China, and paid through PayPal (below).
 const otherDomainOrg = must(await otherDomainFactory.client.rpc("create_org", { org_name: LOGINS.otherDomainFactory.name, org_kind: "factory" }), "create other-domain factory org");
 must(await admin.from("factory_profiles").upsert({
   org_id: otherDomainOrg.id,
-  country_code: "GB",
-  location: "Bradford, UK",
+  country_code: "CN",
+  location: "Suzhou, China",
   moq: 300,
   typical_lead_days: 42,
   intro: "Worsted and woollen cloth, 300-metre minimums.",
@@ -508,21 +508,14 @@ must(await admin.from("factory_profiles").upsert({
 must(await admin.from("credit_ledger").insert({
   org_id: otherDomainOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",
 }), "other-domain factory credits");
-// Two verified factories in mainland China, not published: the ways a factory
-// there is paid, end to end. Each has an order below.
-const chinaOrgs = {};
-for (const [person, login, location] of [
-  [chinaPaypalFactory, LOGINS.chinaPaypalFactory, "Suzhou, China"],
-  [chinaNewFactory, LOGINS.chinaNewFactory, "Hangzhou, China"],
-]) {
-  const org = must(await person.client.rpc("create_org", { org_name: login.name, org_kind: "factory" }), `create ${login.name}`);
-  chinaOrgs[login.email] = org;
-  must(await admin.from("factory_profiles").upsert({
-    org_id: org.id, country_code: "CN", location, moq: 200, typical_lead_days: 35,
-    intro: "Test factory.", onboarding_completed_at: new Date().toISOString(), verification_status: "verified",
-  }), `${login.name} profile`);
-  must(await admin.from("credit_ledger").insert({ org_id: org.id, delta: 500, reason: "onboarding_grant", note: "Profile verified" }), `${login.name} credits`);
-}
+// A verified factory in mainland China, not published, with no withdrawal
+// method yet: its money waits until it sets one up (its order is below).
+const chinaNewOrg = must(await chinaNewFactory.client.rpc("create_org", { org_name: LOGINS.chinaNewFactory.name, org_kind: "factory" }), "create the new China factory");
+must(await admin.from("factory_profiles").upsert({
+  org_id: chinaNewOrg.id, country_code: "CN", location: "Hangzhou, China", moq: 200, typical_lead_days: 35,
+  intro: "Test factory.", onboarding_completed_at: new Date().toISOString(), verification_status: "verified",
+}), "the new China factory's profile");
+must(await admin.from("credit_ledger").insert({ org_id: chinaNewOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified" }), "the new China factory's credits");
 // A factory staff sent back: "Needs information" with the kind of note staff
 // actually write, a paragraph and a list, long enough that its finish card
 // must grow to hold it. The decision goes through the admin's own call, so
@@ -1208,18 +1201,16 @@ must(await secondFactory.client.rpc("save_wise_payout_account", {
   recipient_type: "chinese_local_business",
   currency: "CNY",
   details: {
-    legalType: "BUSINESS", accountHolderName: `${LOGINS.secondFactory.name} Co Ltd`, swiftCode: "BOSHCNSH",
+    legalType: "BUSINESS", accountHolderName: `${LOGINS.secondFactory.name} Co Ltd`, swiftCode: "BKCHCNBJ",
     "address.country": "CN", "address.city": "Ningbo", "address.firstLine": "1 Test Road",
   },
   number_key: "accountNumber",
   account_number: "0000 0000 0000 1234", account_number_again: "0000 0000 0000 1234",
 }), "the second factory's payout details");
-// Lakeside Mills saved its bank account when the form took only the last four:
-// its Payments page says TSC can't pay it yet and asks for the full number.
+// Lakeside Mills is in mainland China and paid through PayPal.
 must(await otherDomainFactory.client.from("factory_payout_accounts").insert({
-  org_id: otherDomainOrg.id, label: "Demo account", bank_name: "Lakeside Test Bank",
-  account_name: LOGINS.otherDomainFactory.name, account_number_last4: "0000", bank_country: "CN", is_primary: true,
-}), "the last-four-only factory's payout details");
+  org_id: otherDomainOrg.id, method: "paypal", paypal_email: "lakeside-payouts@example.net", is_primary: true,
+}), "Lakeside's PayPal account");
 const seersuckerTitle = "Seersucker camp shirt, AW27";
 const seersucker = await runningOrder({
   title: seersuckerTitle, brief: "180 cotton seersucker camp-collar shirts.", quantity: 180, unitPrice: 1900,
@@ -1258,19 +1249,16 @@ const cord = await runningOrder({
   vendor: tradingCompany, vendorOrg: tradingOrg,
 });
 await funded(await dueNow(cord, cordTitle), CARD);
-// 8. Suzhou Test Silk (China, PayPal) has an approved fit sample waiting on
-//    staff. Hangzhou Test Knit (China) has one too and no withdrawal method:
-//    its money waits until it sets one up.
-must(await chinaPaypalFactory.client.from("factory_payout_accounts").insert({
-  org_id: chinaOrgs[LOGINS.chinaPaypalFactory.email].id, method: "paypal", paypal_email: "suzhou-payouts@example.com", is_primary: true,
-}), "the China factory's PayPal account");
-for (const [title, person, login] of [
-  ["Silk charmeuse blouse, AW27", chinaPaypalFactory, LOGINS.chinaPaypalFactory],
-  ["Merino crew knit, AW27", chinaNewFactory, LOGINS.chinaNewFactory],
+// 8. Lakeside Mills (China, PayPal) has an approved fit sample waiting on staff.
+//    Hangzhou Test Knit (China) has one too and no withdrawal method: its money
+//    waits until it sets one up.
+for (const [title, person, org] of [
+  ["Silk charmeuse blouse, AW27", otherDomainFactory, otherDomainOrg],
+  ["Merino crew knit, AW27", chinaNewFactory, chinaNewOrg],
 ]) {
   const order = await runningOrder({
     title, brief: "100 pieces, test order.", quantity: 100, unitPrice: 3000,
-    vendor: person, vendorOrg: chinaOrgs[login.email],
+    vendor: person, vendorOrg: org,
   });
   await funded(await dueNow(order, title), CARD);
   await approveOpenStep(order, title, person);
@@ -1361,8 +1349,7 @@ done. Every login uses the password "${PASSWORD}".
   new brand       ${LOGINS.newBrand.email}   (no requests yet: recommended factories)
   second brand    ${LOGINS.secondBrand.email}   (five open requests, nothing paid: Browse RFQs' filters)
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory
-  other domain    ${LOGINS.otherDomainFactory.email}   (invite it from another demo company: "already has an account")
-  China, PayPal   ${LOGINS.chinaPaypalFactory.email}
+  other domain    ${LOGINS.otherDomainFactory.email}   (China, PayPal; invite it from another demo company: "already has an account")
   China, new      ${LOGINS.chinaNewFactory.email}   (money waiting, no withdrawal method yet)
   three companies ${LOGINS.switcher.email}   (${LOGINS.brand.name}, ${LOGINS.newBrand.name}, ${LOGINS.factory.name}: the sidebar switches)
   admin           ${LOGINS.admin.email}   ${app.replace("app.html", "admin.html")}
