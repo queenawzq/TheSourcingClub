@@ -80,7 +80,7 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
       getPayment(orderId, paymentId),
       listPayments(orderId),
     ]);
-    if (!order || !payment) throw new Error("that payment is not available to you");
+    if (!order || !payment) throw new Error("That payment is not available to you.");
 
     // The order's first paid step is the design's "first payment"; any later
     // one is funded as "Fund <step>".
@@ -441,6 +441,7 @@ function Funded({ payment, checkout = null, isFirst, paymentOnly = false, rail, 
   return (
     <FlowShell
       screen="success"
+      fundingMilestone={{ title: step, amount: total, railStep: step }}
       heading={!paid ? {
         eyebrow: "FUND",
         title: "Payment on its way",

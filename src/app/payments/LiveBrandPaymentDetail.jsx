@@ -3,6 +3,7 @@ import { getOrder } from "../../lib/domain/order.js";
 import { can, permissionHint } from "../../lib/domain/org.js";
 import { chargedCents, getPayment } from "../../lib/domain/payment.js";
 import { useAuth } from "../../lib/auth.jsx";
+import { dateFrom } from "../../lib/dates.js";
 import { formatMoney } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { paymentStatusWord } from "./brand-payments-view.js";
@@ -68,7 +69,10 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
       status: statusWord(payment),
       statusKey: statusWord(payment).toLowerCase().replaceAll(" ", "-"),
       failure: failureLine(payment),
-      date: date(activityDate(payment)),
+      // A due payment is dated when it falls due, as on the list; the rest when they moved.
+      date: payment.state === "due" && payment.order_milestones?.due_on
+        ? dateFrom(payment.order_milestones.due_on).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : date(activityDate(payment)),
       method: methodLabel(payment),
       milestone: formatMoney(payment.amount_cents, payment.currency),
       fee: formatMoney(fee, payment.currency),

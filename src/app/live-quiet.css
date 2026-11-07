@@ -142,6 +142,15 @@
   text-overflow: clip;
 }
 
+.brand-payment-pay-again {
+  display: block;
+}
+
+/* A panel's header without its sentence. */
+.factory-dashboard-panel > header {
+  min-height: 0;
+}
+
 /* Settings: Change password is a button, not a banner. */
 .settings-page-shell #settings-security button.secondary-btn {
   width: auto;
