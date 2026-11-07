@@ -260,9 +260,10 @@ const pay = (wise, db, extra = {}) => wisePay({ wise, caller: db.caller, db, row
 }
 {
   // A recipient refused is the factory's to fix, and it says which field.
-  const fake = fakeWise({ failNext: [{ match: "POST /v1/accounts", status: 422, body: { errors: [{ code: "NOT_VALID", message: "Please enter a valid SWIFT code." }] } }] }); const db = fakeDb();
+  const fake = fakeWise({ failNext: [{ match: "POST /v1/accounts", status: 422, body: { errors: [{ code: "NOT_VALID", path: "swiftCode", arguments: ["swiftCode", "BADSWIFT"], message: "Please enter a valid SWIFT code." }, { code: "NOT_VALID", path: "not a key 6200000000000000" }] } }] }); const db = fakeDb();
   const wise = wiseFrom(WISE_ENV, fake.fetchImpl);
-  await assert.rejects(wisePreview({ wise, caller: db.caller, db, row, cnyConfirmed: true }), (f) => f.kind === "details_rejected" && /valid SWIFT/.test(f.message));
+  // The field's key travels to the factory's row; the value typed and anything not shaped like a key don't.
+  await assert.rejects(wisePreview({ wise, caller: db.caller, db, row, cnyConfirmed: true }), (f) => f.kind === "details_rejected" && /valid SWIFT/.test(f.message) && f.fields.length === 1 && f.fields[0] === "swiftCode");
 }
 {
   // A recipient already made: the number isn't read again.

@@ -9,14 +9,18 @@
  */
 export const PROVIDER_CALL_MS = 8000;
 
+/** A field's key and nothing else: this reaches a row the factory reads. */
+export const isFieldKey = (value) => typeof value === "string" && /^[A-Za-z][A-Za-z0-9._]{0,59}$/.test(value);
+
 export class PayoutFailure extends Error {
-  constructor(kind, sentence, { unsure = false, status = null, detail = null } = {}) {
+  constructor(kind, sentence, { unsure = false, status = null, detail = null, fields = null } = {}) {
     super(sentence);
     this.name = "PayoutFailure";
     this.kind = kind;
     this.unsure = unsure;
     this.status = status;
     this.detail = detail;
+    this.fields = fields;
   }
 }
 

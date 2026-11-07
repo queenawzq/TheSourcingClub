@@ -15,7 +15,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(128);
+select plan(129);
 
 set local session_replication_role = replica;
 
@@ -290,6 +290,7 @@ select is((select count(*)::int from public.payout_number_reveal_log() where org
 select is((select account_number from public.reveal_payout_account_number((select id from p66))), '0000000000001234', 'staff read the number while a payout is owed');
 select is((select staff_email || ' ' || last4 from public.payout_number_reveal_log() where org_name = 'P66 Mill'), 'p66-staff@example.com 1234', 'and it says who, and which account');
 select is((select count(*)::int from public.payout_number_reveal_log() where org_name = 'P66 Mill'), 1, 'one read, one record');
+select is((select how from public.payout_number_reveal_log() where org_name = 'P66 Mill'), 'shown', 'and it says the number was shown, not sent to Wise');
 select is((select last_viewed_by from public.admin_payment_board() where payment_id = '66800000-0000-0000-0000-000000000001'), 'p66-staff@example.com', 'the row says who looked last');
 select throws_ok($$ update public.payout_number_reveals set staff_email = 'x' $$, '42501', null, 'staff cannot rewrite the record');
 select throws_ok($$ delete from public.payout_number_reveals $$, '42501', null, 'nor delete it');

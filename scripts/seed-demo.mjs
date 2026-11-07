@@ -1160,12 +1160,24 @@ async function funded(payment, [type, label]) {
 }
 /**
  * Funded with a real test charge, so Stripe can pay this one out: a transfer
- * draws on its charge, and funded()'s has none. Without a test key it is funded()
- * and the board says it needs paying by bank.
+ * draws on its charge, and funded()'s has none. The key is the shell's, else
+ * .env.local's. Without a test key it is funded(), and it says so.
  */
+function stripeTestKey() {
+  let key = process.env.STRIPE_SECRET_KEY ?? "";
+  if (!key) {
+    try {
+      key = readFileSync(".env.local", "utf8").match(/^STRIPE_SECRET_KEY=["']?([^"'\s]+)/m)?.[1] ?? "";
+    } catch { /* no .env.local: the shell is the only place to look */ }
+  }
+  return key.startsWith("sk_test_") ? key : "";
+}
 async function fundedByStripe(payment, method) {
-  const key = process.env.STRIPE_SECRET_KEY ?? "";
-  if (!key.startsWith("sk_test_")) return funded(payment, method);
+  const key = stripeTestKey();
+  if (!key) {
+    console.warn("No Stripe test key: the poplin deposit has no charge, so Stripe can't pay it and the staff board says so.");
+    return funded(payment, method);
+  }
   const stripe = new Stripe(key);
   const total = await charged(payment);
   const intent = await stripe.paymentIntents.create({
