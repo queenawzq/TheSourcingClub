@@ -36,17 +36,27 @@
  * database (or reads the payment as the caller, for the Stripe routes) before
  * it touches a row, so this page cannot grant itself anything.
  */
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { createContext, useContext, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../lib/auth.jsx";
 import {
-  confirmPaymentReceived, paymentBoard, payoutNumberRevealLog, rejectPaymentSent, releasePayment, releasePaymentByPayoneer, revealPayoutNumber,
+  confirmPaymentReceived, paymentBoard, rejectPaymentSent, releasePayment, releasePaymentByPayoneer, revealPayoutNumber,
 } from "../../lib/domain/payment.js";
 import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
-import { useRouter } from "../../lib/router.jsx";
+import { dateFrom } from "../../lib/dates.js";
 import "./admin.css";
+import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
 
 const when = (value) => (value ? new Date(value).toLocaleString() : "—");
+
+function PaymentDate({ value }) {
+  const date = dateFrom(value);
+  if (!date) return <span className="admin-sub">—</span>;
+  return <time className="payment-date" dateTime={date.toISOString()} title={date.toLocaleString()}>
+    <span>{date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+    <span className="admin-sub">{date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}</span>
+  </time>;
+}
 
 /** The row's own date for the section it is in. */
 const ROW_TIME = {
@@ -63,6 +73,9 @@ const paidByStripe = (row) => row.factory_stripe_ready && row.stripe_payment_int
 const paidByPayoneer = (row) => !paidByStripe(row) && row.payout_method === "payoneer";
 const paidByBank = (row) => !paidByStripe(row) && !paidByPayoneer(row);
 
+const PayoutNumberContext = createContext(revealPayoutNumber);
+export const PayoutNumberProvider = PayoutNumberContext.Provider;
+
 const REVEAL_SHOWN_MS = 60000;
 const REFERENCE_MIN = 3;
 const bankCountry = new Intl.DisplayNames(["en"], { type: "region" });
@@ -75,6 +88,7 @@ function agoWords(value) {
 
 /** The number stays here, in this one cell, until it hides. Never on the row, never stored. */
 function AccountNumber({ row, onViewed }) {
+  const revealNumber = useContext(PayoutNumberContext);
   const [shown, setShown] = useState(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState(null);
@@ -91,7 +105,7 @@ function AccountNumber({ row, onViewed }) {
     setBusy(true);
     setProblem(null);
     try {
-      const answer = await revealPayoutNumber(row.payout_account_id);
+      const answer = await revealNumber(row.payout_account_id);
       onViewed?.();
       if (answer.changed_at !== row.payout_changed_at) {
         setProblem("These details changed since this page loaded. Reload the page and check them.");
@@ -119,14 +133,14 @@ function AccountNumber({ row, onViewed }) {
     <span className="admin-payout-number">
       {shown ? (
         <>
-          <code data-testid="revealed-number">{shown.account_number}</code>
-          <button type="button" className="quiet-btn" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
-          <button type="button" className="quiet-btn" onClick={hide}>Hide</button>
+          <PayoutField label="Account number"><span data-testid="revealed-number">{shown.account_number}</span></PayoutField>
+          <span className="payout-number-actions"><button type="button" className="admin-link payout-text-action" onClick={copy}>{copied ? "Copied" : "Copy"}</button>
+          <button type="button" className="admin-link payout-text-action" onClick={hide}>Hide</button></span>
         </>
       ) : (
         <>
-          <span>{`Account ····${row.payout_last4 ?? ""}`}</span>
-          <button type="button" className="quiet-btn" disabled={busy} data-testid="reveal-number" title="Your name is recorded each time" onClick={reveal}>
+          <PayoutField label="Account number">{`····${row.payout_last4 ?? ""}`}</PayoutField>
+          <button type="button" className="admin-link payout-text-action" disabled={busy} data-testid="reveal-number" title="Your name is recorded each time" onClick={reveal}>
             {busy ? "Showing…" : "Show number"}
           </button>
         </>
@@ -136,14 +150,17 @@ function AccountNumber({ row, onViewed }) {
   );
 }
 
+function PayoutField({ label, children }) {
+  return <span className="payout-detail-field"><span className="payout-detail-label">{label}</span><span className="payout-detail-value">{children}</span></span>;
+}
+
 function FactoryContact({ row }) {
   const parts = [row.contact_name, row.contact_phone].filter((part) => part && part.trim());
   return row.contact_email || parts.length ? (
-    <span className="admin-sub">
-      {"Contact: "}
+    <PayoutField label="Factory contact">
       {parts.length ? `${parts.join(", ")}, ` : null}
       {row.contact_email ? <a href={`mailto:${row.contact_email}`}>{row.contact_email}</a> : null}
-    </span>
+    </PayoutField>
   ) : <span className="admin-sub">No contact on file for this company.</span>;
 }
 
@@ -160,14 +177,14 @@ function BankDetails({ row, onViewed }) {
   const country = row.payout_country ? bankCountry.of(row.payout_country.trim()) : null;
   return (
     <span className="admin-payout-details">
-      <strong>Pay by bank</strong>
+      <strong className="payout-method-heading">Bank transfer</strong>
       {row.payout_changed_recently ? (
-        <span className="admin-payout-changed" data-testid="payout-changed">{`Bank details changed ${agoWords(row.payout_changed_at)}. Look twice before paying.`}</span>
+        <span className="shared-card-status warning payout-change-status" data-testid="payout-changed">{`Bank details updated ${agoWords(row.payout_changed_at)}. Verify before sending.`}</span>
       ) : null}
-      <span className="admin-sub">{`Holder: ${row.payout_holder || "not given"}`}</span>
-      <span className="admin-sub">{`Bank: ${row.payout_bank || "not given"}${country ? `, ${country}` : ""}`}</span>
-      {row.payout_branch ? <span className="admin-sub">{`Branch: ${row.payout_branch}`}</span> : null}
-      <span className="admin-sub">{`SWIFT: ${row.payout_swift || "not given"}`}</span>
+      <PayoutField label="Account holder">{row.payout_holder || "Not provided"}</PayoutField>
+      <PayoutField label="Bank">{`${row.payout_bank || "Not provided"}${country ? `, ${country}` : ""}`}</PayoutField>
+      {row.payout_branch ? <PayoutField label="Branch">{row.payout_branch}</PayoutField> : null}
+      <PayoutField label="SWIFT / BIC">{row.payout_swift || "Not provided"}</PayoutField>
       {row.payout_has_number
         ? <AccountNumber row={row} onViewed={onViewed} />
         : <span className="admin-error" data-testid="no-full-number">No full account number on file, so TSC can't pay this yet. Ask the factory to add it on its Payments page.</span>}
@@ -178,7 +195,7 @@ function BankDetails({ row, onViewed }) {
   );
 }
 
-function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
+function Actions({ row, section, note, onNoteChange, payoneerId, onDecide, busy, refusal }) {
   const said = refusal ? <span className="admin-error admin-row-message" role="alert" data-testid="payment-refusal">{refusal.message}</span> : null;
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
@@ -211,7 +228,10 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
                 ? `Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by Payoneer (${row.payoneer_email}), payment ID ${id}?`
                 : `Sent ${formatMoney(row.amount_cents, row.currency)} to ${row.factory_name} by bank, not to their Payoneer account? They will read: "${note.trim()}"`}
             </span>
-            <button type="button" className="admin-approve" disabled={busy}
+            {confirming === "bank" && <label className="admin-sub payout-bank-explanation">Reason for bank payment (required)
+              <input type="text" value={note} onChange={event => onNoteChange(event.target.value)} placeholder="Explain the change in payout method" />
+            </label>}
+            <button type="button" className="admin-approve" disabled={busy || (confirming === "bank" && note.trim().length < REFERENCE_MIN)}
                     data-testid="release-payment-confirm"
                     onClick={() => { const how = confirming; setConfirming(null); onDecide(row, how === "payoneer" ? "payoneer" : "release", note, id); }}>
               Yes, mark paid out
@@ -232,9 +252,9 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
                   onClick={() => setConfirming("payoneer")}>
             Mark paid out by Payoneer
           </button>
-          <button type="button" className="quiet-btn" disabled={busy || !note.trim()}
+          <button type="button" className="admin-link payout-text-action" disabled={busy}
                   data-testid="release-bank-instead"
-                  title={note.trim() ? undefined : "Add a note for the factory saying why it was paid by bank"}
+                  title="Record a bank payment instead of Payoneer"
                   onClick={() => setConfirming("bank")}>
             Paid by bank instead
           </button>
@@ -284,11 +304,11 @@ function Actions({ row, section, note, payoneerId, onDecide, busy, refusal }) {
 }
 
 /** Below this width the action cells move to a line of their own. */
-const NARROW = "(max-width: 760px)";
+const NARROW = "(max-width: 1100px)";
 
 const narrowQuery = () => (typeof window !== "undefined" && window.matchMedia ? window.matchMedia(NARROW) : null);
 
-function useNarrow() {
+export function useNarrow() {
   const [narrow, setNarrow] = useState(() => Boolean(narrowQuery()?.matches));
   useEffect(() => {
     const query = narrowQuery();
@@ -320,13 +340,13 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
           Bank reference (required). The factory and the brand can read it
           <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
         </label>
-      ) : (
+      ) : paidByPayoneer(row) && section === "payout" ? null : (
         <input type="text" aria-label="Note" placeholder={section === "wire" ? "Note, required to reject" : section === "payout" && paidByPayoneer(row) ? "If paid by bank: why. The factory reads it" : "Optional note"}
                value={note} onChange={(event) => setNote(event.target.value)} />
       )}
     </>
   ) : null;
-  const buttons = <Actions row={row} section={section} note={note} payoneerId={payoneerId} onDecide={onDecide} busy={busy} refusal={refusal} />;
+  const buttons = <Actions row={row} section={section} note={note} onNoteChange={setNote} payoneerId={payoneerId} onDecide={onDecide} busy={busy} refusal={refusal} />;
 
   return (
     <>
@@ -356,9 +376,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
             : null}
           {section === "payout" && paidByBank(row) && !narrow ? <BankDetails row={row} onViewed={onViewed} /> : null}
           {section === "payout" && !paidByBank(row) ? (
-            <span className="admin-sub">
-              {paidByStripe(row) ? "pay out through Stripe" : `pay by Payoneer: ${row.payoneer_email}`}
-            </span>
+            <span className="admin-payout-details"><strong className="payout-method-heading">{paidByStripe(row) ? "Stripe payout" : "Payoneer"}</strong>{!paidByStripe(row) && <PayoutField label="Payout email">{row.payoneer_email}</PayoutField>}</span>
           ) : null}
           {section === "payout" && paidByPayoneer(row) ? <FactoryContact row={row} /> : null}
           {section === "refunded" && row.payoneer_payment_id
@@ -366,7 +384,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
             : null}
         </td>
         <td>
-          {when(ROW_TIME[section](row))}
+          <PaymentDate value={ROW_TIME[section](row)} />
           {row.stripe_payment_intent_id ? (
             <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)}
                target="_blank" rel="noreferrer">Open in Stripe</a>
@@ -374,7 +392,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
         </td>
         {narrow ? null : (
           <>
-            <td>{noteInput}</td>
+            <td className="payments-note-cell">{noteInput}</td>
             <td className="admin-actions">{buttons}</td>
           </>
         )}
@@ -384,7 +402,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
           <td colSpan={5}>
             {/* Pinned to the left edge and no wider than the screen, so the
                 note and buttons stay in view however the table is scrolled. */}
-            <div style={{ position: "sticky", left: 0, maxWidth: "calc(100vw - 80px)" }}>
+            <div className="payments-mobile-actions">
               {section === "payout" && paidByBank(row) ? <BankDetails row={row} onViewed={onViewed} /> : null}
               {noteInput}
               <div className="admin-actions" style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>{buttons}</div>
@@ -398,10 +416,10 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed }) {
 
 function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed }) {
   return (
-    <section data-section={id}>
+    <section className="payments-queue" data-section={id}>
       <h2>{title} ({rows.length})</h2>
       {rows.length === 0 ? (
-        <p className="admin-sub">{empty}</p>
+        <div className="payments-empty"><strong>All clear</strong><p className="admin-sub">{empty}</p></div>
       ) : (
         <>
         {/* Above the table, not its <caption>: .admin-sub is display: block,
@@ -419,7 +437,7 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
                 {narrow ? null : (
                   <>
                     <th>{ACTS.has(id) ? "Note" : ""}</th>
-                    <th />
+                    <th className="payments-action-heading">Actions</th>
                   </>
                 )}
               </tr>
@@ -454,8 +472,7 @@ export function boardSections(rows) {
 }
 
 export default function AdminPayments() {
-  const { user, signOut } = useAuth();
-  const { navigate } = useRouter();
+  const { signOut } = useAuth();
   const [rows, setRows] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState(null);
@@ -464,13 +481,11 @@ export default function AdminPayments() {
   // page may be a screen away from where staff are looking.
   const [refusal, setRefusal] = useState(null);
   const narrow = useNarrow();
-  const [views, setViews] = useState([]);
 
   const load = useCallback(async () => {
     try {
-      const [board, viewLog] = await Promise.all([paymentBoard(), payoutNumberRevealLog()]);
+      const board = await paymentBoard();
       setRows(board);
-      setViews(viewLog);
       setError(null);
     } catch (failure) {
       setError(failure);
@@ -502,85 +517,66 @@ export default function AdminPayments() {
     }
   }
 
-  const header = (
-    <header className="admin-bar">
-      <span className="shell-mark admin-payments-logo"><img src="/assets/logo.svg" alt="The Sourcing Club" /></span>
-      <span className="admin-sub">{user?.email}</span>
-      <button type="button" className="quiet-btn" onClick={() => navigate("/admin")}>All tools</button>
-      <button type="button" className="quiet-btn" onClick={signOut}>Sign out</button>
-    </header>
-  );
-
   if (!rows) {
-    return <div className="admin">{header}<h1>Payments</h1>{error ? <p className="admin-error">{error.message}</p> : <p className="admin-sub">Loading…</p>}</div>;
+    return <AdminWorkspaceShell onSignOut={signOut}><main className="admin admin-payments-page"><h1>Payments</h1>{error ? <p className="admin-error">{error.message}</p> : <p className="admin-sub">Loading…</p>}</main></AdminWorkspaceShell>;
   }
 
+  return <AdminWorkspaceShell onSignOut={signOut}><PaymentsBoard rows={rows} error={error} notice={notice} decide={decide} busyId={busyId} narrow={narrow} refusal={refusal} load={load} /></AdminWorkspaceShell>;
+}
+
+export function PaymentsBoard({ rows, error, notice, decide, busyId, narrow, refusal, load }) {
+  const [activeTab, setActiveTab] = useState("payout");
   const sections = boardSections(rows);
+  const tabs = [["payout", "Payout owed"], ["held", "Held"], ["clearing", "Processing"], ["wire", "Bank-wire claims"], ["failed", "Failed"], ["refunded", "Refunded after payout"], ["cancelled", "Cancelled orders"]];
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load };
 
   return (
-    <div className="admin">
-      {header}
+    <main className="admin admin-payments-page">
 
-      <h1>Payments</h1>
-      <p className="admin-intro">
-        Brands pay TSC through Stripe, by card, and TSC holds the money until
-        the brand approves the step. Approving pays a factory with a Stripe account on its own.
-        Stripe can't pay out to some countries (mainland China, Hong Kong…): those factories are
-        paid by hand, by bank transfer or from TSC's Payoneer business account, and marked paid out
-        here. Nothing here sends money or calls Payoneer.
-      </p>
-
+      <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1><p>Manage held payments, review exceptions, and track factory payouts.</p></div></header>
+      <nav className="rfqs-tabs admin-verification-tabs admin-rfq-tabs payments-queue-tabs" aria-label="Payment queues">
+        {tabs.map(([id, label]) => <button type="button" key={id} className={activeTab === id ? "active" : ""} aria-current={activeTab === id ? "page" : undefined} onClick={() => setActiveTab(id)}>{label} <span>{sections[id].length}</span></button>)}
+      </nav>
       {error ? <p className="admin-error">{error.message}</p> : null}
       {notice ? <p className="admin-sub" role="status">{notice}</p> : null}
 
+      {activeTab === "payout" && (
       <Section id="payout" title="Payout owed" rows={sections.payout} {...shared}
                empty="Every approved payment has been paid out."
                caption="The brand approved these steps (on a cancelled order too, if it approved before the cancellation). Retry a Stripe payout, or pay by bank or Payoneer by hand and mark it paid out." />
-      {sections.refunded.length ? (
+      )}
+      {activeTab === "refunded" ? (
         <Section id="refunded" title="Refunded after payout" rows={sections.refunded} {...shared}
-                 empty=""
+                 empty="No refunds after payout."
                  caption="The brand's payment was refunded in Stripe after the factory was paid. TSC no longer holds this money: recover it from the factory by hand." />
       ) : null}
+      {activeTab === "wire" && (
       <Section id="wire" title="Bank-wire claims" rows={sections.wire} {...shared}
                empty="No bank-wire claims."
                caption="Made on the old site before payments moved to Stripe. Check the account, then confirm." />
+      )}
+      {activeTab === "failed" && (
       <Section id="failed" title="Failed" rows={sections.failed} {...shared}
                empty="No failed payments."
                caption="These did not go through, or were refunded. The brand pays again from the order; nothing to do here." />
+      )}
+      {activeTab === "clearing" && (
       <Section id="clearing" title="Payments processing" rows={sections.clearing} {...shared}
                empty="No payments processing."
                caption="Stripe is still confirming these. The factory starts when they go through." />
+      )}
+      {activeTab === "held" && (
       <Section id="held" title="Held" rows={sections.held} {...shared}
                empty="Nothing held."
                caption="Funded, waiting for the brand to approve the step." />
+      )}
+      {activeTab === "cancelled" && (
       <Section id="cancelled" title="Held on cancelled orders" rows={sections.cancelled} {...shared}
                empty="No money held on cancelled orders."
                caption="The order was cancelled with this money held. Refund it in Stripe; the row leaves once Stripe reports the refund." />
+      )}
 
-      <section data-section="views">
-        <h2>Who viewed account numbers ({views.length})</h2>
-        {views.length === 0 ? <p className="admin-sub">Nobody has viewed an account number.</p> : (
-          <>
-          <p className="admin-sub admin-section-caption">Every time someone on the staff shows a factory's full account number. Nobody can edit or remove this list here.</p>
-          <div className="admin-scroll">
-            <table>
-              <thead><tr><th>When</th><th>Who</th><th>Company</th><th>Account</th></tr></thead>
-              <tbody>
-                {views.map((view) => (
-                  <tr key={`${view.account_id}-${view.revealed_at}`}>
-                    <td>{when(view.revealed_at)}</td>
-                    <td>{view.staff_email ?? "—"}</td>
-                    <td>{view.org_name}</td>
-                    <td>{`${view.bank_name ?? "Bank"} ····${view.last4 ?? ""}`}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          </>
-        )}
-      </section>
-    </div>
+
+    </main>
   );
 }

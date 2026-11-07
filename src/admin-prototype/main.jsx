@@ -7,14 +7,7 @@ import "../factory-prototype/styles.css";
 import "../shared/profile-shell.css";
 import "./styles.css";
 
-const adminNav = [
-  { label: "Overview", icon: "home" },
-  { label: "RFQs", icon: "rfq" },
-  { label: "Quotes", icon: "projects" },
-  { label: "Users", icon: "connections" },
-  { label: "Verification", icon: "verification" },
-  { label: "Settings", icon: "settings" }
-];
+import { adminWorkspaceNav as adminNav } from "../app/admin/AdminWorkspaceShell.jsx";
 
 export const initialProfiles = [
   {
@@ -2152,7 +2145,7 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
     }
     window.setTimeout(() => setToast(""), 2400);
   };
-  const navigate = (label) => { setScreen(label); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const navigate = (label) => { if (label === "Payments") { window.location.assign(window.location.pathname === "/admin-prototype.html" ? "/payments-design-preview.html" : "/app.html/admin/payments"); return; } setScreen(label); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const active = screen === "Review" ? reviewBack
     : screen === "Quote detail" && quoteBack === "Quotes" ? "Quotes"
     : ["RFQ detail", "Quote detail"].includes(screen) ? (rfqBack === "Overview" ? "Overview" : "RFQs")
