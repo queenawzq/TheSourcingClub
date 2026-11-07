@@ -2438,7 +2438,7 @@ async function main() {
     if (!nothingSetUp) {
       console.log("  (no row for a factory with nothing set up: skipped)");
     } else {
-      check(/no bank details on file/i.test(nothingSetUp.text), "a factory with nothing set up says so on its row");
+      check(/no withdrawal method on file/i.test(nothingSetUp.text), "a factory with nothing set up says so on its row");
       check(!Object.keys(nothingSetUp.buttons).some((name) => name.startsWith("pay-with-")), "and there is no provider to pay it through");
     }
 
