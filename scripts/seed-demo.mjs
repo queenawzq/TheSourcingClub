@@ -1175,7 +1175,7 @@ function stripeTestKey() {
 async function fundedByStripe(payment, method) {
   const key = stripeTestKey();
   if (!key) {
-    console.warn("No Stripe test key: the poplin deposit has no charge, so Stripe can't pay it and the staff board says so.");
+    console.warn("NO STRIPE TEST KEY: this payment has no charge, so if Demo Factory is linked to Stripe, approving it ends in \"Stripe can't pay this\". Set STRIPE_SECRET_KEY before a demo.");
     return funded(payment, method);
   }
   const stripe = new Stripe(key);
@@ -1202,7 +1202,7 @@ async function approveOpenStep(order, title, vendor = factory) {
 
 // 1. Fit sample funded by card, approved and paid to the factory ("Paid";
 //    by hand, as staff do for a factory with no Stripe account), then the
-//    bulk deposit funded by card: a payment-only step, so it is owed to the
+//    bulk deposit funded by card (a real test charge): a payment-only step, so it is owed to the
 //    factory at once and waits on staff ("Funded", payout pending).
 const poplinTitle = "Organic poplin shirt, AW27";
 const poplin = await runningOrder({ title: poplinTitle, brief: "160 organic poplin shirts, relaxed fit.", quantity: 160, unitPrice: 2600 });
@@ -1214,7 +1214,9 @@ await fundedByStripe(await dueNow(poplin, poplinTitle), CARD);
 // 2. Fit sample funded by card and held while the factory works ("Funded").
 const twillTitle = "Cotton twill overshirt, AW27";
 const twill = await runningOrder({ title: twillTitle, brief: "140 cotton twill overshirts, garment-dyed.", quantity: 140, unitPrice: 2900 });
-await funded(await dueNow(twill, twillTitle), CARD);
+// A real test charge, because Demo Factory is the one Stripe pays: approving this
+// must pay it out, and a payment with no charge can't be.
+await fundedByStripe(await dueNow(twill, twillTitle), CARD);
 // 3. Fit sample paid by bank before payments became card only, still
 //    clearing ("Processing"): how such a payment reads.
 const ribTitle = "Merino rib tank, AW27";
