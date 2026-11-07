@@ -116,6 +116,10 @@ const sentToOldAddress = (attempt, method) => waitingOnDetails(attempt) && Boole
   && (method.paypal_email ?? "").toLowerCase() !== (attempt.paid_to ?? "").toLowerCase();
 const WILL_RESEND = "TSC will send it again";
 
+/** A failure that asked for a correction, and the details have changed since. */
+const detailsChangedSince = (attempt, method) => (Boolean(attempt.asked_to_check) || attempt.failure_code === "details_rejected")
+  && Boolean(method?.details_changed_at) && new Date(method.details_changed_at) > new Date(attempt.updated_at ?? attempt.created_at);
+
 const when = (row) => row.released_at || row.confirmed_at || row.created_at;
 
 /**
@@ -134,7 +138,7 @@ export function withdrawalRows(earnings, method = null) {
       date: attempt.paid_at || attempt.created_at,
       title: attempt.provider === "paypal" ? "PayPal" : "Bank transfer",
       meta: attempt.paid_to,
-      note: attempt.status === "failed" ? failureNote(attempt) : sentToOldAddress(attempt, method) ? WILL_RESEND : waitingOnDetails(attempt) ? askFor(attempt) : null,
+      note: attempt.status === "failed" ? (detailsChangedSince(attempt, method) ? null : failureNote(attempt)) : sentToOldAddress(attempt, method) ? WILL_RESEND : waitingOnDetails(attempt) ? askFor(attempt) : null,
       status: waitingOnDetails(attempt) ? "Waiting" : WITHDRAWAL_STATUS[attempt.status],
       failed: attempt.status === "failed",
       amount: -Number(attempt.amount_cents),
@@ -171,8 +175,8 @@ export function withdrawalProblem(earnings, method) {
   const amount = (Number(attempt.amount_cents) / 100).toLocaleString("en-US", { style: "currency", currency: attempt.currency ?? "USD" });
   if (sentToOldAddress(attempt, method)) return { fixable: false, line: `Your payment of ${amount} is waiting. ${WILL_RESEND}.` };
   if (waitingOnDetails(attempt)) return { fixable: true, line: `Your payment of ${amount} is waiting. ${askFor(attempt)}.` };
+  if (detailsChangedSince(attempt, method)) return null;
   const fixable = Boolean(attempt.asked_to_check) || attempt.failure_code === "details_rejected";
-  if (fixable && method?.details_changed_at && new Date(method.details_changed_at) > new Date(attempt.updated_at ?? attempt.created_at)) return null;
   return { fixable, line: `A withdrawal failed. ${failureNote(attempt)}.` };
 }
 

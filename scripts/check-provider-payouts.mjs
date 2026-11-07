@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { paypalFrom, PAYPAL_UNCLAIMED } from "../api/_paypal.js";
-import { cancelAttempt, checkWords, FUND_IN_WISE, paypalPay, syncAttempts, wisePay, wisePreview } from "../api/_provider-payouts.js";
+import { cancelAttempt, checkWords, FUND_IN_WISE, tellFactoryDetails, paypalPay, syncAttempts, wisePay, wisePreview } from "../api/_provider-payouts.js";
 import { PayoutFailure, withoutSecrets } from "../api/_payout-provider.js";
 import { wiseFrom, WISE_STATES } from "../api/_wise.js";
 import { ensureWiseRecipient, recipientBody } from "../api/_wise-recipient.js";
@@ -315,6 +315,18 @@ const paypalPress = (paypal, db) => paypalPay({ paypal, caller: db.caller, db, p
 assert.equal(checkWords("Wise refused this: Please enter a valid SWIFT code."), "Check your SWIFT code");
 assert.equal(checkWords("Wise refused this: Account number is not valid."), "Check your account number");
 assert.equal(checkWords("Wise refused this: Something else entirely."), "Check your bank details");
+assert.equal(checkWords("Wise refused this: Please specify a BIC with a valid country code."), "Check your SWIFT code", "Wise's real sentence");
+assert.equal(checkWords("anything", ["swiftCode"]), "Check your SWIFT code", "the keys Wise named come first");
+assert.equal(checkWords("anything", ["accountNumber", "address.city", "address.firstLine"]), "Check your account number and address");
+assert.equal(checkWords("anything", ["somethingNew"]), "Check your bank details", "a key we have no word for says the plain sentence");
+{
+  const db = fakeDb();
+  const saved = [];
+  db.from = () => ({ update: (row) => ({ eq: async () => { saved.push(row); return { error: null }; } }) });
+  await tellFactoryDetails({ caller: db.caller, db, paymentId: "x", which: "wise", sentence: "Wise refused this.", fields: ["swiftCode", "not a key!"] });
+  assert.deepEqual(db.told, ["Check your SWIFT code"], "the bell names the field Wise named");
+  assert.deepEqual(saved, [{ details_fields: ["swiftCode"] }], "and only a real key is kept");
+}
 {
   // The batch says SUCCESS and the item UNCLAIMED: not paid, said, factory told once.
   const fake = fakePaypal({ item: "UNCLAIMED" }); const db = fakeDb();

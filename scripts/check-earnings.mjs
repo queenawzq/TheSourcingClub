@@ -104,6 +104,8 @@ assert.equal(usd(handPaidFigures([{ ...unfunded[0], provider_payouts: [attempt("
 const named = [pay("named", 500, "confirmed", { ...APPROVED, provider_payouts: [attempt("n", "failed", { failure_code: "details_rejected", amount_cents: 500, asked_to_check: "Check your SWIFT code" })] })];
 assert.equal(withdrawalRows(named)[0].note, "Check your SWIFT code");
 assert.equal(withdrawalProblem(named)?.line, "A withdrawal failed. Check your SWIFT code.");
+assert.equal(withdrawalRows(named, { details_changed_at: "2026-11-05T00:00:00Z" })[0].note, null, "fixed since: the row stops asking, and stays failed");
+assert.equal(withdrawalRows(named, { details_changed_at: "2026-11-05T00:00:00Z" })[0].failed, true);
 const moneyFigures = handPaidFigures(money);
 assert.equal(usd(moneyFigures.onItsWay), 300, "being sent is on its way");
 assert.equal(usd(moneyFigures.balance), 500, "a failed one is owed again");

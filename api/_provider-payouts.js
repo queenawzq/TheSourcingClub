@@ -25,17 +25,24 @@ export const CHECK_BANK = "Check your bank details";
 export const CHECK_PAYPAL = "Check your PayPal address";
 
 /**
- * Which detail Wise refused, in our words: the factory reads these, and Wise's
- * own sentence stays on the board. A refusal naming none asks for the lot.
+ * Which details Wise refused, in our words: the factory reads these, and Wise's
+ * own sentence stays on the board. From Wise's field keys when it named them,
+ * else its sentence. A refusal naming none asks for the lot.
  */
-const CHECK_DETAIL = [
-  [/swift|\bbic\b/i, "Check your SWIFT code"],
-  [/iban|account ?number|accountNumber/i, "Check your account number"],
-  [/holder|account ?name|full ?name|legal ?name/i, "Check the account holder's name"],
-  [/address|city|post ?code|postal|state/i, "Check your address"],
-  [/bank ?name|branch/i, "Check your bank name"],
+const DETAIL_WORDS = [
+  [/swift|\bbic\b/i, "SWIFT code"],
+  [/iban|account ?number/i, "account number"],
+  [/holder|account ?name|full ?name|legal ?name/i, "account holder's name"],
+  [/address|city|post ?code|postal|state/i, "address"],
+  [/bank ?name|branch/i, "bank name"],
 ];
-export const checkWords = (sentence) => CHECK_DETAIL.find(([pattern]) => pattern.test(sentence ?? ""))?.[1] ?? CHECK_BANK;
+const wordFor = (text) => DETAIL_WORDS.find(([pattern]) => pattern.test(text ?? ""))?.[1];
+export function checkWords(sentence, fields = []) {
+  const named = [...new Set((fields ?? []).map(wordFor).filter(Boolean))];
+  const details = named.length ? named : [wordFor(sentence)].filter(Boolean);
+  if (!details.length) return CHECK_BANK;
+  return `Check your ${details.length > 1 ? `${details.slice(0, -1).join(", ")} and ${details.at(-1)}` : details[0]}`;
+}
 
 const DB_WORDS = {
   payout_in_progress: "This is already being paid. Wait a moment, then press Refresh.",
@@ -210,15 +217,15 @@ export async function wisePay({ wise, caller, db, row, paymentId, changedAt, cny
 }
 
 export async function tellFactoryDetails({ caller, db, paymentId, changedAt, which, cnyConfirmed, sentence, fields = [] }) {
+  const named = (Array.isArray(fields) ? fields : []).filter(isFieldKey).slice(0, 10);
   const claim = await must(caller.rpc("claim_provider_payout", {
     target_payment: paymentId, which, paid_to_changed_at: changedAt, cny_confirmed: Boolean(cnyConfirmed),
   }));
   await finish(db, claim.payout_id, "failed", {
     failure: "details_rejected", raw_status: "details_rejected", sentence,
-    tell_factory: which === "paypal" ? CHECK_PAYPAL : checkWords(sentence),
+    tell_factory: which === "paypal" ? CHECK_PAYPAL : checkWords(sentence, named),
   });
   // Which fields it can name to the factory. The factory has already been told, so this can't undo that.
-  const named = (Array.isArray(fields) ? fields : []).filter(isFieldKey).slice(0, 10);
   if (named.length) {
     const { error } = await db.from("provider_payouts").update({ details_fields: named }).eq("id", claim.payout_id);
     if (error) log("details_fields", error, { paymentId });
