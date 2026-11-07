@@ -138,3 +138,6 @@
 .admin-payout-number { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
 .admin-payout-number code { font-size: 14px; font-weight: 600; letter-spacing: 0.02em; overflow-wrap: anywhere; }
 .admin-payout-number .admin-row-message { flex-basis: 100%; }
+
+.admin-bar .admin-payments-logo { display: flex; align-items: center; flex-shrink: 0; }
+.admin-payments-logo img { display: block; width: 116px; height: auto; }
