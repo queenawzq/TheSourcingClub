@@ -270,6 +270,17 @@ async function clickButton(page, text) {
   throw new Error(`no visible button matching "${text}"`);
 }
 
+/**
+ * The review page's bottom bar, the button on top at that scroll: the side
+ * card's own "Send for" sits under the bar's "Save draft" until the page
+ * scrolls, and a click at its coordinates leaves the quote a draft.
+ */
+async function sendQuoteFromBar(page) {
+  const send = page.locator(".factory-submit-bottom-bar .primary-btn");
+  check(/Send for \d+ credits/i.test(await send.innerText()), "the bottom bar offers the send, at its price");
+  await send.click();
+}
+
 /** Pick the first n chips in a labelled group. */
 async function chooseChips(page, key, count = 2) {
   const chips = page.locator(`[data-field="${key}"] button.chip-toggle`);
@@ -1620,12 +1631,7 @@ async function main() {
     await record(page, "Review quote", "totals and the credit price, before paying it");
 
     const { data: beforeCredits } = await db.rpc("credit_balance", { org: factoryOrg.id });
-    // The bottom bar's button, the one on top at this scroll: the side card's
-    // own "Send for" sits under the bar's "Save draft" until the page scrolls,
-    // and a click at its coordinates leaves the quote a draft.
-    const sendQuote = page.locator(".factory-submit-bottom-bar .primary-btn");
-    check(/Send for \d+ credits/i.test(await sendQuote.innerText()), "the bottom bar offers the send, at its price");
-    await sendQuote.click();
+    await sendQuoteFromBar(page);
     await page.waitForTimeout(6000);
 
     const quoteError = await page.locator(".composer-error").innerText().catch(() => "");
@@ -1675,7 +1681,7 @@ async function main() {
     await page.locator('[data-testid="submit-quote"]').click();
     await waitForHeading(page, "review quote", 25000);
     const { data: beforeResend } = await db.rpc("credit_balance", { org: factoryOrg.id });
-    await clickButton(page, "send for");
+    await sendQuoteFromBar(page);
     await page.waitForTimeout(6000);
     const { data: afterResend } = await db.rpc("credit_balance", { org: factoryOrg.id });
     check(Number(beforeResend) - Number(afterResend) === 25,
