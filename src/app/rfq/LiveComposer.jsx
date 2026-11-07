@@ -734,6 +734,9 @@ export default function LiveComposer({ org, rfqId }) {
         centerText={`${selectedVendors.length} selected · ${shaped.length} available`}
         onBack={() => setStep("review")}
         onNext={publish}
+        // Published with nobody invited, no vendor could ever see the request.
+        primaryDisabled={!openToAll && selectedVendors.length === 0}
+        primaryTitle={!openToAll && selectedVendors.length === 0 ? "Choose a vendor, or open it to all vendors" : ""}
       >
         {matchingV2 && (() => {
           // Each invite card carries its own match explanation; this panel holds

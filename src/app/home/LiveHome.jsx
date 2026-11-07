@@ -105,7 +105,7 @@ function attentionFrom(snapshot, isFactory, goTo, owed = [], navigate = null, wa
     });
   }
 
-  if (n(snapshot.orders_awaiting_schedule) > 0) {
+  if (n(snapshot.orders_awaiting_schedule) > 0 && waiting.maySetSteps !== false) {
     items.push({
       type: "Schedule",
       tone: "warning",
@@ -236,6 +236,7 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
           savings,
           // Where the attention cards' buttons go when one thing is waiting.
           waiting: {
+            maySetSteps: can(org, "rfqFlow"),
             schedules: (orders ?? []).filter((order) => order.status === "pending_schedule").map((order) => order.id),
             approvals: (orders ?? []).filter((order) => order.status === "active" && order.order_milestones?.some((step) => mayApproveStep(step))).map((order) => order.id),
             approvable: (orders ?? []).filter((order) => order.status === "active")

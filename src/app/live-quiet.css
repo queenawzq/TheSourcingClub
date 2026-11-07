@@ -204,6 +204,11 @@
     padding-left: 16px !important;
     padding-right: 16px !important;
   }
+  /* The bottom bar too. */
+  #root > .app-shell.nav-collapsed .bottom-bar {
+    left: 0 !important;
+    width: 100% !important;
+  }
   /* Titles above their buttons, not cut beside them. */
   .shared-card-header,
   .shared-responsive-card > .shared-card-heading,
