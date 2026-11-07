@@ -84,8 +84,8 @@ function mount(hook, firstProps) {
 }
 
 // ---- The real hook, bundled with those two things replaced ----
-const bundle = await build({
-  entryPoints: ["src/app/order/useScheduleDraft.js"],
+const bundleOf = (entry) => build({
+  entryPoints: [entry],
   bundle: true,
   write: false,
   format: "esm",
@@ -106,8 +106,13 @@ const bundle = await build({
 });
 const folder = mkdtempSync(join(tmpdir(), "schedule-draft-"));
 const bundled = join(folder, "hook.mjs");
-writeFileSync(bundled, bundle.outputFiles[0].text);
+writeFileSync(bundled, (await bundleOf("src/app/order/useScheduleDraft.js")).outputFiles[0].text);
 const { useScheduleDraft } = await import(pathToFileURL(bundled).href);
+// What Manage steps on a running order (ScheduleEditor.jsx) says, from the
+// same functions; its rows carry a kind and no type.
+const viewBundled = join(folder, "order-view.mjs");
+writeFileSync(viewBundled, (await bundleOf("src/app/order/order-view.js")).outputFiles[0].text);
+const { scheduleBar, scheduleProblem, stepAmount } = await import(pathToFileURL(viewBundled).href);
 rmSync(folder, { recursive: true, force: true });
 
 let failures = 0;
@@ -258,6 +263,29 @@ const amounts = (draft) => draft.rows.map((row) => row.amount);
   await root.actAsync((d) => d.save());
   check(root.draft.error?.message === "refused", "a refused save says why");
   check(root.draft.rows[0].amount === "1000" && root.draft.dirty, "and keeps what was typed");
+}
+// ---- Manage steps on a running order: the same words as the builder ----
+{
+  const running = [
+    { kind: "approval_and_payment", title: "Bulk deposit", amount: stepAmount(192000, "USD") },
+    { kind: "progress_only", title: "Bulk production", amount: "" },
+    { kind: "payment_only", title: "Final balance", amount: stepAmount(428400, "USD") },
+  ];
+  check(running[0].amount === "$1,920" && running[2].amount === "$4,284", `amounts read as money (${running[0].amount}, ${running[2].amount})`);
+  check(stepAmount(6500, "USD") === "$65" && stepAmount(1250, "USD") === "$12.50", "whole dollars and cents both");
+  const bar = (rows, error = null) => scheduleBar({
+    problem: scheduleProblem(rows), error, total: 620400, orderTotal: 620400, currency: "USD", until: "save",
+  });
+  check(scheduleProblem(running) === "", "a running order's steps have nothing to fix");
+  check(bar(running) === "Steps total $6,204.00 of $6,204.00", `the bar gives the total (${bar(running)})`);
+  const added = [...running, { kind: "progress_only", title: "", amount: "" }];
+  check(bar(added) === "Step 4 needs a name", `an added step asks for its name (${bar(added)})`);
+  const unpaid = [...running, { kind: "approval_and_payment", title: "Wash test", amount: "" }];
+  check(bar(unpaid) === "Step 4 needs an amount", `a paid step with a kind and no type asks for its amount (${bar(unpaid)})`);
+  const refused = bar(running, new Error("update the milestones: step 6 needs a title"));
+  check(refused === "Step 6 needs a title", `a refusal is a sentence, not the raw error (${refused})`);
+  const off = scheduleBar({ problem: "", error: null, total: 600000, orderTotal: 620400, currency: "USD", until: "save" });
+  check(off.endsWith(": these have to match before you can save"), `a mismatch says what it stops (${off})`);
 }
 
 if (failures) {

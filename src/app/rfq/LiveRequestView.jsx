@@ -29,8 +29,6 @@ import {
   getRfq,
   isRequestSaved,
   lastBrandView,
-  isInvited,
-  matchScoresForRfq,
   saveRequest,
   unsaveRequest,
 } from "../../lib/domain/rfq.js";
@@ -167,20 +165,20 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
     if (!rfq || !org?.id) return undefined;
     let cancelled = false;
     Promise.all([
-      matchScoresForRfq(rfq.id, [org.id]).catch(() => new Map()),
       rfq.brand_org_id ? brandSummary(rfq.brand_org_id).catch(() => null) : null,
       lastBrandView(rfq.id),
       getRfqDocumentPresentation(rfq.id).catch(() => ({ files: [], images: [] })),
       isRequestSaved(org.id, rfq.id).catch(() => false),
       // Its club orders: the summary predates orders and returns none.
       rfq.brand_org_id ? brandProfileForFactory(rfq.brand_org_id).catch(() => null) : null,
-      isInvited(rfq.id, org.id).catch(() => false),
     ])
-      .then(([scores, summary, viewed, documents, savedAlready, profile, invited]) => {
+      .then(([summary, viewed, documents, savedAlready, profile]) => {
         if (cancelled) return;
         setExtras({
-          // A brand that asked this factory has answered "is it a fit?".
-          match: invited ? null : scores.get(org.id) ?? null,
+          // No fit label to a factory about itself (Nov 7): a brand that
+          // invited it has answered "is it a fit?", and below 60 the band
+          // says "Not a fit" to nearly every vendor on a plain request.
+          match: null,
           brand: summary && { ...summary, club_order_count: summary.club_order_count ?? profile?.club_order_count ?? null },
           lastView: viewed,
           files: documents.files ?? [],

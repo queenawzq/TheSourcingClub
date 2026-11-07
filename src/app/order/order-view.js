@@ -288,9 +288,27 @@ export function newRow(rows) {
 export function scheduleProblem(rows) {
   for (const [index, row] of rows.entries()) {
     if (!String(row.title ?? "").trim()) return `Step ${index + 1} needs a name`;
-    if (row.type === PAID_RELEASE && !toCents(row.amount)) return `Step ${index + 1} needs an amount`;
+    if ((row.type ?? typeOf(row.kind)) === PAID_RELEASE && !toCents(row.amount)) return `Step ${index + 1} needs an amount`;
   }
   return "";
+}
+
+/** A refused save as a sentence: "update the milestones: step 6 needs a title" → "Step 6 needs a title". */
+export function refusalSentence(message) {
+  const words = String(message ?? "").replace(/^(save the schedule|update the milestones): /, "");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+/**
+ * The steps' bottom bar, which is on screen wherever the page is scrolled, so
+ * what stops a save is said there: what to fix, else the last refusal, else
+ * the total against the order's.
+ */
+export function scheduleBar({ problem, error, total, orderTotal, currency, until }) {
+  if (problem) return problem;
+  if (error) return refusalSentence(error.message);
+  const text = `Steps total ${formatMoney(total, currency)} of ${formatMoney(orderTotal, currency)}`;
+  return total === orderTotal ? text : `${text}: these have to match before you can ${until}`;
 }
 
 /** Move one schedule row by swapping its stored position with its neighbour. */

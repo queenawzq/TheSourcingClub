@@ -256,17 +256,6 @@ export async function setQuestions(rfqId, questions) {
 
 // ---- Invitations ----------------------------------------------------------
 
-/** Whether this factory was invited to this request. A failed read counts as not. */
-export async function isInvited(rfqId, factoryOrgId) {
-  const { data } = await supabase
-    .from("rfq_invitations")
-    .select("id")
-    .eq("rfq_id", rfqId)
-    .eq("factory_org_id", factoryOrgId)
-    .maybeSingle();
-  return Boolean(data);
-}
-
 export async function getInvitations(rfqId) {
   return unwrap(
     await supabase

@@ -35,7 +35,6 @@ import { CreditPurchaseDialog } from "../order/CreditPurchase.jsx";
 import { listLinks, listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
-import { matchFit } from "../rfq/match-fit.js";
 import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 import { dateFrom } from "../../lib/dates.js";
@@ -95,7 +94,8 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
   if (!state) return null;
 
   const { rfq, quote, cost, balance, lines, materialLines, matchScore, terms, documents, certifications, services } = state;
-  const fit = matchFit(matchScore);
+  // No fit label to a factory about itself (Nov 7), as on RFQ details.
+  const fit = null;
   const selectedSourcing = (terms.sourcing_responsibility ?? []).find(
     (term) => term.id === rfq.sourcing_responsibility_term_id,
   );
