@@ -688,7 +688,9 @@ async function main() {
 
     await waitForHeading(page, "all set", 30000);
     await record(page, "Factory complete", "the designed finish card, not a hand-built one");
-    await nextCard(page);
+    // Waiting on staff, there is nothing to press: the card has no button.
+    check((await page.locator(".factory-onboarding-actions .primary-btn").count()) === 0,
+      "a factory waiting for review is shown no button on the finish card");
     await page.waitForTimeout(2500);
 
     const { data: factoryOrg } = await db.from("orgs").select("id").eq("name", factoryName).single();
