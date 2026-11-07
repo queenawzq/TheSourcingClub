@@ -345,6 +345,9 @@ assert.equal(checkWords("anything", ["somethingNew"]), "Check your bank details"
   const paypal = paypalFrom(PAYPAL_ENV, fake.fetchImpl);
   await assert.rejects(paypalPress(paypal, db), (f) => f.unsure);
   assert.equal(db.payout.status, "processing");
+  // PayPal may already have paid: cancelling now would let staff pay twice.
+  await assert.rejects(cancelAttempt({ client: paypal, caller: db.caller, db, paymentId: "x" }), /Press again first/);
+  assert.equal(db.payout.status, "processing", "a blind cancel leaves it where it was");
   const answer = await paypalPress(paypal, db);
   assert.equal(fake.state.paid, 1, "paid once");
   assert.equal(answer.done, "paid");

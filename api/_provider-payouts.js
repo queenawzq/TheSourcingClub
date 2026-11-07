@@ -281,6 +281,11 @@ export async function cancelAttempt({ client, caller, db, paymentId }) {
   const held = await must(caller.rpc("lease_provider_payout", { target_payment: paymentId }));
   const payoutId = held.payout_id;
   try {
+    // A PayPal press whose answer was lost may have paid: PayPal pays the moment it
+    // takes the batch. Only the same key can find out, so cancelling blind is refused.
+    if (held.provider === "paypal" && !held.provider_ref) {
+      throw new PayoutFailure("refused", "We don't know yet if PayPal paid this. Press again first: it finds what PayPal did and can't pay twice.");
+    }
     if (held.provider_ref) {
       if (held.provider === "paypal") {
         const status = await client.status(held.provider_ref);

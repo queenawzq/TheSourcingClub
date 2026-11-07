@@ -308,7 +308,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
           </button>
         ) : null}
         <button type="button" className="quiet-btn" disabled={working} data-testid="provider-refresh" onClick={() => run(() => syncProvider(provider), () => `Checked at ${clock()}.`)}>{working ? "Checking…" : "Refresh"}</button>
-        {(waiting || unclaimed || (pending && !attempt.in_progress) || (attempt.stage === "sent" && attempt.staff_sentence)) ? (
+        {(waiting || unclaimed || (pending && !attempt.in_progress && provider !== "paypal") || (attempt.stage === "sent" && attempt.staff_sentence)) ? (
           <button type="button" className="admin-reject" disabled={working || attempt.in_progress} data-testid="provider-cancel"
                   onClick={() => run(() => cancelProviderPayout(provider, row.payment_id))}>
             {provider === "wise" ? "Cancel transfer" : "Cancel payment"}
