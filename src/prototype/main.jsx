@@ -2328,7 +2328,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
     brandTime = liveStart ? whenIn(liveStart, timezone) : "";
     factoryTime = liveStart ? theirTime(liveStart, live.otherName, live.otherZone, timezone) : "";
     scheduleNote = live.otherZone
-      ? `Your time: ${zoneLabel(timezone)} · ${live.otherName}: ${zoneLabel(live.otherZone)} time`
+      ? `Your time: ${zoneLabel(timezone)} · ${live.otherName}: ${zoneLabel(live.otherZone)}`
       : `Your time: ${zoneLabel(timezone)}`;
   }
   const otherClock = (at) => {
@@ -2455,9 +2455,9 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
 }
 
 export const settingsPermissionLabels = [
-  { key: "rfqFlow", label: "Quote flow", detail: "Create quote request, choose quote, set terms and milestones", single: true },
-  { key: "approve", label: "Approve samples", detail: "Steps with no payment. A paid step also needs Release funds" },
-  { key: "releaseFunds", label: "Release funds", detail: "Fund steps, and with Approve samples, approve paid ones" },
+  { key: "rfqFlow", label: "Quote flow", detail: "Create quote request, choose quote, set terms and steps", single: true },
+  { key: "approve", label: "Approve samples", detail: "Approve steps" },
+  { key: "releaseFunds", label: "Release funds", detail: "Fund steps" },
   { key: "primaryContact", label: "Primary contact", detail: "Main vendor contact for messages and calls", single: true },
   { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
 ];
@@ -9156,11 +9156,7 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
           </h2>
           {/* Live, the brand funded this step through Stripe and TSC holds
               the money: approving pays it to the factory. */}
-          <span>
-            {live
-              ? `Approving releases ${releaseAmount} held by TSC to ${other}.`
-              : "Funds will move from project funds to Atelier Minho after approval."}
-          </span>
+          {live ? null : <span>Funds will move from project funds to Atelier Minho after approval.</span>}
         </header>
         <div className="approve-fund-summary">
           <div>

@@ -1,3 +1,4 @@
+import { deliveryMonthFrom } from "./delivery-month.mjs";
 import MatchingProfile, { useMatchingStatus } from "../matching/MatchingProfile.jsx";
 import FactoryMatch, { plainReason } from "../matching/FactoryMatch.jsx";
 import { assessFactories, compareMatches } from "../../lib/domain/matching.js";
@@ -70,28 +71,6 @@ const SOURCING_SLUG = {
   "brand-provided": "brand-supplies",
   unsure: "unsure",
 };
-
-/**
- * A month from "Sample in August, bulk by late September".
- *
- * The design asks for a timeline in prose; capacity matching needs the first
- * of a month. Read when a month name is in there, null when it is not —
- * matching without a delivery month is weaker, but a guessed month is wrong
- * in a way nobody sees.
- */
-const MONTHS = ["january","february","march","april","may","june","july","august","september","october","november","december"];
-function deliveryMonthFrom(text) {
-  const lower = String(text ?? "").toLowerCase();
-  let found = -1;
-  let at = Infinity;
-  MONTHS.forEach((name, index) => {
-    const position = lower.lastIndexOf(name);
-    if (position >= 0 && position <= at) { at = position; found = index; }
-  });
-  if (found < 0) return null;
-  const year = Number((lower.match(/\b(20\d{2})\b/) ?? [])[1]) || new Date().getFullYear();
-  return `${year}-${String(found + 1).padStart(2, "0")}-01`;
-}
 
 /** A stored end-of-day timestamp back into the calendar's local date. */
 function datePickerValue(value) {
@@ -637,7 +616,8 @@ export default function LiveComposer({ org, rfqId }) {
       <FlowShell
         screen="inviteSuccess"
         canBack={false}
-        onNext={() => navigate(`/rfqs/${draftId}/quotes`)}
+        // Nothing to review yet: the page's own button goes to the dashboard.
+        primaryLabel=""
         // The request as it was saved, not the design's example shirt.
         rail={{
           summary: [

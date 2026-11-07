@@ -52,21 +52,8 @@ import { BillingMethodFlow } from "../order/PayoutDetails.jsx";
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 
-// What each email switch covers (notification_email_category), since the
-// designed labels name only part of it. Every member with an email gets them,
-// whatever their permissions.
-const SHARED_EMAIL_NOTES = {
-  payments: `Payments, steps to approve, steps due soon and changes to your orders.`,
-  messages: `New messages (at most one email per conversation every 6 hours) and call invites.`,
-};
-const FACTORY_EMAIL_NOTES = {
-  rfq: `Requests that match you or invite you, decisions on your quotes, and capacity reminders.`,
-  ...SHARED_EMAIL_NOTES,
-};
-const BRAND_EMAIL_NOTES = {
-  rfq: `Quotes sent or withdrawn on your requests.`,
-  ...SHARED_EMAIL_NOTES,
-};
+// The email switches' labels say enough: the design's line under each is left out.
+const EMAIL_NOTES = { rfq: "", payments: "", messages: "" };
 
 /** A saved card as the designed payment-method row draws it. */
 const cardRow = (card) => ({
@@ -420,7 +407,6 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   if (!members) return error ? <p className="shell-note" role="alert">{error.message ?? String(error)}</p> : null;
 
   const openPayoutFlow = (action, methodId = null) => setPayoutFlow({ action, methodId, id: Date.now() });
-  const emailNotes = isFactory ? FACTORY_EMAIL_NOTES : BRAND_EMAIL_NOTES;
 
   // The switch moves at once; a refused save puts it back and says why.
   async function changeNotificationEmail(category, enabled) {
@@ -486,7 +472,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         saveNote={(canSettings ? (isOwner ? "" : "Only an owner can change the company's name.") : "Only someone with Settings access can change these details.")}
         notificationEmails={notificationEmails ?? undefined}
         onNotificationEmailChange={canSettings ? changeNotificationEmail : undefined}
-        notificationEmailNotes={emailNotes}
+        notificationEmailNotes={EMAIL_NOTES}
         notificationEmailsError={notificationEmailsError}
         busy={busy || billingBusy}
         error={error}
