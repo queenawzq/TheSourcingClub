@@ -543,7 +543,7 @@ const RETURNED_NOTE = [
   "3. Your monthly capacity in units for woven shirting, so brands can see whether you can take their order.",
   "4. A website or a public listing for the company, so we can match the legal name to the business.",
   "",
-  "Once these are on your profile, finish onboarding again and it comes straight back to us. If anything here is unclear, reply to this email and we will help.",
+  "Once these are on your profile, finish onboarding again and it comes straight back to us.",
 ].join("\n");
 must(await adminUser.client.rpc("admin_review_decision_with_tier", {
   target_org: returnedFactoryOrg.id, decision: "needs_information", note: RETURNED_NOTE, risk: null, tier: null,
@@ -897,8 +897,8 @@ await deliverMessage(must(await admin.from("messages").insert({
 
 await deliverMessage(must(await admin.from("messages").insert({
   thread_id: orderThread?.id ?? orderThread, sender_org_id: brandOrg.id, sender_user_id: brand.id,
-  body: "谢谢，我们今天会检查试衣样。", body_lang: "zh",
-  body_translated: "Thank you, we will review the fit sample today.",
+  body: "颜色方面请再发一张照片。", body_lang: "zh",
+  body_translated: "Please send one more photo of the colour.",
   body_translated_lang: "en", translated_by: "demo-fixture",
 }).select("id").single(), "brand translated message"), "deliver the brand translated message");
 
@@ -1027,7 +1027,7 @@ for (const request of openRequests) {
     ...request,
     by: { client: secondBrand.client, org: secondBrandOrg },
     colours: [["Natural", request.quantity]],
-    material: "As in the brief.",
+    material: "Organic cotton poplin, 120 gsm",
     samples: "Fit sample before bulk.",
     extra: "",
     question: "What is your earliest start date?",
@@ -1357,6 +1357,16 @@ must(await admin.from("notification_email_outbox")
   .eq("status", "pending"), "skip the seed's own emails");
 
 const app = isLocal ? "http://127.0.0.1:5173/app.html" : "<the site>/app.html";
+// A bell reading 79 says the seed was busy, not that anything needs looking at.
+// Each demo company keeps its five newest unread; the rest stay in the list, read.
+const demoMembers = must(await admin.from("org_members").select("org_id").in("user_id", demoUserIds), "demo companies");
+for (const orgId of new Set(demoMembers.map((member) => member.org_id))) {
+  const unread = must(await admin.from("notifications").select("id").eq("org_id", orgId).is("read_at", null)
+    .order("created_at", { ascending: false }), "unread notifications");
+  const older = unread.slice(5).map((row) => row.id);
+  if (older.length) must(await admin.from("notifications").update({ read_at: new Date().toISOString() }).in("id", older).select("id"), "mark older notifications read");
+}
+
 console.log(`
 done. Every login uses the password "${PASSWORD}".
 

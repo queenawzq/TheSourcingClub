@@ -14,6 +14,7 @@
  * as the design's "Not enough credits", with its buy action.
  */
 import React, { useEffect, useState } from "react";
+import { initials } from "../order/order-view.js";
 import { quoteTextValues } from "./quote-text-fields.js";
 import { FactoryReviewTotal } from "../../factory-prototype/main.jsx";
 import { brandSummary, getRfq, matchScoresForRfq } from "../../lib/domain/rfq.js";
@@ -192,7 +193,7 @@ export default function LiveQuoteReview({ org, rfqId, profile, isOwner = false }
       project={{
         title: rfq.title || "Request",
         brand: rfq.orgs?.name ?? "",
-        initials: (rfq.orgs?.name ?? "??").slice(0, 2).toUpperCase(),
+        initials: initials(rfq.orgs?.name),
         quantity: quote.production_quantity ? `${quote.production_quantity} units` : "",
         specialty: rfq.brief ?? "",
         budget: formatRange(

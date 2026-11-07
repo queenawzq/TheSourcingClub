@@ -1,9 +1,9 @@
 /**
  * The brand's Payments page, on the designed `BillingScreen`.
  *
- * Payments: the brand's own order payments and where each stands (Not paid,
- * Payment processing, Failed, Funded, Paid; Sent only for an old bank-wire
- * claim) with the design's four figures (brand-payments-view.js). A row opens
+ * Payments: the brand's own order payments and where each stands (Due,
+ * Payment processing, Failed, Funded, Approved, Paid; Sent only for an old
+ * bank-wire claim) with the design's four figures (brand-payments-view.js). A row opens
  * its transaction page; a due one opens the Fund screen on its order for an
  * owner, who alone may pay (begin_payment_checkout). A member's due row opens
  * the transaction page, which says so up front.
@@ -94,7 +94,7 @@ export default function LiveBrandPayments({ org }) {
           empty: "No payment transactions yet.",
           discount: state.savings ? { amount: state.savings.amount, note: state.savings.note } : null,
           codes: state.codes,
-          codesNote: "Codes can't be applied to a payment yet. Used codes stay here so finance can track order discounts.",
+          codesNote: "",
           onCopy: copy,
           copied,
         }}

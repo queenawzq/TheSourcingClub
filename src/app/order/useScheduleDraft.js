@@ -32,9 +32,7 @@ export function useScheduleDraft({ order, milestones, reload, onFund }) {
   const dirty = !sameRows(rows, saved);
   const factory = order.factory?.name || "The factory";
 
-  const hint = dirty
-    ? `Unsaved changes. Save them to show ${factory}, or continue: continuing saves them first.`
-    : `${factory} sees these steps and is told of every change. Continue to confirm them and start the order.`;
+  const hint = dirty ? "Unsaved changes" : "";
 
   async function run(work) {
     if (busy) return;

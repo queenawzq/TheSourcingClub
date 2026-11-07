@@ -107,10 +107,10 @@ type is changed (`order-view.js`).
 **Everything a brand or a vendor touches is on the design**, except the
 screens below — each held back for a stated reason, not a backlog entry:
 
-- **`PaymentInstructions`.** What a payment's address shows when there is
-  nothing to pay (not due yet, held, paid out, cancelled, or a bank-wire claim
-  made on the old site): a read-only status card. Due and failed payments go
-  to the designed Fund screen.
+- **`LiveBrandPaymentDetail`.** A payment with nothing to pay on it (held, paid
+  out, cancelled, not due): one status word (Due / Failed / Funded / Approved /
+  Paid, `paymentStatusWord`), its figures and a failure's reason. No design
+  draws it. Due and failed payments go to the designed Fund screen.
 - **The factory's payout card and its setup** (`StripePayoutCard`, on Queena's
   `PayoutDetails`). No design draws payout setup, so it follows her Upwork
   reference; Stripe's embedded forms open in its dialogs (see **Payments**).
@@ -692,6 +692,10 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   "Not available to you" instead of drawing a form full of disabled inputs, and a
   read-only form that looks editable keeps its sentence (Settings → Basic
   information).
+
+### Design copy the live app leaves out
+
+Queena's rule (Nov 6): a screen keeps a figure, a label, an action, an error or what this person must do next. Her prototypes keep their intro sentences; `src/app/live-quiet.css`, imported only by the two live entries, hides them by selector, so her files and her merges are untouched, and deleting a rule brings a sentence back. `npm run check:quiet` fails if a rule could hide a control, a heading or an error. Live code's own sentences are removed where they are written. A generated step has no description (`20261107400000`); a brand's Fund page keeps one required tick saying where the money goes, because that is the one sentence that costs money to miss. Discount codes can't be applied yet, so the dashboard's Savings card (and with it Invite brand) and the Payments tab are hidden; put them back when they can.
 
 ### Mock data leaking into the live app
 

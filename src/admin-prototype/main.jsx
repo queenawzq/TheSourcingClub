@@ -456,7 +456,7 @@ function ConfidenceCard({ score }) {
     <section className="factory-profile-card admin-confidence-card">
       <div><span>Evidence completeness</span><strong>{score}%</strong><StatusPill tone={tone}>{score >= 90 ? "Evidence complete" : score >= 80 ? "Minor gaps" : "Evidence missing"}</StatusPill></div>
       <div className="admin-confidence-scale"><span style={{ width: `${score}%` }} /></div>
-      <p>The share of the checks below that pass: what this company submitted, and whether it is internally consistent. Nothing is checked against a company registry, sanctions list or certification body, so this is not a verification and it cannot tell you a document is genuine. The decision is yours.</p>
+      <p>Share of the checks below that pass. Nothing is checked against a registry: the decision is yours.</p>
     </section>
   );
 }
@@ -885,7 +885,7 @@ function AiSuggestionsPanel({ orgId }) {
   return (
     <Panel
       title="AI suggestions"
-      subtitle="Suggestions from an AI model. It read the profile text, the certificate records and the list of files; it did not open the files or contact any registry. No score and no decision: the decision is yours."
+      subtitle="From an AI model that read the profile, not the files. The decision is yours."
       className="admin-assist-panel"
     >
       {state.message && <p className="admin-error" role="alert">{state.message}</p>}
@@ -1234,7 +1234,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               ) : profile.capabilities?.length ? <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} /> : null}
             </Panel>
             {profile.checks?.length ? (
-            <Panel title="Verification checks" subtitle="Each check reads what this company submitted and what TSC already holds. None of them contacts an outside registry or certifier.">
+            <Panel title="Verification checks" subtitle="No check contacts an outside registry or certifier.">
               <div className="admin-check-list">
                 {profile.checks.map(([label, result, confidence, detail]) => {
                   const tone = result === "Verified" || result === "Clear" ? "success" : result === "Missing" || result === "Rejected" ? "danger" : "warning";
@@ -1920,7 +1920,7 @@ function SettingsPage({ user, account, onSignOut, testEmailsIntro, testEmailsUna
   );
 }
 
-function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, validateThresholds, matchingPanel = null } = {}) {
+function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, validateThresholds, matchingPanel = null, extraNav = [], onSignOut } = {}) {
   // Everything below reads through the data seam. admin-prototype.html serves
   // the constants in this file; admin.html serves the marketplace. The
   // components in between never learn which.
@@ -2152,7 +2152,12 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
     }
     window.setTimeout(() => setToast(""), 2400);
   };
-  const navigate = (label) => { setScreen(label); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const navigate = (label) => {
+    const elsewhere = extraNav.find((item) => item.label === label);
+    if (elsewhere) { window.location.href = elsewhere.href; return; }
+    setScreen(label);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   const active = screen === "Review" ? reviewBack
     : screen === "Quote detail" && quoteBack === "Quotes" ? "Quotes"
     : ["RFQ detail", "Quote detail"].includes(screen) ? (rfqBack === "Overview" ? "Overview" : "RFQs")
@@ -2165,7 +2170,8 @@ function App({ testEmailsIntro, testEmailsUnavailable, showNotifications, valida
         active={active}
         ariaLabel="Admin workspace"
         collapsed={collapsed}
-        navItems={adminNav}
+        navItems={[...adminNav, ...extraNav]}
+        onSignOut={onSignOut}
         onNav={navigate}
         onProfile={() => navigate("Settings")}
         onToggle={() => setCollapsed((value) => !value)}

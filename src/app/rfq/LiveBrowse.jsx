@@ -15,6 +15,7 @@
  * per company). rfq-browse-view.js says what each one reads.
  */
 import React, { useEffect, useState } from "react";
+import { matchFit } from "./match-fit.js";
 import { FactoryBrowsePage } from "../../factory-prototype/main.jsx";
 import { brandSummary, listOpenRfqs, matchScoresForRfq } from "../../lib/domain/rfq.js";
 import { getRfqDocumentPresentation } from "../../lib/domain/documents.js";
@@ -77,9 +78,7 @@ function posted(value) {
 }
 
 function fitBand(score) {
-  if (score !== null && score >= 90) return { label: "Great fit", tone: "strong" };
-  if (score !== null && score >= 75) return { label: "Strong fit", tone: "good" };
-  return { label: "Potential fit", tone: "warn" };
+  return matchFit(score) ?? matchFit(0);
 }
 
 export default function LiveBrowse({ org, profile }) {

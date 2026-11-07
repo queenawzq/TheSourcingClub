@@ -2436,7 +2436,7 @@ function App() {
 export function FactoryDashboardPage({
   companyType = "factory", dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, purchaseCreditsLocked = "", onInviteFactory, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity,
   // Live mounts pass these; the prototype passes none and is unchanged.
-  orgName, rfqs, projects, metrics, capacity, attention, unreadCount,
+  orgName, rfqs, projects, metrics, capacity, attention, unreadCount, rfqPanelTitle,
   // Live: the company's upcoming calls. The design draws its card only on
   // the example dashboard; live draws it whenever there is a call.
   calls,
@@ -2500,7 +2500,7 @@ export function FactoryDashboardPage({
 
             <FactoryDashboardPanel
               className="factory-rfq-invites-panel"
-              title={language === "zh" ? (isNewcomer ? "匹配的询价" : "询价邀请") : (isNewcomer ? "Matched RFQs" : "RFQ invites")}
+              title={rfqPanelTitle ?? (language === "zh" ? (isNewcomer ? "匹配的询价" : "询价邀请") : (isNewcomer ? "Matched RFQs" : "RFQ invites"))}
               subtitle={isTradingCompany
                 ? (language === "zh" ? "根据供应商网络、服务能力和订单匹配度推荐的可报价需求。" : "Quote-ready requests matched to your supplier network, services, and order fit.")
                 : (language === "zh"
@@ -4734,7 +4734,7 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
           <div>
             <strong data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</strong>
             <p className="project-meta" data-no-translate>
-              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : `${project.brand} · ${project.location} · ${project.started}`}
+              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : [project.brand, project.location, project.started].filter(Boolean).join(" · ")}
             </p>
           </div>
       </header>
@@ -5259,7 +5259,7 @@ export function FactorySavedPage({
               ))}
             </section>
           ) : (
-            <p className="factory-dashboard-empty">{tx("No saved brands yet. Save a brand from its profile to keep it here.")}</p>
+            <p className="factory-dashboard-empty">{tx("No saved brands yet.")}</p>
           )
         ) : (
           <section className="factory-saved-rfq-list" aria-label="Saved RFQs">
@@ -5315,7 +5315,7 @@ function FactorySavedBrandCard({ brand, language = "en", onViewBrand }) {
 function FactorySavedRfqCard({ project, language, onViewRfq }) {
   const isZh = language === "zh";
   const title = isZh ? getTranslatedProjectTitle(project.title) : project.title;
-  const meta = `${project.brand} · ${project.location} · ${project.posted}`;
+  const meta = [project.brand, project.location, project.posted].filter(Boolean).join(" · ");
   const [primaryImage] = project.images || [];
 
   return (
@@ -6367,7 +6367,7 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
           <div>
             <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</h2>
             <p className="project-meta" data-no-translate>
-              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : `${project.brand} · ${project.location} · ${project.started}`}
+              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : [project.brand, project.location, project.started].filter(Boolean).join(" · ")}
             </p>
           </div>
         </div>
@@ -6411,7 +6411,7 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
           <p className="project-description" data-no-translate>{isZh ? getTranslatedListDescription(project) : project.description}</p>
           {isZh && <ListTranslationMeta />}
           <div className="project-status-row">
-            <span><strong>Current status:</strong> {project.statusDetail}</span>
+            {project.statusDetail && <span><strong>Current status:</strong> {project.statusDetail}</span>}
           </div>
           <ProjectProgress progress={project.progress} steps={project.steps} />
         </aside>
@@ -9186,7 +9186,7 @@ function BrandProjectCard({ project, companyType = "factory", language, onViewDe
           <div>
             <h2 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h2>
             <p data-no-translate>
-              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : `${project.brand} · ${project.location} · ${project.posted}`}
+              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : [project.brand, project.location, project.posted].filter(Boolean).join(" · ")}
             </p>
           </div>
         </div>
@@ -9800,7 +9800,7 @@ function FactoryProjectFilesPanel({ files: liveFiles, onOpen }) {
               <img src="/assets/prototype-icons/download.svg" alt="" />
             </button>
           )) : (
-            <p className="projects-empty">No files yet. The request's attachments and anything posted on a step appear here.</p>
+            <p className="projects-empty">No files yet.</p>
           )
         ) : files.map(([name, meta]) => (
           <button className="factory-detail-file-row" type="button" key={name}>

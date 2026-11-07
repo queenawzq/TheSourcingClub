@@ -20,6 +20,7 @@
  * which is what makes verification the thing that unlocks earning.
  */
 import React, { useEffect, useState } from "react";
+import { initials } from "../order/order-view.js";
 import { FactoryProjectDetail, FactoryReadOnlyRfqPage } from "../../factory-prototype/main.jsx";
 import {
   brandProfileForFactory,
@@ -247,7 +248,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
   const project = {
     title: rfq.title || "Request",
     brand: rfq.orgs?.name ?? "",
-    initials: (rfq.orgs?.name ?? "??").slice(0, 2).toUpperCase(),
+    initials: initials(rfq.orgs?.name),
     location: extras.brand?.hq_location ?? "",
     posted: rfq.published_at ? `Posted ${DAY.format(new Date(rfq.published_at))}` : "",
     quoteDue: rfq.quote_deadline ? DAY.format(new Date(rfq.quote_deadline)) : "",
@@ -310,7 +311,9 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           brief={rfq.brief ?? ""}
           details={{
             colorSplit: "",
-            bulkTimeline: rfq.target_delivery_month ?? "",
+            bulkTimeline: rfq.target_delivery_month
+              ? dateFrom(rfq.target_delivery_month).toLocaleDateString("en-US", { month: "long", year: "numeric" })
+              : "",
           }}
           materials={{
             mainMaterial: rfq.material_notes ?? "",
@@ -333,7 +336,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           questions={project.questions}
           capabilities={[]}
           match={extras.match === null ? null : {
-            summary: `Your profile scores ${extras.match}% against this request.`,
+            summary: `${extras.match}% match`,
             label: fit?.label ?? "",
             tone: fit?.tone ?? "",
           }}
@@ -341,7 +344,7 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           // to load) the design draws its own "Maison Rue" and its facts.
           // The name is the request's own; the facts wait for the summary.
           brand={{
-            initials: (extras.brand?.name ?? rfq.orgs?.name ?? "").slice(0, 2).toUpperCase(),
+            initials: initials(extras.brand?.name ?? rfq.orgs?.name),
             name: extras.brand?.name ?? rfq.orgs?.name ?? "",
             // The brand's name opens its profile.
             profileHref: `/app.html/brands/${rfq.brand_org_id}?from=request`,

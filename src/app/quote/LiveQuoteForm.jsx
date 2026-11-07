@@ -16,6 +16,7 @@
  * term it needs than a quote is stored against one nobody chose.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { initials } from "../order/order-view.js";
 import { quoteTextPatch, quoteTextValues } from "./quote-text-fields.js";
 import { FactorySubmitQuote } from "../../factory-prototype/main.jsx";
 import {
@@ -375,7 +376,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         files: requestDocuments.files.map((file) => file.file_name),
         onDownloadFiles: downloadRequestFiles,
         capacity: fit ? [fit.label] : [],
-        initials: (rfq.orgs?.name ?? "??").slice(0, 2).toUpperCase(),
+        initials: initials(rfq.orgs?.name),
         budget: formatRange(
           rfq.target_unit_price_min_cents,
           rfq.target_unit_price_max_cents,
