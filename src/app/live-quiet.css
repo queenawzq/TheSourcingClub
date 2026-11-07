@@ -60,7 +60,9 @@
 /* Admin. */
 .admin-header p,
 .rfqs-header.admin-header p,
-.admin-page .rfqs-header p {
+.admin-page .rfqs-header p,
+.admin-confidence-card > p,
+.admin-decision-card > h2 + p {
   display: none;
 }
 

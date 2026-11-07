@@ -1276,7 +1276,6 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <ProfileDetailPair label="Evidence received" value={profile.evidence} />
               <ProfileDetailPair label="Risk level" value={profile.risk || "Not set"} />
             </section>
-            {actions.companyCredits && profile.entityType !== "Brand" && <CreditsCard orgId={profile.id} refreshKey={profile.status} />}
             <section className="factory-profile-card admin-decision-card">
               <span>Final decision</span>
               <h2>Complete this review</h2>
@@ -1330,6 +1329,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
               {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}
             </section>
+            {actions.companyCredits && profile.entityType !== "Brand" && <CreditsCard orgId={profile.id} refreshKey={profile.status} />}
             {actions.reviewEmailStatus && <ReviewEmailCard orgId={profile.id} companyName={profile.name} refreshKey={`${profile.status}-${emailRefresh}`} sending={deciding} />}
           </aside>
         </div>

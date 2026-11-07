@@ -832,8 +832,8 @@ export default function AdminPayments() {
       ) : null}
 
       {views.length === 0 ? null : (
-      <section data-section="views">
-        <h2>Who read account numbers ({views.length})</h2>
+      <details className="admin-views-fold" data-section="views">
+        <summary>Number views ({views.length})</summary>
         {(
           <>
           <div className="admin-scroll">
@@ -854,7 +854,7 @@ export default function AdminPayments() {
           </div>
           </>
         )}
-      </section>
+      </details>
       )}
     </div>
   );

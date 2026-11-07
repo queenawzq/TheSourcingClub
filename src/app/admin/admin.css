@@ -17,6 +17,11 @@
 .admin h1 { margin: 0 0 8px; font-size: 22px; line-height: 28px; font-weight: 700; }
 .admin h2 { margin: 32px 0 12px; font-size: 17px; font-weight: 700; }
 
+/* The payments board's record of who read account numbers: closed until asked for. */
+.admin-views-fold { margin-top: 40px; }
+.admin-views-fold > summary { cursor: pointer; font-size: 14px; color: var(--text-muted); }
+.admin-views-fold[open] > summary { margin-bottom: 12px; }
+
 .admin-intro { margin: 0 0 8px; color: var(--text-muted); max-width: 64ch; font-size: 14px; }
 .admin-sub   { display: block; color: var(--text-muted); font-size: 12px; }
 .admin-error { color: var(--danger) !important; font-size: 13px; font-weight: 500; } /* see console-live.css */
