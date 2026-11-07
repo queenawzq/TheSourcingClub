@@ -126,9 +126,8 @@ const adminUser = await demoUser(LOGINS.admin);
 const brandMember = await demoUser(LOGINS.brandMember);
 const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
-const paypalFactory = await demoUser(LOGINS.paypalFactory);
 const switcher = await demoUser(LOGINS.switcher);
-const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, paypalFactory, admin: adminUser };
+const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -1192,17 +1191,13 @@ await runningOrder({ title: denimTitle, brief: "90 rigid denim jackets, enzyme w
 // 6. Ningbo Loomworks is in mainland China, where Stripe cannot pay out: its
 //    fit sample is funded and approved, and the payout waits on staff to pay
 //    it by bank ("Payout owed" on the staff payments page).
-//    The number is plainly fake: staff "Show number" reads it from Vault, and
-//    Pay with Wise sends it to the Wise sandbox. The SWIFT has to be one Wise
-//    knows, and the holder Latin letters.
-must(await secondFactory.client.rpc("save_wise_payout_account", {
+//    The number is plainly fake: staff "Show number" reads it from Vault.
+must(await secondFactory.client.rpc("save_bank_payout_account", {
   target_org: secondFactoryOrg.id,
   bank_name: "Demo Bank Ningbo (test data, not a real account)",
-  recipient_type: "chinese_local_business", currency: "CNY", number_key: "accountNumber",
-  details: {
-    legalType: "BUSINESS", accountHolderName: `${LOGINS.secondFactory.name} Co Ltd`, swiftCode: "BKCHCNBJ",
-    "address.country": "CN", "address.city": "Ningbo", "address.firstLine": "1 Demo Road", "address.state": "ZJ",
-  },
+  account_name: `${LOGINS.secondFactory.name} Co Ltd`,
+  bank_country: "CN", swift: "DEMOCNSH", branch: "Demo Ningbo branch, CNAPS 000000000000",
+  instructions: "Demo data only. Nothing is ever sent to this account.",
   account_number: "0000 0000 0000 1234", account_number_again: "0000 0000 0000 1234",
 }), "the second factory's payout details");
 // Lakeside Mills saved its bank account when the form took only the last four:
@@ -1225,33 +1220,6 @@ await approveOpenStep(seersucker, seersuckerTitle, secondFactory);
 must(await tradingCompany.client.from("factory_payout_accounts").insert({
   org_id: tradingOrg.id, method: "payoneer", payoneer_email: "kowloon-payouts@example.com", bank_country: "HK", is_primary: true,
 }), "the trading company's Payoneer account");
-// 8. Hangzhou Silkworks is in mainland China and paid by PayPal: a fit sample
-//    approved and owed ("Pay with PayPal" on the staff payments page).
-const paypalOrg = must(await paypalFactory.client.rpc("create_org", { org_name: LOGINS.paypalFactory.name, org_kind: "factory" }), "create the PayPal factory org");
-must(await admin.from("factory_profiles").upsert({
-  org_id: paypalOrg.id,
-  country_code: "CN",
-  location: "Hangzhou, China",
-  moq: 100,
-  typical_lead_days: 40,
-  intro: "Silk blouses and dresses, 100-unit minimums.",
-  onboarding_completed_at: new Date().toISOString(),
-  verification_status: "verified",
-}), "the PayPal factory's profile");
-must(await admin.from("credit_ledger").insert({
-  org_id: paypalOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",
-}), "the PayPal factory's credits");
-must(await paypalFactory.client.from("factory_payout_accounts").insert({
-  org_id: paypalOrg.id, method: "paypal", paypal_email: "hangzhou-payouts@example.com", is_primary: true,
-}), "the PayPal factory's address");
-const voileTitle = "Silk voile blouse, AW27";
-const voile = await runningOrder({
-  title: voileTitle, brief: "80 silk voile blouses, French seams.", quantity: 80, unitPrice: 3600,
-  vendor: paypalFactory, vendorOrg: paypalOrg,
-});
-await funded(await dueNow(voile, voileTitle), CARD);
-await approveOpenStep(voile, voileTitle, paypalFactory);
-
 const hopsackTitle = "Linen hopsack blazer, AW27";
 const hopsack = await runningOrder({
   title: hopsackTitle, brief: "120 linen hopsack blazers, half lined.", quantity: 120, unitPrice: 4200,
@@ -1381,8 +1349,7 @@ done. Every login uses the password "${PASSWORD}".
     - "Merino rib tank, AW27": fit sample paid by bank, clearing
     - "Stretch chino, AW27": fit sample card declined, to pay again
     - "Washed denim jacket, AW27": fit sample payment due
-    - "Seersucker camp shirt, AW27" (${LOGINS.secondFactory.name}): fit sample approved, owed: Pay with Wise
-    - "Silk voile blouse, AW27" (${LOGINS.paypalFactory.name}): fit sample approved, owed: Pay with PayPal
+    - "Seersucker camp shirt, AW27" (${LOGINS.secondFactory.name}): fit sample approved, owed to a factory
       Stripe cannot pay (China): staff pay it by bank from the admin's Payments page
   Payments lists those payments (Paid, Funded, Processing, Failed, Due) and its discount code.
   Its profile (/profile) is filled in, with a pending invitation.
