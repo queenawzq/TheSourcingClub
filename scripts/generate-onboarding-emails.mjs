@@ -250,7 +250,7 @@ export function onboardingEmail(key, variables = {}) {
 
   const companyName = variables.companyName || (key === "brand" ? "your brand" : "your company");
   const dashboardUrl = variables.dashboardUrl || "https://the-sourcing-club.vercel.app/app.html";
-  const logoUrl = variables.logoUrl || "https://the-sourcing-club.vercel.app/assets/logo.png";
+  const logoUrl = variables.logoUrl || "https://sourcing-club.com/assets/logo.png";
   const supportEmail = variables.supportEmail || "operations@contact.sourcing-club.com";
   const companyAddress = variables.companyAddress || "New York, USA";
   const html = emailHtml(key, data)

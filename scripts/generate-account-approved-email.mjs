@@ -130,7 +130,7 @@ function reviewDecisionEmail({
   recipientName = "",
   locale = "en",
   loginUrl = "https://the-sourcing-club.vercel.app/app.html",
-  logoUrl = "https://the-sourcing-club.vercel.app/assets/logo.png",
+  logoUrl = "https://sourcing-club.com/assets/logo.png",
   supportEmail = "operations@contact.sourcing-club.com",
   companyAddress = "New York, USA",
   note = "",
