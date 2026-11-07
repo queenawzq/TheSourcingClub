@@ -10,8 +10,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  awaitingApproval, earningStatus, earningsSummaryFor, factoryAmount, failedWithdrawal, handPaidFigures, heldOnCancelledOrder, isHandPaid, toBeSent,
-  staffBankNote, withdrawalRows,
+  awaitingApproval, earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, toBeSent,
+  staffBankNote, withdrawalProblem, withdrawalRows,
 } from "../src/app/order/payment-summary.mjs";
 
 const usd = (rows) => rows.reduce((sum, row) => sum + row.amount, 0);
@@ -50,10 +50,11 @@ for (const row of earnings) {
 // The words, in each branch.
 const held = earnings.find((row) => row.id === "held");
 const approved = earnings.find((row) => row.id === "approved");
-assert.equal(earningStatus(approved, null), "Pending");
-assert.equal(earningStatus(held, null), "Awaiting approval");
-assert.equal(earningStatus(earnings.find((row) => row.id === "held-cancelled"), null), "Order cancelled");
-assert.equal(earningStatus(earnings.find((row) => row.id === "paid"), null), "Paid");
+assert.equal(earningStatus(approved), "Pending");
+assert.equal(earningStatus(held), "Awaiting approval");
+assert.equal(earningStatus(earnings.find((row) => row.id === "held-cancelled")), "Order cancelled");
+assert.equal(earningStatus(earnings.find((row) => row.id === "paid")), "Paid");
+assert.equal(earningStatus.length, 1, "the word comes from the payment alone, so owner and member read the same");
 
 // Every payment sent has its own withdrawal row, and the figures still add up:
 // on All, an earning and its withdrawal net to what is still owed or held.
@@ -74,10 +75,17 @@ assert.equal(sentOut, 300 + 700 + 900 + 1100 + 1300, "each payment sent is one w
 assert.equal(rows.filter((row) => row.failed).length, 2, "a failed attempt keeps its row");
 assert.equal(rows.find((row) => row.id === "provider-a").status, "Processing");
 assert.equal(rows.find((row) => row.id === "provider-b").note, "Check your bank details", "a refused account says what to do");
+assert.ok(rows.find((row) => row.id === "provider-b").amount < 0, "a failed row keeps its sign, struck through");
 assert.equal(rows.find((row) => row.id === "provider-d").note, "TSC will try again", "and one the factory can't fix says so");
 assert.ok(rows.every((row) => !/\b\d{5,}\b/.test(row.meta ?? "")), "no row carries a number");
-assert.equal(failedWithdrawal(money)?.id, "b", "the card raises a failure on money still owed");
-assert.equal(failedWithdrawal(money.filter((row) => row.id !== "bounced")), null, "not one since retried and paid");
+assert.equal(withdrawalProblem(money)?.line, "A withdrawal failed. Check your bank details.", "the card raises a failure on money still owed");
+assert.equal(withdrawalProblem(money.filter((row) => row.id !== "bounced")), null, "not one since retried and paid");
+assert.equal(withdrawalProblem(money, { details_changed_at: "2026-11-05T00:00:00Z" }), null, "nor once the details have changed since");
+const unclaimed = [pay("held-by-paypal", 12000, "confirmed", { ...APPROVED, provider_payouts: [attempt("p", "processing", { provider: "paypal", amount_cents: 12000, currency: "USD", paid_to: "a@example.com", details_asked_at: "2026-11-03T00:00:00Z" })] })];
+assert.equal(withdrawalProblem(unclaimed)?.line, "Your payment of $120.00 is waiting. Check your PayPal address.", "the page says what the bell says");
+assert.equal(withdrawalRows(unclaimed)[0].note, "Check your PayPal address");
+assert.equal(withdrawalRows(unclaimed)[0].status, "Waiting");
+assert.equal(withdrawalProblem(unclaimed, { details_changed_at: "2026-11-04T00:00:00Z" }), null, "a corrected address stops asking");
 const moneyFigures = handPaidFigures(money);
 assert.equal(usd(moneyFigures.onItsWay), 300, "being sent is on its way");
 assert.equal(usd(moneyFigures.balance), 500, "a failed one is owed again");
@@ -107,7 +115,8 @@ assert.equal(isHandPaid(null, null), true);
 const stripeSummary = earningsSummaryFor(transferred, null, "All clients");
 assert.equal(stripeSummary.paid, null, "Paid out cannot be known without Stripe");
 const answered = earningsSummaryFor(transferred, { pendingEarnings: [{ paymentId: "t" }], payouts: [] }, "All clients");
-assert.equal(usd(answered.pending), 5, "Stripe's pending earning is Pending");
+assert.equal(usd(answered.pending), 0, "paid through Stripe is not Pending: the card has it as on its way");
+assert.equal(earningStatus(transferred[0]), "Paid", "the same word as the order page");
 
 // The same rules as the staff board's buckets. A change there must change here.
 const board = readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8");

@@ -10,7 +10,6 @@ import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
 import StripeConnectEmbed from "./StripeConnectEmbed.jsx";
 import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 import { PaypalStep, WiseBankStep, readsChinese } from "./PayoutSetupSteps.jsx";
-import { failureNote } from "./payment-summary.mjs";
 import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
@@ -196,7 +195,7 @@ export default function StripePayoutCard({
   manualBusy,
   manualSaved,
   manualOwed = [],
-  failed = null,
+  problem = null,
   renderCard = true,
   initialAction = null,
   initialMethodId = null,
@@ -706,9 +705,7 @@ export default function StripePayoutCard({
             ? isOwner ? "Add your full account number." : "Ask a company owner to add the full account number."
             : isOwner ? "Add a withdrawal method to receive earnings." : "No withdrawal method yet.";
   // Owed money that bounced: what this person must do next, on the card.
-  // Once the details have changed since, there is nothing more to ask of them.
-  const failureOpen = failed && !(failed.failure_code === "details_rejected" && manualAccount?.details_changed_at > failed.created_at);
-  const failedLine = failureOpen ? (isOwner || failed.failure_code !== "details_rejected" ? `A withdrawal failed. ${failureNote(failed)}.` : "A withdrawal failed. Ask a company owner to check the details.") : null;
+  const failedLine = !problem ? null : isOwner || !problem.fixable ? problem.line : "Ask a company owner to check the withdrawal details.";
 
   return (
     <>
@@ -720,10 +717,10 @@ export default function StripePayoutCard({
             <span className="payment-metric-label">Balance (USD)</span>
             <strong data-testid="payout-balance">{handFigures.balance ? formatMoney(payoutUsdTotal(handFigures.balance), "USD")
               : handFigures.failed ? "—" : <span className="payout-balance-placeholder" role="status" aria-label="Loading balance" />}</strong>
-            {handFigures.onItsWay?.length ? <p data-testid="payout-on-its-way">{formatMoney(payoutUsdTotal(handFigures.onItsWay), "USD")} on its way</p> : null}
+            {handFigures.onItsWay?.length && !failedLine ? <p data-testid="payout-on-its-way">{formatMoney(payoutUsdTotal(handFigures.onItsWay), "USD")} on its way</p> : null}
             <p data-testid="payout-how-paid">{payoutSetupLine}</p>
           </> : <>
-          <span className="payment-metric-label">Available balance (USD)</span>
+          <span className="payment-metric-label">{currency !== "USD" ? "Available balance (estimated USD)" : "Available balance (USD)"}</span>
           <strong data-testid="payout-balance">{balance ? formatMoney(payoutUsdTotal(balance.available, balance.displayFx), "USD")
             // A placeholder the size of the amount, so the card does not
             // jump when the provider answers.
@@ -733,11 +730,12 @@ export default function StripePayoutCard({
             <p className="payout-balance-line payout-balance-placeholder-lines" aria-hidden="true"><span /><span /></p>
           ) : <p className={balance || balanceWaiting ? "payout-balance-line" : undefined}>{balance
             ? [
-              arriving && arrivesOn ? `Available from ${arrivesOn}` : null,
+              // Paid, and still on its way to the balance: the figure and its day.
+              pending > 0 ? `${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} on its way${arrivesOn ? ` · ${arrivesOn}` : ""}` : null,
               // Orders are in USD; an account is credited in its own currency.
-              currency !== "USD" ? `Estimated in USD. Paid in ${currency}.` : null,
-              account?.transfers_active && !account.payouts_enabled ? "Finish setup to withdraw." : null,
-            ].filter(Boolean).join(" ")
+              currency !== "USD" ? `Paid in ${currency}` : null,
+              account?.transfers_active && !account.payouts_enabled ? "Finish setup to withdraw" : null,
+            ].filter(Boolean).join(" · ")
             : payoutSetupLine}</p>}
           </>}
           {balance?.recovery && [...balance.recovery.available, ...balance.recovery.pending].some(row => row.amount !== 0) ? <div role="alert">
@@ -748,7 +746,7 @@ export default function StripePayoutCard({
             }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a>.</p>}
           </div> : null}
           {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}</p> : null}
-          {manualSaved ? <p className="live-payment-notice">Withdrawal method saved.</p> : null}
+          {manualSaved && !failedLine ? <p className="live-payment-notice">Withdrawal method saved.</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested.</p> : null}
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
           {error ? <p className="live-stripe-error" role="alert">{error.message}</p> : null}
@@ -756,7 +754,8 @@ export default function StripePayoutCard({
         <div className="live-payout-card-action">
           {isOwner ? account?.transfers_active ? (
             <>
-            <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled={busy || !balance || available <= 0 || !account.payouts_enabled} onClick={() => {
+            <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled={busy || !balance || available <= 0 || !account.payouts_enabled}
+              title={!balance ? undefined : !account.payouts_enabled ? "Finish setup to withdraw" : available > 0 ? undefined : pending > 0 ? `Nothing to withdraw yet${arrivesOn ? `. Available ${arrivesOn}` : ""}` : "Nothing to withdraw yet"} onClick={() => {
               setError(null);
               setWithdrawal({ amount: available, currency: currency.toLowerCase(), requestId: crypto.randomUUID() });
               setModal("withdraw");

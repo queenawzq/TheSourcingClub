@@ -89,6 +89,9 @@
 /* Header and footer stay in sight; only the middle scrolls. */
 .brand-profile-modal.payout-modal { display: flex; flex-direction: column; width: min(560px, calc(100vw - 40px)); max-height: calc(100vh - 48px); overflow: hidden; padding: 24px 28px 0; border-radius: 16px; }
 .payout-modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -28px; padding-left: 28px !important; padding-right: 28px !important; }
+/* The row's menu has room in the dialog instead of being cut off by its scroll. */
+.payout-modal-body:has(.payout-method-popover) { padding-bottom: 104px; }
+.payout-amount-failed { color: var(--text-muted); text-decoration: line-through; }
 .payout-recommended { margin: 0; color: var(--text); font-size: 15px; font-weight: 700; line-height: 21px; }
 .payout-back { justify-self: start; }
 .payout-form-stack { display: grid; gap: 14px; }

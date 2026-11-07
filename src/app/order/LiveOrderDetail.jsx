@@ -19,6 +19,7 @@
  * (migration 20261023000300). The factory is paid the step amount and keeps
  * reading the summary.
  */
+import { earningStatus } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
@@ -140,6 +141,8 @@ function paymentLine(payment, isFactory, kind) {
         ? "Payment claimed, awaiting our confirmation"
         : "You have marked this sent — awaiting our confirmation";
     case "confirmed":
+      // The factory's one word for this money, the same as on Payments.
+      if (isFactory) return earningStatus(payment);
       if (!payment.release_requested_at) return "Funded";
       return kind === "payment_only" ? "Funded" : "Approved";
     case "released":

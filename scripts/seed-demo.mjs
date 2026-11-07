@@ -493,8 +493,8 @@ must(await admin.from("factory_certifications").insert({
 // every other demo login. The invite guard refuses a company's own email
 // domain before it says whether an address has an account, so this is the
 // one address a demo company can invite and be told "already has a Sourcing
-// Club account". Not published: it is not one of Browse's factories. In
-// mainland China, and paid through PayPal (below).
+// Club account". Published, so a brand can invite it. In mainland China, and
+// paid through PayPal (below).
 const otherDomainOrg = must(await otherDomainFactory.client.rpc("create_org", { org_name: LOGINS.otherDomainFactory.name, org_kind: "factory" }), "create other-domain factory org");
 must(await admin.from("factory_profiles").upsert({
   org_id: otherDomainOrg.id,
@@ -505,17 +505,25 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Worsted and woollen cloth, 300-metre minimums.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "verified",
+  trust_tier: "verified",
+  published_at: new Date().toISOString(),
 }), "other-domain factory profile");
+must(await otherDomainFactory.client.from("taxonomy_links").insert(await Promise.all(secondFactoryTags.map(async ([kind, slug]) => ({
+  subject_type: "factory_profile", subject_id: otherDomainOrg.id, org_id: otherDomainOrg.id, term_id: await termId(kind, slug),
+})))), "other-domain factory tags");
 must(await admin.from("credit_ledger").insert({
   org_id: otherDomainOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified",
 }), "other-domain factory credits");
-// A verified factory in mainland China, not published, with no withdrawal
-// method yet: its money waits until it sets one up (its order is below).
+// A verified, published factory in mainland China with no withdrawal method yet: its money waits until it sets one up (its order is below).
 const chinaNewOrg = must(await chinaNewFactory.client.rpc("create_org", { org_name: LOGINS.chinaNewFactory.name, org_kind: "factory" }), "create the new China factory");
 must(await admin.from("factory_profiles").upsert({
   org_id: chinaNewOrg.id, country_code: "CN", location: "Hangzhou, China", moq: 200, typical_lead_days: 35,
-  intro: "Test factory.", onboarding_completed_at: new Date().toISOString(), verification_status: "verified",
+  intro: "Knitwear, small runs.", onboarding_completed_at: new Date().toISOString(), verification_status: "verified",
+  trust_tier: "verified", published_at: new Date().toISOString(),
 }), "the new China factory's profile");
+must(await chinaNewFactory.client.from("taxonomy_links").insert(await Promise.all(secondFactoryTags.map(async ([kind, slug]) => ({
+  subject_type: "factory_profile", subject_id: chinaNewOrg.id, org_id: chinaNewOrg.id, term_id: await termId(kind, slug),
+})))), "the new China factory's tags");
 must(await admin.from("credit_ledger").insert({ org_id: chinaNewOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified" }), "the new China factory's credits");
 // A factory staff sent back: "Needs information" with the kind of note staff
 // actually write, a paragraph and a list, long enough that its finish card
@@ -1229,8 +1237,11 @@ must(await secondFactory.client.rpc("save_wise_payout_account", {
   account_number: "0000 0000 0000 1234", account_number_again: "0000 0000 0000 1234",
 }), "the second factory's payout details");
 // Lakeside Mills is in mainland China and paid through PayPal.
+// PAYPAL_TEST_RECEIVER is a real sandbox account, without which PayPal holds the
+// money as unclaimed and it never reaches "paid".
 must(await otherDomainFactory.client.from("factory_payout_accounts").insert({
-  org_id: otherDomainOrg.id, method: "paypal", paypal_email: "lakeside-payouts@example.net", is_primary: true,
+  org_id: otherDomainOrg.id, method: "paypal",
+  paypal_email: process.env.PAYPAL_TEST_RECEIVER?.trim().toLowerCase() || "lakeside-payouts@example.net", is_primary: true,
 }), "Lakeside's PayPal account");
 const seersuckerTitle = "Seersucker camp shirt, AW27";
 const seersucker = await runningOrder({

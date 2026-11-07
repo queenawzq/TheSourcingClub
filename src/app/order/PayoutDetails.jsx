@@ -31,7 +31,7 @@ import { InviteFactoryModal } from "../../factory-prototype/main.jsx";
 import StripePayoutCard, { PayoutCardPlaceholder, PayoutModal } from "./StripePayoutCard.jsx";
 import { useManualPayouts } from "./use-manual-payouts.js";
 import { CreditPurchaseButton } from "./CreditPurchase.jsx";
-import { earningStatus, earningsSummaryFor, factoryAmount, failedWithdrawal, handPaidFigures, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalRows } from "./payment-summary.mjs";
+import { earningStatus, earningsSummaryFor, factoryAmount, handPaidFigures, heldOnCancelledOrder, isHandPaid, stripeRelevant, withdrawalProblem, withdrawalRows } from "./payment-summary.mjs";
 import "./order.css";
 import "./payout.css";
 
@@ -61,8 +61,8 @@ const cardExpiry = (card) => (card.expMonth && card.expYear ? `Expires ${String(
  */
 const STRIPE_FIGURES_TEXT = {
   slow: "Still loading.",
-  failed: "Couldn't load Pending, Paid out and withdrawals. Try again shortly.",
-  owner: "Only a company owner can see Pending, Paid out and withdrawals.",
+  failed: "Couldn't load Paid out and withdrawals. Try again shortly.",
+  owner: "Only a company owner can see Paid out and withdrawals.",
 };
 
 /** A grey bar where a figure will be, sized like it; nothing is guessed. */
@@ -225,7 +225,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       paymentRows = unwrap(
         await supabase
           .from("order_payments")
-          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, failure_code, created_at, paid_at)")
+          .select("id, order_id, amount_cents, amount_received_cents, charged_cents, stripe_transfer_id, release_requested_at, released_by, released_note, currency, state, due_at, sent_at, confirmed_at, released_at, created_at, order_milestones (title), payoneer_payouts (paid_to_email, payoneer_payment_id), bank_payouts (paid_to_bank, paid_to_last4), provider_payouts (id, provider, status, paid_to, amount_cents, currency, failure_code, details_asked_at, created_at, updated_at, paid_at)")
           .in("order_id", orders.map((order) => order.id))
           .order("created_at", { ascending: false }),
         "load your earnings",
@@ -324,10 +324,10 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
       meta: `${row.order?.orgs?.name || "Brand"} · ${row.order?.order_number || "Production order"}`,
       // A brand pays the step plus TSC's fee; the factory earns the step.
       note: heldOnCancelledOrder(row) ? "Returned to the brand." : null,
-      status: earningStatus(row, stripeBalance),
+      status: earningStatus(row),
       amount: factoryAmount(row),
       currency: row.currency,
-      available: earningStatus(row, stripeBalance) === "Paid",
+      available: earningStatus(row) === "Paid",
     })),
     ...withdrawalRows(visibleEarnings).map((row) => ({
       ...row,
@@ -420,7 +420,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             onSaveManual={payouts.save}
             onSaveWise={payouts.saveWise}
             onSavePaypal={payouts.savePaypal}
-            failed={failedWithdrawal(earnings)}
+            problem={withdrawalProblem(earnings, payouts.primary)}
             onDeleteManual={payouts.remove}
             manualBusy={payouts.busy}
             manualSaved={payouts.saved}
@@ -470,7 +470,7 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
                       <div><strong>{row.title}</strong><span>{row.meta}</span>{row.note ? <span>{row.note}</span> : null}</div>
                     </div>
                     <span className={`billing-status payout-status-${row.status.toLowerCase().replaceAll(" ", "-")}`}>{row.status}</span>
-                    <strong className={row.amount < 0 ? "payout-amount-negative" : row.available ? "payout-amount-positive" : "payout-amount-pending"}>
+                    <strong className={row.failed ? "payout-amount-failed" : row.amount < 0 ? "payout-amount-negative" : row.available ? "payout-amount-positive" : "payout-amount-pending"}>
                       {row.amount < 0 ? "−" : row.available ? "+" : ""}{formatMoney(payoutUsdMinor(Math.abs(row.amount), row.currency, stripeBalance?.displayFx), "USD")}
                     </strong>
                   </article>

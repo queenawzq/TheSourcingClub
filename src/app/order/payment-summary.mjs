@@ -69,7 +69,6 @@ export function earningsSummaryFor(earnings, balance, client) {
   const selected = (row) => all || row?.order?.brand_org_id === client;
   const funded = earnings.filter((row) => ["confirmed", "released"].includes(row.state) && !heldOnCancelledOrder(row) && selected(row));
   const amounts = (rows) => currencyTotals(rows.map((row) => ({ amount: factoryAmount(row), currency: row.currency })));
-  const pendingIds = new Set(balance?.pendingEarnings?.map((row) => row.paymentId));
   // Paid out with no Stripe transfer: TSC sent it by bank (where Stripe cannot
   // pay out), whether the brand paid by card or by an old bank wire.
   const bankPaid = earnings.filter((row) => row.state === "released" && !row.stripe_transfer_id && selected(row));
@@ -83,7 +82,9 @@ export function earningsSummaryFor(earnings, balance, client) {
   return {
     total: amounts(funded),
     approval: amounts(funded.filter(awaitingApproval)),
-    pending: stripeFigure(() => amounts(funded.filter((row) => toBeSent(row) || pendingIds.has(row.id)))),
+    // Approved and not sent yet, whoever reads it. What Stripe is still
+    // processing has been paid: it is on the card as money on its way.
+    pending: amounts(funded.filter(toBeSent)),
     paid: stripeFigure(() => currencyTotals([
       ...paidAmounts, ...bankPaid.map((row) => ({ amount: factoryAmount(row), currency: row.currency })),
     ])),
@@ -91,27 +92,26 @@ export function earningsSummaryFor(earnings, balance, client) {
 }
 
 /**
- * Where one earning stands, in one set of words: Awaiting approval, Pending,
- * Paid. How it was sent is on its withdrawal row. Released through Stripe is in
- * the balance only once Stripe has processed it.
- *
- * `balance` is Stripe's answer: undefined while it is still being read (the
- * list draws before it arrives, and said "Paid" for two seconds before
- * "Pending"), null when it cannot be read (not an owner, Stripe unreachable).
+ * Where one earning stands: Awaiting approval, Pending, Paid. The one word for
+ * this money, on Payments and the factory's order page, whoever reads it: it
+ * comes from the payment alone, never from Stripe's answer, which only an owner
+ * can read. Money Stripe is still processing is Paid here and "on its way" on
+ * the card. How it was sent is on its withdrawal row.
  */
-export function earningStatus(row, balance) {
+export function earningStatus(row) {
   if (heldOnCancelledOrder(row)) return "Order cancelled";
-  if (row.state !== "released") return row.release_requested_at ? "Pending" : "Awaiting approval";
-  if (!row.stripe_transfer_id) return "Paid";
-  if (balance === undefined) return "Pending";
-  if (balance === null) return "Paid";
-  return balance.pendingEarnings?.some((pending) => pending.paymentId === row.id) ? "Pending" : "Paid";
+  if (row.state === "released") return "Paid";
+  return row.release_requested_at ? "Pending" : "Awaiting approval";
 }
 
 const WITHDRAWAL_STATUS = { processing: "Processing", paid: "Completed", failed: "Failed" };
 const FAILURE_NOTE = {
-  details_rejected: { wise: "Check your bank details", paypal: "Check your PayPal email" },
+  details_rejected: { wise: "Check your bank details", paypal: "Check your PayPal address" },
 };
+
+/** Sent, but the provider is holding it until the factory corrects its details. */
+export const waitingOnDetails = (attempt) => attempt.status === "processing" && Boolean(attempt.details_asked_at);
+const askFor = (attempt) => FAILURE_NOTE.details_rejected[attempt.provider];
 
 /** What a failed attempt asks of this person, or nothing they can do. */
 export const failureNote = (attempt) => FAILURE_NOTE[attempt.failure_code]?.[attempt.provider] ?? "TSC will try again";
@@ -121,8 +121,8 @@ const when = (row) => row.released_at || row.confirmed_at || row.created_at;
 /**
  * A payment sent by anything but Stripe, as rows of its own: one per Wise or
  * PayPal attempt, or one for what staff marked paid by hand. Stripe's own
- * withdrawals come from Stripe. Only "Failed" keeps its amount unsigned: that
- * money never left.
+ * withdrawals come from Stripe. A failed one is drawn struck through: that money
+ * never left.
  */
 export function withdrawalRows(earnings) {
   return (earnings ?? []).flatMap((row) => {
@@ -133,10 +133,10 @@ export function withdrawalRows(earnings) {
       date: attempt.paid_at || attempt.created_at,
       title: attempt.provider === "paypal" ? "PayPal" : "Bank transfer",
       meta: attempt.paid_to,
-      note: attempt.status === "failed" ? failureNote(attempt) : null,
-      status: WITHDRAWAL_STATUS[attempt.status],
+      note: attempt.status === "failed" ? failureNote(attempt) : waitingOnDetails(attempt) ? askFor(attempt) : null,
+      status: waitingOnDetails(attempt) ? "Waiting" : WITHDRAWAL_STATUS[attempt.status],
       failed: attempt.status === "failed",
-      amount: attempt.status === "failed" ? Number(attempt.amount_cents) : -Number(attempt.amount_cents),
+      amount: -Number(attempt.amount_cents),
     }));
     if (row.state !== "released" || row.stripe_transfer_id || attempts(row).some((attempt) => attempt.status === "paid")) return tried;
     const bank = row.bank_payouts;
@@ -156,10 +156,25 @@ export function withdrawalRows(earnings) {
   });
 }
 
-/** The newest attempt on a payment still owed, if it failed: what the page must raise. */
-export function failedWithdrawal(earnings) {
-  return (earnings ?? []).filter(toBeSent).map((row) => [...attempts(row)].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0])
-    .find((attempt) => attempt?.status === "failed") ?? null;
+/**
+ * What the card must raise, in the bell's words: the newest attempt on a payment
+ * still owed, if it failed or is waiting on the factory's details. Nothing once
+ * the details have changed since it asked.
+ */
+export function withdrawalProblem(earnings, method) {
+  const attempt = (earnings ?? []).filter(toBeSent)
+    .map((row) => [...attempts(row)].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0])
+    .find((latest) => latest?.status === "failed" || (latest && waitingOnDetails(latest)));
+  if (!attempt) return null;
+  const asked = attempt.details_asked_at ?? attempt.updated_at ?? attempt.created_at;
+  const fixable = attempt.failure_code === "details_rejected" || waitingOnDetails(attempt);
+  if (fixable && method?.details_changed_at && new Date(method.details_changed_at) > new Date(asked)) return null;
+  return {
+    fixable,
+    line: waitingOnDetails(attempt)
+      ? `Your payment of ${(Number(attempt.amount_cents) / 100).toLocaleString("en-US", { style: "currency", currency: attempt.currency ?? "USD" })} is waiting. ${askFor(attempt)}.`
+      : `A withdrawal failed. ${failureNote(attempt)}.`,
+  };
 }
 
 /**
@@ -170,10 +185,4 @@ export function failedWithdrawal(earnings) {
 export function staffBankNote(row) {
   if (row.state !== "released" || row.stripe_transfer_id || row.payoneer_payouts || !row.released_by) return null;
   return row.released_note?.trim() || null;
-}
-
-/** When Stripe makes an earning still pending withdrawable: its day, read as a day. */
-export function availableOn(row, balance) {
-  const day = balance?.pendingEarnings?.find((pending) => pending.paymentId === row.id)?.available_on;
-  return day ? new Date(day * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) : null;
 }
