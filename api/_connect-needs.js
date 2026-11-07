@@ -17,11 +17,21 @@ export function connectNeedsNotice(before, account) {
   const transfersStopped = Boolean(before?.transfers_active) && !transfers;
   const payoutsStopped = Boolean(before?.payouts_enabled) && !account.payouts_enabled;
   if (!newlyDue && !transfersStopped && !payoutsStopped) return null;
-  // Earnings still arrive and only withdrawing is stopped: say exactly that.
-  const onlyWithdrawals = transfers && !account.payouts_enabled;
+  // Stopped with nothing for the factory to give (Stripe is reviewing the
+  // account): Finish setup would open a form with nothing to do in it.
+  if (!due.length) {
+    return {
+      kind: "payout_method_changed",
+      title: transfers ? "Withdrawals are paused" : "Payments to you are paused",
+      // True as written: a newly due item is emailed by this same function.
+      body: "Your withdrawal account is being reviewed. Your earnings are safe. We will email you if we need anything.",
+    };
+  }
+  // The same words as the card: while earnings still arrive, what is at
+  // stake is withdrawing them.
   return {
     kind: "payout_method_changed",
-    title: onlyWithdrawals ? "Finish setup to withdraw" : "Finish setup to receive earnings",
+    title: transfers ? "Finish setup to withdraw" : "Finish setup to receive earnings",
     body: "We need a few more details for your withdrawal account. Open Payments and choose Finish setup.",
   };
 }

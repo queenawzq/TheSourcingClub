@@ -701,6 +701,8 @@ export default function StripePayoutCard({
   // Something is due on a set-up account (the webhook also emails this):
   // the factory must act, so it is never "in progress".
   const needsMore = Boolean(account?.details_submitted && account.requirements_due?.length);
+  // Withdrawals stopped with nothing due: under review, nothing to finish.
+  const paused = Boolean(account?.transfers_active && !account.payouts_enabled && !account.requirements_due?.length);
   const payoutSetupLine = account?.transfers_active
     // The account is known a moment before its balance arrives:
     // that is loading, and only a real failure says it failed.
@@ -745,7 +747,7 @@ export default function StripePayoutCard({
               pending > 0 ? `${currency !== "USD" ? "≈" : ""}${formatMoney(payoutUsdTotal(balance.pending, balance.displayFx), "USD")} ${arrivesOn ? `available ${arrivesOn}` : "not available yet"}` : null,
               // Orders are in USD; an account is credited in its own currency.
               currency !== "USD" ? `Paid in ${currency}` : null,
-              account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
+              paused ? "Withdrawals paused" : account?.transfers_active && (!account.payouts_enabled || needsMore) ? "Finish setup to withdraw" : null,
             ].filter(Boolean).join(" · ")
             : payoutSetupLine}</p>}
           </>}
@@ -766,12 +768,12 @@ export default function StripePayoutCard({
           {isOwner ? account?.transfers_active ? (
             <>
             <button className="primary-btn compact-btn" type="button" data-testid="withdraw-balance" disabled={busy || !balance || available <= 0 || !account.payouts_enabled}
-              title={!balance ? undefined : !account.payouts_enabled ? "Finish setup to withdraw" : available > 0 ? undefined : pending > 0 ? `Nothing to withdraw yet${arrivesOn ? `. Available ${arrivesOn}` : ""}` : "Nothing to withdraw yet"} onClick={() => {
+              title={!balance ? undefined : paused ? "Withdrawals paused" : !account.payouts_enabled ? "Finish setup to withdraw" : available > 0 ? undefined : pending > 0 ? `Nothing to withdraw yet${arrivesOn ? `. Available ${arrivesOn}` : ""}` : "Nothing to withdraw yet"} onClick={() => {
               setError(null);
               setWithdrawal({ amount: available, currency: currency.toLowerCase(), requestId: crypto.randomUUID() });
               setModal("withdraw");
             }}>Withdraw to bank</button>
-            {account.payouts_enabled && !needsMore ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
+            {(account.payouts_enabled && !needsMore) || paused ? null : <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={() => setModal("onboarding")}>Finish setup</button>}
             <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={openManage}>{cardWords.methods}</button>
             </>
           ) : account ? (
