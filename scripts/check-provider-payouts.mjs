@@ -123,6 +123,7 @@ function fakeDb({ recipient = null } = {}) {
       if (args.new_stage) db.payout.stage = args.new_stage;
       if (args.sentence !== undefined) db.payout.sentence = args.sentence;
       if (args.tell_factory) db.told.push(args.tell_factory);
+      if (args.received != null && !args.keep_lease) db.lastReceived = args.received;
       if (!args.keep_lease) db.leased = false;
       return {};
     }
@@ -294,6 +295,7 @@ const pay = (wise, db, extra = {}) => wisePay({ wise, caller: db.caller, db, row
   fake.state.byId.get("5000").hasActiveIssues = true;
   await syncAttempts({ client: wise, db: { ...db, from: () => ({ select: () => ({ eq: () => ({ not: () => ({ or: () => ({ limit: async () => ({ data: [{ id: db.payout.id, status: "processing", provider_ref: "5000" }] }) }) }) }) }) }) } });
   assert.match(db.payout.sentence, /stopped this transfer/);
+  assert.equal(db.lastReceived, undefined, "the quote staff confirmed stands until the money arrives");
   assert.deepEqual(db.told, []);
 }
 assert.equal(WISE_STATES.outgoing_payment_sent, "paid");

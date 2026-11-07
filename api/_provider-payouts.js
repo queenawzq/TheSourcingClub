@@ -293,15 +293,15 @@ export async function syncAttempts({ client, db }) {
   const answers = await Promise.allSettled((rows ?? []).map(async (row) => {
     const status = await client.status(row.provider_ref);
     const wasPaid = row.status === "paid";
-    const fundedYet = status.state !== "awaiting_funding";
+    // The quote staff confirmed stands until it arrives. Wise's figure before that
+    // can be for another pay-in route (seen on the sandbox).
+    const arrived = status.state === "paid";
     const tell = status.state === "failed"
       ? (status.raw === "bounced_back" ? CHECK_BANK : status.raw === "RETURNED" ? CHECK_PAYPAL : null)
       : null;
     return applyStatus({
       db, payoutId: row.id, status, wasPaid, tellOnFailure: tell,
-      // Unfunded, Wise's figure is for paying in by bank, not from TSC's balance
-      // (seen on the sandbox): the quote staff confirmed stays until money moves.
-      received: fundedYet ? status.arrivesCents ?? null : null, receivedIn: fundedYet && status.arrivesCents != null ? row.received_currency : null,
+      received: arrived ? status.arrivesCents ?? null : null, receivedIn: arrived && status.arrivesCents != null ? row.received_currency : null,
     });
   }));
   const unread = answers.filter((a) => a.status === "rejected");
@@ -340,7 +340,7 @@ export function payoutRoute({ provider, build, label, settings }) {
     try {
       if (action === "sync") {
         const synced = await syncAttempts({ client, db });
-        const balance = provider === "wise" ? { ...(await wiseBalance(client, "USD")), appUrl: client.appUrl } : {};
+        const balance = provider === "wise" ? { ...(await wiseBalance(client, "USD")), appUrl: client.appUrl } : { appUrl: client.appUrl };
         return reply(response, 200, { ...synced, ...balance });
       }
       if (action === "cancel") return reply(response, 200, await cancelAttempt({ client, caller, db, paymentId }));

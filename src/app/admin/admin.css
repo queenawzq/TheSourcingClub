@@ -11,7 +11,9 @@
 /* The payments board's rows carry bank details and buttons: give them the width. */
 .admin-payments-page { max-width: 1440px; }
 .admin-payments-page td:first-child, .admin-payments-page td:nth-child(5) { white-space: nowrap; }
-.admin-payments-page .admin-actions { min-width: 180px; }
+.admin-payments-page .admin-actions { min-width: 200px; max-width: 300px; white-space: normal; }
+.admin-payments-page td input { min-width: 120px; }
+.admin-payments-page .admin-payout-details { min-width: 180px; }
 .admin h1 { margin: 0 0 8px; font-size: 22px; line-height: 28px; font-weight: 700; }
 .admin h2 { margin: 32px 0 12px; font-size: 17px; font-weight: 700; }
 
@@ -43,6 +45,10 @@
 }
 .admin tbody tr:last-child td { border-bottom: 0; }
 
+.admin-check { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; line-height: 18px; color: var(--text-muted); max-width: 420px; }
+.admin td .admin-check input { width: 16px; height: 16px; min-width: 16px; margin: 1px 0 0; padding: 0; accent-color: var(--primary); flex: none; }
+.admin-payments-page .admin-actions .admin-row-message { white-space: normal; }
+.admin-payments-page .admin-actions .admin-check { display: flex; }
 .admin td input {
   height: 32px;
   width: 100%;
