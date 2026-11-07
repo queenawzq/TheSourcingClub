@@ -38,7 +38,6 @@ import { downloadDocuments, getRfqDocumentPresentation } from "../../lib/domain/
 import { listLinks, listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatRange, toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
-import { matchFit } from "../rfq/match-fit.js";
 import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 
@@ -353,7 +352,8 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   if (!rfq || !quote) return null;
 
   const money = (cents) => (cents == null ? "" : `$${(cents / 100).toFixed(2)}`);
-  const fit = matchFit(matchScore);
+  // No fit label to a factory about itself (Nov 7), as on RFQ details.
+  const fit = null;
   const selectedSourcing = (terms.sourcing_responsibility ?? []).find(
     (term) => term.id === rfq.sourcing_responsibility_term_id,
   );

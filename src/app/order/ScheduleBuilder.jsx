@@ -11,22 +11,14 @@
  */
 import React from "react";
 import { FlowShell, MilestonesScreen } from "../../prototype/main.jsx";
-import { formatMoney } from "../../lib/money.js";
+import { scheduleBar } from "./order-view.js";
 import { useScheduleDraft } from "./useScheduleDraft.js";
-
-const sentence = (text) => {
-  const words = String(text ?? "").replace(/^save the schedule: /, "");
-  return words.charAt(0).toUpperCase() + words.slice(1);
-};
 
 // The bar is on screen wherever the page is scrolled, so what stops Continue
 // is said there.
-function totalLine(draft, order) {
-  if (draft.problem) return draft.problem;
-  if (draft.error) return sentence(draft.error.message);
-  const text = `Steps total ${formatMoney(draft.total, order.currency)} of ${formatMoney(order.order_total_cents, order.currency)}`;
-  return draft.balances ? text : `${text}: these have to match before you can save or continue`;
-}
+const totalLine = (draft, order) => scheduleBar({
+  ...draft, orderTotal: order.order_total_cents, currency: order.currency, until: "save or continue",
+});
 
 // `locked`: hover text when this person may read the steps but not save or
 // confirm them (Quote flow sets them); empty for someone who may.

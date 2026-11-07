@@ -209,8 +209,15 @@
   margin: 0;
 }
 
+/* On screen wherever the page is scrolled, like the builder's bar: what stops
+   Save is said beside it. */
 .active-schedule-actions {
-  padding: 0 2px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 12px 2px;
+  border-top: 1px solid #e6e2da;
+  background: rgb(251, 250, 248);
 }
 
 .milestone-controls select:disabled {

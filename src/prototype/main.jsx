@@ -10207,10 +10207,12 @@ export function QuotesScreen({
                     )}
                   </div>
                   <div className="marketplace-note-list quote-note-list">
+                    {(factory.fitType || factory.fitSummary) && (
                     <div className="quote-fit-row">
-                      <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>
+                      {factory.fitType && <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>}
                       <p>{factory.fitSummary}</p>
                     </div>
+                    )}
                     {/* Live, a vendor who wrote no note gets no empty box. */}
                     {factory.factoryNote && (
                     <div className="factory-note-box">
@@ -10274,7 +10276,7 @@ export function QuotesScreen({
                         <td>{details.shipping}</td>
                         <td>{details.capacityWindow}</td>
                         <td>{details.total}</td>
-                        <td><span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span></td>
+                        <td>{factory.fitType ? <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span> : "—"}</td>
                         <td>{factory.factoryNote}</td>
                       </tr>
                     );
