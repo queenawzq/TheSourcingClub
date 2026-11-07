@@ -196,7 +196,7 @@ export function describeOrderContract({ order, milestones, incoterm, paymentTerm
       ["Samples", order.sample_subtotal_cents ? money(order.sample_subtotal_cents) : "None"],
       ["Bulk lead", order.bulk_lead_time_days ? `${order.bulk_lead_time_days} days` : "—"],
       ...(capacity ? [["Capacity", capacity]] : []),
-      ["Terms", `${order.deposit_pct}/${order.balance_pct}`],
+      ["Terms", order.balance_pct ? `${order.deposit_pct}/${order.balance_pct}` : "Paid in full"],
       ["Quote total", money(order.order_total_cents)],
     ],
     paymentTerms: [
@@ -279,6 +279,18 @@ export function newRow(rows) {
     due_on: "",
     note: "",
   };
+}
+
+/**
+ * What the database will refuse in these steps, in the person's words, before
+ * they press anything. Empty when there is nothing to fix.
+ */
+export function scheduleProblem(rows) {
+  for (const [index, row] of rows.entries()) {
+    if (!String(row.title ?? "").trim()) return `Step ${index + 1} needs a name`;
+    if (row.type === PAID_RELEASE && !toCents(row.amount)) return `Step ${index + 1} needs an amount`;
+  }
+  return "";
 }
 
 /** Move one schedule row by swapping its stored position with its neighbour. */

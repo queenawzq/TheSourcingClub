@@ -14,7 +14,16 @@ import { FlowShell, MilestonesScreen } from "../../prototype/main.jsx";
 import { formatMoney } from "../../lib/money.js";
 import { useScheduleDraft } from "./useScheduleDraft.js";
 
+const sentence = (text) => {
+  const words = String(text ?? "").replace(/^save the schedule: /, "");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+// The bar is on screen wherever the page is scrolled, so what stops Continue
+// is said there.
 function totalLine(draft, order) {
+  if (draft.problem) return draft.problem;
+  if (draft.error) return sentence(draft.error.message);
   const text = `Steps total ${formatMoney(draft.total, order.currency)} of ${formatMoney(order.order_total_cents, order.currency)}`;
   return draft.balances ? text : `${text}: these have to match before you can save or continue`;
 }
@@ -46,7 +55,6 @@ export function BrandSchedule({ order, milestones, reload, vendor, onBack, onFun
           <button className="text-link" type="button" onClick={draft.takeSaved}>Use their steps</button>
         </p>
       )}
-      {draft.error && <p className="composer-error" role="alert">{draft.error.message}</p>}
       {dialog}
     </FlowShell>
   );

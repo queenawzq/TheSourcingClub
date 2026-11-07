@@ -14,7 +14,7 @@ import { agreeSchedule, getOrder } from "../../lib/domain/order.js";
 import { saveSchedule } from "../../lib/domain/milestone.js";
 import { listPayments } from "../../lib/domain/payment.js";
 import { toCents } from "../../lib/money.js";
-import { editRow, moveScheduleRow, newRow, scheduleLines, scheduleRows, scheduleTotal, stepAmount } from "./order-view.js";
+import { editRow, moveScheduleRow, newRow, scheduleLines, scheduleProblem, scheduleRows, scheduleTotal, stepAmount } from "./order-view.js";
 
 const linesOf = (rows) => JSON.stringify(scheduleLines(rows));
 
@@ -56,6 +56,7 @@ export function useScheduleDraft({ order, milestones, reload, onFund }) {
   const total = scheduleTotal(rows);
   const balances = total === order.order_total_cents;
   const dirty = linesOf(rows) !== savedLines;
+  const problem = scheduleProblem(rows);
 
   const hint = dirty ? "Unsaved changes" : savedOnce ? "Saved" : "";
 
@@ -88,6 +89,7 @@ export function useScheduleDraft({ order, milestones, reload, onFund }) {
     total,
     balances,
     dirty,
+    problem,
     busy,
     error,
     hint,
@@ -96,7 +98,7 @@ export function useScheduleDraft({ order, milestones, reload, onFund }) {
       setRows(saved);
       setBaseLines(savedLines);
     },
-    canSave: dirty && balances && !busy,
+    canSave: dirty && balances && !problem && !busy,
     // An amount as typed ("1836") back in the design's form ("$1,836");
     // text that is not a number is left for the save to refuse.
     formatAmount: (text) => {
@@ -104,11 +106,12 @@ export function useScheduleDraft({ order, milestones, reload, onFund }) {
       return cents === null ? text : stepAmount(cents, order.currency ?? undefined);
     },
     // Confirming signs what is SAVED, so edits on screen are saved first.
-    canConfirm: balances && !busy,
-    onChange: (index, patch) => setRows((current) => current.map((row, i) => (i === index ? editRow(row, patch) : row))),
-    onMove: (index, offset) => setRows((current) => moveScheduleRow(current, index, offset)),
-    onAdd: () => setRows((current) => [...current, newRow(current)]),
-    onRemove: (index) => setRows((current) => current.filter((_, i) => i !== index)),
+    canConfirm: balances && !problem && !busy,
+    // Changing the steps answers the last refusal, so it goes.
+    onChange: (index, patch) => { setError(null); setRows((current) => current.map((row, i) => (i === index ? editRow(row, patch) : row))); },
+    onMove: (index, offset) => { setError(null); setRows((current) => moveScheduleRow(current, index, offset)); },
+    onAdd: () => { setError(null); setRows((current) => [...current, newRow(current)]); },
+    onRemove: (index) => { setError(null); setRows((current) => current.filter((_, i) => i !== index)); },
     save: () => run(async () => {
       await saveRows();
       setSavedOnce(true);

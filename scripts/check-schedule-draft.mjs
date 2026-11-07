@@ -158,6 +158,27 @@ const amounts = (draft) => draft.rows.map((row) => row.amount);
   check(root.draft.dirty && root.draft.hint === "Unsaved changes", "and still reads as unsaved");
   check(!root.draft.changedElsewhere, "nobody else changed anything");
 }
+// ---- A step with no name: said at once, and gone once it has one ----
+{
+  const { root } = page();
+  root.act((d) => d.onAdd());
+  check(root.draft.problem === "Step 3 needs a name", `an added step asks for its name (${root.draft.problem})`);
+  check(!root.draft.canConfirm && !root.draft.canSave, "neither button is live while it has none");
+  root.act((d) => d.onChange(2, { title: "Wash test" }));
+  check(root.draft.problem === "", "typing the name clears it");
+  check(root.draft.canConfirm && root.draft.canSave, "and both buttons come back");
+  root.act((d) => d.onChange(2, { type: "Paid release" }));
+  check(root.draft.problem === "Step 3 needs an amount", `a paid step asks for its amount (${root.draft.problem})`);
+}
+// ---- A refusal goes when the steps change ----
+{
+  const { root } = page(start(), async () => { throw new Error("save the schedule: refused"); });
+  root.act((d) => d.onChange(0, { title: "Deposit" }));
+  await root.actAsync((d) => d.save());
+  check(root.draft.error?.message === "save the schedule: refused", "a refusal is kept");
+  root.act((d) => d.onChange(0, { title: "Deposit two" }));
+  check(root.draft.error === null, "and goes on the next edit");
+}
 // ---- Adding, removing, renaming, moving ----
 {
   const { root, poll } = page();

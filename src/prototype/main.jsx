@@ -9050,7 +9050,7 @@ function MilestoneCommentModal({ milestone, onClose, onPost, live = null, mode =
           <img src="/assets/prototype-icons/close.svg" alt="" />
         </button>
         <header>
-          <h2 id="milestone-comment-title">{isDispute ? `Initiate dispute for ${milestone.title.toLowerCase()}` : `Add ${milestone.title.toLowerCase()} comment`}</h2>
+          <h2 id="milestone-comment-title">{isDispute ? `Initiate dispute for ${live ? milestone.title : milestone.title.toLowerCase()}` : `Add ${live ? milestone.title : milestone.title.toLowerCase()} comment`}</h2>
           <span>{isDispute ? `Explain the issue for ${other} and attach any supporting evidence. The dispute will be recorded on this production step.` : `Share feedback, questions, or files with ${other} for this production step.`}</span>
         </header>
         <label className="approve-fund-note">
@@ -9096,6 +9096,8 @@ function MilestoneCommentModal({ milestone, onClose, onPost, live = null, mode =
 function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
   const [note, setNote] = useState("");
   const other = live?.counterparty ?? "Atelier Minho";
+  // Live: an update-only step is closed, not approved. A name reads as typed.
+  const closing = Boolean(live) && milestone.stepKind === "progress_only";
 
   return (
     <div className="approve-fund-modal-layer" role="presentation">
@@ -9105,9 +9107,9 @@ function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
           <img src="/assets/prototype-icons/close.svg" alt="" />
         </button>
         <header>
-          <p>Approve step</p>
-          <h2 id="approve-step-title">Approve {milestone.title.toLowerCase()}</h2>
-          <span>This marks the production step as approved and lets {other} continue to the next step.</span>
+          <p>{closing ? "Mark done" : "Approve step"}</p>
+          <h2 id="approve-step-title">{closing ? `Mark ${milestone.title} done` : `Approve ${live ? milestone.title : milestone.title.toLowerCase()}`}</h2>
+          {!live && <span>This marks the production step as approved and lets {other} continue to the next step.</span>}
         </header>
         <div className="approve-fund-summary single">
           <div>
@@ -9116,7 +9118,7 @@ function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
           </div>
         </div>
         <label className="approve-fund-note">
-          <span>Approval note</span>
+          <span>{closing ? "Note" : "Approval note"}</span>
           {live ? (
             <textarea rows={3} placeholder={`Optional note for ${other}...`} value={note} onChange={(event) => setNote(event.target.value)} />
           ) : (
@@ -9127,7 +9129,7 @@ function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
           <button className="primary-btn" type="button" disabled={live?.busy || undefined} onClick={live ? () => onApprove(note) : onApprove}>
-            {live?.busy ? "Approving…" : "Approve step"}
+            {live?.busy ? (closing ? "Saving…" : "Approving…") : (closing ? "Mark done" : "Approve step")}
           </button>
         </footer>
       </section>
@@ -9152,7 +9154,7 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
         <header>
           <p>{live ? "Approve" : "Approve fund"}</p>
           <h2 id="approve-fund-title">
-            {`Release ${releaseAmount} for ${milestone.title.toLowerCase()}`}
+            {`Release ${releaseAmount} for ${live ? milestone.title : milestone.title.toLowerCase()}`}
           </h2>
           {/* Live, the brand funded this step through Stripe and TSC holds
               the money: approving pays it to the factory. */}
@@ -9826,7 +9828,7 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
             </div>
           </a>
           <div className="factory-card-metrics">
-            <Metric label="match" value={factory.fit} className={matchTierClass(factory.fit)} />
+            {factory.fit !== "" && <Metric label="match" value={factory.fit} className={matchTierClass(factory.fit)} />}
             {/* Live cards pass "" for both: there is no rating, and a brand
                 cannot count another brand's orders. The fallbacks are the
                 prototype's example vendors and must never reach a real one. */}
@@ -10972,7 +10974,7 @@ export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = nul
           </div>
           <div>
             <strong>Update only</strong>
-            <span>Factory progress updates only</span>
+            <span>{live ? "Factory posts updates, you mark it done" : "Factory progress updates only"}</span>
           </div>
         </div>
         <div className="milestone-form">

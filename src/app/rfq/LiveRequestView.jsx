@@ -29,6 +29,7 @@ import {
   getRfq,
   isRequestSaved,
   lastBrandView,
+  isInvited,
   matchScoresForRfq,
   saveRequest,
   unsaveRequest,
@@ -173,11 +174,13 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
       isRequestSaved(org.id, rfq.id).catch(() => false),
       // Its club orders: the summary predates orders and returns none.
       rfq.brand_org_id ? brandProfileForFactory(rfq.brand_org_id).catch(() => null) : null,
+      isInvited(rfq.id, org.id).catch(() => false),
     ])
-      .then(([scores, summary, viewed, documents, savedAlready, profile]) => {
+      .then(([scores, summary, viewed, documents, savedAlready, profile, invited]) => {
         if (cancelled) return;
         setExtras({
-          match: scores.get(org.id) ?? null,
+          // A brand that asked this factory has answered "is it a fit?".
+          match: invited ? null : scores.get(org.id) ?? null,
           brand: summary && { ...summary, club_order_count: summary.club_order_count ?? profile?.club_order_count ?? null },
           lastView: viewed,
           files: documents.files ?? [],
@@ -335,7 +338,9 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           }))}
           questions={project.questions}
           capabilities={[]}
-          match={extras.match === null ? null : {
+          // Nothing to show still passes an object: with none the design draws
+          // its own "Strong fit".
+          match={extras.match === null ? { summary: "", label: "", tone: "" } : {
             summary: `${extras.match}% match`,
             label: fit?.label ?? "",
             tone: fit?.tone ?? "",
