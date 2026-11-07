@@ -117,7 +117,7 @@ export function emailHtml(key, data) {
     </style>
   </head>
   <body style="margin:0;padding:0;background:#F1F4F8;color:#0B1020;font-family:'Satoshi',Arial,Helvetica,sans-serif;">
-    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(data.preheader)}&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(data.preheader)}</div>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#F1F4F8;">
       <tr>
         <td align="center" style="padding:36px 14px;">
