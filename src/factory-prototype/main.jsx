@@ -9923,7 +9923,7 @@ function FactoryMilestoneItem({ milestone, index, onAddUpdate, live = false, sho
             className="secondary-btn"
             type="button"
             disabled={updateDisabled || undefined}
-            title={updateDisabled ? (milestone.updateDisabledReason || "Available when this milestone opens") : undefined}
+            title={updateDisabled ? (milestone.updateDisabledReason || (milestone.kind ? "Available when this step opens" : "Available when this milestone opens")) : undefined}
             onClick={() => onAddUpdate(milestone)}
           >Add update</button>
         )}

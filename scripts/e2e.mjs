@@ -4152,82 +4152,37 @@ async function main() {
     await record(page, "Cancelled", "both sides agreed; the order says when and why");
 
     // ================= PUTTING IT AWAY =================
-    // "Archive order" sat in the card's menu and only closed it. Only a closed
-    // order can be archived, and the one above was just cancelled. The archive
-    // is the strip's last tab, always drawn, labelled "Cancelled" (main,
-    // 2026-10-25).
-    console.log("\nPUTTING IT AWAY");
+    // A cancelled order is under "Cancelled" by itself (Nov 7). Nobody files it,
+    // and it leaves Closed, the company's own tabs and the dashboard.
+    console.log("\nCANCELLED ORDERS");
     await signOutFully(page);
-    await signIn(page, brandEmail, "Brand tidying up");
+    await signIn(page, brandEmail, "Brand after the cancellation");
 
     await page.goto(`${APP}/orders`);
     await waitForHeading(page, "production orders", 25000);
-    await clickButton(page, "closed");
-    await waitFor(page, ".brand-project-card", 15000);
-    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
-    await clickButton(page, "archive order");
-    await waitFor(page, '[data-testid="orders-empty"]', 15000);
-    const archivedStrip = await stripOnce((text) => /cancelled \(1\)/i.test(text));
-    check(/cancelled \(1\)/i.test(archivedStrip) && /closed \(0\)/i.test(archivedStrip),
-      `archiving moves the order from Closed to the archive tab (${archivedStrip.replace(/\s+/g, " ")})`);
-
-    await page.reload();
-    await waitForHeading(page, "production orders", 25000);
+    const cancelledStrip = await stripOnce((text) => /cancelled \(1\)/i.test(text));
+    check(/cancelled \(1\)/i.test(cancelledStrip) && /closed \(0\)/i.test(cancelledStrip),
+      `a cancelled order is under Cancelled, not Closed (${cancelledStrip.replace(/\s+/g, " ")})`);
     await clickButton(page, "cancelled (");
     await waitFor(page, ".brand-project-card", 15000);
-    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
-      "after a reload the order is still archived");
-    await record(page, "Archived", "the brand put a cancelled order away");
+    check((await page.locator(".projects-list").innerText()).includes(rfqTitle), "and the tab lists it");
+    await record(page, "Cancelled tab", "the brand's cancelled order, with nothing to file");
     await clickButton(page, `${brandTab} capsule`.toLowerCase());
     await waitFor(page, '[data-testid="orders-empty"]', 15000);
-    check(true, "an archived order leaves the custom tab it was filed in");
+    check(true, "it leaves the custom tab it was filed in");
 
     await page.goto(APP);
     await waitFor(page, ".home-stack", 25000);
-    check(!(await page.locator(".home-stack").innerText()).includes(rfqTitle),
-      "and leaves the dashboard");
+    check(!(await page.locator(".home-stack").innerText()).includes(rfqTitle), "and the dashboard");
 
-    await page.goto(`${APP}/orders`);
-    await waitForHeading(page, "production orders", 25000);
-    await clickButton(page, "cancelled (");
-    await waitFor(page, ".brand-project-card", 15000);
-    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
-    await clickButton(page, "unarchive order");
-    const unarchivedStrip = await stripOnce((text) => /cancelled \(0\)/i.test(text));
-    check(/cancelled \(0\)/i.test(unarchivedStrip) && /closed \(1\)/i.test(unarchivedStrip),
-      `Unarchive puts it back in Closed, and the archive tab is empty (${unarchivedStrip.replace(/\s+/g, " ")})`);
-    await clickButton(page, `${brandTab} capsule`.toLowerCase());
-    await waitFor(page, ".brand-project-card", 15000);
-    check((await page.locator(".projects-list").innerText()).includes(rfqTitle),
-      "and back in the custom tab it was filed in");
-
-    // Each company's archive is its own: the brand's says nothing to the factory.
-    await page.locator('.brand-project-card button[aria-label="More order actions"]').first().click();
-    await clickButton(page, "archive order");
-    await page.waitForTimeout(1500);
     await signOutFully(page);
-    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory tidying up", "factory");
+    await signIn(page, `e2e-factory-${stamp}@example.com`, "Factory after the cancellation", "factory");
     await page.goto(`${APP}/orders`);
     await waitForHeading(page, "production orders", 25000);
-    // Its own tab showing means its tabs, and its archive with them, have loaded.
-    check(/cancelled \(0\)/i.test(await stripOnce((text) => text.includes(factoryTab) && /cancelled \(/i.test(text))),
-      "the brand archiving the order archives nothing for the factory");
-    await clickButton(page, "closed");
-    await waitFor(page, ".factory-active-project-card", 15000);
-    await page.locator('.factory-active-project-card button[aria-label="More order actions"]').first().click();
-    await clickButton(page, "archive order");
-    await waitFor(page, '[data-testid="orders-empty"]', 15000);
     check(/cancelled \(1\)/i.test(await stripOnce((text) => /cancelled \(1\)/i.test(text))),
-      "the factory archives it from its own card menu");
-    await record(page, "Factory's archive", "its own, separate from the brand's");
-    await clickButton(page, "cancelled (");
-    await waitFor(page, ".factory-active-project-card", 15000);
-    await page.locator('.factory-active-project-card button[aria-label="More order actions"]').first().click();
-    await clickButton(page, "unarchive order");
-    check(/cancelled \(0\)/i.test(await stripOnce((text) => /cancelled \(0\)/i.test(text))),
-      "and unarchives it");
+      "the factory's Cancelled tab has it too");
     await signOutFully(page);
-    await signIn(page, brandEmail, "Brand after the archive");
+    await signIn(page, brandEmail, "Brand after the factory looked");
 
     // ================= ORDERING IT AGAIN =================
     // "Reorder style" sat in the card's menu and reloaded the list. It now

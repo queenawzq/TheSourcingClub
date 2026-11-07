@@ -10,7 +10,7 @@ const css = readFileSync("src/app/live-quiet.css", "utf8").replace(/\/\*[\s\S]*?
 // The discount tab bar is the one deliberate control; it says why in the file.
 const ALLOWED = new Set([".billing-page-shell .billing-tabs"]);
 const FORBIDDEN = [
-  [/(^|[\s>+~])(button|input|select|textarea|a|h[1-6]|label|form)([\s.:#[>+~]|$)/, "a control or a heading"],
+  [/^(button|input|select|textarea|a|h[1-6]|label|form)([.:#[]|$)/, "a control or a heading"],
   [/error|alert|invalid|warning|failed|refus/i, "an error"],
   [/\bbtn\b|-btn|\baction|-action|\bcta\b/i, "an action"],
 ];
@@ -22,7 +22,8 @@ for (const [, selectors, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
     rules += 1;
     if (ALLOWED.has(selector)) continue;
     // Whatever sits inside :has() and :not() is a condition, not what is hidden.
-    const target = selector.replace(/:(has|not)\((?:[^()]|\([^()]*\))*\)/g, "");
+    // Only the last compound is what gets hidden; the rest says where.
+    const target = selector.replace(/:(has|not)\((?:[^()]|\([^()]*\))*\)/g, "").trim().split(/[\s>+~]+/).at(-1);
     for (const [pattern, what] of FORBIDDEN) {
       if (pattern.test(target)) problems.push(`${selector}: could hide ${what}`);
     }

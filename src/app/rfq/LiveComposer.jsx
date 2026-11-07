@@ -651,6 +651,7 @@ export default function LiveComposer({ org, rfqId }) {
         <InviteSuccessScreen
           selectedFactories={invited}
           openToAll={openToAll}
+          liveLine={`Sent to ${invited.length} vendor${invited.length === 1 ? "" : "s"}${openToAll ? ", and open to all vendors" : ""}.`}
           goTo={(next) => navigate(next === "quotes" ? `/rfqs/${draftId}/quotes` : "/")}
         />
       </FlowShell>
@@ -770,7 +771,6 @@ export default function LiveComposer({ org, rfqId }) {
         })()}
         <InviteScreen
           vendors={shaped}
-          filters={requestFilters(values)}
           selectedFactories={selectedVendors}
           setSelectedFactories={(next)=>{setMatchingAcknowledged(false);setSelectedVendors(next);}}
           openToAll={openToAll}

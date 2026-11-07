@@ -370,8 +370,8 @@ export default function LiveRequestView({ org, user, rfqId, profile }) {
           onToggleSave={toggleSave}
           backLabel={`‹ Back to ${backTarget.label}`}
           onBack={() => navigate(backTarget.path)}
-          onSendQuote={verified && mayQuote ? () => navigate(quotePath) : undefined}
-          sendQuoteBlocked={verified && !mayQuote ? permissionHint(org, "rfqFlow") : ""}
+          onSendQuote={rfq.status === "open" && verified && mayQuote ? () => navigate(quotePath) : undefined}
+          sendQuoteBlocked={rfq.status !== "open" ? "This request is closed" : verified && !mayQuote ? permissionHint(org, "rfqFlow") : ""}
         />
       </>
     );

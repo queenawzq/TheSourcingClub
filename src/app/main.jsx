@@ -1418,6 +1418,7 @@ function ShellRoutes({ activeOrg, profile, user, isFactory }) {
           />
         ),
     },
+    { path: "/settings", render: () => <RedirectTo navigate={navigate} to="/team" /> },
     {
       path: "/team",
       render: () => (
@@ -1513,6 +1514,13 @@ function PayoutRedirect({ navigate }) {
   useEffect(() => {
     navigate("/payout", { replace: true });
   }, [navigate]);
+  return null;
+}
+
+function RedirectTo({ navigate, to }) {
+  useEffect(() => {
+    navigate(to, { replace: true });
+  }, [navigate, to]);
   return null;
 }
 

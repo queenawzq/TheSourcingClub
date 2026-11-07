@@ -150,6 +150,8 @@ export function activityLines(rows, { order, viewerOrgId, now = Date.now(), limi
       case "schedule_agreed": return `${who(row.actor_org_id)} confirmed the production steps`;
       case "order_activated": return "Production started";
       case "cancellation_proposed": return `${who(row.actor_org_id)} proposed cancelling`;
+      case "cancellation_declined": return `${who(row.actor_org_id)} kept the order`;
+      case "cancellation_withdrawn": return `${who(row.actor_org_id)} withdrew the proposal`;
       case "order_completed": return "Order completed";
       case "order_cancelled": return "Order cancelled";
       case "order_created": return `Order ${row.detail ?? ""} created`.replace(/\s+/g, " ").trim();

@@ -285,6 +285,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         isFactory ? null : brandCharges(orderId).catch(() => null),
       ]);
       if (version !== loadVersion.current) return;
+      if (!row) throw new Error("This order isn't available to you.");
       setCharges(charged);
       setOrder(row);
       setMilestones(steps ?? []);
