@@ -38,6 +38,8 @@ const WISE_FAILURES = {
   charged_back: "This transfer was charged back. Check why in Wise before paying again.",
 };
 
+export const WISE_ISSUE = "Wise has stopped this transfer until an issue is cleared. Open it in Wise to see what it needs.";
+
 export function wiseFrom(env = process.env, fetchImpl = fetch) {
   const base = apiBase(env, "WISE_API_BASE", LABEL);
   const token = env.WISE_API_TOKEN;
@@ -149,6 +151,9 @@ export function wiseFrom(env = process.env, fetchImpl = fetch) {
         raw,
         state: WISE_STATES[raw] ?? null,
         failure: WISE_FAILURES[raw] ?? null,
+        // Wise holds a transfer with an open issue and says nothing else: only a
+        // person in Wise can clear it, so staff are told.
+        waiting: answer.body.hasActiveIssues && WISE_STATES[raw] === "sent" ? WISE_ISSUE : null,
         arrivesCents: answer.body.targetValue != null ? cents(answer.body.targetValue) : null,
       };
     },

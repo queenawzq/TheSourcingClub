@@ -203,8 +203,13 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
   const [preview, setPreview] = useState(null);
   const [working, setWorking] = useState(false);
   const [problem, setProblem] = useState(null);
+  // A double click lands before the button can grey out. The database would
+  // refuse the second press anyway, but its refusal would then sit on the row.
+  const running = useRef(false);
 
   async function run(action) {
+    if (running.current) return;
+    running.current = true;
     setWorking(true);
     setProblem(null);
     try {
@@ -217,11 +222,14 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
       setProblem(failure);
       await onChanged();
     } finally {
+      running.current = false;
       setWorking(false);
     }
   }
 
   async function review() {
+    if (running.current) return;
+    running.current = true;
     setWorking(true);
     setProblem(null);
     try {
@@ -230,6 +238,7 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
     } catch (failure) {
       setProblem(failure);
     } finally {
+      running.current = false;
       setWorking(false);
     }
   }
@@ -263,7 +272,7 @@ function ProviderPay({ row, attempt, wise, onChanged }) {
           </button>
         ) : null}
         <button type="button" className="quiet-btn" disabled={working} data-testid="provider-refresh" onClick={() => run(() => syncProvider(provider))}>Refresh</button>
-        {(waiting || unclaimed || (pending && !attempt.in_progress)) ? (
+        {(waiting || unclaimed || (pending && !attempt.in_progress) || (attempt.stage === "sent" && attempt.staff_sentence)) ? (
           <button type="button" className="admin-reject" disabled={working || attempt.in_progress} data-testid="provider-cancel"
                   onClick={() => run(() => cancelProviderPayout(provider, row.payment_id))}>
             {provider === "wise" ? "Cancel transfer" : "Cancel payment"}

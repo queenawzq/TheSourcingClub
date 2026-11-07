@@ -130,6 +130,7 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
         state: PAYPAL_ITEM_STATES[raw] ?? null,
         failure: PAYPAL_FAILURES[raw] ?? null,
         waiting: raw === "UNCLAIMED" ? PAYPAL_UNCLAIMED : null,
+        factoryFixes: raw === "UNCLAIMED",
         itemId: item.payout_item_id ?? null,
       };
     },

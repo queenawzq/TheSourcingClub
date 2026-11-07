@@ -281,6 +281,16 @@ const pay = (wise, db, extra = {}) => wisePay({ wise, caller: db.caller, db, row
   assert.equal(fake.state.byId.get("5000").status, "cancelled");
   assert.equal(db.payout.status, "failed");
 }
+{
+  // Wise holds a transfer with an open issue: staff are told; the factory isn't asked to do anything.
+  const fake = fakeWise(); const db = fakeDb();
+  const wise = wiseFrom(WISE_ENV, fake.fetchImpl);
+  await pay(wise, db);
+  fake.state.byId.get("5000").hasActiveIssues = true;
+  await syncAttempts({ client: wise, db: { ...db, from: () => ({ select: () => ({ eq: () => ({ not: () => ({ or: () => ({ limit: async () => ({ data: [{ id: db.payout.id, status: "processing", provider_ref: "5000" }] }) }) }) }) }) }) } });
+  assert.match(db.payout.sentence, /stopped this transfer/);
+  assert.deepEqual(db.told, []);
+}
 assert.equal(WISE_STATES.outgoing_payment_sent, "paid");
 assert.equal(WISE_STATES.incoming_payment_waiting, "awaiting_funding");
 for (const raw of ["bounced_back", "funds_refunded", "charged_back"]) assert.equal(WISE_STATES[raw], "failed", raw);

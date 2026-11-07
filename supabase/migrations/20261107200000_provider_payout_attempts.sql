@@ -242,7 +242,8 @@ begin
 
   return jsonb_build_object(
     'payout_id', live.id, 'provider', live.provider, 'stage', attempt.stage,
-    'provider_ref', live.provider_ref, 'provider_item_id', attempt.provider_item_id
+    'provider_ref', live.provider_ref, 'provider_item_id', attempt.provider_item_id,
+    'staff_sentence', attempt.staff_sentence
   );
 end;
 $$;
@@ -305,7 +306,7 @@ begin
   if tell_factory is not null and told is null then
     insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body)
     select live.factory_org_id, 'payout_method_changed', 'payment', live.payment_id, p.order_id, tell_factory,
-           format('Your payment of %s is waiting. %s', public.format_money(live.amount_cents, live.currency), tell_factory)
+           format('Your payment of %s is waiting. %s.', public.format_money(live.amount_cents, live.currency), tell_factory)
       from public.order_payments p where p.id = live.payment_id;
     update public.provider_payout_attempts a set factory_told_at = now() where a.payout_id = target_payout;
   end if;
@@ -393,7 +394,7 @@ begin
     if tell_factory is not null then
       insert into public.notifications (org_id, kind, subject_type, subject_id, order_id, title, body)
       values (o.factory_org_id, 'payout_method_changed', 'payment', p.id, o.id, tell_factory,
-        format('Your payment of %s is waiting. %s', public.format_money(p.amount_cents, p.currency), tell_factory));
+        format('Your payment of %s is waiting. %s.', public.format_money(p.amount_cents, p.currency), tell_factory));
     end if;
   else
     raise exception 'unknown outcome' using errcode = '22023';

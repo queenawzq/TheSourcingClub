@@ -88,7 +88,7 @@ export async function applyStatus({ db, payoutId, status, wasPaid = false, tellO
     sentence: status.waiting ?? (status.state === "awaiting_funding" ? FUND_IN_WISE : null),
     received,
     received_in: receivedIn,
-    tell_factory: status.waiting ? CHECK_PAYPAL : null,
+    tell_factory: status.factoryFixes ? CHECK_PAYPAL : null,
   });
   return status.state;
 }
@@ -263,7 +263,12 @@ export async function cancelAttempt({ client, caller, db, paymentId }) {
     await finish(db, payoutId, "failed", { failure: "other", raw_status: "cancelled", sentence: "Cancelled. Nothing was sent." });
     return { done: "cancelled" };
   } catch (failure) {
-    await record(db, payoutId, { sentence: failure.message });
+    // What the row says stays what it said: the payment is still where it was.
+    await record(db, payoutId, { sentence: held.staff_sentence ?? null });
+    if (failure instanceof PayoutFailure && failure.unsure) {
+      const name = held.provider === "paypal" ? "PayPal" : "Wise";
+      throw new PayoutFailure("cancel_failed", `${name} didn't cancel this, so it's still where it was. Try again later, or cancel it in ${name}.`, { status: failure.status });
+    }
     throw failure;
   }
 }
@@ -281,12 +286,15 @@ export async function syncAttempts({ client, db }) {
   const answers = await Promise.allSettled((rows ?? []).map(async (row) => {
     const status = await client.status(row.provider_ref);
     const wasPaid = row.status === "paid";
+    const fundedYet = status.state !== "awaiting_funding";
     const tell = status.state === "failed"
       ? (status.raw === "bounced_back" ? CHECK_BANK : status.raw === "RETURNED" ? CHECK_PAYPAL : null)
       : null;
     return applyStatus({
       db, payoutId: row.id, status, wasPaid, tellOnFailure: tell,
-      received: status.arrivesCents ?? null, receivedIn: status.arrivesCents != null ? row.received_currency : null,
+      // Unfunded, Wise's figure is for paying in by bank, not from TSC's balance
+      // (seen on the sandbox): the quote staff confirmed stays until money moves.
+      received: fundedYet ? status.arrivesCents ?? null : null, receivedIn: fundedYet && status.arrivesCents != null ? row.received_currency : null,
     });
   }));
   const unread = answers.filter((a) => a.status === "rejected");
