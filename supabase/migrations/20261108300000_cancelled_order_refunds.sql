@@ -16,8 +16,9 @@
 -- lease whose time goes into Stripe's idempotency key, so a refusal is never
 -- replayed), refunds the whole charge, fee included, and records it with
 -- record_payment_refunded. A refusal is recorded with our own sentence
--- (record_cancellation_refund_failed) and shows on the staff board; the daily
--- job tries again.
+-- (record_cancellation_refund_failed) and shows on the staff board, where
+-- staff refund it in Stripe (the webhook then records it). The daily job
+-- retries what never reached Stripe (an outage, a closed page).
 --
 -- record_payment_refunded, on a cancelled order, now keeps the charged figure,
 -- intent and charge (the brand's row shows what went back), does nothing the
@@ -56,6 +57,9 @@ as $$
      and p.state = 'confirmed'
      and p.release_requested_at is null
      and (target_order is null or o.id = target_order)
+     -- A refusal is for staff (refund it in Stripe; charge.refunded then
+     -- records it). Retrying it daily would take it off their list each day.
+     and p.refund_failed_at is null
      and (p.refund_claimed_at is null or p.refund_claimed_at < now() - interval '90 seconds')
    order by p.confirmed_at
 $$;
@@ -95,7 +99,7 @@ begin
     if p.refund_failed_at is null then
       update public.order_payments
          set refund_failed_at = now(),
-             refund_failure = 'Paid by bank transfer, not through Stripe: refund it to the brand by bank.'
+             refund_failure = 'Held with no Stripe charge to refund (an old bank transfer): refund the brand by bank.'
        where id = p.id;
     end if;
     return jsonb_build_object('refused', 'no_stripe_charge');
@@ -115,7 +119,7 @@ $$;
 
 -- ---------------------------------------------------------------------------
 -- Stripe refused the refund (or later said it failed). The money is still
--- held; staff see the reason on the board, and the daily job tries again.
+-- held; staff see the reason on the board and refund it in Stripe.
 -- ---------------------------------------------------------------------------
 create or replace function public.record_cancellation_refund_failed(target_payment uuid, reason text)
 returns public.order_payments
@@ -266,7 +270,7 @@ begin
     format('Your payment for "%s" was refunded', m.title),
     case next_state
       when 'failed' then format('%s Pay again from the step''s payment page on %s.', why, o.order_number)
-      when 'cancelled' then format('%s %s was cancelled.', why, o.order_number)
+      when 'cancelled' then format('%s was cancelled. You were refunded.', o.order_number)
       else format('%s You will be asked to pay when the step opens on %s.', why, o.order_number)
     end
   );

@@ -266,11 +266,11 @@ export function cancelRefundFailure(failure) {
   const code = failure?.code ?? failure?.raw?.code;
   if (code === "charge_disputed") return "The brand disputed this charge: settle it in Stripe's dispute, not by refund.";
   if (code === "insufficient_funds" || code === "balance_insufficient") {
-    return "TSC's Stripe balance is too low to refund this. Top it up in Stripe; the daily job tries again.";
+    return "TSC's Stripe balance is too low to refund this. Top it up, then refund the payment in Stripe.";
   }
   if (code === "charge_expired_for_refund") return "Stripe can no longer refund this charge (too old). Refund the brand by bank.";
   if (failure?.type === "StripeAuthenticationError" || failure?.type === "StripePermissionError") {
-    return "Stripe refused TSC's key, so nothing was refunded. Check STRIPE_SECRET_KEY; the daily job tries again.";
+    return "Stripe refused TSC's key, so nothing was refunded. Fix STRIPE_SECRET_KEY, then refund the payment in Stripe.";
   }
   if (failure?.refundStatus) return `Stripe says the refund ${failure.refundStatus === "canceled" ? "was cancelled" : "failed"}. Refund the brand in Stripe.`;
   return "Stripe refused the refund. Open the payment in Stripe and refund it there.";
@@ -347,6 +347,8 @@ export async function refundCancelledOrders({ stripe, db, orderId = null }) {
     try {
       const outcome = await refundCancelledPayment({ stripe, db, paymentId: id });
       if (outcome in counts) counts[outcome] += 1;
+      // Held with no Stripe charge: recorded as failed, for staff.
+      if (outcome === "no_stripe_charge") counts.failed += 1;
     } catch (failure) {
       logStripeFailure("cancel-refund", failure, { paymentId: id });
       counts.retry += 1;

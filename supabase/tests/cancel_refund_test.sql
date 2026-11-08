@@ -161,8 +161,8 @@ select ok(
 );
 select is(
   (select count(*) from public.cancellation_refunds_due((select id from p81 where name = 'order'))),
-  1::bigint,
-  'a refused refund is due again (the daily job tries again)'
+  0::bigint,
+  'a refused refund waits for staff, not the daily job (it would leave their list every day)'
 );
 insert into p81 (name, id)
 select 'reclaim:' || (public.claim_cancellation_refund((select id from p81 where name = 'held')) ->> 'key'), null;
@@ -233,7 +233,7 @@ select is(
   'held money with no Stripe charge is not sent to Stripe'
 );
 select ok(
-  (select refund_failed_at is not null and refund_failure like 'Paid by bank transfer%'
+  (select refund_failed_at is not null and refund_failure like 'Held with no Stripe charge%'
      from public.order_payments where id = (select id from p81 where name = 'released')),
   'and is recorded as failed, so staff see it'
 );
