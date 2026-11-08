@@ -32,6 +32,14 @@ export const AUTH_MESSAGES = {
     en: () => "We couldn't connect, so the reset email may not have been sent. Check your connection and try again.",
     zh: () => "无法连接，重置密码邮件可能未发送。请检查网络后重试。",
   },
+  reset_link_used: {
+    en: () => "This reset link has expired or has already been used. Use Forgot password to get a new one.",
+    zh: () => "此重置链接已过期或已被使用。请点击“忘记密码”获取新链接。",
+  },
+  reset_link_network: {
+    en: () => `We couldn't connect to open your reset link. Open the link from the email again. ${TRY_ANOTHER_EN}`,
+    zh: () => `无法连接以打开重置链接。请重新打开邮件中的链接。${TRY_ANOTHER_ZH}`,
+  },
   no_connection: {
     en: () => "Couldn't connect. Try again.",
     zh: () => "无法连接，请重试。",
@@ -87,15 +95,13 @@ export function isNoAnswer(error) {
 /**
  * Which languages to say it in, most useful first.
  *
- * A vendor's page in Chinese reads Chinese. A vendor on the English page whose
- * browser is in Chinese reads both, because nothing on app.html offers a
- * language: someone arriving from a link gets English whatever they speak,
- * and that is who saw "Failed to fetch". Brands and staff read the page's.
+ * The page's language, and only that one (Queena, Nov 7: one language per
+ * screen). A vendor's page in Chinese reads Chinese; every other page English,
+ * whatever the browser speaks.
  */
-export function authLanguages({ factory, zhPage, browserLanguages = [] }) {
+export function authLanguages({ factory, zhPage }) {
   if (!factory) return ["en"];
-  if (zhPage) return ["zh"];
-  return browserLanguages.some((language) => /^zh\b/i.test(language)) ? ["en", "zh"] : ["en"];
+  return zhPage ? ["zh"] : ["en"];
 }
 
 /** The sentences for this error, one per language, or null if it has no kind. */

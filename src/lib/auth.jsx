@@ -23,6 +23,7 @@ import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
 import { authFailure, isNoAnswer } from "../shared/auth-messages.mjs";
+import { takeRecoveryToken } from "./recovery-link.mjs";
 
 /** Mirrors `minimum_password_length` in supabase/config.toml and the design's copy. */
 export const MIN_PASSWORD_LENGTH = 8;
@@ -181,7 +182,25 @@ export function AuthProvider({ children }) {
       setSession(null);
     }, SESSION_RESTORE_TIMEOUT_MS);
 
-    supabase.auth.getSession().then(({ data, error: sessionError }) => {
+    // A password-reset link carries its token in the fragment and lands here
+    // (src/lib/recovery-link.mjs). Verifying it is a fetch, so it goes direct
+    // or through our own host like everything else; the restore waits for it,
+    // since a slow route can take longer than the usual restore allows.
+    const recoveryToken = takeRecoveryToken(window);
+    const recovered = recoveryToken === null
+      ? Promise.resolve()
+      : (window.clearTimeout(restoreTimeout), answerInTime(
+        supabase.auth.verifyOtp({ token_hash: recoveryToken, type: "recovery" }),
+      ).then(({ error: verifyError }) => {
+        if (!verifyError || cancelled) return;
+        const unreachable = verifyError.message === TIMED_OUT || isNoAnswer(verifyError);
+        if (unreachable) reportNoAnswer("reset", verifyError);
+        setError(authFailure(unreachable ? "reset_link_network" : "reset_link_used"));
+      }, () => {
+        if (!cancelled) setError(authFailure("reset_link_network"));
+      }));
+
+    recovered.then(() => supabase.auth.getSession()).then(({ data, error: sessionError }) => {
       if (cancelled) return;
       if (sessionError) {
         if (restored) return;

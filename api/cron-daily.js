@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { emailTransport, sendDueNotificationEmails, serviceClient } from "./_notification-sender.js";
 import { sendResubmissionAlerts, sendReviewDecisionEmails } from "./_review-decision-sender.js";
+import { sweepProviderPayouts } from "./payout-sync.js";
 
 /**
  * The daily job: capacity reminders and steps due soon
@@ -92,6 +93,13 @@ export default async function handler(request, response) {
       response.status(500).json({ reminders, emails, reviews, error: error.message });
       return;
     }
+  }
+
+  // Wise and PayPal payouts nobody read back (api/payout-sync.js). Never fails the job.
+  try {
+    console.log("payout sweep:", JSON.stringify(await sweepProviderPayouts(service)));
+  } catch (error) {
+    console.error("payout sweep:", error.message);
   }
 
   response.status(200).json({ reminders, emails, reviews, error: null });

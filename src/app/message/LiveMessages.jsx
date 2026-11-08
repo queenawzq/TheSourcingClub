@@ -23,6 +23,8 @@ import { useCallClock } from "./use-calls.js";
 import { callPageUrl, currentCallWindow, joinsInPage, leaveCallWindow, openCallWindow, openedFromLink, openedInZoomApp, showCallWindow, watchCallWindow } from "./call-window.js";
 import { serverNow } from "../../lib/server-clock.js";
 import CallChangeDialog from "./CallChangeDialog.jsx";
+import MessageGuidelinesDialog from "./MessageGuidelinesDialog.jsx";
+import { MESSAGE_GUIDELINES } from "../../shared/message-guidelines.mjs";
 
 const TIME = new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" });
 const DAY = new Intl.DateTimeFormat("en", { month: "short", day: "numeric" });
@@ -35,17 +37,6 @@ const initialsOf = (name) =>
     .map((word) => word[0].toUpperCase())
     .join("") || "??";
 
-/**
- * Why a held message was held, as its sender is told it: the kind the screen
- * recorded (messages.held_for), never the screen's own words, which are for
- * staff. A message held for proposing a call elsewhere used to be told it
- * "shares contact details".
- */
-const HELD_FOR = {
-  contact_details: "It looks like it shares contact details. ",
-  outside_platform: "It looks like it suggests continuing outside the platform. ",
-};
-
 /** After this long still being checked, a message says so even before the screen has been asked again. */
 const SAY_CHECKING_AFTER_MS = 15 * 1000;
 
@@ -57,7 +48,7 @@ const SAY_CHECKING_AFTER_MS = 15 * 1000;
  * while, it says so: a message that looks sent and never arrives is the worst
  * of both.
  */
-function deliveryStatus(message, { unscreened = false } = {}) {
+function deliveryStatus(message, { unscreened = false, onGuidelines } = {}) {
   if (message.failed) {
     return {
       kind: "rejected",
@@ -65,11 +56,19 @@ function deliveryStatus(message, { unscreened = false } = {}) {
       note: `${message.failed} ${message.typed ? "Copy it and send it again." : "Attach the files and send them again."}`,
     };
   }
-  if (message.delivery === "held") {
+  // Blocked before a contract (20261108100000). A message held for staff
+  // before the rule changed was moved to blocked; "held" is read the same.
+  if (message.delivery === "blocked" || message.delivery === "held") {
+    const words = MESSAGE_GUIDELINES.en;
     return {
-      kind: "held",
-      label: "Held for review: not delivered yet",
-      note: `${HELD_FOR[message.held_for] ?? ""}Our team will check it before it is sent.`,
+      kind: "blocked",
+      label: words.notSent,
+      note: (
+        <>
+          {words.blocked}{" "}
+          <button type="button" className="message-guidelines-link" onClick={onGuidelines} data-testid="message-guidelines-link">{words.link}</button>.
+        </>
+      ),
     };
   }
   if (message.delivery === "checking" && !String(message.id).startsWith("outgoing-")
@@ -77,7 +76,7 @@ function deliveryStatus(message, { unscreened = false } = {}) {
     return {
       kind: "checking",
       label: "Checking before it is sent",
-      note: "It has not reached them yet. This page keeps trying; if it is still here in a few minutes, our team will deliver it.",
+      note: "It has not reached them yet. This page keeps trying.",
     };
   }
   if (message.delivery === "rejected") {
@@ -113,6 +112,7 @@ function dayLabel(value) {
 
 export default function LiveMessages({ org, isFactory, user, threadId, orderId }) {
   const [threads, setThreads] = useState(null);
+  const [guidelinesOpen, setGuidelinesOpen] = useState(false);
   const [projectNames, setProjectNames] = useState(new Map());
   const [messagesByThread, setMessagesByThread] = useState({});
   // Messages on their way: drawn the moment Send is pressed, before the
@@ -309,9 +309,9 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
 
   /**
    * Live: a message delivered to this company (or one of its own changing
-   * state: delivered, held, released) arrives without a refresh. Realtime
+   * state: delivered or blocked) arrives without a refresh. Realtime
    * applies the read policy per subscriber, so the other side hears of a
-   * message only once it is delivered, never while it is checked or held.
+   * message only once it is delivered, never while it is checked or blocked.
    * The event only says which conversation moved; the rows are read again
    * through the normal query, with their sender and files.
    */
@@ -553,7 +553,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           time: sentAt(message) ? TIME.format(new Date(sentAt(message))) : "",
           // Only the sender's company ever reads a message that is not
           // delivered (the read policy), so this is always the reader's own.
-          status: deliveryStatus(message, { unscreened: unscreened.has(message.id) }),
+          status: deliveryStatus(message, { unscreened: unscreened.has(message.id), onGuidelines: () => setGuidelinesOpen(true) }),
           ...englishTranslation(message, { own: mine }),
           attachments: files.length ? files : undefined,
         };
@@ -654,6 +654,7 @@ export default function LiveMessages({ org, isFactory, user, threadId, orderId }
           onClose={() => setConfirmCall(null)}
         />
       )}
+      {guidelinesOpen && <MessageGuidelinesDialog onClose={() => setGuidelinesOpen(false)} />}
     </>
   );
 }
