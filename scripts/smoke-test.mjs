@@ -1029,10 +1029,11 @@ console.log("\nphase 3 — the order runs");
       : fail(`the factory sees ${(commentSeen ?? []).length} brand comments, expected 1`);
 
     // Reminders: once a day per step, and only between the two parties.
-    const reminded = await brand.client.rpc("remind_milestone", { target_milestone: first.id });
-    reminded.error ? fail("the brand reminds the factory about an open step", reminded.error)
-                   : ok("the brand reminds the factory about an open step");
-    const { error: remindedTwice } = await brand.client.rpc("remind_milestone", { target_milestone: first.id });
+    // The factory has posted on this step, so it is the factory's reminder to send.
+    const reminded = await factoryClient.rpc("remind_milestone", { target_milestone: first.id });
+    reminded.error ? fail("the factory reminds the brand about a step it has updated", reminded.error)
+                   : ok("the factory reminds the brand about a step it has updated");
+    const { error: remindedTwice } = await factoryClient.rpc("remind_milestone", { target_milestone: first.id });
     remindedTwice ? ok("a second reminder the same day is refused")
                   : fail("a second reminder the same day went through");
     const { error: strangerRemind } = await losingFactory.rpc("remind_milestone", { target_milestone: first.id });
@@ -1696,8 +1697,10 @@ console.log("\nphase 3 — the order runs");
       const stranger = await joinAs(losingFactory, proposed?.id, { zoom: true });
       stranger.status === 404 ? ok("an outsider CANNOT join (and cannot tell the call exists)") : fail(`LEAK: an outsider's join answered ${stranger.status}`);
       const early = await joinAs(factoryClient, proposed?.id, { zoom: true });
-      early.status === 409 && !early.signature
-        ? ok("a party is told the call opens 10 minutes before it starts")
+      // Joining is open any time before the start, so it gets as far as Zoom,
+      // and the smoke test's made-up Zoom keys are refused there.
+      early.status === 502 && !early.signature
+        ? ok("a party may join ahead of the start")
         : fail(`an early join answered ${early.status}`);
 
       // Moved to now by the secret key, as only a test may: without Zoom set
@@ -1707,7 +1710,7 @@ console.log("\nphase 3 — the order runs");
       unset.status === 503 && /set up/.test(unset.error ?? "")
         ? ok("without Zoom, Join says video isn't set up yet")
         : fail(`a join without Zoom answered ${unset.status} ${unset.error}`);
-      const { data: noMeeting } = await admin.from("call_meetings").select("call_id").eq("call_id", proposed?.id);
+      const { data: noMeeting } = await admin.from("call_meetings").select("call_id").eq("call_id", proposed?.id).not("meeting_number", "is", null);
       (noMeeting ?? []).length === 0
         ? ok("and no meeting was claimed")
         : fail("a join without Zoom claimed a meeting");

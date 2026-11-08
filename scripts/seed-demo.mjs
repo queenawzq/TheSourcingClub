@@ -1298,6 +1298,10 @@ must(await secondFactory.client.rpc("save_wise_payout_account", {
   number_key: "accountNumber",
   account_number: "0000 0000 0000 1234", account_number_again: "0000 0000 0000 1234",
 }), "the second factory's payout details");
+// A second method, so "Make default" has something to move to.
+must(await secondFactory.client.from("factory_payout_accounts").insert({
+  org_id: secondFactoryOrg.id, method: "paypal", paypal_email: "ningbo-payouts@example.com", is_primary: false,
+}), "the second factory's PayPal account");
 // Lakeside Mills is in mainland China and paid through PayPal.
 // PAYPAL_TEST_RECEIVER is a real sandbox account, without which PayPal holds the
 // money as unclaimed and it never reaches "paid".
