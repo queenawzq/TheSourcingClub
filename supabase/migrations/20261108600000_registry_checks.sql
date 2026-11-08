@@ -168,7 +168,7 @@ begin
     case when cc = 'PT' and code_digits <> ''
          then substr(code_digits, 1, 4) || '-' || substr(code_digits, 5, 4) || '-' || substr(code_digits, 9, 4) end,
     case when cc = 'TR' then nullif(regexp_replace(trim(coalesce(trade_registry, '')), '\s+', ' ', 'g'), '') end,
-    public.registration_number_problem(cc, number) = 'check_digit',
+    coalesce(public.registration_number_problem(cc, number) = 'check_digit', false),
     auth.uid(), now()
   )
   on conflict (org_id) do update
