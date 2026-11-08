@@ -416,12 +416,12 @@ select is(
     where payment_id = pg_temp.p18_pay('order_a', 'Balance')),
   false, 'and a payout owed to a factory with no Stripe account, to pay by bank');
 -- The overview card is staff's only prompt: it counts exactly what only a
--- person can move on the board (wire claims, payouts owed, held on cancelled).
+-- person can move on the board (payouts owed, held on cancelled). Bank-wire
+-- claims left the board on Nov 7 (20261108200000).
 select is(
   (select payments_awaiting_confirmation from public.admin_overview_metrics()),
   (select count(*)::integer from public.admin_payment_board() b
-    where b.state = 'sent'
-       or (b.state = 'confirmed' and b.release_requested_at is not null)
+    where (b.state = 'confirmed' and b.release_requested_at is not null)
        or (b.state in ('confirmed', 'processing') and b.order_status = 'cancelled')),
   'the overview counts every payment waiting on staff, payouts owed included');
 select ok(
