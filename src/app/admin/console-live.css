@@ -215,3 +215,7 @@
 .admin-registry-form button { justify-self: start; }
 @media (max-width: 640px) { .admin-registry-form { grid-template-columns: 1fr; } }
 .admin-registry-flag { margin: 0; font-weight: 600; }
+/* A registry row has one pill and no confidence figure: the design's two
+   68px columns would squeeze it. */
+.admin-registry .admin-check-result { display: flex; justify-content: flex-end; width: auto; }
+.admin-registry .admin-check-result .project-status { white-space: nowrap; }
