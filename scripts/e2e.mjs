@@ -2361,7 +2361,7 @@ async function main() {
     const owedSection = await page.locator('[data-section="payout"]').innerText();
     check(owedSection.includes(bornOrder.order_number),
       "the approved payment is under \"Payout owed\", named by its order");
-    check(/pay by bank/i.test(owedSection), "with the factory's bank details to pay it by hand");
+    check(/bank transfer/i.test(owedSection) && /account holder/i.test(owedSection), "with the factory's bank details to pay it by hand");
     check(await page.evaluate((orderNumber) => ![...document.querySelectorAll('[data-section="payout"] tr')]
       .find((row) => row.innerText.includes(orderNumber))?.querySelector('[data-testid^="pay-with-"]'), bornOrder.order_number),
       "and no Pay with Wise or PayPal: its method is neither");
@@ -2435,7 +2435,7 @@ async function main() {
     if (!wiseRow) {
       console.log("  (no Wise row on this board: skipped)");
     } else {
-      check(/pay by wise, or by bank/i.test(wiseRow.text), "a factory on Wise's form is paid with Wise, or by bank");
+      check(/wise or bank transfer/i.test(wiseRow.text), "a factory on Wise's form is paid with Wise, or by bank");
       check(wiseRow.buttons["pay-with-wise"] === false, "and Pay with Wise can be pressed, since its full number is on file");
       await pressInOwedRow("Ningbo Loomworks", "pay-with-wise");
       const statementAfter = await owedRowShows("Ningbo Loomworks", "provider-continue");
@@ -2463,7 +2463,7 @@ async function main() {
     if (!paypalRow) {
       console.log("  (no PayPal row on this board: skipped)");
     } else {
-      check(/pay by paypal/i.test(paypalRow.text), "a PayPal factory's row says so, with its address");
+      check(/paypal/i.test(paypalRow.text) && paypalRow.text.includes(kowloonEmail), "a PayPal factory's row says so, with its address");
       check(paypalRow.buttons["pay-with-paypal"] === false, "and offers Pay with PayPal");
       await pressInOwedRow(kowloonEmail, "pay-with-paypal");
       const askedAfter = await owedRowShows(kowloonEmail, "provider-confirm");
