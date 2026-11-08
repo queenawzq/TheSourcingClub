@@ -1435,7 +1435,7 @@ console.log("\nphase 3 — the order runs");
         ? ok("the screen delivers an ordinary message (no model key: pattern_only)")
         : fail(`the screen answered ${JSON.stringify(screened)}`);
 
-      // One send is one message (20261107560000): the same request reaching
+      // One send is one message (20261107580000): the same request reaching
       // PostgREST twice, as Chromium's own resend does, saves one row, and
       // the browser finds it by the name it gave the send.
       const sendName = randomUUID();

@@ -2754,7 +2754,7 @@ async function main() {
     check(sendSeen.ms !== null && sendSeen.bubbles === 1 && sendSeen.box === "",
       `pressing Send empties the box and draws the message once, at once (${sendSeen.ms} ms, ${sendSeen.bubbles} bubble)`);
 
-    // One send is one message, whatever the network does (20261107560000).
+    // One send is one message, whatever the network does (20261107580000).
     // Chromium resends a POST by itself when a connection closes before the
     // reply; on production one message was saved seven times. Here the page's
     // next message insert reaches the database twice, byte for byte, and the
