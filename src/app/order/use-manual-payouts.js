@@ -114,7 +114,7 @@ export function useManualPayouts(orgId) {
     try {
       const bank_country = "bank_country" in details ? details.bank_country : editing?.bank_country ?? null;
       // The number goes to the database and nowhere else; the page keeps only what comes back.
-      unwrap(await supabase.rpc("save_bank_payout_account", {
+      const row = unwrap(await supabase.rpc("save_bank_payout_account", {
         target_org: orgId,
         target_account: editing?.id ?? null,
         bank_name: form.bank_name,
@@ -130,6 +130,7 @@ export function useManualPayouts(orgId) {
       setForm((current) => ({ ...current, account_number: "", account_number_again: "" }));
       await load();
       setSaved(true);
+      return row;
     } catch (failure) {
       throw inWords(failure);
     } finally {
@@ -141,7 +142,7 @@ export function useManualPayouts(orgId) {
   async function saveWise({ bankName, type, currency, details, numberKey, number, numberAgain }) {
     setBusy(true);
     try {
-      unwrap(await supabase.rpc("save_wise_payout_account", {
+      const row = unwrap(await supabase.rpc("save_wise_payout_account", {
         target_org: orgId,
         target_account: editingId,
         bank_name: bankName,
@@ -154,6 +155,7 @@ export function useManualPayouts(orgId) {
       }), "save your payout account");
       await load();
       setSaved(true);
+      return row;
     } catch (failure) {
       throw inWords(failure);
     } finally {
@@ -168,7 +170,7 @@ export function useManualPayouts(orgId) {
     if (email !== paypalEmail(form.paypal_email_confirm)) throw new Error("The two email addresses don't match.");
     setBusy(true);
     try {
-      unwrap(editing
+      const row = unwrap(editing
         ? await supabase.from("factory_payout_accounts").update({ paypal_email: email }).eq("id", editing.id).select().single()
         // The one TSC pays only if there is none yet.
         : await supabase.from("factory_payout_accounts")
@@ -177,6 +179,7 @@ export function useManualPayouts(orgId) {
       "save your payout account");
       await load();
       setSaved(true);
+      return row;
     } catch (failure) {
       if (failure?.cause?.code === "23505") throw new Error("This PayPal account is already on file.");
       throw inWords(failure, new Error("Couldn't save your PayPal account right now. Nothing changed. Try again."));

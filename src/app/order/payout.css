@@ -51,7 +51,7 @@
 .payout-transactions-header h2 { margin: 0; color: var(--text); font-size: 22px; line-height: 30px; }
 .payout-transactions-header p { margin: 3px 0 0; color: var(--text-muted); font-size: 13px; font-weight: 500; line-height: 19px; }
 .payout-transaction-filters { display: flex; gap: 6px; padding: 4px; border-radius: 999px; background: #edf2f8; }
-.payout-transaction-filters button { min-height: 32px; padding: 5px 13px; border: 0; border-radius: 999px; background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.payout-transaction-filters button { min-height: 34px; padding: 5px 13px; border: 0; border-radius: 999px; background: transparent; color: var(--text-muted); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .payout-transaction-filters button.active { background: #fff; color: var(--text); box-shadow: 0 1px 3px rgba(15, 36, 71, .12); }
 .payout-transaction-table { overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
 .payout-transaction-labels, .payout-transaction-row { display: grid; grid-template-columns: 130px minmax(0, 1fr) 132px 130px; gap: 18px; align-items: center; }
@@ -87,7 +87,8 @@
 
 .payout-modal-layer { place-items: center; padding: 24px; }
 /* Header and footer stay in sight; only the middle scrolls. */
-.brand-profile-modal.payout-modal { display: flex; flex-direction: column; width: min(560px, calc(100vw - 40px)); max-height: calc(100vh - 48px); overflow: hidden; padding: 24px 28px 0; border-radius: 16px; }
+.brand-profile-modal.payout-modal { display: flex; flex-direction: column; width: min(560px, calc(100vw - 40px)); max-height: calc(100dvh - 48px); overflow: hidden; padding: 24px 28px 0; border-radius: var(--card-radius, 8px); }
+.brand-profile-modal.payout-modal:focus { outline: none; }
 .payout-modal-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -28px; padding-left: 28px !important; padding-right: 28px !important; }
 /* The row's menu has room in the dialog instead of being cut off by its scroll. */
 .payout-modal-body:has(.payout-method-popover) { padding-bottom: 104px; }
@@ -97,7 +98,7 @@
 .payout-form-stack { display: grid; gap: 14px; }
 .payout-form-stack label { display: grid; gap: 6px; }
 .payout-form-stack label > span { color: var(--text); font-size: 13px; font-weight: 700; }
-.payout-form-stack input, .payout-form-stack select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--text); font: inherit; outline: none; }
+.payout-form-stack input, .payout-form-stack select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); font: inherit; outline: none; }
 .payout-form-stack input:focus, .payout-form-stack select:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(18, 82, 255, .14); }
 .payout-form-stack small { font-size: 12px; line-height: 16px; }
 .payout-modal-header > span { color: var(--blue); font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
@@ -107,8 +108,8 @@
 
 .payout-country-field, .payout-textarea-field, .payout-form-grid label { display: grid; gap: 7px; }
 .payout-country-field > span, .payout-textarea-field > span, .payout-form-grid label > span { color: var(--text); font-size: 13px; font-weight: 700; }
-.payout-country-field select, .payout-form-grid input, .payout-textarea-field textarea { width: 100%; border: 1px solid var(--border); border-radius: 10px; background: #fff; color: var(--text); font: inherit; outline: none; transition: border-color .15s, box-shadow .15s; }
-.payout-country-field select, .payout-form-grid input { height: 48px; padding: 0 13px; }
+.payout-country-field select, .payout-form-grid input, .payout-textarea-field textarea { width: 100%; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); font: inherit; outline: none; transition: border-color .15s, box-shadow .15s; }
+.payout-country-field select, .payout-form-grid input { height: 42px; padding: 0 13px; }
 .payout-textarea-field textarea { min-height: 80px; padding: 12px 13px; resize: vertical; }
 .payout-country-field select:focus, .payout-form-grid input:focus, .payout-textarea-field textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(18, 82, 255, .14); }
 
@@ -133,7 +134,7 @@
 .payout-method-name { display: grid; gap: 3px; min-width: 0; }
 .payout-method-name strong { overflow: hidden; color: var(--text); font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
 .payout-method-name span { color: var(--text-muted); font-size: 12px; }
-.payout-method-default { padding: 4px 8px; border: 0; border-radius: 999px; background: #eaf2ff; color: var(--blue); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
+.payout-method-default { display: inline-flex; align-items: center; justify-self: start; white-space: nowrap; min-height: var(--pill-height); padding: var(--pill-padding); border: 0; border-radius: var(--pill-radius); background: #eaf2ff; color: var(--blue); font-size: var(--pill-font-size); font-weight: 700; text-transform: uppercase; letter-spacing: .02em; }
 .payout-method-menu { position: relative; }
 .payout-more-button:hover, .payout-more-button[aria-expanded="true"] { border-color: #bdcbe0; background: #f7f9fc; }
 .payout-more-button:disabled { cursor: wait; opacity: .55; }
@@ -179,7 +180,7 @@
 /* With the layer scrolling, a sticky footer sticks to the layer's padded
    edge and Stripe's form scrolled past beneath it, showing under the bar.
    Here the footer ends the dialog, and × stays at the top. */
-.payout-modal.tsc-connect-modal .brand-profile-modal-actions { position: static; border-radius: 0 0 16px 16px; }
+.payout-modal.tsc-connect-modal .brand-profile-modal-actions { position: static; border-radius: 0 0 var(--card-radius, 8px) var(--card-radius, 8px); }
 .tsc-connect-embed { display: grid; gap: 12px; min-height: 120px; }
 .tsc-connect-status { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 20px; }
 .tsc-connect-status.error { color: var(--danger); }
@@ -191,6 +192,8 @@
 }
 
 @media (max-width: 760px) {
+  /* Below 16px, iOS zooms the page when a field takes focus. */
+  .payout-form-stack input, .payout-form-stack select, .payout-form-grid input, .payout-textarea-field textarea, .payout-country-field select { font-size: 16px; }
   .billing-method-empty { align-items: stretch; flex-direction: column; }
   .billing-method-empty > button { width: 100%; }
   .live-payout-method-card { grid-template-columns: minmax(0, 1fr); padding: 18px; }

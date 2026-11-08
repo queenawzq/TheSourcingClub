@@ -145,7 +145,9 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // Nothing is chosen until the vendor chooses it. This answer decides which
   // copy, which questions and which profile kind they get.
   const [companyType, setCompanyType] = useState(initialCompanyType);
-  const [language, setLanguage] = useState("en");
+  // The language chosen at sign-up carries on here.
+  const [language, setLanguage] = useState(() => (new URLSearchParams(window.location.search).get("lang") === "zh"
+    || window.localStorage.getItem("factoryLang") === "zh" ? "zh" : "en"));
   // Trading companies sign different terms, chosen on the welcome card.
   const signable = useSignableTerms(companyType === "trading" ? "terms_trading" : "terms_factory", language);
 
@@ -640,7 +642,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       language={language}
       step={step}
       isReviewEdit={reviewEditStep !== null}
-      onLanguageChange={setLanguage}
+      onLanguageChange={(next) => { setLanguage(next); window.localStorage.setItem("factoryLang", next); }}
       onCompanyTypeChange={setCompanyType}
       onBack={() => {
         if (reviewEditStep !== null) {

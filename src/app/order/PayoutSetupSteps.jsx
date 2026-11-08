@@ -23,7 +23,6 @@ const BANK_WORDS = {
   titleFinish: "Add your full account number",
   bankName: "Bank name",
   again: "Re-enter account number",
-  english: "In English",
   numberMismatch: "The two account numbers don't match.",
   numberFormat: "Letters and digits only, 5 to 34 characters.",
   numberStored: (last4) => `Ending ${last4}`,
@@ -62,7 +61,7 @@ const withoutChinese = (text) => (typeof text === "string" ? text.replace(/\s*[\
 export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, onUnavailable }) {
   const words = BANK_WORDS;
   const say = withoutChinese;
-  const [form, setForm] = useState(null);
+  const [form, setForm] = useState(country === "CN" ? WISE_FORM_SNAPSHOT : null);
   const [values, setValues] = useState(() => startingValues(row));
   const [bankName, setBankName] = useState(row?.bank_name ?? "");
   const [number, setNumber] = useState("");
@@ -123,6 +122,7 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
 
   return (
     <PayoutModal
+      keepOpen
       title={!row ? words.titleNew : row.number_changed_at ? words.titleEdit : words.titleFinish}
       onClose={onClose}
       actions={<>
@@ -148,7 +148,7 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, on
                 </select>
               ) : (
                 <input data-field={`wise_${field.key}`} value={values[field.key] ?? ""} maxLength={field.maxLength}
-                       placeholder={inEnglish(field) ? words.english : field.example ?? ""}
+                       placeholder={field.example ?? ""}
                        onBlur={leave(field.key)} onChange={change(field)} />
               )}
               {shown(field.key, fieldError(field)) ? <small className="live-stripe-error" role="alert">{say(fieldError(field))}</small> : null}
@@ -200,6 +200,7 @@ export function PaypalStep({ row, country, form, busy, onField, savePaypal, onBa
 
   return (
     <PayoutModal
+      keepOpen
       title={row ? words.titleEdit : words.title}
       onClose={onClose}
       actions={<>

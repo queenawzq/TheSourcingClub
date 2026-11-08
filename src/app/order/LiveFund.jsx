@@ -124,7 +124,7 @@ export default function LiveFund({ orderId, paymentId, fallback }) {
       <div className="rfq-page">
         <button type="button" className="quiet-btn" onClick={back}>← Back to the order</button>
         <h1>Payments are not set up on this site yet</h1>
-        <p className="muted" data-testid="payments-not-set-up">This site has no Stripe keys, so no payment can be taken here.</p>
+        <p className="muted" data-testid="payments-not-set-up">No payment can be taken on this site.</p>
       </div>
     </main>
   );

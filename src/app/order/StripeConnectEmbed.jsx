@@ -17,7 +17,7 @@ export default function StripeConnectEmbed({ org, country, form, onExit, upgrade
   const shownRef = useRef(false);
 
   if (!STRIPE_PUBLISHABLE_KEY) {
-    return <p className="tsc-connect-status error" role="alert">Payouts through Stripe are not set up on this site yet.</p>;
+    return <p className="tsc-connect-status error" role="alert">Withdrawals are not set up on this site yet.</p>;
   }
 
   const common = {
@@ -26,7 +26,7 @@ export default function StripeConnectEmbed({ org, country, form, onExit, upgrade
       setShown(true);
     },
     onLoadError: ({ error }) => {
-      if (!shownRef.current) setFailure(error?.message || "Stripe's form could not load.");
+      if (!shownRef.current) setFailure(error?.message || "The form could not load.");
     },
   };
 
@@ -35,7 +35,7 @@ export default function StripeConnectEmbed({ org, country, form, onExit, upgrade
       {failure ? (
         <p className="tsc-connect-status error" role="alert">{failure} Close this window and try again.</p>
       ) : !shown ? (
-        <p className="tsc-connect-status" role="status">Loading Stripe’s secure form…</p>
+        <p className="tsc-connect-status" role="status">Loading…</p>
       ) : null}
       <ConnectComponentsProvider connectInstance={connectInstanceFor(org.id, country, upgrade)}>
         {form === "onboarding" ? (

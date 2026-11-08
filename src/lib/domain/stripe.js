@@ -102,6 +102,6 @@ export async function connectAccountFor(orgId) {
     .select("org_id, country, details_submitted, payouts_enabled, transfers_active, requirements_due, updated_at")
     .eq("org_id", orgId)
     .maybeSingle();
-  if (error) throw new Error(`Could not load your Stripe payout account: ${error.message}`);
+  if (error) throw new Error("Could not load your withdrawal details.");
   return data;
 }

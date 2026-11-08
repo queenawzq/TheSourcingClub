@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
-import { CardCvcElement, CardExpiryElement, CardNumberElement, Elements, useElements, useStripe } from "@stripe/react-stripe-js";
+import { Elements, useStripe } from "@stripe/react-stripe-js";
 import { STRIPE_PUBLISHABLE_KEY, connectAction } from "../../lib/domain/stripe.js";
 import { PayoutModal } from "./StripePayoutCard.jsx";
 
@@ -17,19 +17,6 @@ const payoutStripe = () => {
   if (!STRIPE_PUBLISHABLE_KEY) return null;
   stripePromise ??= loadStripe(STRIPE_PUBLISHABLE_KEY);
   return stripePromise;
-};
-
-const CARD_OPTIONS = {
-  style: {
-    base: {
-      color: "#0b1020",
-      fontFamily: "Satoshi, Arial, sans-serif",
-      fontSize: "14px",
-      fontWeight: "500",
-      "::placeholder": { color: "#8391a8" },
-    },
-    invalid: { color: "#c62828" },
-  },
 };
 
 /**
@@ -131,13 +118,13 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
   return (
     <PayoutModal
       title="Add a bank account"
+      keepOpen
       onClose={busy ? () => {} : onClose}
       actions={<>
         <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Back</button>
         <button className="primary-btn" type="button" data-testid="save-bank-account" disabled={!stripe || !ready || busy} onClick={save}>{busy ? "Adding…" : "Add bank account"}</button>
       </>}
     >
-      <p className="payout-modal-intro">Withdrawals are paid to this account in {currency.toUpperCase()}. The account must be in your company’s name.</p>
       <div className="payout-manual-fields">
         <label className="payout-country-field">
           <span>Bank account country</span>
@@ -152,7 +139,7 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
             {currencies.map((code) => <option key={code} value={code}>{code}</option>)}
           </select>
         </label> : null}
-        {!options && !optionsError ? <p className="payout-security-copy" role="status">Loading supported bank countries…</p> : null}
+        {!options && !optionsError ? <p className="payout-security-copy" role="status">Loading…</p> : null}
         {optionsError ? <p className="live-stripe-error" role="alert">{optionsError} <button type="button" className="secondary-btn compact-btn" onClick={() => setAttempt((n) => n + 1)}>Try again</button></p> : null}
         <div className="payout-form-grid">
           <label>
@@ -175,64 +162,12 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
         )}
       </div>
       {problem ? <p className="live-stripe-error" role="alert">{problem}</p> : null}
-      <p className="payout-security-copy">Your bank or card details go straight to Stripe, TSC’s payment partner. TSC keeps only the last four digits. Everyone at your company is told when a payout method changes.</p>
     </PayoutModal>
   );
 }
 
-function CardForm({ org, currency, onAdded, onClose }) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [complete, setComplete] = useState({ number: false, expiry: false, cvc: false });
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState(null);
-  const ready = Object.values(complete).every(Boolean);
-
-  async function save() {
-    if (!stripe || !elements || !ready || busy) return;
-    setBusy(true);
-    setProblem(null);
-    try {
-      const { token, error } = await stripe.createToken(elements.getElement(CardNumberElement), { currency: currency.toLowerCase() });
-      if (error) throw new Error(error.message);
-      onAdded(await connectAction(org.id, "add_method", { token: token.id }));
-    } catch (failure) {
-      setProblem(failure.message || "The card could not be added.");
-      setBusy(false);
-    }
-  }
-
-  const field = (key, Element, label, extra = {}) => (
-    <label className={`billing-card-field${key === "number" ? " billing-card-number" : ""}`}>
-      <span>{label}</span>
-      <div className="billing-stripe-input">
-        <Element options={{ ...CARD_OPTIONS, ...extra }} onChange={(event) => setComplete((current) => ({ ...current, [key]: event.complete }))} />
-      </div>
-    </label>
-  );
-
-  return (
-    <PayoutModal
-      title="Add a debit card"
-      onClose={busy ? () => {} : onClose}
-      actions={<>
-        <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Back</button>
-        <button className="primary-btn" type="button" data-testid="save-payout-card" disabled={!stripe || !ready || busy} onClick={save}>{busy ? "Adding…" : "Add debit card"}</button>
-      </>}
-    >
-      <div className="billing-card-form">
-        {field("number", CardNumberElement, "Card number", { showIcon: true })}
-        {field("expiry", CardExpiryElement, "Expiration date")}
-        {field("cvc", CardCvcElement, "Security code")}
-      </div>
-      {problem ? <p className="live-stripe-error" role="alert">{problem}</p> : null}
-      <p className="payout-security-copy">Your bank or card details go straight to Stripe, TSC’s payment partner. TSC keeps only the last four digits. Everyone at your company is told when a payout method changes.</p>
-    </PayoutModal>
-  );
-}
-
-/** `kind` is "bank" or "card"; onAdded receives the route's { methods, notice }. */
-export default function AddPayoutMethodForm({ kind, ...props }) {
+/** onAdded receives the route's { methods, notice }. */
+export default function AddPayoutMethodForm(props) {
   if (!STRIPE_PUBLISHABLE_KEY) {
     return (
       <PayoutModal title="Add a withdrawal method" onClose={props.onClose} actions={<button className="secondary-btn" type="button" onClick={props.onClose}>Close</button>}>
@@ -242,7 +177,7 @@ export default function AddPayoutMethodForm({ kind, ...props }) {
   }
   return (
     <Elements stripe={payoutStripe()}>
-      {kind === "card" ? <CardForm {...props} /> : <BankForm {...props} />}
+      <BankForm {...props} />
     </Elements>
   );
 }
