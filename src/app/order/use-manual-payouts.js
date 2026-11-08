@@ -204,7 +204,7 @@ export function useManualPayouts(orgId) {
     setSaved(false);
     setBusy(true);
     try {
-      unwrap(await supabase.rpc("set_primary_payout_account", { target: account.id }), "choose the account TSC pays");
+      unwrap(await supabase.rpc("choose_payout_method", { target_org: orgId, target_account: account.id }), "choose the account TSC pays");
       await load();
     } finally {
       setBusy(false);

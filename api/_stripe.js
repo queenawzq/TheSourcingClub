@@ -364,6 +364,10 @@ export async function releasePayment({ stripe, db, paymentId }) {
     return { released: false, reason: "the factory cannot be paid through Stripe yet" };
   }
 
+  const selectedStripe = await db.rpc("uses_stripe_payout", { target_org: payment.production_orders.factory_org_id });
+  if (selectedStripe.error) throw new Error(selectedStripe.error.message);
+  if (!selectedStripe.data) return { released: false, reason: "the factory selected another payout method" };
+
   // A transfer credits earnings, never an automatic withdrawal to the bank.
   // Configure existing accounts before any money can reach them.
   await holdPayouts(stripe, account.stripe_account_id);
