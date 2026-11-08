@@ -284,3 +284,6 @@
   .payout-balance-placeholder, .payout-balance-placeholder-lines span,
   .payout-label-placeholder, .payout-note-placeholder, .payout-button-placeholder, .payout-figure-placeholder, .payout-credit-placeholder, .payout-row-placeholder span { animation: none; }
 }
+
+.payout-modal-refusal { flex: 1 1 100%; margin: 0 0 8px; }
+.payout-modal-actions:has(.payout-modal-refusal) { flex-wrap: wrap; }

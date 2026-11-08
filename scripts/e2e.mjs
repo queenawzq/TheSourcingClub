@@ -133,6 +133,19 @@ const steps = [];
 let shot = 0;
 let failures = 0;
 
+// The whole walkthrough has to finish for this run to count. An abort, or
+// anything inside a dependency ending the process early, used to exit 0 with
+// half the flow untested. The last word on the exit code is here, so no path
+// can get past it. E2E_ABORT_HERE proves it: npm run check:e2e-exit.
+let reachedTheEnd = false;
+process.on("exit", () => {
+  if (reachedTheEnd && !failures) return;
+  console.error(reachedTheEnd
+    ? `e2e: ${failures} failed`
+    : "e2e: ABORTED before the end of the walkthrough, so it did not cover what it says");
+  process.exitCode = 1;
+});
+
 async function record(page, name, note) {
   shot += 1;
   const file = `${String(shot).padStart(2, "0")}-${name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.png`;
@@ -566,6 +579,8 @@ async function main() {
   });
   await page.goto(APP);
   await page.waitForTimeout(1000);
+
+  if (process.env.E2E_ABORT_HERE) throw new Error("aborted on purpose (check:e2e-exit)");
 
   const stamp = Date.now();
   const factoryName = `Atelier E2E ${stamp}`;
@@ -2058,9 +2073,11 @@ async function main() {
     await waitFor(page, '[data-field="payout_bank_name"]', 10000);
     await page.locator('[data-field="payout_bank_name"]').fill("Banco de Porto");
     await page.locator('[data-field="payout_account_name"]').fill(factoryName);
-    await page.locator('[data-field="payout_account_number_last4"]').fill("4417");
+    await page.locator('[data-field="payout_account_number"]').fill("0000000000004417");
+    await page.locator('[data-field="payout_account_number_again"]').fill("0000000000004417");
     await page.locator('[data-field="payout_swift"]').fill("BCOMPTPL");
-    await record(page, "Bank details for manual payouts", "no full account number is asked for, or stored");
+    await page.locator('[data-field="payout_branch"]').fill("001 002");
+    await record(page, "Bank details for manual payouts", "the whole number, typed twice; only the last four come back");
 
     await clickButton(page, "save payout method");
     await page.waitForTimeout(2500);
@@ -2281,6 +2298,15 @@ async function main() {
     check(/pay by bank/i.test(owedSection), "with the factory's bank details to pay it by hand");
     await record(page, "The payments board", "a required step: staff have no org to notify");
 
+    // Marking it needs the bank's reference, typed into this order's row.
+    const referenceIndex = await page.evaluate((orderNumber) => [...document.querySelectorAll('[data-section="payout"] [data-testid="bank-reference"]')]
+      .findIndex((input) => input.closest("tr")?.innerText.includes(orderNumber)), bornOrder.order_number);
+    check(referenceIndex >= 0, "the row asks for the bank's reference");
+    const markBefore = await page.evaluate((orderNumber) => [...document.querySelectorAll('[data-section="payout"] [data-testid="release-payment"]')]
+      .find((candidate) => candidate.closest("tr")?.innerText.includes(orderNumber))?.disabled, bornOrder.order_number);
+    check(markBefore === true, "and staff cannot mark it paid without one");
+    await page.locator('[data-section="payout"] [data-testid="bank-reference"]').nth(referenceIndex).fill(`E2E-WIRE-${stamp}`);
+    await page.waitForTimeout(300);
     // This order's row: the board also holds the demo data's own rows.
     const paidOwnRow = await page.evaluate((orderNumber) => {
       const button = [...document.querySelectorAll('[data-section="payout"] [data-testid="release-payment"]')]
@@ -2304,6 +2330,13 @@ async function main() {
       .select("state, released_by").eq("id", dueNow.id).single();
     check(paidOut.state === "released", "the payment is paid out");
     check(Boolean(paidOut.released_by), "and stamped with which member of staff did it");
+    const { data: paidWhere } = await db.from("bank_payouts")
+      .select("reference, paid_to_bank, paid_to_last4").eq("payment_id", dueNow.id).single();
+    check(paidWhere?.reference === `E2E-WIRE-${stamp}` && paidWhere?.paid_to_last4 === "4417",
+      "and the record says which account, and the reference");
+    const { data: paidNotice } = await db.from("notifications")
+      .select("body").eq("subject_id", dueNow.id).eq("kind", "funds_released").single();
+    check(paidNotice?.body?.includes(`E2E-WIRE-${stamp}`), "the factory reads the reference");
 
     // ================= PAYONEER, BY HAND =================
     // Needs the demo data (Kowloon, seed-demo.mjs). Nothing calls Payoneer.
@@ -4436,6 +4469,7 @@ async function main() {
     check(!newPasswordFails, "and the new one does");
 
     console.log(failures ? `\n${failures} assertion(s) failed\n` : "\nAll end-to-end assertions passed\n");
+    reachedTheEnd = true;
   } catch (error) {
     failures += 1;
     try {

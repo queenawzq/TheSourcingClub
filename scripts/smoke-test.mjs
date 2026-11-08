@@ -1221,6 +1221,43 @@ console.log("\nphase 3 — the order runs");
         ? ok("a factory cannot record its own Payoneer payout")
         : fail("LEAK: a factory reached release_payment_by_payoneer", notStaff.error);
 
+      // The full bank number, through the API the browser uses. Plainly fake.
+      {
+        const fakeNumber = "0000000000005678";
+        const saved = await factoryClient.rpc("save_bank_payout_account", {
+          target_org: winner.factory_org_id, bank_name: "Banco Smoke", account_name: "Smoke Mill",
+          bank_country: "CN", swift: "SMOKCNSH", account_number: fakeNumber, account_number_again: fakeNumber,
+        });
+        !saved.error && saved.data.account_number_last4 === "5678" && !JSON.stringify(saved.data).includes(fakeNumber)
+          ? ok("the owner saves a full number and gets back only the last four")
+          : fail("saving a full bank number", saved.error);
+        const mismatch = await factoryClient.rpc("save_bank_payout_account", {
+          target_org: winner.factory_org_id, bank_name: "B", account_name: "H", bank_country: "CN", swift: "SMOKCNSH",
+          account_number: fakeNumber, account_number_again: "0000000000005679",
+        });
+        mismatch.error && !JSON.stringify(mismatch.error).includes(fakeNumber)
+          ? ok("a refused save repeats no number in what the client reads")
+          : fail("LEAK: a refusal repeated the number", mismatch.error);
+        for (const [who, client] of [["brand", brand.client], ["factory", factoryClient]]) {
+          const direct = await client.from("payout_account_numbers").select("*");
+          direct.error ? ok(`the ${who} cannot read the number table through the API`)
+            : fail(`LEAK: the ${who} read the number table`);
+          const embed = await client.from("factory_payout_accounts").select("id, payout_account_numbers (*)");
+          embed.error ? ok(`the ${who} cannot embed it either`)
+            : fail(`LEAK: the ${who} embedded the number table`);
+          const vaultRead = await client.schema("vault").from("decrypted_secrets").select("*");
+          vaultRead.error ? ok(`the ${who} cannot reach Vault through the API`)
+            : fail(`LEAK: the ${who} read Vault`);
+          const reveal = await client.rpc("reveal_payout_account_number", { target_account: saved.data.id });
+          reveal.error?.code === "42501" ? ok(`the ${who} cannot reveal it`)
+            : fail(`LEAK: the ${who} reached the reveal`, reveal.error);
+        }
+        const anonymous = createClient(URL, ANON, { auth: { persistSession: false } });
+        const signedOut = await anonymous.rpc("reveal_payout_account_number", { target_account: saved.data.id });
+        signedOut.error ? ok("a signed-out visitor cannot reveal it")
+          : fail("LEAK: a signed-out visitor reached the reveal");
+      }
+
       const checkout = await brand.client.rpc("begin_payment_checkout", { target_payment: deposit.id });
       checkout.error ? fail("the brand owner starts paying", checkout.error)
         : Number(checkout.data.charged_cents) === Number(deposit.amount_cents) + Number(checkout.data.fee_cents)

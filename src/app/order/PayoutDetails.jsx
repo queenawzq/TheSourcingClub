@@ -35,16 +35,6 @@ import { availableOn, earningStatus, earningsSummaryFor, factoryAmount, handPaid
 import "./order.css";
 import "./payout.css";
 
-const FIELDS = [
-  // Neutral examples: this form is for the countries Stripe cannot pay out
-  // to (mainland China, Hong Kong…), where most banks have no IBAN.
-  ["bank_name", "Bank", "Your bank's name"],
-  ["account_name", "Account name", "As it appears on the account"],
-  ["account_number_last4", "Last 4 digits", "1234"],
-  ["swift", "SWIFT / BIC", "8 or 11 characters"],
-  ["iban", "IBAN", "Only if your bank uses one"],
-];
-
 const dateLabel = (value) => value
   ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
   : "Date pending";
@@ -424,7 +414,6 @@ export default function PayoutDetails({ org, isFactory, isOwner = false }) {
             onStartManual={payouts.startEdit}
             onMakePrimaryManual={payouts.makePrimary}
             manualForm={payouts.form}
-            manualFields={FIELDS}
             onManualFieldChange={payouts.setField}
             onManualMethodChange={payouts.setMethod}
             onSaveManual={payouts.save}
