@@ -103,9 +103,12 @@ check("trading scope: trade words with no making word are flagged, quoting the w
   assert.equal(tradingScope("Xuất nhập khẩu, bán buôn quần áo").trading, true);
 });
 check("document differences: number and name, quoting the document", () => {
-  const lines = documentDifferences({ registrationNumber: "91330100MA2B7C4D3F", legalName: "宁波贸易有限公司" }, { country: "CN", number: "91330100MA2B7C4D3F", title: "Ningbo Loomworks" });
+  const lines = documentDifferences({ registrationNumber: "91330100MA2B7C4D3F", legalName: "宁波贸易有限公司" }, { country: "CN", number: "91330100MA2B7C4D3F", title: "Ningbo Loomworks" }, { companyNamesMatch, normaliseRegistrationNumber });
   assert.deepEqual(lines.map((line) => line.field), ["name"]);
-  assert.equal(documentDifferences({ registrationNumber: "500697256", legalName: "Fiação do Vale Lda" }, { country: "PT", number: "PT 500 697 256", title: "Fiação do Vale, Lda." }).length, 0);
+  assert.equal(documentDifferences({ registrationNumber: "500697256", legalName: "Fiação do Vale Lda" }, { country: "PT", number: "PT 500 697 256", title: "Fiação do Vale, Lda." }, { companyNamesMatch, normaliseRegistrationNumber }).length, 0);
+  // The model copied a Chinese licence number with U+200B inside it (Nov 8): not a difference.
+  assert.equal(documentDifferences({ registrationNumber: "91330100\u200BMA2B7C4D3F", legalName: "" }, { country: "CN", number: "91330100MA2B7C4D3F", title: "" }, { companyNamesMatch, normaliseRegistrationNumber }).length, 0);
+  assert.equal(normaliseRegistrationNumber("TR", "\uFEFF0123\u00AD456\u200D789"), "0123456789");
 });
 check("address: judged from the tags by rule, imprecise is unknown", () => {
   assert.equal(judgeFromTags([{ tag: "landuse=industrial", count: 2, nearest: 40 }]).judgement, "industrial");

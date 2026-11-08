@@ -29,7 +29,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { modelFailure } from "./admin-review-assist.js";
-import { companyNameKey, companyNamesMatch, normaliseRegistrationNumber } from "../src/shared/registration-number.mjs";
+// Vercel compiles api/*.js as CommonJS; import the ESM helpers lazily.
+const loadRegistrationNumber = () => import("../src/shared/registration-number.mjs");
 
 const MODEL = process.env.OPENROUTER_REVIEW_MODEL ?? "anthropic/claude-haiku-5.5";
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
@@ -89,7 +90,7 @@ export function tradingScope(scope) {
  * Where the document's text differs from what the factory typed. Each line
  * quotes the document. Never "fake": a person decides what a difference means.
  */
-export function documentDifferences(extracted, { country, number, title } = {}) {
+export function documentDifferences(extracted, { country, number, title } = {}, { companyNamesMatch, normaliseRegistrationNumber }) {
   const lines = [];
   const docNumber = normaliseRegistrationNumber(country, extracted?.registrationNumber ?? "");
   const typed = normaliseRegistrationNumber(country, number ?? "");
@@ -322,7 +323,7 @@ export default async function handler(request, response) {
     if (failure) return json(response, 200, { available: false, reason: failure });
     const extracted = Object.fromEntries(Object.entries(fields ?? {}).map(([key, value]) => [key, typeof value === "string" ? value.slice(0, 800) : value]));
     const registration = detail?.registration ?? {};
-    const differences = extracted.readable === false ? [] : documentDifferences(extracted, { country: registration.country, number: registration.number, title: detail?.title });
+    const differences = extracted.readable === false ? [] : documentDifferences(extracted, { country: registration.country, number: registration.number, title: detail?.title }, await loadRegistrationNumber());
     const scope = tradingScope(extracted.businessScope);
     // A reading holds for the number and name it was compared with: the
     // database ignores it once either changes (registry_reading_differs).
@@ -394,5 +395,3 @@ export default async function handler(request, response) {
   return json(response, 400, { error: "unknown action" });
 }
 
-// For the check script.
-export { companyNameKey };

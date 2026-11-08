@@ -93,7 +93,8 @@ function halfWidth(value) {
 
 /** Spaces, dots and dashes removed; letters upper-case; "PT" prefix dropped. */
 export function normaliseRegistrationNumber(country, value) {
-  let text = halfWidth(value).trim().toUpperCase().replace(/[\s.\-/]/g, "");
+  // \p{Cf}: a copied number can carry invisible characters (U+200B seen from the AI read).
+  let text = halfWidth(value).trim().toUpperCase().replace(/[\s.\-/\p{Cf}]/gu, "");
   if (country === "PT" && /^PT\d{9}$/.test(text)) text = text.slice(2);
   return text;
 }
