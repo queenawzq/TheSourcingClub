@@ -34,7 +34,9 @@ import { deliveryMonthFrom } from "../src/app/rfq/delivery-month.mjs";
     [said("bulk by late December"), "2026-12-01"],
     [said("April 2028"), "2028-04-01"],
     [said("April 2026"), "2026-04-01"], // what was typed stays
-    [said("Sample in August, bulk by late September"), "2027-08-01"],
+    [said("Sample in August, bulk by late September"), "2027-09-01"], // the bulk month
+    [said("Sample in December, bulk by February"), "2027-02-01"],
+    [said("We may need it by June"), "2027-06-01"],
     [said("as soon as possible"), null],
     [said("by April", new Date(2027, 0, 15)), "2027-04-01"],
     [said("by January", new Date(2027, 0, 15)), "2027-01-01"],
