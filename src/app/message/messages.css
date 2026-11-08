@@ -5,6 +5,7 @@
  */
 .message-bubble.message-bubble-checking,
 .message-bubble.message-bubble-held,
+.message-bubble.message-bubble-blocked,
 .message-bubble.message-bubble-rejected {
   border-style: dashed;
   background: #f7f8fa;
@@ -12,6 +13,7 @@
 
 .message-bubble.message-bubble-checking > p,
 .message-bubble.message-bubble-held > p,
+.message-bubble.message-bubble-blocked > p,
 .message-bubble.message-bubble-rejected > p {
   color: #60769b;
 }
@@ -34,6 +36,7 @@
   color: #33415c;
 }
 
+.message-bubble-blocked .message-status-note strong,
 .message-bubble-rejected .message-status-note strong {
   color: #b42318;
 }
@@ -411,3 +414,50 @@
 .call-card-calendar-link:disabled { opacity: 0.5; cursor: default; }
 
 .call-card-overflow .project-overflow-menu .call-menu-delete { color: #c83d3d; }
+
+/*
+ * Live only: a blocked message's "guidelines" link, underlined in the line's
+ * own size, and the guidelines in the design's dialog frame.
+ */
+.message-bubble .message-status-note .message-guidelines-link {
+  display: inline;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #174df2;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.message-guidelines-modal .message-guidelines-list {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message-guidelines-modal .message-guidelines-list li {
+  display: grid;
+  gap: 4px;
+  color: #33415c;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.message-guidelines-modal .message-guidelines-list strong {
+  color: #0b1020;
+  font-weight: 700;
+}
+
+.message-guidelines-modal .message-guidelines-footer {
+  margin: 0;
+  color: #b42318;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}

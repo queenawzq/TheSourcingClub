@@ -29,6 +29,8 @@ import { dateFrom } from "../../lib/dates.js";
  * or balance has nothing to approve, so it stays Funded.
  */
 export function paymentStatusWord(payment) {
+  // Held money that went back when the order was cancelled.
+  if (payment.state === "cancelled" && payment.refunded_at) return "Refunded";
   if (payment.state === "confirmed" && payment.release_requested_at && payment.order_milestones?.kind !== "payment_only") return "Approved";
   return PAYMENT_STATUS[payment.state];
 }
@@ -58,7 +60,7 @@ const sum = (items, pick) => items.reduce((total, item) => total + Number(pick(i
 const dueOn = (payment) => String(payment.order_milestones?.due_on ?? "9999");
 
 /** When the payment last moved, which is the date its row shows. */
-const movedAt = (payment) => payment.released_at ?? payment.confirmed_at ?? payment.failed_at ?? payment.processing_at
+const movedAt = (payment) => payment.refunded_at ?? payment.released_at ?? payment.confirmed_at ?? payment.failed_at ?? payment.processing_at
   ?? payment.sent_at ?? payment.due_at ?? payment.created_at;
 
 /**
@@ -71,7 +73,7 @@ export function brandPaymentsView({ orders, payments, vendor = ALL_VENDORS }) {
   const listed = payments.filter((payment) => byOrder.has(payment.order_id));
 
   const rows = listed
-    .filter((payment) => PAYMENT_STATUS[payment.state])
+    .filter((payment) => paymentStatusWord(payment))
     .sort((a, b) => {
       const owed = Number(OWED.has(b.state)) - Number(OWED.has(a.state));
       if (owed) return owed;

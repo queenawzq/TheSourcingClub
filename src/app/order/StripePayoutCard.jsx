@@ -9,7 +9,7 @@ import { connectAccountFor, connectAction } from "../../lib/domain/stripe.js";
 import { PAYOUT_COUNTRIES } from "../../shared/stripe-payout-countries.mjs";
 import StripeConnectEmbed from "./StripeConnectEmbed.jsx";
 import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
-import { PaypalStep, WiseBankStep, readsChinese } from "./PayoutSetupSteps.jsx";
+import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
 import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
@@ -34,20 +34,14 @@ const isPaypal = (row) => row?.method === "paypal";
 const manualComplete = (row) => isPayoneer(row) || isPaypal(row) || Boolean(row?.bank_name?.trim() && row?.account_name?.trim() && row?.number_changed_at);
 const BANK_ICON = <svg viewBox="0 0 24 24"><path d="M3 9h18M5 9v8m4-8v8m6-8v8m4-8v8M3 18h18M12 3l9 4H3l9-4Z" /></svg>;
 
-/** Where a factory has a choice, and the words for that list in both languages where it reads Chinese. */
-const listWords = (country) => (readsChinese(country) ? {
-  title: "Add a withdrawal method 添加提现方式", bank: "Bank transfer 银行转账", setUp: "Set up 设置", country: "Country 国家/地区",
-  methods: "Withdrawal methods 提现方式", add: "Add withdrawal method 添加提现方式", toReceive: "Add a withdrawal method to receive earnings. 请添加提现方式以接收收入。",
-  edit: "Edit method 编辑", makeDefault: "Make default 设为默认", remove: "Remove method 移除", back: "Back 返回", done: "Done 完成",
-  saved: "Withdrawal method saved. 提现方式已保存。", removed: "Withdrawal method removed. 提现方式已移除。",
-  recommended: (name) => `Recommended for ${name} ${{ CN: "中国推荐", HK: "香港推荐", TW: "台湾推荐" }[country]}`,
-} : {
+/** The words for the list of withdrawal methods. The factory's screens are English, so these are too. */
+const LIST_WORDS = {
   title: "Add a withdrawal method", bank: "Bank transfer", setUp: "Set up", country: "Country",
   methods: "Withdrawal methods", add: "Add withdrawal method", toReceive: "Add a withdrawal method to receive earnings.",
   edit: "Edit method", makeDefault: "Make default", remove: "Remove method", back: "Back", done: "Done",
   saved: "Withdrawal method saved.", removed: "Withdrawal method removed.",
   recommended: (name) => `Recommended for ${name}`,
-});
+};
 
 const SLOW_BALANCE_MS = 8000;
 const BALANCE_STATUS_TEXT = {
@@ -687,7 +681,7 @@ export default function StripePayoutCard({
     try {
       await onDeleteManual?.(removingManual, manualSuccessor);
       setModal(null);
-      setMethodNotice(listWords(country).removed);
+      setMethodNotice(LIST_WORDS.removed);
     } catch (failure) {
       // Said in the dialog, where the factory is looking.
       setRemoveError(failure);
@@ -697,7 +691,7 @@ export default function StripePayoutCard({
   // Only the page's Earnings card passes figures; Settings mounts this for its dialogs.
   const handPaid = Boolean(handFigures) && isHandPaid(account, earnings);
   // Only an owner reads the balance; for anyone else it is not "in progress".
-  const cardWords = listWords(country);
+  const cardWords = LIST_WORDS;
   // Something is due on a set-up account (the webhook also emails this):
   // the factory must act, so it is never "in progress".
   const needsMore = Boolean(account?.details_submitted && account.requirements_due?.length);
@@ -718,7 +712,6 @@ export default function StripePayoutCard({
             : isOwner ? cardWords.toReceive : "No withdrawal method yet.";
   // Owed money that bounced: what this person must do next, on the card.
   const failedLine = !problem ? null : isOwner || !problem.fixable ? problem.line : "Ask a company owner to check the withdrawal details.";
-  const failedLineZh = !problem || !readsChinese(country) ? null : isOwner || !problem.fixable ? problem.zh : "请联系公司所有者检查提现信息。";
 
   return (
     <>
@@ -758,7 +751,7 @@ export default function StripePayoutCard({
               setModal("withdraw");
             }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a>.</p>}
           </div> : null}
-          {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}{failedLineZh ? ` ${failedLineZh}` : ""}</p> : null}
+          {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}</p> : null}
           {manualSaved && !failedLine ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested.</p> : null}
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
@@ -960,7 +953,7 @@ export default function StripePayoutCard({
       ) : null}
 
       {modal === "setup" ? (() => {
-        const words = listWords(country);
+        const words = LIST_WORDS;
         return (
           <PayoutModal title={words.title} onClose={closeModal}>
             <label className="payout-country-field">

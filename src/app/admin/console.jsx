@@ -34,7 +34,6 @@ import "../live-quiet.css";
 // Staff's two boards live outside this page; the sidebar has to reach them.
 const STAFF_PAGES = [
   { label: "Payments", icon: "billing", href: "/app.html/admin/payments" },
-  { label: "Messages", icon: "messages", href: "/app.html/admin/messages" },
 ];
 
 function Gate({ title, children }) {

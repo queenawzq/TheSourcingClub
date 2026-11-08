@@ -19,7 +19,7 @@ const PAYMENT_COLUMNS = `
   confirmed_at, confirmed_note, amount_received_cents,
   released_at, released_note, created_at,
   charged_cents, payment_method_type, payment_method_label, failure_reason,
-  processing_at, failed_at, release_requested_at, stripe_payment_intent_id
+  processing_at, failed_at, release_requested_at, stripe_payment_intent_id, refunded_at
 `;
 
 export async function listPayments(orderId) {

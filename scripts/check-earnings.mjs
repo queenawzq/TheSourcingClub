@@ -104,7 +104,7 @@ assert.equal(usd(handPaidFigures([{ ...unfunded[0], provider_payouts: [attempt("
 const named = [pay("named", 500, "confirmed", { ...APPROVED, provider_payouts: [attempt("n", "failed", { failure_code: "details_rejected", amount_cents: 500, asked_to_check: "Check your SWIFT code" })] })];
 assert.equal(withdrawalRows(named)[0].note, "Check your SWIFT code");
 assert.equal(withdrawalProblem(named)?.line, "A withdrawal failed. Check your SWIFT code.");
-assert.equal(withdrawalProblem(named)?.zh, "提现失败，请检查您的提现信息。", "a reader in China reads it in both languages");
+assert.equal(withdrawalProblem(named)?.zh, undefined, "one language: the factory's screens are English");
 assert.equal(withdrawalRows(named, { details_changed_at: "2026-11-05T00:00:00Z" })[0].note, null, "fixed since: the row stops asking, and stays failed");
 assert.equal(withdrawalRows(named, { details_changed_at: "2026-11-05T00:00:00Z" })[0].failed, true);
 const moneyFigures = handPaidFigures(money);
@@ -143,7 +143,8 @@ assert.equal(earningStatus(transferred[0]), "Paid", "the same word as the order 
 // The same rules as the staff board's buckets. A change there must change here.
 const board = readFileSync(new URL("../src/app/admin/AdminPayments.jsx", import.meta.url), "utf8");
 for (const rule of [
-  'payout: rows.filter((row) => row.state === "confirmed" && row.release_requested_at)',
+  // Owed, whichever tab draws it: a Wise or PayPal payout underway is shown under Processing.
+  'const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at)',
   'held: rows.filter((row) => row.state === "confirmed" && !row.release_requested_at && !cancelled(row))',
 ]) {
   assert.ok(board.includes(rule), `the board's rule changed; check payment-summary.mjs: ${rule}`);

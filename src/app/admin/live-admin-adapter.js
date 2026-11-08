@@ -53,7 +53,6 @@ import {
 import { createElement } from "react";
 import { urlFor } from "../../lib/domain/documents.js";
 import { profileCompletion } from "./profile-completion.js";
-import { heldMessageQueue } from "../../lib/domain/message.js";
 import { formatMoney, formatRange } from "../../lib/money.js";
 import { termLabel } from "../../lib/domain/taxonomy.js";
 import { describeQuote } from "../quote/quote-view.js";
@@ -355,19 +354,12 @@ export function createAdminAdapter({ user, signOut }) {
       .then(([rows, states]) => rows.map((row) => withRegistry(toReviewProfile(row), states.get(row.orgId)))),
     adminRfqs: () => rfqQueue().then((rows) => rows.map(toRfqRow)),
     adminQuotes: () => quoteQueue().then((rows) => rows.map(toQuoteRow)),
-    // Held messages are counted from their queue rather than in
-    // admin_overview_metrics: nobody is notified of them either, so the
-    // overview card is their only prompt.
     adminMetrics: async () => {
-      const [metrics, held] = await Promise.all([overviewMetrics(), heldMessageQueue()]);
-      // Like the payments and messages cards, the profiles card links to
-      // where its figure is acted on: this workspace's own queue.
-      return {
-        ...metrics,
-        messagesHeld: held?.length ?? 0,
-        messagesHref: "/app.html/admin/messages",
-        profilesHref: "?screen=verification",
-      };
+      const metrics = await overviewMetrics();
+      // Like the payments card, the profiles card links to where its figure
+      // is acted on: this workspace's own queue. No messages card: messages
+      // are blocked or delivered at once, nothing waits on staff (Nov 7).
+      return { ...metrics, profilesHref: "?screen=verification" };
     },
     adminUsers: () => userDirectory().then((rows) => rows.map(toAdminUser)),
 

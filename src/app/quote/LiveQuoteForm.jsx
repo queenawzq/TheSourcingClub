@@ -125,13 +125,6 @@ function windowRefusal(values, companyType) {
     : `${field} (write the first and last day, like ${WINDOW_EXAMPLE})`;
 }
 
-/** The form is English; someone typing Chinese gets the same refusal they can read. */
-function windowRefusalZh(values) {
-  if (!capacityWindowProblem(values.capacityWindow)) return "";
-  if (!(navigator.languages ?? []).some((language) => /^zh\b/i.test(language))) return "";
-  return " 可接单时间窗口无法识别，请写明开始和结束日期，例如：2027年1月5日至3月1日 · 300件。";
-}
-
 function missingQuoteFields(values, terms, companyType) {
   const missing = [];
   if (!(firstNumber(values.unitPrice) > 0)) missing.push("unit price");
@@ -313,7 +306,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     const companyType = profile?.vendor_kind === "trading_company" ? "trading" : "factory";
     const missing = missingQuoteFields(values, terms, companyType);
     if (missing.length) {
-      setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.${windowRefusalZh(values)}`));
+      setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.`));
       return;
     }
     setBusy(true);
@@ -341,7 +334,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       // have it vanish when the draft is reopened.
       if (String(values.capacityWindow ?? "").trim()) {
         const refusal = windowRefusal(values, profile?.vendor_kind === "trading_company" ? "trading" : "factory");
-        if (refusal) setError(new Error(`Draft saved, except this field, which was not kept: ${refusal}.${windowRefusalZh(values)}`));
+        if (refusal) setError(new Error(`Draft saved, except this field, which was not kept: ${refusal}.`));
       }
     } catch (failure) {
       setError(failure);

@@ -13,7 +13,7 @@
  */
 
 /* Page intros. */
-.rfqs-header > div > p,
+.rfqs-header > div > p:not(.admin-eyebrow),
 .flow-header > p:not(.eyebrow),
 .factory-detail-header > p,
 .quote-detail-header > p,
