@@ -236,8 +236,6 @@ export function stepAmount(cents, currency) {
   return formatMoney(cents, currency, { whole: cents % 100 === 0 });
 }
 
-export const PAID_ON_OPEN = "Paid when this step opens: there is nothing for the brand to approve first.";
-
 /** Loaded milestones → the builder's editable rows. */
 export function scheduleRows(milestones) {
   return milestones.map((milestone) => ({
@@ -251,7 +249,7 @@ export function scheduleRows(milestones) {
     // Shown as the design's steps write money ("$1,656"); toCents reads it back.
     amount: milestone.amount_cents ? stepAmount(milestone.amount_cents, milestone.currency ?? undefined) : "",
     due_on: milestone.due_on ?? "",
-    note: milestone.kind === "payment_only" ? PAID_ON_OPEN : "",
+    note: "",
   }));
 }
 
@@ -260,7 +258,6 @@ export function editRow(row, patch) {
   const next = { ...row, ...patch };
   if (patch.type) {
     next.kind = kindFor(patch.type, row.originalKind);
-    next.note = next.kind === "payment_only" ? PAID_ON_OPEN : "";
     // The database refuses an amount on a step that carries no money.
     if (patch.type !== PAID_RELEASE) next.amount = "";
   }

@@ -15,7 +15,7 @@ import { listMilestones, saveSchedule, updateScheduleDetails } from "../../lib/d
 import { toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
 import { MilestonesScreen } from "../../prototype/main.jsx";
-import { PAID_ON_OPEN, kindFor, moveScheduleRow, scheduleBar, scheduleProblem, stepAmount, typeOf } from "./order-view.js";
+import { kindFor, moveScheduleRow, scheduleBar, scheduleProblem, stepAmount, typeOf } from "./order-view.js";
 import "./order.css";
 
 const PAYS = new Set(["approval_and_payment", "payment_only"]);
@@ -173,7 +173,6 @@ export default function ScheduleEditor({ orderId, isFactory, onAgreed }) {
           ...row,
           key: row.id ?? row.key ?? `step-${index}`,
           type: typeOf(row.kind),
-          note: row.kind === "payment_only" ? PAID_ON_OPEN : "",
           removeLocked: activeEdit && row.state !== "pending",
         })),
         typeLocked: locked,

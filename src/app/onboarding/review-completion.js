@@ -11,8 +11,8 @@
  *                       designed review card; finishing the flow again sends
  *                       the profile back to staff (resubmit_for_review)
  *   declined          → the reason and who to write to; no button
- *   anything else     → the designed full verification explanation; the live
- *                       flow keeps its Verification pending button disabled
+ *   anything else     → the designed "You're all set" card, its figure and
+ *                       one line, with no button: there is nothing to press
  */
 import { createElement } from "react";
 import ReviewNote from "../../shared/ReviewNote.jsx";
@@ -27,6 +27,7 @@ const COPY = {
     needsCta: "Update my profile",
     declinedTitle: "We could not verify your profile",
     contact: `If you think this is a mistake, write to ${OPERATIONS_EMAIL}.`,
+    submitted: "Submitted. We'll email you.",
   },
   zh: {
     needsTitle: "我们需要更多信息",
@@ -34,6 +35,7 @@ const COPY = {
     needsCta: "更新我的资料",
     declinedTitle: "我们无法验证您的资料",
     contact: `如果您认为这有误，请发送邮件至 ${OPERATIONS_EMAIL}。`,
+    submitted: "已提交。我们会发邮件通知您。",
   },
 };
 
@@ -61,5 +63,5 @@ export function reviewCompletion(review, { language = "en", onUpdate } = {}) {
       reward: false,
     };
   }
-  return null;
+  return { intro: copy.submitted };
 }
