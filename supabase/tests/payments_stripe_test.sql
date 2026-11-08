@@ -19,6 +19,10 @@
 
 begin;
 
+-- These fixtures approve factories that have no registration number; the
+-- registry guard (20261108600000) is tested in registry_checks_test.sql.
+set local tsc.skip_registry_guard = 'on';
+
 create extension if not exists pgtap with schema extensions;
 
 select plan(111);

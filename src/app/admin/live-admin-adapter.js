@@ -22,6 +22,7 @@
  * invisible to it, and the detail screens need the id to read the request:
  * the shortened ref on screen is not unique enough to look anything up by.
  */
+import { registryApprovalBlock } from "../../lib/domain/registration.js";
 import {
   adjustCredits,
   claimReview,
@@ -402,6 +403,13 @@ export function createAdminAdapter({ user, signOut }) {
       reviewAssist,
       latestReviewAssists,
       reviewAssistInput,
+
+      /**
+       * Why a vendor cannot be approved yet, or null: approving needs a
+       * person's "found, matches" on its current registration number (the
+       * database refuses it otherwise). Live only.
+       */
+      approvalBlock: registryApprovalBlock,
 
       /**
        * A factory's credits on the review page, and the staff adjustment.

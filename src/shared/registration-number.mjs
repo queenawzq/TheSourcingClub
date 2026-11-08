@@ -33,7 +33,7 @@ export const REGISTRATION_COUNTRIES = {
     second: {
       column: "trade_registry",
       label: { en: "Trade registry number and city", zh: "商业登记号及城市" },
-      hint: { en: "Optional. Ticaret Sicil No, e.g. 123456 İstanbul", zh: "选填。Ticaret Sicil No，例如 123456 İstanbul" },
+      hint: { en: "Ticaret Sicil No and its city, e.g. 123456 İstanbul", zh: "商业登记号及城市，例如 123456 伊斯坦布尔" },
     },
   },
   PT: {
@@ -42,7 +42,7 @@ export const REGISTRATION_COUNTRIES = {
     second: {
       column: "access_code",
       label: { en: "Permanent certificate access code", zh: "永久证明访问码" },
-      hint: { en: "Optional. 12 digits, e.g. 1234-5678-9012", zh: "选填。12 位数字，例如 1234-5678-9012" },
+      hint: { en: "12 digits, e.g. 1234-5678-9012", zh: "12 位数字，例如 1234-5678-9012" },
     },
   },
 };
@@ -67,12 +67,20 @@ export function registrationCountryFrom(location, matched = null) {
   if (/t[uü]rk(ey|iye)/i.test(text)) return "TR";
   if (/portugal/i.test(text)) return "PT";
   if (/china|中国|prc\b/i.test(text)) return "CN";
+  // "宁波，浙江": a location written in Chinese, outside Hong Kong, Macau and
+  // Taiwan, is in mainland China.
+  if (/[\u4e00-\u9fff]/.test(text) && !/香港|澳门|澳門|台湾|台灣|臺灣|台北|臺北|新北|台中|臺中|台南|臺南|高雄|桃园|桃園/.test(text)) return "CN";
   return null;
+}
+
+/** Full-width digits, letters and punctuation (a Chinese keyboard's) as plain ones. */
+function halfWidth(value) {
+  return String(value ?? "").replace(/[\uFF01-\uFF5E]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0xFEE0)).replace(/\u3000/g, " ");
 }
 
 /** Spaces, dots and dashes removed; letters upper-case; "PT" prefix dropped. */
 export function normaliseRegistrationNumber(country, value) {
-  let text = String(value ?? "").trim().toUpperCase().replace(/[\s.\-/]/g, "");
+  let text = halfWidth(value).trim().toUpperCase().replace(/[\s.\-/]/g, "");
   if (country === "PT" && /^PT\d{9}$/.test(text)) text = text.slice(2);
   return text;
 }
@@ -144,7 +152,6 @@ export function registrationFlags(country, raw, { confirmed = false } = {}) {
   const value = normaliseRegistrationNumber(country, raw);
   const flags = [];
   const problem = registrationNumberProblem(country, value);
-  if (problem === "check_digit") flags.push(confirmed ? "Check digit doesn't match; the factory confirmed the number" : "Check digit doesn't match");
   if (country === "CN" && value.length === 18) {
     if (value.slice(0, 2) === "92") flags.push("92: individual business (个体工商户), not a company");
     else if (value.slice(0, 2) !== "91" && value.slice(0, 2) !== "93") flags.push(`Starts ${value.slice(0, 2)}: not a registered enterprise (91)`);
@@ -186,24 +193,33 @@ export function normaliseAccessCode(value) {
  * Where staff look a company up, per country (Nov 6 research). `vies` is the
  * one checked by program; the rest are links a person opens.
  */
+// The uploaded registration document, compared with the typed number. For
+// China it is the check that works (GSXT is behind a captcha and a real-name
+// login, and refuses foreign connections); everywhere it is the fallback.
+const DOCUMENT_SOURCE = { key: "document", label: "Uploaded registration document", url: null };
+
 export const REGISTRY_SOURCES = {
   CN: [
-    { key: "gsxt", label: "GSXT (National Enterprise Credit Information)", url: "https://www.gsxt.gov.cn/" },
+    { ...DOCUMENT_SOURCE, label: "Uploaded business licence" },
+    { key: "gsxt", label: "GSXT", url: "https://www.gsxt.gov.cn/" },
     { key: "permit", label: "National pollutant permit site", url: "https://permit.mee.gov.cn/perxxgkinfo/syssb/xkgg/xkgg!licenseInformation.action" },
   ],
   TR: [
-    { key: "gazette", label: "Trade Registry Gazette, title search", url: "https://www.ticaretsicil.gov.tr/view/hizlierisim/unvansorgulama.php" },
-    { key: "tobb", label: "TOBB industry database (capacity reports)", url: "https://sanayi.org.tr/" },
-    { key: "edevlet", label: "e-Devlet document check (barcode)", url: "https://www.turkiye.gov.tr/belge-dogrulama" },
+    { key: "gazette", label: "Trade Registry Gazette, search by title", url: "https://www.ticaretsicil.gov.tr/view/hizlierisim/unvansorgulama.php" },
+    { key: "gib", label: "GİB tax number check (needs title)", url: "https://ivd.gib.gov.tr/" },
+    DOCUMENT_SOURCE,
+    { key: "edevlet", label: "e-Devlet barcode check", url: "https://www.turkiye.gov.tr/belge-dogrulama" },
   ],
   PT: [
     { key: "vies", label: "EU VIES tax number check", url: "https://ec.europa.eu/taxation_customs/vies/" },
-    { key: "certidao", label: "gov.pt permanent certificate (needs the access code)", url: "https://www.gov.pt/servicos/consultar-a-certidao-permanente-de-registo-comercial" },
+    { key: "certidao", label: "gov.pt permanent certificate", url: "https://www.gov.pt/servicos/consultar-a-certidao-permanente-de-registo-comercial" },
     { key: "acts", label: "Published company acts", url: "https://publicacoes.mj.pt/Pesquisa.aspx" },
+    DOCUMENT_SOURCE,
   ],
 };
 
 const OTHER_SOURCES = [
+  DOCUMENT_SOURCE,
   { key: "other", label: "OpenCorporates search", url: "https://opencorporates.com/" },
 ];
 
@@ -218,8 +234,23 @@ export const REGISTRY_RESULTS = [
   { key: "could_not_check", label: "Couldn't check" },
 ];
 
-export function registryResultLabel(key) {
-  return REGISTRY_RESULTS.find((result) => result.key === key)?.label ?? key;
+// The same four results, worded for a document a person reads.
+const DOCUMENT_RESULTS = [
+  { key: "found", label: "Document shows this number and name" },
+  { key: "mismatch", label: "Document shows something else" },
+  { key: "not_found", label: "No number on the document" },
+  { key: "could_not_check", label: "Unreadable" },
+];
+
+export function registryResultsFor(source) {
+  return source === "document" ? DOCUMENT_RESULTS : REGISTRY_RESULTS;
+}
+
+/** A result's words. VIES's own answers read as what they are, never a match. */
+export function registryResultLabel(key, { automatic = false, source = null } = {}) {
+  if (key === "registered") return "Registered for VAT";
+  if (automatic && key === "not_found") return "Not registered for VAT";
+  return registryResultsFor(source).find((result) => result.key === key)?.label ?? key;
 }
 
 export function registrySourceLabel(country, key) {

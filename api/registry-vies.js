@@ -39,9 +39,11 @@ function bodyOf(request) {
 export function viesResult(answer) {
   if (!answer || typeof answer !== "object") return { result: "could_not_check", reason: "no answer" };
   const valid = answer.valid ?? answer.isValid;
+  // A valid number says a VAT registration exists, not that it is this
+  // company's: "registered", with the name VIES gives, for staff to compare.
   if (valid === true) {
     return {
-      result: "found",
+      result: "registered",
       details: {
         name: typeof answer.name === "string" && answer.name !== "---" ? answer.name : null,
         address: typeof answer.address === "string" && answer.address !== "---" ? answer.address : null,

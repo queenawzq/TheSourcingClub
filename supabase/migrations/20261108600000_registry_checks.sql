@@ -31,11 +31,14 @@ language sql
 immutable
 set search_path = public, pg_temp
 as $$
-  select case
-    when country = 'PT' and regexp_replace(upper(coalesce(raw, '')), '[\s./-]', '', 'g') ~ '^PT\d{9}$'
-      then substr(regexp_replace(upper(raw), '[\s./-]', '', 'g'), 3)
-    else regexp_replace(upper(coalesce(raw, '')), '[\s./-]', '', 'g')
-  end
+  -- A Chinese keyboard types full-width digits and letters (１２３, ＡＢＣ):
+  -- they are the same characters to us.
+  with t as (
+    select regexp_replace(upper(translate(coalesce(raw, ''),
+      '０１２３４５６７８９ＡＢＣＤＥＦＧＨＩＪＫＬＭＮＯＰＱＲＳＴＵＶＷＸＹＺａｂｃｄｅｆｇｈｉｊｋｌｍｎｏｐｑｒｓｔｕｖｗｘｙｚ－．／　',
+      '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-./ ')), '[\s./-]', '', 'g') as v
+  )
+  select case when country = 'PT' and v ~ '^PT\d{9}$' then substr(v, 3) else v end from t
 $$;
 
 -- Null when acceptable; else 'missing', 'format', 'old_number' (China's
@@ -99,14 +102,18 @@ grant execute on function public.registration_number_problem(text, text) to auth
 create table public.company_registrations (
   org_id       uuid primary key references public.orgs (id) on delete cascade,
   country_code text check (country_code ~ '^[A-Z]{2}$'),
-  number       text not null,
+  -- Null only for a sole proprietor, whose tax number is the owner's
+  -- national ID and is never asked for (no_company_number).
+  number       text,
+  no_company_number boolean not null default false,
   access_code  text check (access_code ~ '^\d{4}-\d{4}-\d{4}$'),
   -- Turkey: Ticaret Sicil No and its city, as typed.
   trade_registry text check (char_length(trade_registry) between 1 and 80),
   -- The check digit failed and the factory said the number is right anyway.
   check_digit_confirmed boolean not null default false,
   updated_by   uuid references auth.users (id) on delete set null,
-  updated_at   timestamptz not null default now()
+  updated_at   timestamptz not null default now(),
+  check (number is not null or no_company_number)
 );
 
 alter table public.company_registrations enable row level security;
@@ -125,7 +132,8 @@ create or replace function public.save_company_registration(
   number         text,
   access_code    text default null,
   trade_registry text default null,
-  confirmed      boolean default false
+  confirmed      boolean default false,
+  no_number      boolean default false
 )
 returns public.company_registrations
 language plpgsql
@@ -138,15 +146,17 @@ declare
   code_digits text := regexp_replace(coalesce(access_code, ''), '\D', '', 'g');
   saved public.company_registrations;
 begin
-  if not public.is_org_member(target_org) then
-    raise exception 'only the company''s own members may save its registration'
+  -- The number is what staff check and what a brand's dated fact rests on,
+  -- so it is a company setting: owners and Settings access only.
+  if not public.has_org_permission(target_org, 'settingsAccess') then
+    raise exception 'only the company''s owner or someone with Settings access may save its registration'
       using errcode = '42501';
   end if;
   if cc is not null and cc !~ '^[A-Z]{2}$' then
     raise exception 'country must be a two-letter code' using errcode = '22023';
   end if;
 
-  problem := public.registration_number_problem(cc, number);
+  problem := case when coalesce(no_number, false) then null else public.registration_number_problem(cc, number) end;
   if problem = 'check_digit' and coalesce(confirmed, false) then
     problem := null;
   end if;
@@ -162,32 +172,35 @@ begin
   end if;
 
   insert into public.company_registrations as r
-    (org_id, country_code, number, access_code, trade_registry, check_digit_confirmed, updated_by, updated_at)
+    (org_id, country_code, number, no_company_number, access_code, trade_registry, check_digit_confirmed, updated_by, updated_at)
   values (
-    target_org, cc, public.normalise_registration_number(cc, number),
+    target_org, cc,
+    case when coalesce(no_number, false) then null else public.normalise_registration_number(cc, number) end,
+    coalesce(no_number, false),
     case when cc = 'PT' and code_digits <> ''
          then substr(code_digits, 1, 4) || '-' || substr(code_digits, 5, 4) || '-' || substr(code_digits, 9, 4) end,
     case when cc = 'TR' then nullif(regexp_replace(trim(coalesce(trade_registry, '')), '\s+', ' ', 'g'), '') end,
-    coalesce(public.registration_number_problem(cc, number) = 'check_digit', false),
+    not coalesce(no_number, false) and coalesce(public.registration_number_problem(cc, number) = 'check_digit', false),
     auth.uid(), now()
   )
   on conflict (org_id) do update
     set country_code   = excluded.country_code,
         number         = excluded.number,
+        no_company_number = excluded.no_company_number,
         access_code    = excluded.access_code,
         trade_registry = excluded.trade_registry,
         check_digit_confirmed = excluded.check_digit_confirmed,
         updated_by     = excluded.updated_by,
-        updated_at     = case when (r.country_code, r.number, r.access_code, r.trade_registry)
-                                   is distinct from (excluded.country_code, excluded.number, excluded.access_code, excluded.trade_registry)
+        updated_at     = case when (r.country_code, r.number, r.no_company_number, r.access_code, r.trade_registry)
+                                   is distinct from (excluded.country_code, excluded.number, excluded.no_company_number, excluded.access_code, excluded.trade_registry)
                               then now() else r.updated_at end
   returning * into saved;
   return saved;
 end;
 $$;
 
-revoke all on function public.save_company_registration(uuid, text, text, text, text, boolean) from public, anon;
-grant execute on function public.save_company_registration(uuid, text, text, text, text, boolean) to authenticated;
+revoke all on function public.save_company_registration(uuid, text, text, text, text, boolean, boolean) from public, anon;
+grant execute on function public.save_company_registration(uuid, text, text, text, text, boolean, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 2. What was checked
@@ -199,7 +212,9 @@ create table public.registry_checks (
   country_code   text,
   number_checked text,
   source         text not null check (source ~ '^[a-z_]{2,20}$'),
-  result         text not null check (result in ('found', 'mismatch', 'not_found', 'could_not_check')),
+  -- 'registered' is VIES's own answer (a VAT registration exists, maybe under
+  -- another company's name): never a match, only a person records 'found'.
+  result         text not null check (result in ('found', 'mismatch', 'not_found', 'could_not_check', 'registered')),
   note           text check (char_length(note) <= 2000),
   details        jsonb not null default '{}'::jsonb,
   automatic      boolean not null default false,
@@ -236,8 +251,13 @@ begin
   if not exists (select 1 from public.orgs o where o.id = target_org) then
     raise exception 'company not found' using errcode = 'P0002';
   end if;
-  if result in ('mismatch', 'not_found', 'could_not_check') and nullif(trim(coalesce(note, '')), '') is null then
-    raise exception 'say what differed or why it could not be checked'
+  if result not in ('found', 'mismatch', 'not_found', 'could_not_check') then
+    raise exception 'result must be found, mismatch, not_found or could_not_check' using errcode = '22023';
+  end if;
+  -- Every result says what was seen (the name as the registry or the
+  -- document shows it), so a "found" can be checked by the next person.
+  if nullif(trim(coalesce(note, '')), '') is null then
+    raise exception 'say what you saw: the name as shown, what differed, or why it could not be checked'
       using errcode = '22023';
   end if;
 
@@ -314,12 +334,21 @@ begin
   return jsonb_build_object(
     'registration', (
       select jsonb_build_object(
-        'country', r.country_code, 'number', r.number, 'accessCode', r.access_code,
+        'country', r.country_code, 'number', r.number, 'noCompanyNumber', r.no_company_number, 'accessCode', r.access_code,
         'tradeRegistry', r.trade_registry, 'confirmed', r.check_digit_confirmed,
         'problem', public.registration_number_problem(r.country_code, r.number),
         'updatedAt', r.updated_at)
         from public.company_registrations r where r.org_id = target_org),
     'location', (select f.location from public.factory_profiles f where f.org_id = target_org),
+    'title', (select coalesce(nullif(f.legal_name, ''), o.name) from public.orgs o
+                left join public.factory_profiles f on f.org_id = o.id where o.id = target_org),
+    'current', (select to_jsonb(c) from public.current_registry_check(target_org) c where c.id is not null),
+    'sameNumber', (
+      select count(distinct o.org_id)::int
+        from public.company_registrations o
+        join public.company_registrations r on r.org_id = target_org
+       where o.org_id <> target_org and o.number = r.number and r.number is not null
+         and o.country_code is not distinct from r.country_code),
     'countryCode', coalesce(
       (select r.country_code from public.company_registrations r where r.org_id = target_org),
       (select f.country_code from public.factory_profiles f where f.org_id = target_org)),
@@ -345,9 +374,31 @@ grant execute on function public.admin_registry_detail(uuid) to authenticated;
 -- 3. What a brand learns
 -- ---------------------------------------------------------------------------
 
--- The latest time a verified vendor's registration was found on an official
--- source, and nothing else: no number, source, note or person. Null for an
--- unverified or unpublished vendor, or with no such check.
+-- The latest check a PERSON recorded against the company's current number
+-- decides: 'found' gives the brand its dated fact; a later mismatch or not
+-- found takes it away, and so does changing the number. VIES's automatic
+-- answer never counts (a valid VAT number can be another company's).
+create or replace function public.current_registry_check(target_org uuid)
+returns public.registry_checks
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select c.*
+    from public.registry_checks c
+    join public.company_registrations r on r.org_id = c.org_id and r.number is not distinct from c.number_checked
+   where c.org_id = target_org
+     and not c.automatic
+   order by c.checked_at desc
+   limit 1
+$$;
+
+revoke all on function public.current_registry_check(uuid) from public, anon, authenticated;
+
+-- What a brand learns: when the registry was last found to match, and
+-- nothing else (no number, source, note or person). Null for an unverified
+-- or unpublished vendor, or when the current check is not a match.
 create or replace function public.factory_registry_fact(target_org uuid)
 returns timestamptz
 language sql
@@ -355,11 +406,10 @@ stable
 security definer
 set search_path = public, pg_temp
 as $$
-  select max(c.checked_at)
-    from public.registry_checks c
+  select c.checked_at
+    from public.current_registry_check(target_org) c
     join public.factory_profiles f on f.org_id = c.org_id
-   where c.org_id = target_org
-     and c.result = 'found'
+   where c.result = 'found'
      and f.verification_status = 'verified'
      and (f.published_at is not null or public.is_org_member(target_org) or public.is_platform_admin())
 $$;
@@ -454,3 +504,41 @@ revoke all on function public.guard_document_review() from public, anon, authent
 create trigger documents_guard_review
   before insert or update on public.documents
   for each row execute function public.guard_document_review();
+
+-- ---------------------------------------------------------------------------
+-- 6. Basic means the registry was checked
+-- ---------------------------------------------------------------------------
+
+-- Approving a vendor needs a person's "found, matches" on its current number
+-- (the panel greys "Approve" and says why). Only the move INTO approved is
+-- checked, so a badge change on a company already approved still works. SQL
+-- tests that approve fixtures with no registry set `tsc.skip_registry_guard`;
+-- no client can set it (set_config is not in an exposed schema).
+create or replace function public.guard_approval_needs_registry()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+begin
+  if new.state <> 'approved' or (tg_op = 'UPDATE' and old.state = 'approved') then
+    return new;
+  end if;
+  if coalesce(current_setting('tsc.skip_registry_guard', true), '') = 'on' then
+    return new;
+  end if;
+  if not exists (select 1 from public.orgs o where o.id = new.org_id and o.type = 'factory') then
+    return new;
+  end if;
+  if coalesce((select c.result from public.current_registry_check(new.org_id) c), '') <> 'found' then
+    raise exception 'record a registry check that found the company (on its current number) before approving'
+      using errcode = '22023';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.guard_approval_needs_registry() from public, anon, authenticated;
+
+create trigger org_reviews_approval_needs_registry
+  before insert or update of state on public.org_reviews
+  for each row execute function public.guard_approval_needs_registry();

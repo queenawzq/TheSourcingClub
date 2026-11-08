@@ -4,6 +4,11 @@
  * official sources as links, every check recorded with who and when, and a
  * form to record one. Portugal also has "Check on VIES", run by the server.
  *
+ * VIES's answer is never a match: a valid number may be another company's,
+ * so it reads "Registered for VAT" with the name VIES gives, and only a
+ * person's "Found, matches" on the current number lets the company be
+ * approved and gives a brand its dated fact (migration 20261108600000).
+ *
  * No design draws this yet (question for Queena, Nov 8). Built from the
  * review page's own pieces: detail pairs, check rows, status pills and the
  * onboarding field style.
@@ -12,24 +17,30 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ProfileDetailPair } from "../../shared/ProfileShell.jsx";
 import { adminRegistryDetail, recordRegistryCheck, requestViesCheck } from "../../lib/domain/registration.js";
 import {
-  REGISTRY_RESULTS, registrationFlags, registryResultLabel, registrySourceLabel, registrySources,
+  registrationFlags, registryResultLabel, registryResultsFor, registrySourceLabel, registrySources,
 } from "../../shared/registration-number.mjs";
 
 const COUNTRY_NAMES = { CN: "China", TR: "Turkey", PT: "Portugal" };
-const TONE = { found: "success", mismatch: "warning", not_found: "danger", could_not_check: "neutral" };
+const TONE = { found: "success", registered: "info", mismatch: "warning", not_found: "danger", could_not_check: "neutral" };
+// Our own words for a VIES call that did not answer; a provider's code is not shown.
+const OUR_REASONS = new Set(["timed out", "unreachable"]);
 
 function when(iso) {
   return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export default function RegistryPanel({ orgId }) {
+function Pill({ tone, children }) {
+  return <span className={`project-status shared-card-status ${tone}`}>{children}</span>;
+}
+
+export default function RegistryPanel({ orgId, onChange }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState(null);
   const [source, setSource] = useState("");
   const [result, setResult] = useState("found");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(null);
 
   const load = useCallback(() => {
     adminRegistryDetail(orgId).then(setDetail, setError);
@@ -44,11 +55,15 @@ export default function RegistryPanel({ orgId }) {
     setSource((current) => (sources.some((item) => item.key === current) ? current : sources[0]?.key ?? ""));
   }, [country]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (error) return <p className="factory-onboarding-save-error" role="alert">{error.message}</p>;
+  if (error && !detail) return <p className="factory-onboarding-save-error" role="alert">{error.message}</p>;
   if (!detail) return <p>Loading…</p>;
 
   const registration = detail.registration;
-  const noteRequired = result !== "found";
+  const results = registryResultsFor(source);
+  const copy = (what, text) => {
+    navigator.clipboard?.writeText(text).then(() => { setCopied(what); setTimeout(() => setCopied(null), 1500); }, () => {});
+  };
+  const changed = () => { load(); onChange?.(); };
   const record = async (event) => {
     event.preventDefault();
     setBusy(true);
@@ -57,7 +72,7 @@ export default function RegistryPanel({ orgId }) {
       await recordRegistryCheck(orgId, { source, result, note: note.trim() });
       setNote("");
       setResult("found");
-      load();
+      changed();
     } catch (recordError) {
       setError(recordError);
     } finally {
@@ -66,9 +81,10 @@ export default function RegistryPanel({ orgId }) {
   };
   const vies = async () => {
     setBusy(true);
+    setError(null);
     try {
       await requestViesCheck(orgId, { force: true });
-      load();
+      changed();
     } catch (viesError) {
       setError(viesError);
     } finally {
@@ -76,87 +92,87 @@ export default function RegistryPanel({ orgId }) {
     }
   };
 
+  const flags = registration?.number ? registrationFlags(country, registration.number) : [];
+  if (registration?.noCompanyNumber) flags.push("No company number (sole proprietor): check the documents");
+  if (detail.sameNumber > 0) flags.push(`Also used by ${detail.sameNumber} other ${detail.sameNumber === 1 ? "company" : "companies"}`);
+  const checkDigit = !registration?.number ? null
+    : registration.problem === "check_digit" ? (registration.confirmed ? "Doesn't match (factory confirmed it)" : "Doesn't match")
+    : registration.problem ? "Wrong format"
+    : COUNTRY_NAMES[country] ? "Matches" : "None for this country";
+
   return (
     <div className="admin-registry">
       <div className="admin-detail-grid">
         <ProfileDetailPair label="Country" value={COUNTRY_NAMES[country] ?? country ?? (detail.location || "Not set")} />
-        <ProfileDetailPair label={country === "TR" ? "Tax number (VKN)" : country === "PT" ? "NIPC" : country === "CN" ? "Credit code" : "Registration number"} value={registration?.number ?? "Not given"} />
-        {registration && (
-          <ProfileDetailPair
-            label="Check digit"
-            value={registration.problem === "check_digit" ? "Doesn't match" : registration.problem ? "Wrong format" : COUNTRY_NAMES[country] ? "Matches" : "None for this country"}
-          />
-        )}
+        <ProfileDetailPair label="Company title" value={detail.title || "Not given"} />
+        <ProfileDetailPair label={country === "TR" ? "Tax number (VKN)" : country === "PT" ? "NIPC" : country === "CN" ? "Credit code" : "Registration number"} value={registration?.number ?? (registration?.noCompanyNumber ? "None (sole proprietor)" : "Not given")} />
+        {checkDigit && <ProfileDetailPair label="Check digit" value={checkDigit} />}
         {registration?.accessCode && <ProfileDetailPair label="Certificate access code" value={registration.accessCode} />}
         {registration?.tradeRegistry && <ProfileDetailPair label="Trade registry no. and city" value={registration.tradeRegistry} />}
       </div>
 
-      {registration && (
-        <div className="admin-registry-sources">
-          <button
-            className="secondary-btn compact-btn"
-            type="button"
-            onClick={() => {
-              navigator.clipboard?.writeText(registration.number)
-                .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }, () => {});
-            }}
-          >
-            {copied ? "Copied" : "Copy number"}
-          </button>
+      {flags.length > 0 && (
+        <div className="admin-registry-flags">
+          {flags.map((flag) => <Pill tone="warning" key={flag}>{flag}</Pill>)}
         </div>
       )}
 
-      {registration && registrationFlags(country, registration.number, { confirmed: registration.confirmed }).map((flag) => (
-        <p className="admin-registry-flag" key={flag}>{flag}</p>
-      ))}
+      <div className="admin-registry-actions">
+        {registration?.number && <button className="secondary-btn compact-btn" type="button" onClick={() => copy("number", registration.number)}>{copied === "number" ? "Copied" : "Copy number"}</button>}
+        {detail.title && <button className="secondary-btn compact-btn" type="button" onClick={() => copy("title", detail.title)}>{copied === "title" ? "Copied" : "Copy title"}</button>}
+        {country === "PT" && registration?.number && <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={vies}>Check on VIES</button>}
+      </div>
 
       <div className="admin-registry-sources">
-        {sources.map((item) => (
-          <a className="secondary-btn compact-btn" href={item.url} target="_blank" rel="noreferrer noopener" key={item.key}>{item.label} ↗</a>
+        {sources.filter((item) => item.url).map((item) => (
+          <a className="text-link" href={item.url} target="_blank" rel="noreferrer noopener" key={item.key}>{item.label} ↗</a>
         ))}
-        {country === "PT" && registration && (
-          <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={vies}>Check on VIES</button>
-        )}
       </div>
 
       <div className="admin-check-list">
-        {detail.checks.length ? detail.checks.map((check) => (
-          <article className="admin-check-row" key={check.id}>
-            <div className="admin-check-copy">
-              <strong>{registrySourceLabel(country, check.source)}</strong>
-              {check.details?.name && <p>{check.details.name}{check.details.address ? ` · ${check.details.address.replace(/\s*\n\s*/g, ", ")}` : ""}</p>}
-              {check.note && <p>{check.note}</p>}
-              {check.details?.reason && <p>{check.details.reason}</p>}
-              <span>
-                {check.automatic ? (check.checkedBy ? `Automatic, asked by ${check.checkedBy}` : "Automatic") : check.checkedBy ?? "Staff"} · {when(check.checkedAt)}
-                {registration && check.numberChecked && check.numberChecked !== registration.number ? ` · for ${check.numberChecked}, since changed` : ""}
-              </span>
-            </div>
-            <div className="admin-check-result">
-              <span className={`project-status shared-card-status ${TONE[check.result] ?? "neutral"}`}>{registryResultLabel(check.result)}</span>
-            </div>
-          </article>
-        )) : <p>No checks recorded.</p>}
+        {detail.checks.length ? detail.checks.map((check) => {
+          const stale = registration && check.numberChecked && check.numberChecked !== registration.number;
+          const reason = check.details?.reason && OUR_REASONS.has(check.details.reason) ? check.details.reason : null;
+          return (
+            <article className="admin-check-row" key={check.id}>
+              <div className="admin-check-copy">
+                <strong>{registrySourceLabel(country, check.source)}</strong>
+                {check.result === "registered" && <p>{check.details?.name ? `Registered as ${check.details.name}${check.details.address ? `, ${check.details.address.replace(/\s*\n\s*/g, ", ")}` : ""}` : "Registered, no name given"}</p>}
+                {check.note && <p>{check.note}</p>}
+                {reason && <p>VIES {reason}</p>}
+                <span>
+                  {check.automatic ? (check.checkedBy ? `Automatic, asked by ${check.checkedBy}` : "Automatic") : check.checkedBy ?? "Staff"} · {when(check.checkedAt)}
+                  {stale ? ` · for ${check.numberChecked}, since changed` : ""}
+                </span>
+              </div>
+              <div className="admin-check-result">
+                <Pill tone={TONE[check.result] ?? "neutral"}>{registryResultLabel(check.result, { automatic: check.automatic, source: check.source })}</Pill>
+              </div>
+            </article>
+          );
+        }) : <p>No checks recorded.</p>}
       </div>
+
+      {error && <p className="factory-onboarding-save-error" role="alert">{error.message}</p>}
 
       <form className="admin-registry-form" onSubmit={record}>
         <label className="factory-onboarding-field">
           <span>Source</span>
-          <select value={source} onChange={(event) => setSource(event.target.value)}>
+          <select value={source} onChange={(event) => { setSource(event.target.value); setResult("found"); }}>
             {sources.map((item) => <option value={item.key} key={item.key}>{item.label}</option>)}
           </select>
         </label>
         <label className="factory-onboarding-field">
           <span>Result</span>
           <select value={result} onChange={(event) => setResult(event.target.value)}>
-            {REGISTRY_RESULTS.map((item) => <option value={item.key} key={item.key}>{item.label}</option>)}
+            {results.map((item) => <option value={item.key} key={item.key}>{item.label}</option>)}
           </select>
         </label>
         <label className="factory-onboarding-field admin-registry-note">
-          <span>Note{noteRequired ? " *" : ""}</span>
-          <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} />
+          <span>What you saw *</span>
+          <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder={source === "document" ? "e.g. Licence shows this code and the name Ningbo Loomworks Co., Ltd." : "e.g. Listed as … , active"} />
         </label>
-        <button className="primary-btn compact-btn" type="submit" disabled={busy || !source || (noteRequired && !note.trim())} title={noteRequired && !note.trim() ? "Say what differed or why it couldn't be checked" : undefined}>
+        <button className="primary-btn compact-btn" type="submit" disabled={busy || !source || !registration || !note.trim()} title={!registration ? "The company has not given its number yet" : !note.trim() ? "Write what you saw: the name as shown, what differed, or why you couldn't check" : undefined}>
           Record check
         </button>
       </form>

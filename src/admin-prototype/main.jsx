@@ -1146,6 +1146,16 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
   const actions = useActions();
   const eligibility = submission?.trustEligibility ?? null;
   const isVendor = profile?.entityType === "Factory" || profile?.entityType === "Trading company";
+  // Live only: why a vendor cannot be approved yet (no registry check that
+  // found it), re-read whenever the registry panel records a check.
+  const [registryChanged, setRegistryChanged] = useState(0);
+  const [approveBlock, setApproveBlock] = useState(null);
+  useEffect(() => {
+    if (!actions.approvalBlock || !isVendor || !profile?.id) return undefined;
+    let cancelled = false;
+    actions.approvalBlock(profile.id).then((reason) => { if (!cancelled) setApproveBlock(reason); }, () => {});
+    return () => { cancelled = true; };
+  }, [actions, isVendor, profile?.id, registryChanged]);
   const deleteLabel = isVendor ? "factory" : "brand";
   const onDeleteCompany = isVendor ? onDeleteFactory : onDeleteBrand;
   const hasWalkthrough = eligibility?.hasWalkthrough ?? (documents ?? []).some(
@@ -1227,7 +1237,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               ) : profile.capabilities?.length ? <ProfileChipSection label="Capabilities and positioning" items={profile.capabilities} /> : null}
             </Panel>
             {profile.checks?.length ? (
-            <Panel title="Verification checks" subtitle="No check contacts an outside registry or certifier.">
+            <Panel title="Verification checks" subtitle={registryPanel ? undefined : "No check contacts an outside registry or certifier."}>
               <div className="admin-check-list">
                 {profile.checks.map(([label, result, confidence, detail]) => {
                   const tone = result === "Verified" || result === "Clear" ? "success" : result === "Missing" || result === "Rejected" ? "danger" : "warning";
@@ -1258,7 +1268,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
             </Panel>
             ) : null}
             {/* Live only: the official-registry checks for a vendor. */}
-            {registryPanel && profile.entityType !== "Brand" && <Panel title="Official registry" className="admin-registry-panel">{registryPanel(profile)}</Panel>}
+            {registryPanel && profile.entityType !== "Brand" && <Panel title="Official registry" className="admin-registry-panel">{registryPanel(profile, { onChange: () => setRegistryChanged((n) => n + 1) })}</Panel>}
             {actions.reviewAssist && <AiSuggestionsPanel orgId={profile.id} />}
           </div>
           <aside className="admin-review-side">
@@ -1317,7 +1327,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                   ))}
                 </fieldset>
               )}
-              <button className="primary-btn" type="button" disabled={deciding} onClick={() => onDecision(profile.id, "Approved", null, isVendor ? approvalTier : null)}>
+              <button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock)} title={approveBlock || undefined} onClick={() => onDecision(profile.id, "Approved", null, isVendor ? approvalTier : null)}>
                 {isVendor ? `Approve as ${approvalTier[0].toUpperCase()}${approvalTier.slice(1)}` : "Approve profile"}
               </button>
               <button className="secondary-btn" type="button" onClick={() => setRequestOpen(true)}>Request more information</button>

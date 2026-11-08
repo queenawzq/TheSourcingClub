@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import {
   normaliseAccessCode, normaliseRegistrationNumber, normaliseTradeRegistry, registrationCountryFrom, registrationFlags,
-  registrationNumberProblem,
+  registrationNumberProblem, registryResultLabel,
 } from "../src/shared/registration-number.mjs";
 import { viesResult } from "../api/registry-vies.js";
 
@@ -27,6 +27,7 @@ const cases = [
   ["CN", "91440300MA5F00001A", null],
   ["CN", "91350100M000100Y4", "format"],
   ["CN", "91330100MA2B7C4D3F", null],
+  ["CN", "９１３３０１００ＭＡ２Ｂ７Ｃ４Ｄ３Ｆ", null],
   ["CN", "91330100MA2B7C4D31", "check_digit"],
   ["CN", "330100000012345", "old_number"],
   ["CN", "9133O100MA2B7C4D3F", "format"],
@@ -68,7 +69,17 @@ check("staff flags: 92 is an individual business", () => {
   assert.ok(registrationFlags("CN", "92330100MA2B7C4D3F").some((f) => f.startsWith("92")));
 });
 check("staff flags: a Portuguese personal NIF is a sole trader", () => assert.ok(registrationFlags("PT", "123456789").some((f) => /sole trader/.test(f))));
-check("staff flags: a confirmed check digit says so", () => assert.ok(registrationFlags("TR", "4837261592", { confirmed: true }).some((f) => /confirmed/.test(f))));
+check("a location in Chinese is China, but not Hong Kong or Taiwan", () => {
+  assert.equal(registrationCountryFrom("宁波，浙江"), "CN");
+  assert.equal(registrationCountryFrom("香港九龙"), null);
+  assert.equal(registrationCountryFrom("台北市"), null);
+  assert.equal(registrationCountryFrom("新北市 台灣"), null);
+});
+check("VIES's own answers never read as a match", () => {
+  assert.equal(registryResultLabel("registered"), "Registered for VAT");
+  assert.equal(registryResultLabel("not_found", { automatic: true }), "Not registered for VAT");
+  assert.equal(registryResultLabel("found", { source: "document" }), "Document shows this number and name");
+});
 check("Turkey typed as Turkey or Türkiye", () => {
   assert.equal(registrationCountryFrom("Istanbul, Turkey"), "TR");
   assert.equal(registrationCountryFrom("Bursa, Türkiye"), "TR");
@@ -78,9 +89,9 @@ check("Turkey typed as Turkey or Türkiye", () => {
   assert.equal(registrationCountryFrom("anything", "VN"), "VN");
 });
 
-check("VIES valid → found, with name and address", () => {
+check("VIES valid → registered (never found), with name and address", () => {
   const out = viesResult({ valid: true, name: "EMPRESA TESTE LDA", address: "RUA X\n4000 PORTO" });
-  assert.equal(out.result, "found");
+  assert.equal(out.result, "registered");
   assert.equal(out.details.name, "EMPRESA TESTE LDA");
 });
 check("VIES isValid (REST shape) → found", () => assert.equal(viesResult({ isValid: true, name: "---" }).details.name, null));

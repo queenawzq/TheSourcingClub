@@ -135,7 +135,7 @@ function AdminConsole() {
       {/* The design's card says "any email"; live, say which ones it sends. */}
       <App
         matchingPanel={<EvidenceReview staff />}
-        registryPanel={(profile) => <RegistryPanel orgId={profile.id} key={profile.id} />}
+        registryPanel={(profile, { onChange } = {}) => <RegistryPanel orgId={profile.id} onChange={onChange} key={profile.id} />}
         testEmailsIntro="Send yourself a sample of the marketplace's emails (onboarding, review decisions and a notification), filled with sample data."
         testEmailsUnavailable={reservedEmailNotice(user?.email)}
         // Staff have no org, so nothing can notify them; the design's bell

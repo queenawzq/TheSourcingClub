@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(34);
+select plan(49);
 
 -- The rules -------------------------------------------------------------------
 select is(public.registration_number_problem('CN', '91350100M000100Y43'), null, 'CN: published example passes');
@@ -31,12 +31,14 @@ select is(public.registration_number_problem('TR', '0123456789000015'), 'format'
 select is(public.registration_number_problem('CN', '330100000012345'), 'old_number', 'CN: the old 15 digits');
 select is(public.registration_number_problem(null, 'HRB 12345'), null, 'other: as written');
 select is(public.registration_number_problem(null, ''), 'missing', 'other: blank is missing');
+select is(public.registration_number_problem('CN', '９１３３０１００ＭＡ２Ｂ７Ｃ４Ｄ３Ｆ'), null, 'CN: full-width characters from a Chinese keyboard pass');
 
 -- Fixtures --------------------------------------------------------------------
 insert into auth.users (id, email) values
   ('c8600000-0000-0000-0000-000000000001', 'p86-admin@example.com'),
   ('c8600000-0000-0000-0000-000000000002', 'p86-factory@example.com'),
-  ('c8600000-0000-0000-0000-000000000003', 'p86-brand@example.com');
+  ('c8600000-0000-0000-0000-000000000003', 'p86-brand@example.com'),
+  ('c8600000-0000-0000-0000-000000000004', 'p86-updates@example.com');
 insert into public.platform_admins (user_id, note) values ('c8600000-0000-0000-0000-000000000001', 'pgtap86 fixture');
 insert into public.orgs (id, type, name, slug) values
   ('d8600000-0000-0000-0000-0000000000f1', 'factory', 'P86 Factory', 'pgtap86-factory'),
@@ -44,6 +46,9 @@ insert into public.orgs (id, type, name, slug) values
 insert into public.org_members (org_id, user_id, role) values
   ('d8600000-0000-0000-0000-0000000000f1', 'c8600000-0000-0000-0000-000000000002', 'owner'),
   ('d8600000-0000-0000-0000-0000000000b1', 'c8600000-0000-0000-0000-000000000003', 'owner');
+-- A member with Add update only: no Settings access.
+insert into public.org_members (org_id, user_id, role, permissions) values
+  ('d8600000-0000-0000-0000-0000000000f1', 'c8600000-0000-0000-0000-000000000004', 'member', array['addUpdate']);
 insert into public.factory_profiles (org_id, country_code, moq, onboarding_completed_at, published_at) values
   ('d8600000-0000-0000-0000-0000000000f1', 'PT', 100, now(), now());
 insert into public.documents (id, org_id, kind, bucket, storage_path, file_name, status) values
@@ -100,18 +105,52 @@ select is((select count(*)::int from public.company_registrations where org_id =
 select throws_ok($$select public.admin_registry_detail('d8600000-0000-0000-0000-0000000000f1')$$, '42501', null, 'nor the checks');
 select is((select public.can_request_registry_check('d8600000-0000-0000-0000-0000000000f1')), false, 'nor asks for one');
 
+-- A member without Settings access cannot change the number -------------------
+reset role;
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000004","role":"authenticated"}';
+set local role authenticated;
+select throws_ok(
+  $$select public.save_company_registration('d8600000-0000-0000-0000-0000000000f1', 'PT', '501964843')$$,
+  '42501', null, 'a member with Add update only cannot change the number'
+);
+
 -- Staff -------------------------------------------------------------------------
 reset role;
 set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
 set local role authenticated;
 
 select throws_ok(
-  $$select public.admin_record_registry_check('d8600000-0000-0000-0000-0000000000f1', 'certidao', 'mismatch')$$,
-  '22023', null, 'a mismatch needs a note'
+  $$select public.admin_review_decision('d8600000-0000-0000-0000-0000000000f1', 'approved')$$,
+  '22023', null, 'a factory with no registry check cannot be approved'
 );
+select throws_ok(
+  $$select public.admin_record_registry_check('d8600000-0000-0000-0000-0000000000f1', 'certidao', 'found')$$,
+  '22023', null, 'every result needs a note saying what was seen'
+);
+select throws_ok(
+  $$select public.admin_record_registry_check('d8600000-0000-0000-0000-0000000000f1', 'vies', 'registered', 'x')$$,
+  '22023', null, 'staff cannot record VIES''s own "registered"'
+);
+reset role;
+-- VIES's automatic answer, as the server records it: never a match.
 select lives_ok(
-  $$select public.admin_record_registry_check('d8600000-0000-0000-0000-0000000000f1', 'certidao', 'found', 'Name and address match')$$,
-  'staff record a found check'
+  $$select public.record_registry_check('d8600000-0000-0000-0000-0000000000f1', '509999999', 'vies', 'registered', '{"name":"P86 SOMEONE ELSE LDA"}'::jsonb)$$,
+  'the server records VIES''s answer'
+);
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select throws_ok(
+  $$select public.admin_review_decision('d8600000-0000-0000-0000-0000000000f1', 'approved')$$,
+  '22023', null, 'and VIES alone does not allow approval'
+);
+reset role;
+-- One now() per transaction: age the earlier checks so "latest" means something.
+update public.registry_checks set checked_at = checked_at - interval '1 minute' where org_id = 'd8600000-0000-0000-0000-0000000000f1';
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select lives_ok(
+  $$select public.admin_record_registry_check('d8600000-0000-0000-0000-0000000000f1', 'certidao', 'found', 'P86 Factory, Porto: name and address match')$$,
+  'staff record a found check, with what they saw'
 );
 select is(
   (select (public.admin_registry_detail('d8600000-0000-0000-0000-0000000000f1') -> 'checks' -> 0 ->> 'checkedBy')),
@@ -137,13 +176,85 @@ set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","r
 set local role authenticated;
 select lives_ok(
   $$select public.admin_review_decision('d8600000-0000-0000-0000-0000000000f1', 'approved')$$,
-  'staff approve the company'
+  'with a found check on the current number, staff approve the company'
 );
 
 reset role;
 set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000003","role":"authenticated"}';
 set local role authenticated;
 select isnt(public.factory_registry_fact('d8600000-0000-0000-0000-0000000000f1'), null, 'then a brand learns when the registry was checked');
+
+-- A later "not found" takes the fact away.
+reset role;
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+reset role;
+-- One now() per transaction: age the earlier checks so "latest" means something.
+update public.registry_checks set checked_at = checked_at - interval '1 minute' where org_id = 'd8600000-0000-0000-0000-0000000000f1';
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select lives_ok(
+  $$select public.admin_record_registry_check('d8600000-0000-0000-0000-0000000000f1', 'acts', 'not_found', 'No publication under this NIF')$$,
+  'staff record a later not-found'
+);
+reset role;
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000003","role":"authenticated"}';
+set local role authenticated;
+select is(public.factory_registry_fact('d8600000-0000-0000-0000-0000000000f1'), null, 'and the brand''s fact is gone');
+
+-- A changed number has no check: no fact either.
+reset role;
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+reset role;
+-- One now() per transaction: age the earlier checks so "latest" means something.
+update public.registry_checks set checked_at = checked_at - interval '1 minute' where org_id = 'd8600000-0000-0000-0000-0000000000f1';
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select lives_ok(
+  $$select public.admin_record_registry_check('d8600000-0000-0000-0000-0000000000f1', 'certidao', 'found', 'P86 Factory, Porto: matches again')$$,
+  'staff find it again'
+);
+reset role;
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000002","role":"authenticated"}';
+set local role authenticated;
+select lives_ok(
+  $$select public.save_company_registration('d8600000-0000-0000-0000-0000000000f1', 'PT', '501964843')$$,
+  'the owner changes the number'
+);
+reset role;
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000003","role":"authenticated"}';
+set local role authenticated;
+select is(public.factory_registry_fact('d8600000-0000-0000-0000-0000000000f1'), null, 'a changed number drops the fact until staff check it');
+
+-- A sole proprietor gives no number, and staff check its documents.
+reset role;
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000002","role":"authenticated"}';
+set local role authenticated;
+select lives_ok(
+  $$select public.save_company_registration('d8600000-0000-0000-0000-0000000000f1', 'PT', null, null, null, false, true)$$,
+  'a sole proprietor saves no number'
+);
+select is(
+  (select coalesce(number, '-') || ' ' || no_company_number from public.company_registrations where org_id = 'd8600000-0000-0000-0000-0000000000f1'),
+  '- true', 'stored as no company number'
+);
+reset role;
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+reset role;
+-- One now() per transaction: age the earlier checks so "latest" means something.
+update public.registry_checks set checked_at = checked_at - interval '1 minute' where org_id = 'd8600000-0000-0000-0000-0000000000f1';
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select lives_ok(
+  $$select public.admin_record_registry_check('d8600000-0000-0000-0000-0000000000f1', 'document', 'found', 'Licence shows the owner''s trading name')$$,
+  'staff check the documents of a sole proprietor'
+);
+select is(
+  (select public.admin_registry_detail('d8600000-0000-0000-0000-0000000000f1') -> 'current' ->> 'result'),
+  'found', 'and that check counts for the company without a number'
+);
 
 reset role;
 select * from finish();

@@ -8,7 +8,7 @@ import { normaliseAccessCode, normaliseTradeRegistry, registrationNumberProblem,
 
 export async function getRegistration(orgId) {
   return unwrap(
-    await supabase.from("company_registrations").select("org_id, country_code, number, access_code, trade_registry, check_digit_confirmed, updated_at").eq("org_id", orgId).maybeSingle(),
+    await supabase.from("company_registrations").select("org_id, country_code, number, no_company_number, access_code, trade_registry, check_digit_confirmed, updated_at").eq("org_id", orgId).maybeSingle(),
     "load the registration number",
   );
 }
@@ -20,8 +20,15 @@ export async function getRegistration(orgId) {
  * only when the factory `confirmed` it. Asks VIES after a Portuguese number
  * is saved, without waiting for it: the answer is for staff.
  */
-export async function saveRegistration(orgId, { country, number, second = "", confirmed = false }, language = "en") {
+export async function saveRegistration(orgId, { country, number, second = "", confirmed = false, noNumber = false }, language = "en") {
   const zh = language === "zh";
+  if (noNumber) {
+    // A sole proprietor's tax number is the owner's national ID: never asked.
+    return unwrap(
+      await supabase.rpc("save_company_registration", { target_org: orgId, country: country ?? null, number: null, no_number: true }),
+      "save the registration",
+    );
+  }
   const problem = registrationNumberProblem(country, number);
   if (problem && !(problem === "check_digit" && confirmed)) throw new Error(registrationProblemText(country, problem, language));
   let accessCode = null;
@@ -64,6 +71,19 @@ export async function requestViesCheck(orgId, { force = false } = {}) {
 /** Staff: the number, the country, and every check, newest first. */
 export async function adminRegistryDetail(orgId) {
   return unwrap(await supabase.rpc("admin_registry_detail", { target_org: orgId }), "load the registry checks");
+}
+
+/**
+ * Staff: why the company cannot be approved yet, or null. Mirrors the
+ * database's guard (guard_approval_needs_registry).
+ */
+export async function registryApprovalBlock(orgId) {
+  const detail = await adminRegistryDetail(orgId);
+  if (!detail?.registration) return "Needs the company's registration number first";
+  const current = detail.current;
+  if (!current) return "Record a registry check that found the company first";
+  if (current.result !== "found") return "The latest registry check did not find a match";
+  return null;
 }
 
 /** Staff: record what an official source showed. */

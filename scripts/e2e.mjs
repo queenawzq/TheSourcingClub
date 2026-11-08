@@ -1020,6 +1020,15 @@ async function main() {
     // A factory is approved at a trust tier; with no walkthrough or orders
     // yet, the picker suggests Basic.    // A factory is approved at a trust tier; with no walkthrough or orders
     // yet, the picker suggests Basic.
+    // Approving needs staff's own registry check on the company's number
+    // (20261108600000): "Approve" is greyed until one is recorded.
+    const approveGreyed = await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /approve as basic/i.test(b.innerText))?.disabled);
+    check(approveGreyed === true, "Approve is greyed until a registry check finds the company");
+    await page.locator(".admin-registry-form textarea").fill("E2E: certificate shows this NIPC and the company's name");
+    await clickButton(page, "record check");
+    await page.waitForTimeout(2500);
+    check(Boolean(await page.evaluate(() => document.querySelector(".admin-registry")?.innerText.includes("E2E: certificate shows"))),
+      "the registry check is recorded on the review page");
     await clickButton(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");

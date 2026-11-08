@@ -8702,11 +8702,17 @@ function OnboardingRegistrationNumber({ registration }) {
   const [number, setNumber] = useState(registration.value ?? "");
   const [second, setSecond] = useState(registration.second?.value ?? "");
   const [confirmed, setConfirmed] = useState(Boolean(registration.confirmed));
+  const [noNumber, setNoNumber] = useState(Boolean(registration.noNumber));
   const { error, confirmable } = registration.check(number);
   const secondError = registration.second ? registration.checkSecond(second) : "";
-  const numberValid = !error || (confirmable && confirmed);
+  const numberValid = noNumber || !error || (confirmable && confirmed);
   return (
     <>
+      <label className="directory-check">
+        <input type="checkbox" name="registration-none" checked={noNumber} onChange={(event) => setNoNumber(event.target.checked)} />
+        <span>{registration.noNumberLabel}</span>
+      </label>
+      {!noNumber && (<>
       <label className="factory-onboarding-field">
         <span>{registration.label}<b className="onboarding-required-mark" aria-hidden="true"> *</b></span>
         <input name="registration-number" value={number} onChange={(event) => { setNumber(event.target.value); setConfirmed(false); }} autoComplete="off" spellCheck={false} data-onboarding-required="true" data-valid={numberValid ? "true" : "false"} />
@@ -8727,6 +8733,7 @@ function OnboardingRegistrationNumber({ registration }) {
           <small className="factory-onboarding-validation-message">{secondError}</small>
         </label>
       )}
+      </>)}
     </>
   );
 }

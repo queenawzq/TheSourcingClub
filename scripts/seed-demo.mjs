@@ -569,7 +569,7 @@ must(await secondFactory.client.rpc("save_company_registration", { target_org: s
 // Staff found both verified ones on their registries, so a brand reads
 // "Official registry · <month>" on their profiles.
 must(await adminUser.client.rpc("admin_record_registry_check", { target_org: factoryOrg.id, source: "certidao", result: "found", note: "Demo: name and address match" }), "Demo Factory's registry check");
-must(await adminUser.client.rpc("admin_record_registry_check", { target_org: secondFactoryOrg.id, source: "gsxt", result: "found", note: "Demo: in operation, name matches" }), "Ningbo Loomworks's registry check");
+must(await adminUser.client.rpc("admin_record_registry_check", { target_org: secondFactoryOrg.id, source: "document", result: "found", note: "Demo: licence shows this code and the name" }), "Ningbo Loomworks's registry check");
 
 // A factory staff sent back: "Needs information" with the kind of note staff
 // actually write, a paragraph and a list, long enough that its finish card

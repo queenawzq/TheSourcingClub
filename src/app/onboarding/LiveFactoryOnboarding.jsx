@@ -254,9 +254,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         }
 
         if (savedRegistration) {
-          restored["registration-number"] = savedRegistration.number;
+          restored["registration-number"] = savedRegistration.number ?? "";
           const second = savedRegistration.access_code ?? savedRegistration.trade_registry;
           if (second) restored["registration-second"] = second;
+          if (savedRegistration.no_company_number) restored["registration-none"] = true;
           if (savedRegistration.check_digit_confirmed) restored["registration-confirmed"] = true;
         }
         setSavedCountry(savedRegistration?.country_code ?? profile.country_code ?? null);
@@ -312,6 +313,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       hint: copy.hint[lang],
       value: values["registration-number"] ?? "",
       confirmed: values["registration-confirmed"] === true,
+      noNumber: values["registration-none"] === true,
+      noNumberLabel: lang === "zh" ? "没有公司注册号（个体经营）" : "No company number (sole proprietor)",
       confirmLabel: lang === "zh" ? "号码无误，与证件一致" : "The number is correct as on my document",
       second: copy.second
         ? { label: copy.second.label[lang], hint: copy.second.hint[lang], value: values["registration-second"] ?? "" }
@@ -457,18 +460,29 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       setDocuments((current) => ({ ...current, [field]: fresh }));
     }
 
-    if (submitted["registration-number"] !== undefined) {
+    if (submitted["registration-none"] !== undefined) {
+      // The registration file is required as drawn ("Business registration
+      // certificate *"): one already stored, or one chosen now.
+      const stored = documents["business-registration"] ?? [];
+      const chosen = submitted["business-registration"];
+      const hasFile = stored.length > 0 || chosen instanceof File || (Array.isArray(chosen) && chosen.length > 0);
+      if (!hasFile) {
+        throw new Error(language === "zh" ? "请上传营业执照或注册证明" : "Upload your business registration certificate");
+      }
       await saveRegistration(org.id, {
         country: registrationCountry,
-        number: submitted["registration-number"],
+        number: submitted["registration-number"] ?? "",
         second: submitted["registration-second"] ?? "",
         confirmed: submitted["registration-confirmed"] === true,
+        noNumber: submitted["registration-none"] === true,
       }, language === "zh" ? "zh" : "en");
     }
 
-    const location = submitted[factoryFieldName("Factory Location")];
+    // Either kind of vendor's location; "Turkey" and Chinese-only locations
+    // too, which the taxonomy's labels ("Türkiye", "China") don't match.
+    const location = submitted[factoryFieldName("Factory Location")] ?? submitted[factoryFieldName("Headquarters / primary sourcing office")];
     if (location !== undefined) {
-      const code = countryCodeFrom(location);
+      const code = registrationCountryFrom(location, countryCodeFrom(location));
       if (code) patch.country_code = code;
     }
 

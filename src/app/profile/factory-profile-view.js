@@ -60,6 +60,17 @@ export function titleFromFileName(name) {
   return base ? base[0].toUpperCase() + base.slice(1) : "Sample";
 }
 
+/**
+ * One word for the business registration, wherever it is drawn (Nov 8):
+ * "Verified" only once staff found the company on its current number
+ * (factory_registry_fact), else what the file is.
+ */
+export function registrationWord(parts) {
+  if (parts.registryCheckedAt) return "Verified";
+  if (parts.registrationDoc?.status === "rejected") return "Rejected";
+  return parts.registrationDoc ? "Uploaded" : "Not uploaded";
+}
+
 /** The design's status words for a verification document. */
 export function documentStatus(status, hasFile) {
   if (status === "verified") return "Verified";
@@ -297,11 +308,12 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
   const chips = Object.fromEntries(
     Object.entries(CHIP_KINDS).map(([key, kind]) => [key, chipLabels(kind, selected, terms, language)]),
   );
-  const registration = parts.registrationDoc
-    ? documentStatus(parts.registrationDoc.status, true)
-    : profile?.verification_status === "verified" ? "Verified" : "Not uploaded";
+  const registration = registrationWord(parts);
+  const number = parts.registrationNumber;
   const certifications = [
     { name: "Business registration", status: registration },
+    // Read-only: the number given on the verification step.
+    ...(number ? [{ name: "Registration number", status: number.number ?? "None (sole proprietor)" }] : []),
     ...parts.certifications.map((cert) => ({ name: cert.name, status: documentStatus(cert.status, cert.hasFile) })),
   ];
   const references = parts.references.map((reference) => reference.title);

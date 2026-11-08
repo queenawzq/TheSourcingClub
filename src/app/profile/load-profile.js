@@ -22,7 +22,7 @@ import { listDocuments, urlFor } from "../../lib/domain/documents.js";
 import { loadCertifications } from "../../lib/domain/certifications.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
-import { registryFact } from "../../lib/domain/registration.js";
+import { getRegistration, registryFact } from "../../lib/domain/registration.js";
 import { CHIP_KINDS, titleFromFileName } from "./factory-profile-view.js";
 import { TRADING_CHIP_KINDS } from "./trading-profile-view.js";
 import { rankVendors } from "../browse/vendor-directory-view.js";
@@ -76,9 +76,16 @@ export async function loadOwnProfile(org) {
     listOrders(org.id),
   ]);
   const certificationRows = await loadCertifications(org.id, terms.certification ?? []);
+  // The number the company gave, and whether staff found it on a registry.
+  const [registrationNumber, registryCheckedAt] = await Promise.all([
+    getRegistration(org.id).catch(() => null),
+    registryFact(org.id),
+  ]);
 
   return {
     orgName: org.name,
+    registrationNumber,
+    registryCheckedAt,
     profile,
     terms,
     selected,
