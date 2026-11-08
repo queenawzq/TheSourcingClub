@@ -154,6 +154,7 @@ export default function LiveBrandPaymentDetail({ orderId, paymentId }) {
         <div>
           <span className={`billing-status payout-status-${content.statusKey}`}>{content.status}</span>
           <p role={payment.state === "failed" ? "alert" : undefined} className={payment.state === "failed" ? "brand-payment-failure" : undefined}>{content.explanation}</p>
+          {payable && !canPay ? <p data-testid="payment-owner-only">Only someone with Release funds at {activeOrg?.name || "your company"} can pay for a step. Ask an owner for this permission.</p> : null}
           {payable ? (
             <button
               className="primary-btn compact-btn brand-payment-pay-again"

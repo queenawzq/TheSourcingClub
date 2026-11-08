@@ -29,6 +29,7 @@ export const DEMO_LOGINS = {
   // cannot send a quote, invite, or change Settings.
   factoryMember: { role: "Factory member, updates only", name: "Demo Factory (member)", email: "demo-factory-member@example.com" },
   secondFactory: { role: "Factory two", name: "Ningbo Loomworks", email: "demo-factory-two@example.com" },
+  pendingBrand: { role: "Brand waiting for review", name: "Willow Lane Studio", email: "demo-brand-pending@example.com" },
   newFactory: { role: "Factory waiting for review", name: "Atlas Knit Studio", email: "demo-factory-new@example.com" },
   // Staff asked it for more information, at length: its finish card has to
   // hold the whole note.

@@ -19,12 +19,6 @@
   display: none;
 }
 
-/* Discount codes can't be applied to a payment yet: the Payments tab bar is
-   only Payments and Discounts, so it goes until they can. */
-.billing-page-shell .billing-tabs {
-  display: none;
-}
-
 /* ---- Layout ---- */
 
 /* Needs your attention grows with the page; its cards fit their text. */

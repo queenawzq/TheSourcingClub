@@ -153,8 +153,8 @@ function paymentLine(payment, isFactory, kind, needsMethod = null) {
       // The factory's one word for this money, the same as on Payments.
       // Approved money with nowhere to go: what the factory must do, as on its dashboard.
       if (isFactory) return payment.release_requested_at && needsMethod ? `${earningStatus(payment)} · ${needsMethod}` : earningStatus(payment);
-      if (!payment.release_requested_at) return "Funded";
-      return kind === "payment_only" ? "Funded" : "Approved";
+      if (!payment.release_requested_at) return "Funded: held by TSC";
+      return kind === "payment_only" ? "Funded: TSC is arranging payout" : "Approved: TSC is arranging payout";
     case "released":
       return "Paid";
     default:
@@ -173,6 +173,9 @@ function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, po
   }
   // Funding comes before the work, so an unfunded step says so first.
   if (["due", "processing", "failed", "sent"].includes(payment?.state) && milestone.state !== "pending") {
+    if (!isFactory && !canFund && ["due", "failed"].includes(payment.state)) {
+      return `${money}. Someone with Release funds must fund this step. Ask an owner for this permission`;
+    }
     return money;
   }
   if (approvable(milestone)) {
@@ -187,8 +190,9 @@ function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, po
       return held ? money : "Awaiting the brand's approval";
     }
     const mayApprove = canApprove && (milestone.kind !== "approval_and_payment" || canFund);
-    if (posted) return `${mayApprove ? "Ready for your approval" : "Ready for approval"}${held}`;
-    return `Nothing posted yet${held}`;
+    const needsPermission = mayApprove ? "" : ". Ask someone with Approve samples and, for a paid release, Release funds to approve it";
+    if (posted) return `${mayApprove ? "Ready for your approval" : "Ready for approval"}${held}${needsPermission}`;
+    return `Waiting for ${factoryName || "the factory"}'s first update. You can review this step before an update is posted${held}${needsPermission}`;
   }
   if (milestone.state === "active") {
     // Only a payment-only step gets here: nothing to approve or post on it.
