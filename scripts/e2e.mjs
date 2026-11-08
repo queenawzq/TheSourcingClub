@@ -183,7 +183,7 @@ async function recoveryEmail(email, attempts = 25) {
       const body = await (await fetch(`${MAIL}/api/v1/message/${message.ID ?? message.id}`)).json();
       const html = body.HTML ?? body.html ?? "";
       const code = (html.match(/>\s*(\d{6})\s*</) ?? [])[1] ?? null;
-      const link = (html.match(/href="([^"]*(?:verify|confirm)[^"]*)"/i) ?? [])[1] ?? null;
+      const link = (html.match(/href="([^"]*(?:verify|confirm|token_hash)[^"]*)"/i) ?? [])[1] ?? null;
       if (code || link) {
         return { code, link: link?.replace(/&amp;/g, "&") ?? null };
       }
@@ -683,6 +683,9 @@ async function main() {
       buffer: await fs.readFile(FIXTURE),
     });
     await page.waitForTimeout(500);
+    // Porto, Portugal: the number is a NIPC, checked by its mod-11 digit
+    // (a fake that passes it; src/shared/registration-number.mjs).
+    await fillNamed(page, "registration-number", "509999999");
     await record(page, "Factory verification", "documents are reviewed by a human, not self-declared");
     await nextCard(page);
     await record(page, "Factory walkthrough");
@@ -705,6 +708,11 @@ async function main() {
     await page.waitForTimeout(2500);
 
     const { data: factoryOrg } = await db.from("orgs").select("id").eq("name", factoryName).single();
+
+    const { data: factoryRegistration } = await db.from("company_registrations")
+      .select("country_code, number").eq("org_id", factoryOrg.id).maybeSingle();
+    check(factoryRegistration?.country_code === "PT" && factoryRegistration?.number === "509999999",
+      "the factory's registration number is saved under its country");
 
     const { data: factorySigned } = await db.from("terms_acceptances")
       .select("terms_version, legal_document_id").eq("org_id", factoryOrg.id).single();
@@ -1012,6 +1020,16 @@ async function main() {
     // A factory is approved at a trust tier; with no walkthrough or orders
     // yet, the picker suggests Basic.    // A factory is approved at a trust tier; with no walkthrough or orders
     // yet, the picker suggests Basic.
+    // Approving needs staff's own registry check on the company's number
+    // (20261108600000): "Approve" is greyed until one is recorded.
+    const approveGreyed = await page.evaluate(() => [...document.querySelectorAll("button")].find((b) => /approve as basic/i.test(b.innerText))?.disabled);
+    check(approveGreyed === true, "Approve is greyed until a registry check finds the company");
+    await page.locator(".admin-registry-form select").first().selectOption("certidao");
+    await page.locator(".admin-registry-form textarea").fill("E2E: certificate shows this NIPC and the company's name");
+    await clickButton(page, "record check");
+    await page.waitForTimeout(2500);
+    check(Boolean(await page.evaluate(() => document.querySelector(".admin-registry")?.innerText.includes("E2E: certificate shows"))),
+      "the registry check is recorded on the review page");
     await clickButton(page, "approve as basic");
     await page.waitForTimeout(4000);
     await record(page, "Factory approved", "approving the company verifies it, which unlocks quoting");
@@ -3565,6 +3583,8 @@ async function main() {
       const { error: finishedError } = await db.from("factory_profiles")
         .upsert({ org_id: invitedOrg?.id, onboarding_completed_at: new Date().toISOString() }, { onConflict: "org_id" });
       check(!finishedError, `the invited factory is marked as having finished onboarding${finishedError ? ` (${finishedError.message})` : ""}`);
+      // And gave its registration number on the step (20261108600000).
+      await db.from("company_registrations").upsert({ org_id: invitedOrg?.id, number: `E2E${Date.now()}` }, { onConflict: "org_id" });
 
       await signOutFully(page);
       await signIn(page, factoryEmail, "Factory, invite joined", "factory");
@@ -3589,6 +3609,10 @@ async function main() {
         break;
       }
       check(invitedOpened, "staff open the invited factory's review");
+      await page.waitForTimeout(2500);
+      // Approving needs a registry check that found it.
+      await page.locator(".admin-registry-form textarea").fill("E2E: the registration document shows this number and name");
+      await clickButton(page, "record check");
       await page.waitForTimeout(2500);
       await clickButton(page, "approve as");
       await page.waitForTimeout(4000);
@@ -4567,8 +4591,14 @@ async function main() {
     const { link: resetLink } = await recoveryEmail(lockedEmail);
     check(Boolean(resetLink), "a reset link was emailed");
 
+    // The link lands on our own page, never on the database's host: that is
+    // the request nothing of ours can carry when the host is blocked.
+    check(new URL(resetLink).origin === new URL(APP).origin && !resetLink.includes("/auth/v1/"),
+      "the reset link opens our own page, not the database's host");
+
     await page.goto(resetLink);
     await waitForHeading(page, "choose a new password");
+    check(!(await page.url()).includes("token_hash"), "the token leaves the address as soon as the page reads it");
     await record(page, "Choose a new password", "the link lands here, not on the dashboard");
 
     const newPassword = "a different 9";
@@ -4590,6 +4620,77 @@ async function main() {
     const { error: newPasswordFails } = await anon.auth
       .signInWithPassword({ email: lockedEmail, password: newPassword });
     check(!newPasswordFails, "and the new one does");
+    const usedToken = new URLSearchParams(new URL(resetLink).hash.slice(1)).get("token_hash");
+    const { error: usedAgain } = await anon.auth.verifyOtp({ token_hash: usedToken, type: "recovery" });
+    check(Boolean(usedAgain), "the reset link works once");
+
+    // ================= LOCKED OUT, BEHIND A BLOCK =================
+    // A vendor in mainland China cannot reach the database's own host. Here
+    // this tab refuses every request to it, as a blocked route does; the app
+    // goes through /sb on our own host, and the reset must still finish.
+    console.log("\nLOCKED OUT, BEHIND A BLOCK");
+    const blockedEmail = `e2e-locked-blocked-${stamp}@example.com`;
+    await db.auth.admin.createUser({ email: blockedEmail, password: PASSWORD, email_confirm: true });
+    await signOutFully(page);
+    const directOrigin = new URL(process.env.SUPABASE_URL ?? stack.API_URL).origin;
+    const blocked = await stagehand.browser.context.newPage("about:blank");
+    await blocked.setViewportSize(1440, 1100);
+    await blocked.addInitScript((origin) => {
+      const open = window.fetch.bind(window);
+      window.__direct = [];
+      window.__proxied = [];
+      window.fetch = (input, init) => {
+        const href = typeof input === "string" ? input : input?.url ?? String(input);
+        if (href.startsWith(origin)) {
+          window.__direct.push(href);
+          return Promise.reject(new TypeError("Failed to fetch"));
+        }
+        if (href.includes("/sb/")) window.__proxied.push(href);
+        return open(input, init);
+      };
+    }, directOrigin);
+    try {
+      await blocked.goto(APP);
+      await waitFor(blocked, ".auth-card", 30000);
+      await clickButton(blocked, "forgot password");
+      await waitFor(blocked, 'input[type="email"]', 15000);
+      await blocked.locator('input[type="email"]').first().fill(blockedEmail);
+      await clickButton(blocked, "email me a reset link");
+      await blocked.waitForTimeout(6000);
+      const blockedShown = await blocked.locator(".gate-card, .auth-card").first().innerText().catch(() => "");
+      check(/on its way/i.test(blockedShown) && !/couldn.t connect/i.test(blockedShown),
+        "behind the block, the reset email is still asked for");
+      check((await blocked.evaluate(() => window.__proxied.some((href) => href.includes("/auth/v1/recover")))),
+        "through our own host");
+
+      const { link: blockedLink } = await recoveryEmail(blockedEmail);
+      check(Boolean(blockedLink) && new URL(blockedLink).origin === new URL(APP).origin,
+        "the emailed link opens our own page");
+      await blocked.goto(blockedLink);
+      await waitForHeading(blocked, "choose a new password", 40000);
+      await record(blocked, "Choose a new password, behind a block", "the link is verified through our own host");
+      check(await blocked.evaluate(() => window.__proxied.some((href) => href.includes("/auth/v1/verify"))),
+        "the link's token is verified through our own host");
+
+      const blockedPassword = "behind the wall 9";
+      await blocked.locator('input[type="password"]').first().fill(blockedPassword);
+      await clickButton(blocked, "save password");
+      await blocked.waitForTimeout(5000);
+      check((await blocked.locator("h1").first().innerText().catch(() => "")).toLowerCase() !== "choose a new password",
+        "saving the new password behind the block lets them through");
+      check(await blocked.evaluate(() => window.__proxied.some((href) => href.includes("/auth/v1/user"))),
+        "and the new password went through our own host");
+      const { error: blockedNewFails } = await anon.auth
+        .signInWithPassword({ email: blockedEmail, password: blockedPassword });
+      check(!blockedNewFails, "the new password works");
+    } finally {
+      // The fallback is remembered for ten minutes on this origin; the next
+      // run starts direct.
+      await blocked.evaluate(() => {
+        try { localStorage.clear(); sessionStorage.clear(); } catch {}
+      }).catch(() => {});
+      await blocked.close().catch(() => {});
+    }
 
     console.log(failures ? `\n${failures} assertion(s) failed\n` : "\nAll end-to-end assertions passed\n");
     reachedTheEnd = true;

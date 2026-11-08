@@ -151,9 +151,10 @@ export function tradingProfileView(parts, now = new Date()) {
   const location = profile?.location || NOT_GIVEN;
   const team = profile?.employee_count != null ? count(profile.employee_count) : null;
   const verified = profile?.verification_status === "verified";
-  const registration = parts.registrationDoc
-    ? documentStatus(parts.registrationDoc.status, true)
-    : verified ? "Verified" : "Not uploaded";
+  // One word for the registration, as on every page (registrationWord).
+  const registration = parts.registryCheckedAt ? "Verified"
+    : parts.registrationDoc?.status === "rejected" ? "Rejected"
+    : parts.registrationDoc ? "Uploaded" : "Not uploaded";
   const certificates = parts.certifications.map((cert) => ({ name: cert.name, status: documentStatus(cert.status, cert.hasFile) }));
   const samples = parts.samples.map((sample) => ({ title: sample.title, meta: sample.caption ?? "", src: sample.src }));
   const references = parts.references.map((reference) => reference.title);

@@ -11,6 +11,7 @@
 import { minutesPerPieceFor, monthlyUnits } from "../../lib/domain/capacity.js";
 import { chipLabels, factoryProfileView } from "./factory-profile-view.js";
 import { TRADING_CHIP_KINDS } from "./trading-profile-view.js";
+import { checkedMonth } from "../../shared/registration-number.mjs";
 
 const NOT_GIVEN = "—";
 const count = (value) => Number(value).toLocaleString("en");
@@ -91,7 +92,20 @@ export function brandFactoryView(parts, now = new Date()) {
       ["Availability", row("Booking level")],
     ],
     trust: [
-      { name: "Business registration", status: verified ? "Verified" : parts.registrationDoc ? "Uploaded" : "Not uploaded", document: parts.registrationDoc },
+      // One word, as on the vendor's own page: "Verified" once staff found the
+      // company on an official registry (factory_registry_fact), with the
+      // month as a dated fact, never a score.
+      {
+        // Says what was checked: an official registry, or the company's own
+        // uploaded registration document.
+        name: parts.registryCheckedAt
+          ? `${parts.registryCheckKind === "document" ? "Registration document" : "Official registry"} · checked ${checkedMonth(parts.registryCheckedAt)}`
+          : "Business registration",
+        // No file link: a brand does not open a factory's registration
+        // documents (20261108600000), and so cannot see whether one is on
+        // file. Its words come from the review instead.
+        status: parts.registryCheckedAt ? "Verified" : verified ? "Uploaded" : "In review",
+      },
       ...parts.certifications.map((cert) => ({ ...trustRow(cert.name, cert.status), document: cert.document })),
       ...(parts.verificationDocs ?? []).filter((doc) => doc.id !== parts.registrationDoc?.id && !parts.certifications.some((cert) => cert.document?.id === doc.id)).map((doc) => ({ name: doc.file_name, status: "Uploaded", document: doc })),
     ],

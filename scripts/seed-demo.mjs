@@ -144,6 +144,7 @@ const factory = await demoUser(LOGINS.factory);
 const secondFactory = await demoUser(LOGINS.secondFactory);
 const newFactory = await demoUser(LOGINS.newFactory);
 const returnedFactory = await demoUser(LOGINS.returnedFactory);
+const turkeyFactory = await demoUser(LOGINS.turkeyFactory);
 const newBrand = await demoUser(LOGINS.newBrand);
 const secondBrand = await demoUser(LOGINS.secondBrand);
 const tradingCompany = await demoUser(LOGINS.tradingCompany);
@@ -153,7 +154,7 @@ const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
 const chinaNewFactory = await demoUser(LOGINS.chinaNewFactory);
 const switcher = await demoUser(LOGINS.switcher);
-const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
+const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, turkeyFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -492,6 +493,8 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Circular and flat knitwear, 100-unit minimums, sampling in a week.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "pending",
+  // Finishing onboarding publishes (LiveFactoryOnboarding), as here.
+  published_at: new Date().toISOString(),
 }), "new factory profile");
 must(await admin.from("factory_certifications").insert({
   org_id: newFactoryOrg.id,
@@ -543,6 +546,35 @@ must(await chinaNewFactory.client.from("taxonomy_links").insert(await Promise.al
   subject_type: "factory_profile", subject_id: chinaNewOrg.id, org_id: chinaNewOrg.id, term_id: await termId(kind, slug),
 })))), "the new China factory's tags");
 must(await admin.from("credit_ledger").insert({ org_id: chinaNewOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified" }), "the new China factory's credits");
+// A factory in Türkiye waiting for review, with its tax number (VKN): the review
+// page's "Official registry" panel shows Turkey's sources for it. Nothing
+// checked yet, so staff record the first check.
+const turkeyFactoryOrg = must(await turkeyFactory.client.rpc("create_org", { org_name: LOGINS.turkeyFactory.name, org_kind: "factory" }), "create the Turkish factory");
+must(await admin.from("factory_profiles").upsert({
+  org_id: turkeyFactoryOrg.id, country_code: "TR", location: "Izmir, Türkiye", founded_year: 2009, employee_count: 140,
+  moq: 500, typical_lead_days: 40, intro: "Denim cut, sew and wash under one roof.",
+  onboarding_completed_at: new Date().toISOString(), verification_status: "pending",
+  // Finishing onboarding publishes (LiveFactoryOnboarding), as here.
+  published_at: new Date().toISOString(),
+}), "the Turkish factory's profile");
+{
+  const path = `${turkeyFactoryOrg.id}/business_registration/${crypto.randomUUID()}-Ticaret-Sicil-Gazetesi.pdf`;
+  const pdf = new TextEncoder().encode("%PDF-1.4\n% demo registration, not a real document\n");
+  must(await turkeyFactory.client.storage.from("org-private").upload(path, pdf, { contentType: "application/pdf" }), "upload the Turkish registration");
+  must(await admin.from("documents").insert({
+    org_id: turkeyFactoryOrg.id, kind: "business_registration", bucket: "org-private", storage_path: path,
+    file_name: "Ticaret Sicil Gazetesi.pdf", mime_type: "application/pdf", size_bytes: pdf.length, status: "pending",
+  }), "record the Turkish registration");
+}
+// Fake numbers that pass each country's check (scripts/check-registration-number.mjs).
+must(await turkeyFactory.client.rpc("save_company_registration", { target_org: turkeyFactoryOrg.id, country: "TR", number: "4837261591", registration_letter_number: "DEMO-0000-0001" }), "the Turkish factory's tax number");
+must(await factory.client.rpc("save_company_registration", { target_org: factoryOrg.id, country: "PT", number: "509999999", access_code: "1234-5678-9012" }), "Demo Factory's NIPC");
+must(await secondFactory.client.rpc("save_company_registration", { target_org: secondFactoryOrg.id, country: "CN", number: "91330100MA2B7C4D3F" }), "Ningbo Loomworks's credit code");
+// Staff found both verified ones on their registries, so a brand reads
+// "Official registry · <month>" on their profiles.
+must(await adminUser.client.rpc("admin_record_registry_check", { target_org: factoryOrg.id, source: "certidao", result: "found", note: "Demo: name and address match" }), "Demo Factory's registry check");
+must(await adminUser.client.rpc("admin_record_registry_check", { target_org: secondFactoryOrg.id, source: "document", result: "found", note: "Demo: licence shows this code and the name" }), "Ningbo Loomworks's registry check");
+
 // A factory staff sent back: "Needs information" with the kind of note staff
 // actually write, a paragraph and a list, long enough that its finish card
 // must grow to hold it. The decision goes through the admin's own call, so
@@ -560,6 +592,8 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Woven shirting and light outerwear, cut and sewn in-house.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "pending",
+  // Finishing onboarding publishes (LiveFactoryOnboarding), as here.
+  published_at: new Date().toISOString(),
 }), "returned factory profile");
 const RETURNED_NOTE = [
   "Thank you for submitting your profile. Before we can verify Harbour Line Apparel we need a few more things from you:",
@@ -1406,6 +1440,7 @@ done. Every login uses the password "${PASSWORD}".
   second factory  ${LOGINS.secondFactory.email}   (a competing quote)
   new factory     ${LOGINS.newFactory.email}   (waiting for verification)
   returned factory ${LOGINS.returnedFactory.email}   (asked for more information, a long note)
+  Turkish factory ${LOGINS.turkeyFactory.email}   (waiting for review, VKN, nothing checked)
   new brand       ${LOGINS.newBrand.email}   (no requests yet: recommended factories)
   second brand    ${LOGINS.secondBrand.email}   (five open requests, nothing paid: Browse RFQs' filters)
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory

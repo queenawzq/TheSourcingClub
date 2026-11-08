@@ -22,6 +22,7 @@ import { listDocuments, urlFor } from "../../lib/domain/documents.js";
 import { loadCertifications } from "../../lib/domain/certifications.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
+import { getRegistration, registryFact } from "../../lib/domain/registration.js";
 import { CHIP_KINDS, titleFromFileName } from "./factory-profile-view.js";
 import { TRADING_CHIP_KINDS } from "./trading-profile-view.js";
 import { rankVendors } from "../browse/vendor-directory-view.js";
@@ -75,9 +76,17 @@ export async function loadOwnProfile(org) {
     listOrders(org.id),
   ]);
   const certificationRows = await loadCertifications(org.id, terms.certification ?? []);
+  // The number the company gave, and whether staff found it on a registry.
+  const [registrationNumber, registryCheck] = await Promise.all([
+    getRegistration(org.id).catch(() => null),
+    registryFact(org.id),
+  ]);
 
   return {
     orgName: org.name,
+    registrationNumber,
+    registryCheckedAt: registryCheck?.checkedAt ?? null,
+    registryCheckKind: registryCheck?.kind ?? null,
     profile,
     terms,
     selected,
@@ -108,7 +117,7 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
   );
   if (!profile) return null;
 
-  const [terms, selected, capacity, refs, claims, media, verificationDocs, publicMetrics] = await Promise.all([
+  const [terms, selected, capacity, refs, claims, media, verificationDocs, publicMetrics, registryCheck] = await Promise.all([
     listTermsByKind(KINDS),
     getSelectedTerms("factory_profile", vendorOrgId),
     getCapacity(vendorOrgId),
@@ -121,6 +130,8 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
       .eq("org_id", vendorOrgId).in("kind", ["business_registration", "certificate"])
       .order("created_at").then((result) => unwrap(result, "load this vendor's documents")),
     supabase.rpc("public_factory_metrics", { target_org: vendorOrgId }).then((result) => unwrap(result, "load factory performance")),
+    // When TSC last found the company on an official registry (month only).
+    registryFact(vendorOrgId),
   ]);
   const certificationTerms = terms.certification ?? [];
 
@@ -140,6 +151,8 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
     registrationDoc: verificationDocs.filter((doc) => doc.kind === "business_registration").at(-1) ?? null,
     verificationDocs,
     publicMetrics,
+    registryCheckedAt: registryCheck?.checkedAt ?? null,
+    registryCheckKind: registryCheck?.kind ?? null,
     ...media,
     orders: [],
   };

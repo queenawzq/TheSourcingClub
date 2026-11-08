@@ -13,7 +13,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { paypalFrom, PAYPAL_UNCLAIMED } from "../api/_paypal.js";
-import { cancelAttempt, checkWords, FUND_IN_WISE, tellFactoryDetails, paypalPay, syncAttempts, wisePay, wisePreview } from "../api/_provider-payouts.js";
+import { cancelAttempt, checkWords, FUND_IN_WISE, setFundSettleMs, tellFactoryDetails, paypalPay, syncAttempts, wisePay, wisePreview } from "../api/_provider-payouts.js";
 import { PayoutFailure, withoutSecrets } from "../api/_payout-provider.js";
 import { wiseFrom, WISE_STATES } from "../api/_wise.js";
 import { ensureWiseRecipient, recipientBody } from "../api/_wise-recipient.js";
@@ -25,8 +25,8 @@ const PAYPAL_ENV = { PAYPAL_API_BASE: "https://api-m.sandbox.paypal.com", PAYPAL
 const json = (status, body, headers = {}) => ({ status, headers: new Headers(headers), text: async () => JSON.stringify(body ?? null) });
 
 /** A pretend Wise: one transfer per key, one payment per transfer, as the sandbox behaves. */
-function fakeWise({ fund = "ok", balance = 1000000, failNext = [] } = {}) {
-  const state = { transfers: new Map(), byId: new Map(), funded: 0, recipients: [], calls: [] };
+function fakeWise({ fund = "ok", balance = 1000000, failNext = [], lag = 0 } = {}) {
+  const state = { transfers: new Map(), byId: new Map(), funded: 0, recipients: [], calls: [], lag };
   const fetchImpl = async (url, options) => {
     const path = url.replace(WISE_ENV.WISE_API_BASE, "");
     const name = `${options.method} ${path.replace(/\d{3,}/g, "N")}`;
@@ -64,7 +64,12 @@ function fakeWise({ fund = "ok", balance = 1000000, failNext = [] } = {}) {
     const cancel = path.match(/transfers\/(\d+)\/cancel/);
     if (cancel) { const t = state.byId.get(cancel[1]); t.status = "cancelled"; return json(200, t); }
     const read = path.match(/transfers\/(\d+)$/);
-    if (read) return json(200, state.byId.get(read[1]));
+    if (read) {
+      const t = state.byId.get(read[1]);
+      // Wise's status catching up with a payment it already took.
+      if (t.status === "processing" && state.lag > 0) { state.lag -= 1; return json(200, { ...t, status: "incoming_payment_waiting" }); }
+      return json(200, t);
+    }
     return json(404, {});
   }
   return { state, fetchImpl };
@@ -163,6 +168,17 @@ const row = { payout_account_id: "a1", wise_recipient_id: null, currency: "USD",
 const pay = (wise, db, extra = {}) => wisePay({ wise, caller: db.caller, db, row, paymentId: "x", changedAt: "t", cnyConfirmed: true, ...extra });
 
 // --- Wise ---------------------------------------------------------------------
+setFundSettleMs(0);
+for (const lag of [1, 5]) {
+  // Funded, but Wise's status still says waiting (q79 test, Nov 7): not "Fund it in Wise", and no second payment.
+  const fake = fakeWise({ lag }); const db = fakeDb();
+  const wise = wiseFrom(WISE_ENV, fake.fetchImpl);
+  const answer = await pay(wise, db);
+  assert.equal(fake.state.funded, 1, "funded once");
+  assert.equal(answer.done, "sent", `a funded transfer is sent, however long Wise's status lags (${lag})`);
+  assert.notEqual(db.payout.sentence, FUND_IN_WISE, "staff aren't asked to fund what Wise already took");
+  assert.equal(db.payout.stage, "sent");
+}
 {
   // The ordinary press: funded, on its way, paid only when Wise says it went.
   const fake = fakeWise(); const db = fakeDb();

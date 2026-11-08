@@ -2509,6 +2509,7 @@ console.log("\ncredits — granted on verification, invites, staff adjustments")
     .update({ verification_status: "verified" }).eq("org_id", mill.id);
   selfVerify ? ok("a factory CANNOT verify itself") : fail("LEAK: a factory set its own profile to verified");
 
+  await registryChecked(staff.client, mill.id);
   const { error: decideError } = await staff.client.rpc("admin_review_decision", { target_org: mill.id, decision: "approved" });
   if (decideError) fail("staff approve the factory", decideError);
   const { data: lines } = await owner.client.from("credit_ledger").select("delta, reason").eq("org_id", mill.id);
@@ -2582,6 +2583,7 @@ console.log("\ncredits — granted on verification, invites, staff adjustments")
     : fail("the invite was not linked", link);
 
   await admin.from("factory_profiles").insert({ org_id: joinedOrg.id });
+  await registryChecked(staff.client, joinedOrg.id);
   await staff.client.rpc("admin_review_decision", { target_org: joinedOrg.id, decision: "approved" });
   const { data: earned } = await owner.client.from("credit_ledger").select("delta").eq("org_id", mill.id).eq("reason", "referral_grant");
   (earned ?? []).length === 1 && earned[0].delta === 500
@@ -2897,6 +2899,7 @@ console.log("\nreview decision emails (20261104200000)");
       ? ok("and \"Resend email\" sends it")
       : fail(`resend: ${JSON.stringify({ outcome: resent.outcome, sent: resent.sent, error: resent.error })}`);
 
+    await registryChecked(staff.client, org.id);
     await decide("approved", null);
     const unset = await kick({ decision: "approved" }, { MAILPIT_URL: null });
     unset.outcome === "not_configured"
@@ -2997,3 +3000,19 @@ console.log(
   failures ? `\n${failures} check(s) failed\n` : "\nAll smoke checks passed\n",
 );
 process.exit(failures ? 1 : 0);
+
+
+/**
+ * Approving a factory needs staff's "found" registry check on its current
+ * number (20261108600000). A number written with the server key, then the
+ * check as staff, the way a reviewer would.
+ */
+async function registryChecked(staffClient, orgId) {
+  const { error: numberError } = await admin.from("company_registrations")
+    .upsert({ org_id: orgId, number: `SMOKE${Date.now()}` });
+  if (numberError) fail("give the factory a registration number", numberError);
+  const { error } = await staffClient.rpc("admin_record_registry_check", {
+    target_org: orgId, source: "document", result: "found", note: "Smoke: the document shows this number and name",
+  });
+  if (error) fail("staff record a registry check", error);
+}

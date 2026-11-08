@@ -291,6 +291,12 @@ sender_name = "The Sourcing Club"
 subject = "Your Sourcing Club sign-in code"
 content_path = "./supabase/templates/magic_link.html"
 
+# The reset link lands on our own page, never on <project>.supabase.co, which
+# looks blocked in mainland China. src/lib/recovery-link.mjs reads it.
+[auth.email.template.recovery]
+subject = "Reset your Sourcing Club password"
+content_path = "./supabase/templates/recovery.html"
+
 # Uncomment to customize email template
 # [auth.email.template.invite]
 # subject = "You have been invited"

@@ -22,6 +22,7 @@
  * invisible to it, and the detail screens need the id to read the request:
  * the shortened ref on screen is not unique enough to look anything up by.
  */
+import { adminRegistryStates, registryApprovalBlock } from "../../lib/domain/registration.js";
 import {
   adjustCredits,
   claimReview,
@@ -146,6 +147,33 @@ function ago(value) {
  * is a real thing to know and is what the screen now says. Nothing is
  * computed here; this maps the row onto the shape the design renders.
  */
+/**
+ * A vendor's official-registry state on its queue row and its checks
+ * (migration 20261108600000). A verified factory whose check was lost (a
+ * later "not found", or a changed number) shows as "Registry check lost"
+ * in the active queue: staff cannot be notified, so the queue is the prompt.
+ * The registration check's line says the registry state, not the old
+ * "not checked against any registry".
+ */
+export function withRegistry(profile, state) {
+  if (!state || profile.entityType === "Brand") return profile;
+  const when = state.checked_at ? shortDate(state.checked_at) : "";
+  const words = state.state === "found"
+    ? (state.kind === "document" ? `Registration document checked ${when}.` : `Found on an official registry ${when}.`)
+    : state.state === "lost" ? "Registry check lost: the latest check is not a match, or the number changed."
+    : "No registry check recorded yet.";
+  const checks = profile.checks.map(([label, result, value, detail]) => (label === "Business registration"
+    ? [label, state.state === "found" ? "Verified" : result, value,
+      `${String(detail ?? "")
+        .replace(/ ?(Not yet reviewed\.|Marked verified[^.]*\.)? ?Contents are not checked against any registry\./, "")
+        // The database writes the upload day in UTC; say it in the reader's
+        // zone, like the check's own date.
+        .replace(/^Uploaded \d{2} \w{3} \d{4}/, state.registration_uploaded_at ? `Uploaded ${shortDate(state.registration_uploaded_at)}` : "$&")} ${words}`.trim()]
+    : [label, result, value, detail]));
+  const lost = state.state === "lost" && profile.status === "Approved";
+  return { ...profile, checks, ...(lost ? { status: "Registry check lost", tone: "warning" } : {}) };
+}
+
 export function toReviewProfile(row) {
   const [status, tone] = REVIEW_LABEL[row.state] ?? ["Ready for review", "info"];
   const savedProductionTypes = row.productionTypes ?? [];
@@ -322,7 +350,8 @@ export function createAdminAdapter({ user, signOut }) {
   return {
     viewer: { isAdmin: true, org: null, user },
 
-    verificationQueue: () => verificationQueue().then((rows) => rows.map(toReviewProfile)),
+    verificationQueue: () => Promise.all([verificationQueue(), adminRegistryStates()])
+      .then(([rows, states]) => rows.map((row) => withRegistry(toReviewProfile(row), states.get(row.orgId)))),
     adminRfqs: () => rfqQueue().then((rows) => rows.map(toRfqRow)),
     adminQuotes: () => quoteQueue().then((rows) => rows.map(toQuoteRow)),
     adminMetrics: async () => {
@@ -394,6 +423,13 @@ export function createAdminAdapter({ user, signOut }) {
       reviewAssist,
       latestReviewAssists,
       reviewAssistInput,
+
+      /**
+       * Why a vendor cannot be approved yet, or null: approving needs a
+       * person's "found, matches" on its current registration number (the
+       * database refuses it otherwise). Live only.
+       */
+      approvalBlock: registryApprovalBlock,
 
       /**
        * A factory's credits on the review page, and the staff adjustment.
