@@ -8130,7 +8130,11 @@ function FactoryOnboardingStep({
       if (!isLive) return drawn;
       const english = englishSections[sectionIndex]?.[1]?.[rowIndex]?.[0] ?? "";
       if (staticRows.has(english)) return drawn;
-      if (english === "Business registration") return registrationFileName ? reviewStatus.uploaded : reviewStatus.notUploaded;
+      if (english === "Business registration") {
+        const fileStatus = registrationFileName ? reviewStatus.uploaded : reviewStatus.notUploaded;
+        // Live: the registration number typed on the verification step.
+        return values?.["registration-number"] ? `${values["registration-number"]}${listSeparator}${fileStatus}` : fileStatus;
+      }
       if (english === "Factory logo" || english === "Company logo") return values?.["uploaded-logo"] ? reviewStatus.uploaded : reviewStatus.notUploaded;
       if (/catalogue|samples|portfolio/i.test(english)) {
         const count = Number(values?.["uploaded-samples"]) || 0;

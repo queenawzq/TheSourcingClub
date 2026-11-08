@@ -38,7 +38,11 @@ export default function RegistryPanel({ orgId }) {
 
   const country = detail?.registration?.country ?? detail?.countryCode ?? null;
   const sources = registrySources(country);
-  useEffect(() => { setSource((current) => current || sources[0]?.key || ""); }, [sources]);
+  // The choices follow the country, which arrives with the detail: keep a
+  // choice only while it is one of them.
+  useEffect(() => {
+    setSource((current) => (sources.some((item) => item.key === current) ? current : sources[0]?.key ?? ""));
+  }, [country]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error) return <p className="factory-onboarding-save-error" role="alert">{error.message}</p>;
   if (!detail) return <p>Loading…</p>;
@@ -124,7 +128,7 @@ export default function RegistryPanel({ orgId }) {
               {check.note && <p>{check.note}</p>}
               {check.details?.reason && <p>{check.details.reason}</p>}
               <span>
-                {check.automatic ? "Automatic" : check.checkedBy ?? "Staff"} · {when(check.checkedAt)}
+                {check.automatic ? (check.checkedBy ? `Automatic, asked by ${check.checkedBy}` : "Automatic") : check.checkedBy ?? "Staff"} · {when(check.checkedAt)}
                 {registration && check.numberChecked && check.numberChecked !== registration.number ? ` · for ${check.numberChecked}, since changed` : ""}
               </span>
             </div>
