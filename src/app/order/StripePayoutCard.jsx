@@ -474,7 +474,7 @@ export default function StripePayoutCard({
           requestId: withdrawal.requestId, provider: selected.provider, amount: withdrawal.amount,
           accountId: selected.accountId, methodId: selected.methodId, cnyConfirmed: Boolean(withdrawal.cnyConfirmed),
         });
-        setWithdrawalMessage(result.status === "paid" ? "Withdrawal completed." : result.message || "Withdrawal requested. Your selected destination is saved. Check its status below.");
+        setWithdrawalMessage(result.status === "paid" ? "Withdrawal completed." : result.message || "Withdrawal requested. Awaiting admin approval; no money has been sent.");
       } else {
         await connectAction(org.id, withdrawal.previous ? "withdraw_previous" : "withdraw", { ...withdrawal, methodId: selected.methodId });
         setWithdrawalMessage("Bank withdrawal requested.");
@@ -917,7 +917,7 @@ export default function StripePayoutCard({
       {renderCard && isOwner && heldEarnings?.requests?.length ? <section className="payout-request-status" aria-label="Requested withdrawals">
         {heldEarnings.requests.map(request => <div key={request.id} className="payout-method-row">
           <span className="payout-bank-icon">{BANK_ICON}</span>
-          <div className="payout-method-name"><strong>{formatMoney(Number(request.amount_cents), request.currency)} · {request.provider === "paypal" ? "PayPal" : request.provider === "wise" ? "Wise bank transfer" : "Stripe bank account"}</strong><span>Withdrawal requested · destination saved</span></div>
+          <div className="payout-method-name"><strong>{formatMoney(Number(request.amount_cents), request.currency)} · {request.provider === "paypal" ? "PayPal" : request.provider === "wise" ? "Wise bank transfer" : "Stripe bank account"}</strong><span>{request.approved_at || request.approval_grandfathered ? "Approved · processing" : "Awaiting admin approval · no money sent"}</span></div>
           <button className="secondary-btn compact-btn" disabled={busy} onClick={() => checkWithdrawal(request)}>Check status</button>
         </div>)}
       </section> : null}
@@ -925,9 +925,9 @@ export default function StripePayoutCard({
       {modal === "withdraw" && withdrawal ? (
         <PayoutModal title={withdrawal.held ? "Withdraw earnings" : "Withdraw existing Stripe balance"} onClose={closeModal} actions={<>
           <button className="secondary-btn" type="button" disabled={busy} onClick={closeModal}>Cancel</button>
-          <button className="primary-btn" type="button" disabled={busy || !selectedWithdrawalOption || selectedWithdrawalOption.unavailable || (selectedWithdrawalOption.cny && !withdrawal.cnyConfirmed)} onClick={withdraw}>{busy ? "Withdrawing…" : `Withdraw ${formatMoney(withdrawal.amount, withdrawal.currency)}`}</button>
+          <button className="primary-btn" type="button" disabled={busy || !selectedWithdrawalOption || selectedWithdrawalOption.unavailable || (selectedWithdrawalOption.cny && !withdrawal.cnyConfirmed)} onClick={withdraw}>{busy ? "Withdrawing…" : `${withdrawal.held ? "Request withdrawal of" : "Withdraw"} ${formatMoney(withdrawal.amount, withdrawal.currency)}`}</button>
         </>}>
-          <p>Choose where to send {formatMoney(withdrawal.amount, withdrawal.currency)}. This choice applies to this withdrawal and does not change your saved default.</p>
+          <p>Choose where to send {formatMoney(withdrawal.amount, withdrawal.currency)}. Admin will review and approve your request before money is sent. This does not change your saved default.</p>
           {!withdrawal.held ? <p>This balance is already held in Stripe. PayPal and Wise are available for earnings still held by TSC.</p> : null}
           <WithdrawalDestinationPicker options={withdrawalOptions} value={withdrawal.destination} disabled={busy}
             onChange={destination => setWithdrawal(current => ({ ...current, destination, cnyConfirmed: false }))} />

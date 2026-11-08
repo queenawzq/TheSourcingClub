@@ -105,3 +105,6 @@ export async function connectAccountFor(orgId) {
 
 /** Owner-selected withdrawals from earnings still held by TSC. */
 export const factoryWithdrawal = (orgId, action, extra = {}) => call("factory-withdrawal", { orgId, action, ...extra });
+
+/** Staff funding checks and approval of an owner's persisted request. */
+export const adminWithdrawal = (action, extra = {}) => call("admin-withdrawal", { action, ...extra });

@@ -117,7 +117,12 @@ export async function markPaymentSent(paymentId, { reference, note } = {}) {
  * The old admin_payment_queue() stays for the old site only.
  */
 export async function paymentBoard() {
-  return unwrap(await supabase.rpc("admin_payment_board"), "load the payments board");
+  const rows = unwrap(await supabase.rpc("admin_payment_board"), "load the payments board");
+  if (!rows.length) return rows;
+  const required = unwrap(await supabase.from("order_payments").select("id,withdrawal_required")
+    .in("id", rows.map(row => row.payment_id)), "load withdrawal approval requirements");
+  const byId = new Map(required.map(row => [row.id, row.withdrawal_required]));
+  return rows.map(row => ({ ...row, withdrawal_required: byId.get(row.payment_id) ?? true }));
 }
 
 export async function confirmPaymentReceived(paymentId, { amountReceived, note } = {}) {

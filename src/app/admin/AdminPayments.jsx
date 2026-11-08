@@ -1,3 +1,4 @@
+import WithdrawalApprovals from "./WithdrawalApprovals.jsx";
 /**
  * The payments board.
  *
@@ -441,6 +442,9 @@ function Actions({ row, section, note, onNoteChange, payoneerId, onDecide, busy,
       </>
     );
   }
+  if (section === "payout" && row.withdrawal_required) {
+    return <span className="admin-sub">The factory must request a withdrawal. Review requested destinations in Withdrawal approvals above.</span>;
+  }
   if (section === "payout") {
     if (paidByPayoneer(row)) {
       const id = payoneerId.trim();
@@ -804,7 +808,7 @@ export default function AdminPayments() {
   return (
     <AdminWorkspaceShell onSignOut={signOut} extraNav={STAFF_PAGES}>
       <PaymentsBoard rows={rows} error={error} notice={notice} decide={decide} busyId={busyId} narrow={narrow} refusal={refusal}
-                     load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} views={views} setups={setups} />
+                     load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} views={views} setups={setups} withdrawalsPanel={<WithdrawalApprovals onChanged={readBack} />} />
     </AdminWorkspaceShell>
   );
 }
@@ -822,7 +826,7 @@ const TABS = [
  * rows. Payout owed always has a tab; another queue only while it has rows.
  */
 export function PaymentsBoard({ rows, error = null, notice = null, decide, busyId = null, narrow = false, refusal = null, load,
-  attempts = new Map(), wise = null, paypal = null, onChanged = load, views = [], setups = new Map() }) {
+  attempts = new Map(), wise = null, paypal = null, onChanged = load, views = [], setups = new Map(), withdrawalsPanel = null }) {
   const [chosen, setChosen] = useState("payout");
   const sections = boardSections(rows);
   const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, views, setups };
@@ -843,6 +847,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
   return (
     <main className="admin admin-payments-page">
       <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1><p>Check payments received, payouts owed to factories, and money held on cancelled orders. Confirm bank-wire claims only after checking the account.</p></div></header>
+      {withdrawalsPanel}
       {tabs.length > 1 ? (
         <nav className="rfqs-tabs admin-verification-tabs admin-rfq-tabs payments-queue-tabs" aria-label="Payment queues">
           {tabs.map(([id, label]) => (

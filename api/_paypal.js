@@ -88,6 +88,23 @@ export function paypalFrom(env = process.env, fetchImpl = fetch) {
 
   return {
     provider: "paypal",
+    /** Reporting permission is separate from Payouts; unknown never means funded. */
+    async balance(currency) {
+      const answer = await call("GET", `/v1/reporting/balances?currency_code=${encodeURIComponent(currency)}`);
+      if (answer.status === 403) throw new PayoutFailure("balance_permission", "PayPal balance access is unavailable. Enable the List Balances reporting permission for this app, then check again.");
+      if (answer.status >= 300 || !Array.isArray(answer.body?.balances)) throw new PayoutFailure("balance_unavailable", "Could not verify PayPal's available balance. Check again before sending.");
+      const asOf = answer.body.last_refresh_time || answer.body.as_of_time;
+      if (!Number.isFinite(Date.parse(asOf)) || Date.now()-Date.parse(asOf)>195*60_000 || Date.parse(asOf)>Date.now()+60_000) throw new PayoutFailure("balance_stale", "PayPal's balance report is too old to approve a transfer. Check again later.");
+      const row = answer.body.balances.find(b => b.currency === currency);
+      if (!row) return { cents: 0, currency, asOf };
+      const available = row.available_balance;
+      const value = available?.value;
+      if ((available?.currency_code || available?.currency || row.currency) !== currency || !/^\d+(?:\.\d{1,2})?$/.test(value ?? "")) throw new PayoutFailure("balance_unavailable", "PayPal did not report a usable available balance. Check again before sending.");
+      const [whole, fraction=""] = value.split(".");
+      const cents = Number(whole)*100+Number(fraction.padEnd(2,"0"));
+      if (!Number.isSafeInteger(cents)) throw new PayoutFailure("balance_unavailable", "PayPal did not report a usable available balance.");
+      return { cents, currency, asOf };
+    },
     /** The app's address, from the API's. */
     appUrl: base.replace("//api-m.", "//www."),
 

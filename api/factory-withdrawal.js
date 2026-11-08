@@ -18,7 +18,7 @@ export default async function handler(request, response) {
       const owed = await db.from('order_payments').select('id,amount_cents,currency,production_orders!inner(factory_org_id)')
         .eq('production_orders.factory_org_id', orgId).eq('state', 'confirmed').not('release_requested_at', 'is', null)
         .eq('stripe_release_started', false).is('release_claimed_at', null);
-      const requests = await db.from('factory_withdrawals').select('id,provider,account_id,stripe_method_id,amount_cents,currency,status,created_at')
+      const requests = await db.from('factory_withdrawals').select('id,provider,account_id,stripe_method_id,amount_cents,currency,status,created_at,approved_at,approval_grandfathered')
         .eq('org_id', orgId).neq('status', 'paid').order('created_at');
       if (owed.error || requests.error) throw new Error('Could not load available earnings.');
       const ids = (owed.data ?? []).map(p => p.id);
@@ -35,7 +35,6 @@ export default async function handler(request, response) {
     try { paypal = paypalFrom(); } catch { /* Report unavailability only if selected. */ }
     try { wise = wiseFrom(); } catch { /* Report unavailability only if selected. */ }
     if (action === 'withdraw') {
-      if (provider === 'paypal' && !paypal || provider === 'wise' && !wise) return reply(response, 503, { error: 'The selected provider is unavailable. Nothing was sent through another method.' });
       if (provider === 'stripe') {
         const a = await db.from('stripe_connect_accounts').select('stripe_account_id').eq('org_id',orgId).single();
         if (a.error) throw new Error('Finish bank-account verification first.');
@@ -50,6 +49,7 @@ export default async function handler(request, response) {
     // Even a guessed request UUID may only resume this owner's company.
     const w = await db.from('factory_withdrawals').select('id').eq('id', requestId).eq('org_id', orgId).maybeSingle();
     if (w.error || !w.data) return reply(response, 404, { error: 'Withdrawal not found.' });
+    if (action === 'withdraw') return reply(response, 200, { status: 'awaiting_approval', message: 'Withdrawal requested. Awaiting admin approval; no money has been sent.' });
     return reply(response, 200, await processWithdrawal({ db, stripe, paypal, wise, withdrawalId: requestId }));
   } catch (failure) {
     // Provider internals can contain recipient details: don't expose or log them.

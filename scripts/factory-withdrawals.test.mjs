@@ -5,7 +5,7 @@ import { processWithdrawal } from '../api/_factory-withdrawals.js';
 
 function fixture(provider) {
   const calls = [];
-  const w = { id: 'request_fake', org_id: 'factory_fake', provider, status:'requested',amount_cents:100,
+  const w = { id: 'request_fake', org_id: 'factory_fake', provider, status:'requested',approved_at:'2026-11-08T00:00:00Z',amount_cents:100,
     currency:'USD',stripe_method_id:'ba_selected',account_id:'selected_account',details_changed_at:'2026-11-01T00:00:00Z',cny_confirmed:false };
   let state = 'confirmed';
   const db = {
@@ -86,4 +86,13 @@ test('Wise funds only the selected Wise recipient and records provider completio
  assert.equal((await processWithdrawal({...f,wise})).status,'paid');
  assert.equal(created.recipientId,'recipient_fake');assert.equal(created.key,'stable_provider_key');assert.equal(funded,true);
  assert.equal(f.calls.find(c=>c[0]==='claim_provider_payout')[1].which,'wise');
+});
+
+test('an owner request without admin approval never calls a provider',async()=>{
+ for(const provider of ['stripe','paypal','wise']){
+  const f=fixture(provider);f.w.approved_at=null;
+  f.db.from=table=>{assert.equal(table,'factory_withdrawals');return {select(){return this;},eq(){return this;},single:async()=>({data:f.w})};};
+  assert.equal((await processWithdrawal(f)).status,'awaiting_approval');
+  assert.equal(f.calls.length,0);
+ }
 });

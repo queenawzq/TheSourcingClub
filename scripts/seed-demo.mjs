@@ -195,6 +195,7 @@ if (demoOrgIds.length) {
     const paths = files.filter((file) => file.bucket === bucket).map((file) => file.storage_path);
     if (paths.length) must(await admin.storage.from(bucket).remove(paths), `clear demo files in ${bucket}`);
   }
+  must(await admin.from("factory_withdrawals").delete().in("org_id", demoOrgIds), "clear demo withdrawal requests");
   const orders = must(await admin.from("production_orders").delete()
     .or(`brand_org_id.in.${list},factory_org_id.in.${list}`).select("id"), "clear demo orders");
   must(await admin.from("orgs").delete().in("id", demoOrgIds), "clear demo companies");
@@ -1339,6 +1340,16 @@ for (const [title, person, org] of [
   });
   await funded(await dueNow(order, title), CARD);
   await approveOpenStep(order, title, person);
+  if (person === otherDomainFactory) {
+    const destination = must(await person.client.from("factory_payout_accounts").select("id")
+      .eq("org_id",org.id).eq("method","paypal").single(), "demo approval destination");
+    const payments = must(await admin.from("order_payments").select("amount_cents")
+      .eq("order_id",order.id).eq("state","confirmed").not("release_requested_at","is",null), "demo withdrawal earnings");
+    must(await person.client.rpc("request_factory_withdrawal", {
+      target_org: org.id, request_id: crypto.randomUUID(), which: "paypal", target_account: destination.id,
+      expected_amount: payments.reduce((sum,payment)=>sum+Number(payment.amount_cents),0),
+    }), "demo withdrawal awaiting admin approval");
+  }
 }
 
 // Dates on the steps not done yet, as a brand sets them on "Production

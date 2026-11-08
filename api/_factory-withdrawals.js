@@ -12,6 +12,7 @@ async function read(query) {
 export async function processWithdrawal({ db, stripe, paypal, wise, withdrawalId }) {
   const w = await read(db.from('factory_withdrawals').select('*').eq('id', withdrawalId).single());
   if (w.status === 'paid') return { status: 'paid', amount: Number(w.amount_cents) };
+  if (!w.approved_at && !w.approval_grandfathered) return { status: 'awaiting_approval', message: 'Awaiting admin approval. No money has been sent.' };
   const items = await read(db.from('factory_withdrawal_items').select('payment_id').eq('withdrawal_id', w.id));
   const started = Date.now();
   for (const item of items) {
@@ -78,7 +79,7 @@ export async function processWithdrawal({ db, stripe, paypal, wise, withdrawalId
 
 /** A bounded daily recovery path; only owner-created requests can be sent. */
 export async function resumeWithdrawals({ db, stripe, paypal, wise }) {
-  const requests = await read(db.from('factory_withdrawals').select('id').neq('status', 'paid').order('created_at').limit(10));
+  const requests = await read(db.from('factory_withdrawals').select('id').neq('status', 'paid').or('approved_at.not.is.null,approval_grandfathered.eq.true').order('created_at').limit(10));
   const started = Date.now();
   const results = [];
   for (const w of requests) {
