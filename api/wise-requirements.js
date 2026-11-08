@@ -49,8 +49,8 @@ function nested(flat) {
 }
 
 /**
- * The fields a factory's bank form asks for, from Wise, labelled in English and
- * Chinese, both Wise's own words. Any failure answers `unavailable`, never an
+ * The fields a factory's bank form asks for, from Wise, labelled in Wise's own
+ * English words (the payout screens are one language each, Nov 7). Any failure answers `unavailable`, never an
  * error to show: the page then draws the snapshot it carries, so the form is
  * never blank.
  */
@@ -77,17 +77,13 @@ export default async function handler(request, response) {
     // what is already settled (legal type, country, and any select that said so).
     const seed = formFromRequirements(type, knownCountry);
     const settled = { ...(seed?.fixed ?? {}), ...(details && typeof details === "object" ? details : {}) };
-    const refined = (language) => wise(`/v1/quotes/${id}/account-requirements`, {
-      method: "POST", language, body: { type: type.type, details: nested(settled) },
+    const refined = await wise(`/v1/quotes/${id}/account-requirements`, {
+      method: "POST", language: "en", body: { type: type.type, details: nested(settled) },
     }, env);
-    const [english, chinese] = await Promise.all([refined("en"), refined("zh-CN").catch(() => [])]);
-    const form = formFromRequirements(english.find?.((item) => item.type === type.type) ?? type, knownCountry);
+    const form = formFromRequirements(refined.find?.((item) => item.type === type.type) ?? type, knownCountry);
     if (!form) return reply(response, 200, { unavailable: true });
-    const inChinese = formFromRequirements(chinese.find?.((item) => item.type === type.type), knownCountry);
-    const labels = Object.fromEntries((inChinese?.fields ?? []).map((field) => [field.key, field.label]));
     return reply(response, 200, {
       ...form,
-      fields: form.fields.map((field) => ({ ...field, labelZh: labels[field.key] })),
       currency: env.WISE_PAYOUT_CURRENCY,
       source: "wise",
     });
