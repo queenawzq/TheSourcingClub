@@ -111,7 +111,7 @@ export async function addPayoutMethod(stripe, accountId, { token, makeDefault })
     const options = await payoutBankOptions(stripe, account.country);
     const bank = details.bank_account;
     if (!bank || !options.currencies[bank.currency]?.includes(bank.country)) {
-      throw new PayoutMethodRefusal("Stripe does not support that bank country and currency for your company. Choose a supported combination.");
+      throw new PayoutMethodRefusal("That bank country and currency can't be used for your company. Choose a supported combination.");
     }
   }
   return stripe.accounts.createExternalAccount(accountId, {

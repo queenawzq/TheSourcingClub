@@ -87,7 +87,6 @@ export default async function handler(request, response) {
     if (!form) return reply(response, 200, { unavailable: true });
     return reply(response, 200, {
       ...form,
-      fields: form.fields.map((field) => ({ ...field, labelZh: labels[field.key] })),
       currency,
       source: "wise",
     });

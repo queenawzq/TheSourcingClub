@@ -41,7 +41,7 @@ export function sentenceFor(failure, fallback) {
   if (OUR_SETUP.has(failure?.type)) {
     return `Payments have a problem on TSC's side, so nothing changed. Email ${OPERATIONS} and we'll sort it out.`;
   }
-  if (OUTAGE.has(failure?.type)) return "Stripe can't be reached right now, so nothing changed. Try again in a few minutes.";
+  if (OUTAGE.has(failure?.type)) return "Payments can't be reached right now, so nothing changed. Try again in a few minutes.";
   return fallback;
 }
 

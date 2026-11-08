@@ -49,6 +49,6 @@ export default async function handler(request, response) {
     return reply(response, 200, payment);
   } catch (failure) {
     logStripeFailure("stripe-sync", failure);
-    return reply(response, 502, { error: sentenceFor(failure, "This payment could not be checked with Stripe just now. Reload the page in a few minutes.") });
+    return reply(response, 502, { error: sentenceFor(failure, "This payment could not be checked just now. Reload the page in a few minutes.") });
   }
 }
