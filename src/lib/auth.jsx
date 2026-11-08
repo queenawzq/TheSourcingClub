@@ -221,11 +221,16 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    } = supabase.auth.onAuthStateChange((event, nextSession) => {
       // supabase-js tells every tab on the site about every sign-in, sign-out
       // and refresh. A tab signed in without "Keep me logged in" holds its
       // own session, and must not turn into whoever signed in next door.
       if (!isThisTabsSession(nextSession)) return;
+      // Signed out, here or next door: this tab now holds nobody, and stays
+      // that way until it signs in itself. Left on the shared store, whoever
+      // signs up in another tab next became this tab too, with its old screen
+      // still drawn and its answers saved on the new company (Nov 8).
+      if (event === "SIGNED_OUT") setKeepSignedIn(false);
       if (!nextSession) {
         closeCallWindowsForSignOut();
         keepPortalInAddress(orgsRef.current, activeOrgIdRef.current);
