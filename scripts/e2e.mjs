@@ -3229,7 +3229,9 @@ async function main() {
         suggested = await suggestion();
       }
       console.log(`  Suggestion: ${suggested.error || suggested.notice || `${suggested.text.trim().length} characters`}`);
-      const aiDraft = suggested.text.trim().length > 40 && !suggested.notice;
+      // A draft from the model may still say which open checks it left out: those
+      // a company under review cannot act on (suggest-review-request.js).
+      const aiDraft = suggested.text.trim().length > 40 && (!suggested.notice || /^Not asked:/.test(suggested.notice));
       const fromChecks = suggested.text.trim().length > 40 && /not set up on this site/i.test(suggested.notice);
       if (aiMode === "on") check(aiDraft, `with a key, the AI suggests the message (${suggested.text.trim().length} characters)`);
       else if (aiMode === "off") check(fromChecks, `without a key, the note is built from the checks and the dialog says why ("${suggested.notice || suggested.error}")`);
