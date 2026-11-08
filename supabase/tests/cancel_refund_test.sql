@@ -164,9 +164,11 @@ select is(
   1::bigint,
   'a refused refund is due again (the daily job tries again)'
 );
+insert into p81 (name, id)
+select 'reclaim:' || (public.claim_cancellation_refund((select id from p81 where name = 'held')) ->> 'key'), null;
 select ok(
-  (public.claim_cancellation_refund((select id from p81 where name = 'held')) ->> 'key')
-    = format('cancel-refund-%s-%s', (select id from p81 where name = 'held'),
+  (select name from p81 where name like 'reclaim:%')
+    = 'reclaim:' || format('cancel-refund-%s-%s', (select id from p81 where name = 'held'),
              (select extract(epoch from refund_claimed_at)::bigint from public.order_payments
                where id = (select id from p81 where name = 'held'))),
   'the next claim''s key carries its own claim time, so Stripe never replays the refusal'
