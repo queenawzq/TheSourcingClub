@@ -1227,8 +1227,20 @@ const poplin = await runningOrder({ title: poplinTitle, brief: "160 organic popl
 const poplinFit = await dueNow(poplin, poplinTitle);
 await funded(poplinFit, CARD);
 await approveOpenStep(poplin, poplinTitle);
+// Historical completed payout: predates owner-requested withdrawals.
+must(await admin.from("order_payments").update({ withdrawal_required: false }).eq("id", poplinFit.id), "legacy paid fixture");
 must(await adminUser.client.rpc("release_payment_to_factory", { target_payment: poplinFit.id, note: "Wire ref DEMO-1001" }), "release the fit sample");
 await fundedByStripe(await dueNow(poplin, poplinTitle), CARD);
+// Demo Factory has two destinations for its approved deposit. These are
+// demo addresses/details only; a local test never calls live payout providers.
+must(await factory.client.from("factory_payout_accounts").insert({
+  org_id: factoryOrg.id, method: "paypal", paypal_email: "factory-withdrawal@example.com", is_primary: true,
+}), "factory withdrawal PayPal destination");
+must(await factory.client.rpc("save_wise_payout_account", {
+  target_org: factoryOrg.id, bank_name: "Demo USD Bank", recipient_type: "aba", currency: "USD",
+  details: { accountHolderName: LOGINS.factory.name, legalType: "BUSINESS", abartn: "021000021", accountType: "CHECKING" },
+  number_key: "accountNumber", account_number: "0000000000001234", account_number_again: "0000000000001234",
+}), "factory withdrawal Wise destination");
 // 2. Fit sample funded by card and held while the factory works ("Funded").
 const twillTitle = "Cotton twill overshirt, AW27";
 const twill = await runningOrder({ title: twillTitle, brief: "140 cotton twill overshirts, garment-dyed.", quantity: 140, unitPrice: 2900 });
@@ -1297,6 +1309,7 @@ const hopsack = await runningOrder({
 const hopsackFit = await dueNow(hopsack, hopsackTitle);
 await funded(hopsackFit, CARD);
 await approveOpenStep(hopsack, hopsackTitle, tradingCompany);
+must(await admin.from("order_payments").update({ withdrawal_required: false }).eq("id", hopsackFit.id), "legacy blazer payout fixture");
 must(await adminUser.client.rpc("release_payment_to_factory", {
   target_payment: hopsackFit.id, note: "DEMO-20260001",
 }), "mark the blazer's fit sample paid");

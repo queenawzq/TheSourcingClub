@@ -109,6 +109,30 @@ export default async function handler(request, response) {
         if (!purchase) console.error("stripe-webhook: no payment for this refunded charge", event.id, event.data.object.id);
         break;
       }
+      case "payout.paid":
+      case "payout.failed":
+      case "payout.canceled": {
+        const payout = event.data.object;
+        const id = payout.metadata?.factory_withdrawal_id;
+        if (/^[0-9a-f-]{36}$/i.test(id ?? "") && event.account) {
+          const known = await db.from("stripe_connect_accounts").select("org_id").eq("stripe_account_id", event.account).maybeSingle();
+          if (known.error) throw new Error(known.error.message);
+          if (known.data) {
+            // Read current status, rather than letting an older webhook move a
+            // failed payout back to paid. Match company, payout and request.
+            const current = await stripe.payouts.retrieve(payout.id, { stripeAccount: event.account });
+            const request = await db.from("factory_withdrawals").select("amount_cents,stripe_method_id,stripe_payout_id").eq("id",id).eq("org_id",known.data.org_id).eq("provider","stripe").maybeSingle();
+            if (request.error) throw new Error(request.error.message);
+            const destination = typeof current.destination === "string" ? current.destination : current.destination?.id;
+            if (!request.data || Number(request.data.amount_cents)!==current.amount || request.data.stripe_method_id!==destination
+              || (request.data.stripe_payout_id && request.data.stripe_payout_id!==payout.id)) break;
+            const saved = await db.from("factory_withdrawals").update({ status: current.status === "paid" ? "paid" : "processing", stripe_payout_id: payout.id })
+              .eq("id", id).eq("org_id", known.data.org_id).eq("provider", "stripe");
+            if (saved.error) throw new Error(saved.error.message);
+          }
+        }
+        break;
+      }
       case "account.updated": {
         const account = event.data.object;
         const { data: known, error: knownError } = await db

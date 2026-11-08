@@ -59,6 +59,9 @@ insert into public.factory_payout_accounts
 values ('78a10000-0000-0000-0000-000000000001', '78b00000-0000-0000-0000-0000000000f1', 'bank', 'Demo Bank', 'P78 MILL LTD', '1234', 'BOSHCNSH', 'CN', true,
         'chinese_local_business', 'CNY', 'accountNumber', '{"accountHolderName":"P78 MILL LTD"}', '2026-11-01 00:00:00+00');
 
+-- Legacy already-owed payments retain the pre-withdrawal reconciliation paths.
+update public.order_payments set withdrawal_required=false where id::text like '78f00000-%';
+
 set local session_replication_role = origin;
 
 create function pg_temp.act_as(who int) returns void language sql as $f$

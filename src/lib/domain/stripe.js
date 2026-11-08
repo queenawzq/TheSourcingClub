@@ -102,3 +102,6 @@ export async function connectAccountFor(orgId) {
   if (error) throw new Error(`Could not load your Stripe payout account: ${error.message}`);
   return data;
 }
+
+/** Owner-selected withdrawals from earnings still held by TSC. */
+export const factoryWithdrawal = (orgId, action, extra = {}) => call("factory-withdrawal", { orgId, action, ...extra });

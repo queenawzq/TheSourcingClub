@@ -1,3 +1,8 @@
+import { resumeWithdrawals } from './_factory-withdrawals.js';
+import { stripeFrom } from './_stripe.js';
+import { paypalFrom } from './_paypal.js';
+import { wiseFrom } from './_wise.js';
+export const maxDuration = 60;
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { emailTransport, sendDueNotificationEmails, serviceClient } from "./_notification-sender.js";
@@ -17,7 +22,7 @@ import { sendResubmissionAlerts, sendReviewDecisionEmails } from "./_review-deci
  */
 
 // Leaves room under Vercel's function time limit.
-const DRAIN_BUDGET_MS = 40_000;
+const DRAIN_BUDGET_MS = 20_000;
 
 async function isStaff(authorization, supabaseUrl, anonKey) {
   if (!authorization.startsWith("Bearer ")) return false;
@@ -49,6 +54,13 @@ export default async function handler(request, response) {
   }
 
   const service = serviceClient(supabaseUrl, serviceKey);
+  // Only resume destinations explicitly requested by a factory owner.
+  try {
+    let paypal, wise;
+    try { paypal = paypalFrom(); } catch {}
+    try { wise = wiseFrom(); } catch {}
+    await resumeWithdrawals({ db: service, stripe: stripeFrom(), paypal, wise });
+  } catch { /* A payment failure must not suppress reminders and emails. */ }
   const { data: reminders, error: runError } = await service.rpc("run_daily_notifications");
   if (runError) {
     response.status(500).json({ error: "the daily reminders could not be written" });
