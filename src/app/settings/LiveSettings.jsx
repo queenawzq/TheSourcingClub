@@ -128,38 +128,41 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
       loadCards();
 
       if (isFactory) {
-        const [connectAccount, manualAccounts] = await Promise.all([
+        const [connectAccount, manualAccounts, preference] = await Promise.all([
           connectAccountFor(org.id).catch(() => null),
           payouts.load().catch(() => []),
+          supabase.from("factory_payout_preferences").select("route").eq("org_id", org.id).maybeSingle(),
         ]);
+        if (preference.error) throw new Error("Could not load the default withdrawal method. Try again.");
+        const stripeDefault = preference.data?.route !== "manual" && connectAccount?.transfers_active;
+        let stripeMethods = [];
         if (connectAccount?.transfers_active) {
           const balance = await connectAction(org.id, "balance").catch(() => null);
           const connected = balance?.methods ?? [];
-          setPayoutMethods(connected.length ? connected.map((method) => ({
+          stripeMethods = connected.length ? connected.map((method) => ({
             id: method.id,
-            label: method.default ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Debit card" : "Bank account",
+            label: method.default && stripeDefault ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Debit card" : "Bank account",
             // The words Payments uses for this account; never a bank name as Stripe holds it.
             name: `${method.type === "card" ? "Debit card" : "Bank"}${method.last4 ? ` ····${method.last4}` : ""}`,
             note: [method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
-          })) : [{ label: "Connected", name: "Withdrawal account" }]);
-        } else {
-          setPayoutMethods(manualAccounts.map((account) => (account.method === "payoneer" ? {
+          })) : [{ label: stripeDefault ? "Default" : "Connected", name: "Withdrawal account" }];
+        }
+          setPayoutMethods([...stripeMethods, ...manualAccounts.map((account) => (account.method === "payoneer" ? {
             id: account.id,
-            label: account.is_primary ? "Default" : "Payoneer",
+            label: account.is_primary && !stripeDefault ? "Default" : "Payoneer",
             name: "Payoneer",
             note: account.payoneer_email,
           } : account.method === "paypal" ? {
             id: account.id,
-            label: account.is_primary ? "Default" : "PayPal",
+            label: account.is_primary && !stripeDefault ? "Default" : "PayPal",
             name: "PayPal",
             note: account.paypal_email,
           } : {
             id: account.id,
-            label: account.is_primary ? "Default" : "Bank account",
+            label: account.is_primary && !stripeDefault ? "Default" : "Bank account",
             name: `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}`,
             note: account.number_changed_at ? "" : "Add the full account number",
-          })));
-        }
+          }))]);
       }
     } catch (failure) {
       setError(failure);
