@@ -87,15 +87,13 @@ export function isNoAnswer(error) {
 /**
  * Which languages to say it in, most useful first.
  *
- * A vendor's page in Chinese reads Chinese. A vendor on the English page whose
- * browser is in Chinese reads both, because nothing on app.html offers a
- * language: someone arriving from a link gets English whatever they speak,
- * and that is who saw "Failed to fetch". Brands and staff read the page's.
+ * The page's language, and only that one (Queena, Nov 7: one language per
+ * screen). A vendor's page in Chinese reads Chinese; every other page English,
+ * whatever the browser speaks.
  */
-export function authLanguages({ factory, zhPage, browserLanguages = [] }) {
+export function authLanguages({ factory, zhPage }) {
   if (!factory) return ["en"];
-  if (zhPage) return ["zh"];
-  return browserLanguages.some((language) => /^zh\b/i.test(language)) ? ["en", "zh"] : ["en"];
+  return zhPage ? ["zh"] : ["en"];
 }
 
 /** The sentences for this error, one per language, or null if it has no kind. */

@@ -300,3 +300,33 @@
 
 .payout-modal-refusal { flex: 1 1 100%; margin: 0 0 8px; }
 .payout-modal-actions:has(.payout-modal-refusal) { flex-wrap: wrap; }
+
+/* Withdrawal choices: a quiet, divided list with setup actions at the right. */
+.brand-profile-modal.payout-options-modal { gap: 8px; width: min(960px, calc(100vw - 40px)); border-radius: var(--card-radius, 8px); }
+.payout-options-modal .payout-modal-header { padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+.payout-options-modal .payout-modal-header h2 { font-size: 24px; line-height: 32px; }
+.payout-options-modal .payout-modal-body { gap: 24px; padding-top: 8px; }
+.payout-options-modal .payout-country-field { width: min(100%, 280px); }
+.payout-options-modal .payout-country-field select { height: 42px; padding-right: 44px; border-radius: 8px; appearance: none; background: #fff url("/assets/prototype-icons/dropdown.svg") no-repeat calc(100% - 14px) center / 16px 16px; }
+.payout-options-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; }
+.payout-options-section { min-width: 0; }
+.payout-options-section + .payout-options-section { padding-left: 28px; border-left: 1px solid var(--border); }
+.payout-options-modal .payout-recommended { margin-bottom: 6px; font-size: 16px; line-height: 24px; }
+.payout-options-modal .payout-method-options { overflow: visible; border: 0; border-radius: 0; }
+.payout-options-modal .payout-method-option { grid-template-columns: 32px minmax(0, 1fr) auto; gap: 12px; align-items: start; min-height: 0; padding: 16px 0; background: #fff; }
+.payout-options-modal .payout-option-icon { width: 32px; height: 34px; border: 0; border-radius: 0; background: transparent; color: var(--text-muted); }
+.payout-options-modal .payout-option-title strong { font-size: 14px; line-height: 20px; }
+.payout-options-modal .payout-option-copy { gap: 12px; }
+.payout-options-modal .payout-option-copy ul { margin: 0; padding-left: 15px; color: var(--text-muted); font-size: 12px; line-height: 19px; }
+.payout-options-modal .payout-option-copy li + li { margin-top: 8px; }
+.payout-options-modal .payout-method-option > button { white-space: nowrap; }
+.payout-options-modal .payout-back { margin-top: 0; }
+@media (max-width: 820px) {
+  .payout-options-columns { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .payout-options-section + .payout-options-section { padding-left: 0; padding-top: 12px; border-left: 0; border-top: 1px solid var(--border); }
+}
+@media (max-width: 760px) {
+  .payout-options-modal .payout-method-option { grid-template-columns: 32px minmax(0, 1fr); }
+  .payout-options-modal .payout-method-option > button { grid-column: 2; }
+}
+.payout-options-modal .payout-option-provider { color: var(--text-muted); font-size: 12px; font-weight: 500; line-height: 18px; }

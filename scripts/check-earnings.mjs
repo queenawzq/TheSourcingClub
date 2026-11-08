@@ -104,7 +104,7 @@ assert.equal(usd(handPaidFigures([{ ...unfunded[0], provider_payouts: [attempt("
 const named = [pay("named", 500, "confirmed", { ...APPROVED, provider_payouts: [attempt("n", "failed", { failure_code: "details_rejected", amount_cents: 500, asked_to_check: "Check your SWIFT code" })] })];
 assert.equal(withdrawalRows(named)[0].note, "Check your SWIFT code");
 assert.equal(withdrawalProblem(named)?.line, "A withdrawal failed. Check your SWIFT code.");
-assert.equal(withdrawalProblem(named)?.zh, "提现失败，请检查您的提现信息。", "a reader in China reads it in both languages");
+assert.equal(withdrawalProblem(named)?.zh, undefined, "one language: the factory's screens are English");
 assert.equal(withdrawalRows(named, { details_changed_at: "2026-11-05T00:00:00Z" })[0].note, null, "fixed since: the row stops asking, and stays failed");
 assert.equal(withdrawalRows(named, { details_changed_at: "2026-11-05T00:00:00Z" })[0].failed, true);
 const moneyFigures = handPaidFigures(money);
@@ -153,11 +153,12 @@ for (const rule of [
 const card = readFileSync(new URL("../src/app/order/StripePayoutCard.jsx", import.meta.url), "utf8");
 assert.ok(!/"By Payoneer"|"By bank transfer"/.test(card), "the card's headline is the balance");
 
-// Queena: a factory never reads Stripe, "by hand" or an upgrade it did not ask for.
+// Provider internals stay hidden, except the requested bank-option attribution.
 for (const file of ["StripePayoutCard.jsx", "PayoutDetails.jsx", "PayoutSetupSteps.jsx", "AddPayoutMethodForm.jsx", "payment-summary.mjs"]) {
   const code = readFileSync(new URL(`../src/app/order/${file}`, import.meta.url), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
   for (const [, text] of code.matchAll(/(?:>|["'`])([^<>"'`{}]*\b(?:Stripe|by hand|Upgrade payout)\b[^<>"'`{}]*)(?:<|["'`])/g)) {
+    if (file === "StripePayoutCard.jsx" && text === "(Processed with Stripe)") continue;
     assert.ok(/^(?:[./\w@-]+|\s*)$/.test(text) && !/\s/.test(text.trim()), `${file} says "${text.trim()}" to a factory`);
   }
 }
