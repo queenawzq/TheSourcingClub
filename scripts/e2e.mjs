@@ -2259,7 +2259,7 @@ async function main() {
         const beforeFunding = await page.locator(".before-funding").innerText();
         check((await page.locator('.before-funding input[type="checkbox"]').count()) === 1, "Fund asks for one tick, not two");
         check(beforeFunding.includes(fundingStep.kind === "payment_only"
-          ? `I understand TSC pays this step to ${factoryName} once it is funded.`
+          ? `I understand this goes to ${factoryName} once it is funded.`
           : "I understand funds are released after I approve this step."), `and it says where this step's money goes (${beforeFunding.replace(/\s+/g, " ")})`);
         check(await page.evaluate(() => document.querySelector('.before-funding input[type="checkbox"]')?.checked === false
           && document.querySelector(".bottom-bar .primary-btn")?.disabled === true), "it starts unticked, with the pay button greyed");
@@ -4048,9 +4048,10 @@ async function main() {
     check(paymentFigures.held === figure("confirmed"), `Held is what TSC holds, fee included (${paymentFigures.held}, expected ${figure("confirmed")})`);
     check("due now" in paymentFigures && "remaining" in paymentFigures, "with Due now and Remaining beside them");
     check(!/Atelier Minho|Platform service fee|Amex|Visa ending/i.test(paymentsText), "none of the design's example payments, fees or cards");
-    // Discount codes can't be applied to a payment yet, so the tab bar is hidden.
-    check(!(await page.locator(".billing-page-shell .billing-tabs").first().isVisible()) && !/\$50 discount/.test(paymentsText),
-      "no Discounts tab while a code cannot be used, and not the design's $50 example");
+    // Discount codes can't be applied to a payment yet, but #103 restored the
+    // tab bar and whether it stays is waiting on Queena: this pins what is there now.
+    check(/Discounts/.test(await page.locator(".billing-page-shell .billing-tabs").first().innerText()) && !/\$50 discount/.test(paymentsText),
+      "the Discounts tab is shown (waiting on Queena), and not the design's $50 example");
     await page.evaluate(() => document.querySelector(".billing-row-link")?.click());
     await page.waitForTimeout(2500);
     // A transaction opens its own page; a due payment opens the Fund screen on its order.

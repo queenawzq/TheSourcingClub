@@ -28,11 +28,10 @@ const countryName = (code) => (code && code !== NOT_LISTED ? names.of(code) ?? c
 const OPERATIONS_EMAIL = "operations@contact.sourcing-club.com";
 
 /** A plain letter, not a provider's logo: using that needs their permission. */
-const LETTER_MARK = { payoneer: <strong>P</strong>, paypal: <strong>P</strong> };
+const LETTER_MARK = { paypal: <strong>P</strong> };
 
-const isPayoneer = (row) => row?.method === "payoneer";
 const isPaypal = (row) => row?.method === "paypal";
-const manualComplete = (row) => isPayoneer(row) || isPaypal(row) || Boolean(row?.bank_name?.trim() && row?.account_name?.trim() && row?.number_changed_at);
+const manualComplete = (row) => isPaypal(row) || Boolean(row?.bank_name?.trim() && row?.account_name?.trim() && row?.number_changed_at);
 const BANK_ICON = <svg viewBox="0 0 24 24"><path d="M3 9h18M5 9v8m4-8v8m6-8v8m4-8v8M3 18h18M12 3l9 4H3l9-4Z" /></svg>;
 
 /** The words for the list of withdrawal methods. The factory's screens are English, so these are too. */
@@ -959,17 +958,16 @@ export default function StripePayoutCard({
                 <div className="payout-bank-icon" aria-hidden="true">
                   {LETTER_MARK[row.method] ?? BANK_ICON}
                 </div>
-                <div className="payout-method-name">{isPayoneer(row)
-                  ? <><strong>Payoneer</strong><span>{row.payoneer_email}</span></>
-                  : isPaypal(row) ? <><strong>PayPal</strong><span>{row.paypal_email}</span></>
+                <div className="payout-method-name">{isPaypal(row)
+                  ? <><strong>PayPal</strong><span>{row.paypal_email}</span></>
                   : <><strong>{manualLabel(row)}</strong><span>{row.number_changed_at ? row.bank_name : "Add your full account number."}</span></>}</div>
                 {row.is_primary && payoutRoute === "manual" ? <span className="payout-method-default">Default</span> : null}
                 <div className="payout-method-menu">
                   <button className="rfq-more payout-more-button" type="button" aria-label={`More actions for ${manualLabel(row)}`} aria-expanded={methodMenu === row.id} disabled={manualBusy} onClick={() => setMethodMenu((open) => open === row.id ? null : row.id)}>...</button>
                   {methodMenu === row.id ? (
                     <div className="payout-method-popover" role="menu">
-                      {isPayoneer(row) ? null : <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); openManual(row); }}>{cardWords.edit}</button>}
-                      {!isPayoneer(row) && (!row.is_primary || payoutRoute !== "manual") ? <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); makePrimary(row); }}>{cardWords.makeDefault}</button> : null}
+                      <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); openManual(row); }}>{cardWords.edit}</button>
+                      {!row.is_primary || payoutRoute !== "manual" ? <button type="button" role="menuitem" onClick={() => { setMethodMenu(null); makePrimary(row); }}>{cardWords.makeDefault}</button> : null}
                       <button className="danger" type="button" role="menuitem" onClick={() => { setMethodMenu(null); setRemovingManual(row); setPromoteId(null); setRemoveError(null); setModal("remove"); }}>{cardWords.remove}</button>
                     </div>
                   ) : null}

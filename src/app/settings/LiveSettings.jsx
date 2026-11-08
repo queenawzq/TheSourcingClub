@@ -147,12 +147,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
             note: [method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
           })) : [{ label: stripeDefault ? "Default" : "Connected", name: "Withdrawal account" }];
         }
-          setPayoutMethods([...stripeMethods, ...manualAccounts.map((account) => (account.method === "payoneer" ? {
-            id: account.id,
-            label: account.is_primary && !stripeDefault ? "Default" : "Payoneer",
-            name: "Payoneer",
-            note: account.payoneer_email,
-          } : account.method === "paypal" ? {
+          setPayoutMethods([...stripeMethods, ...manualAccounts.map((account) => (account.method === "paypal" ? {
             id: account.id,
             label: account.is_primary && !stripeDefault ? "Default" : "PayPal",
             name: "PayPal",

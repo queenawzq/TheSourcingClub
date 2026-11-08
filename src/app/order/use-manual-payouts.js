@@ -2,8 +2,7 @@
  * A factory's payout methods where Stripe cannot pay out (mainland China, Hong
  * Kong…), in factory_payout_accounts. The one marked is_primary is "the one TSC
  * pays": a bank account (through Wise when it was set up on Wise's form, by
- * staff otherwise) or a PayPal address. A Payoneer row from before stays until
- * its owner removes it; a new one cannot be added.
+ * staff otherwise) or a PayPal address.
  *
  * A factory may keep more than one (John, 2026-10-29): Add always saves a new
  * row, never overwriting another; the first one saved is the one TSC pays,
@@ -18,7 +17,7 @@ import { supabase, unwrap } from "../../lib/supabase.js";
 import { payoutRemovalError } from "./StripePayoutCard.jsx";
 import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
-const COLUMNS = "id, is_primary, method, payoneer_email, paypal_email, wise_recipient_type, wise_details, details_changed_at, bank_name, account_name, account_number_last4, number_changed_at, swift, branch, bank_country, instructions, created_at";
+const COLUMNS = "id, is_primary, method, paypal_email, wise_recipient_type, wise_details, details_changed_at, bank_name, account_name, account_number_last4, number_changed_at, swift, branch, bank_country, instructions, created_at";
 
 // The database's refusals, in the owner's words. No raise there carries a value.
 const SAVE_REFUSALS = {
