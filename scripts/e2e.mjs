@@ -1027,8 +1027,7 @@ async function main() {
     await page.locator(".admin-registry-form select").first().selectOption("certidao");
     await page.locator(".admin-registry-form:not(.admin-registry-duplicate-form) textarea").fill("E2E: certificate shows this NIPC and the company's name");
     await clickButton(page, "record check");
-    await page.waitForTimeout(2500);
-    check(Boolean(await page.evaluate(() => document.querySelector(".admin-registry")?.innerText.includes("E2E: certificate shows"))),
+    check(await within(page, () => page.evaluate(() => document.querySelector(".admin-registry")?.innerText.includes("E2E: certificate shows") || null), 20000) !== null,
       "the registry check is recorded on the review page");
     await clickButton(page, "approve as basic");
     await page.waitForTimeout(4000);
