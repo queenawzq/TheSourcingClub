@@ -158,12 +158,12 @@ export function PayoutModal({ children, title, onClose, actions, wide = false, c
 }
 
 /** Presentation only; the live payout flow owns every setup action. */
-export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal }) {
+export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal, stripeOnly = false, onCard }) {
   const words = LIST_WORDS;
   return <>
             <label className="payout-country-field">
               <span>{words.country}</span>
-              <select data-field="payout_country" value={country} onChange={(event) => onCountryChange(event.target.value)}>
+              <select data-field="payout_country" value={country} disabled={stripeOnly} onChange={(event) => onCountryChange(event.target.value)}>
                 <option value="" />
                 {COUNTRIES.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}
                 <option value={NOT_LISTED}>Other / not listed</option>
@@ -177,7 +177,7 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
                 <article className="payout-method-option">
                   <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
                   <div className="payout-option-copy"><div className="payout-option-title"><strong>{supported ? "Bank account" : words.bank}</strong>{supported ? <small className="payout-option-provider" data-testid="payout-stripe-note">(Processed with Stripe)</small> : null}</div><ul><li>{supported ? "Usually 1–4 business days after withdrawal" : notListed ? "Arrival time depends on your bank and transfer route" : country === "US" ? "USD bank transfers: usually 0–3 business days after processing" : country === "CN" ? "After processing: CNY usually 1–2 business days; USD wire usually 1–6 business days" : "Arrival time depends on currency and transfer route"}</li><li>{supported ? "$0 TSC withdrawal fee; bank or currency-conversion fees may apply" : notListed ? "Transfer charges vary; receiving and intermediary banks may also charge fees" : "Transfer fee varies by amount and currency and is deducted from the payout; bank fees may also apply"}</li></ul></div>
-                  <button className="primary-btn compact-btn" type="button" data-testid="payout-set-up-bank" disabled={busy}
+                  <button className="primary-btn compact-btn" type="button" data-testid={stripeOnly ? "add-bank-account" : "payout-set-up-bank"} disabled={busy}
                           onClick={onBank}>{words.setUp}</button>
                 </article>
               </div>
@@ -185,7 +185,7 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
               <section className="payout-options-section">
               <h3 className="payout-recommended">Also available</h3>
               <div className="payout-method-options" role="group" aria-label="Also available">
-                {supported ? (
+                {supported && !stripeOnly ? (
                   <article className="payout-method-option">
                     <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
                     <div className="payout-option-copy"><div className="payout-option-title"><strong>{words.bank}</strong></div><ul><li>{country === "US" ? "USD bank transfers: usually 0–3 business days after processing" : country === "CN" ? "After processing: CNY usually 1–2 business days; USD wire usually 1–6 business days" : "Arrival time depends on currency and transfer route"}</li><li>Transfer fee varies by amount and currency and is deducted from the payout; bank fees may also apply</li></ul></div>
@@ -193,12 +193,18 @@ export function PayoutOptions({ country, onCountryChange, supported, notListed, 
                             onClick={onWise}>{words.setUp}</button>
                   </article>
                 ) : null}
-                <article className="payout-method-option">
+                {!stripeOnly ? <article className="payout-method-option">
                   <div className="payout-option-icon payout-bank-icon" aria-hidden="true"><img src="/assets/paypal-mark.jpg" alt="" width="32" height="20" /></div>
                   <div className="payout-option-copy"><div className="payout-option-title"><strong>PayPal</strong></div><ul><li>{country === "US" ? "Bank withdrawal from PayPal: usually 1–3 business days" : country === "CN" ? "USD bank withdrawal from PayPal to China: usually 3–7 business days" : "Bank-withdrawal time varies by country and bank"}</li><li>No fee to receive the payout; bank-withdrawal and currency-conversion fees may apply. PayPal shows the charge before you withdraw.</li></ul></div>
                   <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-paypal" disabled={busy}
                           onClick={onPaypal}>{words.setUp}</button>
-                </article>
+                </article> : <article className="payout-method-option">
+                  <div className="payout-option-icon payout-card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h4" /></svg>
+                  </div>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>Debit card</strong></div><ul><li>Arrival time depends on your card and available payout options</li><li>Availability and any fees are confirmed during setup</li></ul></div>
+                  <button className="secondary-btn compact-btn" type="button" data-testid="add-payout-card" disabled={busy} onClick={onCard}>{words.setUp}</button>
+                </article>}
               </div>
               </section>
               </div>
@@ -910,22 +916,8 @@ export default function StripePayoutCard({
       ) : null}
 
       {modal === "add" ? (
-        <PayoutModal title="Add a withdrawal method" onClose={closeModal}>
-          <p className="payout-modal-intro">Choose where released earnings are sent.</p>
-          <div className="payout-method-options">
-            <article className="payout-method-option">
-              <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-              <div className="payout-option-copy"><div className="payout-option-title"><strong>Bank account</strong></div><p>Standard payouts directly to your bank. Timing and availability depend on your country.</p></div>
-              <button className="primary-btn compact-btn" type="button" data-testid="add-bank-account" disabled={busy} onClick={() => startAdd("bank")}>Set up</button>
-            </article>
-            <article className="payout-method-option">
-              <div className="payout-option-icon payout-card-icon" aria-hidden="true">
-                <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h4" /></svg>
-              </div>
-              <div className="payout-option-copy"><div className="payout-option-title"><strong>Debit card</strong></div><p>Receive eligible payouts on a supported debit card. Stripe confirms availability, timing, and fees.</p></div>
-              <button className="secondary-btn compact-btn" type="button" data-testid="add-payout-card" disabled={busy} onClick={() => startAdd("card")}>Set up</button>
-            </article>
-          </div>
+        <PayoutModal title="Add a withdrawal method" onClose={closeModal} className="payout-options-modal">
+          <PayoutOptions country={account?.country || country} supported notListed={false} stripeOnly busy={busy} onBank={() => startAdd("bank")} onCard={() => startAdd("card")} />
           {removeError ? <p className="live-stripe-error" role="alert">{removeError.message}</p> : null}
           <button className="secondary-btn compact-btn payout-back" type="button" onClick={() => setModal("manage")}>Back</button>
         </PayoutModal>
