@@ -15,7 +15,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(25);
+select plan(26);
 
 insert into auth.users (id, email, raw_user_meta_data) values
   ('8c000000-0000-0000-0000-000000000001', 'p81-brand@example.com',   '{"name":"Brand Owner"}'),
@@ -158,6 +158,13 @@ select ok(
   (select refund_failed_at is not null and refund_failure = 'Stripe refused the refund.' and refund_claimed_at is null
      from public.order_payments where id = (select id from p81 where name = 'held')),
   'the refusal and its reason are recorded, and the claim is let go'
+);
+select public.record_cancellation_refund_failed((select id from p81 where name = 'held'), 'Stripe refused the refund.');
+select is(
+  (select count(*) from public.payment_events
+    where payment_id = (select id from p81 where name = 'held') and note like 'Refund to the brand failed%'),
+  1::bigint,
+  'the same failure said twice (refund.failed, charge.refund.updated) is written once'
 );
 select is(
   (select count(*) from public.cancellation_refunds_due((select id from p81 where name = 'order'))),

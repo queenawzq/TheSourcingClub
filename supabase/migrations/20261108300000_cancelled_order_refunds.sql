@@ -138,6 +138,12 @@ begin
   end if;
   was := p.state;
 
+  -- Already recorded (refund.failed and charge.refund.updated both say it).
+  if was = 'confirmed' and p.refund_failed_at is not null and p.refund_claimed_at is null
+     and p.refund_failure is not distinct from why then
+    return p;
+  end if;
+
   -- A refund that Stripe later says failed puts the money back as held.
   if was = 'cancelled' and p.refunded_at is not null and p.stripe_payment_intent_id is not null then
     update public.order_payments
