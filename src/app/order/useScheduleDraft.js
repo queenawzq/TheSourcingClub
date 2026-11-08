@@ -58,7 +58,10 @@ export function useScheduleDraft({ order, milestones, reload, onFund }) {
   const dirty = linesOf(rows) !== savedLines;
   const problem = scheduleProblem(rows);
 
-  const hint = dirty ? "Unsaved changes" : savedOnce ? "Saved" : "";
+  const factory = order.factory?.name || "The factory";
+  const hint = dirty
+    ? `Unsaved changes. Save them to show ${factory}, or continue: continuing saves them first.`
+    : `${savedOnce ? "Saved. " : ""}${factory} sees these steps and is told of every change. Continue to confirm them and start the order.`;
 
   async function saveRows() {
     sentLines.current = linesOf(rows);

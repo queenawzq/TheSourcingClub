@@ -142,6 +142,7 @@ console.log("\ndemo logins");
 const brand = await demoUser(LOGINS.brand);
 const factory = await demoUser(LOGINS.factory);
 const secondFactory = await demoUser(LOGINS.secondFactory);
+const pendingBrand = await demoUser(LOGINS.pendingBrand);
 const newFactory = await demoUser(LOGINS.newFactory);
 const returnedFactory = await demoUser(LOGINS.returnedFactory);
 const newBrand = await demoUser(LOGINS.newBrand);
@@ -153,7 +154,7 @@ const factoryMember = await demoUser(LOGINS.factoryMember);
 const otherDomainFactory = await demoUser(LOGINS.otherDomainFactory);
 const chinaNewFactory = await demoUser(LOGINS.chinaNewFactory);
 const switcher = await demoUser(LOGINS.switcher);
-const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
+const demoUsers = { switcher, brand, brandMember, factory, factoryMember, secondFactory, pendingBrand, newFactory, returnedFactory, newBrand, secondBrand, tradingCompany, otherDomainFactory, chinaNewFactory, admin: adminUser };
 // Every login in the shared list gets a sign-in button on the test sites, so
 // one with no setup here would be a button that fails.
 const unseeded = Object.keys(LOGINS).filter((key) => !demoUsers[key]);
@@ -471,8 +472,17 @@ for (const [file, name, caption] of [
   }), `record ${name}`);
 }
 
-// A factory that finished onboarding and waits for a decision: the admin
-// console's verification queue has it, and its own login sees "in review".
+// The brand's actual pending finish card: its verification explanation must
+// survive the live completion adapter, as the factory's does.
+const pendingBrandOrg = must(await pendingBrand.client.rpc("create_org", { org_name: LOGINS.pendingBrand.name, org_kind: "brand" }), "create pending brand org");
+must(await admin.from("brand_profiles").upsert({
+  org_id: pendingBrandOrg.id,
+  hq_location: "London, UK",
+  onboarding_completed_at: new Date().toISOString(),
+  verification_status: "pending",
+}), "pending brand profile");
+
+// A factory waiting for a decision, for the same finish-card check.
 const newFactoryOrg = must(await newFactory.client.rpc("create_org", { org_name: LOGINS.newFactory.name, org_kind: "factory" }), "create new factory org");
 // It also carries what a reviewer (and the admin's AI suggestions) should
 // notice: a legal name that is not the company's, a website on another
@@ -1418,6 +1428,7 @@ done. Every login uses the password "${PASSWORD}".
   factory         ${LOGINS.factory.email}   ${app}?portal=factory
   factory member  ${LOGINS.factoryMember.email}   (Demo Factory, Add update only)
   second factory  ${LOGINS.secondFactory.email}   (a competing quote)
+  pending brand   ${LOGINS.pendingBrand.email}   (waiting for verification)
   new factory     ${LOGINS.newFactory.email}   (waiting for verification)
   returned factory ${LOGINS.returnedFactory.email}   (asked for more information, a long note)
   new brand       ${LOGINS.newBrand.email}   (no requests yet: recommended factories)

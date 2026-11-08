@@ -696,16 +696,15 @@ Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
   security has its own "Change password", open to every member whatever their
   permissions: the current password is checked by signing in again, because
   `secure_password_change` is off.
-- **A missing permission greys the action out, with the permission in its hover
-  text and no sentence** (Queena, Nov 4 and 5; a phone gets no reason, which she
-  accepted). Whole flows a person may not use (the composer, the quote form) say
-  "Not available to you" instead of drawing a form full of disabled inputs, and a
-  read-only form that looks editable keeps its sentence (Settings → Basic
-  information).
+- **A missing permission greys the action out and explains what is needed.**
+  Keep the permission in hover text and in visible helper text where a person
+  must understand why they cannot continue, including on a phone. Whole flows
+  a person may not use still gate access rather than drawing an editable form.
+
 
 ### Explanatory copy in the live app
 
-Keep the designed introductions, field guidance, reminders, empty-state instructions and payment/cancellation explanations visible in the live app. The Nov 8 restoration supersedes the earlier Nov 6 copy-trimming rule. `src/app/live-quiet.css` now holds layout adjustments and empty-content rules, not selectors that suppress explanatory copy. Keep payment explanations accurate for the current provider, state and permissions. Generated step descriptions remain user-authored (`20261107400000`); don't fill them with boilerplate. Discount controls remain unavailable until codes can be applied.
+Keep the designed introductions, field guidance, reminders, empty-state instructions and payment/cancellation explanations visible in the live app. The Nov 8 restoration supersedes the earlier Nov 6 copy-trimming rule. `src/app/live-quiet.css` now holds layout adjustments and empty-content rules, not selectors that suppress explanatory copy. Keep payment explanations accurate for the current provider, state and permissions. Generated steps also carry process guidance restored after `20261107400000`; preserve any user-written description. Discount balances and codes remain visible with an explicit explanation that they cannot be applied to a payment yet.
 
 ### Mock data leaking into the live app
 
