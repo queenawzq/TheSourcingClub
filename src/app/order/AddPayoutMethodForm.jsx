@@ -137,6 +137,7 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
         <button className="primary-btn" type="button" data-testid="save-bank-account" disabled={!stripe || !ready || busy} onClick={save}>{busy ? "Adding…" : "Add bank account"}</button>
       </>}
     >
+      <p className="payout-modal-intro">Withdrawals are paid to this account in {currency.toUpperCase()}. The account must be in your company’s name.</p>
       <div className="payout-manual-fields">
         <label className="payout-country-field">
           <span>Bank account country</span>
@@ -174,6 +175,7 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
         )}
       </div>
       {problem ? <p className="live-stripe-error" role="alert">{problem}</p> : null}
+      <p className="payout-security-copy">Your bank or card details go straight to Stripe, TSC’s payment partner. TSC keeps only the last four digits. Everyone at your company is told when a payout method changes.</p>
     </PayoutModal>
   );
 }
@@ -224,6 +226,7 @@ function CardForm({ org, currency, onAdded, onClose }) {
         {field("cvc", CardCvcElement, "Security code")}
       </div>
       {problem ? <p className="live-stripe-error" role="alert">{problem}</p> : null}
+      <p className="payout-security-copy">Your bank or card details go straight to Stripe, TSC’s payment partner. TSC keeps only the last four digits. Everyone at your company is told when a payout method changes.</p>
     </PayoutModal>
   );
 }

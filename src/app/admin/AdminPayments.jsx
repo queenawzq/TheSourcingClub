@@ -842,7 +842,7 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
 
   return (
     <main className="admin admin-payments-page">
-      <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1></div></header>
+      <header className="rfqs-header admin-list-header"><div><p className="admin-eyebrow">Admin</p><h1>Payments</h1><p>Check payments received, payouts owed to factories, and money held on cancelled orders. Confirm bank-wire claims only after checking the account.</p></div></header>
       {tabs.length > 1 ? (
         <nav className="rfqs-tabs admin-verification-tabs admin-rfq-tabs payments-queue-tabs" aria-label="Payment queues">
           {tabs.map(([id, label]) => (
@@ -859,16 +859,17 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
 
       {active === "payout" ? (
         <Section id="payout" title="Payout owed" rows={sections.payout} {...shared} above={wiseLine}
-                 empty="Every approved payment has been paid out." />
+                 empty="Every approved payment has been paid out."
+                 caption="The brand approved these steps (including before an order was cancelled), or the step needs no approval. Retry the payout, or pay by bank and mark it paid out after sending the money." />
       ) : null}
       {active === "refunded" ? (
         <Section id="refunded" title="Refunded after payout" rows={sections.refunded} {...shared}
                  caption="The brand's payment was refunded in Stripe after the factory was paid. TSC no longer holds this money: recover it from the factory by hand." />
       ) : null}
-      {active === "wire" ? <Section id="wire" title="Bank-wire claims" rows={sections.wire} {...shared} /> : null}
-      {active === "failed" ? <Section id="failed" title="Failed" rows={sections.failed} {...shared} /> : null}
-      {active === "clearing" ? <Section id="clearing" title="Payments processing" rows={sections.clearing} {...shared} /> : null}
-      {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} /> : null}
+      {active === "wire" ? <Section id="wire" title="Bank-wire claims" rows={sections.wire} {...shared} caption="Made on the old site before payments moved to Stripe. Check the account, then confirm." /> : null}
+      {active === "failed" ? <Section id="failed" title="Failed" rows={sections.failed} {...shared} caption="These did not go through, or were refunded. The brand pays again from the order; nothing to do here." /> : null}
+      {active === "clearing" ? <Section id="clearing" title="Payments processing" rows={sections.clearing} {...shared} caption="Stripe is still confirming these. The factory starts when they go through." /> : null}
+      {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} caption="Funded, waiting for the brand to approve the step." /> : null}
       {active === "cancelled" ? (
         <Section id="cancelled" title="Held on cancelled orders" rows={sections.cancelled} {...shared}
                  caption="The order was cancelled with this money held. Refund it in Stripe; the row leaves once Stripe reports the refund." />

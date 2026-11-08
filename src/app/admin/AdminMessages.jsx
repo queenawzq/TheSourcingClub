@@ -59,7 +59,7 @@ function Row({ row, onDecide, busy }) {
       <td className="admin-decision">
         {/* One box for both buttons: a reject shows the sender this note,
             a release keeps it for staff and shows it to nobody else. */}
-        <input type="text" placeholder="Reason (needed to reject)"
+        <input type="text" placeholder="Required to reject; the sender sees it"
                aria-label="Note: the sender is shown it if you reject; if you release, only staff see it"
                value={note} onChange={(event) => setNote(event.target.value)} />
         <div className="admin-actions">
@@ -151,9 +151,15 @@ export default function AdminMessages() {
       {header}
 
       <h1>Messages held for review</h1>
+      <p className="admin-intro">
+        These looked like they share contact details, so the other side has not seen them.
+        Release one and it arrives as a new message. Reject one and the sender is told it
+        was not delivered, with your reason.
+      </p>
       {error ? <p className="admin-error">{error.message}</p> : null}
 
       <h2>Waiting on a decision ({rows.length})</h2>
+      {rows.length > 0 && <p className="admin-sub admin-table-hint">Oldest first. Read the message, then release or reject it.</p>}
       {rows.length === 0 ? (
         <p className="admin-sub" data-testid="held-messages-empty">Nothing is waiting on us.</p>
       ) : (

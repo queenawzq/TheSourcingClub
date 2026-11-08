@@ -105,7 +105,7 @@ export async function sendInvite(orgId, email, message = null) {
 export const BRAND_INVITE_INTRO = "We'll email this brand an invitation to join The Sourcing Club, with a link to sign up.";
 export const BRAND_INVITE_MESSAGE = "I thought The Sourcing Club could be useful for your next production order.";
 export const FACTORY_INVITE_INTRO = "We'll email this factory an invitation to join, with a link to sign up. You earn 500 credits when it joins with this address and TSC verifies it; it gets the 500 credits every verified factory gets.";
-export const FACTORY_CREDIT_NOTE = "500 credits = $50 value.";
+export const FACTORY_CREDIT_NOTE = "500 credits = $50 value. Invite a factory: you earn 500 credits when TSC verifies it.";
 
 /**
  * What the inviter is told once the invite is in: sent, or saved without the
