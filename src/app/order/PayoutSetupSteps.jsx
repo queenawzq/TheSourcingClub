@@ -60,8 +60,16 @@ function startingValues(row) {
 
 const fieldLabel = (field) => [field.label, inEnglish(field) && field.kind !== "select" ? "(English)" : null, field.labelZh].filter(Boolean).join(" ");
 
-export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose }) {
-  const words = BANK_WORDS;
+const withoutChinese = (text) => (typeof text === "string" ? text.replace(/\s*[\u3400-\u9fff].*$/u, "") : text);
+const BANK_WORDS_ENGLISH = {
+  ...Object.fromEntries(Object.entries(BANK_WORDS).map(([key, value]) => [key, withoutChinese(value)])),
+  numberStored: (last4) => `Ending ${last4}`,
+};
+
+export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose, onUnavailable }) {
+  const chinese = readsChinese(country);
+  const words = chinese ? BANK_WORDS : BANK_WORDS_ENGLISH;
+  const say = chinese ? (text) => text : withoutChinese;
   const [form, setForm] = useState(null);
   const [values, setValues] = useState(() => startingValues(row));
   const [bankName, setBankName] = useState(row?.bank_name ?? "");
@@ -71,12 +79,14 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose }) 
   const [pressed, setPressed] = useState(false);
   const [problem, setProblem] = useState(null);
 
-  // Never blank: anything but Wise's answer draws the snapshot.
+  // Never blank: anything but Wise's answer draws the snapshot, which is China's
+  // form. Another country goes to the plain bank form instead.
   const load = async (details) => {
     try {
       setForm(await requirementsFrom(country, details));
     } catch {
-      setForm((current) => current ?? WISE_FORM_SNAPSHOT);
+      if (country === "CN") setForm((current) => current ?? WISE_FORM_SNAPSHOT);
+      else if (!form) onUnavailable?.();
     }
   };
   useEffect(() => { load(); /* once, for this row */ }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -134,11 +144,11 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose }) 
           <label>
             <span>{words.bankName} *</span>
             <input data-field="payout_bank_name" value={bankName} onBlur={leave("bank")} onChange={(event) => setBankName(event.target.value)} />
-            {shown("bank", bankError) ? <small className="live-stripe-error" role="alert">{bankError}</small> : null}
+            {shown("bank", bankError) ? <small className="live-stripe-error" role="alert">{say(bankError)}</small> : null}
           </label>
           {otherFields.map((field) => (
             <label key={field.key}>
-              <span>{fieldLabel(field)} *</span>
+              <span>{say(fieldLabel(field))} *</span>
               {field.kind === "select" ? (
                 <select data-field={`wise_${field.key}`} value={values[field.key] ?? ""} onBlur={leave(field.key)} onChange={change(field)}>
                   <option value="" />
@@ -149,15 +159,15 @@ export function WiseBankStep({ row, country, busy, saveWise, onBack, onClose }) 
                        placeholder={inEnglish(field) ? words.english : field.example ?? ""}
                        onBlur={leave(field.key)} onChange={change(field)} />
               )}
-              {shown(field.key, fieldError(field)) ? <small className="live-stripe-error" role="alert">{fieldError(field)}</small> : null}
+              {shown(field.key, fieldError(field)) ? <small className="live-stripe-error" role="alert">{say(fieldError(field))}</small> : null}
             </label>
           ))}
           <label>
-            <span>{numberField ? fieldLabel(numberField) : ""} {hasStoredNumber ? "" : "*"}</span>
+            <span>{numberField ? say(fieldLabel(numberField)) : ""} {hasStoredNumber ? "" : "*"}</span>
             <input data-field="payout_account_number" autoComplete="off" spellCheck={false} value={number}
                    placeholder={hasStoredNumber ? words.numberStored(row.account_number_last4) : numberField?.example ?? ""}
                    onBlur={leave("number")} onChange={(event) => setNumber(event.target.value)} />
-            {shown("number", numberError) ? <small className="live-stripe-error" role="alert">{numberError}</small> : null}
+            {shown("number", numberError) ? <small className="live-stripe-error" role="alert">{say(numberError)}</small> : null}
           </label>
           <label>
             <span>{words.again} {hasStoredNumber && !typed ? "" : "*"}</span>

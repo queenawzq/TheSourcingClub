@@ -1,5 +1,6 @@
 import { callerClient, jsonBody, reply, tokenRefused } from "./_stripe.js";
 import { chooseRecipientType, formFromRequirements } from "./_wise-requirements-shape.js";
+import { wiseCurrencyFor } from "./_wise-currencies.js";
 
 const TIMEOUT_MS = 6000;
 const QUOTE_LIFE_MS = 10 * 60 * 1000;
@@ -25,12 +26,12 @@ async function wise(path, { method = "GET", body, language } = {}, env = process
   return answer.json();
 }
 
-async function quoteId(env) {
-  const key = `${env.WISE_PROFILE_ID}:${env.WISE_PAYOUT_CURRENCY}`;
+async function quoteId(env, currency) {
+  const key = `${env.WISE_PROFILE_ID}:${currency}`;
   if (quote?.key === key && quote.until > Date.now()) return quote.id;
   const made = await wise(`/v3/profiles/${env.WISE_PROFILE_ID}/quotes`, {
     method: "POST",
-    body: { sourceCurrency: "USD", targetCurrency: env.WISE_PAYOUT_CURRENCY, sourceAmount: QUOTE_AMOUNT, payOut: "BANK_TRANSFER" },
+    body: { sourceCurrency: "USD", targetCurrency: currency, sourceAmount: QUOTE_AMOUNT, payOut: "BANK_TRANSFER" },
   }, env);
   quote = { key, id: made.id, until: Date.now() + QUOTE_LIFE_MS };
   return made.id;
@@ -69,8 +70,10 @@ export default async function handler(request, response) {
 
   const { country, details } = jsonBody(request);
   const knownCountry = /^[A-Z]{2}$/.test(country ?? "") ? country : null;
+  const currency = wiseCurrencyFor(knownCountry ?? "CN", env.WISE_PAYOUT_CURRENCY);
+  if (!currency) return reply(response, 200, { unavailable: true });
   try {
-    const id = await quoteId(env);
+    const id = await quoteId(env, currency);
     const type = chooseRecipientType(await wise(`/v1/quotes/${id}/account-requirements`, { language: "en" }, env));
     if (!type) return reply(response, 200, { unavailable: true });
     // Wise adds and drops fields once the country is known, so ask again with
@@ -88,7 +91,7 @@ export default async function handler(request, response) {
     return reply(response, 200, {
       ...form,
       fields: form.fields.map((field) => ({ ...field, labelZh: labels[field.key] })),
-      currency: env.WISE_PAYOUT_CURRENCY,
+      currency,
       source: "wise",
     });
   } catch (failure) {

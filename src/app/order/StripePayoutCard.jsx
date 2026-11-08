@@ -978,16 +978,22 @@ export default function StripePayoutCard({
                   <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
                   <div className="payout-option-copy"><div className="payout-option-title"><strong>{supported ? "Bank account" : words.bank}</strong></div></div>
                   <button className="primary-btn compact-btn" type="button" data-testid="payout-set-up-bank" disabled={busy}
-                          onClick={() => { setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding" : country === "CN" ? "setup-wise" : "setup-bank"); }}>{words.setUp}</button>
+                          onClick={() => { setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding" : notListed ? "setup-bank" : "setup-wise"); }}>{words.setUp}</button>
                 </article>
-                {supported ? null : (
+                {supported ? (
                   <article className="payout-method-option">
-                    <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{LETTER_MARK.paypal}</div>
-                    <div className="payout-option-copy"><div className="payout-option-title"><strong>PayPal</strong></div></div>
-                    <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-paypal" disabled={busy}
-                            onClick={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }}>{words.setUp}</button>
+                    <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
+                    <div className="payout-option-copy"><div className="payout-option-title"><strong>{words.bank}</strong></div></div>
+                    <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-wise" disabled={busy}
+                            onClick={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }}>{words.setUp}</button>
                   </article>
-                )}
+                ) : null}
+                <article className="payout-method-option">
+                  <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{LETTER_MARK.paypal}</div>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>PayPal</strong></div></div>
+                  <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-paypal" disabled={busy}
+                          onClick={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }}>{words.setUp}</button>
+                </article>
               </div>
             </> : null}
             {/* To the list when there is one; a first method came from the page. */}
@@ -997,7 +1003,7 @@ export default function StripePayoutCard({
       })() : null}
 
       {modal === "setup-wise" ? (
-        <WiseBankStep row={stepRow} country="CN" busy={manualBusy} saveWise={onSaveWise} onBack={backFromStep} onClose={closeModal} />
+        <WiseBankStep row={stepRow} country={stepRow?.bank_country ?? country} busy={manualBusy} saveWise={onSaveWise} onBack={backFromStep} onClose={closeModal} onUnavailable={() => setModal("setup-bank")} />
       ) : null}
 
       {modal === "setup-paypal" && manualForm ? (
