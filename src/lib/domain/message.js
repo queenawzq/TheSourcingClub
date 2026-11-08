@@ -89,7 +89,7 @@ export async function openRfqThread(rfqId, factoryOrgId) {
  * One conversation as the reader's company may see it: what was delivered,
  * and its own messages in every state. `messages_read` also lets platform
  * staff read everything, so a staff member who belongs to a company would
- * otherwise be shown the other side's held and rejected messages here.
+ * otherwise be shown the other side's blocked and rejected messages here.
  */
 export async function listMessages(threadId, orgId) {
   if (!orgId) throw new Error("listMessages needs the reader's company");
@@ -108,8 +108,7 @@ export async function listMessages(threadId, orgId) {
       .order("created_at"),
     "load the messages",
   );
-  // A released message arrives when staff release it, not when it was typed,
-  // so the thread reads in delivery order. The sender's own held or rejected
+  // The thread reads in delivery order. The sender's own blocked or rejected
   // messages were never delivered and keep the time they were written.
   return [...(rows ?? [])].sort((a, b) => Date.parse(sentAt(a)) - Date.parse(sentAt(b)));
 }
@@ -234,7 +233,7 @@ export async function sendMessage({ threadId, orgId, userId, body, files = [], o
 /**
  * Ask the server to screen one of your own messages (api/screen-message.js).
  * Never throws: a screen that does not answer leaves the message `checking`,
- * where the next visit asks again and staff see it after two minutes.
+ * where the next visit asks again.
  */
 export async function screenMessage(messageId) {
   try {
@@ -258,8 +257,7 @@ export async function screenMessage(messageId) {
  * How long one of your own messages may sit in `checking` before the page
  * asks the screen again, attempt by attempt. A screen that did not answer —
  * a page closed mid-send, a 504, a sign-in the auth server refused — would
- * otherwise leave it there with nobody told; after two minutes staff see it
- * too, as "Not checked".
+ * otherwise leave it there with nobody told.
  */
 export const RESCREEN_AFTER_MS = [5000, 15000, 30000, 60000];
 
@@ -335,29 +333,4 @@ export function readerLanguage(messages = [], orgId, browserLanguages = navigato
 function navigatorLanguages() {
   if (typeof navigator === "undefined") return [];
   return navigator.languages?.length ? [...navigator.languages] : [navigator.language].filter(Boolean);
-}
-
-/**
- * Staff: the messages waiting on a person. Held ones, and any still being
- * checked after two minutes (the screen never answered). Platform staff have
- * no org and cannot be notified, so this list is the only prompt there is.
- */
-export async function heldMessageQueue() {
-  return unwrap(await supabase.rpc("admin_message_queue"), "load the messages held for review");
-}
-
-/** Staff: deliver a held message. The recipient is notified as if it had just been sent. */
-export async function releaseHeldMessage(messageId, note = null) {
-  return unwrap(
-    await supabase.rpc("release_held_message", { target_message: messageId, note: note?.trim() || null }),
-    "release the message",
-  );
-}
-
-/** Staff: refuse a held message. The reason is required: the sender is shown it. */
-export async function rejectHeldMessage(messageId, note) {
-  return unwrap(
-    await supabase.rpc("reject_held_message", { target_message: messageId, note }),
-    "reject the message",
-  );
 }

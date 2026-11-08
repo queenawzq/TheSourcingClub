@@ -50,7 +50,6 @@ import LiveFund from "./order/LiveFund.jsx";
 import "./live-quiet.css";
 import PayoutDetails from "./order/PayoutDetails.jsx";
 import AdminPayments from "./admin/AdminPayments.jsx";
-import AdminMessages from "./admin/AdminMessages.jsx";
 import LiveMessages from "./message/LiveMessages.jsx";
 import LiveHome from "./home/LiveHome.jsx";
 import LiveComposer from "./rfq/LiveComposer.jsx";
@@ -1671,7 +1670,6 @@ function AdminGate({ children, noOrg = false }) {
 function AdminRoutes() {
   return useRoute([
     { path: "/admin/payments", render: () => <AdminPayments /> },
-    { path: "/admin/messages", render: () => <AdminMessages /> },
     { render: () => <AdminConsoleRedirect /> },
   ]);
 }
