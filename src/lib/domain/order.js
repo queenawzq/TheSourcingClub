@@ -12,6 +12,7 @@
  * sides drift apart again.
  */
 import { supabase, unwrap } from "../supabase.js";
+import { refundCancelledOrder } from "./stripe.js";
 
 // Everything the header and the list cards need, already summed in SQL.
 // JavaScript never adds money up here: capacity_monthly_units() has four
@@ -86,10 +87,13 @@ export async function proposeCancellation(orderId, reason) {
 }
 
 export async function acceptCancellation(orderId) {
-  return unwrap(
+  const result = unwrap(
     await supabase.rpc("accept_cancellation", { target_order: orderId }),
     "accept the cancellation",
   );
+  // Held money goes back to the brand now; the daily job catches any miss.
+  refundCancelledOrder(orderId).catch(() => null);
+  return result;
 }
 
 /** The side that proposed cancelling takes it back (migration 070). */
