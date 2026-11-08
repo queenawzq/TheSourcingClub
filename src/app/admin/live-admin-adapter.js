@@ -165,7 +165,11 @@ export function withRegistry(profile, state) {
     : "No registry check recorded yet.";
   const checks = profile.checks.map(([label, result, value, detail]) => (label === "Business registration"
     ? [label, state.state === "found" ? "Verified" : result, value,
-      `${String(detail ?? "").replace(/ ?(Not yet reviewed\.|Marked verified[^.]*\.)? ?Contents are not checked against any registry\./, "")} ${words}`.trim()]
+      `${String(detail ?? "")
+        .replace(/ ?(Not yet reviewed\.|Marked verified[^.]*\.)? ?Contents are not checked against any registry\./, "")
+        // The database writes the upload day in UTC; say it in the reader's
+        // zone, like the check's own date.
+        .replace(/^Uploaded \d{2} \w{3} \d{4}/, state.registration_uploaded_at ? `Uploaded ${shortDate(state.registration_uploaded_at)}` : "$&")} ${words}`.trim()]
     : [label, result, value, detail]));
   const lost = state.state === "lost" && profile.status === "Approved";
   return { ...profile, checks, ...(lost ? { status: "Registry check lost", tone: "warning" } : {}) };

@@ -107,9 +107,9 @@ create table public.company_registrations (
   number       text,
   no_company_number boolean not null default false,
   access_code  text check (access_code ~ '^\d{4}-\d{4}-\d{4}$'),
-  -- Turkey: the verification code printed on the tax plate (vergi levhası),
-  -- which staff enter at GİB's document check with the uploaded plate.
-  tax_plate_code text check (char_length(tax_plate_code) between 1 and 40),
+  -- Turkey: the number on the tax registration letter (mükellefiyet
+  -- yazısı), which staff enter with the VKN at GİB's letter check.
+  registration_letter_number text check (char_length(registration_letter_number) between 1 and 40),
   -- The check digit failed and the factory said the number is right anyway.
   check_digit_confirmed boolean not null default false,
   updated_by   uuid references auth.users (id) on delete set null,
@@ -132,7 +132,7 @@ create or replace function public.save_company_registration(
   country        text,
   number         text,
   access_code    text default null,
-  tax_plate_code text default null,
+  registration_letter_number text default null,
   confirmed      boolean default false,
   no_number      boolean default false
 )
@@ -168,8 +168,8 @@ begin
     raise exception 'access code must be 12 digits' using errcode = '22023';
   end if;
 
-  if char_length(trim(coalesce(tax_plate_code, ''))) > 40 then
-    raise exception 'tax plate code is too long' using errcode = '22023';
+  if char_length(trim(coalesce(registration_letter_number, ''))) > 40 then
+    raise exception 'registration letter number is too long' using errcode = '22023';
   end if;
   -- No company number is a sole proprietor's answer in Turkey and Portugal
   -- (their tax number is the owner's ID). In China an individual business
@@ -179,14 +179,14 @@ begin
   end if;
 
   insert into public.company_registrations as r
-    (org_id, country_code, number, no_company_number, access_code, tax_plate_code, check_digit_confirmed, updated_by, updated_at)
+    (org_id, country_code, number, no_company_number, access_code, registration_letter_number, check_digit_confirmed, updated_by, updated_at)
   values (
     target_org, cc,
     case when coalesce(no_number, false) then null else public.normalise_registration_number(cc, number) end,
     coalesce(no_number, false),
     case when cc = 'PT' and code_digits <> ''
          then substr(code_digits, 1, 4) || '-' || substr(code_digits, 5, 4) || '-' || substr(code_digits, 9, 4) end,
-    case when cc = 'TR' then nullif(regexp_replace(trim(coalesce(tax_plate_code, '')), '\s+', ' ', 'g'), '') end,
+    case when cc = 'TR' then nullif(regexp_replace(trim(coalesce(registration_letter_number, '')), '\s+', ' ', 'g'), '') end,
     not coalesce(no_number, false) and coalesce(public.registration_number_problem(cc, number) = 'check_digit', false),
     auth.uid(), now()
   )
@@ -195,11 +195,11 @@ begin
         number         = excluded.number,
         no_company_number = excluded.no_company_number,
         access_code    = excluded.access_code,
-        tax_plate_code = excluded.tax_plate_code,
+        registration_letter_number = excluded.registration_letter_number,
         check_digit_confirmed = excluded.check_digit_confirmed,
         updated_by     = excluded.updated_by,
-        updated_at     = case when (r.country_code, r.number, r.no_company_number, r.access_code, r.tax_plate_code)
-                                   is distinct from (excluded.country_code, excluded.number, excluded.no_company_number, excluded.access_code, excluded.tax_plate_code)
+        updated_at     = case when (r.country_code, r.number, r.no_company_number, r.access_code, r.registration_letter_number)
+                                   is distinct from (excluded.country_code, excluded.number, excluded.no_company_number, excluded.access_code, excluded.registration_letter_number)
                               then now() else r.updated_at end
   returning * into saved;
   return saved;
@@ -342,7 +342,7 @@ begin
     'registration', (
       select jsonb_build_object(
         'country', r.country_code, 'number', r.number, 'noCompanyNumber', r.no_company_number, 'accessCode', r.access_code,
-        'taxPlateCode', r.tax_plate_code, 'confirmed', r.check_digit_confirmed,
+        'registrationLetterNumber', r.registration_letter_number, 'confirmed', r.check_digit_confirmed,
         'problem', public.registration_number_problem(r.country_code, r.number),
         'updatedAt', r.updated_at)
         from public.company_registrations r where r.org_id = target_org),
@@ -565,7 +565,7 @@ create trigger org_reviews_approval_needs_registry
 -- not a match: a later not found, or a changed number), or 'none'. Staff have
 -- no org and cannot be notified, so the queue is where a lost check shows.
 create or replace function public.admin_registry_states()
-returns table (org_id uuid, state text, kind text, checked_at timestamptz)
+returns table (org_id uuid, state text, kind text, checked_at timestamptz, registration_uploaded_at timestamptz)
 language plpgsql
 stable
 security definer
@@ -582,7 +582,11 @@ begin
                   select 1 from public.registry_checks x where x.org_id = f.org_id and not x.automatic)) then 'lost'
                 else 'none' end,
            case when c.source = 'document' then 'document' when c.id is not null then 'registry' end,
-           c.checked_at
+           c.checked_at,
+           -- The latest registration upload, so the queue says both dates in
+           -- the reader's zone (the check line's own date is UTC text).
+           (select max(d.created_at) from public.documents d
+             where d.org_id = f.org_id and d.kind = 'business_registration')
       from public.factory_profiles f
       left join lateral (select * from public.current_registry_check(f.org_id)) c on true;
 end;
@@ -590,3 +594,24 @@ $$;
 
 revoke all on function public.admin_registry_states() from public, anon;
 grant execute on function public.admin_registry_states() to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 8. A brand no longer opens a factory's registration documents
+-- ---------------------------------------------------------------------------
+
+-- A registration (licence, tax registration letter) carries the
+-- number staff check and, for a sole proprietor, the owner's national ID. The
+-- brand reads its status and the dated fact instead. Certificates stay
+-- readable. Both the documents policy and the storage policy call this
+-- function (20261104000500), so this one change closes both.
+create or replace function public.can_preview_vendor_document(target_document uuid)
+returns boolean language sql stable security definer set search_path = public, pg_temp as $$
+  select exists (
+    select 1 from public.documents d
+    join public.factory_profiles f on f.org_id = d.org_id
+    where d.id = target_document and f.published_at is not null
+      and d.kind = 'certificate'
+      and exists (select 1 from public.org_members m join public.orgs o on o.id = m.org_id
+                  where m.user_id = auth.uid() and o.type = 'brand')
+  );
+$$;

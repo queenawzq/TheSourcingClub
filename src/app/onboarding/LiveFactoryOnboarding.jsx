@@ -38,7 +38,7 @@ import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
 import { getRegistration, saveRegistration } from "../../lib/domain/registration.js";
 import {
-  normaliseAccessCode, normaliseTaxPlateCode, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
+  normaliseAccessCode, normaliseRegistrationLetter, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
 } from "../../shared/registration-number.mjs";
 
 
@@ -255,7 +255,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
         if (savedRegistration) {
           restored["registration-number"] = savedRegistration.number ?? "";
-          const second = savedRegistration.access_code ?? savedRegistration.tax_plate_code;
+          const second = savedRegistration.access_code ?? savedRegistration.registration_letter_number;
           if (second) restored["registration-second"] = second;
           if (savedRegistration.no_company_number) restored["registration-none"] = true;
           if (savedRegistration.check_digit_confirmed) restored["registration-confirmed"] = true;
@@ -326,7 +326,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       },
       checkSecond: (value) => {
         if (registrationCountry === "PT" && normaliseAccessCode(value) === null) return lang === "zh" ? "访问码须为 12 位数字" : "The access code is 12 digits";
-        if (registrationCountry === "TR" && normaliseTaxPlateCode(value) === null) return lang === "zh" ? "最多 40 个字符" : "40 characters at most";
+        if (registrationCountry === "TR" && normaliseRegistrationLetter(value) === null) return lang === "zh" ? "最多 40 个字符" : "40 characters at most";
         return "";
       },
     };

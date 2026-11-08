@@ -115,7 +115,7 @@ export default function RegistryPanel({ orgId, onChange }) {
         <ProfileDetailPair label={country === "TR" ? "Tax number (VKN)" : country === "PT" ? "NIPC" : country === "CN" ? "Credit code" : "Registration number"} value={registration?.number ?? (registration?.noCompanyNumber ? "None (sole proprietor)" : "Not given")} />
         {checkDigit && <ProfileDetailPair label="Check digit" value={checkDigit} />}
         {registration?.accessCode && <ProfileDetailPair label="Certificate access code" value={registration.accessCode} />}
-        {registration?.taxPlateCode && <ProfileDetailPair label="Tax plate verification code" value={registration.taxPlateCode} />}
+        {registration?.registrationLetterNumber && <ProfileDetailPair label="Registration letter number" value={registration.registrationLetterNumber} />}
       </div>
 
       {flags.length > 0 && (

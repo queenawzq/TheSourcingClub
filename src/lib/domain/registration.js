@@ -4,11 +4,11 @@
  * src/shared/registration-number.mjs and, the same, in the database.
  */
 import { supabase, unwrap } from "../supabase.js";
-import { normaliseAccessCode, normaliseTaxPlateCode, registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
+import { normaliseAccessCode, normaliseRegistrationLetter, registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
 
 export async function getRegistration(orgId) {
   return unwrap(
-    await supabase.from("company_registrations").select("org_id, country_code, number, no_company_number, access_code, tax_plate_code, check_digit_confirmed, updated_at").eq("org_id", orgId).maybeSingle(),
+    await supabase.from("company_registrations").select("org_id, country_code, number, no_company_number, access_code, registration_letter_number, check_digit_confirmed, updated_at").eq("org_id", orgId).maybeSingle(),
     "load the registration number",
   );
 }
@@ -32,13 +32,13 @@ export async function saveRegistration(orgId, { country, number, second = "", co
   const problem = registrationNumberProblem(country, number);
   if (problem && !(problem === "check_digit" && confirmed)) throw new Error(registrationProblemText(country, problem, language));
   let accessCode = null;
-  let taxPlateCode = null;
+  let registrationLetterNumber = null;
   if (country === "PT") {
     accessCode = normaliseAccessCode(second);
     if (accessCode === null) throw new Error(zh ? "访问码须为 12 位数字" : "The access code is 12 digits");
   } else if (country === "TR") {
-    taxPlateCode = normaliseTaxPlateCode(second);
-    if (taxPlateCode === null) throw new Error(zh ? "验证码最多 40 个字符" : "The verification code is 40 characters at most");
+    registrationLetterNumber = normaliseRegistrationLetter(second);
+    if (registrationLetterNumber === null) throw new Error(zh ? "编号最多 40 个字符" : "The letter number is 40 characters at most");
   }
   const saved = unwrap(
     await supabase.rpc("save_company_registration", {
@@ -46,7 +46,7 @@ export async function saveRegistration(orgId, { country, number, second = "", co
       country: country ?? null,
       number,
       access_code: accessCode || null,
-      tax_plate_code: taxPlateCode || null,
+      registration_letter_number: registrationLetterNumber || null,
       confirmed: Boolean(confirmed),
     }),
     "save the registration number",

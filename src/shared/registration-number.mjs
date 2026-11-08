@@ -29,11 +29,11 @@ export const REGISTRATION_COUNTRIES = {
   },
   TR: {
     label: { en: "Company tax number (VKN)", zh: "公司税号（VKN）" },
-    hint: { en: "10 digits, on your tax plate (vergi levhası); upload the plate above", zh: "10 位数字，见税务登记牌；请在上方上传" },
+    hint: { en: "10 digits, on your tax registration letter (mükellefiyet yazısı); upload the letter above", zh: "10 位数字，见纳税登记证明；请在上方上传" },
     second: {
-      column: "tax_plate_code",
-      label: { en: "Tax plate verification code", zh: "税务登记牌验证码" },
-      hint: { en: "Printed on your tax plate, for GİB's document check", zh: "印在税务登记牌上，用于税务局核验" },
+      column: "registration_letter_number",
+      label: { en: "Registration letter number", zh: "纳税登记证明编号" },
+      hint: { en: "On your tax registration letter, for GİB's check", zh: "见纳税登记证明，用于税务局核验" },
     },
     // A sole proprietor's tax number is the owner's national ID: never asked.
     soleProprietor: true,
@@ -180,8 +180,8 @@ export function registrationProblemText(country, problem, language = "en") {
   return zh ? "只能包含字母和数字" : "Letters and digits only";
 }
 
-/** Turkey's tax plate verification code: as printed, short. Null when too long. */
-export function normaliseTaxPlateCode(value) {
+/** The number on Turkey's tax registration letter (mükellefiyet yazısı): as printed, short. Null when too long. */
+export function normaliseRegistrationLetter(value) {
   const text = String(value ?? "").trim().replace(/\s+/g, " ");
   return text.length > 40 ? null : text;
 }
@@ -210,7 +210,8 @@ export const REGISTRY_SOURCES = {
   ],
   TR: [
     { key: "gazette", label: "Trade Registry Gazette, search by title", url: "https://www.ticaretsicil.gov.tr/view/hizlierisim/unvansorgulama.php" },
-    { key: "gib", label: "GİB tax plate check", url: "https://dijital.gib.gov.tr/" },
+    // GİB's "Mükellefiyet Yazısı Doğrulama": the VKN and the letter's number.
+    { key: "gib", label: "GİB registration letter check", url: "https://dijital.gib.gov.tr/" },
     DOCUMENT_SOURCE,
     { key: "edevlet", label: "e-Devlet barcode check", url: "https://www.turkiye.gov.tr/belge-dogrulama" },
   ],

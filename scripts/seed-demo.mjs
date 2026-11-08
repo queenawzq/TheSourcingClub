@@ -567,7 +567,7 @@ must(await admin.from("factory_profiles").upsert({
   }), "record the Turkish registration");
 }
 // Fake numbers that pass each country's check (scripts/check-registration-number.mjs).
-must(await turkeyFactory.client.rpc("save_company_registration", { target_org: turkeyFactoryOrg.id, country: "TR", number: "4837261591", tax_plate_code: "DEMO-0000-0001" }), "the Turkish factory's tax number");
+must(await turkeyFactory.client.rpc("save_company_registration", { target_org: turkeyFactoryOrg.id, country: "TR", number: "4837261591", registration_letter_number: "DEMO-0000-0001" }), "the Turkish factory's tax number");
 must(await factory.client.rpc("save_company_registration", { target_org: factoryOrg.id, country: "PT", number: "509999999", access_code: "1234-5678-9012" }), "Demo Factory's NIPC");
 must(await secondFactory.client.rpc("save_company_registration", { target_org: secondFactoryOrg.id, country: "CN", number: "91330100MA2B7C4D3F" }), "Ningbo Loomworks's credit code");
 // Staff found both verified ones on their registries, so a brand reads

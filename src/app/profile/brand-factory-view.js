@@ -9,7 +9,7 @@
  * brand's orders), is left out rather than filled with an example.
  */
 import { minutesPerPieceFor, monthlyUnits } from "../../lib/domain/capacity.js";
-import { chipLabels, factoryProfileView, registrationWord } from "./factory-profile-view.js";
+import { chipLabels, factoryProfileView } from "./factory-profile-view.js";
 import { TRADING_CHIP_KINDS } from "./trading-profile-view.js";
 import { checkedMonth } from "../../shared/registration-number.mjs";
 
@@ -101,8 +101,10 @@ export function brandFactoryView(parts, now = new Date()) {
         name: parts.registryCheckedAt
           ? `${parts.registryCheckKind === "document" ? "Registration document" : "Official registry"} · checked ${checkedMonth(parts.registryCheckedAt)}`
           : "Business registration",
-        status: registrationWord(parts),
-        document: parts.registrationDoc,
+        // No file link: a brand does not open a factory's registration
+        // documents (20261108600000), and so cannot see whether one is on
+        // file. Its words come from the review instead.
+        status: parts.registryCheckedAt ? "Verified" : verified ? "Uploaded" : "In review",
       },
       ...parts.certifications.map((cert) => ({ ...trustRow(cert.name, cert.status), document: cert.document })),
       ...(parts.verificationDocs ?? []).filter((doc) => doc.id !== parts.registrationDoc?.id && !parts.certifications.some((cert) => cert.document?.id === doc.id)).map((doc) => ({ name: doc.file_name, status: "Uploaded", document: doc })),

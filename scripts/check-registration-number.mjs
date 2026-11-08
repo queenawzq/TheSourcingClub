@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import {
-  normaliseAccessCode, normaliseRegistrationNumber, normaliseTaxPlateCode, registrationCountryFrom, registrationFlags,
+  normaliseAccessCode, normaliseRegistrationNumber, normaliseRegistrationLetter, registrationCountryFrom, registrationFlags,
   registrationNumberProblem, registryResultLabel,
 } from "../src/shared/registration-number.mjs";
 import { viesResult } from "../api/registry-vies.js";
@@ -60,9 +60,9 @@ check("access code: 12 digits, dashed", () => assert.equal(normaliseAccessCode("
 check("access code: blank is blank", () => assert.equal(normaliseAccessCode(""), ""));
 check("access code: 11 digits is refused", () => assert.equal(normaliseAccessCode("1234-5678-901"), null));
 
-check("tax plate code: kept as typed, 40 at most", () => {
-  assert.equal(normaliseTaxPlateCode("  AB12   CD34 "), "AB12 CD34");
-  assert.equal(normaliseTaxPlateCode("x".repeat(41)), null);
+check("registration letter number: kept as typed, 40 at most", () => {
+  assert.equal(normaliseRegistrationLetter("  AB12   CD34 "), "AB12 CD34");
+  assert.equal(normaliseRegistrationLetter("x".repeat(41)), null);
 });
 check("TÜRKİYE in capitals is Turkey", () => assert.equal(registrationCountryFrom("İSTANBUL, TÜRKİYE"), "TR"));
 check("staff flags: a clean company code has none", () => assert.deepEqual(registrationFlags("CN", "91330100MA2B7C4D3F"), []));
