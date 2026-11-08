@@ -711,7 +711,7 @@ export default function StripePayoutCard({
           ) : (
             <button className="primary-btn compact-btn" type="button" data-testid="add-payout-method" onClick={() => (manualAccount ? setModal("manage") : openManual(null))}>{manualAccount ? "Manage payout method" : "Add payout method"}</button>
           )
-          : <p className="payout-owner-only">Only an owner of your company can set up or change payouts.</p>}
+          : <button className="primary-btn compact-btn" type="button" disabled title="Only an owner can set up or change payouts">{account?.transfers_active || manualAccount ? "Manage payout method" : "Add payout method"}</button>}
         </div>
       </section> : null}
 

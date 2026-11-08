@@ -53,6 +53,7 @@ export default function LiveRfqs({ org, user, isOwner, goTo }) {
           onEditRfq={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/edit` : "/rfqs")}
           onInviteVendors={(rfq) => navigate(rfq?.id ? `/rfqs/${rfq.id}/invite` : "/rfqs")}
           onArchiveRfq={(rfq) => setConfirming(rfq)}
+          quoteFlowLocked={isOwner ? "" : "Needs the Quote flow permission"}
         />
       </DataProvider>
       {confirming && createPortal(
@@ -62,11 +63,7 @@ export default function LiveRfqs({ org, user, isOwner, goTo }) {
             <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={close}>×</button>
             <header className="brand-profile-modal-header">
               <h1 id="cancel-rfq-title">Close “{confirming.title}”?</h1>
-              <p>
-                {isOwner
-                  ? "The request closes to new quotes. Quotes already sent on it are declined, and every vendor you invited or who quoted is told."
-                  : "Only an owner of your company can close a request, because it closes every vendor's quote on it."}
-              </p>
+              <p>The request closes to new quotes. Quotes already sent on it are declined, and every vendor you invited or who quoted is told.</p>
             </header>
             {error && <p className="composer-error" role="alert">{error.message}</p>}
             <footer className="brand-profile-modal-actions">

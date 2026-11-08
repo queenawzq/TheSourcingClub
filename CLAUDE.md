@@ -207,7 +207,7 @@ npm run seed:demo     # demo companies with fixed logins; run again to reset the
 
 Put the local URL and publishable key in `.env.local` as `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`; `app.html` shows a setup message rather than crashing when they are absent.
 
-**Demo data.** `npm run seed:demo` (`scripts/seed-demo.mjs`) fills the database with demo companies, requests, quotes and orders behind fixed logins, all with the password `demo password 8`: `demo-brand@example.com`, `demo-factory@example.com`, `demo-factory-two@example.com` (a competing quote), `demo-factory-new@example.com` (waiting for verification), `demo-brand-new@example.com` (a brand with nothing yet, so its dashboard recommends factories), `demo-trading@example.com` (a trading company), `demo-lakeside@example.net` (a factory on another email domain: inviting it shows "already has an account", since every other login shares `example.com` and the guard refuses a company's own domain first) and `demo-admin@example.com` (platform admin, `/admin.html`). Each run deletes the demo companies and every order one of them is part of, then builds them again, so running it again is the reset. It only targets a local stack unless given `--remote` with `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` for a test database, and it refuses the production project. A PR that adds a state a tester needs to see adds it here. **A scenario that needs an account of its own** (a role or company state none of the logins has) adds the login to `src/shared/demo-logins.mjs` and its setup to the seed; the seed stops if a listed login has no setup. That list is also what the test sites' one-click sign-in shows: on test builds only (the dev server, PR previews and the qa site: `__DEMO_SIGN_IN__` in `vite.config.js`), the sign-in screens offer a button per login (`src/shared/DemoSignIn.jsx`). A production build leaves that code and the list out, and the buttons hide themselves when connected to the production database.
+**Demo data.** `npm run seed:demo` (`scripts/seed-demo.mjs`) fills the database with demo companies, requests, quotes and orders behind fixed logins, all with the password `demo password 8`: `demo-brand@example.com`, `demo-brand-member@example.com` (Demo Brand, Approve samples only), `demo-factory@example.com`, `demo-factory-member@example.com` (Demo Factory, Add update only), `demo-factory-two@example.com` (a competing quote), `demo-factory-new@example.com` (waiting for verification), `demo-brand-new@example.com` (a brand with nothing yet, so its dashboard recommends factories), `demo-trading@example.com` (a trading company), `demo-lakeside@example.net` (a factory on another email domain: inviting it shows "already has an account", since every other login shares `example.com` and the guard refuses a company's own domain first) and `demo-admin@example.com` (platform admin, `/admin.html`). Each run deletes the demo companies and every order one of them is part of, then builds them again, so running it again is the reset. It only targets a local stack unless given `--remote` with `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` for a test database, and it refuses the production project. A PR that adds a state a tester needs to see adds it here. **A scenario that needs an account of its own** (a role or company state none of the logins has) adds the login to `src/shared/demo-logins.mjs` and its setup to the seed; the seed stops if a listed login has no setup. That list is also what the test sites' one-click sign-in shows: on test builds only (the dev server, PR previews and the qa site: `__DEMO_SIGN_IN__` in `vite.config.js`), the sign-in screens offer a button per login (`src/shared/DemoSignIn.jsx`). A production build leaves that code and the list out, and the buttons hide themselves when connected to the production database.
 
 **PR previews get their own database.** Supabase branching (GitHub integration, "Supabase changes only") creates a database branch when a PR that changes `supabase/` is opened, runs its migrations and `seed.sql`, and writes the branch's details into Vercel for that PR's preview. It deletes the branch when the PR is merged or closed. It writes its own variable names, so on a Vercel **preview** build only:
 - `vite.config.js` bakes `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` into `__PREVIEW_SUPABASE__`, which `src/lib/supabase.js` prefers;
@@ -219,7 +219,7 @@ Production, local dev and a preview without a branch use `VITE_SUPABASE_*` (and 
 
 The browser talks to Postgres directly with the publishable key, and **row level security is the entire authorisation layer** — there is no server tier to enforce anything a second time. A mistake in a policy is a data breach, not a bug, which is why `supabase/tests/access_rules_test.sql` is mostly *negative* assertions: a policy that accidentally grants everything still passes every positive test.
 
-Two roles matter. `authenticated` and `anon` hold the publishable key and are fully governed by RLS; `anon` deliberately has no table grants at all, so a signed-out visitor is refused before RLS is consulted. The one exception is `current_legal_documents()`, granted to `anon` so signup can link to the terms before an account exists (see **Legal documents**). `service_role` carries `BYPASSRLS` and is only ever used by server code holding the secret key — never anything bundled into the browser.
+Two roles matter. `authenticated` and `anon` hold the publishable key and are fully governed by RLS; `anon` deliberately has no table grants at all, so a signed-out visitor is refused before RLS is consulted. The exceptions are functions: `current_legal_documents()`, so signup can link to the terms before an account exists (see **Legal documents**), and `invitation_preview()`, so an invitation's link can say what it is for (see **Team & roles**). `service_role` carries `BYPASSRLS` and is only ever used by server code holding the secret key — never anything bundled into the browser.
 
 Migrations are numbered and immutable once pushed. **Merging to `main` applies them to production:** the Vercel production build runs `supabase db push --include-all` after `npm run build` (`scripts/deploy-migrate.mjs`, using the Production-only `SUPABASE_DB_URL`). A failed migration fails the deploy and the previous site stays live. Preview builds never touch the database. Two consequences: every migration must work with the site that is still live while it is applied (add, don't rename or drop in the same change), and a rollback is Vercel's Instant Rollback, since rebuilding an older commit fails once production holds a migration that commit lacks.
 
@@ -263,7 +263,7 @@ Things that will bite here specifically:
 - **Compute one side of a percentage split and subtract for the other.** Rounding both independently loses or invents a cent, permanently, on a figure a brand types into a bank transfer.
 - **`agree_schedule` takes a revision.** Without it a brand that confirmed steps it read on one screen, while a teammate changed them on another, would start the order on steps it never saw.
 - **The chain advances on approval (or on funding a payment-only step), never on the payout.** Keying it to the transfer would freeze a production order permanently on one failed Stripe call or forgotten admin click, with no error and no party able to unstick it. A payout that did not go leaves `release_requested_at` set and shows on the staff board.
-- **A step is approved from the factory's update on it** (`20261029000200`). `approve_milestone` refuses an open step of any approvable kind until the factory has posted on it: the brand's own comment does not count, and neither does a post by the person approving (someone in both companies). A step sent for approval the old way (`submitted`) still approves. The brand's row keeps its Approve button, disabled, and its status line says whose update it is waiting for. #59 had dropped this rule; John's board put it back (Oct 29).
+- **The brand may approve an open step before the factory posts** (`20261104000400`, Queena's rule; it replaced `20261029000200`'s "factory must post first"). Approving still needs the step funded when it pays, and the Approve samples permission (plus Release funds on a paid step), which `20261104100000` adds to the same function.
 - **The order page re-reads on the other side's change.** `milestone_updates`, `order_milestones`, `order_payments` and `production_orders` are in `supabase_realtime` (`20261026000300`, `20261029000210`), and `LiveOrderDetail` re-reads on their inserts and updates, with the 15 s re-read as the fallback. Realtime applies each table's read policy per subscriber; deletes are not listened to, because Realtime does not filter them.
 - **`documents_own` is `for all`** and says nothing about `milestone_update_id`. Without `documents_link_guard`, one UPDATE re-parents a photo onto another order and the counterparty read policy then serves it to strangers.
 - **Milestone photos need three things to work**: the kind in `PRIVATE_KINDS`, a `documents` read policy for the counterparty, *and* a matching `storage.objects` policy. With only the first two, `urlFor()` mints a signed URL that 400s — a broken image tile, not an error message.
@@ -475,8 +475,8 @@ links point.
   proves nothing. If the terms fail to load, signing refuses with the reason.
   The prototypes pass no text, so the dialog keeps its designed copy there —
   keep the two in step when either changes.
-- **`current_legal_documents()` is the only thing granted to `anon`**, and it
-  returns only the current text. The table itself stays unreadable to
+- **`current_legal_documents()` is granted to `anon`**, and it returns only the
+  current text. The table itself stays unreadable to
   everyone but staff.
 - Chinese is a separate hand-written field per document, falling back to
   English when blank — never machine-translated, same rule as the taxonomy.
@@ -559,6 +559,108 @@ hand-written line.
 - The factory's Payments → Credits tab (`/payout?tab=credits`) reads the
   ledger through `creditHistory()`, with invites still waiting shown as
   Pending.
+
+### Team & roles: per-member permissions
+
+`20261104100000` (renumbered from `20261030000100`, which main's
+`remove_payout_account` already held). The permission keys are the design's own (Settings →
+Roles & access): brand `rfqFlow` (Quote flow), `approve`, `releaseFunds`,
+`primaryContact`, `settingsAccess`; factory `rfqFlow` (RFQ flow),
+`addUpdate`, `primaryContact`, `settingsAccess`. Stored as
+`org_members.permissions`.
+
+- **An owner holds every authority and cannot be restricted.** Its row
+  stores only `primaryContact`, which names a person rather than granting
+  anything, and has one holder per company (a trigger moves it).
+  `has_org_permission()` (and `can()` in `src/lib/domain/org.js`, the same
+  rule for screens) is the one answer everywhere.
+- **Enforced in the database, not the screens.** Each RPC calls
+  `require_org_permission()` before acting; the tables a client writes
+  directly (quotes and their lines, requests and their parts, a request's
+  taxonomy links and matching requirements) carry a guard trigger. It
+  raises only for a MEMBER lacking the permission, so each function's own
+  party check keeps deciding strangers, with its own error code.
+- **What each covers:** Quote flow = writing, cancelling and awarding a
+  request, contract files and setting the production steps (brand), quote
+  drafts, send, revise, withdraw (factory). Approve samples = approving and
+  disputing a step; a PAID step needs Release funds too. Release funds =
+  funding a step. Add update = the factory's step updates (a brand's comment
+  is not one). Settings access = invites, the email switches, cards,
+  credits, the company's contact details. **Where a factory is paid out
+  stays owner-only** (payout accounts, the Stripe Connect session).
+  Messages, calls, cancelling an order and order tabs stay open to every
+  member.
+- **A row written with no permissions keeps what a member could do before**
+  (brand: Quote flow + Approve; factory: RFQ flow + Add update), so old
+  fixtures and the seed's direct inserts behave as they did. A test that
+  needs a member WITHOUT a permission writes `permissions` explicitly.
+- **`org_members` is written only through functions** (`set_member_access`,
+  `set_member_role`, `remove_member`; `create_org` and `accept_invitation`
+  insert). The old owner UPDATE policy let an owner rewrite `user_id`.
+  The last owner can never be demoted, removed or leave (owner rows locked
+  first, so two owners cannot demote each other at once).
+- **Invitations stay a plain insert** (column grants), so the live site
+  keeps inviting while a deploy runs. A guard forces `member`, stamps
+  `invited_by`, takes no permission the inviter lacks (no inviting your own
+  second address with more), refuses team members, staff addresses and more
+  than 20 a day per PERSON. `api/send-team-invite.js` inserts with the
+  caller's token, then emails (`teamInviteEmail`); Resend extends the
+  expiry, and the idempotency key carries it, so Resend never replays.
+- **`org_members` is in the Realtime publication.** `AuthProvider` listens
+  to the person's own rows: a permission change reaches open screens, and a
+  removal shows "You no longer have access to …".
+- **An open Settings page hears the team change** (`LiveSettings`: `org_members`
+  and, from `20261104100200`, `org_invitations`, both in the Realtime
+  publication). It re-reads only the team, because the full reload asks Stripe,
+  and again every 30 s, since an invitation expiring sends no event. An invited
+  person's open page listens by address (`useInvitationsLive`).
+- **Invitations are read through `my_invitation_companies()`.** A plain
+  select also returned an owner's own outgoing invitations, and the invited
+  company's name was unreadable to someone not in it yet. Signing up with an
+  invited address no longer creates a company of its own.
+- **Settings → Account is `save_account_settings()`**: phone and location need
+  Settings access, the company's name an owner, and the sign-in email is not
+  edited there. The phone lives in `company_contact_details`, never `orgs`: the
+  other side of an order can read `orgs`.
+- **Someone with no company is not always someone who just signed up**
+  (`20261104100100`). `ChooseOrgType` creates a company from the signup answers
+  only for an account with no `org_member_departures` row. A trigger on
+  `org_members` writes that row on every way out (removed, left, staff deleting
+  the company), so a removed person is told, also after a reload, and nothing is
+  created. A failed read of the row counts as "has left".
+- **A non-owner's save never carries the company's name.** `save_account_settings`
+  takes a null name as "leave it" (their copy goes stale when an owner renames),
+  and `renameIfChanged` calls `rename_factory` only for an owner who changed it.
+  Non-owners see the name read-only: greyed with hover text in the profile
+  dialog, with a sentence in Settings, where the field looks editable.
+- **Removing someone, or leaving, withdraws the pending invitations they sent**
+  (`remove_member`), or a member about to be removed could invite a second
+  address of their own and come back with those rights. Someone who already
+  accepted stays: they are on the team, and the owner can see them.
+- **An invitation's email links to `/app.html?invite=<id>`, and the invitation
+  answers everything** (`useInviteLink` in `src/app/main.jsx`,
+  `20261106100000`). `invitation_preview()` is granted to `anon`: while open it
+  says the company, kind, address, name, title and whether the address has an
+  account; closed, only the state and the company, because a link can be
+  forwarded long after; an unknown or malformed id returns nothing and raises
+  nothing. The form asks no company or side, fixes the address, and joins on
+  submit, since "Log in to join X" is the consent. Opening a link while signed
+  in never joins by itself: the Join card or banner does. No company name is
+  sent, so nothing can create one. **A company invited through `referrals`
+  still gives a name.**
+- **A failed read of a person's invitations is "don't know", never "not
+  invited".** Neither `signUpWithPassword` nor `ChooseOrgType` creates a company
+  on it.
+- **A person's own password isn't a company setting.** Settings → Password &
+  security has its own "Change password", open to every member whatever their
+  permissions: the current password is checked by signing in again, because
+  `secure_password_change` is off.
+- **A missing permission greys the action out, with the permission in its hover
+  text and no sentence** (Queena, Nov 4 and 5; a phone gets no reason, which she
+  accepted). Whole flows a person may not use (the composer, the quote form) say
+  "Not available to you" instead of drawing a form full of disabled inputs, and a
+  read-only form that looks editable keeps its sentence (Settings → Basic
+  information).
 
 ### Mock data leaking into the live app
 

@@ -24,6 +24,7 @@ import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
 import { StepUpdatesModal } from "../../shared/StepUpdatesModal.jsx";
 import { getOrder, orderActivity } from "../../lib/domain/order.js";
+import { can, permissionHint } from "../../lib/domain/org.js";
 import {
   approveMilestone,
   listMilestones,
@@ -62,44 +63,61 @@ const approvable = (milestone) =>
   && ["active", "submitted"].includes(milestone.state);
 
 /**
+ * Which permissions this viewer lacks to take a step's action, in the words
+ * Settings uses. Empty when they hold everything the action asks for.
+ */
+function missingFor(milestone, kind, { canFund, canApprove }) {
+  if (kind === "fund") return canFund ? [] : ["Release funds"];
+  const missing = canApprove ? [] : ["Approve samples"];
+  if (milestone.kind === "approval_and_payment" && !canFund) missing.push("Release funds");
+  return missing;
+}
+
+const permissionWords = (missing) => missing.join(" and ");
+
+/**
  * What this step is waiting for, and from whom.
  *
  * The design draws a fixed action per row: "Approve", or "Fund milestone".
  * Live it depends on the state the row is in and which side is looking: a
  * factory never approves its own work, it posts updates from the row's menu.
- * A row with nothing to do carries no button rather than a disabled one.
+ * A brand member without the permission the action asks for still sees it,
+ * greyed out, with the permission in its hover text (Queena, Nov 4 and 5): a
+ * hidden button reads as a missing feature.
  */
-function actionFor(milestone, { isFactory, isOwner, posted, factoryName }) {
+function actionFor(milestone, viewer) {
+  const { isFactory } = viewer;
   const payment = milestone.payment;
   const none = { action: "", tone: "", kind: "" };
+  const button = (action, kind, opensLater = false) => {
+    const missing = missingFor(milestone, kind, viewer);
+    if (missing.length) {
+      return {
+        action, tone: "primary", kind, actionDisabled: true,
+        actionDisabledReason: `Needs the ${permissionWords(missing)} permission`,
+      };
+    }
+    return opensLater ? { action, tone: "primary", kind, actionDisabled: true } : { action, tone: "primary", kind };
+  };
 
   if (isFactory) return none;
   // A paid step is funded before the work; a payment that came back is paid
-  // again the same way. Only an owner may pay (begin_payment_checkout).
-  if (payment?.state === "due" || payment?.state === "failed") {
-    return isOwner ? { action: "Fund milestone", tone: "primary", kind: "fund" } : none;
-  }
+  // again the same way. Release funds pays (begin_payment_checkout).
+  if (payment?.state === "due" || payment?.state === "failed") return button("Fund milestone", "fund");
+  // approve_milestone refuses a paid step until its money is held.
+  if (payment && milestone.kind === "approval_and_payment" && payment.state !== "confirmed") return none;
   if (approvable(milestone)) {
-    if (milestone.kind === "approval_and_payment" && !isOwner) return none;
-    return {
-      action: milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve",
-      tone: "primary",
-      kind: "approve",
-    };
+    // approve_milestone asks for Approve samples, and Release funds too on a
+    // paying step.
+    return button(milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve", "approve");
   }
   // Keep the next action visible on every upcoming step. The database still
   // owns sequencing, so a future CTA is disabled until that step opens rather
   // than disappearing and leaving the schedule without a clear action.
   if (milestone.state === "pending") {
-    if (milestone.kind === "payment_only" && payment?.state === "not_due") {
-      return { action: "Fund milestone", tone: "primary", kind: "fund", actionDisabled: true };
-    }
-    if (milestone.kind === "approval_and_payment") {
-      return { action: "Approve fund", tone: "primary", kind: "approve", actionDisabled: true };
-    }
-    if (milestone.kind === "approval_only") {
-      return { action: "Approve", tone: "primary", kind: "approve", actionDisabled: true };
-    }
+    if (milestone.kind === "payment_only" && payment?.state === "not_due") return button("Fund milestone", "fund", true);
+    if (milestone.kind === "approval_and_payment") return button("Approve fund", "approve", true);
+    if (milestone.kind === "approval_only") return button("Approve", "approve", true);
   }
   return none;
 }
@@ -132,8 +150,9 @@ function paymentLine(payment, isFactory, kind) {
   }
 }
 
+/** Stripe's failure reasons end in a full stop; a sentence joined after one must not double it. */
 /** The sentence under a step's title, from its own state and its payment's. */
-function statusLine(milestone, { isFactory, isOwner, orgName, factoryName, posted }) {
+function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, posted }) {
   const payment = milestone.payment;
   const money = paymentLine(payment, isFactory, milestone.kind);
 
@@ -142,17 +161,13 @@ function statusLine(milestone, { isFactory, isOwner, orgName, factoryName, poste
   }
   // Funding comes before the work, so an unfunded step says so first.
   if (["due", "processing", "failed", "sent"].includes(payment?.state) && milestone.state !== "pending") {
-    // A member gets no "Fund milestone" (actionFor): say why, up front.
-    if (!isFactory && !isOwner && (payment.state === "due" || payment.state === "failed")) {
-      return `${money}. Only an owner of ${orgName || "your company"} can pay for it`;
-    }
     return money;
   }
   if (approvable(milestone, posted)) {
     const held = payment?.state === "confirmed" ? ` · ${money}` : "";
     if (isFactory) return `Posted, awaiting the brand's approval${held}`;
-    if (milestone.kind === "approval_and_payment" && !isOwner) return `Ready for an owner's approval${held}`;
-    return `Ready for your approval${held}`;
+    const mayApprove = canApprove && (milestone.kind !== "approval_and_payment" || canFund);
+    return `${mayApprove ? "Ready for your approval" : "Ready for approval"}${held}`;
   }
   if (milestone.state === "active") {
     // The brand approves from the factory's update, so before there is one
@@ -448,7 +463,17 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const money = (cents) => (cents == null ? "—" : formatMoney(cents, order.currency));
   const other = isFactory ? order.brand?.name : order.factory?.name;
   const running = order.status === "active";
-  const viewer = { isFactory, isOwner, orgName: org.name, factoryName: order.factory?.name };
+  // What this person may do here (has_org_permission); the database refuses
+  // the rest, so the rows offer only these.
+  const viewer = {
+    isFactory,
+    org,
+    factoryName: order.factory?.name,
+    canFund: can(org, "releaseFunds"),
+    canApprove: can(org, "approve"),
+    canUpdate: can(org, "addUpdate"),
+    canSetSteps: can(org, "rfqFlow"),
+  };
   // The brand's figures with the fee (brandCharges); the factory's are the
   // summary's step amounts.
   const charged = isFactory ? null : charges;
@@ -461,6 +486,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       ? { canRemind: running && waitingOnOther(milestone, true, posted), reminderReason: "" }
       : brandReminderState(milestone, { running, posted, current: milestone.id === order.current_milestone_id });
     const next = actionFor(milestone, { ...viewer, posted });
+    const noUpdatePermission = isFactory && !viewer.canUpdate && running
+      && milestone.kind !== "payment_only" && !["complete", "cancelled"].includes(milestone.state);
     const fileCount = stepUpdates.reduce((sum, update) => sum + (update.documents?.length ?? 0), 0);
     return {
       id: milestone.id,
@@ -491,7 +518,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         : "Nothing posted on this step yet",
       ...reminder,
       // Discussion remains open after approval, including completed orders.
+      // A factory's post is an update (Add update); a brand's is a comment.
       canComment: (running || order.status === "completed")
+        && (!isFactory || viewer.canUpdate)
         && (milestone.state === "complete" || (milestone.kind !== "payment_only"
           && (milestone.state === "active" || milestone.state === "submitted"))),
       // Keep the factory's next action visible on every work/approval step,
@@ -502,6 +531,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         && milestone.state !== "complete"
         && milestone.state !== "cancelled"
         && milestone.kind !== "payment_only",
+      updateDisabledReason: noUpdatePermission ? "Needs the Add update permission" : "",
       canDispute: running && !hasDispute && (milestone.state === "active" || milestone.state === "submitted"),
       ...next,
       // Approval ends the work, not its history. Keep existing comments and
@@ -633,8 +663,9 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         reload={load}
         onBack={() => navigate("/orders")}
         vendor={{ ...counterparty, onMessage: () => navigate(`/orders/${orderId}/messages`), onCancel: proposeCancel }}
-        // Only an owner may pay (begin_payment_checkout); a member stays on the order.
-        onFund={isOwner ? (paymentId) => navigate(`/orders/${orderId}/payments/${paymentId}`) : undefined}
+        // Release funds pays (begin_payment_checkout); anyone else stays on the order.
+        onFund={viewer.canFund ? (paymentId) => navigate(`/orders/${orderId}/payments/${paymentId}`) : undefined}
+        locked={viewer.canSetSteps ? "" : permissionHint(org, "rfqFlow")}
         banner={cancelBanner}
         dialog={cancel.dialog}
       />
@@ -680,7 +711,8 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
           orderId, milestoneId: milestone.id, orgId: org.id, reason: body, files,
         }))}
         onRemind={remind}
-        onManageMilestones={() => navigate(`/orders/${orderId}/schedule`)}
+        onManageMilestones={viewer.canSetSteps ? () => navigate(`/orders/${orderId}/schedule`) : undefined}
+        manageMilestonesLocked={viewer.canSetSteps ? "" : permissionHint(org, "rfqFlow")}
         // A refusal belongs to the dialog it happened in, not the next one.
         onDialogClose={() => setDialogError(null)}
         banner={cancelBanner}

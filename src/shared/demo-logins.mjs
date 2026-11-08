@@ -16,10 +16,15 @@ export const DEMO_PASSWORD = "demo password 8";
 
 export const DEMO_LOGINS = {
   brand: { role: "Brand", name: "Demo Brand", email: "demo-brand@example.com" },
-  // A member, not an owner, of Demo Brand: sees what an owner must do.
+  // A member, not an owner, of Demo Brand, with Approve samples only: it
+  // approves steps but cannot pay, choose a quote, write a request, invite
+  // or change Settings.
   brandMember: { role: "Brand member", name: "Demo Brand (member)", email: "demo-brand-member@example.com" },
   newBrand: { role: "New brand", name: "Fresh Thread Studio", email: "demo-brand-new@example.com" },
   factory: { role: "Factory", name: "Demo Factory", email: "demo-factory@example.com" },
+  // A member of Demo Factory with Add update only: it posts step updates but
+  // cannot send a quote, invite, or change Settings.
+  factoryMember: { role: "Factory member, updates only", name: "Demo Factory (member)", email: "demo-factory-member@example.com" },
   secondFactory: { role: "Factory two", name: "Ningbo Loomworks", email: "demo-factory-two@example.com" },
   newFactory: { role: "Factory waiting for review", name: "Atlas Knit Studio", email: "demo-factory-new@example.com" },
   // Staff asked it for more information, at length: its finish card has to

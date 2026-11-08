@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { EMAIL_LOGO_URL } from "./_email-assets.js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 // Loaded with import(), not a static import: Vercel compiles api/*.js to
 // CommonJS, and a static import of this .mjs becomes a require() that
@@ -102,7 +103,7 @@ export default async function handler(request, response) {
       const message = onboardingEmail(row.profile_kind, {
         companyName: row.company_name,
         dashboardUrl,
-        logoUrl: `${appUrl()}/assets/logo.png`,
+        logoUrl: EMAIL_LOGO_URL,
         supportEmail: REPLY_TO,
         companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
       });

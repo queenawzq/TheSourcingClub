@@ -8153,6 +8153,13 @@ select {
   background: #f3f7fb;
 }
 
+.project-overflow-menu button:disabled,
+.project-overflow-menu button:disabled:hover {
+  background: transparent;
+  color: #9aa8bc;
+  cursor: not-allowed;
+}
+
 .project-overflow-submenu {
   position: relative;
 }
@@ -12905,6 +12912,15 @@ body:has(.brand-onboarding-page) {
   transition: transform 160ms ease;
 }
 
+.tsc-change-password {
+  margin-top: 12px;
+}
+
+.settings-switch input:disabled + span {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .settings-switch input:checked + span {
   background: #1a4df2;
 }
@@ -13048,6 +13064,12 @@ body:has(.brand-onboarding-page) {
 .settings-check {
   display: inline-grid;
   place-items: center;
+}
+
+/* The hidden label below is absolute; with no containing block inside the
+   table's own scroll box it is not clipped, and it widened the whole page. */
+.settings-check {
+  position: relative;
 }
 
 .settings-check span {

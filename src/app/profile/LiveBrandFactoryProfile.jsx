@@ -24,6 +24,7 @@ import { BACK_LABELS, brandFactoryView } from "./brand-factory-view.js";
 import { loadVendorProfileForBrand } from "./load-profile.js";
 import { useSavedVendors } from "../browse/useSavedVendors.js";
 import "./profile.css";
+import { can, permissionHint } from "../../lib/domain/org.js";
 
 /** Where the back link goes when there is no in-app page to go back to. */
 const FALLBACK = { browse: "/browse", saved: "/saved", dashboard: "/", quotes: "/rfqs", order: "/orders", invite: "/rfqs" };
@@ -120,6 +121,7 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
     repeatBrands: String(state.parts.publicMetrics?.repeatBrands ?? 0),
     certifications: brandFactoryView(displayedParts).trust,
   };
+  const quoteLocked = can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow");
   const requestQuote = onRequestQuote ?? (() => navigate(`/rfqs/new?invite=${vendorOrgId}`));
   const message = state.thread ? () => navigate(`/messages/${state.thread.id}`) : null;
 
@@ -156,9 +158,10 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
           onSave: null,
           onMessage: message,
           onRequestQuote: requestQuote,
+          quoteLocked,
           // A conversation belongs to a request or an order, so without one
           // the contact card's way in is a request.
-          contact: message ? { label: "Message factory", onClick: message } : { label: "Request quote", onClick: requestQuote },
+          contact: message ? { label: "Message factory", onClick: message } : { label: "Request quote", onClick: requestQuote, quoteLocked },
         }}
       />
       {preview && <div className="approve-fund-modal-layer">

@@ -8270,6 +8270,8 @@ body:has(.factory-onboarding-page) {
   padding: var(--button-padding);
 }
 
+/* Live only: why Edit and Withdraw are greyed out, on a row of its own under
+   the header (the header's own p takes the subtitle area). */
 .factory-review-header-top {
   display: flex;
   align-items: center;
@@ -11460,3 +11462,10 @@ button.sort-button {
     flex-wrap: wrap;
   }
 }
+
+/* A field the person may read but not change, with the reason under it. */
+.factory-onboarding-field input:read-only {
+  background: #f4f6f9;
+  color: #5b6577;
+}
+

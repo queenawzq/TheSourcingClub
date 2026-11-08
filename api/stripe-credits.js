@@ -41,15 +41,15 @@ export default async function handler(request, response) {
 async function start({ stripe, db, caller, body, response }) {
   const { orgId, credits } = body;
   const [owner, orgRead, auth] = await Promise.all([
-    caller.rpc("is_org_owner", { target_org: orgId }),
+    caller.rpc("has_org_permission", { target_org: orgId, perm: "settingsAccess" }),
     caller.from("orgs").select("id, name").eq("id", orgId).maybeSingle(),
     caller.auth.getUser(),
   ]);
   if (tokenRefused(owner) || tokenRefused(orgRead) || !auth.data?.user) return reply(response, 401, { error: "sign in is required" });
   const org = orgRead.data;
-  if (!owner.data || !org) return reply(response, 403, { error: "only an owner of the company can buy credits" });
+  if (!owner.data || !org) return reply(response, 403, { error: "only someone with Settings access at the company can buy credits" });
 
-  // The owner test again, in the database, against the caller's own id:
+  // The Settings access test again, in the database, against the caller's own id:
   // create_credit_purchase is the guard, the check above only a quick answer.
   const { data: purchase, error } = await db.rpc("create_credit_purchase", {
     target_org: orgId, pack_credits: Number(credits), buyer: auth.data.user.id,

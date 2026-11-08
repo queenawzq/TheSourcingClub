@@ -19,7 +19,7 @@
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { supabase, isConfigured, setKeepSignedIn, isThisTabsSession } from "./supabase.js";
-import { createOrg, listMyOrgs } from "./domain/org.js";
+import { createOrg, listMyInvitations, listMyOrgs } from "./domain/org.js";
 import { closeCallWindowsForSignOut } from "../app/message/call-window.js";
 import { logoutStripeConnect } from "./stripe-connect-embed.js";
 
@@ -235,6 +235,37 @@ export function AuthProvider({ children }) {
     return rows;
   }, [session?.user?.id]);
 
+  // The company this person was just removed from, said once on screen.
+  const [lostAccess, setLostAccess] = useState(null);
+  const orgsRef = useRef(orgs);
+  orgsRef.current = orgs;
+
+  // A permission changed, or this person was removed, while the app is open:
+  // the database already refuses them, and the screen follows. Realtime
+  // carries only this person's own membership rows (and a removal's key).
+  useEffect(() => {
+    const userId = session?.user?.id;
+    if (!isConfigured || !userId) return undefined;
+    let timer = null;
+    const channel = supabase
+      .channel(`org_members:${userId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "org_members", filter: `user_id=eq.${userId}` }, () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(async () => {
+          const before = orgsRef.current;
+          const rows = await reloadOrgs().catch(() => null);
+          if (!rows) return;
+          const gone = before.find((org) => !rows.some((row) => row.id === org.id));
+          if (gone) setLostAccess(gone.name);
+        }, 300);
+      })
+      .subscribe();
+    return () => {
+      window.clearTimeout(timer);
+      supabase.removeChannel(channel);
+    };
+  }, [session?.user?.id, reloadOrgs]);
+
   const value = useMemo(() => {
     const activeOrg = orgs.find((org) => org.id === activeOrgId) ?? orgs[0] ?? null;
 
@@ -245,6 +276,8 @@ export function AuthProvider({ children }) {
       user: session?.user ?? null,
       orgs,
       activeOrg,
+      lostAccess,
+      dismissLostAccess: () => setLostAccess(null),
 
       selectOrg(orgId) {
         setActiveOrgId(orgId);
@@ -312,7 +345,12 @@ export function AuthProvider({ children }) {
           return false;
         }
 
-        if (companyName?.trim()) {
+        // Someone signing up from a teammate's invitation joins that company;
+        // creating one of their own as well is the one thing they should not
+        // do. The shell's "You have been invited" card asks them instead.
+        // A failed read is "don't know", not "not invited": ChooseOrgType asks.
+        const invited = await listMyInvitations().catch(() => null);
+        if (companyName?.trim() && invited && !invited.length) {
           setCreatingOrg(true);
           try {
             await createOrg(companyName.trim(), accountType === "factory" ? "factory" : "brand");
@@ -485,7 +523,7 @@ export function AuthProvider({ children }) {
 
       refreshOrgs: reloadOrgs,
     };
-  }, [status, creatingOrg, error, session, orgs, activeOrgId, reloadOrgs]);
+  }, [status, creatingOrg, error, session, orgs, activeOrgId, reloadOrgs, lostAccess]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

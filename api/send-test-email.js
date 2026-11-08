@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { EMAIL_LOGO_URL } from "./_email-assets.js";
 import { supabaseServerEnv } from "./_supabase-env.js";
 import { messageFor } from "./send-review-decision.js";
 
@@ -43,7 +44,29 @@ const TEMPLATES = {
   "review-needs-information": (locale, name) => review("needs_information", locale, name, SAMPLE_NOTE),
   "review-declined": (locale, name) => review("declined", locale, name, SAMPLE_NOTE),
   "notification": (locale, name) => sampleNotification(locale, name),
+  "team-invite": (locale, name) => sampleTeamInvite(name),
 };
+
+// A teammate's invitation, with sample permissions.
+async function sampleTeamInvite(name) {
+  const { teamInviteEmail } = await import("../scripts/generate-notification-email.mjs");
+  const app = appUrl();
+  return teamInviteEmail({
+    companyName: "Sample Brand Co.",
+    kind: "brand",
+    inviterName: "Sample Owner",
+    inviteeName: name,
+    title: "Production lead",
+    permissions: ["approve", "rfqFlow"],
+    email: "you@example.com",
+    expiresAt: new Date(Date.now() + 14 * 86400000).toISOString(),
+  }, {
+    appUrl: app,
+    logoUrl: EMAIL_LOGO_URL,
+    supportEmail: REPLY_TO,
+    companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
+  });
+}
 
 // The email a member gets for an ordinary notification, with a sample quote.
 async function sampleNotification(locale, name) {
@@ -61,7 +84,7 @@ async function sampleNotification(locale, name) {
     body: "$18.40 a unit for 300 units, 28 days after sample approval.",
   }, {
     appUrl: appUrl(),
-    logoUrl: `${appUrl()}/assets/logo.png`,
+    logoUrl: EMAIL_LOGO_URL,
     supportEmail: REPLY_TO,
     companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
   });
@@ -71,7 +94,7 @@ function sampleOnboarding(companyName, path) {
   return {
     companyName,
     dashboardUrl: `${appUrl()}${path}`,
-    logoUrl: `${appUrl()}/assets/logo.png`,
+    logoUrl: EMAIL_LOGO_URL,
     supportEmail: REPLY_TO,
     companyAddress: process.env.COMPANY_ADDRESS ?? "New York, USA",
   };

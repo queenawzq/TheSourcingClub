@@ -29,10 +29,11 @@ insert into public.orgs (id, type, name, slug) values
   ('30b00000-0000-0000-0000-0000000000f1', 'factory', 'P30 Mill',      'pgtap30-mill'),
   ('30b00000-0000-0000-0000-0000000000f2', 'factory', 'P30 Owed Mill', 'pgtap30-owed-mill');
 
-insert into public.org_members (org_id, user_id, role) values
-  ('30b00000-0000-0000-0000-0000000000f1', '30a00000-0000-0000-0000-000000000001', 'owner'),
-  ('30b00000-0000-0000-0000-0000000000f1', '30a00000-0000-0000-0000-000000000002', 'member'),
-  ('30b00000-0000-0000-0000-0000000000f2', '30a00000-0000-0000-0000-000000000003', 'owner');
+-- permissions is filled by a trigger, which replica mode skips.
+insert into public.org_members (org_id, user_id, role, permissions) values
+  ('30b00000-0000-0000-0000-0000000000f1', '30a00000-0000-0000-0000-000000000001', 'owner', '{primaryContact}'),
+  ('30b00000-0000-0000-0000-0000000000f1', '30a00000-0000-0000-0000-000000000002', 'member', '{rfqFlow,addUpdate}'),
+  ('30b00000-0000-0000-0000-0000000000f2', '30a00000-0000-0000-0000-000000000003', 'owner', '{primaryContact}');
 
 insert into public.factory_payout_accounts (id, org_id, is_primary, bank_name, account_name, created_at) values
   ('30c00000-0000-0000-0000-000000000001', '30b00000-0000-0000-0000-0000000000f1', true,  'P30 First',  'P30 Mill Ltd', now() - interval '3 days'),
