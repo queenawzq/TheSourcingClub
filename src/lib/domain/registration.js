@@ -4,31 +4,43 @@
  * src/shared/registration-number.mjs and, the same, in the database.
  */
 import { supabase, unwrap } from "../supabase.js";
-import { normaliseAccessCode, registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
+import { normaliseAccessCode, normaliseTradeRegistry, registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
 
 export async function getRegistration(orgId) {
   return unwrap(
-    await supabase.from("company_registrations").select("org_id, country_code, number, access_code, updated_at").eq("org_id", orgId).maybeSingle(),
+    await supabase.from("company_registrations").select("org_id, country_code, number, access_code, trade_registry, check_digit_confirmed, updated_at").eq("org_id", orgId).maybeSingle(),
     "load the registration number",
   );
 }
 
 /**
- * Save the number (and Portugal's access code). Refuses in words before the
- * database would, so the step can say which field is wrong. Asks VIES after a
- * Portuguese number is saved, without waiting for it: the answer is for staff.
+ * Save the number and the country's second field (Portugal's access code,
+ * Turkey's trade registry entry). Refuses in words before the database would,
+ * so the step can say which field is wrong; a failed check digit is saved
+ * only when the factory `confirmed` it. Asks VIES after a Portuguese number
+ * is saved, without waiting for it: the answer is for staff.
  */
-export async function saveRegistration(orgId, { country, number, accessCode = "" }, language = "en") {
+export async function saveRegistration(orgId, { country, number, second = "", confirmed = false }, language = "en") {
+  const zh = language === "zh";
   const problem = registrationNumberProblem(country, number);
-  if (problem) throw new Error(registrationProblemText(country, problem, language));
-  const code = normaliseAccessCode(accessCode);
-  if (code === null) throw new Error(language === "zh" ? "访问码须为 12 位数字" : "The access code is 12 digits");
+  if (problem && !(problem === "check_digit" && confirmed)) throw new Error(registrationProblemText(country, problem, language));
+  let accessCode = null;
+  let tradeRegistry = null;
+  if (country === "PT") {
+    accessCode = normaliseAccessCode(second);
+    if (accessCode === null) throw new Error(zh ? "访问码须为 12 位数字" : "The access code is 12 digits");
+  } else if (country === "TR") {
+    tradeRegistry = normaliseTradeRegistry(second);
+    if (tradeRegistry === null) throw new Error(zh ? "商业登记号过长" : "The trade registry entry is too long");
+  }
   const saved = unwrap(
     await supabase.rpc("save_company_registration", {
       target_org: orgId,
       country: country ?? null,
       number,
-      access_code: code || null,
+      access_code: accessCode || null,
+      trade_registry: tradeRegistry || null,
+      confirmed: Boolean(confirmed),
     }),
     "save the registration number",
   );

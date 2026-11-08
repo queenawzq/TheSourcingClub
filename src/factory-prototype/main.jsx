@@ -7586,7 +7586,7 @@ export function FactoryOnboarding({
   // Live only: drawn at the top of the step (what staff asked for).
   notice = null,
   // Live only: the registration number field on the verification step,
-  // { label, hint, value, accessCode: { label, hint, value } | null, check }.
+  // { label, hint, value, confirmed, confirmLabel, second, check, checkSecond }.
   registration = null,
 }) {
   const cardRef = useRef(null);
@@ -8690,27 +8690,37 @@ function OnboardingAssetUploadCard({
 
 /**
  * Live only: the registration number under the registration upload, in the
- * step's own field style. `check(value)` returns the error to show, or "".
+ * step's own field style. `check(value)` returns `{ error, confirmable }`:
+ * a failed check digit may be confirmed (the tick), anything else must be
+ * fixed. `second` is the country's optional second field.
  */
 function OnboardingRegistrationNumber({ registration }) {
   const [number, setNumber] = useState(registration.value ?? "");
-  const [code, setCode] = useState(registration.accessCode?.value ?? "");
-  const numberError = registration.check(number, "number");
-  const codeError = registration.accessCode ? registration.check(code, "accessCode") : "";
+  const [second, setSecond] = useState(registration.second?.value ?? "");
+  const [confirmed, setConfirmed] = useState(Boolean(registration.confirmed));
+  const { error, confirmable } = registration.check(number);
+  const secondError = registration.second ? registration.checkSecond(second) : "";
+  const numberValid = !error || (confirmable && confirmed);
   return (
     <>
       <label className="factory-onboarding-field">
         <span>{registration.label}<b className="onboarding-required-mark" aria-hidden="true"> *</b></span>
-        <input name="registration-number" value={number} onChange={(event) => setNumber(event.target.value)} autoComplete="off" spellCheck={false} data-onboarding-required="true" data-valid={numberError ? "false" : "true"} />
+        <input name="registration-number" value={number} onChange={(event) => { setNumber(event.target.value); setConfirmed(false); }} autoComplete="off" spellCheck={false} data-onboarding-required="true" data-valid={numberValid ? "true" : "false"} />
         <small>{registration.hint}</small>
-        <small className="factory-onboarding-validation-message">{numberError}</small>
+        <small className="factory-onboarding-validation-message">{error}</small>
       </label>
-      {registration.accessCode && (
+      {confirmable && (
+        <label className="directory-check">
+          <input type="checkbox" name="registration-confirmed" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} />
+          <span>{registration.confirmLabel}</span>
+        </label>
+      )}
+      {registration.second && (
         <label className="factory-onboarding-field">
-          <span>{registration.accessCode.label}</span>
-          <input name="registration-access-code" value={code} onChange={(event) => setCode(event.target.value)} autoComplete="off" inputMode="numeric" data-onboarding-required="true" data-valid={codeError ? "false" : "true"} />
-          <small>{registration.accessCode.hint}</small>
-          <small className="factory-onboarding-validation-message">{codeError}</small>
+          <span>{registration.second.label}</span>
+          <input name="registration-second" value={second} onChange={(event) => setSecond(event.target.value)} autoComplete="off" data-onboarding-required="true" data-valid={secondError ? "false" : "true"} />
+          <small>{registration.second.hint}</small>
+          <small className="factory-onboarding-validation-message">{secondError}</small>
         </label>
       )}
     </>

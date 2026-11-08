@@ -214,3 +214,4 @@
 .admin-registry-form .admin-registry-note { grid-column: 1 / -1; }
 .admin-registry-form button { justify-self: start; }
 @media (max-width: 640px) { .admin-registry-form { grid-template-columns: 1fr; } }
+.admin-registry-flag { margin: 0; font-weight: 600; }

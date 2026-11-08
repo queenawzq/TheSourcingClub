@@ -544,7 +544,7 @@ must(await chinaNewFactory.client.from("taxonomy_links").insert(await Promise.al
   subject_type: "factory_profile", subject_id: chinaNewOrg.id, org_id: chinaNewOrg.id, term_id: await termId(kind, slug),
 })))), "the new China factory's tags");
 must(await admin.from("credit_ledger").insert({ org_id: chinaNewOrg.id, delta: 500, reason: "onboarding_grant", note: "Profile verified" }), "the new China factory's credits");
-// A factory in Türkiye waiting for review, with its MERSİS number: the review
+// A factory in Türkiye waiting for review, with its tax number (VKN): the review
 // page's "Official registry" panel shows Turkey's sources for it. Nothing
 // checked yet, so staff record the first check.
 const turkeyFactoryOrg = must(await turkeyFactory.client.rpc("create_org", { org_name: LOGINS.turkeyFactory.name, org_kind: "factory" }), "create the Turkish factory");
@@ -563,9 +563,9 @@ must(await admin.from("factory_profiles").upsert({
   }), "record the Turkish registration");
 }
 // Fake numbers that pass each country's check (scripts/check-registration-number.mjs).
-must(await turkeyFactory.client.rpc("save_company_registration", { target_org: turkeyFactoryOrg.id, country: "TR", number: "0123456789000015" }), "the Turkish factory's MERSİS number");
+must(await turkeyFactory.client.rpc("save_company_registration", { target_org: turkeyFactoryOrg.id, country: "TR", number: "4837261591", trade_registry: "123456 İzmir" }), "the Turkish factory's tax number");
 must(await factory.client.rpc("save_company_registration", { target_org: factoryOrg.id, country: "PT", number: "509999999", access_code: "1234-5678-9012" }), "Demo Factory's NIPC");
-must(await secondFactory.client.rpc("save_company_registration", { target_org: secondFactoryOrg.id, country: "CN", number: "91440300MA5F00001A" }), "Ningbo Loomworks's credit code");
+must(await secondFactory.client.rpc("save_company_registration", { target_org: secondFactoryOrg.id, country: "CN", number: "91330100MA2B7C4D3F" }), "Ningbo Loomworks's credit code");
 // Staff found both verified ones on their registries, so a brand reads
 // "Official registry · <month>" on their profiles.
 must(await adminUser.client.rpc("admin_record_registry_check", { target_org: factoryOrg.id, source: "certidao", result: "found", note: "Demo: name and address match" }), "Demo Factory's registry check");
@@ -1448,7 +1448,7 @@ done. Every login uses the password "${PASSWORD}".
   second factory  ${LOGINS.secondFactory.email}   (a competing quote)
   new factory     ${LOGINS.newFactory.email}   (waiting for verification)
   returned factory ${LOGINS.returnedFactory.email}   (asked for more information, a long note)
-  Turkish factory ${LOGINS.turkeyFactory.email}   (waiting for review, MERSİS number, nothing checked)
+  Turkish factory ${LOGINS.turkeyFactory.email}   (waiting for review, VKN, nothing checked)
   new brand       ${LOGINS.newBrand.email}   (no requests yet: recommended factories)
   second brand    ${LOGINS.secondBrand.email}   (five open requests, nothing paid: Browse RFQs' filters)
   trading company ${LOGINS.tradingCompany.email}   ${app}?portal=factory

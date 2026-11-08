@@ -1,14 +1,15 @@
 /**
  * The registration number rules (src/shared/registration-number.mjs), pinned:
  * China's GB 32100 check character, Portugal's mod-11 check digit, Turkey's
- * 16-digit MERSİS number, anything else as written, and what VIES's answers
+ * VKN (mod 10), China's pre-2017 15 digits, anything else as written, and what VIES's answers
  * become. The database runs the same rules (registration_number_problem(),
  * migration 20261108600000); supabase/tests/registry_checks_test.sql pins
  * that copy with the same numbers. Runs in the build.
  */
 import assert from "node:assert/strict";
 import {
-  normaliseAccessCode, normaliseRegistrationNumber, registrationCountryFrom, registrationNumberProblem,
+  normaliseAccessCode, normaliseRegistrationNumber, normaliseTradeRegistry, registrationCountryFrom, registrationFlags,
+  registrationNumberProblem,
 } from "../src/shared/registration-number.mjs";
 import { viesResult } from "../api/registry-vies.js";
 
@@ -25,16 +26,23 @@ const cases = [
   ["CN", "91350100M000100Y44", "check_digit"],
   ["CN", "91440300MA5F00001A", null],
   ["CN", "91350100M000100Y4", "format"],
+  ["CN", "91330100MA2B7C4D3F", null],
+  ["CN", "91330100MA2B7C4D31", "check_digit"],
+  ["CN", "330100000012345", "old_number"],
+  ["CN", "9133O100MA2B7C4D3F", "format"],
   ["CN", "91350100M000100I43", "format"],
   ["PT", "501964843", null],
   ["PT", "PT 501 964 843", null],
   ["PT", "501964844", "check_digit"],
   ["PT", "509999999", null],
   ["PT", "50196484", "format"],
-  ["TR", "0123456789000015", null],
-  ["TR", "0123-4567-8900-0015", null],
-  ["TR", "012345678900001", "format"],
-  ["TR", "01234567890000AB", "format"],
+  ["PT", "509123457", null],
+  ["PT", "009123457", "format"],
+  ["TR", "4837261591", null],
+  ["TR", "483 726 1591", null],
+  ["TR", "4837261592", "check_digit"],
+  ["TR", "0123456789000015", "format"],
+  ["TR", "483726159", "format"],
   ["GB", "SC123456", null],
   [null, "HRB 12345", null],
   [null, "", "missing"],
@@ -51,6 +59,16 @@ check("access code: 12 digits, dashed", () => assert.equal(normaliseAccessCode("
 check("access code: blank is blank", () => assert.equal(normaliseAccessCode(""), ""));
 check("access code: 11 digits is refused", () => assert.equal(normaliseAccessCode("1234-5678-901"), null));
 
+check("trade registry: kept as typed, 80 at most", () => {
+  assert.equal(normaliseTradeRegistry("  123456   İzmir "), "123456 İzmir");
+  assert.equal(normaliseTradeRegistry("x".repeat(81)), null);
+});
+check("staff flags: a clean company code has none", () => assert.deepEqual(registrationFlags("CN", "91330100MA2B7C4D3F"), []));
+check("staff flags: 92 is an individual business", () => {
+  assert.ok(registrationFlags("CN", "92330100MA2B7C4D3F").some((f) => f.startsWith("92")));
+});
+check("staff flags: a Portuguese personal NIF is a sole trader", () => assert.ok(registrationFlags("PT", "123456789").some((f) => /sole trader/.test(f))));
+check("staff flags: a confirmed check digit says so", () => assert.ok(registrationFlags("TR", "4837261592", { confirmed: true }).some((f) => /confirmed/.test(f))));
 check("Turkey typed as Turkey or Türkiye", () => {
   assert.equal(registrationCountryFrom("Istanbul, Turkey"), "TR");
   assert.equal(registrationCountryFrom("Bursa, Türkiye"), "TR");

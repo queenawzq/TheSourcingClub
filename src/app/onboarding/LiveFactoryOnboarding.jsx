@@ -38,7 +38,7 @@ import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
 import { getRegistration, saveRegistration } from "../../lib/domain/registration.js";
 import {
-  normaliseAccessCode, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
+  normaliseAccessCode, normaliseTradeRegistry, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
 } from "../../shared/registration-number.mjs";
 
 
@@ -255,7 +255,9 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
         if (savedRegistration) {
           restored["registration-number"] = savedRegistration.number;
-          if (savedRegistration.access_code) restored["registration-access-code"] = savedRegistration.access_code;
+          const second = savedRegistration.access_code ?? savedRegistration.trade_registry;
+          if (second) restored["registration-second"] = second;
+          if (savedRegistration.check_digit_confirmed) restored["registration-confirmed"] = true;
         }
         setSavedCountry(savedRegistration?.country_code ?? profile.country_code ?? null);
         setValues(restored);
@@ -309,14 +311,19 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       label: copy.label[lang],
       hint: copy.hint[lang],
       value: values["registration-number"] ?? "",
-      accessCode: copy.accessCode
-        ? { label: copy.accessCode.label[lang], hint: copy.accessCode.hint[lang], value: values["registration-access-code"] ?? "" }
+      confirmed: values["registration-confirmed"] === true,
+      confirmLabel: lang === "zh" ? "号码无误，与证件一致" : "The number is correct as on my document",
+      second: copy.second
+        ? { label: copy.second.label[lang], hint: copy.second.hint[lang], value: values["registration-second"] ?? "" }
         : null,
-      check: (value, which) => {
-        if (which === "accessCode") {
-          return normaliseAccessCode(value) === null ? (lang === "zh" ? "访问码须为 12 位数字" : "The access code is 12 digits") : "";
-        }
-        return registrationProblemText(registrationCountry, registrationNumberProblem(registrationCountry, value), lang);
+      check: (value) => {
+        const problem = registrationNumberProblem(registrationCountry, value);
+        return { error: registrationProblemText(registrationCountry, problem, lang), confirmable: problem === "check_digit" };
+      },
+      checkSecond: (value) => {
+        if (registrationCountry === "PT" && normaliseAccessCode(value) === null) return lang === "zh" ? "访问码须为 12 位数字" : "The access code is 12 digits";
+        if (registrationCountry === "TR" && normaliseTradeRegistry(value) === null) return lang === "zh" ? "最多 80 个字符" : "80 characters at most";
+        return "";
       },
     };
   }, [registrationCountry, language, values]);
@@ -454,7 +461,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       await saveRegistration(org.id, {
         country: registrationCountry,
         number: submitted["registration-number"],
-        accessCode: submitted["registration-access-code"] ?? "",
+        second: submitted["registration-second"] ?? "",
+        confirmed: submitted["registration-confirmed"] === true,
       }, language === "zh" ? "zh" : "en");
     }
 

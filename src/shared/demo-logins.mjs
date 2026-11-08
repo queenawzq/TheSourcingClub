@@ -33,7 +33,7 @@ export const DEMO_LOGINS = {
   // Staff asked it for more information, at length: its finish card has to
   // hold the whole note.
   returnedFactory: { role: "Factory asked for more information", name: "Harbour Line Apparel", email: "demo-factory-returned@example.com" },
-  // In Türkiye, waiting for review, with a MERSİS number: the staff review
+  // In Türkiye, waiting for review, with a tax number (VKN): the staff review
   // page's official-registry panel has Turkish sources to show.
   turkeyFactory: { role: "Factory in Türkiye waiting for review", name: "Ege Denim Atelier", email: "demo-factory-turkey@example.com" },
   tradingCompany: { role: "Trading company", name: "Kowloon Sourcing Partners", email: "demo-trading@example.com" },

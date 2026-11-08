@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(31);
+select plan(34);
 
 -- The rules -------------------------------------------------------------------
 select is(public.registration_number_problem('CN', '91350100M000100Y43'), null, 'CN: published example passes');
@@ -25,8 +25,10 @@ select is(public.registration_number_problem('CN', '91440300MA5F00001A'), null, 
 select is(public.registration_number_problem('PT', 'PT 501 964 843'), null, 'PT: published example with prefix passes');
 select is(public.registration_number_problem('PT', '501964844'), 'check_digit', 'PT: wrong check digit');
 select is(public.registration_number_problem('PT', '509999999'), null, 'PT: a fake built with the check passes');
-select is(public.registration_number_problem('TR', '0123-4567-8900-0015'), null, 'TR: 16 digits pass');
-select is(public.registration_number_problem('TR', '012345678900001'), 'format', 'TR: 15 digits do not');
+select is(public.registration_number_problem('TR', '483 726 1591'), null, 'TR: a VKN passes its mod-10 check');
+select is(public.registration_number_problem('TR', '4837261592'), 'check_digit', 'TR: wrong VKN check digit');
+select is(public.registration_number_problem('TR', '0123456789000015'), 'format', 'TR: a MERSIS number is not a VKN');
+select is(public.registration_number_problem('CN', '330100000012345'), 'old_number', 'CN: the old 15 digits');
 select is(public.registration_number_problem(null, 'HRB 12345'), null, 'other: as written');
 select is(public.registration_number_problem(null, ''), 'missing', 'other: blank is missing');
 
@@ -54,15 +56,19 @@ set local role authenticated;
 
 select throws_ok(
   $$select public.save_company_registration('d8600000-0000-0000-0000-0000000000f1', 'PT', '501964844')$$,
-  '22023', null, 'a wrong check digit is refused'
+  '22023', null, 'a wrong check digit is refused unless confirmed'
+);
+select lives_ok(
+  $$select public.save_company_registration('d8600000-0000-0000-0000-0000000000f1', 'PT', '501964844', null, null, true)$$,
+  'and saved, flagged, when the factory confirms it'
 );
 select lives_ok(
   $$select public.save_company_registration('d8600000-0000-0000-0000-0000000000f1', 'PT', 'PT509999999', '123456789012')$$,
   'a member saves a Portuguese number and access code'
 );
 select is(
-  (select number || ' ' || access_code from public.company_registrations where org_id = 'd8600000-0000-0000-0000-0000000000f1'),
-  '509999999 1234-5678-9012', 'stored normalised'
+  (select number || ' ' || access_code || ' ' || check_digit_confirmed from public.company_registrations where org_id = 'd8600000-0000-0000-0000-0000000000f1'),
+  '509999999 1234-5678-9012 false', 'stored normalised, and a passing number is no longer flagged'
 );
 select throws_ok(
   $$insert into public.company_registrations (org_id, number) values ('d8600000-0000-0000-0000-0000000000f1', 'x')$$,

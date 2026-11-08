@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { ProfileDetailPair } from "../../shared/ProfileShell.jsx";
 import { adminRegistryDetail, recordRegistryCheck, requestViesCheck } from "../../lib/domain/registration.js";
 import {
-  REGISTRY_RESULTS, registryResultLabel, registrySourceLabel, registrySources,
+  REGISTRY_RESULTS, registrationFlags, registryResultLabel, registrySourceLabel, registrySources,
 } from "../../shared/registration-number.mjs";
 
 const COUNTRY_NAMES = { CN: "China", TR: "Turkey", PT: "Portugal" };
@@ -29,6 +29,7 @@ export default function RegistryPanel({ orgId }) {
   const [result, setResult] = useState("found");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(() => {
     adminRegistryDetail(orgId).then(setDetail, setError);
@@ -75,15 +76,35 @@ export default function RegistryPanel({ orgId }) {
     <div className="admin-registry">
       <div className="admin-detail-grid">
         <ProfileDetailPair label="Country" value={COUNTRY_NAMES[country] ?? country ?? (detail.location || "Not set")} />
-        <ProfileDetailPair label="Registration number" value={registration?.number ?? "Not given"} />
+        <ProfileDetailPair label={country === "TR" ? "Tax number (VKN)" : country === "PT" ? "NIPC" : country === "CN" ? "Credit code" : "Registration number"} value={registration?.number ?? "Not given"} />
         {registration && (
           <ProfileDetailPair
-            label="Format"
-            value={registration.problem ? (registration.problem === "check_digit" ? "Check digit doesn't match" : "Wrong format") : country === "TR" ? "16 digits" : COUNTRY_NAMES[country] ? "Check digit matches" : "Not checked"}
+            label="Check digit"
+            value={registration.problem === "check_digit" ? "Doesn't match" : registration.problem ? "Wrong format" : COUNTRY_NAMES[country] ? "Matches" : "None for this country"}
           />
         )}
         {registration?.accessCode && <ProfileDetailPair label="Certificate access code" value={registration.accessCode} />}
+        {registration?.tradeRegistry && <ProfileDetailPair label="Trade registry no. and city" value={registration.tradeRegistry} />}
       </div>
+
+      {registration && (
+        <div className="admin-registry-sources">
+          <button
+            className="secondary-btn compact-btn"
+            type="button"
+            onClick={() => {
+              navigator.clipboard?.writeText(registration.number)
+                .then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); }, () => {});
+            }}
+          >
+            {copied ? "Copied" : "Copy number"}
+          </button>
+        </div>
+      )}
+
+      {registration && registrationFlags(country, registration.number, { confirmed: registration.confirmed }).map((flag) => (
+        <p className="admin-registry-flag" key={flag}>{flag}</p>
+      ))}
 
       <div className="admin-registry-sources">
         {sources.map((item) => (

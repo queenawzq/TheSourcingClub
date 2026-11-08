@@ -2,7 +2,7 @@
 -- official-registry checks staff record against it, and two holes closed.
 --
 -- 1. `company_registrations`: the number in its country's form (China's
---    Unified Social Credit Code, Turkey's MERSİS number, Portugal's NIPC plus
+--    Unified Social Credit Code, Turkey's VKN plus trade registry no., Portugal's NIPC plus
 --    the permanent-certificate access code, anything else as written). Members
 --    and staff read it; a brand never does. Written only by
 --    `save_company_registration()`, which refuses a number that fails its
@@ -38,7 +38,10 @@ as $$
   end
 $$;
 
--- Null when acceptable; else 'missing', 'format' or 'check_digit'.
+-- Null when acceptable; else 'missing', 'format', 'old_number' (China's
+-- pre-2017 15 digits) or 'check_digit' (which the factory may confirm).
+-- Turkey is the VKN (10 digits, mod-10), the one Turkish number with a check
+-- digit (research, Nov 8).
 create or replace function public.registration_number_problem(country text, raw text)
 returns text
 language plpgsql
@@ -55,7 +58,8 @@ declare
 begin
   if v = '' then return 'missing'; end if;
   if country = 'CN' then
-    if v !~ '^[0-9A-HJ-NPQRTUWXY]{18}$' then return 'format'; end if;
+    if v ~ '^\d{15}$' then return 'old_number'; end if;
+    if v !~ '^[0-9A-HJ-NPQRTUWXY]{2}\d{6}[0-9A-HJ-NPQRTUWXY]{10}$' then return 'format'; end if;
     for i in 1..17 loop
       total := total + (strpos(chars, substr(v, i, 1)) - 1) * weights[i];
     end loop;
@@ -63,9 +67,17 @@ begin
     if c = 31 then c := 0; end if;
     return case when substr(chars, c + 1, 1) = substr(v, 18, 1) then null else 'check_digit' end;
   elsif country = 'TR' then
-    return case when v ~ '^\d{16}$' then null else 'format' end;
+    if v !~ '^\d{10}$' then return 'format'; end if;
+    for i in 1..9 loop
+      c := (substr(v, i, 1)::int + (10 - i)) % 10;
+      if c <> 0 then
+        c := (c * (2 ^ (10 - i))::int) % 9;
+        total := total + case when c = 0 then 9 else c end;
+      end if;
+    end loop;
+    return case when (10 - total % 10) % 10 = substr(v, 10, 1)::int then null else 'check_digit' end;
   elsif country = 'PT' then
-    if v !~ '^\d{9}$' then return 'format'; end if;
+    if v !~ '^[1-9]\d{8}$' then return 'format'; end if;
     for i in 1..8 loop
       total := total + substr(v, i, 1)::int * (10 - i);
     end loop;
@@ -89,6 +101,10 @@ create table public.company_registrations (
   country_code text check (country_code ~ '^[A-Z]{2}$'),
   number       text not null,
   access_code  text check (access_code ~ '^\d{4}-\d{4}-\d{4}$'),
+  -- Turkey: Ticaret Sicil No and its city, as typed.
+  trade_registry text check (char_length(trade_registry) between 1 and 80),
+  -- The check digit failed and the factory said the number is right anyway.
+  check_digit_confirmed boolean not null default false,
   updated_by   uuid references auth.users (id) on delete set null,
   updated_at   timestamptz not null default now()
 );
@@ -104,10 +120,12 @@ grant select on public.company_registrations to authenticated;
 grant all on public.company_registrations to service_role;
 
 create or replace function public.save_company_registration(
-  target_org  uuid,
-  country     text,
-  number      text,
-  access_code text default null
+  target_org     uuid,
+  country        text,
+  number         text,
+  access_code    text default null,
+  trade_registry text default null,
+  confirmed      boolean default false
 )
 returns public.company_registrations
 language plpgsql
@@ -129,35 +147,47 @@ begin
   end if;
 
   problem := public.registration_number_problem(cc, number);
+  if problem = 'check_digit' and coalesce(confirmed, false) then
+    problem := null;
+  end if;
   if problem is not null then
     raise exception 'registration number: %', problem using errcode = '22023';
   end if;
-  if code_digits <> '' and length(code_digits) <> 12 then
+  if cc = 'PT' and code_digits <> '' and length(code_digits) <> 12 then
     raise exception 'access code must be 12 digits' using errcode = '22023';
   end if;
 
-  insert into public.company_registrations as r (org_id, country_code, number, access_code, updated_by, updated_at)
+  if char_length(trim(coalesce(trade_registry, ''))) > 80 then
+    raise exception 'trade registry entry is too long' using errcode = '22023';
+  end if;
+
+  insert into public.company_registrations as r
+    (org_id, country_code, number, access_code, trade_registry, check_digit_confirmed, updated_by, updated_at)
   values (
     target_org, cc, public.normalise_registration_number(cc, number),
-    case when code_digits = '' then null
-         else substr(code_digits, 1, 4) || '-' || substr(code_digits, 5, 4) || '-' || substr(code_digits, 9, 4) end,
+    case when cc = 'PT' and code_digits <> ''
+         then substr(code_digits, 1, 4) || '-' || substr(code_digits, 5, 4) || '-' || substr(code_digits, 9, 4) end,
+    case when cc = 'TR' then nullif(regexp_replace(trim(coalesce(trade_registry, '')), '\s+', ' ', 'g'), '') end,
+    public.registration_number_problem(cc, number) = 'check_digit',
     auth.uid(), now()
   )
   on conflict (org_id) do update
-    set country_code = excluded.country_code,
-        number       = excluded.number,
-        access_code  = excluded.access_code,
-        updated_by   = excluded.updated_by,
-        updated_at   = case when (r.country_code, r.number, r.access_code)
-                                 is distinct from (excluded.country_code, excluded.number, excluded.access_code)
-                            then now() else r.updated_at end
+    set country_code   = excluded.country_code,
+        number         = excluded.number,
+        access_code    = excluded.access_code,
+        trade_registry = excluded.trade_registry,
+        check_digit_confirmed = excluded.check_digit_confirmed,
+        updated_by     = excluded.updated_by,
+        updated_at     = case when (r.country_code, r.number, r.access_code, r.trade_registry)
+                                   is distinct from (excluded.country_code, excluded.number, excluded.access_code, excluded.trade_registry)
+                              then now() else r.updated_at end
   returning * into saved;
   return saved;
 end;
 $$;
 
-revoke all on function public.save_company_registration(uuid, text, text, text) from public, anon;
-grant execute on function public.save_company_registration(uuid, text, text, text) to authenticated;
+revoke all on function public.save_company_registration(uuid, text, text, text, text, boolean) from public, anon;
+grant execute on function public.save_company_registration(uuid, text, text, text, text, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 2. What was checked
@@ -285,6 +315,7 @@ begin
     'registration', (
       select jsonb_build_object(
         'country', r.country_code, 'number', r.number, 'accessCode', r.access_code,
+        'tradeRegistry', r.trade_registry, 'confirmed', r.check_digit_confirmed,
         'problem', public.registration_number_problem(r.country_code, r.number),
         'updatedAt', r.updated_at)
         from public.company_registrations r where r.org_id = target_org),
