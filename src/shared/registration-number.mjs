@@ -32,7 +32,7 @@ export const REGISTRATION_COUNTRIES = {
     hint: { en: "10 digits, on your tax registration letter (mükellefiyet yazısı); upload the letter above", zh: "10 位数字，见纳税登记证明；请在上方上传" },
     second: {
       column: "registration_letter_number",
-      label: { en: "Registration letter number", zh: "纳税登记证明编号" },
+      label: { en: "Letter number (Dilekçe No.)", zh: "证明编号" },
       hint: { en: "On your tax registration letter, for GİB's check", zh: "见纳税登记证明，用于税务局核验" },
     },
     // A sole proprietor's tax number is the owner's national ID: never asked.
@@ -211,7 +211,8 @@ export const REGISTRY_SOURCES = {
   TR: [
     { key: "gazette", label: "Trade Registry Gazette, search by title", url: "https://www.ticaretsicil.gov.tr/view/hizlierisim/unvansorgulama.php" },
     // GİB's "Mükellefiyet Yazısı Doğrulama": the VKN and the letter's number.
-    { key: "gib", label: "GİB registration letter check", url: "https://dijital.gib.gov.tr/" },
+    // No stable deep link was confirmed: the label names the page to find.
+    { key: "gib", label: "GİB letter check (Mükellefiyet Yazısı Doğrulama)", url: "https://dijital.gib.gov.tr/" },
     DOCUMENT_SOURCE,
     { key: "edevlet", label: "e-Devlet barcode check", url: "https://www.turkiye.gov.tr/belge-dogrulama" },
   ],

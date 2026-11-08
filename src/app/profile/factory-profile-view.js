@@ -333,7 +333,10 @@ export function factoryProfileView(parts, now = new Date(), language = "en") {
     employees: profile?.employee_count != null ? count(profile.employee_count) : NOT_GIVEN,
     // The badge's words follow the same source as the registration row: TSC
     // approved the company, and the registration says whether it was checked.
-    profileVerified: !verified ? "Verification pending" : registration === "Verified" ? "Business registration verified" : "Approved by TSC",
+    // Says what was checked, as the brand's row does.
+    profileVerified: !verified ? "Verification pending"
+      : registration !== "Verified" ? "Approved by TSC"
+      : parts.registryCheckKind === "document" ? "Registration document checked" : "Official registry checked",
     intro: profile?.intro || "",
     ...chips,
     // The taxonomy label carries a price band for choosing in onboarding

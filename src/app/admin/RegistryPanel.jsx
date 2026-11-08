@@ -115,7 +115,7 @@ export default function RegistryPanel({ orgId, onChange }) {
         <ProfileDetailPair label={country === "TR" ? "Tax number (VKN)" : country === "PT" ? "NIPC" : country === "CN" ? "Credit code" : "Registration number"} value={registration?.number ?? (registration?.noCompanyNumber ? "None (sole proprietor)" : "Not given")} />
         {checkDigit && <ProfileDetailPair label="Check digit" value={checkDigit} />}
         {registration?.accessCode && <ProfileDetailPair label="Certificate access code" value={registration.accessCode} />}
-        {registration?.registrationLetterNumber && <ProfileDetailPair label="Registration letter number" value={registration.registrationLetterNumber} />}
+        {registration?.registrationLetterNumber && <ProfileDetailPair label="Letter number (Dilekçe No.)" value={registration.registrationLetterNumber} />}
       </div>
 
       {flags.length > 0 && (
@@ -125,7 +125,8 @@ export default function RegistryPanel({ orgId, onChange }) {
       )}
 
       <div className="admin-registry-actions">
-        {registration?.number && <button className="secondary-btn compact-btn" type="button" onClick={() => copy("number", registration.number)}>{copied === "number" ? "Copied" : "Copy number"}</button>}
+        {registration?.number && <button className="secondary-btn compact-btn" type="button" onClick={() => copy("number", registration.number)}>{copied === "number" ? "Copied" : country === "TR" ? "Copy VKN" : "Copy number"}</button>}
+        {registration?.registrationLetterNumber && <button className="secondary-btn compact-btn" type="button" onClick={() => copy("letter", registration.registrationLetterNumber)}>{copied === "letter" ? "Copied" : "Copy letter number"}</button>}
         {detail.title && <button className="secondary-btn compact-btn" type="button" onClick={() => copy("title", detail.title)}>{copied === "title" ? "Copied" : "Copy title"}</button>}
         {country === "PT" && registration?.number && <button className="secondary-btn compact-btn" type="button" disabled={busy} onClick={vies}>Check on VIES</button>}
       </div>
