@@ -9,8 +9,11 @@ import { callerClient, jsonBody, reply, serviceClient, tokenRefused } from "./_s
  *   pay       claim, call the provider with the attempt's key, read back. Pressing
  *             again resumes the same attempt with the same key.
  *   cancel    take back a transfer nobody funded, or a PayPal payment nobody claimed.
- *   sync      read back everything that can still change. Previews sit behind
- *             Vercel's sign-in, where no webhook can reach, so nothing waits for one.
+ *   sync      read back everything that can still change. The board does this while
+ *             open; with nobody watching, Wise's and PayPal's webhooks
+ *             (api/wise-webhook.js, api/paypal-webhook.js) and the daily sweep
+ *             (api/payout-sync.js) do the same read. Previews sit behind Vercel's
+ *             sign-in, where no webhook can reach: there the sweep and the board do it.
  *   tell      Wise refused the details: the attempt fails and the factory is told.
  *
  * Whether someone may do this is the database's call, as the caller. Whether the
@@ -311,30 +314,69 @@ export async function cancelAttempt({ client, caller, db, paymentId }) {
   }
 }
 
+const READ_BACK_COLUMNS = "id, status, provider_ref, received_currency, paid_at";
+
+/**
+ * Ask the provider where one attempt is, and record it. Only the provider's own
+ * answer is written: a webhook or the sweep only says "look now".
+ */
+export async function readBack({ client, db, row }) {
+  const status = await client.status(row.provider_ref);
+  const wasPaid = row.status === "paid";
+  // The quote staff confirmed stands until it arrives. Wise's figure before that
+  // can be for another pay-in route (seen on the sandbox).
+  const arrived = status.state === "paid";
+  const tell = status.state === "failed"
+    ? (status.raw === "bounced_back" ? CHECK_BANK : status.raw === "RETURNED" ? CHECK_PAYPAL : null)
+    : null;
+  return applyStatus({
+    db, payoutId: row.id, status, wasPaid, tellOnFailure: tell,
+    received: arrived ? status.arrivesCents ?? null : null, receivedIn: arrived && status.arrivesCents != null ? row.received_currency : null,
+  });
+}
+
+/**
+ * A webhook named a transfer (Wise) or a batch (PayPal). Find our attempt by that
+ * ref, or by the key we sent when the press's answer was lost before the ref was
+ * kept (PayPal's sender_item_id), then read it back. Null when this database has
+ * no such attempt: another site on the same account, or a test event.
+ */
+export async function readBackRef({ client, db, ref, key = null }) {
+  let row = null;
+  if (ref) {
+    const found = await db.from("provider_payouts").select(READ_BACK_COLUMNS)
+      .eq("provider", client.provider).eq("provider_ref", String(ref)).maybeSingle();
+    if (found.error) throw new PayoutFailure("database", "provider_payouts could not be read", { detail: found.error.code });
+    row = found.data;
+  }
+  if (!row && key && /^[0-9a-f-]{36}$/i.test(key)) {
+    const attempt = await db.from("provider_payout_attempts").select("payout_id").eq("attempt_key", key).maybeSingle();
+    if (attempt.data?.payout_id) {
+      const found = await db.from("provider_payouts").select(READ_BACK_COLUMNS)
+        .eq("id", attempt.data.payout_id).eq("provider", client.provider).maybeSingle();
+      row = found.data;
+      if (row && !row.provider_ref && ref) {
+        await record(db, row.id, { new_ref: String(ref) });
+        row = { ...row, provider_ref: String(ref) };
+      }
+    }
+  }
+  if (!row?.provider_ref) return null;
+  if (!["processing", "paid"].includes(row.status)) return row.status;
+  return readBack({ client, db, row });
+}
+
 /** Everything of this provider's that can still change. Paid ones for 30 days: a transfer can come back. */
 export async function syncAttempts({ client, db }) {
   const since = new Date(Date.now() - 30 * 86400000).toISOString();
   const { data: rows, error } = await db.from("provider_payouts")
-    .select("id, status, provider_ref, received_currency, paid_at")
+    .select(READ_BACK_COLUMNS)
     .eq("provider", client.provider)
     .not("provider_ref", "is", null)
     .or(`status.eq.processing,and(status.eq.paid,paid_at.gte.${since})`)
     .limit(50);
   if (error) throw new PayoutFailure("database", "The board couldn't read its payments. Reload the page.");
-  const answers = await Promise.allSettled((rows ?? []).map(async (row) => {
-    const status = await client.status(row.provider_ref);
-    const wasPaid = row.status === "paid";
-    // The quote staff confirmed stands until it arrives. Wise's figure before that
-    // can be for another pay-in route (seen on the sandbox).
-    const arrived = status.state === "paid";
-    const tell = status.state === "failed"
-      ? (status.raw === "bounced_back" ? CHECK_BANK : status.raw === "RETURNED" ? CHECK_PAYPAL : null)
-      : null;
-    return applyStatus({
-      db, payoutId: row.id, status, wasPaid, tellOnFailure: tell,
-      received: arrived ? status.arrivesCents ?? null : null, receivedIn: arrived && status.arrivesCents != null ? row.received_currency : null,
-    });
-  }));
+  const answers = await Promise.allSettled((rows ?? []).map((row) => readBack({ client, db, row })));
   const unread = answers.filter((a) => a.status === "rejected");
   for (const a of unread) log("provider sync", a.reason, { provider: client.provider });
   return { read: answers.length - unread.length, unread: unread.length };
