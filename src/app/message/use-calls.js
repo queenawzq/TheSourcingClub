@@ -12,11 +12,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase.js";
 import { serverNow, syncServerClock } from "../../lib/server-clock.js";
 import { callState, counterpartyTimeZone, listCalls, nextCallChange } from "../../lib/domain/calls.js";
+import { EXTRA_READ_CAP_MS } from "../home/home-layout.mjs";
 
 export function useDashboardCalls(orgId) {
   const [calls, setCalls] = useState([]);
   const [zones, setZones] = useState({});
   const [now, setNow] = useCallClock(calls);
+  // True once the first load has answered, so a dashboard can draw its call
+  // cards with everything else; or once it has waited long enough.
+  const [loaded, setLoaded] = useState(false);
   const latest = useRef(0);
 
   const load = useCallback(async () => {
@@ -33,12 +37,21 @@ export function useDashboardCalls(orgId) {
         .map((call) => call.thread_id))];
       // Asked again on every load: the other side may have moved time zone.
       const found = await Promise.all(threads.map((id) => counterpartyTimeZone(id)));
-      if (latest.current === run) setZones(Object.fromEntries(threads.map((id, index) => [id, found[index]])));
+      if (latest.current === run) {
+        setZones(Object.fromEntries(threads.map((id, index) => [id, found[index]])));
+        setLoaded(true);
+      }
     } catch (failure) {
       // The card keeps what it last showed.
       console.warn("dashboard calls", failure?.message);
+      if (latest.current === run) setLoaded(true);
     }
   }, [orgId]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoaded(true), EXTRA_READ_CAP_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     load();
@@ -52,7 +65,7 @@ export function useDashboardCalls(orgId) {
     };
   }, [orgId, load]);
 
-  return { calls, zones, now };
+  return { calls, zones, now, loaded };
 }
 
 // The longest a clock sleeps between checks: setTimeout cannot wait more than

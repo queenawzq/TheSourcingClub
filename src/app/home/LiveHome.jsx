@@ -36,6 +36,8 @@ import { dashboardCalls, inviteAttention } from "../message/live-calls.js";
 import { useDashboardCalls } from "../message/use-calls.js";
 import { useMessagesChanged } from "../message/use-unread.js";
 import { useActivity } from "./use-activity.jsx";
+import HomeHolding, { HomeNotice, useHomeNotice } from "./HomeHolding.jsx";
+import { brandHasHistory, followRead, homeLayout, withinCap } from "./home-layout.mjs";
 import { can, permissionHint } from "../../lib/domain/org.js";
 
 /**
@@ -167,18 +169,33 @@ async function owedPayments(orgId, orders, isFactory, snapshot) {
 
 export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProject }) {
   const { navigate } = useRouter();
-  const [state, setState] = useState({ snapshot: null, owed: [], rfqs: [], projects: [], savings: null, loaded: false });
-  const [error, setError] = useState(null);
+  const [state, setState] = useState({ snapshot: null, owed: [], rfqs: [], projects: [], savings: null, hasHistory: false, loaded: false });
+  // The first read failed: nothing is known, so no layout can be drawn.
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  // Something later did not go through, on a dashboard that is still right.
+  const [notice, setNotice] = useHomeNotice();
   // The bell is the Activity drawer's, so it counts unread activity, not
   // unread messages (those have their own card in "Needs your attention").
-  const { unreadCount: unreadActivity, openActivity, activityDrawer } = useActivity(org.id, { isFactory, onError: setError });
-  const [recommended, setRecommended] = useState([]);
+  const { unreadCount: unreadActivity, openActivity, activityDrawer } = useActivity(org.id, {
+    isFactory,
+    onError: () => setNotice("That didn't go through. Check your connection and try again."),
+  });
+  const [vendors, setVendors] = useState({ list: [], answered: false });
+  const recommended = vendors.list;
   // What became of the invite just sent, on the Savings card it came from.
   const [inviteSent, setInviteSent] = useState(null);
-  const { calls, zones, now } = useDashboardCalls(org.id);
+  const { calls, zones, now, loaded: callsLoaded } = useDashboardCalls(org.id);
 
   useEffect(() => {
     let cancelled = false;
+    // Slower than the cap, the page draws without them and they fill their
+    // panel when they come. On a slow line that is the usual case, not a failure.
+    const vendorsRead = isFactory ? Promise.resolve([]) : loadRecommendedVendors(org.id).catch((failure) => {
+      console.warn("recommended vendors", failure?.message);
+      return [];
+    });
+    const stopFollowing = followRead(vendorsRead, setVendors);
     Promise.all([
       dashboardSnapshot(org.id),
       listRfqs(org.id),
@@ -186,6 +203,8 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
       listThreads(org.id),
       savingsFor(org.id),
       listArchivedOrderIds(org.id),
+      // Waited for with the rest, so the first full paint is usually the final one.
+      withinCap(vendorsRead, null),
     ])
       .then(async ([snapshot, rfqs, orders, threads, savings, archivedIds]) => {
         // The snapshot owes step amounts; the brand pays each with the
@@ -214,12 +233,20 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
             .filter((order) => !archivedIds.includes(order.id))
             .map((order) => toProjectCard(order, false)),
           savings,
+          hasHistory: brandHasHistory(rfqs, orders),
           loaded: true,
         });
       })
-      .catch((failure) => !cancelled && setError(failure));
-    return () => { cancelled = true; };
-  }, [org.id, isFactory]);
+      .catch((failure) => {
+        if (cancelled) return;
+        console.warn("dashboard", failure?.message);
+        setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+      stopFollowing();
+    };
+  }, [org.id, isFactory, attempt]);
 
   // "N unread messages" moves while the dashboard is open, as the bell does.
   useMessagesChanged(org.id, () => {
@@ -256,31 +283,32 @@ export default function LiveHome({ org, isFactory, goTo, onViewRfq, onViewProjec
     ...(attentionFrom(snapshot, isFactory, goTo, owed, navigate) ?? []),
   ];
   const callCards = dashboardCalls(calls, { orgId: org.id, ownZone, zones, open: openCall, now });
-  const isNewcomer = state.loaded && !rfqs.length && !projects.length;
-
-  // Recommendations use real vendors rather than the prototype's examples.
-  // They remain useful on established dashboards, independent of quote state.
-  useEffect(() => {
-    if (isFactory || !state.loaded) return undefined;
-    let cancelled = false;
-    loadRecommendedVendors(org.id)
-      .then((vendors) => !cancelled && setRecommended(vendors))
-      .catch((failure) => !cancelled && setError(failure));
-    return () => { cancelled = true; };
-  }, [org.id, isFactory, state.loaded]);
+  const layout = homeLayout({
+    status: failed ? "failed" : state.loaded && callsLoaded ? "ready" : "loading",
+    hasHistory: state.hasHistory,
+  });
+  const retry = () => {
+    setFailed(false);
+    setAttempt((value) => value + 1);
+  };
 
   const recommendedCards = useMemo(() => recommended.map((vendor) => toRecommendedCard(vendor, navigate, can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow"))), [recommended, navigate, org]);
   const translatedRecommended = useVendorTranslations(recommendedCards, org.id);
 
   return (
     <>
-      {error && <p className="home-load-error" role="alert">{error.message}</p>}
+      <HomeNotice text={notice} />
       <HomeScreen
         // The newcomer layout — recommended vendors, "ready to start
         // sourcing?" — is for an account that genuinely has nothing yet, not
-        // for one that simply has nothing outstanding today.
-        dashboardState={rfqs.length || projects.length ? "active" : "newcomer"}
+        // for one that simply has nothing outstanding today, and never for one
+        // whose answer has not arrived.
+        dashboardState={layout}
+        holding={layout === "loading" || layout === "failed"
+          ? <HomeHolding failed={layout === "failed"} onRetry={retry} />
+          : null}
         factories={translatedRecommended}
+        vendorsPending={!vendors.answered}
         goTo={goTo}
         createQuoteLocked={can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow")}
         onOpenActivity={openActivity}

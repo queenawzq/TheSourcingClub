@@ -1,0 +1,11 @@
+/* The dashboards' failed read and later notices. The box is the design's
+   .projects-empty; these only lay out what is inside and around it. */
+.home-holding-failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.home-holding-failed .secondary-btn { flex: none; }
+.home-holding-notice { margin-bottom: 16px; }

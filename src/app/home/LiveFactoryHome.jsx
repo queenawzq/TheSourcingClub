@@ -29,6 +29,8 @@ import { dashboardCalls, inviteAttention } from "../message/live-calls.js";
 import { useDashboardCalls } from "../message/use-calls.js";
 import { useMessagesChanged } from "../message/use-unread.js";
 import { useActivity } from "./use-activity.jsx";
+import HomeHolding, { HomeNotice, useHomeNotice } from "./HomeHolding.jsx";
+import { factoryHasHistory, homeLayout } from "./home-layout.mjs";
 import { can, permissionHint } from "../../lib/domain/org.js";
 
 const MONTH = new Intl.DateTimeFormat("en", { month: "long", timeZone: "UTC" });
@@ -74,6 +76,17 @@ async function quotesSentThisMonth(orgId) {
   return error ? null : count ?? 0;
 }
 
+/** Whether this factory has ever sent a quote: which layout it sees depends on it. */
+async function hasEverQuoted(orgId) {
+  const { count, error } = await supabase
+    .from("quotes")
+    .select("id", { count: "exact", head: true })
+    .eq("factory_org_id", orgId)
+    .neq("status", "draft");
+  if (error) throw error;
+  return (count ?? 0) > 0;
+}
+
 /** This month's booking level and the pieces it leaves, for the capacity card. */
 async function capacityCard(orgId) {
   const { capacity, months } = await getCapacity(orgId);
@@ -97,20 +110,25 @@ async function capacityCard(orgId) {
   };
 }
 
+const n = (value) => Number(value) || 0;
+
 const SHORT_MONTH = (date) => date.toLocaleString("en", { month: "short", timeZone: "UTC" });
 
 export default function LiveFactoryHome({ org, profile }) {
   const { navigate } = useRouter();
   const [state, setState] = useState(null);
-  const [error, setError] = useState(null);
+  // The first read failed: nothing is known, so no layout can be drawn.
+  const [failed, setFailed] = useState(false);
+  // Something later did not go through, on a dashboard that is still right.
+  const [notice, setNotice] = useHomeNotice();
   const [reload, setReload] = useState(0);
   // The designed capacity drawer, opened from "Update capacity".
   const [drawer, setDrawer] = useState(null);
-  const { calls, zones, now } = useDashboardCalls(org.id);
+  const { calls, zones, now, loaded: callsLoaded } = useDashboardCalls(org.id);
   const { unreadCount: unreadNotifications, openActivity, activityDrawer } = useActivity(org.id, {
     isFactory: true,
     description: "Passive updates from RFQs, files, brands, and production.",
-    onError: setError,
+    onError: () => setNotice("That didn't go through. Check your connection and try again."),
   });
 
   async function openCapacityDrawer() {
@@ -135,7 +153,8 @@ export default function LiveFactoryHome({ org, profile }) {
         },
       });
     } catch (failure) {
-      setError(failure);
+      console.warn("capacity", failure?.message);
+      setNotice("Your capacity couldn't be opened. Check your connection and try again.");
     }
   }
 
@@ -152,10 +171,13 @@ export default function LiveFactoryHome({ org, profile }) {
         { category_term_id: term?.id ?? null, input_mode: answer.inputMode, line_hours: answer.lineHours, monthly_units: answer.units },
         byKey,
       );
+      setNotice(null);
       setDrawer(null);
       setReload((value) => value + 1);
     } catch (failure) {
-      setError(failure);
+      console.warn("capacity", failure?.message);
+      setDrawer(null);
+      setNotice("Your capacity wasn't saved. Check your connection and try again.");
     }
   }
 
@@ -163,6 +185,8 @@ export default function LiveFactoryHome({ org, profile }) {
 
   useEffect(() => {
     let cancelled = false;
+    // Re-reading after a save keeps the dashboard that is already drawn.
+    const firstRead = !state;
     Promise.all([
       dashboardSnapshot(org.id),
       listOpenRfqs(),
@@ -170,11 +194,17 @@ export default function LiveFactoryHome({ org, profile }) {
       quotesSentThisMonth(org.id),
       creditBalance(org.id),
       capacityCard(org.id),
+      hasEverQuoted(org.id),
     ])
-      .then(([snapshot, rfqs, orders, quotesSent, credits, capacity]) => {
-        if (!cancelled) setState({ snapshot, rfqs, orders, quotesSent, credits, capacity });
+      .then(([snapshot, rfqs, orders, quotesSent, credits, capacity, everQuoted]) => {
+        if (!cancelled) setState({ snapshot, rfqs, orders, quotesSent, credits, capacity, everQuoted });
       })
-      .catch((failure) => !cancelled && setError(failure));
+      .catch((failure) => {
+        if (cancelled) return;
+        console.warn("dashboard", failure?.message);
+        if (firstRead) setFailed(true);
+        else setNotice("We couldn't refresh your dashboard. Check your connection and try again.");
+      });
     return () => { cancelled = true; };
   }, [org.id, reload]);
 
@@ -185,12 +215,37 @@ export default function LiveFactoryHome({ org, profile }) {
       .catch(() => {});
   });
 
-  if (error) return <main className="factory-dashboard-page"><p className="home-load-error" role="alert">{error.message}</p></main>;
-  if (!state) return null;
+  const isTrading = profile?.vendor_kind === "trading_company";
+  const layout = homeLayout({
+    status: failed ? "failed" : state && callsLoaded ? "ready" : "loading",
+    hasHistory: factoryHasHistory(state?.orders, state?.everQuoted),
+  });
+  if (layout === "loading" || layout === "failed") {
+    return (
+      <>
+        <FactoryDashboardPage
+          companyType={isTrading ? "trading" : "factory"}
+          dashboardState={layout}
+          language="en"
+          orgName={org.name}
+          unreadCount={n(unreadNotifications)}
+          onOpenActivity={openActivity}
+          holding={(
+            <HomeHolding
+              failed={layout === "failed"}
+              onRetry={() => {
+                setFailed(false);
+                setReload((value) => value + 1);
+              }}
+            />
+          )}
+        />
+        {activityDrawer}
+      </>
+    );
+  }
 
   const { snapshot, rfqs, orders, quotesSent, credits, capacity } = state;
-  const n = (value) => Number(value) || 0;
-  const isTrading = profile?.vendor_kind === "trading_company";
   // The design opens the profile from here, for either kind of vendor.
   const profilePath = "/profile";
   const activeOrders = orders.filter((order) => order.status === "active");
@@ -252,7 +307,6 @@ export default function LiveFactoryHome({ org, profile }) {
     });
   }
 
-  const hasHistory = orders.length > 0 || n(quotesSent) > 0;
   // What brands still have to fund on this factory's orders: "due" alone read
   // as if the factory owed it.
   const nextDue = n(snapshot?.payments_due_cents) > 0 ? `${formatMoney(snapshot.payments_due_cents)} awaiting brand funding` : null;
@@ -270,7 +324,8 @@ export default function LiveFactoryHome({ org, profile }) {
     )}
     <FactoryDashboardPage
       companyType={isTrading ? "trading" : "factory"}
-      dashboardState={hasHistory ? "active" : "newcomer"}
+      dashboardState={layout}
+      notice={<HomeNotice text={notice} />}
       language="en"
       orgName={org.name}
       creditBalance={credits ?? 0}

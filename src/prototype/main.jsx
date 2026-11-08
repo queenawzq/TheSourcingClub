@@ -4353,6 +4353,10 @@ export function HomeScreen({
   showSearch = true,
   onViewRfq,
   onViewProject,
+  // Live: drawn in place of either layout until the reads have answered. The
+  // prototype passes none.
+  holding,
+  vendorsPending = false,
 }) {
   const isNewcomer = dashboardState === "newcomer";
   const [inviteBrandOpen, setInviteBrandOpen] = useState(false);
@@ -4429,7 +4433,7 @@ export function HomeScreen({
         </div>
       </section>
       )}
-      {isNewcomer ? (
+      {holding ?? (isNewcomer ? (
         <>
           <div className="home-recommendations-layout">
             <section className="home-recommended-factories">
@@ -4440,11 +4444,13 @@ export function HomeScreen({
                 </div>
                 <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse all vendors</button>
               </header>
+              {vendorsPending ? <p className="projects-empty" role="status">Finding vendors for you…</p> : (
               <div className="home-recommended-factory-grid">
                 {recommended.slice(0, 3).map((factory) => (
                   <HomeRecommendedFactoryCard factory={factory} goTo={goTo} key={factory.id ?? factory.name} />
                 ))}
               </div>
+              )}
             </section>
             <div className="home-newcomer-side-rail">
               <section className="home-new-brand-card">
@@ -4499,7 +4505,7 @@ export function HomeScreen({
                 </div>
                 <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse vendors</button>
               </header>
-              {recommended.length ? (
+              {vendorsPending ? <p className="projects-empty" role="status">Finding vendors for you…</p> : recommended.length ? (
                 <div className="home-dashboard-vendor-grid">
                   {recommended.slice(0, 2).map((factory) => (
                     <HomeRecommendedFactoryCard factory={factory} goTo={goTo} key={factory.id ?? factory.name} />
@@ -4573,7 +4579,7 @@ export function HomeScreen({
             </div>
           </section>
         </>
-      )}
+      ))}
       {inviteBrandOpen && (
         <InviteBrandModal onInvite={savings?.onInvite} intro={savings?.inviteIntro} message={savings?.inviteMessage} onClose={() => setInviteBrandOpen(false)} />
       )}
