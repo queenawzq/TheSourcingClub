@@ -12,7 +12,7 @@ import AddPayoutMethodForm from "./AddPayoutMethodForm.jsx";
 const STRIPE_FORM_NOTE = "Stripe, TSC's payment partner, securely verifies your company and bank details in its form on this page, and may show TSC's registered company name. TSC never stores those details.";
 const EXPRESS_FORM_NOTE = "Stripe, TSC's payment partner, holds your company and bank details. It may ask you to confirm with a code in a small Stripe window, and may show TSC's registered company name.";
 
-import { PaypalStep, WiseBankStep, readsChinese } from "./PayoutSetupSteps.jsx";
+import { PaypalStep, WiseBankStep } from "./PayoutSetupSteps.jsx";
 import { bankFieldsFor, normalBankNumber, validBankNumber, validSwift } from "../../shared/bank-fields.mjs";
 
 const OTHER_COUNTRIES = ["CN", "HK", "TW", "VN", "IN", "BD", "PK", "TR", "ID", "TH", "KH", "LK", "KR", "JP", "MX", "BR", "MA", "EG"];
@@ -37,20 +37,14 @@ const isPaypal = (row) => row?.method === "paypal";
 const manualComplete = (row) => isPayoneer(row) || isPaypal(row) || Boolean(row?.bank_name?.trim() && row?.account_name?.trim() && row?.number_changed_at);
 const BANK_ICON = <svg viewBox="0 0 24 24"><path d="M3 9h18M5 9v8m4-8v8m6-8v8m4-8v8M3 18h18M12 3l9 4H3l9-4Z" /></svg>;
 
-/** Where a factory has a choice, and the words for that list in both languages where it reads Chinese. */
-const listWords = (country) => (readsChinese(country) ? {
-  title: "Add a withdrawal method 添加提现方式", bank: "Bank transfer 银行转账", setUp: "Set up 设置", country: "Country 国家/地区",
-  methods: "Withdrawal methods 提现方式", add: "Add withdrawal method 添加提现方式", toReceive: "Add a withdrawal method to receive earnings. 请添加提现方式以接收收入。",
-  edit: "Edit method 编辑", makeDefault: "Make default 设为默认", remove: "Remove method 移除", back: "Back 返回", done: "Done 完成",
-  saved: "Withdrawal method saved. 提现方式已保存。", removed: "Withdrawal method removed. 提现方式已移除。",
-  recommended: (name) => `Recommended for ${name} ${{ CN: "中国推荐", HK: "香港推荐", TW: "台湾推荐" }[country]}`,
-} : {
+/** The words for the list of withdrawal methods. The factory's screens are English, so these are too. */
+const LIST_WORDS = {
   title: "Add a withdrawal method", bank: "Bank transfer", setUp: "Set up", country: "Country",
   methods: "Withdrawal methods", add: "Add withdrawal method", toReceive: "Add a withdrawal method to receive earnings.",
   edit: "Edit method", makeDefault: "Make default", remove: "Remove method", back: "Back", done: "Done",
   saved: "Withdrawal method saved.", removed: "Withdrawal method removed.",
   recommended: (name) => `Recommended for ${name}`,
-});
+};
 
 const SLOW_BALANCE_MS = 8000;
 const BALANCE_STATUS_TEXT = {
@@ -133,7 +127,7 @@ export function bankOwedSentence(owed) {
   return `TSC is about to pay ${[...totals].map(([currency, amount]) => formatMoney(amount, currency)).join(" and ")} to this account.`;
 }
 
-export function PayoutModal({ children, title, onClose, actions, wide = false }) {
+export function PayoutModal({ children, title, onClose, actions, wide = false, className = "" }) {
   useEffect(() => {
     const previous = document.body.style.overflow;
     const onKeyDown = (event) => {
@@ -150,7 +144,7 @@ export function PayoutModal({ children, title, onClose, actions, wide = false })
   return createPortal(
     <div className={`brand-profile-modal-layer payout-modal-layer${wide ? " tsc-connect-layer" : ""}`}>
       <button className="brand-profile-modal-scrim" type="button" aria-label="Close" onClick={onClose} />
-      <section className={`brand-profile-modal payout-modal${wide ? " tsc-connect-modal" : ""}`} role="dialog" aria-modal="true" aria-labelledby="payout-modal-title">
+      <section className={`brand-profile-modal payout-modal${wide ? " tsc-connect-modal" : ""} ${className}`} role="dialog" aria-modal="true" aria-labelledby="payout-modal-title">
         <button className="brand-profile-modal-close" type="button" aria-label="Close" onClick={onClose}>×</button>
         <header className="payout-modal-header">
           <h2 id="payout-modal-title">{title}</h2>
@@ -161,6 +155,55 @@ export function PayoutModal({ children, title, onClose, actions, wide = false })
     </div>,
     document.body,
   );
+}
+
+/** Presentation only; the live payout flow owns every setup action. */
+export function PayoutOptions({ country, onCountryChange, supported, notListed, busy, onBank, onWise, onPaypal }) {
+  const words = LIST_WORDS;
+  return <>
+            <label className="payout-country-field">
+              <span>{words.country}</span>
+              <select data-field="payout_country" value={country} onChange={(event) => onCountryChange(event.target.value)}>
+                <option value="" />
+                {COUNTRIES.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}
+                <option value={NOT_LISTED}>Other / not listed</option>
+              </select>
+            </label>
+            {country ? <>
+              <div className="payout-options-columns">
+              <section className="payout-options-section">
+              <h3 className="payout-recommended">{notListed ? words.bank : words.recommended(countryName(country))}</h3>
+              <div className="payout-method-options" role="group" aria-label={notListed ? words.bank : words.recommended(countryName(country))}>
+                <article className="payout-method-option">
+                  <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{supported ? "Bank account" : words.bank}</strong>{supported ? <small className="payout-option-provider" data-testid="payout-stripe-note">(Processed with Stripe)</small> : null}</div><ul><li>{supported ? "Usually 1–4 business days after withdrawal" : notListed ? "Arrival time depends on your bank and transfer route" : country === "US" ? "USD bank transfers: usually 0–3 business days after processing" : country === "CN" ? "After processing: CNY usually 1–2 business days; USD wire usually 1–6 business days" : "Arrival time depends on currency and transfer route"}</li><li>{supported ? "$0 TSC withdrawal fee; bank or currency-conversion fees may apply" : notListed ? "Transfer charges vary; receiving and intermediary banks may also charge fees" : "Transfer fee varies by amount and currency and is deducted from the payout; bank fees may also apply"}</li></ul></div>
+                  <button className="primary-btn compact-btn" type="button" data-testid="payout-set-up-bank" disabled={busy}
+                          onClick={onBank}>{words.setUp}</button>
+                </article>
+              </div>
+              </section>
+              <section className="payout-options-section">
+              <h3 className="payout-recommended">Also available</h3>
+              <div className="payout-method-options" role="group" aria-label="Also available">
+                {supported ? (
+                  <article className="payout-method-option">
+                    <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
+                    <div className="payout-option-copy"><div className="payout-option-title"><strong>{words.bank}</strong></div><ul><li>{country === "US" ? "USD bank transfers: usually 0–3 business days after processing" : country === "CN" ? "After processing: CNY usually 1–2 business days; USD wire usually 1–6 business days" : "Arrival time depends on currency and transfer route"}</li><li>Transfer fee varies by amount and currency and is deducted from the payout; bank fees may also apply</li></ul></div>
+                    <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-wise" disabled={busy}
+                            onClick={onWise}>{words.setUp}</button>
+                  </article>
+                ) : null}
+                <article className="payout-method-option">
+                  <div className="payout-option-icon payout-bank-icon" aria-hidden="true"><img src="/assets/paypal-mark.jpg" alt="" width="32" height="20" /></div>
+                  <div className="payout-option-copy"><div className="payout-option-title"><strong>PayPal</strong></div><ul><li>{country === "US" ? "Bank withdrawal from PayPal: usually 1–3 business days" : country === "CN" ? "USD bank withdrawal from PayPal to China: usually 3–7 business days" : "Bank-withdrawal time varies by country and bank"}</li><li>No fee to receive the payout; bank-withdrawal and currency-conversion fees may apply. PayPal shows the charge before you withdraw.</li></ul></div>
+                  <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-paypal" disabled={busy}
+                          onClick={onPaypal}>{words.setUp}</button>
+                </article>
+              </div>
+              </section>
+              </div>
+            </> : null}
+  </>;
 }
 
 /**
@@ -690,7 +733,7 @@ export default function StripePayoutCard({
     try {
       await onDeleteManual?.(removingManual, manualSuccessor);
       setModal(null);
-      setMethodNotice(listWords(country).removed);
+      setMethodNotice(LIST_WORDS.removed);
     } catch (failure) {
       // Said in the dialog, where the factory is looking.
       setRemoveError(failure);
@@ -700,7 +743,7 @@ export default function StripePayoutCard({
   // Only the page's Earnings card passes figures; Settings mounts this for its dialogs.
   const handPaid = Boolean(handFigures) && isHandPaid(account, earnings);
   // Only an owner reads the balance; for anyone else it is not "in progress".
-  const cardWords = listWords(country);
+  const cardWords = LIST_WORDS;
   // Something is due on a set-up account (the webhook also emails this):
   // the factory must act, so it is never "in progress".
   const needsMore = Boolean(account?.details_submitted && account.requirements_due?.length);
@@ -721,7 +764,6 @@ export default function StripePayoutCard({
             : isOwner ? cardWords.toReceive : "No withdrawal method yet.";
   // Owed money that bounced: what this person must do next, on the card.
   const failedLine = !problem ? null : isOwner || !problem.fixable ? problem.line : "Ask a company owner to check the withdrawal details.";
-  const failedLineZh = !problem || !readsChinese(country) ? null : isOwner || !problem.fixable ? problem.zh : "请联系公司所有者检查提现信息。";
 
   return (
     <>
@@ -761,7 +803,7 @@ export default function StripePayoutCard({
               setModal("withdraw");
             }}>Withdraw previous balance</button> : <p>Contact <a href={`mailto:${OPERATIONS_EMAIL}`}>TSC operations</a>.</p>}
           </div> : null}
-          {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}{failedLineZh ? ` ${failedLineZh}` : ""}</p> : null}
+          {failedLine ? <p className="live-stripe-error" role="alert" data-testid="payout-failed">{failedLine}</p> : null}
           {manualSaved && !failedLine ? <p className="live-payment-notice">{cardWords.saved}</p> : null}
           {withdrawn ? <p className="live-payment-notice" role="status">Withdrawal requested.</p> : null}
           {methodNotice ? <p className="live-payment-notice" role="status" data-testid="payout-method-notice">{methodNotice}</p> : null}
@@ -964,43 +1006,10 @@ export default function StripePayoutCard({
       ) : null}
 
       {modal === "setup" ? (() => {
-        const words = listWords(country);
+        const words = LIST_WORDS;
         return (
-          <PayoutModal title={words.title} onClose={closeModal}>
-            <p className="payout-modal-intro">Choose where your company is registered. We’ll show the payout methods available for that country.</p>
-            <label className="payout-country-field">
-              <span>{words.country}</span>
-              <select data-field="payout_country" value={country} onChange={(event) => setCountry(event.target.value)}>
-                <option value="" />
-                {COUNTRIES.map((item) => <option value={item.code} key={item.code}>{item.name}</option>)}
-                <option value={NOT_LISTED}>Other / not listed</option>
-              </select>
-            </label>
-            {country ? <>
-              {notListed ? null : <h3 className="payout-recommended">{words.recommended(countryName(country))}</h3>}
-              <div className="payout-method-options" role="group" aria-label={words.title}>
-                <article className="payout-method-option">
-                  <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                  <div className="payout-option-copy"><div className="payout-option-title"><strong>{supported ? "Bank account" : words.bank}</strong></div></div>
-                  <button className="primary-btn compact-btn" type="button" data-testid="payout-set-up-bank" disabled={busy}
-                          onClick={() => { setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding" : notListed ? "setup-bank" : "setup-wise"); }}>{words.setUp}</button>
-                </article>
-                {supported ? (
-                  <article className="payout-method-option">
-                    <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{BANK_ICON}</div>
-                    <div className="payout-option-copy"><div className="payout-option-title"><strong>{words.bank}</strong></div></div>
-                    <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-wise" disabled={busy}
-                            onClick={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }}>{words.setUp}</button>
-                  </article>
-                ) : null}
-                <article className="payout-method-option">
-                  <div className="payout-option-icon payout-bank-icon" aria-hidden="true">{LETTER_MARK.paypal}</div>
-                  <div className="payout-option-copy"><div className="payout-option-title"><strong>PayPal</strong></div></div>
-                  <button className="secondary-btn compact-btn" type="button" data-testid="payout-set-up-paypal" disabled={busy}
-                          onClick={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }}>{words.setUp}</button>
-                </article>
-              </div>
-            </> : null}
+          <PayoutModal title={words.title} onClose={closeModal} className="payout-options-modal">
+            <PayoutOptions country={country} onCountryChange={setCountry} supported={supported} notListed={notListed} busy={busy} onBank={() => { setManualError(null); onStartManual?.(null); setModal(supported ? "onboarding" : notListed ? "setup-bank" : "setup-wise"); }} onWise={() => { setManualError(null); onStartManual?.(null); setModal("setup-wise"); }} onPaypal={() => { setManualError(null); onStartManual?.(null); setModal("setup-paypal"); }} />
             {/* To the list when there is one; a first method came from the page. */}
             <button className="secondary-btn compact-btn payout-back" type="button" onClick={() => (renderCard && (account || manualAccounts.length) ? setModal("manage") : closeModal())}>{words.back}</button>
           </PayoutModal>
