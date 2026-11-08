@@ -10,6 +10,7 @@
  * shared localStorage, a sessionStorage each, and supabase-js's broadcast.
  */
 import { createSessionStorage } from "../src/lib/session-storage.mjs";
+import { takeRecoveryToken } from "../src/lib/recovery-link.mjs";
 
 const KEY = "sb-test-auth-token";
 
@@ -117,6 +118,21 @@ check(old.storage.getItem(KEY) !== null && JSON.parse(old.storage.getItem(KEY)).
   "a session an earlier build kept in this tab is still found");
 old.storage.setItem(KEY, JSON.stringify({ access_token: "old2", user: "old-user" }));
 check(browser.localStorage.getItem(KEY) === null, "and its refresh stays in the tab");
+
+// The reset email links to our own page with the token in the fragment
+// (src/lib/recovery-link.mjs): read once, and gone from the address at once.
+const linkWindow = (href) => {
+  const win = { location: new URL(href), history: { state: null, replaceState(_s, _t, next) { win.location = new URL(next); } } };
+  return win;
+};
+const linked = linkWindow("https://example.test/app.html?reset=1#token_hash=pkce_0a1b2c3d4e5f60718293a4b5c6d7e8f9&type=recovery");
+check(takeRecoveryToken(linked) === "pkce_0a1b2c3d4e5f60718293a4b5c6d7e8f9", "the reset link's token is read from the fragment");
+check(linked.location.href === "https://example.test/app.html?reset=1", "and taken out of the address, keeping ?reset=1");
+check(takeRecoveryToken(linked) === null, "so a refresh does not use it again");
+check(takeRecoveryToken(linkWindow("https://example.test/app.html#token_hash=abc&type=signup")) === null, "another kind of link is left alone");
+check(takeRecoveryToken(linkWindow("https://example.test/app.html?reset=1&code=xyz")) === null, "a link from before (?code=) is left to supabase-js");
+const keepOther = linkWindow("https://example.test/app.html?reset=1#type=recovery&token_hash=abc&tab=x");
+check(takeRecoveryToken(keepOther) === "abc" && keepOther.location.hash === "#tab=x", "the rest of the fragment stays");
 
 if (failures) {
   console.error(`\n${failures} check(s) failed: "Keep me logged in" does not hold across tabs.`);
