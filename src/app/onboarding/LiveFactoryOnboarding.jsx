@@ -36,6 +36,10 @@ import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
 import { useSignableTerms } from "./useSignableTerms.js";
 import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
+import { getRegistration, saveRegistration } from "../../lib/domain/registration.js";
+import {
+  normaliseAccessCode, normaliseRegistrationLetter, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
+} from "../../shared/registration-number.mjs";
 
 
 /** Index of the designed "You're all set" card, the last of the eleven. */
@@ -163,6 +167,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   // Files already in storage, keyed by the designed card's field name, so each
   // card can list them with a Delete that works.
   const [documents, setDocuments] = useState({});
+  // The country the registration number was saved under, or the profile's.
+  const [savedCountry, setSavedCountry] = useState(null);
 
   const kinds = useMemo(
     () => [...new Set([...Object.values(KIND_FOR_LABEL), "capacity_category", "country", "certification"])],
@@ -191,6 +197,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           listDocuments(org.id, "product_image"),
           listDocuments(org.id, "walkthrough"),
         ]);
+        const savedRegistration = await getRegistration(org.id).catch(() => null);
         const certs = await loadCertifications(byKind);
         if (cancelled) return;
 
@@ -246,6 +253,14 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           );
         }
 
+        if (savedRegistration) {
+          restored["registration-number"] = savedRegistration.number ?? "";
+          const second = savedRegistration.access_code ?? savedRegistration.registration_letter_number;
+          if (second) restored["registration-second"] = second;
+          if (savedRegistration.no_company_number) restored["registration-none"] = true;
+          if (savedRegistration.check_digit_confirmed) restored["registration-confirmed"] = true;
+        }
+        setSavedCountry(savedRegistration?.country_code ?? profile.country_code ?? null);
         setValues(restored);
       } catch (loadError) {
         if (!cancelled) setError(loadError);
@@ -284,6 +299,38 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
   /** The country read out of the typed location (see countryCodeFrom in profile.js). */
   const countryCodeFrom = useCallback((location) => countryCodeIn(location, terms.country ?? []), [terms]);
+
+  // The registration number's country: from the location typed on step 2
+  // (either kind of vendor), else what was saved. Decides the field's name,
+  // hint and check digit.
+  const typedLocation = values[factoryFieldName("Factory Location")] ?? values[factoryFieldName("Headquarters / primary sourcing office")];
+  const registrationCountry = (typedLocation ? registrationCountryFrom(typedLocation, countryCodeFrom(typedLocation)) : null) ?? savedCountry;
+  const registrationField = useMemo(() => {
+    const copy = registrationCopy(registrationCountry);
+    const lang = language === "zh" ? "zh" : "en";
+    return {
+      label: copy.label[lang],
+      hint: copy.hint[lang],
+      value: values["registration-number"] ?? "",
+      confirmed: values["registration-confirmed"] === true,
+      noNumber: values["registration-none"] === true,
+      // Turkey and Portugal only: in China an individual business has a code.
+      noNumberLabel: copy.soleProprietor ? (lang === "zh" ? "没有公司注册号（个体经营）" : "No company number (sole proprietor)") : null,
+      confirmLabel: lang === "zh" ? "号码无误，与证件一致" : "The number is correct as on my document",
+      second: copy.second
+        ? { label: copy.second.label[lang], hint: copy.second.hint[lang], value: values["registration-second"] ?? "" }
+        : null,
+      check: (value) => {
+        const problem = registrationNumberProblem(registrationCountry, value);
+        return { error: registrationProblemText(registrationCountry, problem, lang), confirmable: problem === "check_digit" };
+      },
+      checkSecond: (value) => {
+        if (registrationCountry === "PT" && normaliseAccessCode(value) === null) return lang === "zh" ? "访问码须为 12 位数字" : "The access code is 12 digits";
+        if (registrationCountry === "TR" && normaliseRegistrationLetter(value) === null) return lang === "zh" ? "最多 40 个字符" : "40 characters at most";
+        return "";
+      },
+    };
+  }, [registrationCountry, language, values]);
 
   const certificationTerm = (name) => findCertificationTerm(name, terms.certification ?? [], language);
 
@@ -414,9 +461,31 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       setDocuments((current) => ({ ...current, [field]: fresh }));
     }
 
-    const location = submitted[factoryFieldName("Factory Location")];
+    if (submitted["registration-number"] !== undefined || submitted["registration-none"] !== undefined) {
+      // The registration file is required as drawn ("Business registration
+      // certificate *"): one already stored, or one chosen now.
+      const stored = documents["business-registration"] ?? [];
+      const chosen = submitted["business-registration"];
+      const hasFile = stored.length > 0 || chosen instanceof File || (Array.isArray(chosen) && chosen.length > 0);
+      if (!hasFile) {
+        throw new Error(language === "zh" ? "请上传营业执照或注册证明" : "Upload your business registration certificate");
+      }
+      await saveRegistration(org.id, {
+        country: registrationCountry,
+        number: submitted["registration-number"] ?? "",
+        second: submitted["registration-second"] ?? "",
+        confirmed: submitted["registration-confirmed"] === true,
+        noNumber: submitted["registration-none"] === true && Boolean(registrationCopy(registrationCountry).soleProprietor),
+      }, language === "zh" ? "zh" : "en");
+      // The same country on the profile, for Browse's location filter.
+      if (registrationCountry) patch.country_code = registrationCountry;
+    }
+
+    // Either kind of vendor's location; "Turkey" and Chinese-only locations
+    // too, which the taxonomy's labels ("Türkiye", "China") don't match.
+    const location = submitted[factoryFieldName("Factory Location")] ?? submitted[factoryFieldName("Headquarters / primary sourcing office")];
     if (location !== undefined) {
-      const code = countryCodeFrom(location);
+      const code = registrationCountryFrom(location, countryCodeFrom(location));
       if (code) patch.country_code = code;
     }
 
@@ -500,7 +569,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         return;
       }
 
-      if (step === LAST_STEP - 1 && resubmitting) {
+      // Staff asked for more information: finishing answers them, whether the
+      // factory came in by "Update my profile" or went back through the steps.
+      const answering = resubmitting || review?.state === "needs_information";
+      if (step === LAST_STEP - 1 && answering) {
         // Answering staff's request: the profile is already complete and
         // published, so this only sends it back to their queue.
         await resubmitForReview(org.id);
@@ -590,10 +662,11 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       onUploadCertificate={uploadCertificate}
       onDeleteCertificate={deleteCertificate}
       registrationFileName={registrationFileName}
+      registration={registrationField}
       documents={documents}
       onDeleteDocument={removeDocument}
       completionPending
-      notice={resubmitting && review?.message ? <ReviewRequestPanel note={review.message} language={language} /> : null}
+      notice={(resubmitting || (review?.state === "needs_information" && step < LAST_STEP)) && review?.message ? <ReviewRequestPanel note={review.message} language={language} /> : null}
       completion={reviewCompletion(review, {
         language: language,
         onUpdate: () => {

@@ -205,3 +205,23 @@
     gap: 12px;
   }
 }
+
+/* Official registry panel on the review page (RegistryPanel.jsx). */
+.admin-registry { display: grid; gap: 16px; min-width: 0; }
+.admin-registry-panel { min-width: 0; }
+.admin-registry-sources { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.admin-registry-sources a { overflow-wrap: anywhere; }
+.admin-registry-actions,
+.admin-registry-flags { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-registry-flags .project-status { white-space: normal; height: auto; text-align: left; }
+.admin-registry-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.admin-registry-form .admin-registry-note { grid-column: 1 / -1; }
+.admin-registry-form button { justify-self: start; }
+@media (max-width: 640px) { .admin-registry-form { grid-template-columns: 1fr; } }
+/* A registry row has one pill and no confidence figure: the design's two
+   68px columns would squeeze it. Rows open nothing, so they don't look it. */
+.admin-registry .admin-check-result { display: flex; justify-content: flex-end; width: auto; }
+.admin-registry .admin-check-result .project-status { white-space: nowrap; }
+.admin-registry .admin-check-row { cursor: default; }
+.admin-registry .admin-check-row:hover { background: none; box-shadow: none; }
+@media (max-width: 640px) { .admin-registry .admin-check-row { grid-template-columns: 1fr; } .admin-registry .admin-check-result { justify-content: flex-start; } }
