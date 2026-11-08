@@ -231,3 +231,12 @@
 .admin-payments-page .admin-payout-number { column-gap: 12px; row-gap: 3px; }
 
 .admin-payments-page table thead th.payments-action-heading { border-left: 0; }
+/* The shared sidebar becomes an icon rail at this breakpoint even when
+   its explicit collapsed flag has not changed. Follow its visible width. */
+@media (max-width: 1180px) {
+  .payments-workspace { padding-left: var(--nav-collapsed-page-offset); }
+  .payments-workspace .payments-mobile-actions { width: calc(100vw - var(--nav-collapsed-page-offset) - 88px); }
+}
+@media (max-width: 700px) {
+  .payments-workspace .payments-mobile-actions { width: calc(100vw - 142px); }
+}
