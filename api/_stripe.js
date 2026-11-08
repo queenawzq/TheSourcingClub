@@ -159,6 +159,8 @@ const REFUND_REASONS = {
   step_unpaid: "This step no longer takes a payment. You were refunded.",
   payment_gone: "This step no longer takes a payment. You were refunded.",
   other_intent: "This step was already being paid another way. You were refunded.",
+  // Held money on an order both sides cancelled (refundCancelledPayment).
+  cancelled_order: "The order was cancelled. You were refunded.",
 };
 const REFUNDED = "The payment was refunded.";
 
@@ -251,6 +253,108 @@ export async function applyChargeRefund({ stripe, db, charge }) {
     );
   }
   return rpc(db, "record_payment_refunded", { target_payment: payment.id, payment_intent: intentId, reason });
+}
+
+/** What the brand reads when a cancelled order's held money goes back. */
+const CANCELLED_REFUND = "The order was cancelled. You were refunded.";
+
+/**
+ * The refund failure staff read on the board, by Stripe's code: never
+ * Stripe's message, which can quote a key.
+ */
+export function cancelRefundFailure(failure) {
+  const code = failure?.code ?? failure?.raw?.code;
+  if (code === "charge_disputed") return "The brand disputed this charge: settle it in Stripe's dispute, not by refund.";
+  if (code === "insufficient_funds" || code === "balance_insufficient") {
+    return "TSC's Stripe balance is too low to refund this. Top it up, then refund the payment in Stripe.";
+  }
+  if (code === "charge_expired_for_refund") return "Stripe can no longer refund this charge (too old). Refund the brand by bank.";
+  if (failure?.type === "StripeAuthenticationError" || failure?.type === "StripePermissionError") {
+    return "Stripe refused TSC's key, so nothing was refunded. Fix STRIPE_SECRET_KEY, then refund the payment in Stripe.";
+  }
+  if (failure?.refundStatus) return `Stripe says the refund ${failure.refundStatus === "canceled" ? "was cancelled" : "failed"}. Refund the brand in Stripe.`;
+  return "Stripe refused the refund. Open the payment in Stripe and refund it there.";
+}
+
+const OUTAGE_TYPES = new Set(["StripeConnectionError", "StripeAPIError", "StripeRateLimitError"]);
+
+/**
+ * Refund one held payment on a cancelled order to the brand, in full (fee
+ * included). Claimed first (claim_cancellation_refund), so the webhook, the
+ * accepting page and the daily job never refund twice; the claim's time is in
+ * the idempotency key, so a refusal Stripe stored is never replayed on the next
+ * try. A refund already made on the charge (by staff, or a try whose reply was
+ * lost) is recorded instead of making another.
+ *
+ * Returns "refunded", "failed", "retry" (Stripe unreachable: the lease runs
+ * out and the next try goes again) or the claim's refusal.
+ */
+export async function refundCancelledPayment({ stripe, db, paymentId }) {
+  const claim = await rpc(db, "claim_cancellation_refund", { target_payment: paymentId });
+  if (claim?.refused) return claim.refused;
+
+  try {
+    const existing = await stripe.refunds.list({ payment_intent: claim.intent, limit: 100 });
+    const made = existing.data.find((refund) => ["succeeded", "pending"].includes(refund.status));
+    if (!made) {
+      const refund = await stripe.refunds.create(
+        {
+          payment_intent: claim.intent,
+          reason: "requested_by_customer",
+          metadata: { payment_id: claim.payment_id, order_id: claim.order_id, tsc_problem: "cancelled_order" },
+        },
+        { idempotencyKey: claim.key },
+      );
+      if (!["succeeded", "pending"].includes(refund.status)) {
+        const failure = new Error(`refund ${refund.status}`);
+        failure.refundStatus = refund.status;
+        throw failure;
+      }
+    }
+  } catch (failure) {
+    logStripeFailure("cancel-refund", failure, { paymentId });
+    if (OUTAGE_TYPES.has(failure?.type)) return "retry";
+    await rpc(db, "record_cancellation_refund_failed", { target_payment: paymentId, reason: cancelRefundFailure(failure) });
+    return "failed";
+  }
+  await rpc(db, "record_payment_refunded", { target_payment: paymentId, payment_intent: claim.intent, reason: CANCELLED_REFUND });
+  return "refunded";
+}
+
+/**
+ * A refund Stripe accepted and later failed (refund.updated, refund.failed,
+ * charge.refund.updated). Only our own cancelled-order refunds: the money is
+ * held again, and staff see why. Returns the payment row, or null.
+ */
+export async function applyRefundUpdate({ db, refund }) {
+  if (!["failed", "canceled"].includes(refund?.status)) return null;
+  const paymentId = refund.metadata?.tsc_problem === "cancelled_order" ? refund.metadata.payment_id : null;
+  if (!paymentId) return null;
+  const failure = new Error(`refund ${refund.status}`);
+  failure.refundStatus = refund.status;
+  return rpc(db, "record_cancellation_refund_failed", { target_payment: paymentId, reason: cancelRefundFailure(failure) });
+}
+
+/**
+ * Every held payment still to refund on cancelled orders (or on one order).
+ * Returns { refunded, failed, retry } counts; one payment's failure never
+ * stops the next.
+ */
+export async function refundCancelledOrders({ stripe, db, orderId = null }) {
+  const counts = { refunded: 0, failed: 0, retry: 0 };
+  const ids = await rpc(db, "cancellation_refunds_due", { target_order: orderId });
+  for (const id of ids ?? []) {
+    try {
+      const outcome = await refundCancelledPayment({ stripe, db, paymentId: id });
+      if (outcome in counts) counts[outcome] += 1;
+      // Held with no Stripe charge: recorded as failed, for staff.
+      if (outcome === "no_stripe_charge") counts.failed += 1;
+    } catch (failure) {
+      logStripeFailure("cancel-refund", failure, { paymentId: id });
+      counts.retry += 1;
+    }
+  }
+  return counts;
 }
 
 /**

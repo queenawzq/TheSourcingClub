@@ -2754,6 +2754,47 @@ async function main() {
     check(sendSeen.ms !== null && sendSeen.bubbles === 1 && sendSeen.box === "",
       `pressing Send empties the box and draws the message once, at once (${sendSeen.ms} ms, ${sendSeen.bubbles} bubble)`);
 
+    // One send is one message, whatever the network does (20261107580000).
+    // Chromium resends a POST by itself when a connection closes before the
+    // reply; on production one message was saved seven times. Here the page's
+    // next message insert reaches the database twice, byte for byte, and the
+    // page is given the second answer, as it would be after a resend.
+    const resentLine = `Sent once, reached the server twice (${runWord}).`;
+    await page.evaluate(() => {
+      const real = window.fetch;
+      window.__insertSentTwice = false;
+      window.fetch = async (input, init) => {
+        const url = String(input?.url ?? input);
+        if (init?.method === "POST" && /\/rest\/v1\/messages(\?|$)/.test(url)) {
+          window.fetch = real;
+          window.__insertSentTwice = true;
+          await real(input, init);
+          return real(input, init);
+        }
+        return real(input, init);
+      };
+    });
+    await page.locator('.message-composer textarea').fill(resentLine);
+    await page.locator('[data-testid="send-message"]').click();
+    let resentRows = [];
+    const resentStarted = Date.now();
+    while (Date.now() - resentStarted < 10000) {
+      const { data } = await db.from("messages").select("id, delivery").eq("thread_id", runThread.id).eq("body", resentLine);
+      resentRows = data ?? [];
+      if (resentRows.some((row) => row.delivery !== "checking")) break;
+      await page.waitForTimeout(250);
+    }
+    await page.waitForTimeout(1500);
+    const resentSeen = await page.evaluate((line) => ({
+      twice: window.__insertSentTwice,
+      bubbles: [...document.querySelectorAll(".message-bubble")].filter((bubble) => bubble.textContent.includes(line)).length,
+      failed: document.body.textContent.includes("send it again"),
+    }), resentLine);
+    check(resentSeen.twice && resentRows.length === 1,
+      `an insert the network delivers twice saves one message (${resentRows.length} row${resentRows.length === 1 ? "" : "s"}${resentSeen.twice ? "" : ", the insert was never sent twice"})`);
+    check(resentSeen.bubbles === 1 && !resentSeen.failed,
+      `and the sender sees it once, as sent (${resentSeen.bubbles} bubble${resentSeen.failed ? ", marked failed" : ""}, ${resentRows[0]?.delivery})`);
+
     // The factory writes from somewhere else; the brand's page is not reloaded.
     const factoryClient = createClient(
       process.env.SUPABASE_URL ?? stack.API_URL,
@@ -2898,11 +2939,12 @@ async function main() {
     check(reopenedGap >= 0 && reopenedGap < 4, `the conversation is still at its newest message (${reopenedGap}px)`);
     await factoryClient.auth.signOut();
 
-    // ================= HELD FOR REVIEW =================
-    // A phone number is a way off the platform. The screen holds it on the
-    // patterns: the brand sees it marked, the factory sees nothing and is told
-    // nothing, and only staff can let it through.
-    console.log("\nHELD FOR REVIEW");
+    // ================= CONTACT DETAILS AFTER A CONTRACT =================
+    // A phone number is a way off the platform. The patterns still find it,
+    // but this conversation is the order's, and after a contract contact
+    // details are delivered (20261108100000). Before a contract they are
+    // blocked: smoke and message_block_test.sql prove that side.
+    console.log("\nCONTACT DETAILS AFTER A CONTRACT");
     const phoneLine = `Call me on +44 7700 900123 to sort the rest (${stamp}).`;
     const factoryNotices = async () => (await db.from("notifications")
       .select("*", { count: "exact", head: true })
@@ -2911,59 +2953,29 @@ async function main() {
 
     await page.locator('.message-composer textarea').fill(phoneLine);
     await page.locator('[data-testid="send-message"]').click();
-    let heldRow = null;
-    const holdDeadline = Date.now() + 30000;
-    while (Date.now() < holdDeadline) {
-      ({ data: heldRow } = await db.from("messages")
-        .select("id, delivery, message_screenings (method, reason)")
+    let phoneRow = null;
+    const screenDeadline = Date.now() + 30000;
+    while (Date.now() < screenDeadline) {
+      ({ data: phoneRow } = await db.from("messages")
+        .select("id, delivery, message_screenings (outcome, method, reason)")
         .eq("thread_id", runThread.id).eq("body", phoneLine).maybeSingle());
-      if (heldRow && heldRow.delivery !== "checking") break;
+      if (phoneRow && phoneRow.delivery !== "checking") break;
       await page.waitForTimeout(500);
     }
-    check(heldRow?.delivery === "held", `a phone number is held, not delivered (${heldRow?.delivery})`);
-    const screening = Array.isArray(heldRow?.message_screenings) ? heldRow.message_screenings[0] : heldRow?.message_screenings;
-    check(screening?.method === "pattern", `the patterns caught it without asking a model (${screening?.method}: ${screening?.reason})`);
-
-    let senderSees = "";
-    const labelDeadline = Date.now() + 15000;
-    while (Date.now() < labelDeadline) {
-      senderSees = (await eachText(page, ".message-bubble")).join("\n");
-      if (/held for review/i.test(senderSees)) break;
-      await page.waitForTimeout(300);
+    check(phoneRow?.delivery === "delivered", `after a contract a phone number is delivered (${phoneRow?.delivery})`);
+    const screening = Array.isArray(phoneRow?.message_screenings) ? phoneRow.message_screenings[0] : phoneRow?.message_screenings;
+    check(screening?.outcome === "held" && screening?.method === "pattern",
+      `the patterns still found it, for the record (${screening?.outcome}/${screening?.method}: ${screening?.reason})`);
+    let noticesAfter = noticesBefore;
+    const noticeDeadline = Date.now() + 10000;
+    while (Date.now() < noticeDeadline && noticesAfter === noticesBefore) {
+      noticesAfter = await factoryNotices();
+      if (noticesAfter === noticesBefore) await page.waitForTimeout(500);
     }
-    check(/held for review/i.test(senderSees), "the brand sees its message marked \"Held for review\"");
-    check(await factoryNotices() === noticesBefore, "and the factory is told nothing");
-    await record(page, "Held for review", "contact details wait for staff; the factory sees nothing");
-
-    await signOutFully(page);
-    await signIn(page, adminEmail, "Admin reviewing messages");
-    await page.goto(`${APP}/admin/messages`);
-    await waitFor(page, '[data-testid="held-message"]', 25000);
-    const heldRows = await page.locator('[data-testid="held-message"]').count();
-    let released = false;
-    for (let index = 0; index < heldRows; index += 1) {
-      const row = page.locator('[data-testid="held-message"]').nth(index);
-      // The whole line: earlier runs leave held messages that start the same.
-      if (!(await row.innerText().catch(() => "")).includes(phoneLine)) continue;
-      await record(page, "Messages held for review", "staff see the brand, the factory, the order and why");
-      await page.evaluate((words) => {
-        const target = [...document.querySelectorAll('[data-testid="held-message"]')].find((tr) => tr.innerText.includes(words));
-        target?.querySelector('[data-testid="release-message"]')?.click();
-      }, phoneLine);
-      released = true;
-      break;
-    }
-    check(released, "staff find the held message on their page");
-
-    let afterRelease = null;
-    const releaseDeadline = Date.now() + 20000;
-    while (Date.now() < releaseDeadline) {
-      ({ data: afterRelease } = await db.from("messages").select("delivery, delivered_at").eq("id", heldRow?.id).single());
-      if (afterRelease?.delivery === "delivered") break;
-      await page.waitForTimeout(500);
-    }
-    check(afterRelease?.delivery === "delivered", "staff release it, and it is delivered");
-    check(await factoryNotices() === noticesBefore + 1, "the factory is notified once, as for any new message");
+    check(noticesAfter === noticesBefore + 1, "the factory is notified once, as for any new message");
+    const ownBubbles = (await eachText(page, ".message-bubble")).join("\n");
+    check(!/Not sent/.test(ownBubbles.split(phoneLine)[1] ?? ""), "and the brand's bubble is not marked \"Not sent\"");
+    await record(page, "Contact details after a contract", "the order's conversation delivers a phone number");
 
     // ================= CALLS =================
     // On the designed screens: the brand proposes a call from the

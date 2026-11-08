@@ -17,16 +17,15 @@
  *                    server pays and the board reads back where it is. Paying by
  *                    bank by hand and marking it stays as the fallback, and
  *                    Payoneer rows saved before keep their manual path.
- *   Refunded after payout
- *                    the brand's money was refunded in Stripe after the
- *                    factory was paid: TSC paid out money it no longer holds,
- *                    and only a person can recover it.
- *   Wire claims      a bank transfer a brand said it sent on the old site.
+ *                    A payout underway with Wise or PayPal moves to Processing.
  *   Failed           a payment that did not go through: the brand pays again.
- *   Clearing         a payment Stripe is still confirming.
+ *   Processing       money moving, each row naming its provider: a brand's
+ *                    payment Stripe is still confirming, or a payout on its
+ *                    way through Wise or PayPal, with its Refresh and Cancel.
  *   Held             funded, the step not approved yet.
- *   Cancelled        money still held on a cancelled order: refund in Stripe.
- *                    The refund is recorded from Stripe and the row leaves.
+ *
+ * Money held on a cancelled order is refunded to the brand automatically
+ * (20261108300000), so the board has no tab for it (John, Nov 7).
  *
  * Phone width: the table scrolls sideways, so a row's note and buttons are
  * drawn on a line of their own under it, where they can be reached without
@@ -41,7 +40,7 @@
 import React, { createContext, useContext, useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../lib/auth.jsx";
 import {
-  confirmPaymentReceived, factoryStripeSetup, paymentBoard, payoutNumberRevealLog, rejectPaymentSent, releasePayment, releasePaymentByPayoneer, revealPayoutNumber,
+  factoryStripeSetup, paymentBoard, releasePayment, releasePaymentByPayoneer, revealPayoutNumber,
 } from "../../lib/domain/payment.js";
 import { cancelProviderPayout, payByProvider, previewWise, providerAttempts, syncProvider, tellFactoryToFixDetails } from "../../lib/domain/provider-payouts.js";
 import { requestRelease, stripeDashboardUrl } from "../../lib/domain/stripe.js";
@@ -49,9 +48,6 @@ import { formatMoney } from "../../lib/money.js";
 import { dateFrom } from "../../lib/dates.js";
 import "./admin.css";
 import AdminWorkspaceShell from "./AdminWorkspaceShell.jsx";
-
-const WHEN = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short" });
-const when = (value) => (value ? WHEN.format(new Date(value)) : "—");
 
 function PaymentDate({ value }) {
   const date = dateFrom(value);
@@ -65,12 +61,9 @@ function PaymentDate({ value }) {
 /** The row's own date for the section it is in. */
 const ROW_TIME = {
   payout: (row) => row.release_requested_at,
-  refunded: (row) => row.release_requested_at,
-  wire: (row) => row.sent_at,
-  failed: (row) => row.failed_at,
-  clearing: (row) => row.processing_at,
+  failed: (row, attempt) => (providerFailed(row, attempt) ? attempt.updated_at : row.refund_failed_at ?? row.failed_at),
+  clearing: (row, attempt) => (underway(row, attempt) ? attempt.created_at ?? row.release_requested_at : row.processing_at),
   held: (row) => row.confirmed_at,
-  cancelled: (row) => row.confirmed_at ?? row.processing_at,
 };
 
 const paidByStripe = (row) => row.factory_stripe_ready && row.stripe_payment_intent_id;
@@ -88,6 +81,14 @@ const canMarkByBank = (row) => paidByBank(row) && ((Boolean(row.payout_account_i
 /** Which provider the server pays this row through, if any. */
 const providerFor = (row) => (paidByWise(row) ? "wise" : paidByPaypal(row) ? "paypal" : null);
 const PROVIDER_NAME = { wise: "Wise", paypal: "PayPal" };
+/** A payout Wise or PayPal is paying now: it waits under Processing, not Payout owed. */
+const underway = (row, attempt) => Boolean(providerFor(row)) && attempt?.status === "processing";
+/**
+ * Wise or PayPal's last attempt failed (returned, refused) and the factory has
+ * not changed its details since: listed under Failed, with Pay again.
+ */
+const providerFailed = (row, attempt) => Boolean(providerFor(row)) && attempt?.status === "failed"
+  && !(row.payout_changed_at && attempt.updated_at && new Date(row.payout_changed_at) > new Date(attempt.updated_at));
 
 /** Wise's own words. Whether they are true for a USD order is John's question. */
 const CNY_STATEMENT = "I confirm the contract and invoice for this payment are denominated in CNY and understand that the payment might be rejected otherwise.";
@@ -186,7 +187,7 @@ function FactoryContact({ row }) {
 }
 
 /** Everything staff need to send the money, on the row. */
-function BankDetails({ row, onViewed, lastView, stripeSetup }) {
+function BankDetails({ row, onViewed, stripeSetup }) {
   if (stripeCantPay(row)) {
     return (
       <span className="admin-payout-details" data-testid="stripe-cant-pay">
@@ -223,7 +224,6 @@ function BankDetails({ row, onViewed, lastView, stripeSetup }) {
         : <span className="admin-error" data-testid="no-full-number">No full account number on file, so TSC can't pay this yet. Ask the factory to add it on its Payments page.</span>}
       {row.payout_instructions ? <PayoutField label="Instructions"><span className="admin-payout-instructions">{row.payout_instructions}</span></PayoutField> : null}
       <FactoryContact row={row} />
-      {row.last_viewed_at ? <span className="admin-sub">{`${lastView?.how === "sent_to_wise" ? "Number last sent to Wise by" : "Number last viewed by"} ${row.last_viewed_by ?? "staff"}, ${when(row.last_viewed_at)}`}</span> : null}
     </span>
   );
 }
@@ -413,7 +413,7 @@ function ProviderPay({ row, attempt, wise, paypal, onChanged }) {
                 else if (needsStatement) setStep("statement");
                 else review();
               }}>
-        {`Pay with ${name}`}
+        {attempt?.status === "failed" ? `Pay again with ${name}` : `Pay with ${name}`}
       </button>
     </>
   );
@@ -424,22 +424,8 @@ function Actions({ row, section, note, onNoteChange, payoneerId, onDecide, busy,
   // Marking a payout paid by bank cannot be undone from here and tells the
   // factory it was paid, so it asks once, saying the amount and where to.
   const [confirming, setConfirming] = useState(null);
-  if (section === "wire") {
-    return (
-      <>
-        {said}
-        <button type="button" className="admin-approve" disabled={busy}
-                data-testid="confirm-payment"
-                onClick={() => onDecide(row, "confirm", note)}>
-          Confirm received
-        </button>
-        <button type="button" className="admin-reject" disabled={busy || !note.trim()}
-                title={note.trim() ? undefined : "Say why; the brand sees this"}
-                onClick={() => onDecide(row, "reject", note)}>
-          Not received
-        </button>
-      </>
-    );
+  if (section === "clearing") {
+    return underway(row, attempt) ? <ProviderPay row={row} attempt={attempt} wise={wise} paypal={paypal} onChanged={onChanged} /> : null;
   }
   if (section === "payout") {
     if (paidByPayoneer(row)) {
@@ -550,13 +536,16 @@ export function useNarrow() {
   return narrow;
 }
 
-const ACTS = new Set(["wire", "payout"]);
+/** Whether a row in this section has a note and buttons. */
+const rowActs = (section, row, attempt) => section === "payout"
+  || (section === "clearing" && underway(row, attempt)) || (section === "failed" && providerFailed(row, attempt));
 
-function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt, wise, paypal, onChanged, views, setups }) {
-  const lastView = views?.find((view) => view.account_id === row.payout_account_id && view.revealed_at === row.last_viewed_at);
+function Row({ row, section: listedIn, onDecide, busy, narrow, refusal, onViewed, attempt, wise, paypal, onChanged, setups, columns, notes }) {
+  // A failed Wise or PayPal payout is still owed: under Failed it is drawn and paid as in Payout owed.
+  const section = listedIn === "failed" && providerFailed(row, attempt) ? "payout" : listedIn;
   const [note, setNote] = useState("");
   const [payoneerId, setPayoneerId] = useState("");
-  const acts = ACTS.has(section);
+  const acts = rowActs(section, row, attempt);
   const providerLive = attempt?.status === "processing" && providerFor(row);
 
   const noteInput = acts ? (
@@ -569,11 +558,11 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
       ) : null}
       {providerLive || (section === "payout" && !paidByStripe(row) && !paidByPayoneer(row) && !canMarkByBank(row)) ? null : section === "payout" && paidByBank(row) ? (
         <label className="admin-sub">
-          {providerFor(row) ? "If you paid by bank instead: the bank's reference. " : "Bank reference (required). "}The factory and the brand can read it
+          Bank reference (required)
           <input type="text" data-testid="bank-reference" value={note} onChange={(event) => setNote(event.target.value)} />
         </label>
       ) : section === "payout" && paidByPayoneer(row) ? null : (
-        <input type="text" aria-label="Note" placeholder={section === "wire" ? "Note, required to reject" : section === "payout" && paidByPayoneer(row) ? "If paid by bank: why. The factory reads it" : "Optional note"}
+        <input type="text" aria-label="Note" placeholder={section === "payout" && paidByPayoneer(row) ? "If paid by bank: why. The factory reads it" : "Optional note"}
                value={note} onChange={(event) => setNote(event.target.value)} />
       )}
     </>
@@ -600,13 +589,17 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
           </span>
         </td>
         <td>
-          {section === "wire"
-            ? row.brand_reference || <span className="admin-sub">no reference given</span>
+          {section === "clearing" ? <ProviderCell row={row} attempt={attempt} />
             : row.payment_method_label || <span className="admin-sub">—</span>}
-          {(section === "failed" || section === "refunded") && row.failure_reason
+          {section === "failed" && row.refund_failed_at ? (
+            <span className="admin-payout-details" data-testid="refund-failed">
+              <strong className="payout-method-heading">Refund to the brand failed</strong>
+              {row.refund_failure ? <span className="admin-sub">{row.refund_failure}</span> : null}
+            </span>
+          ) : section === "failed" && row.failure_reason
             ? <span className="admin-sub">{row.failure_reason}</span>
             : null}
-          {section === "payout" && paidByBank(row) && !narrow ? <BankDetails row={row} onViewed={onViewed} lastView={lastView} stripeSetup={setups?.get(row.order_id)} /> : null}
+          {section === "payout" && paidByBank(row) && !narrow ? <BankDetails row={row} onViewed={onViewed} stripeSetup={setups?.get(row.order_id)} /> : null}
           {section === "payout" && !paidByBank(row) ? (
             <span className="admin-payout-details">
               <strong className="payout-method-heading">{paidByStripe(row) ? "Stripe payout" : paidByPaypal(row) ? "PayPal" : "Payoneer"}</strong>
@@ -615,21 +608,18 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
             </span>
           ) : null}
           {section === "payout" && (paidByPayoneer(row) || paidByPaypal(row)) ? <FactoryContact row={row} /> : null}
-          {section === "refunded" && row.payoneer_payment_id
-            ? <span className="admin-sub">{`paid by Payoneer, payment ID ${row.payoneer_payment_id}`}</span>
-            : null}
         </td>
         <td>
-          <PaymentDate value={ROW_TIME[section](row)} />
-          {row.stripe_payment_intent_id ? (
+          <PaymentDate value={ROW_TIME[listedIn](row, attempt)} />
+          {row.stripe_payment_intent_id && !(section === "clearing" && underway(row, attempt)) ? (
             <a className="admin-sub" href={stripeDashboardUrl("payments", row.stripe_payment_intent_id)}
                target="_blank" rel="noreferrer">Open in Stripe</a>
           ) : null}
         </td>
-        {narrow || !acts ? null : (
+        {narrow || !columns ? null : (
           <>
-            <td className="payments-note-cell">{noteInput}</td>
-            <td className="admin-actions">{buttons}</td>
+            {notes ? <td className="payments-note-cell">{acts ? noteInput : null}</td> : null}
+            <td className="admin-actions">{acts ? buttons : null}</td>
           </>
         )}
       </tr>
@@ -639,7 +629,7 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
             {/* Pinned to the left edge and no wider than the screen, so the
                 note and buttons stay in view however the table is scrolled. */}
             <div className="payments-mobile-actions">
-              {section === "payout" && paidByBank(row) ? <BankDetails row={row} onViewed={onViewed} lastView={lastView} stripeSetup={setups?.get(row.order_id)} /> : null}
+              {section === "payout" && paidByBank(row) ? <BankDetails row={row} onViewed={onViewed} stripeSetup={setups?.get(row.order_id)} /> : null}
               {noteInput}
               <div className="admin-actions" style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8 }}>{buttons}</div>
             </div>
@@ -650,7 +640,41 @@ function Row({ row, section, onDecide, busy, narrow, refusal, onViewed, attempt,
   );
 }
 
-function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed, attempts, wise, paypal, onChanged, above, views, setups }) {
+/** Processing names who is moving the money: Stripe for a brand's payment, Wise or PayPal for a payout. */
+function ProviderCell({ row, attempt }) {
+  if (!underway(row, attempt)) {
+    return (
+      <span className="admin-payout-details">
+        <strong className="payout-method-heading">Stripe</strong>
+        {row.payment_method_label ? <span className="admin-sub">{row.payment_method_label}</span> : null}
+      </span>
+    );
+  }
+  const provider = providerFor(row);
+  return (
+    <span className="admin-payout-details">
+      <strong className="payout-method-heading">{PROVIDER_NAME[provider]}</strong>
+      {provider === "paypal"
+        ? <PayoutField label="Payout email">{attempt.paid_to ?? row.paypal_email}</PayoutField>
+        : <PayoutField label="Bank">{`${row.payout_bank || "Not provided"} ····${row.payout_last4 ?? ""}`}</PayoutField>}
+    </span>
+  );
+}
+
+/** "Stripe 1 · Wise 2": the providers in Processing, each with its count. */
+function providerCounts(rows, attempts) {
+  const counts = new Map();
+  for (const row of rows) {
+    const name = underway(row, attempts?.get(row.payment_id)) ? PROVIDER_NAME[providerFor(row)] : "Stripe";
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return ["Stripe", "Wise", "PayPal"].filter((name) => counts.get(name)).map((name) => `${name} ${counts.get(name)}`).join(" · ");
+}
+
+function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, refusal, onViewed, attempts, wise, paypal, onChanged, above, setups }) {
+  const columns = rows.some((row) => rowActs(id, row, attempts?.get(row.payment_id)));
+  // Only a payout has a note: a bank reference, a Payoneer ID.
+  const notes = columns && (id === "payout" || id === "failed");
   return (
     <section className="payments-queue" data-section={id}>
       <h2>{title} ({rows.length})</h2>
@@ -669,19 +693,19 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
                 <th>Order</th>
                 <th>Between</th>
                 <th>Amount</th>
-                <th>{id === "wire" ? "Reference" : "Paid with"}</th>
+                <th>{id === "clearing" ? "Provider" : "Paid with"}</th>
                 <th>When</th>
-                {narrow || !ACTS.has(id) ? null : (
+                {narrow || !columns ? null : (
                   <>
-                    <th>{ACTS.has(id) ? "Note" : ""}</th>
-                    <th className="payments-action-heading">{ACTS.has(id) ? "Actions" : ""}</th>
+                    {notes ? <th>Note</th> : null}
+                    <th className="payments-action-heading">Actions</th>
                   </>
                 )}
               </tr>
             </thead>
             <tbody>
               {rows.map((row) => (
-                <Row views={views} setups={setups} key={row.payment_id} row={row} section={id} onDecide={onDecide} busy={busyId === row.payment_id}
+                <Row setups={setups} columns={columns} notes={notes} key={row.payment_id} row={row} section={id} onDecide={onDecide} busy={busyId === row.payment_id}
                      narrow={narrow} refusal={refusal?.paymentId === row.payment_id ? refusal.failure : null} onViewed={onViewed}
                      attempt={attempts?.get(row.payment_id) ?? null} wise={wise} paypal={paypal} onChanged={onChanged} />
               ))}
@@ -694,18 +718,26 @@ function Section({ id, title, rows, empty, caption, onDecide, busyId, narrow, re
   );
 }
 
-/** Splits the board's rows into its sections. */
-export function boardSections(rows) {
+/**
+ * Splits the board's rows into its sections. A payout Wise or PayPal is
+ * paying now (its attempt `processing`) is under Processing, not Payout owed.
+ * The board no longer shows bank-wire claims (`sent`) or payments refunded
+ * after payout (`released`): John, Nov 7.
+ */
+export function boardSections(rows, attempts = new Map()) {
   const cancelled = (row) => row.order_status === "cancelled";
+  const owed = rows.filter((row) => row.state === "confirmed" && row.release_requested_at);
+  const moving = (row) => underway(row, attempts.get(row.payment_id));
+  const refused = (row) => providerFailed(row, attempts.get(row.payment_id));
   return {
-    payout: rows.filter((row) => row.state === "confirmed" && row.release_requested_at),
-    // The board lists a paid-out payment only when it was refunded after.
-    refunded: rows.filter((row) => row.state === "released"),
-    wire: rows.filter((row) => row.state === "sent"),
-    failed: rows.filter((row) => row.state === "failed" && !cancelled(row)),
-    clearing: rows.filter((row) => row.state === "processing" && !cancelled(row)),
+    payout: owed.filter((row) => !moving(row) && !refused(row)),
+    // A cancelled order's held money is refunded automatically; only a refund
+    // Stripe refused (20261108300000) needs a person.
+    failed: rows.filter((row) => (row.state === "failed" && !cancelled(row))
+      || (["confirmed", "processing"].includes(row.state) && cancelled(row) && row.refund_failed_at))
+      .concat(owed.filter(refused)),
+    clearing: [...rows.filter((row) => row.state === "processing" && !cancelled(row)), ...owed.filter(moving)],
     held: rows.filter((row) => row.state === "confirmed" && !row.release_requested_at && !cancelled(row)),
-    cancelled: rows.filter((row) => ["confirmed", "processing"].includes(row.state) && !row.release_requested_at && cancelled(row)),
   };
 }
 
@@ -719,7 +751,6 @@ export default function AdminPayments() {
   // page may be a screen away from where staff are looking.
   const [refusal, setRefusal] = useState(null);
   const narrow = useNarrow();
-  const [views, setViews] = useState([]);
   const [attempts, setAttempts] = useState(() => new Map());
   // TSC's Wise balance, or why there isn't one to show.
   const [wise, setWise] = useState(null);
@@ -728,9 +759,8 @@ export default function AdminPayments() {
 
   const load = useCallback(async () => {
     try {
-      const [board, viewLog, tried] = await Promise.all([paymentBoard(), payoutNumberRevealLog(), providerAttempts()]);
+      const [board, tried] = await Promise.all([paymentBoard(), providerAttempts()]);
       setRows(board);
-      setViews(viewLog);
       setAttempts(new Map(tried.map((attempt) => [attempt.payment_id, attempt])));
       setError(null);
       // Only says why a row waits; the board stands without it.
@@ -775,9 +805,7 @@ export default function AdminPayments() {
     setRefusal(null);
     setNotice(null);
     try {
-      if (decision === "confirm") await confirmPaymentReceived(row.payment_id, { note });
-      else if (decision === "reject") await rejectPaymentSent(row.payment_id, note);
-      else if (decision === "retry") {
+      if (decision === "retry") {
         const result = await requestRelease(row.payment_id);
         setNotice(result.released
           ? `${row.order_number}: paid out to ${row.factory_name}.`
@@ -795,26 +823,23 @@ export default function AdminPayments() {
 
   if (!rows) {
     return (
-      <AdminWorkspaceShell onSignOut={signOut} extraNav={STAFF_PAGES}>
+      <AdminWorkspaceShell onSignOut={signOut}>
         <main className="admin admin-payments-page"><h1>Payments</h1>{error ? <p className="admin-error">{error.message}</p> : <p className="admin-sub">Loading…</p>}</main>
       </AdminWorkspaceShell>
     );
   }
 
   return (
-    <AdminWorkspaceShell onSignOut={signOut} extraNav={STAFF_PAGES}>
+    <AdminWorkspaceShell onSignOut={signOut}>
       <PaymentsBoard rows={rows} error={error} notice={notice} decide={decide} busyId={busyId} narrow={narrow} refusal={refusal}
-                     load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} views={views} setups={setups} />
+                     load={load} attempts={attempts} wise={wise} paypal={paypal} onChanged={readBack} setups={setups} />
     </AdminWorkspaceShell>
   );
 }
 
-/** Staff's other board, which the admin console reaches the same way. */
-const STAFF_PAGES = [{ label: "Messages", icon: "messages", href: "/app.html/admin/messages" }];
-
 const TABS = [
-  ["payout", "Payout owed"], ["held", "Held"], ["clearing", "Processing"], ["wire", "Bank-wire claims"],
-  ["failed", "Failed"], ["refunded", "Refunded after payout"], ["cancelled", "Held on cancelled orders"],
+  ["payout", "Payout owed"], ["held", "Held"], ["clearing", "Processing"],
+  ["failed", "Failed"],
 ];
 
 /**
@@ -822,14 +847,14 @@ const TABS = [
  * rows. Payout owed always has a tab; another queue only while it has rows.
  */
 export function PaymentsBoard({ rows, error = null, notice = null, decide, busyId = null, narrow = false, refusal = null, load,
-  attempts = new Map(), wise = null, paypal = null, onChanged = load, views = [], setups = new Map() }) {
+  attempts = new Map(), wise = null, paypal = null, onChanged = load, setups = new Map() }) {
   const [chosen, setChosen] = useState("payout");
-  const sections = boardSections(rows);
-  const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, views, setups };
+  const sections = boardSections(rows, attempts);
+  const shared = { onDecide: decide, busyId, narrow, refusal, onViewed: load, attempts, wise, paypal, onChanged, setups };
   const tabs = TABS.filter(([id]) => id === "payout" || sections[id].length);
   // A queue that empties while open falls back to Payout owed.
   const active = tabs.some(([id]) => id === chosen) ? chosen : "payout";
-  const owedByWise = sections.payout.filter((row) => paidByWise(row) && attempts.get(row.payment_id)?.status !== "processing")
+  const owedByWise = [...sections.payout, ...sections.failed].filter((row) => paidByWise(row) && row.state === "confirmed" && row.release_requested_at && attempts.get(row.payment_id)?.status !== "processing")
     .reduce((sum, row) => sum + Number(row.amount_cents), 0);
   const wiseShort = wise?.balanceCents != null ? Math.max(0, owedByWise - wise.balanceCents) : 0;
   const wiseLine = wise ? (
@@ -862,44 +887,13 @@ export function PaymentsBoard({ rows, error = null, notice = null, decide, busyI
                  empty="Every approved payment has been paid out."
                  caption="The brand approved these steps (including before an order was cancelled), or the step needs no approval. Retry the payout, or pay by bank and mark it paid out after sending the money." />
       ) : null}
-      {active === "refunded" ? (
-        <Section id="refunded" title="Refunded after payout" rows={sections.refunded} {...shared}
-                 caption="The brand's payment was refunded in Stripe after the factory was paid. TSC no longer holds this money: recover it from the factory by hand." />
-      ) : null}
-      {active === "wire" ? <Section id="wire" title="Bank-wire claims" rows={sections.wire} {...shared} caption="Made on the old site before payments moved to Stripe. Check the account, then confirm." /> : null}
       {active === "failed" ? <Section id="failed" title="Failed" rows={sections.failed} {...shared} caption="These did not go through, or were refunded. The brand pays again from the order; nothing to do here." /> : null}
-      {active === "clearing" ? <Section id="clearing" title="Payments processing" rows={sections.clearing} {...shared} caption="Stripe is still confirming these. The factory starts when they go through." /> : null}
-      {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} caption="Funded, waiting for the brand to approve the step." /> : null}
-      {active === "cancelled" ? (
-        <Section id="cancelled" title="Held on cancelled orders" rows={sections.cancelled} {...shared}
-                 caption="The order was cancelled with this money held. Refund it in Stripe; the row leaves once Stripe reports the refund." />
+      {active === "clearing" ? (
+        <Section id="clearing" title="Processing" rows={sections.clearing} {...shared}
+                 above={<p className="admin-sub" data-testid="processing-providers">{providerCounts(sections.clearing, attempts)}</p>} />
       ) : null}
+      {active === "held" ? <Section id="held" title="Held" rows={sections.held} {...shared} caption="Funded, waiting for the brand to approve the step." /> : null}
 
-      {views.length === 0 ? null : (
-      <details className="admin-views-fold" data-section="views">
-        <summary>Number views ({views.length})</summary>
-        {(
-          <>
-          <div className="admin-scroll">
-            <table>
-              <thead><tr><th>When</th><th>Who</th><th>What</th><th>Company</th><th>Account</th></tr></thead>
-              <tbody>
-                {views.map((view) => (
-                  <tr key={`${view.account_id}-${view.revealed_at}`}>
-                    <td>{when(view.revealed_at)}</td>
-                    <td>{view.staff_email ?? "—"}</td>
-                    <td>{view.how === "sent_to_wise" ? "Sent to Wise" : "Show number"}</td>
-                    <td>{view.org_name}</td>
-                    <td>{`${view.bank_name ?? "Bank"} ····${view.last4 ?? ""}`}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          </>
-        )}
-      </details>
-      )}
     </main>
   );
 }
