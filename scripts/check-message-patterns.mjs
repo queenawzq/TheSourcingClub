@@ -5,7 +5,7 @@
  * ordinary message about quantities and prices until staff release it, which
  * stalls an order. Both lists matter, the second as much as the first.
  */
-import { findContactDetails } from "../api/_message-patterns.js";
+import { findContactDetails, forModel } from "../api/_message-patterns.js";
 
 const HOLD = [
   ["Email me at sourcing@demo-brand.example.com", "an email address"],
@@ -56,6 +56,14 @@ const HOLD = [
   ["447700900123 on whatsapp later", "a phone number"],
   ["8613800138000", "a phone number"],
   ["0 7 7 0 0 9 0 0 1 2 3", "a phone number"],
+  // Tried against the patterns in the #100 audit (Nov 8): each was delivered.
+  ["w e c h a t: abc_123", "a WeChat contact"],
+  ["W  E  C  H  A  T abc_123", "a WeChat contact"],
+  ["微 信 abc123", "a WeChat contact"],
+  ["钉 钉 abc123", "a DingTalk contact"],
+  ["skype live:abc", "a Skype contact"],
+  ["one three eight zero zero one three eight zero zero zero", "a phone number"],
+  ["Seven-seven-zero-zero-nine-zero-zero, thanks", "a phone number"],
 ];
 
 const HOLD_FILES = [
@@ -122,6 +130,15 @@ const DELIVER = [
   "数量：一千二百件，交期三十天",
   "Q4 delivery, Q1 reorder",
   "Price is 1 2 . 5 0 USD",
+  // Next to the spaced and spelled shapes of Nov 8.
+  "We need one two three four five six colourways",
+  "Two one one two for S M L XL, three three in the next carton",
+  "One or two samples, three to four weeks, five colours",
+  "Sizes: S M L: all confirmed",
+  "A B C: the three trims we discussed.",
+  "We have been live: 12 years, skype not used here",
+  "微信支付不接受，请走平台。",
+  "微 信 不用，都在这里沟通。",
 ];
 
 const DELIVER_FILES = [
@@ -133,6 +150,16 @@ const DELIVER_FILES = [
 
 let failures = 0;
 const fail = (message) => { failures += 1; console.log(`  ✗ ${message}`); };
+
+// What the model reads of a long message: its end too (padding past 4,000
+// characters used to hide whatever came after it).
+const PAD = "Please confirm the lab dip timing. ".repeat(200);
+const LONG_END = `${PAD}Add me: the id is abc`;
+if (forModel("short message") !== "short message") fail("a short message reaches the model unchanged");
+if (forModel("x".repeat(4000)).length !== 4000) fail("4,000 characters reach the model unchanged");
+if (!forModel(LONG_END).endsWith("Add me: the id is abc")) fail("the end of a long message reaches the model");
+if (!forModel(LONG_END).startsWith("Please confirm")) fail("the start of a long message reaches the model");
+if (forModel(LONG_END).length > 4100) fail("a long message stays within the model's budget");
 
 for (const [text, reason] of HOLD) {
   const result = findContactDetails(text);

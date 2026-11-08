@@ -36,7 +36,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { supabaseServerEnv } from "./_supabase-env.js";
-import { findContactDetails } from "./_message-patterns.js";
+import { findContactDetails, forModel } from "./_message-patterns.js";
 import { translateText } from "./_translate.js";
 
 // Haiku by default, NOT OPENROUTER_MODEL: the check sits between a person
@@ -119,7 +119,7 @@ export async function askModel(text, fileNames) {
           {
             role: "user",
             content: `Message to check:\n${JSON.stringify({
-              message: text.slice(0, 4000),
+              message: forModel(text),
               attachment_names: fileNames.slice(0, 20),
             })}`,
           },
