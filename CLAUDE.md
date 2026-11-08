@@ -418,8 +418,10 @@ a company-level verdict and a file-level one cannot contradict each other.
   hand. The screens render conditionally around all three, so the prototype
   keeps showing its mock versions.
 - **The overview's fourth card is payments waiting on staff**, where the
-  design puts "low-confidence checks": payouts Stripe did not make, and money
-  held on a cancelled order. Platform staff have no org and cannot be notified
+  design puts "low-confidence checks": payouts Stripe did not make, and a
+  cancelled order's refund Stripe refused (held money is otherwise refunded
+  automatically, so the board has no cancelled-orders tab; the refusal shows
+  under Failed). Platform staff have no org and cannot be notified
   of anything, so that count is the only prompt there is. The board has no
   Bank-wire claims, Refunded after payout or Number views any more (John and
   Queena, Nov 7); reveals of an account number are still recorded. A Wise or

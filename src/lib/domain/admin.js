@@ -400,7 +400,8 @@ export async function rfqDetail(rfqId) {
  * checks". It is a real figure and a more urgent one: platform staff have no
  * org and so cannot be notified of anything. It counts the payments only a
  * person can move: payouts owed that Stripe did not make (a factory it cannot
- * pay, paid by bank, Wise or PayPal) and money held on a cancelled order. It
+ * pay, paid by bank, Wise or PayPal) and a cancelled order's refund Stripe
+ * refused (held money is otherwise refunded automatically). It
  * no longer counts bank-wire claims (20261108200000). This count is the only
  * prompt there is.
  */
