@@ -7,7 +7,8 @@
 -- refund_failure, and the board shows it under Failed.
 --
 -- Numbered after 20261108300000 on purpose: it reads the two columns that
--- migration adds. Merge both or neither.
+-- migration adds. It also adds them itself, if not there yet (same types as
+-- C's), so this branch applies on its own below C in the stack.
 --
 -- 1. admin_overview_metrics() counts held money on a cancelled order only
 --    once its refund has failed. Same signature and columns as
@@ -15,6 +16,10 @@
 -- 2. admin_payment_board() gains refund_failed_at and refund_failure. A copy
 --    of 20261107100000's definition that only gains those two columns (a
 --    returns-table change needs drop and create; the grants are restated).
+
+alter table public.order_payments
+  add column if not exists refund_failed_at timestamptz,
+  add column if not exists refund_failure   text;
 
 create or replace function public.admin_overview_metrics()
 returns table (

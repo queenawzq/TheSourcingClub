@@ -246,3 +246,20 @@
 .admin-payments-page .admin-payout-number { column-gap: 12px; row-gap: 3px; }
 
 .admin-payments-page table thead th.payments-action-heading { border-left: 0; }
+
+/* The actions column keeps one width whatever step a row is on, so the table
+   never reflows under the cursor; at 1280 the columns fit without covering
+   the note (q79 tester, Nov 7). */
+.admin-payments-page td.admin-actions,
+.admin-payments-page th.payments-action-heading { max-width: 184px; }
+.admin-payments-page td.admin-actions .admin-row-message { min-width: 0; }
+.admin-payments-page td:nth-child(2) { min-width: 150px; }
+.admin-payments-page td:nth-child(3) { min-width: 120px; }
+@media (max-width: 1440px) {
+  .admin-payments-page td, .admin-payments-page th { padding-left: 10px; padding-right: 10px; }
+  .admin-payments-page .admin-payout-details { min-width: 176px; }
+  .admin-payments-page td:nth-child(2) { min-width: 124px; }
+  .admin-payments-page td:nth-child(3) { min-width: 100px; }
+  .admin-payments-page .payments-note-cell { width: 128px; min-width: 128px; max-width: 128px; }
+  .admin-payments-page .payments-note-cell label { max-width: 128px; }
+}

@@ -22,7 +22,8 @@ const rows = [
 // Payouts underway with Wise and PayPal.
 const attempts = new Map([
  ['preview-9',{payment_id:'preview-9',status:'processing',stage:'sent',provider_status:'outgoing_payment_sent',provider_ref:'50001',created_at:base.confirmed_at,updated_at:base.confirmed_at}],
- ['preview-10',{payment_id:'preview-10',status:'processing',stage:'sent',provider_status:'PENDING',paid_to:'gz-pay@example.com',created_at:base.confirmed_at,updated_at:base.confirmed_at}]
+ ['preview-10',{payment_id:'preview-10',status:'processing',stage:'sent',provider_status:'PENDING',paid_to:'gz-pay@example.com',created_at:base.confirmed_at,updated_at:base.confirmed_at}],
+ ['preview-8',{payment_id:'preview-8',status:'failed',stage:'done',provider_status:'RETURNED',paid_to:'pay@example.com',staff_sentence:'PayPal returned this payment. Check the address with the factory, then pay again.',created_at:base.confirmed_at,updated_at:base.confirmed_at}]
 ]);
 
 function Preview() { const narrow = useNarrow(); return <AdminWorkspaceShell preview><PayoutNumberProvider value={async () => ({ account_number: "DEMO 0000 0000 1234", changed_at: "2026-11-07T12:20:00Z" })}><div><PaymentsBoard rows={rows} busyId="preview-1" decide={()=>{}} load={()=>{}} narrow={narrow} attempts={attempts} wise={{balanceCents:500000,currency:'USD',appUrl:'https://wise.com'}} paypal={{appUrl:'https://www.paypal.com'}}/></div></PayoutNumberProvider></AdminWorkspaceShell>; }
