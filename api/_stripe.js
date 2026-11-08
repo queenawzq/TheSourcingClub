@@ -431,7 +431,7 @@ export async function applyPaymentIntent({ stripe, db, intent }) {
 export async function releasePayment({ stripe, db, paymentId }) {
   const { data: payment, error } = await db
     .from("order_payments")
-    .select("id, state, amount_cents, currency, order_id, stripe_charge_id, stripe_transfer_id, release_requested_at, production_orders (factory_org_id, order_number)")
+    .select("id, state, amount_cents, currency, order_id, stripe_charge_id, stripe_transfer_id, release_requested_at, release_claimed_at, stripe_release_started, production_orders (factory_org_id, order_number)")
     .eq("id", paymentId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -459,18 +459,33 @@ export async function releasePayment({ stripe, db, paymentId }) {
     return { released: false, reason: "the brand's payment was refunded in Stripe, so there is nothing to pay out" };
   }
 
+  // Disputed: the card network may take this money back, so it waits, as the
+  // Wise and PayPal paths do. A payout already started is settled first, so
+  // the dispute cannot leave the factory's route pinned.
+  if (charge.disputed) {
+    const settled = await settleStartedRelease({ stripe, db, payment });
+    if (settled) return settled;
+    return { released: false, reason: "the brand disputed this payment, so the payout waits until that is settled" };
+  }
+
   let { data: account } = await db
     .from("stripe_connect_accounts")
     .select("stripe_account_id, transfers_active")
     .eq("org_id", payment.production_orders.factory_org_id)
     .maybeSingle();
   if (!account?.transfers_active) {
+    const settled = await settleStartedRelease({ stripe, db, payment });
+    if (settled) return settled;
     return { released: false, reason: "the factory cannot be paid through Stripe yet" };
   }
 
   const selectedStripe = await db.rpc("uses_stripe_payout", { target_org: payment.production_orders.factory_org_id });
   if (selectedStripe.error) throw new Error(selectedStripe.error.message);
-  if (!selectedStripe.data) return { released: false, reason: "the factory selected another payout method" };
+  if (!selectedStripe.data) {
+    const settled = await settleStartedRelease({ stripe, db, payment });
+    if (settled) return settled;
+    return { released: false, reason: "the factory selected another payout method" };
+  }
 
   // A transfer credits earnings, never an automatic withdrawal to the bank.
   // Configure existing accounts before any money can reach them.
@@ -481,8 +496,14 @@ export async function releasePayment({ stripe, db, paymentId }) {
   // of them claim the payment and tells the rest it is taken. A claim left by
   // a call that died mid-way lapses after 10 minutes.
   const claimedAt = await rpc(db, "claim_payment_release", { target_payment: payment.id });
-  if (!claimedAt) return { released: false, reason: "already being paid" };
+  if (!claimedAt) {
+    const { data: upgrading } = await db.from("stripe_connect_upgrades").select("org_id")
+      .eq("org_id", payment.production_orders.factory_org_id).is("completed_at", null).not("new_account_id", "is", null).limit(1);
+    return { released: false, reason: upgrading?.length ? "the factory is still updating its payout account: this is paid once that finishes" : "already being paid" };
+  }
 
+  // Only once Stripe has listed no transfer can a refusal mean none exists.
+  let foundNoTransfer = false;
   try {
     // A caller may have read the old account just before an upgrade completed.
     // The claim serialises against cutover; re-read its destination afterwards.
@@ -500,6 +521,7 @@ export async function releasePayment({ stripe, db, paymentId }) {
       await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
       return { released: true, reason: already.id };
     }
+    foundNoTransfer = true;
 
     // One key per claim: Stripe's own retries inside this call reuse it, and
     // the next claim gets a new one, because Stripe replays a key's first
@@ -525,14 +547,40 @@ export async function releasePayment({ stripe, db, paymentId }) {
   } catch (failure) {
     // Hand the claim back so the next try (a webhook retry, staff's Retry)
     // need not wait for it to lapse. The exact time string goes back, so a
-    // newer claim is never cleared by mistake.
+    // newer claim is never cleared by mistake. When Stripe refused outright
+    // the payment is no longer pinned to it either.
     try {
-      await db.rpc("release_payment_claim", { target_payment: payment.id, claimed: claimedAt });
+      await db.rpc(foundNoTransfer && stripeMadeNoTransfer(failure) ? "record_stripe_release_not_sent" : "release_payment_claim",
+        { target_payment: payment.id, claimed: claimedAt });
     } catch {
       // the claim lapses on its own after 10 minutes
     }
     throw failure;
   }
+}
+
+/** Stripe answered and refused. A timeout, a 5xx, a 409 or a 429 says nothing about whether a transfer exists. */
+function stripeMadeNoTransfer(failure) {
+  return [400, 402, 403, 404].includes(failure?.statusCode);
+}
+
+/**
+ * Stripe can no longer be asked to pay this payment, and an earlier call
+ * started it. Look: a transfer that went is recorded; if none did, the
+ * payment is unpinned so another rail can pay it. A claim still live may be
+ * mid-call, so it is left alone.
+ */
+async function settleStartedRelease({ stripe, db, payment }) {
+  if (!payment.stripe_release_started) return null;
+  if (payment.release_claimed_at && Date.parse(payment.release_claimed_at) > Date.now() - 10 * 60 * 1000) return null;
+  const sent = await stripe.transfers.list({ transfer_group: payment.order_id, limit: 100 });
+  const already = sent.data.find((transfer) => transfer.metadata?.payment_id === payment.id && !transfer.reversed);
+  if (already) {
+    await rpc(db, "record_payment_released", { target_payment: payment.id, transfer: already.id });
+    return { released: true, reason: already.id };
+  }
+  await rpc(db, "record_stripe_release_not_sent", { target_payment: payment.id, claimed: payment.release_claimed_at });
+  return null;
 }
 
 /** Save what Stripe says about a factory's account. */

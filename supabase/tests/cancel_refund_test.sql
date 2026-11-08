@@ -155,8 +155,9 @@ select is(
   'a refused refund leaves the money held'
 );
 select ok(
-  (select refund_failed_at is not null and refund_failure = 'Stripe refused the refund.' and refund_claimed_at is null
-     from public.order_payments where id = (select id from p81 where name = 'held')),
+  (select p.refund_failed_at is not null and n.failure = 'Stripe refused the refund.' and p.refund_claimed_at is null
+     from public.order_payments p join public.payment_refund_staff_notes n on n.payment_id = p.id
+    where p.id = (select id from p81 where name = 'held')),
   'the refusal and its reason are recorded, and the claim is let go'
 );
 select public.record_cancellation_refund_failed((select id from p81 where name = 'held'), 'Stripe refused the refund.');
@@ -240,8 +241,9 @@ select is(
   'held money with no Stripe charge is not sent to Stripe'
 );
 select ok(
-  (select refund_failed_at is not null and refund_failure like 'Held with no Stripe charge%'
-     from public.order_payments where id = (select id from p81 where name = 'released')),
+  (select p.refund_failed_at is not null and n.failure like 'Held with no Stripe charge%'
+     from public.order_payments p join public.payment_refund_staff_notes n on n.payment_id = p.id
+    where p.id = (select id from p81 where name = 'released')),
   'and is recorded as failed, so staff see it'
 );
 

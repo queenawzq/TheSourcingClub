@@ -94,8 +94,14 @@ select throws_ok($$select public.choose_payout_method('96b00000-0000-0000-0000-0
 reset role;
 update public.provider_payouts set status='cancelled' where payment_id='96f00000-0000-0000-0000-000000000001';
 select pg_temp.act_as(1); set local role authenticated;
-select lives_ok($$select public.choose_payout_method('96b00000-0000-0000-0000-0000000000f1',null)$$,'can switch back to Stripe after attempt ends');
+select throws_ok($$select public.choose_payout_method('96b00000-0000-0000-0000-0000000000f1',null)$$,'22023',null,'cannot switch to Stripe while a manual payout is owed');
 reset role;
+create temp table p96_owed on commit drop as select id, release_requested_at from public.order_payments where order_id='96d00000-0000-0000-0000-000000000001' and release_requested_at is not null;
+update public.order_payments set release_requested_at=null where id in (select id from p96_owed);
+select pg_temp.act_as(1); set local role authenticated;
+select lives_ok($$select public.choose_payout_method('96b00000-0000-0000-0000-0000000000f1',null)$$,'can switch back to Stripe after attempt ends and nothing is owed');
+reset role;
+update public.order_payments p set release_requested_at=o.release_requested_at from p96_owed o where p.id=o.id;
 select ok(public.claim_payment_release('96f00000-0000-0000-0000-000000000002') is not null,'Stripe can claim after switching back');
 select pg_temp.act_as(1); set local role authenticated;
 select throws_ok($$select public.choose_payout_method('96b00000-0000-0000-0000-0000000000f1','96a10000-0000-0000-0000-000000000001')$$,'22023',null,'cannot switch while Stripe owns payout');

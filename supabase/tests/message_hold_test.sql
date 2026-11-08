@@ -117,11 +117,6 @@ insert into public.messages (id, thread_id, sender_org_id, sender_user_id, body,
 
 reset role;
 
--- The ordinary message passes the screen, as the server records it.
-do $$ begin
-  perform public.record_message_screening('b5000000-0000-0000-0000-000000000002', 'delivered', 'pattern_only');
-end $$;
-
 -- Attachments: one on the ordinary message, one on the message to be held.
 insert into public.documents (id, org_id, kind, bucket, storage_path, file_name, message_id) values
   ('b6000000-0000-0000-0000-000000000002', 'b2000000-0000-0000-0000-00000000000b', 'message_attachment',
@@ -130,6 +125,11 @@ insert into public.documents (id, org_id, kind, bucket, storage_path, file_name,
   ('b6000000-0000-0000-0000-000000000001', 'b2000000-0000-0000-0000-00000000000b', 'message_attachment',
    'org-private', 'b2000000-0000-0000-0000-00000000000b/message_attachment/b4000000-0000-0000-0000-000000000002/card.pdf',
    'card.pdf', 'b5000000-0000-0000-0000-000000000001');
+
+-- The ordinary message passes the screen, as the server records it.
+do $$ begin
+  perform public.record_message_screening('b5000000-0000-0000-0000-000000000002', 'delivered', 'pattern_only');
+end $$;
 
 insert into storage.objects (bucket_id, name) values
   ('org-private', 'b2000000-0000-0000-0000-00000000000b/message_attachment/b4000000-0000-0000-0000-000000000001/plain.pdf'),

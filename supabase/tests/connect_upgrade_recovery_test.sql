@@ -30,7 +30,7 @@ insert into public.order_payments (id, order_id, milestone_id, amount_cents, cur
 
 set local session_replication_role = origin;
 
-insert into public.stripe_connect_accounts(org_id,stripe_account_id,country) values ('33b00000-0000-0000-0000-0000000000f2','acct_recovery_old','PT');
+insert into public.stripe_connect_accounts(org_id,stripe_account_id,country,transfers_active) values ('33b00000-0000-0000-0000-0000000000f2','acct_recovery_old','PT',true);
 select public.begin_connect_upgrade('33b00000-0000-0000-0000-0000000000f2','acct_recovery_old');
 select ok(public.claim_payment_release('33800000-0000-0000-0000-000000000001') is not null,'creation in progress does not freeze releases');
 update public.order_payments set release_claimed_at=null where id='33800000-0000-0000-0000-000000000001';

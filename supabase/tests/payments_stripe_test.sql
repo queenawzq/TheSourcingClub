@@ -656,12 +656,18 @@ select lives_ok($$select public.approve_milestone(pg_temp.p18_step('order_d', 'F
   'and approves the step');
 reset role;
 
+-- Stripe can no longer pay this factory, so a person does (20261108710000).
+update public.stripe_connect_accounts set transfers_active = false
+ where org_id = (select o.factory_org_id from public.production_orders o join public.order_payments p on p.order_id = o.id where p.id = pg_temp.p18_pay('order_d', 'Fit sample'));
+
 set local request.jwt.claims = '{"sub":"18a00000-0000-0000-0000-000000000005","role":"authenticated"}';
 set local role authenticated;
 select lives_ok(
   $$select public.release_payment_to_factory(pg_temp.p18_pay('order_d', 'Fit sample'), 'paid by bank')$$,
   'staff mark an approved Stripe-funded payment paid out by bank');
 reset role;
+update public.stripe_connect_accounts set transfers_active = true
+ where org_id = (select o.factory_org_id from public.production_orders o join public.order_payments p on p.order_id = o.id where p.id = pg_temp.p18_pay('order_d', 'Fit sample'));
 select is(pg_temp.p18_state('order_d', 'Fit sample'), 'released', 'it is paid out');
 
 select public.record_payment_refunded(pg_temp.p18_pay('order_d', 'Fit sample'), 'pi_p18_d3', 'The payment was refunded.');
