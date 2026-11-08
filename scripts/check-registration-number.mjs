@@ -9,9 +9,11 @@
 import assert from "node:assert/strict";
 import {
   normaliseAccessCode, normaliseRegistrationNumber, normaliseRegistrationLetter, registrationCountryFrom, registrationFlags,
-  registrationNumberProblem, registryResultLabel,
+  registrationNumberProblem, registryResultLabel, companyNameKey, companyNamesMatch, registrySources, registrySourceUrl, OFFICIAL_SOURCES,
 } from "../src/shared/registration-number.mjs";
+import { certificateLookup, reverseImageLinks } from "../src/shared/certificate-lookups.mjs";
 import { viesResult } from "../api/registry-vies.js";
+import { aiReadsDocuments, documentDifferences, groundedReasons, judgeFromTags, tradingScope } from "../api/registry-assist.js";
 
 let failures = 0;
 function check(name, fn) {
@@ -60,9 +62,64 @@ check("access code: 12 digits, dashed", () => assert.equal(normaliseAccessCode("
 check("access code: blank is blank", () => assert.equal(normaliseAccessCode(""), ""));
 check("access code: 11 digits is refused", () => assert.equal(normaliseAccessCode("1234-5678-901"), null));
 
-check("registration letter number: kept as typed, 40 at most", () => {
-  assert.equal(normaliseRegistrationLetter("  AB12   CD34 "), "AB12 CD34");
-  assert.equal(normaliseRegistrationLetter("x".repeat(41)), null);
+check("registration letter number: 14 letters and digits, spaces dropped, upper-case", () => {
+  assert.equal(normaliseRegistrationLetter(" ab12 cd34 ef56 78 "), "AB12CD34EF5678");
+  assert.equal(normaliseRegistrationLetter(""), "");
+  assert.equal(normaliseRegistrationLetter("AB12"), null);
+  assert.equal(normaliseRegistrationLetter("x".repeat(15)), null);
+});
+// The same names as verification_v2_test.sql pins for company_name_key().
+check("company names: legal forms, accents and case dropped, as the database does", () => {
+  assert.equal(companyNameKey("EDP, S.A."), "edp");
+  assert.equal(companyNameKey("Fiação do Vale, Lda."), "fiacao do vale");
+  assert.equal(companyNameKey("ÖRME TEKSTİL SANAYİ VE TİCARET LİMİTED ŞİRKETİ"), "orme tekstil");
+  assert.equal(companyNameKey("宁波织造有限公司"), "宁波织造");
+  assert.ok(companyNamesMatch("FIACAO DO VALE LDA", "Fiação do Vale, Lda."));
+  assert.ok(!companyNamesMatch("EDP, S.A.", "Fiação do Vale, Lda."));
+  assert.ok(!companyNamesMatch("", ""));
+});
+check("GİB's letter check opens prefilled with the VKN and the letter number", () => {
+  const gib = registrySources("TR").find((item) => item.key === "gib");
+  assert.equal(registrySourceUrl(gib, { number: "4837261591", registrationLetterNumber: "AB12CD34EF5678" }),
+    "https://dijital.gib.gov.tr/dogrulamalar/mukellefiyetDogrulama?vknTckn=4837261591&dilekceOid=AB12CD34EF5678");
+});
+check("dead links are gone: gov.pt certificate, Gazette title search, e-Devlet barcode", () => {
+  const urls = ["TR", "PT"].flatMap((c) => registrySources(c)).map((item) => registrySourceUrl(item, { number: "1" }, "x") ?? "");
+  assert.ok(!urls.some((url) => /gov\.pt\/servicos|ticaretsicil|belge-dogrulama/.test(url)));
+});
+check("official sources: the same list as registry_source_is_official()", () => {
+  assert.deepEqual([...OFFICIAL_SOURCES].sort(), ["acts", "certidao", "gib", "gsxt", "national", "permit", "vies"]);
+});
+check("trading scope: trade words with no making word are flagged, quoting the words", () => {
+  assert.deepEqual(tradingScope("纺织品、服装的批发、零售；货物进出口"), { trading: true, read: true, quote: "进出口, 批发, 零售" });
+  assert.equal(tradingScope("针织服装制造、加工；货物进出口").trading, false);
+  assert.equal(tradingScope("").read, false);
+});
+check("document differences: number and name, quoting the document", () => {
+  const lines = documentDifferences({ registrationNumber: "91330100MA2B7C4D3F", legalName: "宁波贸易有限公司" }, { country: "CN", number: "91330100MA2B7C4D3F", title: "Ningbo Loomworks" });
+  assert.deepEqual(lines.map((line) => line.field), ["name"]);
+  assert.equal(documentDifferences({ registrationNumber: "500697256", legalName: "Fiação do Vale Lda" }, { country: "PT", number: "PT 500 697 256", title: "Fiação do Vale, Lda." }).length, 0);
+});
+check("address: judged from the tags by rule, imprecise is unknown", () => {
+  assert.equal(judgeFromTags([{ tag: "landuse=industrial", count: 2, nearest: 40 }]).judgement, "industrial");
+  assert.equal(judgeFromTags([{ tag: "building=office", count: 1, nearest: 10 }]).judgement, "office");
+  assert.equal(judgeFromTags([{ tag: "landuse=industrial", count: 1, nearest: 40 }], false).judgement, "unknown");
+  assert.equal(judgeFromTags([]).judgement, "unknown");
+});
+check("address: a model's reason that names no tag found is dropped", () => {
+  assert.deepEqual(groundedReasons(["landuse=industrial at 40 m", "Looks like a big factory"], [{ tag: "landuse=industrial" }]), ["landuse=industrial at 40 m"]);
+});
+check("AI reads documents: on off production, off on production, the setting wins", () => {
+  assert.equal(aiReadsDocuments({ VERCEL_ENV: "preview" }), true);
+  assert.equal(aiReadsDocuments({}), true);
+  assert.equal(aiReadsDocuments({ VERCEL_ENV: "production" }), false);
+  assert.equal(aiReadsDocuments({ VERCEL_ENV: "production", VERIFY_AI_READS_DOCUMENTS: "on" }), true);
+  assert.equal(aiReadsDocuments({ VERIFY_AI_READS_DOCUMENTS: "off" }), false);
+});
+check("certificate lookups: OEKO-TEX opens the certificate, amfori has none", () => {
+  assert.equal(certificateLookup("oeko-tex-standard-100").url("13.HTR.25381"), "https://www.oeko-tex.com/en/detail/?number=13.HTR.25381");
+  assert.equal(certificateLookup("bsci").url(), null);
+  assert.match(reverseImageLinks("https://x.test/a b.jpg")[1].href, /tineye\.com\/search\?url=https%3A%2F%2Fx\.test%2Fa%20b\.jpg/);
 });
 check("TÜRKİYE in capitals is Turkey", () => assert.equal(registrationCountryFrom("İSTANBUL, TÜRKİYE"), "TR"));
 check("staff flags: a clean company code has none", () => assert.deepEqual(registrationFlags("CN", "91330100MA2B7C4D3F"), []));

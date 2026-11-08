@@ -38,7 +38,8 @@ export async function saveRegistration(orgId, { country, number, second = "", co
     if (accessCode === null) throw new Error(zh ? "访问码须为 12 位数字" : "The access code is 12 digits");
   } else if (country === "TR") {
     registrationLetterNumber = normaliseRegistrationLetter(second);
-    if (registrationLetterNumber === null) throw new Error(zh ? "编号最多 40 个字符" : "The letter number is 40 characters at most");
+    if (registrationLetterNumber === "") throw new Error(zh ? "请填写证明编号（Dilekçe No.）" : "Enter the letter number (Dilekçe No.)");
+    if (registrationLetterNumber === null) throw new Error(zh ? "证明编号为 14 位字母或数字" : "The letter number is 14 letters and digits");
   }
   const saved = unwrap(
     await supabase.rpc("save_company_registration", {
@@ -53,6 +54,16 @@ export async function saveRegistration(orgId, { country, number, second = "", co
   );
   if (saved?.country_code === "PT") requestViesCheck(orgId).catch(() => {});
   return saved;
+}
+
+/**
+ * After saving: is this number already another company's on TSC? Yes or no,
+ * never which one. False when it can't be asked: the warning is a courtesy,
+ * staff see the duplicate either way.
+ */
+export async function registrationInUse(orgId) {
+  const { data, error } = await supabase.rpc("registration_in_use", { target_org: orgId });
+  return !error && data === true;
 }
 
 /** Ask the server to look the company up on VIES. `force` (staff) skips the 10-minute repeat guard. */
@@ -77,21 +88,81 @@ export async function adminRegistryDetail(orgId) {
  * Staff: why the company cannot be approved yet, or null. Mirrors the
  * database's guard (guard_approval_needs_registry).
  */
-export async function registryApprovalBlock(orgId) {
-  const detail = await adminRegistryDetail(orgId);
+export function approvalBlockText(detail) {
   if (!detail?.registration) return "Needs the company's registration number first";
-  const current = detail.current;
-  if (!current) return "Record a registry check that found the company first";
-  if (current.result !== "found") return "The latest registry check did not find a match";
+  const problem = detail.approvalProblem;
+  if (problem === "no_check") {
+    return detail.current && detail.current.result !== "found"
+      ? "The latest registry check did not find a match"
+      : "Record a registry check that found the company first";
+  }
+  if (problem === "name_differs") return `The registry names another company (${detail.nameDiffers}): record a check confirming why`;
+  if (problem === "duplicate") return "Another company uses this registration number: explain it first";
   return null;
 }
 
-/** Staff: record what an official source showed. */
-export async function recordRegistryCheck(orgId, { source, result, note, confirmed = false }) {
+export async function registryApprovalBlock(orgId) {
+  return approvalBlockText(await adminRegistryDetail(orgId));
+}
+
+/**
+ * Staff: record what a source showed. `seen` is what staff read there (name,
+ * address, startDate, industry); `nameDiffersConfirmed` says the names differ
+ * and staff checked why, which a "found" needs when they do.
+ */
+export async function recordRegistryCheck(orgId, { source, result, note, confirmed = false, seen = {}, nameDiffersConfirmed = false }) {
   return unwrap(
-    await supabase.rpc("admin_record_registry_check", { target_org: orgId, source, result, note: note || null, confirmed }),
+    await supabase.rpc("admin_record_registry_check", {
+      target_org: orgId, source, result, note: note || null, confirmed, seen, name_differs_confirmed: nameDiffersConfirmed,
+    }),
     "record the check",
   );
+}
+
+/** Staff: say why two companies share a number; approval needs it. */
+export async function explainDuplicate(orgId, note) {
+  return unwrap(await supabase.rpc("admin_explain_duplicate", { target_org: orgId, note }), "save the explanation");
+}
+
+/** Staff: photos, certificates, registration files and every signal recorded. */
+export async function adminVerificationSignals(orgId) {
+  return unwrap(await supabase.rpc("admin_verification_signals", { target_org: orgId }), "load the verification checks");
+}
+
+/** Staff: a photo's reverse search, or a certificate's check. */
+export async function recordSignal(orgId, { kind, subjectId, result, note, details = {} }) {
+  return unwrap(
+    await supabase.rpc("admin_record_signal", { target_org: orgId, kind, subject: subjectId, result, note, details }),
+    "record the check",
+  );
+}
+
+/**
+ * Staff: ask the server to read the registration with AI, or to check the
+ * address. Answers `{ available: false, reason }` in words when it can't.
+ */
+export async function requestRegistryAssist(orgId, action, extra = {}) {
+  const { data: { session } } = await supabase.auth.getSession();
+  let response;
+  try {
+    response = await fetch("/api/registry-assist", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
+      body: JSON.stringify({ orgId, action, ...extra }),
+    });
+  } catch {
+    return { available: false, reason: "The server couldn't be reached." };
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) return { available: false, reason: result.error || "The server couldn't do it." };
+  return result;
+}
+
+/** Which of a vendor's certificates staff found on the issuer's lookup, by certification id. */
+export async function certificateChecks(orgId) {
+  const { data, error } = await supabase.rpc("factory_certificate_checks", { target_org: orgId });
+  if (error) return new Map();
+  return new Map((data ?? []).map((row) => [row.certification_id, row.checked_at]));
 }
 
 /** The month a verified vendor's registration was last found on an official source, or null. */

@@ -36,7 +36,7 @@ import { capacityWindow, monthKey } from "../../lib/domain/capacity.js";
 import { useSignableTerms } from "./useSignableTerms.js";
 import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
-import { getRegistration, saveRegistration } from "../../lib/domain/registration.js";
+import { getRegistration, registrationInUse, saveRegistration } from "../../lib/domain/registration.js";
 import {
   normaliseAccessCode, normaliseRegistrationLetter, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
 } from "../../shared/registration-number.mjs";
@@ -169,6 +169,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
   const [documents, setDocuments] = useState({});
   // The country the registration number was saved under, or the profile's.
   const [savedCountry, setSavedCountry] = useState(null);
+  const [numberInUse, setNumberInUse] = useState(false);
 
   const kinds = useMemo(
     () => [...new Set([...Object.values(KIND_FOR_LABEL), "capacity_category", "country", "certification"])],
@@ -198,6 +199,13 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
           listDocuments(org.id, "walkthrough"),
         ]);
         const savedRegistration = await getRegistration(org.id).catch(() => null);
+        if (savedRegistration?.number) {
+          registrationInUse(org.id).then((inUse) => {
+            if (cancelled) return;
+            setNumberInUse(inUse);
+            setValues((current) => ({ ...current, "registration-in-use": inUse ? (language === "zh" ? "已被另一家公司使用" : "already used by another company") : "" }));
+          }, () => {});
+        }
         const certs = await loadCertifications(byKind);
         if (cancelled) return;
 
@@ -318,19 +326,24 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       noNumberLabel: copy.soleProprietor ? (lang === "zh" ? "没有公司注册号（个体经营）" : "No company number (sole proprietor)") : null,
       confirmLabel: lang === "zh" ? "号码无误，与证件一致" : "The number is correct as on my document",
       second: copy.second
-        ? { label: copy.second.label[lang], hint: copy.second.hint[lang], value: values["registration-second"] ?? "" }
+        ? { label: copy.second.label[lang], hint: copy.second.hint[lang], required: Boolean(copy.second.required), value: values["registration-second"] ?? "" }
         : null,
+      uploadLabel: copy.upload?.[lang] ?? null,
+      soleUploadLabel: copy.soleUpload?.[lang] ?? null,
+      // Saved, and already another company's on TSC: said, never refused.
+      inUseText: numberInUse ? (lang === "zh" ? "该号码已被 The Sourcing Club 上的另一家公司使用" : "Already used by another company on The Sourcing Club") : "",
       check: (value) => {
         const problem = registrationNumberProblem(registrationCountry, value);
         return { error: registrationProblemText(registrationCountry, problem, lang), confirmable: problem === "check_digit" };
       },
       checkSecond: (value) => {
         if (registrationCountry === "PT" && normaliseAccessCode(value) === null) return lang === "zh" ? "访问码须为 12 位数字" : "The access code is 12 digits";
-        if (registrationCountry === "TR" && normaliseRegistrationLetter(value) === null) return lang === "zh" ? "最多 40 个字符" : "40 characters at most";
+        if (registrationCountry === "TR" && normaliseRegistrationLetter(value) === "") return lang === "zh" ? "请填写证明编号" : "Enter the letter number";
+        if (registrationCountry === "TR" && normaliseRegistrationLetter(value) === null) return lang === "zh" ? "14 位字母或数字" : "14 letters and digits";
         return "";
       },
     };
-  }, [registrationCountry, language, values]);
+  }, [registrationCountry, language, values, numberInUse]);
 
   const certificationTerm = (name) => findCertificationTerm(name, terms.certification ?? [], language);
 
@@ -477,6 +490,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         confirmed: submitted["registration-confirmed"] === true,
         noNumber: submitted["registration-none"] === true && Boolean(registrationCopy(registrationCountry).soleProprietor),
       }, language === "zh" ? "zh" : "en");
+      registrationInUse(org.id).then((inUse) => {
+        setNumberInUse(inUse);
+        setValues((current) => ({ ...current, "registration-in-use": inUse ? (language === "zh" ? "已被另一家公司使用" : "already used by another company") : "" }));
+      }, () => {});
       // The same country on the profile, for Browse's location filter.
       if (registrationCountry) patch.country_code = registrationCountry;
     }

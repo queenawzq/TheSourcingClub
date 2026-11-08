@@ -6,6 +6,8 @@
  *
  * Only China, Turkey and Portugal have rules (the countries most of TSC's
  * factories come from, Nov 5). Anywhere else takes the number as written.
+ * Company names are compared by `companyNameKey()`, the same rules as the
+ * database's `company_name_key()` (migration 20261108700000).
  */
 
 // China, GB 32100-2015: 18 characters from this alphabet (no I, O, S, V, Z).
@@ -26,15 +28,20 @@ export const REGISTRATION_COUNTRIES = {
   CN: {
     label: { en: "Unified Social Credit Code", zh: "统一社会信用代码" },
     hint: { en: "18 characters, on your business licence", zh: "18 位，见营业执照" },
+    upload: { en: "Business licence (营业执照)", zh: "营业执照" },
   },
   TR: {
     label: { en: "Company tax number (VKN)", zh: "公司税号（VKN）" },
-    hint: { en: "10 digits, on your tax registration letter (mükellefiyet yazısı); upload the letter above", zh: "10 位数字，见纳税登记证明；请在上方上传" },
+    hint: { en: "10 digits, on your tax registration letter (mükellefiyet yazısı)", zh: "10 位数字，见纳税登记证明" },
     second: {
       column: "registration_letter_number",
-      label: { en: "Letter number (Dilekçe No.)", zh: "证明编号" },
-      hint: { en: "On your tax registration letter, for GİB's check", zh: "见纳税登记证明，用于税务局核验" },
+      label: { en: "Letter number (Dilekçe No.)", zh: "证明编号（Dilekçe No.）" },
+      hint: { en: "14 characters, on the same letter", zh: "14 位，见同一份证明" },
+      required: true,
     },
+    // What the registration upload is, named as on the document.
+    upload: { en: "Tax registration letter (Mükellefiyet yazısı)", zh: "纳税登记证明（Mükellefiyet yazısı）" },
+    soleUpload: { en: "Tax registration letter (Mükellefiyet yazısı)", zh: "纳税登记证明（Mükellefiyet yazısı）" },
     // A sole proprietor's tax number is the owner's national ID: never asked.
     soleProprietor: true,
   },
@@ -46,6 +53,8 @@ export const REGISTRATION_COUNTRIES = {
       label: { en: "Permanent certificate access code", zh: "永久证明访问码" },
       hint: { en: "12 digits, e.g. 1234-5678-9012", zh: "12 位数字，例如 1234-5678-9012" },
     },
+    upload: { en: "Permanent certificate (Certidão permanente)", zh: "商业登记永久证明（Certidão permanente）" },
+    soleUpload: { en: "Owner's ID or declaration of activity (Declaração de início de atividade)", zh: "经营者身份证件或开业申报（Declaração de início de atividade）" },
     soleProprietor: true,
   },
 };
@@ -180,10 +189,36 @@ export function registrationProblemText(country, problem, language = "en") {
   return zh ? "只能包含字母和数字" : "Letters and digits only";
 }
 
-/** The number on Turkey's tax registration letter (mükellefiyet yazısı): as printed, short. Null when too long. */
+/**
+ * The number on Turkey's tax registration letter (Dilekçe No.): 14 letters
+ * and digits, spaces dropped, upper-case. "" when empty, null when not 14.
+ */
 export function normaliseRegistrationLetter(value) {
-  const text = String(value ?? "").trim().replace(/\s+/g, " ");
-  return text.length > 40 ? null : text;
+  const text = halfWidth(value).replace(/\s+/g, "").toUpperCase();
+  if (!text) return "";
+  return /^[A-Z0-9]{14}$/.test(text) ? text : null;
+}
+
+// Legal forms and joining words dropped from a name (Portuguese, Turkish,
+// English, Chinese); the database's company_name_key() drops the same.
+const NAME_FORMS = new Set(["sa", "sl", "lda", "limitada", "unipessoal", "sociedade", "anonima", "ltd", "ltda", "limited", "co", "company", "corp", "corporation", "inc", "llc", "gmbh", "plc", "jsc", "srl", "spa", "sti", "sirketi", "ticaret", "sanayi", "san", "tic", "ve", "as", "ith", "ihr", "imalat", "pazarlama", "and", "e", "cia", "comercio", "industria"]);
+const ACCENTS_FROM = "áàâãäåçéèêëíìîïıñóòôõöøúùûüşğýÿœæ";
+const ACCENTS_TO = "aaaaaaceeeeiiiiinoooooouuuusgyyoa";
+
+/** "EDP, S.A." → "edp"; "Fiação do Vale, Lda." → "fiacao do vale"; "宁波织造有限公司" → "宁波织造". */
+export function companyNameKey(raw) {
+  let text = String(raw ?? "").replace(/İ/g, "i").toLowerCase().replace(/i\u0307/g, "i");
+  text = [...text].map((ch) => { const at = ACCENTS_FROM.indexOf(ch); return at >= 0 ? ACCENTS_TO[at] : ch; }).join("");
+  text = text.replace(/(股份有限公司|有限责任公司|有限公司|分公司|公司|厂)$/u, "");
+  text = text.replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  // "s a" and "a s" (S.A., A.Ş.) are two words once the dots go.
+  text = ` ${text} `.replace(/ s a(?= )| a s(?= )/g, " ");
+  return text.split(" ").filter((word) => word && !NAME_FORMS.has(word)).join(" ");
+}
+
+export function companyNamesMatch(a, b) {
+  const key = companyNameKey(a);
+  return key !== "" && key === companyNameKey(b);
 }
 
 /** Portugal's permanent-certificate access code: 12 digits, kept as 0000-0000-0000. */
@@ -201,37 +236,73 @@ export function normaliseAccessCode(value) {
 // China it is the check that works (GSXT is behind a captcha and a real-name
 // login, and refuses foreign connections); everywhere it is the fallback.
 const DOCUMENT_SOURCE = { key: "document", label: "Uploaded registration document", url: null };
+const enc = encodeURIComponent;
 
+/**
+ * Where staff look a company up, per country. `url` is a function of the
+ * company's registration and title where the source can be opened on the
+ * company itself; `copy` is what to put on the clipboard first. `vies` is
+ * also checked by program. Sources whose links were dead or wrong (gov.pt's
+ * certificate page, the Gazette's title search, the e-Devlet barcode check)
+ * are kept only in LEGACY_SOURCES, so old checks still read.
+ */
 export const REGISTRY_SOURCES = {
   CN: [
     { ...DOCUMENT_SOURCE, label: "Uploaded business licence" },
-    { key: "gsxt", label: "GSXT", url: "https://www.gsxt.gov.cn/" },
-    { key: "permit", label: "National pollutant permit site", url: "https://permit.mee.gov.cn/perxxgkinfo/syssb/xkgg/xkgg!licenseInformation.action" },
+    // QCC's free search answers from outside China (tested Nov 8). A
+    // commercial copy of the registry: a brand reads its check as
+    // "Registration document", not "Official registry".
+    { key: "qcc", label: "QCC (commercial copy of the registry)", action: "Look up on QCC", url: () => "https://www.qcckyc.com/free-company-search", copy: "number", seen: ["name", "address", "startDate", "industry"] },
+    { key: "gsxt", label: "GSXT (needs a mainland connection)", url: () => "https://www.gsxt.gov.cn/", seen: ["name", "address"] },
+    { key: "permit", label: "National pollutant permit site", url: () => "https://permit.mee.gov.cn/perxxgkinfo/syssb/xkgg/xkgg!licenseInformation.action", seen: ["name", "address"] },
   ],
   TR: [
-    { key: "gazette", label: "Trade Registry Gazette, search by title", url: "https://www.ticaretsicil.gov.tr/view/hizlierisim/unvansorgulama.php" },
-    // GİB's "Mükellefiyet Yazısı Doğrulama": the VKN and the letter's number.
-    // No stable deep link was confirmed: the label names the page to find.
-    { key: "gib", label: "GİB letter check (Mükellefiyet Yazısı Doğrulama)", url: "https://dijital.gib.gov.tr/" },
-    DOCUMENT_SOURCE,
-    { key: "edevlet", label: "e-Devlet barcode check", url: "https://www.turkiye.gov.tr/belge-dogrulama" },
+    // GİB's letter check, prefilled with the VKN and the letter's number:
+    // the form then asks for no captcha, and GİB shows its own copy.
+    { key: "gib", label: "GİB letter check (Mükellefiyet Yazısı Doğrulama)", action: "Check on GİB",
+      url: (reg) => (reg?.number && reg?.registrationLetterNumber
+        ? `https://dijital.gib.gov.tr/dogrulamalar/mukellefiyetDogrulama?vknTckn=${enc(reg.number)}&dilekceOid=${enc(reg.registrationLetterNumber)}`
+        : "https://dijital.gib.gov.tr/dogrulamalar/mukellefiyetDogrulama"),
+      seen: ["name", "address"] },
+    { ...DOCUMENT_SOURCE, label: "Uploaded tax registration letter" },
   ],
   PT: [
-    { key: "vies", label: "EU VIES tax number check", url: "https://ec.europa.eu/taxation_customs/vies/" },
-    { key: "certidao", label: "gov.pt permanent certificate", url: "https://www.gov.pt/servicos/consultar-a-certidao-permanente-de-registo-comercial" },
-    { key: "acts", label: "Published company acts", url: "https://publicacoes.mj.pt/Pesquisa.aspx" },
+    { key: "vies", label: "EU VIES tax number check", url: () => "https://ec.europa.eu/taxation_customs/vies/", seen: ["name", "address"] },
+    // The certidão answers only Portuguese connections (tested Nov 8): staff
+    // read the PDF the factory uploaded, or one opened with the access code.
+    { key: "certidao", label: "Permanent certificate (certidão, with the access code)", url: null, copy: "accessCode", seen: ["name", "address"] },
+    { key: "acts", label: "Published company acts", url: () => "https://publicacoes.mj.pt/Pesquisa.aspx", copy: "number", seen: ["name"] },
     DOCUMENT_SOURCE,
+  ],
+  VN: [
+    DOCUMENT_SOURCE,
+    { key: "national", label: "National Business Registration Portal", url: () => "https://dangkykinhdoanh.gov.vn/vn/Pages/Trangchu.aspx", copy: "number", seen: ["name", "address"] },
+    { key: "other", label: "OpenCorporates search", url: (reg, title) => `https://opencorporates.com/companies?q=${enc(title ?? "")}`, seen: ["name", "address"] },
   ],
 };
 
 const OTHER_SOURCES = [
   DOCUMENT_SOURCE,
-  { key: "other", label: "OpenCorporates search", url: "https://opencorporates.com/" },
+  { key: "other", label: "OpenCorporates search", url: (reg, title) => `https://opencorporates.com/companies?q=${enc(title ?? "")}`, seen: ["name", "address"] },
+];
+
+// Sources no longer offered, so checks recorded on them still have a name.
+const LEGACY_SOURCES = [
+  { key: "gazette", label: "Trade Registry Gazette" },
+  { key: "edevlet", label: "e-Devlet barcode check" },
 ];
 
 export function registrySources(country) {
   return REGISTRY_SOURCES[country] ?? OTHER_SOURCES;
 }
+
+/** The link for a source, on this company where the source allows it. */
+export function registrySourceUrl(source, registration, title) {
+  return typeof source?.url === "function" ? source.url(registration, title) : null;
+}
+
+/** An official source (the brand reads "Official registry"); the same list as registry_source_is_official(). */
+export const OFFICIAL_SOURCES = new Set(["vies", "gib", "gsxt", "certidao", "acts", "permit", "national"]);
 
 export const REGISTRY_RESULTS = [
   { key: "found", label: "Found, matches" },
@@ -261,7 +332,7 @@ export function registryResultLabel(key, { automatic = false, source = null } = 
 
 export function registrySourceLabel(country, key) {
   if (key === "check_digit") return "Check digit";
-  return [...registrySources(country), ...Object.values(REGISTRY_SOURCES).flat(), ...OTHER_SOURCES].find((s) => s.key === key)?.label ?? key;
+  return [...registrySources(country), ...Object.values(REGISTRY_SOURCES).flat(), ...OTHER_SOURCES, ...LEGACY_SOURCES].find((s) => s.key === key)?.label ?? key;
 }
 
 /** "Nov 2026": the month a brand is shown, never the day or who checked. */

@@ -162,13 +162,23 @@ export function withRegistry(profile, state) {
     ? (state.kind === "document" ? `Registration document checked ${when}.` : `Found on an official registry ${when}.`)
     : state.state === "lost" ? "Registry check lost: the latest check is not a match, or the number changed."
     : "No registry check recorded yet.";
+  // "100% complete" read as checked when nothing had been: until a check is
+  // recorded an uploaded registration is "Uploaded · not checked", with no figure.
+  const uploaded = Boolean(state.registration_uploaded_at);
   const checks = profile.checks.map(([label, result, value, detail]) => (label === "Business registration"
-    ? [label, state.state === "found" ? "Verified" : result, value,
+    ? [label,
+      state.state === "found" ? "Verified" : uploaded ? "Uploaded · not checked" : result,
+      state.state === "found" ? 100 : uploaded ? null : value,
       `${String(detail ?? "")
         .replace(/ ?(Not yet reviewed\.|Marked verified[^.]*\.)? ?Contents are not checked against any registry\./, "")
         // The database writes the upload day in UTC; say it in the reader's
         // zone, like the check's own date.
         .replace(/^Uploaded \d{2} \w{3} \d{4}/, state.registration_uploaded_at ? `Uploaded ${shortDate(state.registration_uploaded_at)}` : "$&")} ${words}`.trim()]
+    // The same duplicate the registry panel names: a shared registration
+    // number, which the old card (legal name and website only) said nothing of.
+    : label === "Duplicate company signal" && state.duplicates > 0
+      ? [label, state.duplicate_explained ? "Explained" : "Review", null,
+        `Shares its registration number with ${(state.duplicate_names ?? []).join(", ")}.${state.duplicate_explained ? " Staff recorded why." : ""} ${String(detail ?? "").replace(/^No other company[^.]*\.\s*/, "")}`.trim()]
     : [label, result, value, detail]));
   const lost = state.state === "lost" && profile.status === "Approved";
   return { ...profile, checks, ...(lost ? { status: "Registry check lost", tone: "warning" } : {}) };

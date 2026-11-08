@@ -134,7 +134,7 @@ select throws_ok(
 reset role;
 -- VIES's automatic answer, as the server records it: never a match.
 select lives_ok(
-  $$select public.record_registry_check('d8600000-0000-0000-0000-0000000000f1', '509999999', 'vies', 'registered', '{"name":"P86 SOMEONE ELSE LDA"}'::jsonb)$$,
+  $$select public.record_registry_check('d8600000-0000-0000-0000-0000000000f1', '509999999', 'vies', 'registered', '{"name":"P86 FACTORY, LDA"}'::jsonb)$$,
   'the server records VIES''s answer'
 );
 set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';

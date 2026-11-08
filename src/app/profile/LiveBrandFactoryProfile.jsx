@@ -127,7 +127,10 @@ export default function LiveBrandFactoryProfile({ org, user, vendorOrgId, from =
     repeatBrands: String(state.parts.publicMetrics?.repeatBrands ?? 0),
     certifications: brandFactoryView(displayedParts).trust,
   };
-  const quoteLocked = can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow");
+  // A vendor not verified yet can be opened by its link, not asked to quote:
+  // the database refuses the invitation (20261108700000).
+  const vendorVerified = state.parts.profile?.verification_status === "verified";
+  const quoteLocked = !vendorVerified ? "Not verified yet" : can(org, "rfqFlow") ? "" : permissionHint(org, "rfqFlow");
   const requestQuote = onRequestQuote ?? (() => navigate(`/rfqs/new?invite=${vendorOrgId}`));
   const message = state.thread ? () => navigate(`/messages/${state.thread.id}`) : null;
 

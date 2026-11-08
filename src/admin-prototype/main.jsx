@@ -1258,7 +1258,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
                     >
                       <div className="admin-check-copy"><strong>{label}</strong><p>{detail}</p><span>Source: submitted evidence</span></div>
                       <div className="admin-check-result">
-                        <div className="admin-check-confidence"><strong>{confidence}%</strong><span>complete</span></div>
+                        {confidence != null && <div className="admin-check-confidence"><strong>{confidence}%</strong><span>complete</span></div>}
                         <StatusPill tone={tone}>{result}</StatusPill>
                       </div>
                     </article>
@@ -1330,6 +1330,7 @@ function VerificationDetail({ profile, submission, documents, onDocumentUrl, onB
               <button className="primary-btn" type="button" disabled={deciding || Boolean(approveBlock)} title={approveBlock || undefined} onClick={() => onDecision(profile.id, "Approved", null, isVendor ? approvalTier : null)}>
                 {isVendor ? `Approve as ${approvalTier[0].toUpperCase()}${approvalTier.slice(1)}` : "Approve profile"}
               </button>
+              {approveBlock && <p className="admin-approve-block" role="note">{approveBlock}</p>}
               <button className="secondary-btn" type="button" onClick={() => setRequestOpen(true)}>Request more information</button>
               <button className="admin-decline-button" type="button" onClick={() => setDeclineOpen(true)}>Decline profile</button>
               {onDeleteCompany && <button className="admin-delete-factory-button" type="button" disabled={deciding} onClick={() => { setDeleteName(""); setDeleteError(""); setDeleteOpen(true); }}>Delete {deleteLabel}</button>}

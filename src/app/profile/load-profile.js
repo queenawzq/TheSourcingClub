@@ -22,7 +22,7 @@ import { listDocuments, urlFor } from "../../lib/domain/documents.js";
 import { loadCertifications } from "../../lib/domain/certifications.js";
 import { listOrders } from "../../lib/domain/order.js";
 import { supabase, unwrap } from "../../lib/supabase.js";
-import { getRegistration, registryFact } from "../../lib/domain/registration.js";
+import { certificateChecks, getRegistration, registryFact } from "../../lib/domain/registration.js";
 import { CHIP_KINDS, titleFromFileName } from "./factory-profile-view.js";
 import { TRADING_CHIP_KINDS } from "./trading-profile-view.js";
 import { rankVendors } from "../browse/vendor-directory-view.js";
@@ -117,7 +117,7 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
   );
   if (!profile) return null;
 
-  const [terms, selected, capacity, refs, claims, media, verificationDocs, publicMetrics, registryCheck] = await Promise.all([
+  const [terms, selected, capacity, refs, claims, media, verificationDocs, publicMetrics, registryCheck, certificateChecked] = await Promise.all([
     listTermsByKind(KINDS),
     getSelectedTerms("factory_profile", vendorOrgId),
     getCapacity(vendorOrgId),
@@ -132,6 +132,8 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
     supabase.rpc("public_factory_metrics", { target_org: vendorOrgId }).then((result) => unwrap(result, "load factory performance")),
     // When TSC last found the company on an official registry (month only).
     registryFact(vendorOrgId),
+    // Which certificates staff found on the issuer's own lookup (month only).
+    certificateChecks(vendorOrgId),
   ]);
   const certificationTerms = terms.certification ?? [];
 
@@ -145,7 +147,7 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
     certifications: claims
       .map((claim) => {
         const term = certificationTerms.find((item) => item.id === claim.term_id);
-        return term ? { name: termLabel(term), status: claim.status, hasFile: verificationDocs.some((doc) => doc.id === claim.document_id), document: verificationDocs.find((doc) => doc.id === claim.document_id) ?? null } : null;
+        return term ? { name: termLabel(term), status: claim.status, checkedAt: certificateChecked.get(claim.id) ?? null, hasFile: verificationDocs.some((doc) => doc.id === claim.document_id), document: verificationDocs.find((doc) => doc.id === claim.document_id) ?? null } : null;
       })
       .filter(Boolean),
     registrationDoc: verificationDocs.filter((doc) => doc.kind === "business_registration").at(-1) ?? null,

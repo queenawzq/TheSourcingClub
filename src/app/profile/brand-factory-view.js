@@ -104,9 +104,16 @@ export function brandFactoryView(parts, now = new Date()) {
         // No file link: a brand does not open a factory's registration
         // documents (20261108600000), and so cannot see whether one is on
         // file. Its words come from the review instead.
-        status: parts.registryCheckedAt ? "Verified" : verified ? "Uploaded" : "In review",
+        // Two words for two kinds of check (verification v2): "Confirmed"
+        // on an official registry, "Checked" on the company's own document.
+        status: parts.registryCheckedAt ? (parts.registryCheckKind === "document" ? "Checked" : "Confirmed") : verified ? "Uploaded" : "In review",
+        verified: Boolean(parts.registryCheckedAt),
       },
-      ...parts.certifications.map((cert) => ({ ...trustRow(cert.name, cert.status), document: cert.document })),
+      // A certificate staff found on its issuer's lookup says when.
+      ...parts.certifications.map((cert) => ({
+        ...trustRow(cert.checkedAt ? `${cert.name} · checked ${checkedMonth(cert.checkedAt)}` : cert.name, cert.status),
+        document: cert.document,
+      })),
       ...(parts.verificationDocs ?? []).filter((doc) => doc.id !== parts.registrationDoc?.id && !parts.certifications.some((cert) => cert.document?.id === doc.id)).map((doc) => ({ name: doc.file_name, status: "Uploaded", document: doc })),
     ],
   };
