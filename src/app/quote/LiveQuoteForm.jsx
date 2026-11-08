@@ -16,6 +16,7 @@
  * term it needs than a quote is stored against one nobody chose.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { initials } from "../order/order-view.js";
 import { quoteTextPatch, quoteTextValues } from "./quote-text-fields.js";
 import { FactorySubmitQuote } from "../../factory-prototype/main.jsx";
 import {
@@ -37,7 +38,6 @@ import { downloadDocuments, getRfqDocumentPresentation } from "../../lib/domain/
 import { listLinks, listTermsByKind, termLabel } from "../../lib/domain/taxonomy.js";
 import { formatRange, toCents } from "../../lib/money.js";
 import { useRouter } from "../../lib/router.jsx";
-import { matchFit } from "../rfq/match-fit.js";
 import { sourcingChoiceLabel } from "../rfq/resume-fields.js";
 import { getRequestOrigin, withRequestOrigin } from "../rfq/request-origin.js";
 
@@ -92,7 +92,13 @@ function paymentTermFrom(terms, typed) {
 /** "EXW quoted; shipping TBD" → the EXW term. */
 function incotermFrom(terms, typed) {
   const text = String(typed ?? "").toUpperCase();
-  return terms.find((term) => new RegExp(`\\b${term.slug.toUpperCase()}\\b`).test(text)) ?? null;
+  return terms.find((term) => new RegExp(`\\b${term.slug.toUpperCase()}\\b`).test(text))
+    // "free on board" as well as "FOB": the term's name is its label after the code.
+    ?? terms.find((term) => {
+      const name = String(term.label_en ?? "").split(/[—–-]/).slice(1).join(" ").trim().toUpperCase();
+      return name && text.replace(/\s+/g, " ").includes(name);
+    })
+    ?? null;
 }
 
 /** The deposit percentage the payment term implies, for the schedule generator. */
@@ -119,13 +125,6 @@ function windowRefusal(values, companyType) {
     : `${field} (write the first and last day, like ${WINDOW_EXAMPLE})`;
 }
 
-/** The form is English; someone typing Chinese gets the same refusal they can read. */
-function windowRefusalZh(values) {
-  if (!capacityWindowProblem(values.capacityWindow)) return "";
-  if (!(navigator.languages ?? []).some((language) => /^zh\b/i.test(language))) return "";
-  return " 可接单时间窗口无法识别，请写明开始和结束日期，例如：2027年1月5日至3月1日 · 300件。";
-}
-
 function missingQuoteFields(values, terms, companyType) {
   const missing = [];
   if (!(firstNumber(values.unitPrice) > 0)) missing.push("unit price");
@@ -140,7 +139,7 @@ function missingQuoteFields(values, terms, companyType) {
   } else if (!paymentTermFrom(terms.payment_term ?? [], paymentTerms)) {
     missing.push("payment terms (try “30/70”, “paid in full”, or “Net 30”)");
   }
-  if (!incotermFrom(terms.incoterm ?? [], values.incoterms)) missing.push("shipping terms");
+  if (!incotermFrom(terms.incoterm ?? [], values.incoterms)) missing.push("shipping terms (try EXW, FOB or DDP)");
   const validUntil = String(values.validUntil ?? "").trim();
   // The same test the database makes, on the same day: submit_quote() and
   // award_quote() refuse a valid_until before current_date, which is the UTC
@@ -307,7 +306,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
     const companyType = profile?.vendor_kind === "trading_company" ? "trading" : "factory";
     const missing = missingQuoteFields(values, terms, companyType);
     if (missing.length) {
-      setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.${windowRefusalZh(values)}`));
+      setError(new Error(`Complete these required fields before reviewing: ${missing.join(", ")}.`));
       return;
     }
     setBusy(true);
@@ -335,7 +334,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
       // have it vanish when the draft is reopened.
       if (String(values.capacityWindow ?? "").trim()) {
         const refusal = windowRefusal(values, profile?.vendor_kind === "trading_company" ? "trading" : "factory");
-        if (refusal) setError(new Error(`Draft saved, except this field, which was not kept: ${refusal}.${windowRefusalZh(values)}`));
+        if (refusal) setError(new Error(`Draft saved, except this field, which was not kept: ${refusal}.`));
       }
     } catch (failure) {
       setError(failure);
@@ -346,7 +345,8 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
   if (!rfq || !quote) return null;
 
   const money = (cents) => (cents == null ? "" : `$${(cents / 100).toFixed(2)}`);
-  const fit = matchFit(matchScore);
+  // No fit label to a factory about itself (Nov 7), as on RFQ details.
+  const fit = null;
   const selectedSourcing = (terms.sourcing_responsibility ?? []).find(
     (term) => term.id === rfq.sourcing_responsibility_term_id,
   );
@@ -375,7 +375,7 @@ export default function LiveQuoteForm({ org, rfqId, profile }) {
         files: requestDocuments.files.map((file) => file.file_name),
         onDownloadFiles: downloadRequestFiles,
         capacity: fit ? [fit.label] : [],
-        initials: (rfq.orgs?.name ?? "??").slice(0, 2).toUpperCase(),
+        initials: initials(rfq.orgs?.name),
         budget: formatRange(
           rfq.target_unit_price_min_cents,
           rfq.target_unit_price_max_cents,

@@ -19,6 +19,8 @@
  * (migration 20261023000300). The factory is paid the step amount and keeps
  * reading the summary.
  */
+import { plainCardReason } from "../../shared/card-words.mjs";
+import { earningStatus } from "./payment-summary.mjs";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectDetailScreen } from "../../prototype/main.jsx";
 import { FactoryProjectProgressDetail } from "../../factory-prototype/main.jsx";
@@ -34,7 +36,7 @@ import {
   remindMilestone,
 } from "../../lib/domain/milestone.js";
 import { brandSummary } from "../../lib/domain/rfq.js";
-import { requestRelease } from "../../lib/domain/stripe.js";
+import { connectAccountFor, requestRelease } from "../../lib/domain/stripe.js";
 import { downloadDocument, urlFor } from "../../lib/domain/documents.js";
 import { getContractAttachments } from "../../lib/domain/contract-attachments.js";
 import { listTerms, termLabel } from "../../lib/domain/taxonomy.js";
@@ -103,21 +105,26 @@ function actionFor(milestone, viewer) {
   if (isFactory) return none;
   // A paid step is funded before the work; a payment that came back is paid
   // again the same way. Release funds pays (begin_payment_checkout).
-  if (payment?.state === "due" || payment?.state === "failed") return button("Fund milestone", "fund");
+  if (payment?.state === "due" || payment?.state === "failed") return button("Fund step", "fund");
   // approve_milestone refuses a paid step until its money is held.
   if (payment && milestone.kind === "approval_and_payment" && payment.state !== "confirmed") return none;
   if (approvable(milestone)) {
+    // An update-only step has nothing to sign off, but only the brand closing
+    // it moves the order on (approve_milestone), so it is closed in those
+    // words, and is not the main action until the factory has posted.
+    if (milestone.kind === "progress_only") {
+      return { ...button("Mark done", "approve"), tone: viewer.posted ? "primary" : "secondary" };
+    }
     // approve_milestone asks for Approve samples, and Release funds too on a
     // paying step.
-    return button(milestone.kind === "approval_and_payment" ? "Approve fund" : "Approve", "approve");
+    return button("Approve", "approve");
   }
   // Keep the next action visible on every upcoming step. The database still
   // owns sequencing, so a future CTA is disabled until that step opens rather
   // than disappearing and leaving the schedule without a clear action.
   if (milestone.state === "pending") {
-    if (milestone.kind === "payment_only" && payment?.state === "not_due") return button("Fund milestone", "fund", true);
-    if (milestone.kind === "approval_and_payment") return button("Approve fund", "approve", true);
-    if (milestone.kind === "approval_only") return button("Approve", "approve", true);
+    if (milestone.kind === "payment_only" && payment?.state === "not_due") return button("Fund step", "fund", true);
+    if (milestone.kind === "approval_and_payment" || milestone.kind === "approval_only") return button("Approve", "approve", true);
   }
   return none;
 }
@@ -127,24 +134,29 @@ function actionFor(milestone, viewer) {
  * brand approves the step, then pays the factory; a payment-only step (a
  * deposit or balance) has nothing to approve and is paid out once funded.
  */
-function paymentLine(payment, isFactory, kind) {
+function paymentLine(payment, isFactory, kind, needsMethod = null) {
   switch (payment?.state) {
     case "due":
       return isFactory ? "Awaiting funding from the brand" : "Awaiting funding";
     case "processing":
       return "Payment processing";
     case "failed":
-      return `Payment failed: ${payment.failure_reason || "the payment did not go through"}`;
+      // The card is the brand's business: to the factory the step is simply
+      // not funded yet.
+      return isFactory ? "Awaiting funding from the brand" : `Payment failed: ${plainCardReason(payment.failure_reason)}`;
     case "sent":
       // A bank-wire claim from before payments moved to Stripe.
       return isFactory
         ? "Payment claimed, awaiting our confirmation"
         : "You have marked this sent — awaiting our confirmation";
     case "confirmed":
-      if (!payment.release_requested_at) return "Funded: held by TSC";
-      return kind === "payment_only" ? "Funded: payout on its way" : "Approved: payout on its way";
+      // The factory's one word for this money, the same as on Payments.
+      // Approved money with nowhere to go: what the factory must do, as on its dashboard.
+      if (isFactory) return payment.release_requested_at && needsMethod ? `${earningStatus(payment)} · ${needsMethod}` : earningStatus(payment);
+      if (!payment.release_requested_at) return "Funded";
+      return kind === "payment_only" ? "Funded" : "Approved";
     case "released":
-      return "Paid out";
+      return "Paid";
     default:
       return "";
   }
@@ -152,9 +164,9 @@ function paymentLine(payment, isFactory, kind) {
 
 /** Stripe's failure reasons end in a full stop; a sentence joined after one must not double it. */
 /** The sentence under a step's title, from its own state and its payment's. */
-function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, posted }) {
+function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, posted, needsMethod }) {
   const payment = milestone.payment;
-  const money = paymentLine(payment, isFactory, milestone.kind);
+  const money = paymentLine(payment, isFactory, milestone.kind, needsMethod);
 
   if (milestone.state === "complete") {
     return payment?.state === "confirmed" || payment?.state === "released" ? `Done · ${money}` : "Done";
@@ -168,16 +180,15 @@ function statusLine(milestone, { isFactory, canFund, canApprove, factoryName, po
     // approvable step is not the same as one with something to review: each
     // side is told which it is.
     const held = payment?.state === "confirmed" ? ` · ${money}` : "";
+    if (milestone.kind === "progress_only") return posted ? "Update posted" : "Nothing posted yet";
     if (isFactory) {
-      return posted
-        ? `Posted, awaiting the brand's approval${held}`
-        : `You can start this step. Nothing posted yet, and the brand can approve without an update${held}`;
+      if (!posted) return `Nothing posted yet${held}`;
+      // Funded, the payment's word already says it: one, not the same thing twice.
+      return held ? money : "Awaiting the brand's approval";
     }
     const mayApprove = canApprove && (milestone.kind !== "approval_and_payment" || canFund);
     if (posted) return `${mayApprove ? "Ready for your approval" : "Ready for approval"}${held}`;
-    return mayApprove
-      ? `Nothing posted yet. You can approve now or wait for ${factoryName || "the factory"}'s update${held}`
-      : `Nothing posted yet${held}`;
+    return `Nothing posted yet${held}`;
   }
   if (milestone.state === "active") {
     // Only a payment-only step gets here: nothing to approve or post on it.
@@ -262,6 +273,20 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
   const [updates, setUpdates] = useState([]);
   const [activity, setActivity] = useState([]);
   const [charges, setCharges] = useState(null);
+  // A factory TSC has no way to pay: no withdrawal method and no Stripe account
+  // that takes transfers. A failed read says nothing rather than something wrong.
+  const [noMethod, setNoMethod] = useState(false);
+  useEffect(() => {
+    if (!isFactory) return undefined;
+    let cancelled = false;
+    Promise.all([
+      supabase.from("factory_payout_accounts").select("id", { count: "exact", head: true }).eq("org_id", org.id),
+      connectAccountFor(org.id),
+    ]).then(([methods, stripeAccount]) => {
+      if (!cancelled && !methods.error) setNoMethod(methods.count === 0 && !stripeAccount?.transfers_active);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [isFactory, org.id]);
   const [requestFiles, setRequestFiles] = useState([]);
   const [photoUrls, setPhotoUrls] = useState({});
   const [location, setLocation] = useState("");
@@ -288,6 +313,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
         isFactory ? null : brandCharges(orderId).catch(() => null),
       ]);
       if (version !== loadVersion.current) return;
+      if (!row) throw new Error("This order isn't available to you.");
       setCharges(charged);
       setOrder(row);
       setMilestones(steps ?? []);
@@ -478,6 +504,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
     canApprove: can(org, "approve"),
     canUpdate: can(org, "addUpdate"),
     canSetSteps: can(org, "rfqFlow"),
+    needsMethod: noMethod ? (isOwner ? "Add a withdrawal method" : "Ask a company owner to add a withdrawal method") : null,
   };
   // The brand's figures with the fee (brandCharges); the factory's are the
   // summary's step amounts.
@@ -519,7 +546,7 @@ export default function LiveOrderDetail({ org, orderId, isFactory, isOwner = fal
       releaseAmount: milestone.amount_cents ? money(milestone.amount_cents) : "",
       description: milestone.description ?? "",
       reviewItem: stepUpdates.length
-        ? `${stepUpdates.length} ${stepUpdates.length === 1 ? "update" : "updates"}, ${fileCount} ${fileCount === 1 ? "file" : "files"} posted on this step`
+        ? `${stepUpdates.length} ${stepUpdates.length === 1 ? "update" : "updates"}${fileCount ? `, ${fileCount} ${fileCount === 1 ? "file" : "files"}` : ""} posted on this step`
         : "Nothing posted on this step yet",
       ...reminder,
       // Discussion remains open after approval, including completed orders.

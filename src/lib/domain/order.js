@@ -39,7 +39,7 @@ export async function listOrders(orgId) {
       // The steps ride along so each card can draw its own rail rather than
       // the design's fixed five, and `brief` so the card's description line
       // has something in it.
-      .select(`${SUMMARY_COLUMNS}, rfqs (title, brief), brand:brand_org_id (name), factory:factory_org_id (name), order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state, due_at))`)
+      .select(`${SUMMARY_COLUMNS}, rfqs (title, brief), brand:brand_org_id (name), factory:factory_org_id (name), order_milestones (id, title, sort, state, due_on, amount_cents, order_payments (state, due_at, amount_cents, fee_bps, charged_cents))`)
       // RLS already scopes this, but a person can belong to both a brand and a
       // factory org, and the question being asked is about the ACTIVE one.
       .or(`brand_org_id.eq.${orgId},factory_org_id.eq.${orgId}`)
@@ -158,7 +158,7 @@ const PAYMENT_LABELS = {
   not_due:    { brand: "Not yet due",             factory: "Not yet due" },
   due:        { brand: "Awaiting funding",        factory: "Awaiting funding from the brand" },
   processing: { brand: "Payment processing",      factory: "Payment processing — don't start yet" },
-  failed:     { brand: "Payment failed",          factory: "The brand's payment failed" },
+  failed:     { brand: "Payment failed",          factory: "Awaiting funding from the brand" },
   sent:       { brand: "You marked this sent — we're confirming receipt",
                 factory: "The brand says it is sent — awaiting our confirmation" },
   confirmed:  { brand: "Funded: held by TSC",     factory: "Funded: held by TSC — you can start this step" },

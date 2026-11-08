@@ -11,7 +11,7 @@ import { supabaseServerEnv } from "./_supabase-env.js";
  * answers 204: nothing on the page waits for this or can act on it.
  */
 
-const STAGES = new Set(["signup", "login", "reset", "code", "company"]);
+const STAGES = new Set(["signup", "login", "reset", "code", "company", "fallback"]);
 const KINDS = new Set(["network", "timeout"]);
 const PORTALS = new Set(["brand", "factory"]);
 const LANGUAGE = /^[A-Za-z-]{2,16}$/;

@@ -19,9 +19,9 @@ import { useRouter } from "../../lib/router.jsx";
 import "./admin.css";
 
 const METHOD = {
-  pattern: "Pattern check",
-  ai: "AI check",
-  pattern_only: "Pattern check only (AI unavailable)",
+  pattern: "",
+  ai: "",
+  pattern_only: "AI check unavailable",
 };
 
 function when(value) {
@@ -156,7 +156,6 @@ export default function AdminMessages() {
         Release one and it arrives as a new message. Reject one and the sender is told it
         was not delivered, with your reason.
       </p>
-
       {error ? <p className="admin-error">{error.message}</p> : null}
 
       <h2>Waiting on a decision ({rows.length})</h2>

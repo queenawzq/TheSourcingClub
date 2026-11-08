@@ -28,6 +28,7 @@ import {
 } from "@stripe/react-stripe-js";
 import { CreditPurchaseModal } from "../../factory-prototype/main.jsx";
 import { buyCredits, creditPacks, syncCreditPurchase } from "../../lib/domain/credits.js";
+import { cardReason, plainCardReason } from "../../shared/card-words.mjs";
 import { STRIPE_PUBLISHABLE_KEY, withCardAdvice } from "../../lib/domain/stripe.js";
 import { formatMoney } from "../../lib/money.js";
 import "./fund.css";
@@ -71,6 +72,7 @@ export function CreditPurchaseButton({ orgId, orgName, isOwner = false, onPurcha
   if (!isOwner) {
     return (
       <div className="factory-credit-billing-action tsc-credit-buy-action">
+        <p className="tsc-credit-buy-note">Ask someone with Settings access at {orgName || "your company"} to buy credits, or ask an owner for this permission.</p>
         <button className="secondary-btn compact-btn" type="button" disabled title="Needs the Settings access permission">Get more credits</button>
       </div>
     );
@@ -207,16 +209,13 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
       // Recorded either way: a decline is a failed purchase with its reason.
       const synced = await syncCreditPurchase(checkout.purchaseId).catch(() => null);
       if (result.error) {
-        const reason = result.error.code === "payment_intent_authentication_failure"
-          ? "Your bank did not confirm this payment, so nothing was charged."
-          : result.error.message || "The payment did not go through.";
-        setProblem(withCardAdvice(reason));
+        setProblem(withCardAdvice(cardReason(result.error)));
         return;
       }
       // A failed 3-D Secure check comes back as an intent, not an error.
       const intent = result.paymentIntent;
       if (synced?.state === "failed" || intent?.status === "requires_payment_method" || intent?.status === "canceled") {
-        setProblem(withCardAdvice(synced?.failure_reason || intent?.last_payment_error?.message));
+        setProblem(withCardAdvice(synced?.failure_reason ? plainCardReason(synced.failure_reason) : cardReason(intent?.last_payment_error)));
         return;
       }
       onDone({ credits: checkout.credits, state: synced?.state ?? "pending", purchase: synced });
@@ -257,7 +256,7 @@ function CreditPurchaseFlow({ orgId, onClose, onDone }) {
               <span>Card number</span>
               <div className="tsc-stripe-input">
                 <CardNumberElement
-                  options={{ ...CARD_ELEMENT_OPTIONS, showIcon: true }}
+                  options={{ ...CARD_ELEMENT_OPTIONS, showIcon: true, disableLink: true }}
                   onChange={(event) => setNewCardComplete((current) => ({ ...current, number: event.complete }))}
                 />
               </div>

@@ -10,6 +10,7 @@
  * never does.
  */
 import { listOrders, orderStatusLabel, statusTone } from "../lib/domain/order.js";
+import { chargedCents } from "../lib/domain/payment.js";
 import { listRfqs } from "../lib/domain/rfq.js";
 import { listThreads } from "../lib/domain/message.js";
 import { formatMoney, formatRange } from "../lib/money.js";
@@ -54,10 +55,10 @@ function counterparty(order, isFactory) {
 function statusDetail(order, isFactory) {
   // Only the brand sets the production steps; its confirmation starts the order.
   if (order.status === "pending_schedule") {
-    return isFactory ? "The brand is setting the production steps" : "Set the production steps to begin";
+    return isFactory ? "The brand is setting the production steps" : "Set the production steps";
   }
   if (order.status === "cancelled") return order.cancel_reason ?? "Cancelled";
-  if (order.status === "completed") return "Every step is done";
+  if (order.status === "completed") return null;
   // An open proposal to cancel outranks whatever the steps are waiting for:
   // until it is accepted, kept or withdrawn, it is the thing to answer.
   const proposal = cancelProposal(order, isFactory);
@@ -73,15 +74,14 @@ function statusDetail(order, isFactory) {
       return payment?.state === "due";
     });
     if (due) {
-      const amount = formatMoney(due.amount_cents, order.currency);
-      return isFactory ? `Waiting on ${amount} from the brand` : `${amount} due for ${due.title}`;
+      if (isFactory) return `Waiting on ${formatMoney(due.amount_cents, order.currency)} from the brand`;
+      // What the brand pays: the fee included, as the order page and Fund say.
+      const payment = Array.isArray(due.order_payments) ? due.order_payments[0] : due.order_payments;
+      return `${formatMoney(chargedCents(payment), order.currency)} due for ${due.title}`;
     }
-  } else if (Number(order.next_payment_cents) > 0 && !isFactory) {
-    return `${formatMoney(order.next_payment_cents, order.currency)} due next`;
   }
-  return order.current_milestone_title
-    ? `Now: ${order.current_milestone_title}`
-    : "In production";
+  // Nothing due and nothing to answer: the card's Current step already says it.
+  return null;
 }
 
 /**
@@ -218,6 +218,7 @@ export function toRfqCard(rfq, messageCount = 0) {
   return {
     id: rfq.id,
     title: rfq.title || "Untitled request",
+    deadline: rfq.quote_deadline ?? null,
     date: `${rfq.published_at ? "Posted" : "Started"} ${DAY.format(new Date(posted))}${due}`,
     description: rfq.brief ?? "",
     tags,
@@ -238,7 +239,8 @@ export function toRfqCard(rfq, messageCount = 0) {
     archivable: rfq.status === "draft" || rfq.status === "open",
     metrics: [
       [String(quotes), quotes === 1 ? "quote" : "quotes"],
-      [String(invited), "invited"],
+      // A request open to everyone invited nobody, so it has no such figure.
+      [rfq.visibility === "open_to_all" && !invited ? null : String(invited), "invited"],
       [String(messageCount), messageCount === 1 ? "message" : "messages"],
     ],
   };

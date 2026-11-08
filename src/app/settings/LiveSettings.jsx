@@ -52,22 +52,8 @@ import { BillingMethodFlow } from "../order/PayoutDetails.jsx";
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 
-// What each email switch covers (notification_email_category), since the
-// designed labels name only part of it. Every member with an email gets them,
-// whatever their permissions.
-const EVERY_MEMBER = "Emails every member of your company.";
-const SHARED_EMAIL_NOTES = {
-  payments: `Payments, steps to approve, steps due soon and changes to your orders. ${EVERY_MEMBER}`,
-  messages: `New messages (at most one email per conversation every 6 hours) and call invites. ${EVERY_MEMBER}`,
-};
-const FACTORY_EMAIL_NOTES = {
-  rfq: `Requests that match you or invite you, decisions on your quotes, and capacity reminders. ${EVERY_MEMBER}`,
-  ...SHARED_EMAIL_NOTES,
-};
-const BRAND_EMAIL_NOTES = {
-  rfq: `Quotes sent or withdrawn on your requests. ${EVERY_MEMBER}`,
-  ...SHARED_EMAIL_NOTES,
-};
+// The email switches' labels say enough: the design's line under each is left out.
+const EMAIL_NOTES = { rfq: "", payments: "", messages: "" };
 
 /** A saved card as the designed payment-method row draws it. */
 const cardRow = (card) => ({
@@ -142,32 +128,41 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
       loadCards();
 
       if (isFactory) {
-        const [connectAccount, manualAccounts] = await Promise.all([
+        const [connectAccount, manualAccounts, preference] = await Promise.all([
           connectAccountFor(org.id).catch(() => null),
           payouts.load().catch(() => []),
+          supabase.from("factory_payout_preferences").select("route").eq("org_id", org.id).maybeSingle(),
         ]);
+        if (preference.error) throw new Error("Could not load the default withdrawal method. Try again.");
+        const stripeDefault = preference.data?.route !== "manual" && connectAccount?.transfers_active;
+        let stripeMethods = [];
         if (connectAccount?.transfers_active) {
           const balance = await connectAction(org.id, "balance").catch(() => null);
           const connected = balance?.methods ?? [];
-          setPayoutMethods(connected.length ? connected.map((method) => ({
+          stripeMethods = connected.length ? connected.map((method) => ({
             id: method.id,
-            label: method.default ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Debit card" : "Bank account",
-            name: `${method.type === "card" ? "Debit card" : "Bank account"}${method.last4 ? ` ending in ${method.last4}` : ""}`,
-            note: [method.name, method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
-          })) : [{ label: "Connected", name: "Payout account", note: "Managed securely through your connected payout account." }]);
-        } else {
-          setPayoutMethods(manualAccounts.map((account) => (account.method === "payoneer" ? {
+            label: method.default && stripeDefault ? "Default" : method.payoutsFor ? `For ${method.payoutsFor.toUpperCase()} payouts` : method.type === "card" ? "Debit card" : "Bank account",
+            // The words Payments uses for this account; never a bank name as Stripe holds it.
+            name: `${method.type === "card" ? "Debit card" : "Bank"}${method.last4 ? ` ····${method.last4}` : ""}`,
+            note: [method.currency?.toUpperCase(), method.country && (regionNames.of(method.country) ?? method.country)].filter(Boolean).join(" · "),
+          })) : [{ label: stripeDefault ? "Default" : "Connected", name: "Withdrawal account" }];
+        }
+          setPayoutMethods([...stripeMethods, ...manualAccounts.map((account) => (account.method === "payoneer" ? {
             id: account.id,
-            label: account.is_primary ? "Default" : "Payoneer",
+            label: account.is_primary && !stripeDefault ? "Default" : "Payoneer",
             name: "Payoneer",
-            note: `${account.payoneer_email} · paid by TSC by hand`,
+            note: account.payoneer_email,
+          } : account.method === "paypal" ? {
+            id: account.id,
+            label: account.is_primary && !stripeDefault ? "Default" : "PayPal",
+            name: "PayPal",
+            note: account.paypal_email,
           } : {
             id: account.id,
-            label: account.is_primary ? "Default" : "Bank account",
+            label: account.is_primary && !stripeDefault ? "Default" : "Bank account",
             name: `${account.bank_name || "Bank account"}${account.account_number_last4 ? ` ending in ${account.account_number_last4}` : ""}`,
-            note: account.number_changed_at ? "Manual bank transfer" : "TSC can't pay this account yet: its full account number is missing",
-          })));
-        }
+            note: account.number_changed_at ? "" : "Add the full account number",
+          }))]);
       }
     } catch (failure) {
       setError(failure);
@@ -415,7 +410,6 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
   if (!members) return error ? <p className="shell-note" role="alert">{error.message ?? String(error)}</p> : null;
 
   const openPayoutFlow = (action, methodId = null) => setPayoutFlow({ action, methodId, id: Date.now() });
-  const emailNotes = isFactory ? FACTORY_EMAIL_NOTES : BRAND_EMAIL_NOTES;
 
   // The switch moves at once; a refused save puts it back and says why.
   async function changeNotificationEmail(category, enabled) {
@@ -434,7 +428,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
     <>
       <SettingsScreen
         accountType={isFactory ? "factory" : "brand"}
-        permissionsNote={isOwner ? "Owners can do everything; tick what each member may do." : ""}
+        permissionsNote={isOwner ? null : ""}
         onSaveAccount={canSettings ? async (details) => {
           // A non-owner's save never carries the name: their copy goes stale
           // when an owner renames the company, and null means "leave it".
@@ -458,6 +452,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         onAddPaymentMethod={isFactory && isOwner ? () => openPayoutFlow("manage") : undefined}
         onAddBillingMethod={canSettings ? addBillingMethod : undefined}
         onRemoveBillingMethod={canSettings ? removeCard : undefined}
+        billingMethodNote={isFactory ? "Save a card to use when you buy credits." : "Save a card to use when funding production steps. Cards are saved securely to your company for future payments."}
         billingLocked={canSettings ? "" : permissionHint(org, "settingsAccess")}
         paymentLocked={isFactory && !isOwner ? "Only an owner can set up or change payouts" : ""}
         inviteLocked={canSettings ? "" : permissionHint(org, "settingsAccess")}
@@ -481,7 +476,7 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
         saveNote={(canSettings ? (isOwner ? "" : "Only an owner can change the company's name.") : "Only someone with Settings access can change these details.")}
         notificationEmails={notificationEmails ?? undefined}
         onNotificationEmailChange={canSettings ? changeNotificationEmail : undefined}
-        notificationEmailNotes={emailNotes}
+        notificationEmailNotes={EMAIL_NOTES}
         notificationEmailsError={notificationEmailsError}
         busy={busy || billingBusy}
         error={error}
@@ -503,7 +498,8 @@ export default function LiveSettings({ org, isFactory, onSignOut }) {
           onMakePrimaryManual={makePrimaryPayout}
           manualForm={payouts.form}
           onManualFieldChange={payouts.setField}
-          onManualMethodChange={payouts.setMethod}
+          onSavePaypal={async () => { await payouts.savePaypal(); await reload(); }}
+          onSaveWise={async (details) => { await payouts.saveWise(details); await reload(); }}
           onSaveManual={savePayout}
           onDeleteManual={removePayout}
           manualBusy={payouts.busy}

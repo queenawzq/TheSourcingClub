@@ -131,10 +131,9 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
   return (
     <PayoutModal
       title="Add a bank account"
-      eyebrow="Payments"
       onClose={busy ? () => {} : onClose}
       actions={<>
-        <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Cancel</button>
+        <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Back</button>
         <button className="primary-btn" type="button" data-testid="save-bank-account" disabled={!stripe || !ready || busy} onClick={save}>{busy ? "Adding…" : "Add bank account"}</button>
       </>}
     >
@@ -176,7 +175,7 @@ function BankForm({ org, country: initialCountry, currency: initialCurrency, isF
         )}
       </div>
       {problem ? <p className="live-stripe-error" role="alert">{problem}</p> : null}
-      <p className="payout-security-copy">Your bank details go straight to Stripe, TSC’s payment partner. TSC keeps only the last four digits. Everyone at your company is told when a payout method changes.</p>
+      <p className="payout-security-copy">Your bank or card details go straight to Stripe, TSC’s payment partner. TSC keeps only the last four digits. Everyone at your company is told when a payout method changes.</p>
     </PayoutModal>
   );
 }
@@ -215,10 +214,9 @@ function CardForm({ org, currency, onAdded, onClose }) {
   return (
     <PayoutModal
       title="Add a debit card"
-      eyebrow="Payments"
       onClose={busy ? () => {} : onClose}
       actions={<>
-        <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Cancel</button>
+        <button className="secondary-btn" type="button" disabled={busy} onClick={onClose}>Back</button>
         <button className="primary-btn" type="button" data-testid="save-payout-card" disabled={!stripe || !ready || busy} onClick={save}>{busy ? "Adding…" : "Add debit card"}</button>
       </>}
     >
@@ -228,6 +226,7 @@ function CardForm({ org, currency, onAdded, onClose }) {
         {field("cvc", CardCvcElement, "Security code")}
       </div>
       {problem ? <p className="live-stripe-error" role="alert">{problem}</p> : null}
+      <p className="payout-security-copy">Your bank or card details go straight to Stripe, TSC’s payment partner. TSC keeps only the last four digits. Everyone at your company is told when a payout method changes.</p>
     </PayoutModal>
   );
 }
@@ -236,8 +235,8 @@ function CardForm({ org, currency, onAdded, onClose }) {
 export default function AddPayoutMethodForm({ kind, ...props }) {
   if (!STRIPE_PUBLISHABLE_KEY) {
     return (
-      <PayoutModal title="Add a payout method" eyebrow="Payments" onClose={props.onClose} actions={<button className="secondary-btn" type="button" onClick={props.onClose}>Close</button>}>
-        <p className="live-stripe-error" role="alert">Payouts through Stripe are not set up on this site yet.</p>
+      <PayoutModal title="Add a withdrawal method" onClose={props.onClose} actions={<button className="secondary-btn" type="button" onClick={props.onClose}>Close</button>}>
+        <p className="live-stripe-error" role="alert">Withdrawals are not set up on this site yet.</p>
       </PayoutModal>
     );
   }

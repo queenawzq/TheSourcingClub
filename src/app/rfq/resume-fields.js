@@ -57,6 +57,14 @@ export function monthLine(date) {
   return `${MONTH_NAMES[month - 1]} ${year}`;
 }
 
+/** Stored cents back in the words priceRange() reads: "$12", "$12.50", "$18–$24". */
+export function priceLine(lowCents, highCents) {
+  if (!lowCents) return "";
+  const words = (cents) => `$${cents % 100 ? (cents / 100).toFixed(2) : cents / 100}`;
+  const high = highCents ?? lowCents;
+  return high === lowCents ? words(lowCents) : `${words(lowCents)}–${words(high)}`;
+}
+
 /**
  * The quantity line. An even split into generic colours is written the way
  * colourSplitsFrom() reads it, so it saves back as it was. Named colours are
@@ -66,7 +74,7 @@ export function monthLine(date) {
 export function quantityLine(total, splits = []) {
   if (!total && !splits.length) return "";
   const sum = total ?? splits.reduce((acc, split) => acc + split.quantity, 0);
-  if (!splits.length) return String(sum);
+  if (!splits.length) return `${sum} units`;
   const generic = splits.every((split, index) => split.colour === `Colour ${index + 1}`);
   const even = splits.every((split) => split.quantity === splits[0].quantity);
   if (generic && even) {

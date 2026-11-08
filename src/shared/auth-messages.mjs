@@ -32,6 +32,10 @@ export const AUTH_MESSAGES = {
     en: () => "We couldn't connect, so the reset email may not have been sent. Check your connection and try again.",
     zh: () => "无法连接，重置密码邮件可能未发送。请检查网络后重试。",
   },
+  no_connection: {
+    en: () => "Couldn't connect. Try again.",
+    zh: () => "无法连接，请重试。",
+  },
   invalid_credentials: {
     en: () => "That email and password do not match an account.",
     zh: () => "邮箱和密码与账户不匹配。",
@@ -76,22 +80,20 @@ export function authFailure(kind, vars = {}) {
  */
 export function isNoAnswer(error) {
   if (!error) return false;
-  if (error.name === "AuthRetryableFetchError") return true;
+  if (error.noAnswer || error.name === "AuthRetryableFetchError") return true;
   return /Failed to fetch|Load failed|NetworkError when attempting|fetch failed/i.test(String(error.message ?? error));
 }
 
 /**
  * Which languages to say it in, most useful first.
  *
- * A vendor's page in Chinese reads Chinese. A vendor on the English page whose
- * browser is in Chinese reads both, because nothing on app.html offers a
- * language: someone arriving from a link gets English whatever they speak,
- * and that is who saw "Failed to fetch". Brands and staff read the page's.
+ * The page's language, and only that one (Queena, Nov 7: one language per
+ * screen). A vendor's page in Chinese reads Chinese; every other page English,
+ * whatever the browser speaks.
  */
-export function authLanguages({ factory, zhPage, browserLanguages = [] }) {
+export function authLanguages({ factory, zhPage }) {
   if (!factory) return ["en"];
-  if (zhPage) return ["zh"];
-  return browserLanguages.some((language) => /^zh\b/i.test(language)) ? ["en", "zh"] : ["en"];
+  return zhPage ? ["zh"] : ["en"];
 }
 
 /** The sentences for this error, one per language, or null if it has no kind. */

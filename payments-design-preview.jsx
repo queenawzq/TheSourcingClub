@@ -8,6 +8,8 @@ const rows = [
  {...base,payment_id:'preview-1',order_number:'TSC-000524',factory_name:'Ningbo Loomworks',payout_account_id:'preview-bank',payout_holder:'Ningbo Loomworks Co Ltd',payout_bank:'Ningbo Test Bank',payout_country:'CN',payout_swift:'BKCHCNBJ',payout_has_number:true,payout_last4:'1234',payout_changed_recently:true,payout_changed_at:'2026-11-07T12:20:00Z'},
  {...base,payment_id:'preview-2',order_number:'TSC-000526',factory_name:'Kowloon Sourcing Partners',payout_method:'payoneer',payoneer_email:'payouts@example.com'},
  {...base,payment_id:'preview-3',order_number:'TSC-000529',factory_name:'Hangzhou Test Knit'},
+ {...base,payment_id:'preview-7',order_number:'TSC-000533',factory_name:'Suzhou Silk Works',payout_account_id:'preview-wise',payout_holder:'Suzhou Silk Works Co Ltd',payout_bank:'Bank of China',payout_country:'CN',payout_swift:'BKCHCNBJ',payout_has_number:true,payout_last4:'5678',wise_recipient_type:'chinese_local',wise_currency:'CNY'},
+ {...base,payment_id:'preview-8',order_number:'TSC-000534',factory_name:'Dongguan Denim',payout_method:'paypal',paypal_email:'pay@example.com'},
  {...base,payment_id:'preview-4',order_number:'TSC-000530',factory_name:'Atelier Minho',release_requested_at:null},
  {...base,payment_id:'preview-5',order_number:'TSC-000531',factory_name:'Ningbo Loomworks',state:'processing',processing_at:base.confirmed_at,release_requested_at:null},
  {...base,payment_id:'preview-6',order_number:'TSC-000532',factory_name:'Atelier Minho',state:'failed',failed_at:base.confirmed_at,release_requested_at:null}

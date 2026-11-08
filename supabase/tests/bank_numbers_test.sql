@@ -15,7 +15,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(128);
+select plan(129);
 
 set local session_replication_role = replica;
 
@@ -148,7 +148,8 @@ select is(
     where n.nspname = 'public'
       and p.prosrc ~ 'payout_number_plain|decrypted_secrets|vault\.'),
   array['guard_payout_account_fields', 'payout_number_forget_secret', 'payout_number_plain',
-        'payout_text_holds_number', 'reveal_payout_account_number', 'save_bank_payout_account'],
+        'payout_text_holds_number', 'payout_wise_recipient', 'reveal_payout_account_number',
+        'save_bank_payout_account', 'save_wise_payout_account'],
   'only these functions decrypt or touch Vault: a new one fails here'
 );
 select is(
@@ -156,7 +157,7 @@ select is(
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
       and p.prosrc ~ 'payout_number_reveals'),
-  array['admin_payment_board', 'payout_number_reveal_log', 'reveal_payout_account_number'],
+  array['admin_payment_board', 'payout_number_reveal_log', 'payout_wise_recipient', 'reveal_payout_account_number'],
   'only these read or write the record of who looked'
 );
 select ok(not has_function_privilege('authenticated', 'public.payout_number_plain(uuid)', 'execute'), 'nobody signed in may call the decrypting function');
@@ -289,6 +290,7 @@ select is((select count(*)::int from public.payout_number_reveal_log() where org
 select is((select account_number from public.reveal_payout_account_number((select id from p66))), '0000000000001234', 'staff read the number while a payout is owed');
 select is((select staff_email || ' ' || last4 from public.payout_number_reveal_log() where org_name = 'P66 Mill'), 'p66-staff@example.com 1234', 'and it says who, and which account');
 select is((select count(*)::int from public.payout_number_reveal_log() where org_name = 'P66 Mill'), 1, 'one read, one record');
+select is((select how from public.payout_number_reveal_log() where org_name = 'P66 Mill'), 'shown', 'and it says the number was shown, not sent to Wise');
 select is((select last_viewed_by from public.admin_payment_board() where payment_id = '66800000-0000-0000-0000-000000000001'), 'p66-staff@example.com', 'the row says who looked last');
 select throws_ok($$ update public.payout_number_reveals set staff_email = 'x' $$, '42501', null, 'staff cannot rewrite the record');
 select throws_ok($$ delete from public.payout_number_reveals $$, '42501', null, 'nor delete it');
@@ -400,7 +402,7 @@ select lives_ok($$ select public.release_payment_to_factory('66800000-0000-0000-
 select throws_ok($$ select public.release_payment_to_factory('66800000-0000-0000-0000-000000000001', 'WIRE-REF-1') $$, '22023', 'that payout was already marked as paid', 'once');
 
 reset role;
-select is((select body from public.notifications where subject_id = '66800000-0000-0000-0000-000000000001' and kind = 'funds_released'), 'Sent by bank transfer against P66-1. TSC''s note: WIRE-REF-1', 'the factory reads the reference');
+select is((select body from public.notifications where subject_id = '66800000-0000-0000-0000-000000000001' and kind = 'funds_released'), 'Sent by bank transfer against P66 mill (P66-1). TSC''s note: WIRE-REF-1', 'the factory reads the reference');
 select is((select paid_to_holder || ' ' || paid_to_bank || ' ' || paid_to_last4 || ' ' || reference from public.bank_payouts where payment_id = '66800000-0000-0000-0000-000000000001'), 'P66 Mill Co Ltd P66 Bank 1234 WIRE-REF-1', 'and the record says where it went');
 
 select pg_temp.act_as(3); set local role authenticated;

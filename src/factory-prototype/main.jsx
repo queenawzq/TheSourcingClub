@@ -2436,7 +2436,7 @@ function App() {
 export function FactoryDashboardPage({
   companyType = "factory", dashboardState, language, capacityValue, creditBalance, onUpdateCapacity, onPurchaseCredits, purchaseCreditsLocked = "", onInviteFactory, onViewRfqs, onBrowseRfqs, onViewRfqDetail, onViewProjects, onViewProfile, onOpenActivity,
   // Live mounts pass these; the prototype passes none and is unchanged.
-  orgName, rfqs, projects, metrics, capacity, attention, unreadCount,
+  orgName, rfqs, projects, metrics, capacity, attention, unreadCount, rfqPanelTitle,
   // Live: the company's upcoming calls. The design draws its card only on
   // the example dashboard; live draws it whenever there is a call.
   calls,
@@ -2500,7 +2500,7 @@ export function FactoryDashboardPage({
 
             <FactoryDashboardPanel
               className="factory-rfq-invites-panel"
-              title={language === "zh" ? (isNewcomer ? "匹配的询价" : "询价邀请") : (isNewcomer ? "Matched RFQs" : "RFQ invites")}
+              title={rfqPanelTitle ?? (language === "zh" ? (isNewcomer ? "匹配的询价" : "询价邀请") : (isNewcomer ? "Matched RFQs" : "RFQ invites"))}
               subtitle={isTradingCompany
                 ? (language === "zh" ? "根据供应商网络、服务能力和订单匹配度推荐的可报价需求。" : "Quote-ready requests matched to your supplier network, services, and order fit.")
                 : (language === "zh"
@@ -4734,7 +4734,7 @@ function FactoryProjectDashboardRow({ project, language, onView }) {
           <div>
             <strong data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</strong>
             <p className="project-meta" data-no-translate>
-              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : `${project.brand} · ${project.location} · ${project.started}`}
+              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : [project.brand, project.location, project.started].filter(Boolean).join(" · ")}
             </p>
           </div>
       </header>
@@ -5315,7 +5315,7 @@ function FactorySavedBrandCard({ brand, language = "en", onViewBrand }) {
 function FactorySavedRfqCard({ project, language, onViewRfq }) {
   const isZh = language === "zh";
   const title = isZh ? getTranslatedProjectTitle(project.title) : project.title;
-  const meta = `${project.brand} · ${project.location} · ${project.posted}`;
+  const meta = [project.brand, project.location, project.posted].filter(Boolean).join(" · ");
   const [primaryImage] = project.images || [];
 
   return (
@@ -6367,7 +6367,7 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
           <div>
             <h2 data-no-translate>{isZh ? getTranslatedProjectTitle(project.title) : project.title}</h2>
             <p className="project-meta" data-no-translate>
-              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : `${project.brand} · ${project.location} · ${project.started}`}
+              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.started}`) : [project.brand, project.location, project.started].filter(Boolean).join(" · ")}
             </p>
           </div>
         </div>
@@ -6411,7 +6411,7 @@ export function FactoryProjectListCard({ project, language, onViewProject, custo
           <p className="project-description" data-no-translate>{isZh ? getTranslatedListDescription(project) : project.description}</p>
           {isZh && <ListTranslationMeta />}
           <div className="project-status-row">
-            <span><strong>Current status:</strong> {project.statusDetail}</span>
+            {project.statusDetail && <span><strong>Current status:</strong> {project.statusDetail}</span>}
           </div>
           <ProjectProgress progress={project.progress} steps={project.steps} />
         </aside>
@@ -9186,7 +9186,7 @@ function BrandProjectCard({ project, companyType = "factory", language, onViewDe
           <div>
             <h2 data-no-translate={!isZh || undefined}>{isZh ? translatedTitle : project.title}</h2>
             <p data-no-translate>
-              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : `${project.brand} · ${project.location} · ${project.posted}`}
+              {isZh ? getTranslatedListMeta(`${project.brand} · ${project.location} · ${project.posted}`) : [project.brand, project.location, project.posted].filter(Boolean).join(" · ")}
             </p>
           </div>
         </div>
@@ -9494,8 +9494,9 @@ export function FactoryProjectDetail({
 
         <aside className="factory-detail-side factory-detail-top-side">
           <section className="factory-side-card project-fit-card">
-            <h2>Request match</h2>
-            <p>{match?.summary ?? (companyType === "trading" ? "Your supplier coverage, woven sourcing experience, and low-MOQ support match the brand request." : "Your August capacity and low-MOQ woven experience match the brand request.")}</p>
+            {/* Live: a vendor the brand invited, or one with no score, reads no match. */}
+            {!(match && !match.summary) && <h2>Request match</h2>}
+            {!(match && !match.summary) && <p>{match?.summary ?? (companyType === "trading" ? "Your supplier coverage, woven sourcing experience, and low-MOQ support match the brand request." : "Your August capacity and low-MOQ woven experience match the brand request.")}</p>}
             {/* The band comes from match_score_rfq() live. A vendor whose
                 profile cannot be scored gets no badge rather than a guess. */}
             {(match ? match.label : "Strong fit") && (
@@ -9923,7 +9924,7 @@ function FactoryMilestoneItem({ milestone, index, onAddUpdate, live = false, sho
             className="secondary-btn"
             type="button"
             disabled={updateDisabled || undefined}
-            title={updateDisabled ? (milestone.updateDisabledReason || "Available when this milestone opens") : undefined}
+            title={updateDisabled ? (milestone.updateDisabledReason || (milestone.kind ? "Available when this step opens" : "Available when this milestone opens")) : undefined}
             onClick={() => onAddUpdate(milestone)}
           >Add update</button>
         )}
@@ -10017,7 +10018,7 @@ function AddUpdateModal({ language, milestone, onClose, onPost, live = null }) {
   const fileInput = useRef(null);
   const previewUrls = useRef(new Set());
   const isZh = language === "zh";
-  const milestoneTitle = isZh ? translateFactoryMainText(milestone.title) : milestone.title.toLowerCase();
+  const milestoneTitle = isZh ? translateFactoryMainText(milestone.title) : live ? milestone.title : milestone.title.toLowerCase();
   const brand = live?.counterparty || "Maison Rue";
 
   useEffect(() => () => {
@@ -10761,7 +10762,7 @@ export function FactoryQuoteSent({
     <main className="factory-detail-page factory-submit-page factory-sent-page">
       <div className="factory-submit-content">
         <header className="factory-detail-header factory-submit-header factory-sent-header">
-          <button className="text-link" type="button" onClick={onBack}>{tx("‹ Back to edit quote")}</button>
+          <button className="text-link" type="button" onClick={onBack}>{sent?.backLabel ?? tx("‹ Back to edit quote")}</button>
           <h1>{tx("Quote sent successfully")}</h1>
           <p>{tx(companyType === "trading"
             ? "Your quote is now visible to the brand. They can compare it with other supplier quotes, message you, or choose your quote for contract terms."
@@ -10772,7 +10773,7 @@ export function FactoryQuoteSent({
           <section className="success-card factory-sent-card">
             <span className="success-mark">✓</span>
             <div className="success-copy">
-              <h2>{project.brand} {tx("quote submitted")}</h2>
+              <h2>{sent?.heading ?? <>{project.brand} {tx("quote submitted")}</>}</h2>
               <p>{tx(companyType === "trading"
                 ? "The brand will see your unit price, sample plan, production timing, confirmed partner window and company notes in their quote comparison view."
                 : "The brand will see your unit price, sample plan, production timing, open capacity and factory notes in their quote comparison view.")}</p>
@@ -10799,7 +10800,7 @@ export function FactoryQuoteSent({
                 : `${project.brand || "Maison Rue"} has been notified. Your quote appears on their comparison page with your factory notes and assumptions.`)}</p>
               <div className="factory-status-facts">
                 <ProfileDetailPair label="Brand" value={project.brand} />
-                <ProfileDetailPair label="Quote due" value={sent?.quoteDue ?? "Jul 24"} />
+                {sent?.quoteDue === "" ? null : <ProfileDetailPair label="Quote due" value={sent?.quoteDue ?? "Jul 24"} />}
                 <ProfileDetailPair label="Shown total" value={sent?.total ?? "$5,780"} />
               </div>
             </section>

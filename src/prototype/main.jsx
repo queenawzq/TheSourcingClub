@@ -1124,11 +1124,11 @@ export function FlowShell({
 
   return (
     <main className={`flow-page${["invite", "quotes", "quoteDetail"].includes(screen) ? " wide-flow" : ""}${actionFlow}${reviewFlow}`}>
-      <JourneyRail current={meta.step} isMilestoneFunding={Boolean(fundingMilestone)} />
+      <JourneyRail current={meta.step} isMilestoneFunding={Boolean(fundingMilestone)} fundingStep={fundingMilestone?.railStep} />
       <section className="flow-content">
         {screen !== "quoteDetail" && (
           <header className="flow-header">
-            <p className="eyebrow">VENDOR QUOTE REQUEST</p>
+            <p className="eyebrow">{meta.eyebrow ?? "VENDOR QUOTE REQUEST"}</p>
             <h1>{meta.title}</h1>
             <p>{meta.description || "Move this quote request forward with the next project detail."}</p>
           </header>
@@ -2328,7 +2328,7 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
     brandTime = liveStart ? whenIn(liveStart, timezone) : "";
     factoryTime = liveStart ? theirTime(liveStart, live.otherName, live.otherZone, timezone) : "";
     scheduleNote = live.otherZone
-      ? `Your time: ${zoneLabel(timezone)} · ${live.otherName}: ${zoneLabel(live.otherZone)} time`
+      ? `Your time: ${zoneLabel(timezone)} · ${live.otherName}: ${zoneLabel(live.otherZone)}`
       : `Your time: ${zoneLabel(timezone)}`;
   }
   const otherClock = (at) => {
@@ -2455,9 +2455,9 @@ function ScheduleCallPanel({ thread, isOpen, onOpen, onSchedule, live }) {
 }
 
 export const settingsPermissionLabels = [
-  { key: "rfqFlow", label: "Quote flow", detail: "Create quote request, choose quote, set terms and milestones", single: true },
-  { key: "approve", label: "Approve samples", detail: "Lab dip, strike-off, sample, and more" },
-  { key: "releaseFunds", label: "Release funds", detail: "Release approved payments from project funds" },
+  { key: "rfqFlow", label: "Quote flow", detail: "Create quote request, choose quote, set terms and steps", single: true },
+  { key: "approve", label: "Approve samples", detail: "Approve steps" },
+  { key: "releaseFunds", label: "Release funds", detail: "Fund steps" },
   { key: "primaryContact", label: "Primary contact", detail: "Main vendor contact for messages and calls", single: true },
   { key: "settingsAccess", label: "Settings access", detail: "Account, payments, and invites" }
 ];
@@ -2511,6 +2511,7 @@ export function SettingsScreen({
   // Live only: removes a saved card (the brand's list, the factory's Billing
   // tab), and the line a member reads where an owner gets the buttons.
   onRemoveBillingMethod,
+  billingMethodNote = "",
   billingLocked = "",
   paymentLocked = "",
   inviteLocked = "",
@@ -2789,6 +2790,7 @@ export function SettingsScreen({
               <h3>{isFactory ? "Payment methods" : "Payment method"}</h3>
               <p>{isFactory ? "Manage where you receive earnings and which method is used for billing." : "Add, update, or remove the payment methods used for production milestones."}</p>
             </div>
+            {billingMethodNote && (!isFactory || paymentTab === "billing") ? <p className="settings-billing-note">{billingMethodNote}</p> : null}
             {isFactory ? (
               <>
                 <div className="settings-access-tabs billing-tabs settings-payment-tabs" role="tablist" aria-label="Payment method type">
@@ -2875,7 +2877,7 @@ export function SettingsScreen({
                   </div>
                 ))}
                 {paymentTab === "earnings" && (onAddPaymentMethod || paymentLocked) ? (
-                  <button className="settings-add-btn" type="button" onClick={onAddPaymentMethod} disabled={Boolean(paymentLocked) || undefined} title={paymentLocked || undefined}>Manage payout methods</button>
+                  <button className="settings-add-btn" type="button" onClick={onAddPaymentMethod} disabled={Boolean(paymentLocked) || undefined} title={paymentLocked || undefined}>Withdrawal methods</button>
                 ) : null}
               </>
             ) : livePaymentMethods?.length === 0 ? (
@@ -2956,7 +2958,7 @@ export function SettingsScreen({
         <section className="settings-section" id="settings-team">
             <div className="settings-section-header split">
               <div>
-                <h3>{isFactory ? "Manage team & stakeholders" : "Stakeholder authority"}</h3>
+                <h3>{isFactory ? (isLive ? "Team" : "Manage team & stakeholders") : isLive ? "Roles & access" : "Stakeholder authority"}</h3>
                 <p>{isFactory ? "Control who can quote RFQs, post updates, and act as the primary contact." : "Assign quote flow, sample approvals, fund release, and the primary vendor contact."}</p>
                 {permissionsNote ? <p>{permissionsNote}</p> : null}
               </div>
@@ -3095,15 +3097,15 @@ export function SettingsScreen({
                 <label>
                   <span>Role</span>
                   {isFactory ? (
-                    <select defaultValue="Stakeholder" name={isLive ? "inviteTitle" : undefined}>
-                      <option value="Stakeholder">Stakeholder</option>
+                    <select defaultValue={isLive ? "Member" : "Stakeholder"} name={isLive ? "inviteTitle" : undefined}>
+                      <option value={isLive ? "Member" : "Stakeholder"}>{isLive ? "Member" : "Stakeholder"}</option>
                       <option value="Production lead">Production lead</option>
                       <option value="Finance">Finance</option>
                       <option value="Viewer">Viewer</option>
                     </select>
                   ) : (
-                    <select defaultValue="Stakeholder" name={isLive ? "inviteTitle" : undefined}>
-                      <option>Stakeholder</option>
+                    <select defaultValue={isLive ? "Member" : "Stakeholder"} name={isLive ? "inviteTitle" : undefined}>
+                      <option>{isLive ? "Member" : "Stakeholder"}</option>
                       <option>Founder</option>
                       <option>Production lead</option>
                       <option>Finance</option>
@@ -4016,10 +4018,10 @@ function BrandAssetUploadCard({ title, helper, accept, fileAccept = "image/*,.pd
   );
 }
 
-function JourneyRail({ current, isMilestoneFunding = false }) {
+function JourneyRail({ current, isMilestoneFunding = false, fundingStep = null }) {
   const journeySteps = steps.map((step, index) =>
     index === steps.length - 1 && isMilestoneFunding
-      ? { ...step, title: "Fund payment" }
+      ? { ...step, title: "Fund payment", meta: fundingStep ?? step.meta }
       : step
   );
 
@@ -4122,9 +4124,9 @@ function RightRail({ screen, selectedQuote, fundingMilestone, rail = null }) {
               <span>{live ? live.location : "Porto, Portugal"}</span>
             </div>
           </div>
-          <h2>Project funds</h2>
+          <h2>{live ? "Payment" : "Project funds"}</h2>
           <div className="fund-summary-rows">
-            <Metric label={live ? "Payment" : fundingMilestone ? "Payment" : "Payment 1"} value={fundingSummary.paymentLabel} />
+            <Metric label={live ? "Step" : fundingMilestone ? "Payment" : "Payment 1"} value={fundingSummary.paymentLabel} />
             <Metric label="Subtotal" value={fundingSummary.subtotal} />
             <Metric label={live ? live.feeLabel : "TSC service fee"} value={fundingSummary.fee} />
             {live ? null : <Metric label="Estimated taxes" value={fundingSummary.taxes} />}
@@ -4345,6 +4347,8 @@ export function HomeScreen({
   // Live mounts hide what they have nothing for. The prototype passes
   // neither and keeps the design's examples: a $50 discount and two calls.
   showSavings = true,
+  // Live says "vendors" on both layouts.
+  newcomerVendorWords = null,
   showCalls = true,
   // Live: the company's upcoming calls, drawn by the designed card.
   calls,
@@ -4439,10 +4443,10 @@ export function HomeScreen({
             <section className="home-recommended-factories">
               <header className="home-panel-header">
                 <div>
-                  <h2>Recommended factories</h2>
+                  <h2>{newcomerVendorWords?.title ?? "Recommended factories"}</h2>
                   <p>A few trusted partners that match {who}’s product focus and order size.</p>
                 </div>
-                <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>Browse all vendors</button>
+                <button className="secondary-btn" type="button" onClick={() => goTo("factoryMarketplace")}>{newcomerVendorWords?.browse ?? "Browse all vendors"}</button>
               </header>
               {vendorsPending ? <p className="projects-empty" role="status">Finding vendors for you…</p> : (
               <div className="home-recommended-factory-grid">
@@ -4960,7 +4964,7 @@ function HomeRfqMiniCard({ rfq, goTo, onOpen }) {
           <span>Quotes received</span>
           <strong>{quotesReceived[0]}</strong>
         </div>
-        <div>
+        <div hidden={invitedCount[0] === null}>
           <span>Invited</span>
           <strong>{invitedCount[0]}</strong>
         </div>
@@ -7684,6 +7688,8 @@ export function RfqsScreen({
   onInviteVendors,
   onArchiveRfq,
   quoteFlowLocked = "",
+  // Live's shorter empty lists; the prototype keeps its sentences.
+  emptyNotes = null,
 }) {
   const [activeTab, setActiveTab] = useState("active");
   const [rfqTabs, setRfqTabs] = useState([
@@ -7700,7 +7706,15 @@ export function RfqsScreen({
   // which statuses count as "closed" is a domain question, not a screen one.
   const { data: rfqBuckets, loading: rfqsLoading, error: rfqsError } = useRfqs();
   const rfqDataByTab = rfqBuckets ?? { active: [], drafts: [], closed: [] };
-  const activeRfqsForTab = rfqDataByTab[activeTab] ?? [];
+  const [rfqSearch, setRfqSearch] = useState("");
+  const [rfqSort, setRfqSort] = useState("newest");
+  const rfqsInTab = rfqDataByTab[activeTab] ?? [];
+  const searchedRfqs = rfqSearch.trim()
+    ? rfqsInTab.filter((rfq) => [rfq.title, rfq.description, ...(rfq.tags ?? [])].join(" ").toLowerCase().includes(rfqSearch.trim().toLowerCase()))
+    : rfqsInTab;
+  const activeRfqsForTab = rfqSort === "newest" ? searchedRfqs : [...searchedRfqs].sort((a, b) => (rfqSort === "due"
+    ? String(a.deadline ?? "9999").localeCompare(String(b.deadline ?? "9999"))
+    : Number(b.metrics?.[0]?.[0] ?? 0) - Number(a.metrics?.[0]?.[0] ?? 0)));
 
   /**
    * The counts in the locked tab labels are real.
@@ -7783,15 +7797,15 @@ export function RfqsScreen({
 
       <section className="rfqs-controls" aria-label="Quote filters">
         <label className="rfqs-search">
-          <span>Search Projects</span>
+          <span>{onViewQuotes ? "Search quotes" : "Search Projects"}</span>
           <div>
             <SearchIcon />
-            <input placeholder="Project name, ID, or vendor..." />
+            <input placeholder={onViewQuotes ? "Request name or detail..." : "Project name, ID, or vendor..."} value={rfqSearch} onChange={(event) => setRfqSearch(event.target.value)} />
           </div>
         </label>
         <label className="rfqs-sort">
           <span>Sort By</span>
-          <select defaultValue="newest">
+          <select value={rfqSort} onChange={(event) => setRfqSort(event.target.value)}>
             <option value="newest">Newest First</option>
             <option value="due">Quote Due Soon</option>
             <option value="quotes">Most Quotes</option>
@@ -7901,11 +7915,11 @@ export function RfqsScreen({
           <p className="projects-empty projects-error" data-testid="rfqs-error">{rfqsError.message}</p>
         ) : !activeRfqsForTab.length ? (
           <p className="projects-empty" data-testid="rfqs-empty">
-            {activeTab === "drafts"
-              ? "No drafts. A request is saved here as soon as you start writing one."
+            {rfqSearch.trim() ? "No requests match." : activeTab === "drafts"
+              ? (emptyNotes?.drafts ?? "No drafts. A request is saved here as soon as you start writing one.")
               : activeTab === "closed"
                 ? "Nothing closed yet."
-                : "No open requests. Post one and factories can start quoting."}
+                : (emptyNotes?.open ?? "No open requests. Post one and factories can start quoting.")}
           </p>
         ) : (
           activeRfqsForTab.map((rfq) => (
@@ -7940,7 +7954,7 @@ function RfqCard({ rfq, goTo, customTabs = [], onViewQuotes, onEdit, onInvite, o
     ["Invited", invitedCount[0]],
     ["Messages", messageCount[0]],
     ["Quote due", quoteDue]
-  ];
+  ].filter(([, value]) => value !== null);
 
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -8209,10 +8223,10 @@ export function ProjectsScreen({
 
       <section className="projects-controls" aria-label="Project filters">
         <label className="rfqs-search">
-          <span>Search Projects</span>
+          <span>{tabStore ? "Search orders" : "Search Projects"}</span>
           <div>
             <SearchIcon />
-            <input placeholder="Project name, ID, or vendor..." value={search} onChange={(event) => setSearch(event.target.value)} />
+            <input placeholder={tabStore ? "Order name, number, or vendor..." : "Project name, ID, or vendor..."} value={search} onChange={(event) => setSearch(event.target.value)} />
           </div>
         </label>
         <label className="rfqs-sort">
@@ -8477,7 +8491,7 @@ function ProjectListCard({ project, goTo, actionLabel = "View details", customTa
           </div>
           <p className="project-description">{project.description}</p>
           <div className="project-status-row">
-            <span><strong>Current status:</strong> {project.statusDetail}</span>
+            {project.statusDetail && <span><strong>Current status:</strong> {project.statusDetail}</span>}
           </div>
           <ProjectProgress progress={project.progress} steps={project.steps} />
         </aside>
@@ -8601,8 +8615,8 @@ export function ProjectDetailScreen({
               milestones, not of the quote, and the two diverge the moment
               either side edits the schedule. */}
           <section className="project-summary-strip" aria-label="Project summary">
-            <Metric label="project total" value={order?.total ?? "$5,780"} testId="order-total" />
-            <Metric label="project funds" value={order?.paid ?? "$120"} testId="order-paid" />
+            <Metric label={order ? "order total" : "project total"} value={order?.total ?? "$5,780"} testId="order-total" />
+            <Metric label={order ? "funded" : "project funds"} value={order?.paid ?? "$120"} testId="order-paid" />
             <Metric label="remaining" value={order?.remaining ?? "$5,660"} />
             <Metric label="next payment" value={order?.nextPayment ?? "$1,656"} className="highlight" />
           </section>
@@ -8650,7 +8664,7 @@ export function ProjectDetailScreen({
               </div>
               {(!isLive || onManageMilestones || manageMilestonesLocked) && (
                 <button className="secondary-btn manage-milestones" type="button" onClick={onManageMilestones} disabled={Boolean(manageMilestonesLocked) || undefined} title={manageMilestonesLocked || undefined}>
-                  Manage milestones
+                  {isLive ? "Manage steps" : "Manage milestones"}
                 </button>
               )}
             </section>
@@ -8675,7 +8689,7 @@ export function ProjectDetailScreen({
             <button className="secondary-btn" type="button" onClick={onMessage}>Message</button>
           </section>
           <section className="project-activity-panel">
-            <h2>Project activity</h2>
+            <h2>{order ? "Order activity" : "Project activity"}</h2>
             <ul data-testid={activity ? "order-activity" : undefined}>
               {activity ? (
                 activity.length
@@ -9008,7 +9022,7 @@ function ProjectMilestoneItem({ milestone, index, isPaid = false, isApproved = f
             type="button"
             data-testid="milestone-action"
             disabled={milestone.actionDisabled || undefined}
-            title={milestone.actionDisabled ? (milestone.actionDisabledReason ?? "Available when this milestone opens") : undefined}
+            title={milestone.actionDisabled ? (milestone.actionDisabledReason ?? (milestone.kind ? "Available when this step opens" : "Available when this milestone opens")) : undefined}
             onClick={handleAction}
           >
             {milestone.action}
@@ -9038,7 +9052,7 @@ function MilestoneCommentModal({ milestone, onClose, onPost, live = null, mode =
           <img src="/assets/prototype-icons/close.svg" alt="" />
         </button>
         <header>
-          <h2 id="milestone-comment-title">{isDispute ? `Initiate dispute for ${milestone.title.toLowerCase()}` : `Add ${milestone.title.toLowerCase()} comment`}</h2>
+          <h2 id="milestone-comment-title">{isDispute ? `Initiate dispute for ${live ? milestone.title : milestone.title.toLowerCase()}` : `Add ${live ? milestone.title : milestone.title.toLowerCase()} comment`}</h2>
           <span>{isDispute ? `Explain the issue for ${other} and attach any supporting evidence. The dispute will be recorded on this production step.` : `Share feedback, questions, or files with ${other} for this production step.`}</span>
         </header>
         <label className="approve-fund-note">
@@ -9084,6 +9098,8 @@ function MilestoneCommentModal({ milestone, onClose, onPost, live = null, mode =
 function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
   const [note, setNote] = useState("");
   const other = live?.counterparty ?? "Atelier Minho";
+  // Live: an update-only step is closed, not approved. A name reads as typed.
+  const closing = Boolean(live) && milestone.stepKind === "progress_only";
 
   return (
     <div className="approve-fund-modal-layer" role="presentation">
@@ -9093,8 +9109,8 @@ function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
           <img src="/assets/prototype-icons/close.svg" alt="" />
         </button>
         <header>
-          <p>Approve step</p>
-          <h2 id="approve-step-title">Approve {milestone.title.toLowerCase()}</h2>
+          <p>{closing ? "Mark done" : "Approve step"}</p>
+          <h2 id="approve-step-title">{closing ? `Mark ${milestone.title} done` : `Approve ${live ? milestone.title : milestone.title.toLowerCase()}`}</h2>
           <span>This marks the production step as approved and lets {other} continue to the next step.</span>
         </header>
         <div className="approve-fund-summary single">
@@ -9104,7 +9120,7 @@ function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
           </div>
         </div>
         <label className="approve-fund-note">
-          <span>Approval note</span>
+          <span>{closing ? "Note" : "Approval note"}</span>
           {live ? (
             <textarea rows={3} placeholder={`Optional note for ${other}...`} value={note} onChange={(event) => setNote(event.target.value)} />
           ) : (
@@ -9115,7 +9131,7 @@ function ApproveMilestoneModal({ milestone, onClose, onApprove, live = null }) {
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
           <button className="primary-btn" type="button" disabled={live?.busy || undefined} onClick={live ? () => onApprove(note) : onApprove}>
-            {live?.busy ? "Approving…" : "Approve step"}
+            {live?.busy ? (closing ? "Saving…" : "Approving…") : (closing ? "Mark done" : "Approve step")}
           </button>
         </footer>
       </section>
@@ -9138,21 +9154,17 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
           <img src="/assets/prototype-icons/close.svg" alt="" />
         </button>
         <header>
-          <p>Approve fund</p>
+          <p>{live ? "Approve" : "Approve fund"}</p>
           <h2 id="approve-fund-title">
-            {`Release ${releaseAmount} for ${milestone.title.toLowerCase()}`}
+            {`Release ${releaseAmount} for ${live ? milestone.title : milestone.title.toLowerCase()}`}
           </h2>
           {/* Live, the brand funded this step through Stripe and TSC holds
               the money: approving pays it to the factory. */}
-          <span>
-            {live
-              ? `Approving releases ${releaseAmount} held by TSC to ${other}.`
-              : "Funds will move from project funds to Atelier Minho after approval."}
-          </span>
+          <span>{live ? `Approving releases ${releaseAmount} held by TSC to ${other}.` : "Funds will move from project funds to Atelier Minho after approval."}</span>
         </header>
         <div className="approve-fund-summary">
           <div>
-            <span>Milestone</span>
+            <span>{live ? "Step" : "Milestone"}</span>
             <strong>{milestone.title}</strong>
           </div>
           <div>
@@ -9160,7 +9172,7 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
             <strong>{releaseAmount}</strong>
           </div>
           <div>
-            <span>Review item</span>
+            <span>{live ? "Posted" : "Review item"}</span>
             <strong>{live ? milestone.reviewItem ?? "Photos and files posted on this step" : "Fit sample photos and uploaded files"}</strong>
           </div>
         </div>
@@ -9176,7 +9188,7 @@ function ApproveFundModal({ milestone, onClose, onApprove, live = null }) {
         <footer>
           <button className="secondary-btn" type="button" onClick={onClose}>Cancel</button>
           <button className="primary-btn" type="button" disabled={live?.busy || undefined} onClick={live ? () => onApprove(note) : onApprove}>
-            {live?.busy ? "Approving…" : "Approve and release fund"}
+            {live?.busy ? "Approving…" : live ? "Approve" : "Approve and release fund"}
           </button>
         </footer>
       </section>
@@ -9268,7 +9280,7 @@ export function DescribeScreen({
 
   return (
     <div className="main-grid single">
-      <Card title="Describe what you need made" className="large-card">
+      <Card title={onSkip ? undefined : "Describe what you need made"} className="large-card">
         <label className="field-label" htmlFor="request">
           Product request
         </label>
@@ -9657,11 +9669,14 @@ export function InviteScreen({
   // certifications, regions), not the design's sample ones.
   filters: liveFilters = null,
 }) {
+  const [liveSearch, setLiveSearch] = useState("");
   const [vendorType, setVendorType] = useState("factories");
   const isTrading = vendorType === "trading";
   const isLive = Boolean(liveVendors);
+  const searched = liveSearch.trim().toLowerCase();
   const inviteVendors = isLive
-    ? liveVendors
+    ? liveVendors.filter((vendor) => !searched || [vendor.name, vendor.location, vendor.note, ...(vendor.categories ?? []), ...(vendor.capabilities ?? [])]
+        .some((word) => String(word ?? "").toLowerCase().includes(searched)))
     : isTrading
       ? marketplaceTradingCompanies.map((company) => ({
           ...company,
@@ -9689,13 +9704,18 @@ export function InviteScreen({
       <div className="invite-toolbar">
         <label className="search-field">
           <SearchIcon />
-          <input placeholder={isLive ? "Search vendors" : isTrading ? "Search trading companies" : "Search factories"} />
+          {isLive
+            ? <input placeholder="Search vendors" aria-label="Search vendors" value={liveSearch} onChange={(event) => setLiveSearch(event.target.value)} />
+            : <input placeholder={isTrading ? "Search trading companies" : "Search factories"} />}
         </label>
+        {/* Nothing records who is available now, so live leaves it out. */}
+        {!isLive && (
         <label className="toggle-row">
           <input type="checkbox" />
           <span className="toggle" />
           Available now
         </label>
+        )}
         <label className="toggle-row">
           {/* The only place visibility is expressed in the designed flow, so it
               is what decides open_to_all versus invited_only on publish. */}
@@ -9742,6 +9762,7 @@ export function InviteScreen({
       </div>
       )}
       <Card className="invite-results">
+        {isLive && !inviteVendors.length && <p className="projects-empty">No vendors match.</p>}
         <div className="factory-list">
           {inviteVendors.map((factory) => (
             <InviteFactoryCard
@@ -9809,7 +9830,7 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
             </div>
           </a>
           <div className="factory-card-metrics">
-            <Metric label="match" value={factory.fit} className={matchTierClass(factory.fit)} />
+            {factory.fit !== "" && <Metric label="match" value={factory.fit} className={matchTierClass(factory.fit)} />}
             {/* Live cards pass "" for both: there is no rating, and a brand
                 cannot count another brand's orders. The fallbacks are the
                 prototype's example vendors and must never reach a real one. */}
@@ -9911,7 +9932,7 @@ function InviteFactoryCard({ factory, isSelected, onToggle }) {
  * nobody was hand-picked: "sent to 0 selected vendors" is not what happened
  * to a request every matching vendor can see.
  */
-export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false }) {
+export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false, liveLine = null }) {
   const vendorCount = selectedFactories.length;
   const sentTo = openToAll
     ? vendorCount
@@ -9925,10 +9946,10 @@ export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false
         <span className="success-mark">✓</span>
         <div className="success-copy">
           <h2>Your quote request is live</h2>
-          <p>
+          {liveLine ? <p>{liveLine} Vendors can review the request, ask questions, and submit quotes before the deadline.</p> : <p>
             {sentTo ?? <>We sent the brief to {vendorCount} selected {vendorCount === 1 ? "vendor" : "vendors"}.</>} They can review the request,
             ask questions, and submit quotes before the deadline.
-          </p>
+          </p>}
         </div>
         <section className="success-next-panel">
           <h3>What happens next</h3>
@@ -9939,9 +9960,9 @@ export function InviteSuccessScreen({ goTo, selectedFactories, openToAll = false
           </ul>
         </section>
         <div className="success-actions">
-          <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>
+          {liveLine ? null : <button className="primary-btn" type="button" onClick={() => goTo("quotes")}>
             Review quotes
-          </button>
+          </button>}
           <button className="secondary-btn" type="button" onClick={() => goTo("home")}>
             Go to dashboard
           </button>
@@ -9964,6 +9985,7 @@ function matchTierClass(value) {
 }
 
 function quoteFitClass(type) {
+  if (type === "Not a fit") return "quote-fit tradeoff-fit";
   if (type === "Strong fit") return "quote-fit strong-fit";
   if (type === "Great fit" || type === "Good fit") return "quote-fit good-fit";
   return "quote-fit tradeoff-fit";
@@ -10187,10 +10209,12 @@ export function QuotesScreen({
                     )}
                   </div>
                   <div className="marketplace-note-list quote-note-list">
+                    {(factory.fitType || factory.fitSummary) && (
                     <div className="quote-fit-row">
-                      <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>
+                      {factory.fitType && <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span>}
                       <p>{factory.fitSummary}</p>
                     </div>
+                    )}
                     {/* Live, a vendor who wrote no note gets no empty box. */}
                     {factory.factoryNote && (
                     <div className="factory-note-box">
@@ -10254,7 +10278,7 @@ export function QuotesScreen({
                         <td>{details.shipping}</td>
                         <td>{details.capacityWindow}</td>
                         <td>{details.total}</td>
-                        <td><span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span></td>
+                        <td>{factory.fitType ? <span className={quoteFitClass(factory.fitType)}>{factory.fitType}</span> : "—"}</td>
                         <td>{factory.factoryNote}</td>
                       </tr>
                     );
@@ -10954,7 +10978,7 @@ export function MilestonesScreen({ milestoneTypes, setMilestoneTypes, live = nul
           </div>
           <div>
             <strong>Update only</strong>
-            <span>Factory progress updates only</span>
+            <span>{live ? "Factory posts updates, you mark it done" : "Factory progress updates only"}</span>
           </div>
         </div>
         <div className="milestone-form">
@@ -11097,10 +11121,12 @@ export function FundScreen({ fundingMilestone, goTo, setFundingMilestone, live =
             <input type="checkbox" {...agreeBox(0, true)} />
             <span>{live?.agreements?.[0] ?? "I understand funds are only released after I approve the payment."}</span>
           </label>
+          {live?.agreements?.length === 1 ? null : (
           <label>
             <input type="checkbox" {...agreeBox(1, false)} />
             <span>{live?.agreements?.[1] ?? "TSC may hold funds until the payment is approved or disputed."}</span>
           </label>
+          )}
         </section>
       </Card>
     </div>
@@ -11130,6 +11156,7 @@ export function SuccessScreen({ goTo, live = null }) {
             )}
           </p>
         </div>
+        {live && !live.next ? null : (
         <section className="success-next-panel">
           <h3>What happens next</h3>
           <p>
@@ -11141,10 +11168,11 @@ export function SuccessScreen({ goTo, live = null }) {
             )}
           </p>
         </section>
+        )}
         <div className="success-actions">
-          <button className="primary-btn" type="button" onClick={live ? live.onDashboard : goToDashboard}>
+          {live?.dashboardLabel === null ? null : <button className="primary-btn" type="button" onClick={live ? live.onDashboard : goToDashboard}>
             {live?.dashboardLabel ?? "Go to dashboard"}
-          </button>
+          </button>}
           <button className="secondary-btn" type="button" onClick={live?.onMessage}>
             Message factory
           </button>

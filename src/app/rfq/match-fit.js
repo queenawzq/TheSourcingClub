@@ -1,7 +1,9 @@
 const MATCH_BANDS = [
+  // The design system's tiers. Below 60 is not a fit, and says so.
   [90, "Strong fit", "strong"],
-  [75, "Great fit", "good"],
-  [0, "Potential fit", "warn"],
+  [75, "Good fit", "good"],
+  [60, "Potential fit", "warn"],
+  [0, "Not a fit", "tradeoff"],
 ];
 
 /** Present the database's RFQ-to-factory score using the existing TSC badges. */
