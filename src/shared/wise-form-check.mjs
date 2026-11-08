@@ -10,7 +10,7 @@ export const isLatinText = (value) => {
   return !/[^ -~À-ɏ’]/.test(text) && /[A-Za-zÀ-ɏ]/.test(text);
 };
 
-export const inEnglish = (field) => field.key === "accountHolderName" || field.key.startsWith("address.");
+export const inEnglish = (field) => field.key === "accountHolderName" || (field.key.startsWith("address.") && field.key !== "address.postCode");
 
 export const REQUIRED = "Required 必填";
 
