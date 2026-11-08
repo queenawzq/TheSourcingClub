@@ -49,11 +49,12 @@ export default function RegistryPanel({ orgId, onChange }) {
 
   const country = detail?.registration?.country ?? detail?.countryCode ?? null;
   const sources = registrySources(country);
-  // The choices follow the country, which arrives with the detail: keep a
-  // choice only while it is one of them.
+  // The choices follow the country, which arrives with the detail: start
+  // from the country's first source once it is known.
+  const loaded = Boolean(detail);
   useEffect(() => {
-    setSource((current) => (sources.some((item) => item.key === current) ? current : sources[0]?.key ?? ""));
-  }, [country]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (loaded) setSource(sources[0]?.key ?? "");
+  }, [country, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (error && !detail) return <p className="factory-onboarding-save-error" role="alert">{error.message}</p>;
   if (!detail) return <p>Loading…</p>;

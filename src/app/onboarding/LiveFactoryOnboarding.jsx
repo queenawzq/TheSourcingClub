@@ -476,6 +476,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         confirmed: submitted["registration-confirmed"] === true,
         noNumber: submitted["registration-none"] === true,
       }, language === "zh" ? "zh" : "en");
+      // The same country on the profile, for Browse's location filter.
+      if (registrationCountry) patch.country_code = registrationCountry;
     }
 
     // Either kind of vendor's location; "Turkey" and Chinese-only locations
