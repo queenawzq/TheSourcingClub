@@ -493,6 +493,8 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Circular and flat knitwear, 100-unit minimums, sampling in a week.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "pending",
+  // Finishing onboarding publishes (LiveFactoryOnboarding), as here.
+  published_at: new Date().toISOString(),
 }), "new factory profile");
 must(await admin.from("factory_certifications").insert({
   org_id: newFactoryOrg.id,
@@ -552,6 +554,8 @@ must(await admin.from("factory_profiles").upsert({
   org_id: turkeyFactoryOrg.id, country_code: "TR", location: "Izmir, Türkiye", founded_year: 2009, employee_count: 140,
   moq: 500, typical_lead_days: 40, intro: "Denim cut, sew and wash under one roof.",
   onboarding_completed_at: new Date().toISOString(), verification_status: "pending",
+  // Finishing onboarding publishes (LiveFactoryOnboarding), as here.
+  published_at: new Date().toISOString(),
 }), "the Turkish factory's profile");
 {
   const path = `${turkeyFactoryOrg.id}/business_registration/${crypto.randomUUID()}-Ticaret-Sicil-Gazetesi.pdf`;
@@ -563,7 +567,7 @@ must(await admin.from("factory_profiles").upsert({
   }), "record the Turkish registration");
 }
 // Fake numbers that pass each country's check (scripts/check-registration-number.mjs).
-must(await turkeyFactory.client.rpc("save_company_registration", { target_org: turkeyFactoryOrg.id, country: "TR", number: "4837261591", trade_registry: "123456 İzmir" }), "the Turkish factory's tax number");
+must(await turkeyFactory.client.rpc("save_company_registration", { target_org: turkeyFactoryOrg.id, country: "TR", number: "4837261591", tax_plate_code: "DEMO-0000-0001" }), "the Turkish factory's tax number");
 must(await factory.client.rpc("save_company_registration", { target_org: factoryOrg.id, country: "PT", number: "509999999", access_code: "1234-5678-9012" }), "Demo Factory's NIPC");
 must(await secondFactory.client.rpc("save_company_registration", { target_org: secondFactoryOrg.id, country: "CN", number: "91330100MA2B7C4D3F" }), "Ningbo Loomworks's credit code");
 // Staff found both verified ones on their registries, so a brand reads
@@ -588,6 +592,8 @@ must(await admin.from("factory_profiles").upsert({
   intro: "Woven shirting and light outerwear, cut and sewn in-house.",
   onboarding_completed_at: new Date().toISOString(),
   verification_status: "pending",
+  // Finishing onboarding publishes (LiveFactoryOnboarding), as here.
+  published_at: new Date().toISOString(),
 }), "returned factory profile");
 const RETURNED_NOTE = [
   "Thank you for submitting your profile. Before we can verify Harbour Line Apparel we need a few more things from you:",

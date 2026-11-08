@@ -96,7 +96,11 @@ export function brandFactoryView(parts, now = new Date()) {
       // company on an official registry (factory_registry_fact), with the
       // month as a dated fact, never a score.
       {
-        name: parts.registryCheckedAt ? `Business registration · checked ${checkedMonth(parts.registryCheckedAt)}` : "Business registration",
+        // Says what was checked: an official registry, or the company's own
+        // uploaded registration document.
+        name: parts.registryCheckedAt
+          ? `${parts.registryCheckKind === "document" ? "Registration document" : "Official registry"} · checked ${checkedMonth(parts.registryCheckedAt)}`
+          : "Business registration",
         status: registrationWord(parts),
         document: parts.registrationDoc,
       },

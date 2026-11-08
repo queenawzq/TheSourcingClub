@@ -29,12 +29,14 @@ export const REGISTRATION_COUNTRIES = {
   },
   TR: {
     label: { en: "Company tax number (VKN)", zh: "公司税号（VKN）" },
-    hint: { en: "10 digits, on your tax plate (vergi levhası)", zh: "10 位数字，见税务登记牌" },
+    hint: { en: "10 digits, on your tax plate (vergi levhası); upload the plate above", zh: "10 位数字，见税务登记牌；请在上方上传" },
     second: {
-      column: "trade_registry",
-      label: { en: "Trade registry number and city", zh: "商业登记号及城市" },
-      hint: { en: "Ticaret Sicil No and its city, e.g. 123456 İstanbul", zh: "商业登记号及城市，例如 123456 伊斯坦布尔" },
+      column: "tax_plate_code",
+      label: { en: "Tax plate verification code", zh: "税务登记牌验证码" },
+      hint: { en: "Printed on your tax plate, for GİB's document check", zh: "印在税务登记牌上，用于税务局核验" },
     },
+    // A sole proprietor's tax number is the owner's national ID: never asked.
+    soleProprietor: true,
   },
   PT: {
     label: { en: "NIPC (company tax number)", zh: "NIPC（公司税号）" },
@@ -44,6 +46,7 @@ export const REGISTRATION_COUNTRIES = {
       label: { en: "Permanent certificate access code", zh: "永久证明访问码" },
       hint: { en: "12 digits, e.g. 1234-5678-9012", zh: "12 位数字，例如 1234-5678-9012" },
     },
+    soleProprietor: true,
   },
 };
 
@@ -64,7 +67,8 @@ export function registrationCopy(country) {
 export function registrationCountryFrom(location, matched = null) {
   if (matched) return matched;
   const text = String(location ?? "");
-  if (/t[uü]rk(ey|iye)/i.test(text)) return "TR";
+  // "TÜRKİYE" in capitals: İ is not I to a plain case-insensitive match.
+  if (/t[uü]rk(ey|[iİı]ye)/i.test(text)) return "TR";
   if (/portugal/i.test(text)) return "PT";
   if (/china|中国|prc\b/i.test(text)) return "CN";
   // "宁波，浙江": a location written in Chinese, outside Hong Kong, Macau and
@@ -176,10 +180,10 @@ export function registrationProblemText(country, problem, language = "en") {
   return zh ? "只能包含字母和数字" : "Letters and digits only";
 }
 
-/** Turkey's trade registry entry: free text, short. Null when too long. */
-export function normaliseTradeRegistry(value) {
+/** Turkey's tax plate verification code: as printed, short. Null when too long. */
+export function normaliseTaxPlateCode(value) {
   const text = String(value ?? "").trim().replace(/\s+/g, " ");
-  return text.length > 80 ? null : text;
+  return text.length > 40 ? null : text;
 }
 
 /** Portugal's permanent-certificate access code: 12 digits, kept as 0000-0000-0000. */
@@ -206,7 +210,7 @@ export const REGISTRY_SOURCES = {
   ],
   TR: [
     { key: "gazette", label: "Trade Registry Gazette, search by title", url: "https://www.ticaretsicil.gov.tr/view/hizlierisim/unvansorgulama.php" },
-    { key: "gib", label: "GİB tax number check (needs title)", url: "https://ivd.gib.gov.tr/" },
+    { key: "gib", label: "GİB tax plate check", url: "https://dijital.gib.gov.tr/" },
     DOCUMENT_SOURCE,
     { key: "edevlet", label: "e-Devlet barcode check", url: "https://www.turkiye.gov.tr/belge-dogrulama" },
   ],

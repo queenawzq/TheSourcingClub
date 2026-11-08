@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import {
-  normaliseAccessCode, normaliseRegistrationNumber, normaliseTradeRegistry, registrationCountryFrom, registrationFlags,
+  normaliseAccessCode, normaliseRegistrationNumber, normaliseTaxPlateCode, registrationCountryFrom, registrationFlags,
   registrationNumberProblem, registryResultLabel,
 } from "../src/shared/registration-number.mjs";
 import { viesResult } from "../api/registry-vies.js";
@@ -60,10 +60,11 @@ check("access code: 12 digits, dashed", () => assert.equal(normaliseAccessCode("
 check("access code: blank is blank", () => assert.equal(normaliseAccessCode(""), ""));
 check("access code: 11 digits is refused", () => assert.equal(normaliseAccessCode("1234-5678-901"), null));
 
-check("trade registry: kept as typed, 80 at most", () => {
-  assert.equal(normaliseTradeRegistry("  123456   İzmir "), "123456 İzmir");
-  assert.equal(normaliseTradeRegistry("x".repeat(81)), null);
+check("tax plate code: kept as typed, 40 at most", () => {
+  assert.equal(normaliseTaxPlateCode("  AB12   CD34 "), "AB12 CD34");
+  assert.equal(normaliseTaxPlateCode("x".repeat(41)), null);
 });
+check("TÜRKİYE in capitals is Turkey", () => assert.equal(registrationCountryFrom("İSTANBUL, TÜRKİYE"), "TR"));
 check("staff flags: a clean company code has none", () => assert.deepEqual(registrationFlags("CN", "91330100MA2B7C4D3F"), []));
 check("staff flags: 92 is an individual business", () => {
   assert.ok(registrationFlags("CN", "92330100MA2B7C4D3F").some((f) => f.startsWith("92")));

@@ -41,6 +41,7 @@ export default function RegistryPanel({ orgId, onChange }) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(null);
+  const [overrule, setOverrule] = useState(false);
 
   const load = useCallback(() => {
     adminRegistryDetail(orgId).then(setDetail, setError);
@@ -61,6 +62,10 @@ export default function RegistryPanel({ orgId, onChange }) {
 
   const registration = detail.registration;
   const results = registryResultsFor(source);
+  // VIES's own latest answer on this number. Recording "found" on VIES
+  // against it needs a tick saying staff looked themselves.
+  const lastVies = (detail.checks ?? []).find((check) => check.source === "vies" && check.automatic && check.numberChecked === registration?.number);
+  const viesDisagrees = source === "vies" && result === "found" && lastVies && lastVies.result !== "registered";
   const copy = (what, text) => {
     navigator.clipboard?.writeText(text).then(() => { setCopied(what); setTimeout(() => setCopied(null), 1500); }, () => {});
   };
@@ -73,6 +78,7 @@ export default function RegistryPanel({ orgId, onChange }) {
       await recordRegistryCheck(orgId, { source, result, note: note.trim() });
       setNote("");
       setResult("found");
+      setOverrule(false);
       changed();
     } catch (recordError) {
       setError(recordError);
@@ -109,7 +115,7 @@ export default function RegistryPanel({ orgId, onChange }) {
         <ProfileDetailPair label={country === "TR" ? "Tax number (VKN)" : country === "PT" ? "NIPC" : country === "CN" ? "Credit code" : "Registration number"} value={registration?.number ?? (registration?.noCompanyNumber ? "None (sole proprietor)" : "Not given")} />
         {checkDigit && <ProfileDetailPair label="Check digit" value={checkDigit} />}
         {registration?.accessCode && <ProfileDetailPair label="Certificate access code" value={registration.accessCode} />}
-        {registration?.tradeRegistry && <ProfileDetailPair label="Trade registry no. and city" value={registration.tradeRegistry} />}
+        {registration?.taxPlateCode && <ProfileDetailPair label="Tax plate verification code" value={registration.taxPlateCode} />}
       </div>
 
       {flags.length > 0 && (
@@ -173,7 +179,16 @@ export default function RegistryPanel({ orgId, onChange }) {
           <span>What you saw *</span>
           <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} placeholder={source === "document" ? "e.g. Licence shows this code and the name Ningbo Loomworks Co., Ltd." : "e.g. Listed as … , active"} />
         </label>
-        <button className="primary-btn compact-btn" type="submit" disabled={busy || !source || !registration || !note.trim()} title={!registration ? "The company has not given its number yet" : !note.trim() ? "Write what you saw: the name as shown, what differed, or why you couldn't check" : undefined}>
+        {viesDisagrees && (
+          <div className="admin-registry-note">
+            <Pill tone="warning">VIES answered "{registryResultLabel(lastVies.result, { automatic: true })}" on {when(lastVies.checkedAt)}</Pill>
+            <label className="directory-check">
+              <input type="checkbox" checked={overrule} onChange={(event) => setOverrule(event.target.checked)} />
+              <span>I checked VIES myself and it shows this company</span>
+            </label>
+          </div>
+        )}
+        <button className="primary-btn compact-btn" type="submit" disabled={busy || !source || !registration || !note.trim() || (viesDisagrees && !overrule)} title={!registration ? "The company has not given its number yet" : !note.trim() ? "Write what you saw: the name as shown, what differed, or why you couldn't check" : undefined}>
           Record check
         </button>
       </form>

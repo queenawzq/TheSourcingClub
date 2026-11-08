@@ -38,7 +38,7 @@ import { acceptTerms, getTermsAcceptance } from "../../lib/domain/terms.js";
 import { termsVersionOf } from "../../lib/domain/legal.js";
 import { getRegistration, saveRegistration } from "../../lib/domain/registration.js";
 import {
-  normaliseAccessCode, normaliseTradeRegistry, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
+  normaliseAccessCode, normaliseTaxPlateCode, registrationCopy, registrationCountryFrom, registrationNumberProblem, registrationProblemText,
 } from "../../shared/registration-number.mjs";
 
 
@@ -255,7 +255,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
 
         if (savedRegistration) {
           restored["registration-number"] = savedRegistration.number ?? "";
-          const second = savedRegistration.access_code ?? savedRegistration.trade_registry;
+          const second = savedRegistration.access_code ?? savedRegistration.tax_plate_code;
           if (second) restored["registration-second"] = second;
           if (savedRegistration.no_company_number) restored["registration-none"] = true;
           if (savedRegistration.check_digit_confirmed) restored["registration-confirmed"] = true;
@@ -314,7 +314,8 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       value: values["registration-number"] ?? "",
       confirmed: values["registration-confirmed"] === true,
       noNumber: values["registration-none"] === true,
-      noNumberLabel: lang === "zh" ? "没有公司注册号（个体经营）" : "No company number (sole proprietor)",
+      // Turkey and Portugal only: in China an individual business has a code.
+      noNumberLabel: copy.soleProprietor ? (lang === "zh" ? "没有公司注册号（个体经营）" : "No company number (sole proprietor)") : null,
       confirmLabel: lang === "zh" ? "号码无误，与证件一致" : "The number is correct as on my document",
       second: copy.second
         ? { label: copy.second.label[lang], hint: copy.second.hint[lang], value: values["registration-second"] ?? "" }
@@ -325,7 +326,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       },
       checkSecond: (value) => {
         if (registrationCountry === "PT" && normaliseAccessCode(value) === null) return lang === "zh" ? "访问码须为 12 位数字" : "The access code is 12 digits";
-        if (registrationCountry === "TR" && normaliseTradeRegistry(value) === null) return lang === "zh" ? "最多 80 个字符" : "80 characters at most";
+        if (registrationCountry === "TR" && normaliseTaxPlateCode(value) === null) return lang === "zh" ? "最多 40 个字符" : "40 characters at most";
         return "";
       },
     };
@@ -460,7 +461,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       setDocuments((current) => ({ ...current, [field]: fresh }));
     }
 
-    if (submitted["registration-none"] !== undefined) {
+    if (submitted["registration-number"] !== undefined || submitted["registration-none"] !== undefined) {
       // The registration file is required as drawn ("Business registration
       // certificate *"): one already stored, or one chosen now.
       const stored = documents["business-registration"] ?? [];
@@ -474,7 +475,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         number: submitted["registration-number"] ?? "",
         second: submitted["registration-second"] ?? "",
         confirmed: submitted["registration-confirmed"] === true,
-        noNumber: submitted["registration-none"] === true,
+        noNumber: submitted["registration-none"] === true && Boolean(registrationCopy(registrationCountry).soleProprietor),
       }, language === "zh" ? "zh" : "en");
       // The same country on the profile, for Browse's location filter.
       if (registrationCountry) patch.country_code = registrationCountry;
@@ -568,7 +569,10 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
         return;
       }
 
-      if (step === LAST_STEP - 1 && resubmitting) {
+      // Staff asked for more information: finishing answers them, whether the
+      // factory came in by "Update my profile" or went back through the steps.
+      const answering = resubmitting || review?.state === "needs_information";
+      if (step === LAST_STEP - 1 && answering) {
         // Answering staff's request: the profile is already complete and
         // published, so this only sends it back to their queue.
         await resubmitForReview(org.id);
@@ -662,7 +666,7 @@ export default function LiveFactoryOnboarding({ org, user, onComplete, onSignOut
       documents={documents}
       onDeleteDocument={removeDocument}
       completionPending
-      notice={resubmitting && review?.message ? <ReviewRequestPanel note={review.message} language={language} /> : null}
+      notice={(resubmitting || (review?.state === "needs_information" && step < LAST_STEP)) && review?.message ? <ReviewRequestPanel note={review.message} language={language} /> : null}
       completion={reviewCompletion(review, {
         language: language,
         onUpdate: () => {

@@ -14,7 +14,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(49);
+select plan(54);
 
 -- The rules -------------------------------------------------------------------
 select is(public.registration_number_problem('CN', '91350100M000100Y43'), null, 'CN: published example passes');
@@ -254,6 +254,44 @@ select lives_ok(
 select is(
   (select public.admin_registry_detail('d8600000-0000-0000-0000-0000000000f1') -> 'current' ->> 'result'),
   'found', 'and that check counts for the company without a number'
+);
+
+-- China: no company number is not an answer, and a null number never counts.
+reset role;
+insert into public.orgs (id, type, name, slug) values
+  ('d8600000-0000-0000-0000-0000000000f2', 'factory', 'P86 China', 'pgtap86-china');
+insert into public.org_members (org_id, user_id, role) values
+  ('d8600000-0000-0000-0000-0000000000f2', 'c8600000-0000-0000-0000-000000000002', 'owner');
+insert into public.factory_profiles (org_id, country_code, moq, onboarding_completed_at) values
+  ('d8600000-0000-0000-0000-0000000000f2', 'CN', 100, now());
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000002","role":"authenticated"}';
+set local role authenticated;
+select throws_ok(
+  $$select public.save_company_registration('d8600000-0000-0000-0000-0000000000f2', 'CN', null, null, null, false, true)$$,
+  '22023', null, 'in China the credit code is always required'
+);
+reset role;
+-- Even written past the function, a null number with no sole-proprietor
+-- answer in TR or PT never satisfies the check.
+insert into public.company_registrations (org_id, country_code, number, no_company_number)
+values ('d8600000-0000-0000-0000-0000000000f2', 'CN', null, true);
+set local request.jwt.claims = '{"sub":"c8600000-0000-0000-0000-000000000001","role":"authenticated"}';
+set local role authenticated;
+select lives_ok(
+  $$select public.admin_record_registry_check('d8600000-0000-0000-0000-0000000000f2', 'document', 'found', 'Licence shows a code')$$,
+  'staff record a document check on it'
+);
+select throws_ok(
+  $$select public.admin_review_decision('d8600000-0000-0000-0000-0000000000f2', 'approved')$$,
+  '22023', null, 'and it still cannot be approved without a credit code'
+);
+select is(
+  (select state from public.admin_registry_states() where org_id = 'd8600000-0000-0000-0000-0000000000f2'),
+  'none', 'its registry state is none'
+);
+select is(
+  (select state from public.admin_registry_states() where org_id = 'd8600000-0000-0000-0000-0000000000f1'),
+  'found', 'the sole proprietor checked on its documents is found'
 );
 
 reset role;

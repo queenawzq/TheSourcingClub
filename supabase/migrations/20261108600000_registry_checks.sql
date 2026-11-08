@@ -107,8 +107,9 @@ create table public.company_registrations (
   number       text,
   no_company_number boolean not null default false,
   access_code  text check (access_code ~ '^\d{4}-\d{4}-\d{4}$'),
-  -- Turkey: Ticaret Sicil No and its city, as typed.
-  trade_registry text check (char_length(trade_registry) between 1 and 80),
+  -- Turkey: the verification code printed on the tax plate (vergi levhası),
+  -- which staff enter at GİB's document check with the uploaded plate.
+  tax_plate_code text check (char_length(tax_plate_code) between 1 and 40),
   -- The check digit failed and the factory said the number is right anyway.
   check_digit_confirmed boolean not null default false,
   updated_by   uuid references auth.users (id) on delete set null,
@@ -131,7 +132,7 @@ create or replace function public.save_company_registration(
   country        text,
   number         text,
   access_code    text default null,
-  trade_registry text default null,
+  tax_plate_code text default null,
   confirmed      boolean default false,
   no_number      boolean default false
 )
@@ -167,19 +168,25 @@ begin
     raise exception 'access code must be 12 digits' using errcode = '22023';
   end if;
 
-  if char_length(trim(coalesce(trade_registry, ''))) > 80 then
-    raise exception 'trade registry entry is too long' using errcode = '22023';
+  if char_length(trim(coalesce(tax_plate_code, ''))) > 40 then
+    raise exception 'tax plate code is too long' using errcode = '22023';
+  end if;
+  -- No company number is a sole proprietor's answer in Turkey and Portugal
+  -- (their tax number is the owner's ID). In China an individual business
+  -- has a credit code (92…), so the code is always required there.
+  if coalesce(no_number, false) and cc is distinct from 'TR' and cc is distinct from 'PT' then
+    raise exception 'a registration number is required' using errcode = '22023';
   end if;
 
   insert into public.company_registrations as r
-    (org_id, country_code, number, no_company_number, access_code, trade_registry, check_digit_confirmed, updated_by, updated_at)
+    (org_id, country_code, number, no_company_number, access_code, tax_plate_code, check_digit_confirmed, updated_by, updated_at)
   values (
     target_org, cc,
     case when coalesce(no_number, false) then null else public.normalise_registration_number(cc, number) end,
     coalesce(no_number, false),
     case when cc = 'PT' and code_digits <> ''
          then substr(code_digits, 1, 4) || '-' || substr(code_digits, 5, 4) || '-' || substr(code_digits, 9, 4) end,
-    case when cc = 'TR' then nullif(regexp_replace(trim(coalesce(trade_registry, '')), '\s+', ' ', 'g'), '') end,
+    case when cc = 'TR' then nullif(regexp_replace(trim(coalesce(tax_plate_code, '')), '\s+', ' ', 'g'), '') end,
     not coalesce(no_number, false) and coalesce(public.registration_number_problem(cc, number) = 'check_digit', false),
     auth.uid(), now()
   )
@@ -188,11 +195,11 @@ begin
         number         = excluded.number,
         no_company_number = excluded.no_company_number,
         access_code    = excluded.access_code,
-        trade_registry = excluded.trade_registry,
+        tax_plate_code = excluded.tax_plate_code,
         check_digit_confirmed = excluded.check_digit_confirmed,
         updated_by     = excluded.updated_by,
-        updated_at     = case when (r.country_code, r.number, r.no_company_number, r.access_code, r.trade_registry)
-                                   is distinct from (excluded.country_code, excluded.number, excluded.no_company_number, excluded.access_code, excluded.trade_registry)
+        updated_at     = case when (r.country_code, r.number, r.no_company_number, r.access_code, r.tax_plate_code)
+                                   is distinct from (excluded.country_code, excluded.number, excluded.no_company_number, excluded.access_code, excluded.tax_plate_code)
                               then now() else r.updated_at end
   returning * into saved;
   return saved;
@@ -335,7 +342,7 @@ begin
     'registration', (
       select jsonb_build_object(
         'country', r.country_code, 'number', r.number, 'noCompanyNumber', r.no_company_number, 'accessCode', r.access_code,
-        'tradeRegistry', r.trade_registry, 'confirmed', r.check_digit_confirmed,
+        'taxPlateCode', r.tax_plate_code, 'confirmed', r.check_digit_confirmed,
         'problem', public.registration_number_problem(r.country_code, r.number),
         'updatedAt', r.updated_at)
         from public.company_registrations r where r.org_id = target_org),
@@ -387,7 +394,11 @@ set search_path = public, pg_temp
 as $$
   select c.*
     from public.registry_checks c
-    join public.company_registrations r on r.org_id = c.org_id and r.number is not distinct from c.number_checked
+    join public.company_registrations r on r.org_id = c.org_id
+     and (r.number = c.number_checked
+          -- A sole proprietor in Turkey or Portugal, checked on its documents.
+          or (r.number is null and c.number_checked is null and r.no_company_number
+              and r.country_code in ('TR', 'PT')))
    where c.org_id = target_org
      and not c.automatic
    order by c.checked_at desc
@@ -396,17 +407,20 @@ $$;
 
 revoke all on function public.current_registry_check(uuid) from public, anon, authenticated;
 
--- What a brand learns: when the registry was last found to match, and
--- nothing else (no number, source, note or person). Null for an unverified
--- or unpublished vendor, or when the current check is not a match.
+-- What a brand learns: when the company was last found to match, and on
+-- what kind of source ('registry', or 'document' for its uploaded
+-- registration), and nothing else (no number, note or person). Null for an
+-- unverified or unpublished vendor, or when the current check is no match.
 create or replace function public.factory_registry_fact(target_org uuid)
-returns timestamptz
+returns jsonb
 language sql
 stable
 security definer
 set search_path = public, pg_temp
 as $$
-  select c.checked_at
+  select jsonb_build_object(
+           'checkedAt', c.checked_at,
+           'kind', case when c.source = 'document' then 'document' else 'registry' end)
     from public.current_registry_check(target_org) c
     join public.factory_profiles f on f.org_id = c.org_id
    where c.result = 'found'
@@ -542,3 +556,37 @@ revoke all on function public.guard_approval_needs_registry() from public, anon,
 create trigger org_reviews_approval_needs_registry
   before insert or update of state on public.org_reviews
   for each row execute function public.guard_approval_needs_registry();
+
+-- ---------------------------------------------------------------------------
+-- 7. Staff: each vendor's registry state, for the queue
+-- ---------------------------------------------------------------------------
+
+-- 'found' (with the source kind), 'lost' (verified, but its current check is
+-- not a match: a later not found, or a changed number), or 'none'. Staff have
+-- no org and cannot be notified, so the queue is where a lost check shows.
+create or replace function public.admin_registry_states()
+returns table (org_id uuid, state text, kind text, checked_at timestamptz)
+language plpgsql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if not public.is_platform_admin() then
+    raise exception 'only platform admins may read registry states' using errcode = '42501';
+  end if;
+  return query
+    select f.org_id,
+           case when c.result = 'found' then 'found'
+                when f.verification_status = 'verified' and (c.id is not null or exists (
+                  select 1 from public.registry_checks x where x.org_id = f.org_id and not x.automatic)) then 'lost'
+                else 'none' end,
+           case when c.source = 'document' then 'document' when c.id is not null then 'registry' end,
+           c.checked_at
+      from public.factory_profiles f
+      left join lateral (select * from public.current_registry_check(f.org_id)) c on true;
+end;
+$$;
+
+revoke all on function public.admin_registry_states() from public, anon;
+grant execute on function public.admin_registry_states() to authenticated;

@@ -77,7 +77,7 @@ export async function loadOwnProfile(org) {
   ]);
   const certificationRows = await loadCertifications(org.id, terms.certification ?? []);
   // The number the company gave, and whether staff found it on a registry.
-  const [registrationNumber, registryCheckedAt] = await Promise.all([
+  const [registrationNumber, registryCheck] = await Promise.all([
     getRegistration(org.id).catch(() => null),
     registryFact(org.id),
   ]);
@@ -85,7 +85,8 @@ export async function loadOwnProfile(org) {
   return {
     orgName: org.name,
     registrationNumber,
-    registryCheckedAt,
+    registryCheckedAt: registryCheck?.checkedAt ?? null,
+    registryCheckKind: registryCheck?.kind ?? null,
     profile,
     terms,
     selected,
@@ -116,7 +117,7 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
   );
   if (!profile) return null;
 
-  const [terms, selected, capacity, refs, claims, media, verificationDocs, publicMetrics, registryCheckedAt] = await Promise.all([
+  const [terms, selected, capacity, refs, claims, media, verificationDocs, publicMetrics, registryCheck] = await Promise.all([
     listTermsByKind(KINDS),
     getSelectedTerms("factory_profile", vendorOrgId),
     getCapacity(vendorOrgId),
@@ -150,7 +151,8 @@ export async function loadVendorProfileForBrand(vendorOrgId) {
     registrationDoc: verificationDocs.filter((doc) => doc.kind === "business_registration").at(-1) ?? null,
     verificationDocs,
     publicMetrics,
-    registryCheckedAt,
+    registryCheckedAt: registryCheck?.checkedAt ?? null,
+    registryCheckKind: registryCheck?.kind ?? null,
     ...media,
     orders: [],
   };

@@ -4,11 +4,11 @@
  * src/shared/registration-number.mjs and, the same, in the database.
  */
 import { supabase, unwrap } from "../supabase.js";
-import { normaliseAccessCode, normaliseTradeRegistry, registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
+import { normaliseAccessCode, normaliseTaxPlateCode, registrationNumberProblem, registrationProblemText } from "../../shared/registration-number.mjs";
 
 export async function getRegistration(orgId) {
   return unwrap(
-    await supabase.from("company_registrations").select("org_id, country_code, number, no_company_number, access_code, trade_registry, check_digit_confirmed, updated_at").eq("org_id", orgId).maybeSingle(),
+    await supabase.from("company_registrations").select("org_id, country_code, number, no_company_number, access_code, tax_plate_code, check_digit_confirmed, updated_at").eq("org_id", orgId).maybeSingle(),
     "load the registration number",
   );
 }
@@ -32,13 +32,13 @@ export async function saveRegistration(orgId, { country, number, second = "", co
   const problem = registrationNumberProblem(country, number);
   if (problem && !(problem === "check_digit" && confirmed)) throw new Error(registrationProblemText(country, problem, language));
   let accessCode = null;
-  let tradeRegistry = null;
+  let taxPlateCode = null;
   if (country === "PT") {
     accessCode = normaliseAccessCode(second);
     if (accessCode === null) throw new Error(zh ? "访问码须为 12 位数字" : "The access code is 12 digits");
   } else if (country === "TR") {
-    tradeRegistry = normaliseTradeRegistry(second);
-    if (tradeRegistry === null) throw new Error(zh ? "商业登记号过长" : "The trade registry entry is too long");
+    taxPlateCode = normaliseTaxPlateCode(second);
+    if (taxPlateCode === null) throw new Error(zh ? "验证码最多 40 个字符" : "The verification code is 40 characters at most");
   }
   const saved = unwrap(
     await supabase.rpc("save_company_registration", {
@@ -46,7 +46,7 @@ export async function saveRegistration(orgId, { country, number, second = "", co
       country: country ?? null,
       number,
       access_code: accessCode || null,
-      trade_registry: tradeRegistry || null,
+      tax_plate_code: taxPlateCode || null,
       confirmed: Boolean(confirmed),
     }),
     "save the registration number",
@@ -99,4 +99,11 @@ export async function registryFact(orgId) {
   const { data, error } = await supabase.rpc("factory_registry_fact", { target_org: orgId });
   if (error) return null;
   return data ?? null;
+}
+
+/** Staff: every vendor's registry state ('found', 'lost', 'none'), by org id. */
+export async function adminRegistryStates() {
+  const { data, error } = await supabase.rpc("admin_registry_states");
+  if (error) return new Map();
+  return new Map((data ?? []).map((row) => [row.org_id, row]));
 }
